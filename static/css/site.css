@@ -1,0 +1,398 @@
+/* ============================================================
+   酒店管理系统 前台通用样式（Element UI 风格，与 simpleui 后台观感一致）
+   主色 #409EFF / 成功 #67C23A / 警告 #E6A23C / 危险 #F56C6C
+   文字 #303133 / 常规 #606266 / 边框 #DCDFE6 / 背景 #F0F2F5
+   ============================================================ */
+
+body {
+    background: #f0f2f5;
+    font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
+                 "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+    color: #606266;
+    margin: 0;
+}
+
+.page { min-height: 100vh; margin-left: 220px; padding-bottom: 40px; box-sizing: border-box; }
+
+/* ---------- 左侧侧边栏（simpleui 风格：深色 Logo + 图标菜单 + 用户区） ---------- */
+.sidebar {
+    position: fixed;
+    left: 0; top: 0; bottom: 0;
+    width: 220px;
+    background: #2b2f3a;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 2px 0 12px rgba(0, 0, 0, .18);
+}
+.side-logo {
+    height: 62px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
+    flex-shrink: 0;
+}
+.logo-icon {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: #409EFF;
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 15px;
+    flex-shrink: 0;
+}
+.logo-text { color: #fff; font-weight: 600; font-size: 15px; letter-spacing: 1px; white-space: nowrap; }
+.sidebar-menu {
+    list-style: none;
+    margin: 12px 0;
+    padding: 0 10px;
+    flex: 1;
+    overflow-y: auto;
+}
+.sidebar-menu li { margin: 4px 0; float: none !important; padding: 0 !important; background: transparent !important; }
+.sidebar-menu a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 14px;
+    color: #bfcbd9;
+    font-size: 14px;
+    text-decoration: none;
+    border-radius: 5px;
+    transition: background .2s, color .2s;
+    background: transparent !important;
+    border: none !important;
+    line-height: 1.4 !important;
+}
+.sidebar-menu a:hover { background: rgba(255, 255, 255, .07) !important; color: #fff !important; }
+.sidebar-menu a.active { background: rgba(64, 158, 255, .16) !important; color: #409EFF !important; }
+.side-user {
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    padding: 14px 16px 16px;
+    flex-shrink: 0;
+}
+.side-user-name {
+    color: #bfcbd9;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.side-role {
+    color: #409EFF;
+    font-size: 12px;
+    border: 1px solid rgba(64, 158, 255, .5);
+    padding: 1px 9px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+.logout-form { display: block; margin: 0 !important; }
+.logout-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, .35);
+    color: #e5e9f0;
+    border-radius: 4px;
+    padding: 7px 0;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .2s, border-color .2s;
+}
+.logout-btn:hover { background: rgba(255, 255, 255, .1); border-color: #fff; }
+
+/* ---------- 卡片区块 ---------- */
+div.card {
+    width: 72%;
+    margin: 24px auto !important;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, .08);
+    padding: 8px 32px 32px;
+    box-sizing: border-box;
+}
+div.card > center > .logo h2,
+div.card h2 {
+    color: #303133;
+    font-size: 20px;
+    font-weight: 600;
+    text-align: center;
+    padding: 18px 0 14px;
+    margin: 0;
+    border-bottom: 1px solid #ebeef5;
+    letter-spacing: 1px;
+}
+div.card a { text-decoration: none; }
+div.card a:hover { text-decoration: none; }
+
+/* ---------- 表单 ---------- */
+form { margin: 24px 40px !important; }
+label { color: #606266; font-size: 14px; }
+input.input, form > p > input[type="text"], form input[name="value"] {
+    width: 520px !important;
+    max-width: 100%;
+    height: 36px !important;
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    padding: 0 12px;
+    font-size: 14px;
+    color: #303133;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color .2s, box-shadow .2s;
+    vertical-align: middle;
+}
+input.input:focus, form > p > input[type="text"]:focus {
+    border-color: #409EFF;
+    box-shadow: 0 0 0 2px rgba(64, 158, 255, .15);
+}
+form select {
+    width: 520px;
+    max-width: 100%;
+    height: 36px;
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    padding: 0 8px;
+    font-size: 14px;
+    color: #303133;
+    background: #fff;
+    outline: none;
+}
+form > p { margin: 18px 0; }
+form input[type="submit"] {
+    background: #409EFF;
+    color: #fff;
+    border: 1px solid #409EFF;
+    border-radius: 4px;
+    padding: 10px 28px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background .2s, border-color .2s;
+    margin-top: 8px;
+}
+form input[type="submit"]:hover { background: #66b1ff; border-color: #66b1ff; }
+
+/* ---------- 表格 ---------- */
+.card table {
+    width: 96% !important;
+    margin: 20px auto;
+    border-collapse: collapse;
+    border: none !important;
+    font-size: 14px;
+}
+.card table th {
+    background: #f5f7fa;
+    color: #606266;
+    font-weight: 600;
+    padding: 12px 10px;
+    border-bottom: 2px solid #ebeef5;
+    text-align: center;
+}
+.card table td {
+    padding: 12px 10px;
+    color: #606266;
+    border-bottom: 1px solid #ebeef5;
+    text-align: center;
+}
+.card table tr:hover td { background: #f5f7fa; }
+
+/* ---------- 操作按钮 ---------- */
+td center { display: flex; gap: 8px; justify-content: center; align-items: center; }
+button.btn.btn-primary {
+    background: #409EFF !important;
+    border: 1px solid #409EFF !important;
+    color: #fff !important;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .2s;
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+button.btn.btn-primary:hover { background: #66b1ff !important; border-color: #66b1ff !important; }
+button.btn.btn-primary.delete {
+    background: #F56C6C !important;
+    border-color: #F56C6C !important;
+}
+button.btn.btn-primary.delete:hover { background: #f78989 !important; border-color: #f78989 !important; }
+
+/* 查询区结果卡片 */
+.card table tbody td[style*="inline-block"] {
+    background: #f8f9fb;
+    border: 1px solid #ebeef5;
+    border-radius: 6px;
+    padding: 14px;
+    margin: 6px;
+    text-align: left;
+    font-size: 13px;
+}
+
+/* ---------- 消息提示（成功/错误 toast） ---------- */
+.toast-box {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+}
+div.toast {
+    min-width: 240px;
+    padding: 12px 24px;
+    border-radius: 6px;
+    font-size: 14px;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .12);
+    animation: toastIn .3s ease;
+}
+div.toast.success {
+    background: #f0f9eb;
+    color: #67C23A;
+    border: 1px solid #e1f3d8;
+}
+div.toast.error {
+    background: #fef0f0;
+    color: #F56C6C;
+    border: 1px solid #fde2e2;
+}
+@keyframes toastIn {
+    from { opacity: 0; transform: translateY(-12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 错误提示文字（表单内） */
+form p[style*="red"] {
+    background: #fef0f0;
+    border: 1px solid #fde2e2;
+    color: #F56C6C !important;
+    border-radius: 4px;
+    padding: 10px 16px;
+    font-size: 13px;
+}
+
+
+/* ---------- 唯一性即时校验提示 ---------- */
+.unique-tip { font-size: 12px; margin-left: 10px; vertical-align: middle; }
+.unique-tip.checking { color: #909399; }
+.unique-tip.bad { color: #F56C6C; }
+.unique-tip.ok { color: #67C23A; }
+
+
+/* ---------- 查询无结果提示 ---------- */
+p.no-result {
+    text-align: center;
+    color: #E6A23C;
+    background: #fdf6ec;
+    border: 1px solid #faecd8;
+    border-radius: 4px;
+    padding: 10px 16px;
+    width: 60%;
+    margin: 16px auto;
+    font-size: 14px;
+}
+
+
+/* ---------- 导航右侧用户区 ---------- */
+nav#fh5co-menu-wrap ul.sf-menu li.nav-user {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    line-height: 56px;
+    background: transparent !important;
+}
+nav#fh5co-menu-wrap ul.sf-menu li.nav-user .logout-form {
+    line-height: normal;
+}
+.nav-user-name {
+    color: rgba(255, 255, 255, .85);
+    font-size: 13px;
+    white-space: nowrap;
+}
+.logout-form { display: inline; margin: 0 !important; }
+.logout-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, .4);
+    color: #fff;
+    border-radius: 4px;
+    padding: 5px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .2s, border-color .2s;
+}
+.logout-btn:hover { background: rgba(255, 255, 255, .12); border-color: #fff; }
+
+/* ---------- 下拉框美化（原生 select 与 datalist 输入框） ---------- */
+form select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background: #fff url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23909399' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 12px center;
+    padding-right: 36px;
+    cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
+}
+form select:hover { border-color: #c0c4cc; }
+form select:focus { border-color: #409EFF; box-shadow: 0 0 0 2px rgba(64, 158, 255, .15); }
+input[list] {
+    background: #fff url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23909399' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 12px center;
+    cursor: pointer;
+}
+
+
+/* ---------- 主界面门户 / 新页面布局 ---------- */
+.main { padding: 22px 30px 40px; }
+.page-head { margin: 4px 0 18px; }
+.page-head h2 { margin: 0; color: #303133; font-size: 22px; letter-spacing: 1px; }
+.page-sub { color: #909399; font-size: 13px; }
+.stat-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+.stat-card {
+    background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.06);
+    padding: 16px 26px; min-width: 150px; text-align: center;
+}
+.stat-num { font-size: 26px; font-weight: 700; color: #2d3a4b; }
+.stat-label { color: #909399; font-size: 12px; margin-top: 4px; }
+.module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
+.module-card {
+    background: #fff; border: 1px solid #ebeef5; border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.05); padding: 20px 22px;
+    text-decoration: none; color: #303133; display: block;
+    transition: transform .15s, box-shadow .15s;
+}
+.module-card:hover { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(0,0,0,.10); }
+.module-title { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+.module-desc { color: #909399; font-size: 13px; min-height: 34px; }
+.module-go { color: #409EFF; font-size: 13px; margin-top: 8px; }
+.op-hint { color: #909399; font-size: 13px; margin-top: 24px; }
+.empty-row { text-align: center; color: #909399; padding: 16px 0; }
+
+/* ---------- 状态徽章 / 冲账行 ---------- */
+.badge {
+    display: inline-block; padding: 3px 10px; border-radius: 10px;
+    font-size: 12px; line-height: 1.4; white-space: nowrap;
+}
+.ok-badge { background: #f0f9eb; color: #67C23A; border: 1px solid #e1f3d8; }
+.void-badge { background: #fef0f0; color: #F56C6C; border: 1px solid #fde2e2; }
+.info-badge { background: #ecf5ff; color: #409EFF; border: 1px solid #d9ecff; }
+.warn-badge { background: #fdf6ec; color: #E6A23C; border: 1px solid #faecd8; }
+tr.voided-row td { color: #c0c4cc; background: #fafafa; }
+tr.voided-row .btn { opacity: .45; }
+
+/* ---------- 自定义下拉（职务/等级/状态编辑：全量展示 + 可手输） ---------- */
+.dd-wrap { position: relative; display: inline-block; }
+.dd-panel {
+    position: absolute; top: 100%; left: 0; z-index: 300;
+    background: #fff; border: 1px solid #e4e7ed; border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.12);
+    min-width: 160px; max-height: 220px; overflow: auto; margin-top: 4px;
+}
+.dd-option { padding: 9px 14px; font-size: 14px; color: #606266; cursor: pointer; }
+.dd-option:hover, .dd-option.dd-hover { background: #ecf5ff; color: #409EFF; }
+.dd-empty { padding: 9px 14px; font-size: 13px; color: #c0c4cc; }

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>注册 - 酒店管理系统</title>
+    <link rel="stylesheet" href="/static/css/login_page.css?v=2">
+    <link rel="stylesheet" href="/static/css/site.css?v=3">
+</head>
+<body class="register-body">
+<div class="login-wrap">
+    <div class="register-card">
+        <h2>注册员工账号</h2>
+        <p class="register-sub">注册后默认为「前台」角色，可由管理员调整</p>
+        {% if error %}<p class="login-error">{{ error }}</p>{% endif %}
+        <form action="/register/" method="post">
+            {% csrf_token %}
+            <p><label>用户名：</label><input type="text" name="username" value="{{ form.username }}" class="input" autocomplete="username" placeholder="3-30 位字母/数字/下划线" required autofocus></p>
+            <p><label>姓名：</label><input type="text" name="fullname" value="{{ form.fullname }}" class="input" placeholder="2-10 位中英文" required></p>
+            <p><label>手机号：</label><input type="text" name="tel" value="{{ form.tel }}" class="input" maxlength="11" placeholder="11 位手机号（选填）"></p>
+            <p><label>密码：</label><input type="password" name="password" class="input" autocomplete="new-password" placeholder="至少 6 位" required></p>
+            <p><label>确认密码：</label><input type="password" name="password2" class="input" autocomplete="new-password" placeholder="再次输入密码" required></p>
+            <p><button type="submit" class="register-btn">注 册</button></p>
+        </form>
+        <p class="register-foot">已有账号？<a href="/login/">返回登录</a></p>
+    </div>
+</div>
+</body>
+</html>

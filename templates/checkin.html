@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>入住管理 - 酒店管理系统</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=4">
+</head>
+<body>
+{% if messages %}
+<div class="toast-box">
+    {% for m in messages %}<div class="toast {{ m.tags }}">{{ m }}</div>{% endfor %}
+</div>
+{% endif %}
+{% include "_sidebar.html" %}
+<div class="main">
+    <div class="page-head">
+        <h2>入住管理</h2>
+        <span class="page-sub">预订确认 · 入住登记 · 退房结算（今天：{{ today }}）</span>
+    </div>
+
+    <div class="card">
+        <center><h2>待入住预订（{{ pending|length }}）</h2></center>
+        <table>
+            <tr><th>订单号</th><th>顾客</th><th>联系电话</th><th>房型/房间</th><th>入住日期</th><th>分配房间并登记入住</th></tr>
+            {% for line in pending %}
+            <tr>
+                <td class="oid">{{ line.id }}</td>
+                <td>{{ line.顾客id.姓名 }}</td>
+                <td>{{ line.联系电话 }}</td>
+                <td>{{ line.客房编号.客房类型 }} / {{ line.客房编号.房间号 }}</td>
+                <td>{{ line.入住时间 }}</td>
+                <td>
+                    <select class="ck-room">
+                        <option value="">选择空闲房间…</option>
+                        {% for r in rooms %}{% if r.房间状态 == '空闲' or r.房间号 == line.客房编号.房间号 %}
+                        <option value="{{ r.房间号 }}">{{ r.房间号 }}（{{ r.客房类型 }}，{{ r.价格 }} 元/晚）</option>
+                        {% endif %}{% endfor %}
+                    </select>
+                    <input type="text" class="ck-idcard" maxlength="18" placeholder="身份证号（18位）" style="width:170px"/>
+                    <button class="btn btn-primary ck-do" data-id="{{ line.id }}">确认入住</button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="empty-row">暂无待入住的预订</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <div class="card">
+        <center><h2>在住列表（{{ living|length }}）</h2></center>
+        <table>
+            <tr><th>订单号</th><th>顾客</th><th>房间</th><th>身份证号</th><th>入住日期</th><th>联系电话</th><th>退房结算</th>{% if can_void %}<th>冲账</th>{% endif %}</tr>
+            {% for line in living %}
+            <tr>
+                <td class="oid">{{ line.id }}</td>
+                <td>{{ line.顾客id.姓名 }}</td>
+                <td>{{ line.客房编号.房间号 }}（{{ line.客房编号.客房类型 }}）</td>
+                <td>{{ line.顾客id.身份证号 }}</td>
+                <td>{{ line.入住时间 }}</td>
+                <td>{{ line.联系电话 }}</td>
+                <td><input type="text" class="co-amount" maxlength="9" placeholder="收款金额" style="width:110px"/><button class="btn btn-primary co-do" data-id="{{ line.id }}">退房结算</button></td>
+                {% if can_void %}<td><button class="btn btn-primary ck-void" data-id="{{ line.id }}">冲账</button></td>{% endif %}
+            </tr>
+            {% empty %}
+            <tr><td colspan="{% if can_void %}8{% else %}7{% endif %}" class="empty-row">暂无在住客人</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <div class="card">
+        <center><h2>近期已退房（最近 10 单）</h2></center>
+        <table>
+            <tr><th>订单号</th><th>顾客</th><th>房间</th><th>入住日期</th><th>退房日期</th><th>收款金额（元）</th>{% if can_void %}<th>反结账</th>{% endif %}</tr>
+            {% for line in done %}
+            <tr>
+                <td class="oid">{{ line.id }}</td>
+                <td>{{ line.顾客id.姓名 }}</td>
+                <td>{{ line.客房编号.房间号 }}</td>
+                <td>{{ line.入住时间 }}</td>
+                <td>{{ line.退房时间 }}</td>
+                <td>{{ line.收款金额 }}</td>
+                {% if can_void %}<td><button class="btn btn-primary ck-uncheck" data-id="{{ line.id }}">反结账</button></td>{% endif %}
+            </tr>
+            {% empty %}
+            <tr><td colspan="{% if can_void %}7{% else %}6{% endif %}" class="empty-row">暂无退房记录</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+
+<script src="/static/js/jquery-2.1.4.min.js"></script>
+<script>
+    function getCookie(name) {
+        var v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+        return v ? v[2] : null;
+    }
+    $.ajaxSetup({ headers: { 'X-CSRFToken': getCookie('csrftoken') } });
+    function showToast(text, tag) {
+        var box = document.querySelector('.toast-box');
+        if (!box) { box = document.createElement('div'); box.className = 'toast-box'; document.body.appendChild(box); }
+        var t = document.createElement('div');
+        t.className = 'toast ' + (tag || 'success');
+        t.textContent = text;
+        box.appendChild(t);
+        setTimeout(function () { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; }, 1800);
+        setTimeout(function () { t.remove(); }, 2300);
+    }
+    $(document).on('click', '.ck-do', function () {
+        var tr = $(this).closest('tr');
+        var room = tr.find('.ck-room').val();
+        var idcard = tr.find('.ck-idcard').val();
+        if (!room) { alert('请先选择要分配的空闲房间'); return; }
+        $.post('/checkin_confirm/', { id: $(this).data('id'), room: room, idcard: idcard })
+         .done(function () { showToast('已办理入住'); setTimeout(function () { location.reload(); }, 600); })
+         .fail(function (xhr) { alert(xhr.responseText); });
+    });
+    $(document).on('click', '.co-do', function () {
+        var tr = $(this).closest('tr');
+        var amount = tr.find('.co-amount').val();
+        if (!amount) { alert('请填写收款金额'); return; }
+        $.post('/checkout/', { id: $(this).data('id'), amount: amount })
+         .done(function () { showToast('退房结算完成'); setTimeout(function () { location.reload(); }, 600); })
+         .fail(function (xhr) { alert(xhr.responseText); });
+    });
+    $(document).on('click', '.ck-void', function () {
+        if (!window.confirm('确定冲账该订单吗？冲账后不可恢复。')) { return; }
+        $.get('/delete_accomodation/', { id: $(this).data('id') })
+         .done(function () { showToast('已冲账'); setTimeout(function () { location.reload(); }, 600); })
+         .fail(function (xhr) { alert(xhr.responseText); });
+    });
+    $(document).on('click', '.ck-uncheck', function () {
+        if (!window.confirm('反结账将退回收款记录，确认继续？')) { return; }
+        $.post('/uncheckout/', { id: $(this).data('id') })
+         .done(function () { showToast('已反结账'); setTimeout(function () { location.reload(); }, 600); })
+         .fail(function (xhr) { alert(xhr.responseText); });
+    });
+</script>
+</body>
+</html>

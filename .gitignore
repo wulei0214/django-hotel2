@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 虚拟环境
+venv/
+.venv/
+
+# 日志（运行时自动生成）
+logs/
+
+# IDE
+.idea/
+.vscode/
+_idea/
+
+# 前端构建缓存
+static/_sass-cache/
+
+# 系统文件
+Thumbs.db
+.DS_Store
+
+# 备份文件
+*.bak
+*~
+
+# ZCode 会话数据
+.zcode/

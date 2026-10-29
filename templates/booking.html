@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>客房预订 - 酒店管理系统</title>
+    <link rel="stylesheet" href="/static/css/booking.css?v=1">
+</head>
+<body>
+<header class="bk-head">
+    <div class="bk-logo"><span class="bk-logo-icon">酒</span>酒店管理系统 · 在线预订</div>
+    <a class="bk-staff-link" href="/login/">员工登录</a>
+</header>
+
+<main class="bk-main">
+    <h1 class="bk-title">预订一间房，从这里开始</h1>
+    <p class="bk-sub">选择房型在线提交预订，前台确认后即可入住</p>
+
+    {% if ok %}
+    <div class="bk-success">
+        预订提交成功！我们的前台会尽快与您联系确认，请保持手机畅通。
+    </div>
+    {% endif %}
+    {% if error %}<div class="bk-error">{{ error }}</div>{% endif %}
+
+    <section class="bk-types">
+        {% for t, info in types.items %}
+        <div class="bk-type-card">
+            <div class="bk-type-name">{{ t }}</div>
+            <div class="bk-type-price"><span>{{ info.price }}</span> 元/晚 起</div>
+            <div class="bk-type-count">剩余 {{ info.count }} 间</div>
+        </div>
+        {% endfor %}
+    </section>
+
+    <section class="bk-form-card">
+        <h2>填写预订信息</h2>
+        <form action="/booking/" method="post">
+            {% csrf_token %}
+            <p><label>您的姓名：</label><input type="text" name="name" required maxlength="10" placeholder="2-10 位中英文"></p>
+            <p><label>手机号：</label><input type="text" name="tel" required maxlength="11" pattern="1\d{10}" title="11 位手机号（1 开头）" placeholder="用于确认预订"></p>
+            <p><label>房间类型：</label>
+                <select name="room_type" required>
+                    {% for t, info in types.items %}
+                    <option value="{{ t }}">{{ t }}（{{ info.price }} 元/晚 起）</option>
+                    {% endfor %}
+                </select>
+            </p>
+            <p><label>入住日期：</label><input type="date" name="date" required min="{{ today }}"></p>
+            <p><button type="submit" class="bk-submit">提交预订</button></p>
+        </form>
+        <p class="bk-hint">提示：提交后订单为「预订」状态，入住当天请到前台出示手机号办理登记。</p>
+    </section>
+</main>
+
+<footer class="bk-foot">© 酒店管理系统 · 温馨舒适的入住体验</footer>
+</body>
+</html>

@@ -1,0 +1,304 @@
+<!-- 员工信息管理：录入 / 展示 / 查询 / 行内编辑删除（工号可留空自动分配） -->
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/html">
+<head>
+    <meta charset="UTF-8">
+    <title>酒店管理系统</title>
+    <link rel="shortcut icon" href="favicon.ico">
+	<link rel="stylesheet" href="/static/css/superfish.css">
+	<link rel="stylesheet" href="/static/css/bootstrap-datepicker.min.css">
+	<link rel="stylesheet" href="/static/css/cs-select.css">
+	<link rel="stylesheet" href="/static/css/cs-skin-border.css">
+
+	<link rel="stylesheet" href="/static/css/themify-icons.css">
+	<link rel="stylesheet" href="/static/css/flaticon.css">
+	<link rel="stylesheet" href="/static/css/icomoon.css">
+	<link rel="stylesheet" href="/static/css/flexslider.css">
+    <link rel="stylesheet" href="/static/my.css">
+<link rel="stylesheet" href="/static/css/site.css?v=3">
+</head>
+<body>
+{% if messages %}
+<div class="toast-box">
+    {% for m in messages %}<div class="toast {{ m.tags }}">{{ m }}</div>{% endfor %}
+</div>
+{% endif %}
+<div class="page">
+
+{% include "_sidebar.html" %}
+
+<div class="card">
+<center>
+    <!--<a href="/insert/">-->
+    <div class="logo">
+					<h2>员工信息录入</h2>
+    </div></center>
+
+<form action="/insert/" method="post" style="margin-left:40px">
+    {% csrf_token %}
+    {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+
+     <p><label >工号&nbsp;:&nbsp;&nbsp;</label><input type="text" name="id" value="{{ form.id }}" maxlength="10" pattern="\d{1,10}" title="工号必须是1-10位数字，留空则自动分配" placeholder="1-10位数字，留空自动分配" class="input"/></p>
+     <p><label >姓名&nbsp;:&nbsp;&nbsp;</label><input type="text" name="name" value="{{ form.name }}" required minlength="2" maxlength="10" pattern="[\u4e00-\u9fa5A-Za-z·]{2,10}" title="姓名必须是2-10位中英文" placeholder="2-10位中英文" class="input"/></p>
+     <!--<i>职务</i><input type="text" name="job"/><br>-->
+
+     <p><label>职务&nbsp;:&nbsp;&nbsp;</label>&nbsp<select name="job">
+        <option value="总经理">总经理</option>
+        <option value="大堂经理">大堂经理</option>
+        <option value="厨师">厨师</option>
+        <option value="服务员">服务员</option>
+        <option value="保安">保安</option>
+     </select></p>
+     <p><label>月薪&nbsp;:&nbsp;&nbsp;</label><input type="text" name="salary" value="{{ form.salary }}" required maxlength="9" pattern="(0|[1-9]\d{0,5})(\.\d{1,2})?" title="月薪为数字，整数最多6位，最多两位小数" placeholder="如 8000 或 8000.50" class="input"/></p>
+     <p><label>工龄&nbsp;:&nbsp;&nbsp;</label><input type="text" name="time_work" value="{{ form.time_work }}" required maxlength="4" pattern="\d{1,4}" title="工龄必须是1-4位数字" placeholder="1-4位数字" class="input"/></p>
+        <p><input type="submit" value="提交"></p><br/><br/><br/>
+
+<datalist id="job-list">
+        <option value="总经理"></option>
+        <option value="大堂经理"></option>
+        <option value="厨师"></option>
+        <option value="服务员"></option>
+        <option value="保安"></option>
+    </datalist>
+</form>
+</div>
+<p>&nbsp;</p><p>&nbsp;</p>
+<div class="card">
+<a href="/index/">
+    <center>
+    <div class="logo">
+					<h2>员工信息展示</h2>
+    </div>
+    </center>
+</a>
+<center>
+    <table border="1" cellspacing="0" style="width: 90%">
+    <tr>
+        <th>工号</th>
+        <th>姓名</th>
+        <th>职务</th>
+        <th>月薪/元</th>
+        <th>工龄/年</th>
+        <th colspan="2">操作</th>
+    </tr>
+    {% for line in people_list %}
+    <tr>
+        <td class="id">{{line.员工id}}</td>
+        <td>{{line.姓名}}</td>
+        <td>{{line.职务}}</td>
+        <td>{{line.月薪 }}</td>
+        <td>{{line.工龄 }}</td>
+        {% if perms.hotelapp.delete_staff %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
+        {% if perms.hotelapp.change_staff %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
+    </tr>
+    {% endfor %}
+    </table>
+</center>
+</div>
+<p>&nbsp;</p><p>&nbsp;</p>
+
+
+<div class="card" id="search">
+    <center>
+        <h2><a>员工信息查询</a></h2>
+                    <form action="/search_staff/#search" method="post">
+        {% csrf_token %}
+            <p>根据选择的属性查询员工信息</p>
+                        <i></i>&nbsp<select name="columns">
+                            <option value="员工id">工号</option>
+                            <option value="姓名">姓名</option>
+                            <option value="职务">职务</option>
+                            <option value="月薪">月薪</option>
+                            <option value="工龄">工龄</option>
+                                              </select>
+                        <input type="text" name="value">
+                        <input type="submit">
+                    </form>
+    {% if searched and not staffs %}<p class="no-result">未查询到相关记录，请重新核对信息</p>{% endif %}
+            <table >
+            <tbody>
+            <tr>
+                {% for line in  staffs %}
+                 <td style="display: inline-block">
+                     <a href="{{ line.url}}" target="_blank"><img src="/static/images/t1.jpg" width="160" height="220" /></a><p></p>编号：{{line.员工id}}<br>姓名：{{line.姓名}}<br>职务：{{ line.职务 }}<br>月薪：{{ line.月薪 }}<br>工龄：{{ line.工龄 }}
+                 </td>
+                {% endfor %}
+            </tr>
+            </tbody>
+        </table>
+    </center>
+</div>
+<br>
+<br>
+</body>
+<script src="/static/js/jquery-2.1.4.min.js"></script>
+<script>
+    function getCookie(name) {
+        var v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+        return v ? v[2] : null;
+    }
+    $.ajaxSetup({ headers: { 'X-CSRFToken': getCookie('csrftoken') } });
+    var VPAT = {
+        id10: /\d{1,10}/.source,
+        digits4: /\d{1,4}/.source,
+        price5: /\d{1,5}/.source,
+        name: /[\u4e00-\u9fa5A-Za-z·]{2,10}/.source,
+        name20: /[\u4e00-\u9fa5A-Za-z0-9·]{2,20}/.source,
+        type10: /[\u4e00-\u9fa5A-Za-z0-9]{2,10}/.source,
+        money: /(0|[1-9]\d{0,5})(\.\d{1,2})?/.source,
+        idcard: /\d{17}[\dXx]/.source,
+        tel: /1\d{10}/.source,
+        plate: /[\u4e00-\u9fa5][A-Z][A-Z0-9]{4,6}/.source,
+        job: '总经理|大堂经理|厨师|服务员|保安',
+        viprank: '普通会员|高级会员',
+        parkstatus: '空闲|有车'
+    };
+    function vbad(v, p) { return !(new RegExp('^(?:' + p + ')$')).test((v || '').trim()); }
+    function showToast(text, tag) {
+        var box = document.querySelector('.toast-box');
+        if (!box) { box = document.createElement('div'); box.className = 'toast-box'; document.body.appendChild(box); }
+        var t = document.createElement('div');
+        t.className = 'toast ' + (tag || 'success');
+        t.textContent = text;
+        box.appendChild(t);
+        setTimeout(function () { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; }, 1800);
+        setTimeout(function () { t.remove(); }, 2300);
+    }
+    function askConfirm(msg, onOk) {
+        var mask = document.createElement('div');
+        mask.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,.35);z-index:9998;display:flex;align-items:center;justify-content:center;';
+        var box = document.createElement('div');
+        box.style.cssText = 'background:#fff;border-radius:8px;padding:26px 30px;box-shadow:0 8px 30px rgba(0,0,0,.2);text-align:center;font-size:14px;color:#303133;min-width:280px;';
+        box.innerHTML = '<div style="margin-bottom:20px;">' + msg + '</div>';
+        var ok = document.createElement('button');
+        ok.textContent = '确定删除';
+        ok.style.cssText = 'background:#F56C6C;border:1px solid #F56C6C;color:#fff;border-radius:4px;padding:8px 24px;cursor:pointer;margin-right:14px;font-size:14px;';
+        var cancel = document.createElement('button');
+        cancel.textContent = '取消';
+        cancel.style.cssText = 'background:#fff;border:1px solid #dcdfe6;color:#606266;border-radius:4px;padding:8px 24px;cursor:pointer;font-size:14px;';
+        ok.onclick = function () { document.body.removeChild(mask); onOk(); };
+        cancel.onclick = function () { document.body.removeChild(mask); };
+        box.appendChild(ok); box.appendChild(cancel); mask.appendChild(box); document.body.appendChild(mask);
+    }
+    $(function () {
+        var p = location.pathname;
+        $('.sidebar-menu a').each(function () {
+            if (this.getAttribute('href') === p) { this.className = 'active'; }
+        });
+        setTimeout(function () { $('.toast').fadeOut(400); }, 2200);
+        if (document.querySelector('.toast')) {
+            var listCard = document.querySelectorAll('.card table')[0];
+            if (listCard) { listCard.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+        }
+    });
+    var UPAT = {
+        'client:身份证号': [VPAT.idcard, '身份证号必须是18位（末位可为X）'],
+        'vip:联系方式': [VPAT.tel, '联系方式必须是11位手机号（1开头）'],
+        'food:菜名': [VPAT.name20, '菜名必须是2-20位中英文或数字'],
+        'park:车辆牌号': [VPAT.plate, '车牌格式必须正确，如 黑A12345']
+    };
+    $(document).on('blur', 'input[data-unique]', function () {
+        var $inp = $(this);
+        var val = ($inp.val() || '').trim();
+        var key = $inp.attr('data-unique') || '';
+        var parts = key.split(':');
+        var tip = $inp.nextAll('.unique-tip').first();
+        if (!tip.length) { tip = $('<span class="unique-tip"></span>'); $inp.after(tip); }
+        if (!val || parts.length < 2) { tip.attr('class', 'unique-tip').text(''); return; }
+        var rule = UPAT[key];
+        if (rule && vbad(val, rule[0])) { tip.attr('class', 'unique-tip bad').text(rule[1]); return; }
+        tip.attr('class', 'unique-tip checking').text('检查中...');
+        $.get('/check_unique/', { model: parts[0], value: val }, function (res) {
+            if (res.exists) { tip.attr('class', 'unique-tip bad').text('该' + parts[1] + '已存在，不能重复'); }
+            else { tip.attr('class', 'unique-tip ok').text(parts[1] + '可用'); }
+        });
+    });
+    // 纯数字/金额输入框：输入时自动剔除非法字符（依据 pattern 判断，含中文区间的除外）
+    $(document).on('input', 'input[pattern]', function () {
+        var p = this.getAttribute('pattern') || '';
+        if (!/\d/.test(p) || p.indexOf('u4e00') !== -1) { return; }
+        if (p.indexOf('.') !== -1) {
+            this.value = this.value.replace(/[^0-9.]/g, '').replace(/\.{2,}/g, '.');
+            return;
+        }
+        if (/X/.test(p)) { this.value = this.value.replace(/[^0-9Xx]/g, ''); return; }
+        this.value = this.value.replace(/[^0-9]/g, '');
+    });
+    // 行内编辑：回车键 = 点击“完成”（所有模块一致）
+    $(document).on('keypress', 'tr input', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            var btn = $(this).closest('tr').find('button.update');
+            if (btn.length) { btn.trigger('click'); }
+        }
+    });
+    // 自定义美化下拉：点击/聚焦展示全部选项，输入可过滤，点击选中（职务/等级/状态）
+    $(document).on('click focus', 'input[list]', function (e) {
+        var $inp = $(this);
+        var $dl = $('#' + ($inp.attr('list') || ''));
+        if (!$dl.length) { return; }
+        $('.dd-panel').remove();
+        if (!$inp.parent().hasClass('dd-wrap')) { $inp.wrapAll('<div class="dd-wrap"></div>'); }
+        var panel = $('<div class="dd-panel"></div>');
+        var opts = $dl.find('option').map(function () { return $(this).attr('value') || $(this).text(); }).get();
+        var render = function () {
+            panel.empty();
+            var q = ($inp.val() || '').trim();
+            var shown = opts.filter(function (o) { return !q || o.indexOf(q) !== -1; });
+            if (!shown.length) { panel.append('<div class="dd-empty">无匹配项，可直接使用当前输入</div>'); }
+            shown.forEach(function (o) {
+                var d = $('<div class="dd-option"></div>').text(o);
+                d.on('mousedown', function (ev) { ev.preventDefault(); $inp.val(o); panel.remove(); });
+                panel.append(d);
+            });
+        };
+        render();
+        $inp.after(panel);
+        e.stopPropagation();
+    });
+    $(document).on('input', 'input[list]', function () {
+        var $inp = $(this);
+        var q = ($inp.val() || '').trim();
+        $inp.closest('.dd-wrap').find('.dd-option').each(function () {
+            $(this).toggle($(this).text().indexOf(q) !== -1);
+        });
+    });
+    $(document).on('click', function (e) {
+        if (!$(e.target).closest('.dd-wrap').length) { $('.dd-panel').remove(); }
+    });
+</script>
+<script>
+    $(".delete").click(function () {
+        var id = $(this).closest('tr').find('.id').text();
+        askConfirm('确定删除该条记录吗？删除后不可恢复。', function () {
+        $.get('/delete_staff/', {'id': id}).done(function () { showToast('删除成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
+        });
+    });
+</script>
+<script>
+    $(".update").click(function () {
+        var ID = $(this).closest('tr').find('.id');
+        if ($(this).text() == "修改") {
+            $(this).text("完成");
+            var job0 = ID.next().next().text();
+            var salary0 = ID.next().next().next().text();
+            var time0 = ID.next().next().next().next().text();
+            ID.next().next().html('<input type=\"text\" class=\"job\" maxlength=\"10\" list=\"job-list\" value=\"' + job0 + '\"/>');
+            ID.next().next().next().html('<input type=\"text\" class=\"salary\" maxlength=\"9\" value=\"' + salary0 + '\"/>');
+            ID.next().next().next().next().html('<input type=\"text\" class=\"time\" maxlength=\"4\" value=\"' + time0 + '\"/>');
+        }
+        else{
+            var id = ID.html();
+            var job = ID.next().next().children().val();
+            var salary = ID.next().next().next().children().val();
+            var time = ID.next().next().next().next().children().val();
+            if (vbad(job, VPAT.job) || vbad(salary, VPAT.money) || vbad(time, VPAT.digits4)) {
+                alert('职务必须是规范职务名称；月薪为数字且最多两位小数；工龄为1-4位数字');
+                return;
+            }
+            var staff = {'id':id, 'job':job, 'salary': salary, 'time':time};
+            $.post('/update_staff/', staff).done(function () { showToast('修改成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
+        }
+    });
+</script>
+</html>

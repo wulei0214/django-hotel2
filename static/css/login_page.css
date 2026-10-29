@@ -1,0 +1,108 @@
+/* 登录页专属样式：黄色主背景，黄底菱形图案相间 */
+body.login-body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f7c520;
+    background-image:
+        repeating-linear-gradient(45deg,  rgba(255, 255, 255, .14) 0 46px, transparent 46px 92px),
+        repeating-linear-gradient(-45deg, rgba(255, 255, 255, .14) 0 46px, transparent 46px 92px),
+        linear-gradient(160deg, #f9d34e 0%, #f7c520 45%, #efb400 100%);
+    font-family: "PingFang SC", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+}
+.login-wrap { width: 100%; display: flex; justify-content: center; padding: 40px 16px; }
+.login-card {
+    background: #fffdf5;
+    border-radius: 12px;
+    border: 1px solid #f0d98c;
+    box-shadow: 0 14px 44px rgba(120, 84, 0, .28);
+    padding: 38px 46px 34px;
+    width: 420px;
+    box-sizing: border-box;
+}
+.login-logo {
+    width: 56px; height: 56px;
+    margin: 0 auto 10px;
+    background: #2d3a4b;
+    color: #f7c520;
+    border-radius: 14px;
+    font-size: 26px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    transform: rotate(-6deg);
+}
+.login-card h2 {
+    text-align: center;
+    color: #303133;
+    margin: 0 0 6px;
+    letter-spacing: 3px;
+}
+.login-sub { text-align: center; color: #909399; font-size: 13px; margin: 0 0 18px; }
+.login-card form { margin: 0 !important; }
+.login-card label { display: inline-block; width: 74px; }
+.login-card .input { width: calc(100% - 86px) !important; }
+.login-card p { margin: 16px 0; }
+.login-error {
+    background: #fef0f0;
+    border: 1px solid #fde2e2;
+    color: #F56C6C;
+    border-radius: 4px;
+    padding: 10px 14px;
+    font-size: 13px;
+    text-align: center;
+}
+.login-btn {
+    width: 100%;
+    background: #2d3a4b;
+    color: #f7c520;
+    border: 1px solid #2d3a4b;
+    border-radius: 4px;
+    padding: 11px 0;
+    font-size: 15px;
+    letter-spacing: 6px;
+    cursor: pointer;
+    transition: background .2s;
+}
+.login-btn:hover { background: #3a4d63; }
+.login-foot { text-align: center; font-size: 13px; color: #909399; margin-top: 6px !important; }
+.login-foot a { color: #b8860b; text-decoration: none; }
+.login-foot a:hover { text-decoration: underline; }
+
+/* 注册页（白底，严谨风格，长条输入框） */
+body.register-body {
+    min-height: 100vh;
+    background: #f5f6f8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.register-card {
+    background: #ffffff;
+    border: 1px solid #e4e7ed;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, .06);
+    padding: 36px 44px 32px;
+    width: 520px;
+    box-sizing: border-box;
+}
+.register-card h2 { text-align: center; color: #303133; letter-spacing: 2px; margin: 0 0 4px; }
+.register-sub { text-align: center; color: #909399; font-size: 13px; margin: 0 0 22px; }
+.register-card p { margin: 18px 0; }
+.register-card label { display: inline-block; width: 84px; color: #606266; }
+.register-card .input { width: calc(100% - 96px) !important; height: 40px !important; }
+.register-btn {
+    width: 100%;
+    background: #409EFF;
+    color: #fff;
+    border: 1px solid #409EFF;
+    border-radius: 4px;
+    padding: 11px 0;
+    font-size: 15px;
+    letter-spacing: 4px;
+    cursor: pointer;
+    margin-top: 6px;
+}
+.register-btn:hover { background: #66b1ff; }
+.register-foot { text-align: center; font-size: 13px; color: #909399; margin-top: 10px !important; }
+.register-foot a { color: #409EFF; text-decoration: none; }

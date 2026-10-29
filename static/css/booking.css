@@ -1,0 +1,96 @@
+/* 顾客预订页样式（对外页面，黄色品牌色点缀） */
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    background: #f7f8fa;
+    color: #303133;
+    font-family: "PingFang SC", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+}
+.bk-head {
+    background: #2d3a4b;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 32px;
+}
+.bk-logo { font-size: 17px; letter-spacing: 1px; display: flex; align-items: center; gap: 10px; }
+.bk-logo-icon {
+    background: #f7c520;
+    color: #2d3a4b;
+    border-radius: 8px;
+    padding: 4px 9px;
+    font-weight: 700;
+    transform: rotate(-6deg);
+    display: inline-block;
+}
+.bk-staff-link { color: #f7c520; text-decoration: none; font-size: 14px; }
+.bk-staff-link:hover { color: #ffe27a; }
+
+.bk-main { max-width: 960px; margin: 0 auto; padding: 30px 20px 40px; }
+.bk-title { font-size: 26px; margin: 10px 0 4px; text-align: center; letter-spacing: 1px; }
+.bk-sub { text-align: center; color: #909399; margin: 0 0 22px; }
+
+.bk-success {
+    background: #f0f9eb; border: 1px solid #e1f3d8; color: #67C23A;
+    border-radius: 6px; padding: 14px 18px; text-align: center; margin-bottom: 18px;
+}
+.bk-error {
+    background: #fef0f0; border: 1px solid #fde2e2; color: #F56C6C;
+    border-radius: 6px; padding: 14px 18px; text-align: center; margin-bottom: 18px;
+}
+
+.bk-types { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; margin-bottom: 26px; }
+.bk-type-card {
+    background: #fff;
+    border: 1px solid #ebeef5;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.05);
+    padding: 20px 30px;
+    text-align: center;
+    min-width: 200px;
+}
+.bk-type-name { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+.bk-type-price { color: #E6A23C; font-size: 13px; }
+.bk-type-price span { font-size: 24px; font-weight: 700; color: #E6A23C; }
+.bk-type-count { color: #909399; font-size: 12px; margin-top: 6px; }
+
+.bk-form-card {
+    background: #fff;
+    border: 1px solid #ebeef5;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.05);
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 26px 34px 30px;
+}
+.bk-form-card h2 { font-size: 18px; margin: 0 0 14px; text-align: center; }
+.bk-form-card p { margin: 16px 0; }
+.bk-form-card label { display: inline-block; width: 90px; color: #606266; font-size: 14px; }
+.bk-form-card input[type="text"], .bk-form-card input[type="date"], .bk-form-card select {
+    width: calc(100% - 100px);
+    height: 38px;
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    padding: 0 12px;
+    font-size: 14px;
+    outline: none;
+    vertical-align: middle;
+}
+.bk-form-card input:focus, .bk-form-card select:focus { border-color: #409EFF; }
+.bk-submit {
+    background: #f7c520;
+    color: #2d3a4b;
+    border: 1px solid #f0b400;
+    border-radius: 4px;
+    padding: 11px 40px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    cursor: pointer;
+    margin-left: 90px;
+}
+.bk-submit:hover { background: #ffd54a; }
+.bk-hint { color: #909399; font-size: 12px; margin-top: 14px !important; }
+
+.bk-foot { text-align: center; color: #c0c4cc; font-size: 12px; padding: 18px 0 26px; }
