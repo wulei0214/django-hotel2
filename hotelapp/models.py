@@ -20,6 +20,7 @@ class Accommodation(models.Model):
     状态 = models.CharField(max_length=10, default='预订', blank=True, null=True)
     联系电话 = models.CharField(max_length=45, blank=True, null=True)
     收款金额 = models.CharField(max_length=45, blank=True, null=True)
+    押金 = models.CharField(max_length=45, blank=True, null=True)
     退房时间 = models.CharField(max_length=45, blank=True, null=True)
     冲账人 = models.CharField(max_length=45, blank=True, null=True)
     冲账时间 = models.CharField(max_length=45, blank=True, null=True)
@@ -88,9 +89,11 @@ class Park(models.Model):
         db_table = 'park'
 
 
-# 房间/订单状态常量（views 与模板共用语义）
-ROOM_STATUS = ("空闲", "已预订", "已入住", "清洁中", "维修中")
-ORDER_STATUS = ("预订", "已入住", "已退房", "已冲账")
+# 房间/订单状态机常量（views 与模板共用语义）
+# 订单状态机：待确认 → 已确认 → 已入住 → 已退房；旁支：已取消 / 未到 / 已冲账
+ORDER_STATUS = ("待确认", "已确认", "已入住", "已退房", "已取消", "未到", "已冲账")
+# 房态清洁链：退房 → 待清洁 → 清洁中 → 待检查 → 空闲（只有检查通过才重回可售）
+ROOM_STATUS = ("空闲", "已预订", "已入住", "待清洁", "清洁中", "待检查", "维修中")
 
 
 class FinanceRecord(models.Model):
@@ -110,6 +113,48 @@ class FinanceRecord(models.Model):
         verbose_name = "财务流水"
         verbose_name_plural = verbose_name
         db_table = 'finance_record'
+
+
+class NightAudit(models.Model):
+    """夜审日结记录：营业日切换、过租汇总、No-Show 处理结果"""
+    id = models.AutoField(primary_key=True)
+    营业日期 = models.CharField(max_length=45)
+    在住单数 = models.IntegerField(default=0)
+    过租总额 = models.CharField(max_length=45, blank=True, null=True)
+    未到处理数 = models.IntegerField(default=0)
+    操作人 = models.CharField(max_length=45)
+    执行时间 = models.CharField(max_length=45)
+
+    def __str__(self):
+        return f"夜审 {self.营业日期}"
+
+    class Meta:
+        verbose_name = "夜审记录"
+        verbose_name_plural = verbose_name
+        db_table = 'night_audit'
+
+
+class Folio(models.Model):
+    """账单流水（Folio/Ledger）：订单维度账务中心。
+
+    每一笔押金、房费、消费、收款、冲账都是一条独立凭证（金额带符号，冲账为红字负数）；
+    前台看到的"应收/余额"一律由流水聚合而来，禁止直接改单笔金额。
+    """
+    id = models.AutoField(primary_key=True)
+    order = models.ForeignKey('Accommodation', models.DO_NOTHING, db_column='order_id', blank=True, null=True)
+    类型 = models.CharField(max_length=10)  # 押金 / 房费 / 消费 / 收款 / 冲账
+    金额 = models.CharField(max_length=45)  # 带符号：冲账红字为负数
+    事由 = models.CharField(max_length=100)
+    日期 = models.CharField(max_length=45)
+    经手人 = models.CharField(max_length=45, blank=True, null=True)
+
+    def __str__(self):
+        return f"[{self.类型}] {self.金额} {self.事由}"
+
+    class Meta:
+        verbose_name = "账单流水"
+        verbose_name_plural = verbose_name
+        db_table = 'folio'
 
 
 class Room(models.Model):

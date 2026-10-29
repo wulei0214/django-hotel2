@@ -396,3 +396,112 @@ tr.voided-row .btn { opacity: .45; }
 .dd-option { padding: 9px 14px; font-size: 14px; color: #606266; cursor: pointer; }
 .dd-option:hover, .dd-option.dd-hover { background: #ecf5ff; color: #409EFF; }
 .dd-empty { padding: 9px 14px; font-size: 13px; color: #c0c4cc; }
+
+
+/* ---------- 亚朵风主界面主题（暖中性调 · 金铜点缀 · 大留白） ---------- */
+.at-hero {
+    position: relative;
+    background: linear-gradient(118deg, #2b2f33 0%, #3a3f45 52%, #6b5b3e 100%);
+    border-radius: 12px;
+    padding: 44px 48px 42px;
+    color: #fff;
+    overflow: hidden;
+    margin-bottom: 24px;
+}
+.at-hero-inner { position: relative; z-index: 2; }
+.at-eyebrow {
+    letter-spacing: 4px; font-size: 12px; color: #c8a464;
+    text-transform: uppercase; margin: 0 0 12px;
+}
+.at-hero h1 { margin: 0 0 12px; font-size: 30px; font-weight: 600; letter-spacing: 3px; }
+.at-sub { color: rgba(255,255,255,.72); font-size: 14px; margin: 0; }
+.at-hero-diamond {
+    position: absolute; border: 1px solid rgba(200,164,100,.45); background: rgba(200,164,100,.08);
+    transform: rotate(45deg); z-index: 1;
+}
+.at-hero-diamond.d1 { width: 210px; height: 210px; right: -60px; top: -70px; }
+.at-hero-diamond.d2 { width: 130px; height: 130px; right: 130px; bottom: -66px; background: rgba(200,164,100,.12); }
+.at-stats { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 26px; }
+.at-stat {
+    flex: 1; min-width: 160px;
+    background: #fff; border: 1px solid #eee7da; border-radius: 10px;
+    padding: 18px 24px; text-align: center;
+    box-shadow: 0 1px 6px rgba(120,84,0,.05);
+}
+.at-stat .stat-num { font-size: 26px; font-weight: 700; color: #2b2f33; }
+.at-stat .stat-label { color: #909399; font-size: 12px; margin-top: 5px; letter-spacing: 1px; }
+.at-sec-title {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 18px; color: #303133; margin: 4px 0 16px; letter-spacing: 1px;
+}
+.at-sec-title::before { content: ""; width: 4px; height: 18px; background: #b9975b; border-radius: 2px; }
+.module-card.at-card { border-top: 3px solid #b9975b; }
+
+
+/* ---------- 主界面数据仪表盘 ---------- */
+.dash-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 18px;
+    margin: 0 0 22px;
+}
+.dash-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, .08);
+    padding: 18px 20px 14px;
+    box-sizing: border-box;
+    min-width: 0;
+}
+.dash-card.dash-wide { grid-column: 1 / -1; }
+.dash-card h4 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    color: #303133;
+    border-left: 3px solid #409EFF;
+    padding-left: 10px;
+    line-height: 1.3;
+}
+.chart-box { height: 250px; min-width: 0; }
+.warn-list { list-style: none; margin: 0; padding: 0; }
+.warn-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 5px;
+    font-size: 13px;
+    margin-bottom: 8px;
+    background: #f8f9fb;
+}
+.warn-level {
+    flex-shrink: 0;
+    font-size: 12px;
+    padding: 2px 9px;
+    border-radius: 10px;
+}
+li.warn-bad .warn-level, li.warn-bad { background: #fef0f0; }
+li.warn-bad .warn-level { color: #F56C6C; background: #fff; border: 1px solid #fde2e2; }
+li.warn-info .warn-level, li.warn-info { background: #ecf5ff; }
+li.warn-info .warn-level { color: #409EFF; background: #fff; border: 1px solid #d9ecff; }
+.warn-empty { color: #909399; font-size: 13px; text-align: center; padding: 40px 0; }
+.warn-empty.ok { color: #67C23A; background: #f0f9eb; border: 1px solid #e1f3d8; border-radius: 4px; padding: 10px; }
+.big-num { font-size: 44px; font-weight: 700; color: #303133; text-align: center; padding: 34px 0 20px; }
+.stat-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sc { background: #f8f9fb; border-radius: 6px; padding: 12px 14px; }
+.sc-label { color: #909399; font-size: 12px; margin-bottom: 6px; }
+.sc-num { color: #303133; font-size: 20px; font-weight: 700; }
+.sc-sub { color: #909399; font-size: 12px; margin-top: 4px; }
+.recent-list { list-style: none; margin: 0; padding: 0; }
+.recent-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: #606266;
+    padding: 9px 6px;
+    border-bottom: 1px dashed #ebeef5;
+}
+.recent-list li:last-child { border-bottom: none; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.ok-dot { background: #67C23A; }

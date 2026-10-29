@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>主界面 - 酒店管理系统</title>
-    <link rel="stylesheet" href="/static/css/site.css?v=4">
+    <link rel="stylesheet" href="/static/css/site.css?v=6">
+    <script src="/static/js/echarts.min.js"></script>
 </head>
 <body>
 {% if messages %}
@@ -11,44 +12,115 @@
     {% for m in messages %}<div class="toast {{ m.tags }}">{{ m }}</div>{% endfor %}
 </div>
 {% endif %}
+{{ room_status_counts|json_script:"dash-room-status-data" }}
+{{ room_type_inventory|json_script:"dash-room-type-data" }}
+{{ client_dash|json_script:"dash-client-data" }}
+{{ vip_counts|json_script:"dash-vip-data" }}
 {% include "_sidebar.html" %}
 <div class="main">
-    <div class="page-head">
-        <h2>主界面</h2>
-        <span class="page-sub">当前角色：{{ role }}，请选择功能模块进入</span>
-    </div>
+    <section class="at-hero">
+        <div class="at-hero-inner">
+            <p class="at-eyebrow">LIFE IS ATOUR · 酒店管理系统</p>
+            <h1>优雅入住，从容管理</h1>
+            <p class="at-sub">{{ user.first_name|default:user.username }}，{{ role }} · 今天是 {{ today }} · 欢迎回来</p>
+        </div>
+        <div class="at-hero-diamond d1"></div>
+        <div class="at-hero-diamond d2"></div>
+    </section>
 
-    <div class="stat-row">
-        <div class="stat-card">
-            <div class="stat-num">{{ stats.pending }}</div>
-            <div class="stat-label">待入住预订</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-num">{{ stats.living }}</div>
-            <div class="stat-label">在住客人</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-num">{{ stats.cleaning }}</div>
-            <div class="stat-label">待清洁房间</div>
-        </div>
+    <section class="at-stats">
+        <div class="at-stat"><div class="stat-num">{{ stats.pending }}</div><div class="stat-label">待入住预订</div></div>
+        <div class="at-stat"><div class="stat-num">{{ stats.confirmed }}</div><div class="stat-label">已确认订单</div></div>
+        <div class="at-stat"><div class="stat-num">{{ stats.living }}</div><div class="stat-label">在住客人</div></div>
+        <div class="at-stat"><div class="stat-num">{{ stats.cleaning }}</div><div class="stat-label">待清洁房间</div></div>
         {% if stats.revenue != None %}
-        <div class="stat-card">
-            <div class="stat-num">{{ stats.revenue }}</div>
-            <div class="stat-label">累计收入（元）</div>
-        </div>
+        <div class="at-stat"><div class="stat-num">{{ stats.revenue }}</div><div class="stat-label">累计收入（元）</div></div>
         {% endif %}
-    </div>
+    </section>
 
+    <h3 class="at-sec-title">数据仪表盘</h3>
+
+    <section class="dash-row">
+        <div class="dash-card">
+            <h4>客房概览 · 房间状态分布</h4>
+            <div id="chart-room-status" class="chart-box"></div>
+        </div>
+        <div class="dash-card">
+            <h4>客房概览 · 房型库存分布</h4>
+            <div id="chart-room-type" class="chart-box"></div>
+        </div>
+        <div class="dash-card">
+            <h4>预约预警</h4>
+            {% if warnings %}
+            <ul class="warn-list">
+                {% for w in warnings %}
+                <li class="{% if w.level == '过期未入住' %}warn-bad{% else %}warn-info{% endif %}">
+                    <span class="warn-level">{{ w.level }}</span>
+                    <span>{{ w.guest }} · {{ w.tel }}（{{ w.date }}）</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="warn-empty">暂无预警信息</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="dash-row">
+        <div class="dash-card">
+            <h4>商务概览 · 顾客证件登记</h4>
+            <div id="chart-client" class="chart-box"></div>
+        </div>
+        <div class="dash-card">
+            <h4>商务概览 · 会员分布</h4>
+            <div id="chart-vip" class="chart-box"></div>
+        </div>
+        <div class="dash-card">
+            <h4>商务概览 · 消费统计</h4>
+            {% if show_finance and finance_dash %}
+            <div class="stat-cards">
+                <div class="sc"><div class="sc-label">当日收入</div><div class="sc-num">¥{{ finance_dash.today_in }}</div><div class="sc-sub">支出 ¥{{ finance_dash.today_out }}</div></div>
+                <div class="sc"><div class="sc-label">本周收入</div><div class="sc-num">¥{{ finance_dash.week_in }}</div><div class="sc-sub">支出 ¥{{ finance_dash.week_out }}</div></div>
+                <div class="sc"><div class="sc-label">年度收入</div><div class="sc-num">¥{{ finance_dash.year_in }}</div><div class="sc-sub">支出 ¥{{ finance_dash.year_out }}</div></div>
+                <div class="sc"><div class="sc-label">已结算房费</div><div class="sc-num">¥{{ finance_dash.settled }}</div></div>
+            </div>
+            {% else %}
+            <p class="warn-empty">消费数据仅财务 / 值班经理 / 店长可见</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="dash-row">
+        <div class="dash-card">
+            <h4>后勤概览 · 菜品总数</h4>
+            <div class="big-num">{{ food_count }}</div>
+            <p class="warn-empty ok">菜品库存正常</p>
+        </div>
+        <div class="dash-card dash-wide">
+            <h4>后勤概览 · 最近餐饮订单</h4>
+            {% if recent_orders %}
+            <ul class="recent-list">
+                {% for o in recent_orders %}
+                <li><span class="dot ok-dot"></span>餐饮 - {{ o.dish }}（顾客 {{ o.guest }} · 桌号 {{ o.table }}）</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="warn-empty">暂无餐饮订单</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <h3 class="at-sec-title">功能模块</h3>
     <div class="module-grid">
         {% for c in cards %}
-        <a class="module-card" href="{{ c.url }}">
+        <a class="module-card at-card" href="{{ c.url }}">
             <div class="module-title">{{ c.title }}</div>
             <div class="module-desc">{{ c.desc }}</div>
             <div class="module-go">进入 ›</div>
         </a>
         {% endfor %}
         {% if user.is_superuser %}
-        <a class="module-card" href="/admin/" target="_blank">
+        <a class="module-card at-card" href="/admin/" target="_blank">
             <div class="module-title">后台管理</div>
             <div class="module-desc">管理员后台（用户 / 角色组 / 数据）</div>
             <div class="module-go">进入 ›</div>
@@ -58,5 +130,61 @@
 
     <p class="op-hint">提示：点击卡片进入对应功能模块；菜单可随时切换。顾客预订页：<a href="/booking/" target="_blank">/booking/</a></p>
 </div>
+<script src="/static/js/echarts.min.js"></script>
+<script>
+    // 仪表盘：从后端注入的数据初始化 ECharts 图表
+    var dashRoomStatus = JSON.parse(document.getElementById('dash-room-status-data').textContent);
+    var dashRoomType = JSON.parse(document.getElementById('dash-room-type-data').textContent);
+    var dashClient = JSON.parse(document.getElementById('dash-client-data').textContent);
+    var dashVip = JSON.parse(document.getElementById('dash-vip-data').textContent);
+    var PALETTE = ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399', '#8e71f8'];
+
+    function dashDonut(id, data) {
+        var el = document.getElementById(id);
+        if (!el) { return; }
+        var chart = echarts.init(el);
+        chart.setOption({
+            color: PALETTE,
+            tooltip: { trigger: 'item', formatter: '{b}: {c}（{d}%）' },
+            legend: { bottom: 0, icon: 'circle', textStyle: { color: '#606266', fontSize: 12 } },
+            series: [{
+                type: 'pie', radius: ['45%', '70%'], center: ['50%', '44%'],
+                avoidLabelOverlap: true,
+                itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+                label: { show: false },
+                data: data
+            }]
+        });
+        window.addEventListener('resize', function () { chart.resize(); });
+    }
+
+    (function () {
+        var el = document.getElementById('chart-room-type');
+        if (!el) { return; }
+        var chart = echarts.init(el);
+        chart.setOption({
+            color: ['#409EFF', '#67C23A'],
+            tooltip: { trigger: 'axis' },
+            legend: { bottom: 0, data: ['总房数', '可用房数'], textStyle: { color: '#606266', fontSize: 12 } },
+            grid: { left: 34, right: 12, top: 18, bottom: 44 },
+            xAxis: { type: 'category', data: dashRoomType.map(function (r) { return r.name; }),
+                     axisLabel: { color: '#606266', interval: 0, rotate: 24, fontSize: 11 },
+                     axisLine: { lineStyle: { color: '#dcdfe6' } } },
+            yAxis: { type: 'value', minInterval: 1, axisLabel: { color: '#606266' },
+                     splitLine: { lineStyle: { color: '#ebeef5' } } },
+            series: [
+                { name: '总房数', type: 'bar', barWidth: 18, data: dashRoomType.map(function (r) { return r.total; }),
+                  itemStyle: { borderRadius: [4, 4, 0, 0] } },
+                { name: '可用房数', type: 'bar', barWidth: 18, data: dashRoomType.map(function (r) { return r.available; }),
+                  itemStyle: { borderRadius: [4, 4, 0, 0] } }
+            ]
+        });
+        window.addEventListener('resize', function () { chart.resize(); });
+    })();
+
+    dashDonut('chart-room-status', dashRoomStatus);
+    dashDonut('chart-client', dashClient);
+    dashDonut('chart-vip', dashVip);
+</script>
 </body>
 </html>

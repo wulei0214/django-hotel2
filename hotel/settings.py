@@ -177,3 +177,9 @@ LOGGING = {
         'django.request': {'handlers': ['request_file'], 'level': 'WARNING', 'propagate': False},
     },
 }
+
+
+# simpleui 后台主题：与前台风格统一（暖色 Lite 主题 + 品牌标题）
+SIMPLEUI_DEFAULT_THEME = 'admin.lte.css'
+SIMPLEUI_HOME_TITLE = '酒店管理控制台'
+SIMPLEUI_LOGO = '/static/images/t1.jpg'

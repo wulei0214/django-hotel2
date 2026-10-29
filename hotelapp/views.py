@@ -26,12 +26,16 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.models import User, Group
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
+from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect
 
 from .models import (Staff, Room, Client, Food, Vip, Park, Order, Accommodation,
-                     FinanceRecord, ROOM_STATUS, ORDER_STATUS)
+                     FinanceRecord, NightAudit, Folio, ROOM_STATUS, ORDER_STATUS)
+from . import events
+from . import handlers  # noqa: F401  订阅器注册（事件 -> 后台联动）
+from . import state_machine
 
 
 def staff_required(view):
@@ -715,10 +719,14 @@ def delete_order(request):
             return HttpResponse("订单不存在", status=400)
         if item.状态 == "已冲账":
             return HttpResponse("该订单已冲账", status=400)
+        reason = (request.GET.get("reason") or "").strip()
         item.状态 = "已冲账"
         item.冲账人 = request.user.username
         item.冲账时间 = _today()
         item.save()
+        import logging
+        logging.getLogger("hotel.audit").info("冲账：餐饮订单%s 原因[%s]，操作人 %s",
+                                              item.id, reason or "未填写", request.user.username)
     return render(request, "order.html", {"people_list": Order.objects.order_by("id")})
 
 
@@ -797,23 +805,51 @@ def insert_accomodation(request):
 def delete_accomodation(request):
     """客房订单「冲账」：打已冲账标记、释放房间、记录冲账人/时间，不再物理删除"""
     if request.method == "GET":
+        reason = (request.GET.get("reason") or "").strip()
+        if not reason:
+            return HttpResponse("冲账必须填写原因（高危操作需留痕）", status=400)
         try:
-            item = Accommodation.objects.get(id=request.GET.get("id"))
-        except (Accommodation.DoesNotExist, ValueError):
-            return HttpResponse("订单不存在", status=400)
-        if item.状态 == "已冲账":
-            return HttpResponse("该订单已冲账", status=400)
-        prev = item.状态 or "预订"
-        item.状态 = "已冲账"
-        item.冲账人 = request.user.username
-        item.冲账时间 = _today()
-        item.save()
-        room = item.客房编号
-        if prev == "已入住":
-            room.房间状态 = "清洁中"
-        elif prev == "预订" and room.房间状态 == "已预订":
-            room.房间状态 = "空闲"
-        room.save()
+            with transaction.atomic():
+                item = Accommodation.objects.select_for_update().get(id=request.GET.get("id"))
+                if item.状态 == "已冲账":
+                    return HttpResponse("该订单已冲账", status=400)
+                room = item.客房编号
+                # 房态校验：房间已被新客人入住时禁止冲账
+                if Accommodation.objects.filter(客房编号=room, 状态="已入住").exclude(id=item.id).exists():
+                    return HttpResponse("该房间已被新客人入住，禁止冲账，请联系财务走历史账务调整", status=400)
+                # 夜审校验：退房后已经历夜审结转则禁止前台反悔
+                if item.退房时间 and NightAudit.objects.filter(营业日期__gte=item.退房时间).exists():
+                    return HttpResponse("该订单已经过夜审结转，请走财务历史账务调整流程", status=400)
+                prev = item.状态 or "待确认"
+                if prev != "已退房":
+                    state_machine.require_order_transition(item, "已冲账")
+                else:
+                    item.状态 = "已冲账"
+                item.冲账人 = request.user.username
+                item.冲账时间 = _today()
+                item.save()
+                # 红字凭证平账：反向生成负数收款流水，不修改原账
+                collected = 0.0
+                for f in Folio.objects.filter(order=item, 类型="收款"):
+                    try:
+                        collected += float(f.金额)
+                    except (TypeError, ValueError):
+                        pass
+                if collected:
+                    Folio.objects.create(order=item, 类型="冲账", 金额=f"-{collected:.2f}",
+                                         事由=f"冲账红字平账：{reason}", 日期=_today(),
+                                         经手人=request.user.username)
+                if prev == "已入住":
+                    room.房间状态 = "待清洁"
+                elif prev in ("待确认", "已确认") and room.房间状态 == "已预订":
+                    room.房间状态 = "空闲"
+                room.save()
+                import logging
+                logging.getLogger("hotel.audit").info(
+                    "冲账：订单%s 原因[%s] 红字 %.2f 元，操作人 %s",
+                    item.id, reason, collected, request.user.username)
+        except ValueError as e:
+            return HttpResponse(str(e), status=400)
     return render(request, "accomodation.html", {"people_list": Accommodation.objects.order_by("id")})
 
 
@@ -840,6 +876,181 @@ def search_accomodation(request):
     return render(request, "accomodation.html", {"people_list": Accommodation.objects.order_by("id"), "room_list": room_list, "searched": searched})
 
 
+# ---------- 入住管理增强：续住 / 换房 / 快捷离店 / 散客直入 / 电子账单 / No-Show ----------
+@staff_required
+@permission_required('hotelapp.change_accommodation', raise_exception=True)
+def extend_stay(request):
+    """续住：为在住订单加收一晚房费（Folio 房费凭证）"""
+    if request.method == "POST":
+        try:
+            with transaction.atomic():
+                item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"), 状态="已入住")
+                price = str(item.客房编号.价格)
+                Folio.objects.create(order=item, 类型="房费", 金额=price,
+                                     事由="续住加收一晚房费", 日期=_today(), 经手人=request.user.username)
+        except Accommodation.DoesNotExist:
+            return HttpResponse("订单不存在", status=400)
+        return JsonResponse({"ok": True, "amount": price})
+    return HttpResponse("非法请求", status=400)
+
+
+@staff_required
+@permission_required('hotelapp.change_accommodation', raise_exception=True)
+def change_room(request):
+    """换房：在住/已确认订单更换房间，旧房转入清洁链"""
+    if request.method == "POST":
+        new_no = request.POST.get("new_room")
+        try:
+            with transaction.atomic():
+                item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"))
+                if item.状态 not in ("已确认", "已入住"):
+                    return HttpResponse("只有已确认/在住订单可以换房", status=400)
+                new_room = Room.objects.select_for_update().get(房间号=new_no)
+                if new_room.房间状态 != "空闲":
+                    return HttpResponse(f"目标房间不可用（{new_room.房间状态}）", status=400)
+                old_room = item.客房编号
+                if item.状态 == "已入住":
+                    old_room.房间状态 = "待清洁"
+                    new_room.房间状态 = "已入住"
+                else:
+                    old_room.房间状态 = "空闲"
+                    new_room.房间状态 = "已预订"
+                old_room.save()
+                new_room.save()
+                item.客房编号 = new_room
+                item.save()
+        except (Room.DoesNotExist, ValueError, TypeError):
+            return HttpResponse("目标房间不存在", status=400)
+        return JsonResponse({"ok": True})
+    return HttpResponse("非法请求", status=400)
+
+
+@staff_required
+@permission_required('hotelapp.change_accommodation', raise_exception=True)
+def express_checkout(request):
+    """快捷离店：按账单聚合自动结算（免查房），后续流程与普通退房一致"""
+    if request.method == "POST":
+        try:
+            with transaction.atomic():
+                item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"), 状态="已入住")
+                amount = 0.0
+                for f in Folio.objects.filter(order=item, 类型__in=("房费", "消费")):
+                    try:
+                        amount += float(f.金额)
+                    except (TypeError, ValueError):
+                        pass
+                if amount <= 0:
+                    amount = float(item.客房编号.价格 or 0)
+                room = item.客房编号
+                state_machine.require_order_transition(item, "已退房")
+                item.退房时间 = _today()
+                item.save()
+                events.publish("checked_out", order_id=item.id, room_no=room.房间号,
+                               amount=f"{amount:.2f}", operator=request.user.username, date=_today())
+                Folio.objects.create(order=item, 类型="收款", 金额=f"{amount:.2f}",
+                                     事由="快捷离店自动结算", 日期=_today(), 经手人=request.user.username)
+                item.收款金额 = f"{amount:.2f}"
+                item.save()
+        except ValueError as e:
+            return HttpResponse(str(e), status=400)
+        except Accommodation.DoesNotExist:
+            return HttpResponse("订单不存在或状态已变更", status=400)
+        return JsonResponse({"ok": True, "amount": f"{amount:.2f}"})
+    return HttpResponse("非法请求", status=400)
+
+
+@staff_required
+@permission_required('hotelapp.add_accommodation', raise_exception=True)
+def walkin_create(request):
+    """散客直入（Walk-in）：无预订直接排房入住，收取押金"""
+    if request.method == "POST":
+        name = (request.POST.get("name") or "").strip()
+        tel = (request.POST.get("tel") or "").strip()
+        idcard = (request.POST.get("idcard") or "").strip()
+        room_no = request.POST.get("room")
+        deposit = (request.POST.get("deposit") or "").strip()
+        err, _ = _first_error([
+            (name, "name", "姓名", "name"),
+            (tel, "tel", "联系方式", "tel", False),
+            (idcard, "idcard", "身份证号", "idcard", False),
+            (deposit, "money", "押金", "deposit", False),
+        ])
+        try:
+            with transaction.atomic():
+                room = Room.objects.select_for_update().get(房间号=room_no)
+                if room.房间状态 != "空闲":
+                    return HttpResponse(f"该房间当前不可入住（{room.房间状态}）", status=400)
+                if idcard and Client.objects.filter(身份证号=idcard).exists():
+                    return HttpResponse("该身份证号已登记，请直接为已有顾客办理", status=400)
+                client = Client.objects.create(姓名=name, 身份证号=(idcard or None))
+                last = Accommodation.objects.order_by("-id").first()
+                new_id = (last.id + 1) if last else 1
+                item = Accommodation.objects.create(
+                    id=new_id, 顾客id=client, 客房编号=room, 入住时间=_today(),
+                    状态="已入住", 联系电话=tel, 押金=deposit or None,
+                )
+                state_machine.require_room_transition(room, "已入住")
+                room.save()
+                if deposit:
+                    Folio.objects.create(order=item, 类型="押金", 金额=deposit,
+                                         事由="散客直入押金", 日期=_today(), 经手人=request.user.username)
+        except ValueError as e:
+            return HttpResponse(str(e), status=400)
+        return JsonResponse({"ok": True, "id": item.id})
+    return HttpResponse("非法请求", status=400)
+
+
+@staff_required
+def no_show_one(request):
+    """单独标记未到（值班经理及以上）：过期未确认订单 → 未到，释放房间"""
+    if request.method == "POST":
+        if not _has_role(request.user, "值班经理"):
+            return HttpResponse("只有值班经理可以标记未到", status=403)
+        try:
+            with transaction.atomic():
+                item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"))
+                if item.状态 not in ("待确认", "已确认"):
+                    return HttpResponse("只有待确认/已确认订单可以标记未到", status=400)
+                if not (item.入住时间 or "") < _today():
+                    return HttpResponse("未超过入住日期，不能标记未到", status=400)
+                events.publish("no_show", order_id=item.id, room_no=item.客房编号.房间号)
+                state_machine.require_order_transition(item, "未到")
+                item.save()
+        except ValueError as e:
+            return HttpResponse(str(e), status=400)
+        return JsonResponse({"ok": True})
+    return HttpResponse("非法请求", status=400)
+
+
+@staff_required
+def folio_api(request):
+    """电子账单数据：订单的全部 Folio 凭证 + 聚合（应收/押金/已收/余额）"""
+    oid = request.GET.get("id")
+    try:
+        item = Accommodation.objects.get(id=oid)
+    except (Accommodation.DoesNotExist, ValueError):
+        return HttpResponse("订单不存在", status=404)
+    rows = [{"类型": f.类型, "金额": f.金额, "事由": f.事由, "日期": f.日期, "经手人": f.经手人 or ""}
+            for f in Folio.objects.filter(order=item).order_by("id")]
+    due = deposit = paid = 0.0
+    for f in rows:
+        try:
+            amt = float(f["金额"])
+        except (TypeError, ValueError):
+            continue
+        if f["类型"] in ("房费", "消费"):
+            due += amt
+        elif f["类型"] == "押金":
+            deposit += amt
+        elif f["类型"] == "收款":
+            paid += amt
+    balance = round(deposit + paid - due, 2)
+    return JsonResponse({"rows": rows, "due": f"{due:.2f}", "deposit": f"{deposit:.2f}",
+                         "paid": f"{paid:.2f}", "balance": f"{balance:.2f}",
+                         "guest": item.顾客id.姓名, "room": str(item.客房编号.房间号),
+                         "status": item.状态 or "待确认"})
+
+
 # ---------- 房间状态流转 ----------
 @staff_required
 def room_status_change(request):
@@ -854,7 +1065,7 @@ def room_status_change(request):
         except (Room.DoesNotExist, ValueError, TypeError):
             return HttpResponse("房间不存在", status=400)
         is_manager = _has_role(request.user, "值班经理", "店长")
-        simple = {("空闲", "清洁中"), ("清洁中", "空闲")}
+        simple = {("待清洁", "清洁中"), ("清洁中", "待检查"), ("待检查", "空闲")}
         if (room.房间状态, target) not in simple and not is_manager:
             return HttpResponse("该状态流转需要值班经理操作", status=403)
         room.房间状态 = target
@@ -973,12 +1184,14 @@ def home(request):
             continue
         cards.append({"title": title, "desc": desc, "url": url})
     stats = {
-        "pending": Accommodation.objects.filter(状态="预订").count(),
+        "pending": Accommodation.objects.filter(状态="待确认").count(),
+        "confirmed": Accommodation.objects.filter(状态="已确认").count(),
         "living": Accommodation.objects.filter(状态="已入住").count(),
-        "cleaning": Room.objects.filter(房间状态="清洁中").count(),
+        "cleaning": Room.objects.filter(房间状态__in=("待清洁", "清洁中", "待检查")).count(),
         "revenue": None,
     }
-    if _has_role(user, "财务", "店长", "值班经理"):
+    can_see_finance = _has_role(user, "财务", "店长", "值班经理")
+    if can_see_finance:
         total = 0.0
         for r in FinanceRecord.objects.filter(类型="收入"):
             try:
@@ -986,7 +1199,88 @@ def home(request):
             except (TypeError, ValueError):
                 pass
         stats["revenue"] = f"{total:.2f}"
-    return render(request, "home.html", {"cards": cards, "stats": stats, "role": _role_name(user)})
+
+    # ---------- 数据仪表盘（结合本项目的客房/顾客/会员/财务数据） ----------
+    room_status_counts = [
+        {"name": r["房间状态"] or "空闲", "value": r["n"]}
+        for r in Room.objects.values("房间状态").annotate(n=Count("房间号")).order_by("-n")
+    ]
+    room_type_inventory = [
+        {"name": r["客房类型"], "total": r["total"], "available": r["available"]}
+        for r in Room.objects.values("客房类型").annotate(
+            total=Count("房间号"),
+            available=Count("房间号", filter=Q(房间状态="空闲")),
+        ).order_by("客房类型")
+    ]
+    # 预约预警：今日待入住 / 已过期未入住的预订
+    warnings = []
+    today = _today()
+    for b in Accommodation.objects.filter(状态__in=("待确认", "已确认")).order_by("入住时间"):
+        if not b.入住时间:
+            continue
+        level = "今日待入住" if b.入住时间 == today else ("过期未入住" if b.入住时间 < today else None)
+        if level:
+            warnings.append({"level": level, "guest": b.顾客id.姓名 or "未知顾客",
+                             "tel": b.联系电话 or "-", "date": b.入住时间})
+    client_total = Client.objects.count()
+    client_registered = (Client.objects.exclude(身份证号__isnull=True)
+                                   .exclude(身份证号="").count())
+    vip_counts = [
+        {"name": r["会员等级"] or "普通会员", "value": r["n"]}
+        for r in Vip.objects.values("会员等级").annotate(n=Count("会员编号")).order_by("-n")
+    ]
+    food_count = Food.objects.count()
+    recent_orders = [
+        {"dish": o.菜品编号.菜名, "guest": o.顾客编号.姓名 or "未知顾客", "table": o.桌号}
+        for o in Order.objects.order_by("-id")[:5]
+    ]
+
+    # 消费统计（收入来自财务流水；已结算房费来自退房订单）——仅财务及以上可见
+    finance_dash = None
+    if can_see_finance:
+        def _sum_ftype(begin, end, ftype):
+            total = 0.0
+            for r in FinanceRecord.objects.filter(类型=ftype):
+                if begin <= (r.日期 or "") <= end:
+                    try:
+                        total += float(r.金额)
+                    except (TypeError, ValueError):
+                        pass
+            return total
+        week_begin = (datetime.datetime.strptime(today, "%Y-%m-%d")
+                      - datetime.timedelta(days=6)).strftime("%Y-%m-%d")
+        year_begin = today[:4] + "-01-01"
+        settled = 0.0
+        for a in Accommodation.objects.filter(状态="已退房"):
+            if a.收款金额:
+                try:
+                    settled += float(a.收款金额)
+                except (TypeError, ValueError):
+                    pass
+        finance_dash = {
+            "today_in": f"{_sum_ftype(today, today, '收入'):.2f}",
+            "today_out": f"{_sum_ftype(today, today, '支出'):.2f}",
+            "week_in": f"{_sum_ftype(week_begin, today, '收入'):.2f}",
+            "week_out": f"{_sum_ftype(week_begin, today, '支出'):.2f}",
+            "year_in": f"{_sum_ftype(year_begin, today, '收入'):.2f}",
+            "year_out": f"{_sum_ftype(year_begin, today, '支出'):.2f}",
+            "settled": f"{settled:.2f}",
+        }
+
+    ctx = {
+        "cards": cards, "stats": stats, "role": _role_name(user), "today": today,
+        "room_status_counts": room_status_counts,
+        "room_type_inventory": room_type_inventory,
+        "warnings": warnings,
+        "client_dash": {"total": client_total, "registered": client_registered,
+                        "missing": client_total - client_registered},
+        "vip_counts": vip_counts,
+        "food_count": food_count,
+        "recent_orders": recent_orders,
+        "finance_dash": finance_dash,
+        "show_finance": can_see_finance,
+    }
+    return render(request, "home.html", ctx)
 
 
 # ---------- 顾客预订页（对外，无需登录） ----------
@@ -1018,7 +1312,7 @@ def booking_page(request):
             else:
                 if date < _today():
                     error = "入住日期不能早于今天"
-        if error is None and Accommodation.objects.filter(联系电话=tel, 入住时间=date, 状态="预订").exists():
+        if error is None and Accommodation.objects.filter(联系电话=tel, 入住时间=date, 状态="待确认").exists():
             error = "该手机号在此日期已有预订，请勿重复提交"
         if error is None:
             room = (Room.objects.filter(客房类型=room_type, 房间状态="空闲").first()
@@ -1028,11 +1322,8 @@ def booking_page(request):
             new_id = (last.id + 1) if last else 1
             Accommodation.objects.create(
                 id=new_id, 顾客id=client, 客房编号=room, 入住时间=date,
-                状态="预订", 联系电话=tel,
+                状态="待确认", 联系电话=tel,
             )
-            if room.房间状态 == "空闲":
-                room.房间状态 = "已预订"
-                room.save()
             ok = True
     return render(request, "booking.html", {"error": error, "ok": ok, "types": types, "today": _today()})
 
@@ -1041,46 +1332,102 @@ def booking_page(request):
 @staff_required
 @permission_required('hotelapp.view_accommodation', raise_exception=True)
 def checkin_manage(request):
-    """入住管理工作台：待入住预订 / 在住列表 / 近期退房"""
+    """入住管理工作台：预抵名单 / 待确认排房 / 已确认待入住 / 在住 / 近期退房"""
+    import datetime as _dt
     rooms = Room.objects.order_by("房间号")
-    pending = Accommodation.objects.filter(状态="预订").order_by("id")
+    pending = Accommodation.objects.filter(状态="待确认").order_by("id")
+    confirmed = Accommodation.objects.filter(状态="已确认").order_by("id")
     living = Accommodation.objects.filter(状态="已入住").order_by("id")
     done = Accommodation.objects.filter(状态="已退房").order_by("-id")[:10]
+    pre_arrival = confirmed.filter(入住时间__lte=(_dt.date.today() + _dt.timedelta(days=3)).strftime("%Y-%m-%d"))
     return render(request, "checkin.html", {
-        "rooms": rooms, "pending": pending, "living": living, "done": done,
+        "rooms": rooms, "pending": pending, "confirmed": confirmed, "living": living,
+        "done": done, "pre_arrival": pre_arrival,
         "today": _today(), "can_void": _has_role(request.user, "值班经理"),
     })
 
 
 @staff_required
 @permission_required('hotelapp.change_accommodation', raise_exception=True)
+def cancel_booking(request):
+    """取消预订（待确认/已确认 → 已取消）：发布事件释放房间"""
+    if request.method == "POST":
+        try:
+            item = Accommodation.objects.get(id=request.POST.get("id"))
+        except (Accommodation.DoesNotExist, ValueError):
+            return HttpResponse("订单不存在", status=400)
+        if item.状态 not in ("待确认", "已确认"):
+            return HttpResponse("只有待确认/已确认的订单可以取消", status=400)
+        prev = item.状态
+        item.状态 = "已取消"
+        item.save()
+        events.publish("booking_cancelled", order_id=item.id,
+                       room_no=item.客房编号.房间号, prev_status=prev)
+        return JsonResponse({"ok": True})
+    return HttpResponse("非法请求", status=400)
+
+
+@staff_required
+@permission_required('hotelapp.change_accommodation', raise_exception=True)
 def checkin_confirm(request):
-    """预订 → 已入住：分配/确认房间，补录顾客身份证"""
+    """排房确认（待确认 → 已确认）：分配房间并锁房，补录顾客身份证"""
     if request.method == "POST":
         oid = request.POST.get("id")
         room_no = request.POST.get("room")
         idcard = (request.POST.get("idcard") or "").strip()
+        warn = None
         try:
-            item = Accommodation.objects.get(id=oid, 状态="预订")
-        except (Accommodation.DoesNotExist, ValueError):
-            return HttpResponse("订单不存在或状态已变更", status=400)
+            with transaction.atomic():
+                item = Accommodation.objects.select_for_update().get(id=oid, 状态="待确认")
+                room = Room.objects.select_for_update().get(房间号=room_no)
+                if room.房间状态 != "空闲" and room.房间号 != item.客房编号.房间号:
+                    return HttpResponse(f"该房间当前不可排房（{room.房间状态}）", status=400)
+                if idcard:
+                    if Client.objects.filter(身份证号=idcard).exclude(顾客id=item.顾客id.顾客id).exists():
+                        return HttpResponse("该身份证号已登记，证件号不能重复", status=400)
+                    cli = item.顾客id
+                    cli.身份证号 = idcard
+                    cli.save()
+                state_machine.require_order_transition(item, "已确认")
+                item.客房编号 = room
+                item.save()
+                state_machine.require_room_transition(room, "已预订")
+                room.save()
+                events.publish("booking_confirmed", order_id=item.id,
+                               room_no=room.房间号, operator=request.user.username)
+                if (item.入住时间 or "") > _today():
+                    warn = f"该订单入住日期为 {item.入住时间}，属提前到店，请按酒店规则处理房费"
+        except ValueError as e:
+            return HttpResponse(str(e), status=400)
+        return JsonResponse({"ok": True, "warn": warn})
+    return HttpResponse("非法请求", status=400)
+
+
+@staff_required
+@permission_required('hotelapp.change_accommodation', raise_exception=True)
+def checkin_in(request):
+    """办理入住（已确认 → 已入住）：收押金，房态转在住"""
+    if request.method == "POST":
+        oid = request.POST.get("id")
+        deposit = (request.POST.get("deposit") or "").strip()
+        err = _bad(deposit, "money", "押金", required=False)
+        if err:
+            return HttpResponse(err, status=400)
         try:
-            room = Room.objects.get(房间号=room_no)
-        except (Room.DoesNotExist, ValueError, TypeError):
-            return HttpResponse("房间不存在", status=400)
-        if room.房间状态 not in ("空闲", "已预订"):
-            return HttpResponse(f"该房间当前不可入住（{room.房间状态}）", status=400)
-        if idcard:
-            if Client.objects.filter(身份证号=idcard).exclude(顾客id=item.顾客id.顾客id).exists():
-                return HttpResponse("该身份证号已登记，证件号不能重复", status=400)
-            cli = item.顾客id
-            cli.身份证号 = idcard
-            cli.save()
-        item.状态 = "已入住"
-        item.入住时间 = _today()
-        item.save()
-        room.房间状态 = "已入住"
-        room.save()
+            with transaction.atomic():
+                item = Accommodation.objects.select_for_update().get(id=oid, 状态="已确认")
+                room = item.客房编号
+                state_machine.require_order_transition(item, "已入住")
+                item.入住时间 = _today()
+                item.押金 = deposit or None
+                item.save()
+                state_machine.require_room_transition(room, "已入住")
+                room.save()
+                if deposit:
+                    Folio.objects.create(order=item, 类型="押金", 金额=deposit,
+                                         事由="入住押金", 日期=_today(), 经手人=request.user.username)
+        except ValueError as e:
+            return HttpResponse(str(e), status=400)
         return JsonResponse({"ok": True})
     return HttpResponse("非法请求", status=400)
 
@@ -1098,17 +1445,15 @@ def checkout(request):
             return HttpResponse("订单不存在或状态已变更", status=400)
         if not re.match(r"^\d{1,7}(\.\d{1,2})?$", amount):
             return HttpResponse("收款金额必须是数字", status=400)
-        item.状态 = "已退房"
-        item.收款金额 = amount
+        room = item.客房编号
+        state_machine.require_order_transition(item, "已退房")
         item.退房时间 = _today()
         item.save()
-        room = item.客房编号
-        room.房间状态 = "清洁中"
-        room.save()
-        FinanceRecord.objects.create(类型="收入", 金额=amount,
-                                     事由=f"客房结算（订单{item.id}）",
-                                     关联订单=str(item.id), 日期=_today(),
-                                     经手人=request.user.username)
+        events.publish("checked_out", order_id=item.id, room_no=room.房间号,
+                       amount=amount, operator=request.user.username, date=_today())
+        Folio.objects.create(order=item, 类型="收款", 金额=amount,
+                             事由="退房结算收款", 日期=_today(), 经手人=request.user.username)
+        item.收款金额 = amount
         return JsonResponse({"ok": True})
     return HttpResponse("非法请求", status=400)
 
@@ -1120,17 +1465,26 @@ def uncheckout(request):
         if not _has_role(request.user, "值班经理"):
             return HttpResponse("只有值班经理可以反结账", status=403)
         try:
-            item = Accommodation.objects.get(id=request.POST.get("id"), 状态="已退房")
-        except (Accommodation.DoesNotExist, ValueError):
-            return HttpResponse("订单不存在或状态已变更", status=400)
-        item.状态 = "已入住"
-        item.收款金额 = None
-        item.退房时间 = None
-        item.save()
-        room = item.客房编号
-        room.房间状态 = "已入住"
-        room.save()
-        FinanceRecord.objects.filter(关联订单=str(item.id), 类型="收入").delete()
+            with transaction.atomic():
+                item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"), 状态="已退房")
+                room = item.客房编号
+                # 房态校验：房间已被新客人入住时绝对禁止反结账
+                if room.房间状态 == "已入住":
+                    return HttpResponse("该房间已被新客人入住，禁止反结账", status=400)
+                # 夜审校验：退房后已经历夜审结转 → 走财务历史账务调整
+                if item.退房时间 and NightAudit.objects.filter(营业日期__gte=item.退房时间).exists():
+                    return HttpResponse("该订单已过夜审结转，请走财务历史账务调整流程", status=400)
+                state_machine.require_order_transition(item, "已入住")
+                item.状态 = "已入住"
+                item.收款金额 = None
+                item.退房时间 = None
+                item.save()
+                state_machine.require_room_transition(room, "已入住")
+                room.save()
+                FinanceRecord.objects.filter(关联订单=str(item.id), 类型="收入").delete()
+                Folio.objects.filter(order=item, 类型="收款").delete()
+        except ValueError as e:
+            return HttpResponse(str(e), status=400)
         return JsonResponse({"ok": True})
     return HttpResponse("非法请求", status=400)
 
@@ -1163,10 +1517,15 @@ def _finance_context():
     day_rows = [{"日期": k, "收入": f"{d['收入']:.2f}", "支出": f"{d['支出']:.2f}",
                  "结余": f"{d['收入'] - d['支出']:.2f}"} for k, d in sorted(days.items(), reverse=True)]
     total = round(total_in - total_out, 2)
+    rooms_total = Room.objects.count()
+    living_now = Accommodation.objects.filter(状态="已入住").count()
+    occupancy = f"{(living_now / rooms_total * 100):.0f}%" if rooms_total else "0%"
+    revpar = f"{(room_rev / rooms_total):.2f}" if rooms_total else "0.00"
     return {
         "records": records, "day_rows": day_rows,
         "total_in": f"{total_in:.2f}", "total_out": f"{total_out:.2f}", "total": f"{total:.2f}",
         "room_rev": f"{room_rev:.2f}", "food_rev": f"{food_rev:.2f}",
+        "occupancy": occupancy, "revpar": revpar,
     }
 
 
@@ -1215,3 +1574,52 @@ def finance_add(request):
     ctx = _finance_context()
     ctx.update({"can_add": True, "today": _today(), "error": error, "form": form})
     return render(request, "finance.html", ctx)
+
+
+# ---------- 夜审（Night Audit） ----------
+@staff_required
+def night_audit(request):
+    """夜审工作台：在住账务核对 + 未到(No-Show)处理 + 营业日结（值班经理/店长）"""
+    if not _has_role(request.user, "值班经理", "店长"):
+        raise PermissionDenied
+    living = Accommodation.objects.filter(状态="已入住").order_by("id")
+    expired = Accommodation.objects.filter(状态__in=("待确认", "已确认"), 入住时间__lt=_today())
+    records = NightAudit.objects.order_by("-id")[:10]
+    return render(request, "nightaudit.html", {
+        "living": living, "expired": expired, "records": records,
+        "today": _today(),
+    })
+
+
+@staff_required
+def night_audit_run(request):
+    """执行夜审：No-Show 处理 → 房费过租 → 记录日结"""
+    if request.method == "POST":
+        if not _has_role(request.user, "值班经理", "店长"):
+            return HttpResponse("只有值班经理/店长可以执行夜审", status=403)
+        expired = Accommodation.objects.filter(状态__in=("待确认", "已确认"), 入住时间__lt=_today())
+        noshow = 0
+        for item in expired:
+            events.publish("no_show", order_id=item.id, room_no=item.客房编号.房间号)
+            item.状态 = "未到"
+            item.save()
+            noshow += 1
+        living = Accommodation.objects.filter(状态="已入住")
+        total = 0.0
+        for item in living:
+            amount = str(item.客房编号.价格)
+            FinanceRecord.objects.create(类型="收入", 金额=amount,
+                                         事由=f"房费过租（订单{item.id}）",
+                                         关联订单=str(item.id), 日期=_today(),
+                                         经手人=request.user.username)
+            try:
+                total += float(amount)
+            except (TypeError, ValueError):
+                pass
+        NightAudit.objects.create(营业日期=_today(), 在住单数=living.count(),
+                                  过租总额=f"{total:.2f}", 未到处理数=noshow,
+                                  操作人=request.user.username,
+                                  执行时间=datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        messages.success(request, f"夜审完成：在住 {living.count()} 单，过租 {total:.2f} 元，未到处理 {noshow} 单")
+        return redirect("/nightaudit/")
+    return HttpResponse("非法请求", status=400)

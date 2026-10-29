@@ -8,10 +8,10 @@ admin.site.index_title = '酒店管理系统'
 class AccommodationAdmin(admin.ModelAdmin):
 
     '''设置列表可显示的字段'''
-    list_display = ("顾客id","客房编号","入住时间")
+    list_display = ("顾客id","客房编号","状态","联系电话","入住时间","退房时间","收款金额","押金","冲账人")
 
     '''设置过滤选项'''
-    list_filter = ("顾客id","客房编号","入住时间")
+    list_filter = ("状态","客房编号","入住时间")
 
     '''每页显示条目数'''
     list_per_page = 15
@@ -50,10 +50,10 @@ class FoodAdmin(admin.ModelAdmin):
 class OrderAdmin(admin.ModelAdmin):
 
     '''设置列表可显示的字段'''
-    list_display = ("顾客编号","菜品编号","服务员编号","桌号")
+    list_display = ("顾客编号","菜品编号","服务员编号","桌号","状态","冲账人")
 
     '''设置过滤选项'''
-    list_filter = ("顾客编号","菜品编号","服务员编号","桌号")
+    list_filter = ("状态","顾客编号","菜品编号","服务员编号","桌号")
 
     '''每页显示条目数'''
     list_per_page = 15
@@ -78,10 +78,10 @@ class ParkAdmin(admin.ModelAdmin):
 class RoomAdmin(admin.ModelAdmin):
 
     '''设置列表可显示的字段'''
-    list_display = ("房间号","客房类型","价格","负责人编号")
+    list_display = ("房间号","客房类型","价格","房间状态","负责人编号")
 
     '''设置过滤选项'''
-    list_filter = ("房间号","客房类型","价格","负责人编号")
+    list_filter = ("房间状态","客房类型","价格","负责人编号")
 
     '''每页显示条目数'''
     list_per_page = 15
@@ -114,6 +114,17 @@ class VipAdmin(admin.ModelAdmin):
 
     '''设置可编辑字段'''
     # list_editable = ('status',)
+class FinanceRecordAdmin(admin.ModelAdmin):
+
+    '''设置列表可显示的字段'''
+    list_display = ("id","类型","金额","事由","关联订单","日期","经手人")
+
+    '''设置过滤选项'''
+    list_filter = ("类型","日期","经手人")
+
+    '''每页显示条目数'''
+    list_per_page = 15
+
 admin.site.register(Accommodation, AccommodationAdmin)
 admin.site.register(Client, ClientAdmin)
 admin.site.register(Food, FoodAdmin)
@@ -122,3 +133,28 @@ admin.site.register(Park, ParkAdmin)
 admin.site.register(Room, RoomAdmin)
 admin.site.register(Vip, VipAdmin)
 admin.site.register(Staff, StaffAdmin)
+class NightAuditAdmin(admin.ModelAdmin):
+
+    '''设置列表可显示的字段'''
+    list_display = ("id","营业日期","在住单数","过租总额","未到处理数","操作人","执行时间")
+
+    '''设置过滤选项'''
+    list_filter = ("营业日期","操作人")
+
+    '''每页显示条目数'''
+    list_per_page = 15
+
+admin.site.register(FinanceRecord, FinanceRecordAdmin)
+class FolioAdmin(admin.ModelAdmin):
+
+    '''设置列表可显示的字段'''
+    list_display = ("id","order","类型","金额","事由","日期","经手人")
+
+    '''设置过滤选项'''
+    list_filter = ("类型","日期","经手人")
+
+    '''每页显示条目数'''
+    list_per_page = 15
+
+admin.site.register(NightAudit, NightAuditAdmin)
+admin.site.register(Folio, FolioAdmin)

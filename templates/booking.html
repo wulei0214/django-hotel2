@@ -3,55 +3,291 @@
 <head>
     <meta charset="UTF-8">
     <title>客房预订 - 酒店管理系统</title>
-    <link rel="stylesheet" href="/static/css/booking.css?v=1">
+    <link rel="stylesheet" href="/static/css/booking.css?v=4">
 </head>
 <body>
-<header class="bk-head">
-    <div class="bk-logo"><span class="bk-logo-icon">酒</span>酒店管理系统 · 在线预订</div>
-    <a class="bk-staff-link" href="/login/">员工登录</a>
+
+<header class="hl-nav">
+    <div class="hl-logo"><span class="hl-logo-mark">悦</span><span class="hl-logo-text">悦居酒店<small>HOTEL FOR THE STAY</small></span></div>
+    <nav class="hl-menu">
+        <a href="#rooms">精选房型</a>
+        <a href="#services">酒店服务</a>
+        <a href="#bookform">立即预订</a>
+    </nav>
+    <a class="hl-login" href="/login/">员工登录</a>
 </header>
 
-<main class="bk-main">
-    <h1 class="bk-title">预订一间房，从这里开始</h1>
-    <p class="bk-sub">选择房型在线提交预订，前台确认后即可入住</p>
+<section class="hl-hero">
+    <div class="hl-slides">
+        <svg class="hl-scene active" viewBox="0 0 1440 720" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <defs>
+                <linearGradient id="sky1" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#aebfd2"/><stop offset="0.55" stop-color="#d8e0e8"/><stop offset="1" stop-color="#eef1f0"/>
+                </linearGradient>
+                <linearGradient id="m1" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#8fa3b8"/><stop offset="1" stop-color="#b7c4d1"/>
+                </linearGradient>
+                <linearGradient id="m2" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#6d8299"/><stop offset="1" stop-color="#93a5b6"/>
+                </linearGradient>
+                <linearGradient id="m3" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#4c5f52"/><stop offset="1" stop-color="#6d8070"/>
+                </linearGradient>
+            </defs>
+            <rect width="1440" height="720" fill="url(#sky1)"/>
+            <ellipse cx="1050" cy="150" rx="420" ry="70" fill="#ffffff" opacity="0.55"/>
+            <ellipse cx="380" cy="105" rx="330" ry="55" fill="#ffffff" opacity="0.45"/>
+            <path d="M0 360 L180 240 L340 330 L520 200 L700 320 L860 240 L1030 340 L1200 230 L1440 330 L1440 520 L0 520 Z" fill="url(#m1)"/>
+            <path d="M0 430 L220 300 L430 410 L640 270 L880 400 L1100 290 L1440 420 L1440 600 L0 600 Z" fill="url(#m2)" opacity="0.92"/>
+            <path d="M0 560 L260 450 L520 540 L780 440 L1060 550 L1300 470 L1440 540 L1440 720 L0 720 Z" fill="url(#m3)"/>
+            <ellipse cx="720" cy="560" rx="760" ry="60" fill="#ffffff" opacity="0.18"/>
+        </svg>
 
-    {% if ok %}
-    <div class="bk-success">
-        预订提交成功！我们的前台会尽快与您联系确认，请保持手机畅通。
+        <svg class="hl-scene" viewBox="0 0 1440 720" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <defs>
+                <linearGradient id="sky2" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#ffe3b3"/><stop offset="0.6" stop-color="#ffc98a"/><stop offset="1" stop-color="#f2a65e"/>
+                </linearGradient>
+                <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#3f7fa6"/><stop offset="1" stop-color="#27586f"/>
+                </linearGradient>
+            </defs>
+            <rect width="1440" height="470" fill="url(#sky2)"/>
+            <circle cx="1050" cy="330" r="72" fill="#fff3d6"/>
+            <circle cx="1050" cy="330" r="108" fill="#fff3d6" opacity="0.35"/>
+            <rect y="470" width="1440" height="250" fill="url(#sea)"/>
+            <path d="M0 470 Q120 458 240 470 T480 470 T720 470 T960 470 T1200 470 T1440 470 V500 H0 Z" fill="#ffe9c4" opacity="0.5"/>
+            <path d="M120 520 q60 -16 120 0 M640 560 q70 -18 140 0 M1000 610 q60 -16 120 0" stroke="#cfe6ee" stroke-width="4" fill="none" opacity="0.5" stroke-linecap="round"/>
+            <path d="M330 430 l55 -95 l55 95 z" fill="#3a3f45"/>
+            <rect x="382" y="345" width="5" height="88" fill="#3a3f45"/>
+        </svg>
+
+        <svg class="hl-scene" viewBox="0 0 1440 720" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <defs>
+                <linearGradient id="sky3" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#131c2b"/><stop offset="0.7" stop-color="#27354d"/><stop offset="1" stop-color="#3d4a63"/>
+                </linearGradient>
+                <linearGradient id="bld" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#1d2735"/><stop offset="1" stop-color="#0f1520"/>
+                </linearGradient>
+            </defs>
+            <rect width="1440" height="720" fill="url(#sky3)"/>
+            <circle cx="1180" cy="130" r="52" fill="#f4f0e2"/>
+            <circle cx="1158" cy="118" r="46" fill="#1b2536"/>
+            <g fill="url(#bld)">
+                <rect x="60" y="300" width="120" height="420"/><rect x="200" y="240" width="90" height="480"/>
+                <rect x="310" y="340" width="140" height="380"/><rect x="470" y="200" width="110" height="520"/>
+                <rect x="600" y="290" width="130" height="430"/><rect x="750" y="160" width="100" height="560"/>
+                <rect x="870" y="310" width="150" height="410"/><rect x="1040" y="230" width="120" height="490"/>
+                <rect x="1180" y="330" width="130" height="390"/><rect x="1330" y="260" width="90" height="460"/>
+            </g>
+            <g fill="#f7d98a" opacity="0.85">
+                <rect x="80" y="330" width="12" height="10"/><rect x="110" y="360" width="12" height="10"/><rect x="220" y="280" width="12" height="10"/>
+                <rect x="250" y="330" width="12" height="10"/><rect x="340" y="380" width="12" height="10"/><rect x="400" y="420" width="12" height="10"/>
+                <rect x="500" y="240" width="12" height="10"/><rect x="530" y="300" width="12" height="10"/><rect x="630" y="330" width="12" height="10"/>
+                <rect x="780" y="200" width="12" height="10"/><rect x="810" y="260" width="12" height="10"/><rect x="900" y="350" width="12" height="10"/>
+                <rect x="1070" y="270" width="12" height="10"/><rect x="1200" y="370" width="12" height="10"/><rect x="1350" y="300" width="12" height="10"/>
+            </g>
+        </svg>
     </div>
-    {% endif %}
-    {% if error %}<div class="bk-error">{{ error }}</div>{% endif %}
+    <div class="hl-hero-shade"></div>
+    <div class="hl-hero-text">
+        <h1>山海之间<br>静谧而居</h1>
+    </div>
 
-    <section class="bk-types">
+    <button class="hl-arrow hl-prev" aria-label="上一张">‹</button>
+    <div class="hl-counter"><span id="hl-cur">1</span> / 3</div>
+    <button class="hl-arrow hl-next" aria-label="下一张">›</button>
+
+    <form class="hl-search" id="hl-search">
+        <div class="seg seg-type">
+            <label>房间类型</label>
+            <select id="bar-type">
+                {% for t, info in types.items %}
+                <option value="{{ t }}">{{ t }}（{{ info.price }} 元/晚 起）</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="seg seg-date">
+            <label>入住日期</label>
+            <input type="date" id="bar-date" min="{{ today }}" value="{{ today }}">
+        </div>
+        <button type="submit" class="hl-btn">立即预订</button>
+    </form>
+</section>
+
+<section class="hl-welcome">
+    <div class="hl-welcome-left">
+        <h2>您好，欢迎来到悦居酒店</h2>
+        <p class="wl-sub">加入悦居会员，您的住宿体验将更加美好&nbsp;&nbsp;<a href="#bookform">了解更多</a></p>
+        <div class="hl-promo">✨&nbsp; 今日预订，享前台优先确认与迎宾礼遇！&nbsp;<a href="#bookform">立即预订</a></div>
+    </div>
+    <div class="hl-icons-wrap" id="services">
+        <button class="hl-ic-arrow ic-prev" aria-label="向左滑动">‹</button>
+        <div class="hl-icons-track">
+            <div class="hl-icon-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 18v-6a2 2 0 0 1 2-2h9V6a2 2 0 0 1 2-2h1a4 4 0 0 1 4 4v10"/><path d="M3 18h18M6 18v2M18 18v2M3 12h11"/></svg>
+                <span>选择客房</span>
+            </div>
+            <div class="hl-icon-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="14" r="4"/><path d="M11 11 20 2M16 6l2.5 2.5M18.5 3.5 21 6"/></svg>
+                <span>快速入住</span>
+            </div>
+            <div class="hl-icon-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 9c6-5.5 14-5.5 20 0M5.5 12.5c4-3.6 9-3.6 13 0M9 16c2-1.8 4-1.8 6 0"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/></svg>
+                <span>免费无线网</span>
+            </div>
+            <div class="hl-icon-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 8a2 2 0 0 0 2-2h12a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H6a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z"/><path d="M13 6v2m0 2.5v3m0 2.5V18" stroke-dasharray="1 3"/></svg>
+                <span>尊享体验</span>
+            </div>
+            <div class="hl-icon-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                <span>24小时前台</span>
+            </div>
+            <div class="hl-icon-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 17h14l-1.5-6.5a2 2 0 0 0-2-1.5h-7a2 2 0 0 0-2 1.5z"/><circle cx="7.5" cy="17" r="1.6"/><circle cx="16.5" cy="17" r="1.6"/></svg>
+                <span>免费停车场</span>
+            </div>
+            <div class="hl-icon-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 19h16M6 19V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v10"/><path d="M9 11h.01M12 11h.01M15 11h.01M9 14h.01M12 14h.01M15 14h.01"/></svg>
+                <span>自助早餐</span>
+            </div>
+            <div class="hl-icon-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M12 11v4"/></svg>
+                <span>行李寄存</span>
+            </div>
+        </div>
+        <button class="hl-ic-arrow ic-next" aria-label="向右滑动">›</button>
+    </div>
+    <div class="hl-strip-dots" id="strip-dots"></div>
+</section>
+
+<section class="hl-rooms" id="rooms">
+    <h3 class="hl-sec-title">精选房型</h3>
+    <div class="hl-room-grid">
         {% for t, info in types.items %}
-        <div class="bk-type-card">
-            <div class="bk-type-name">{{ t }}</div>
-            <div class="bk-type-price"><span>{{ info.price }}</span> 元/晚 起</div>
-            <div class="bk-type-count">剩余 {{ info.count }} 间</div>
+        <div class="hl-room-card">
+            <div class="hl-room-photo ph{{ forloop.counter }}"></div>
+            <div class="hl-room-body">
+                <div class="hl-room-name">{{ t }}</div>
+                <div class="hl-room-price"><span>{{ info.price }}</span> 元/晚 起</div>
+                <div class="hl-room-count">剩余 {{ info.count }} 间</div>
+                <button type="button" class="hl-pick" data-type="{{ t }}">预订此房型</button>
+            </div>
         </div>
         {% endfor %}
-    </section>
+    </div>
+</section>
 
-    <section class="bk-form-card">
-        <h2>填写预订信息</h2>
-        <form action="/booking/" method="post">
-            {% csrf_token %}
+<section class="hl-bookform" id="bookform">
+    <h3 class="hl-sec-title">填写预订信息</h3>
+    {% if ok %}<div class="hl-success">预订提交成功！我们的前台会尽快与您联系确认，请保持手机畅通。</div>{% endif %}
+    {% if error %}<div class="hl-error">{{ error }}</div>{% endif %}
+    <form action="/booking/" method="post" class="hl-form">
+        {% csrf_token %}
+        <div class="hl-form-grid">
             <p><label>您的姓名：</label><input type="text" name="name" required maxlength="10" placeholder="2-10 位中英文"></p>
             <p><label>手机号：</label><input type="text" name="tel" required maxlength="11" pattern="1\d{10}" title="11 位手机号（1 开头）" placeholder="用于确认预订"></p>
-            <p><label>房间类型：</label>
-                <select name="room_type" required>
-                    {% for t, info in types.items %}
-                    <option value="{{ t }}">{{ t }}（{{ info.price }} 元/晚 起）</option>
-                    {% endfor %}
-                </select>
-            </p>
-            <p><label>入住日期：</label><input type="date" name="date" required min="{{ today }}"></p>
-            <p><button type="submit" class="bk-submit">提交预订</button></p>
-        </form>
-        <p class="bk-hint">提示：提交后订单为「预订」状态，入住当天请到前台出示手机号办理登记。</p>
-    </section>
-</main>
+            <p><label>房间类型：</label><select name="room_type" id="form-type" required>
+                {% for t, info in types.items %}
+                <option value="{{ t }}">{{ t }}（{{ info.price }} 元/晚 起）</option>
+                {% endfor %}
+            </select></p>
+            <p><label>入住日期：</label><input type="date" name="date" id="form-date" required min="{{ today }}"></p>
+        </div>
+        <p class="hl-submit-p"><button type="submit" class="hl-submit">提交预订</button></p>
+    </form>
+    <p class="bk-hint">提示：提交后订单为「待确认」状态，前台排房确认后即可入住；入住当天请出示手机号办理登记。</p>
+</section>
 
-<footer class="bk-foot">© 酒店管理系统 · 温馨舒适的入住体验</footer>
+<footer class="bk-foot">© 悦居酒店 · 山海之间，静谧而居</footer>
+
+<script src="/static/js/jquery-2.1.4.min.js"></script>
+<script>
+    // ---------- Hero 轮播 ----------
+    var slides = document.querySelectorAll('.hl-slides .hl-scene');
+    var cur = 0, total = slides.length, timer = null;
+    function showSlide(i) {
+        cur = (i + total) % total;
+        slides.forEach(function (s, k) { s.classList.toggle('active', k === cur); });
+        var el = document.getElementById('hl-cur');
+        if (el) { el.textContent = cur + 1; }
+    }
+    function nextSlide() { showSlide(cur + 1); }
+    function prevSlide() { showSlide(cur - 1); }
+    function restartTimer() {
+        if (timer) { clearInterval(timer); }
+        timer = setInterval(nextSlide, 6000);
+    }
+    document.querySelector('.hl-next').addEventListener('click', function () { nextSlide(); restartTimer(); });
+    document.querySelector('.hl-prev').addEventListener('click', function () { prevSlide(); restartTimer(); });
+    restartTimer();
+
+    // ---------- 服务条左右滑动 ----------
+    var track = document.querySelector('.hl-icons-track');
+    function stripPage() { return Math.max(1, Math.round(track.scrollWidth / track.clientWidth)); }
+    function renderDots() {
+        var box = document.getElementById('strip-dots');
+        if (!box) { return; }
+        var pages = stripPage();
+        var curPage = Math.min(pages - 1, Math.round(track.scrollLeft / track.clientWidth));
+        box.innerHTML = '';
+        for (var i = 0; i < pages; i++) {
+            var d = document.createElement('span');
+            if (i === curPage) { d.className = 'on'; }
+            box.appendChild(d);
+        }
+    }
+    document.querySelector('.ic-prev').addEventListener('click', function () {
+        track.scrollBy({ left: -track.clientWidth, behavior: 'smooth' });
+    });
+    document.querySelector('.ic-next').addEventListener('click', function () {
+        track.scrollBy({ left: track.clientWidth, behavior: 'smooth' });
+    });
+    track.addEventListener('scroll', function () { renderDots(); });
+    window.addEventListener('resize', renderDots);
+    renderDots();
+
+    // ---------- 悬浮条与表单双向同步 ----------
+    function syncBarToForm() {
+        var bt = document.getElementById('bar-type');
+        var bd = document.getElementById('bar-date');
+        var ft = document.getElementById('form-type');
+        var fd = document.getElementById('form-date');
+        if (bt && ft) { ft.value = bt.value; }
+        if (bd && fd) { fd.value = bd.value; }
+    }
+    function syncFormToBar() {
+        var bt = document.getElementById('bar-type');
+        var bd = document.getElementById('bar-date');
+        var ft = document.getElementById('form-type');
+        var fd = document.getElementById('form-date');
+        if (bt && ft) { bt.value = ft.value; }
+        if (bd && fd) { bd.value = fd.value; }
+    }
+    ['bar-type', 'bar-date'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) { el.addEventListener('change', syncBarToForm); }
+    });
+    ['form-type', 'form-date'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) { el.addEventListener('change', syncFormToBar); }
+    });
+    document.getElementById('hl-search').addEventListener('submit', function (e) {
+        e.preventDefault();
+        syncBarToForm();
+        document.getElementById('bookform').scrollIntoView({ behavior: 'smooth' });
+    });
+    document.querySelectorAll('.hl-pick').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var t = this.getAttribute('data-type');
+            var ft = document.getElementById('form-type');
+            if (ft) { ft.value = t; }
+            syncFormToBar();
+            document.getElementById('bookform').scrollIntoView({ behavior: 'smooth' });
+        });
+    });
+</script>
 </body>
 </html>

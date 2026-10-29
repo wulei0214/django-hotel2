@@ -205,9 +205,11 @@
 </script>
 <script>
     $(".delete").click(function () {
+        var reason = window.prompt('冲账为高危操作，请输入冲账原因（将写入审计日志）：');
+        if (!reason) { return; }
         var id = $(this).closest('tr').find('.id').text();
         askConfirm('确定冲账该订单吗？冲账后不再计入统计，不可恢复。', function () {
-        $.get('/delete_order/', {'id': id}).done(function () { showToast('已冲账'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
+        $.get('/delete_order/', {'id': id, 'reason': reason}).done(function () { showToast('已冲账'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
         });
     });
 </script>
