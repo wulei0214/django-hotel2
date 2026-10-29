@@ -348,7 +348,7 @@ input[list] {
 
 
 /* ---------- 主界面门户 / 新页面布局 ---------- */
-.main { padding: 22px 30px 40px; }
+.main { margin-left: 220px; padding: 22px 30px 40px; min-width: 0; }
 .page-head { margin: 4px 0 18px; }
 .page-head h2 { margin: 0; color: #303133; font-size: 22px; letter-spacing: 1px; }
 .page-sub { color: #909399; font-size: 13px; }

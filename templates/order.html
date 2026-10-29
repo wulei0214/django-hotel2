@@ -141,7 +141,7 @@
         box.style.cssText = 'background:#fff;border-radius:8px;padding:26px 30px;box-shadow:0 8px 30px rgba(0,0,0,.2);text-align:center;font-size:14px;color:#303133;min-width:280px;';
         box.innerHTML = '<div style="margin-bottom:20px;">' + msg + '</div>';
         var ok = document.createElement('button');
-        ok.textContent = '确定删除';
+        ok.textContent = '确定冲账';
         ok.style.cssText = 'background:#F56C6C;border:1px solid #F56C6C;color:#fff;border-radius:4px;padding:8px 24px;cursor:pointer;margin-right:14px;font-size:14px;';
         var cancel = document.createElement('button');
         cancel.textContent = '取消';
@@ -206,8 +206,8 @@
 <script>
     $(".delete").click(function () {
         var id = $(this).closest('tr').find('.id').text();
-        askConfirm('确定删除该条记录吗？删除后不可恢复。', function () {
-        $.get('/delete_order/', {'id': id}).done(function () { showToast('删除成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
+        askConfirm('确定冲账该订单吗？冲账后不再计入统计，不可恢复。', function () {
+        $.get('/delete_order/', {'id': id}).done(function () { showToast('已冲账'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
         });
     });
 </script>

@@ -31,16 +31,17 @@
         <center><h2>新增收支记录</h2></center>
         <form action="/finance_add/" method="post" style="margin:0 40px">
             {% csrf_token %}
+            {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
             <p>
                 <label>类型：</label>
-                <select name="type"><option value="收入">收入</option><option value="支出">支出</option></select>
+                <select name="type"><option value="收入" {% if form.type == "收入" %}selected{% endif %}>收入</option><option value="支出" {% if form.type == "支出" %}selected{% endif %}>支出</option></select>
                 &nbsp;&nbsp;
-                <label>金额（元）：</label><input type="text" name="amount" required maxlength="11" placeholder="如 1288 或 1288.50" class="input" style="width:200px !important"/>
+                <label>金额（元）：</label><input type="text" name="amount" value="{{ form.amount }}" required maxlength="11" placeholder="如 1288 或 1288.50" class="input" style="width:200px !important"/>
                 &nbsp;&nbsp;
-                <label>日期：</label><input type="date" name="date" required value="{{ today }}"/>
+                <label>日期：</label><input type="date" name="date" required value="{% if form.date %}{{ form.date }}{% else %}{{ today }}{% endif %}"/>
             </p>
             <p>
-                <label>事由：</label><input type="text" name="reason" required maxlength="100" placeholder="如 餐饮收入 / 维修支出 / 采购支出" class="input" style="width:460px !important"/>
+                <label>事由：</label><input type="text" name="reason" value="{{ form.reason }}" required maxlength="100" placeholder="如 餐饮收入 / 维修支出 / 采购支出" class="input" style="width:460px !important"/>
                 <button type="submit" class="register-btn" style="width:auto;padding:9px 26px;letter-spacing:2px;">保存</button>
             </p>
         </form>

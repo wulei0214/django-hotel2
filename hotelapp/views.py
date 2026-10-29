@@ -1136,11 +1136,8 @@ def uncheckout(request):
 
 
 # ---------- 财务管理 ----------
-@staff_required
-def finance_manage(request):
-    """财务管理：流水列表 + 新增收支 + 报表分析（财务/店长/值班经理）"""
-    if not _has_role(request.user, "财务", "店长", "值班经理"):
-        raise PermissionDenied
+def _finance_context():
+    """财务页公共上下文：流水列表 + 冲账排除 + 收支统计（finance_manage / finance_add 共用）"""
     records = list(FinanceRecord.objects.order_by("-id"))
     voided = {str(o["id"]) for o in Order.objects.filter(状态="已冲账").values("id")}
     voided |= {str(a["id"]) for a in Accommodation.objects.filter(状态="已冲账").values("id")}
@@ -1166,37 +1163,55 @@ def finance_manage(request):
     day_rows = [{"日期": k, "收入": f"{d['收入']:.2f}", "支出": f"{d['支出']:.2f}",
                  "结余": f"{d['收入'] - d['支出']:.2f}"} for k, d in sorted(days.items(), reverse=True)]
     total = round(total_in - total_out, 2)
-    return render(request, "finance.html", {
+    return {
         "records": records, "day_rows": day_rows,
         "total_in": f"{total_in:.2f}", "total_out": f"{total_out:.2f}", "total": f"{total:.2f}",
         "room_rev": f"{room_rev:.2f}", "food_rev": f"{food_rev:.2f}",
-        "can_add": _has_role(request.user, "财务"),
-        "today": _today(),
-    })
+    }
+
+
+@staff_required
+def finance_manage(request):
+    """财务管理：流水列表 + 新增收支 + 报表分析（财务/店长/值班经理）"""
+    if not _has_role(request.user, "财务", "店长", "值班经理"):
+        raise PermissionDenied
+    ctx = _finance_context()
+    ctx["can_add"] = _has_role(request.user, "财务")
+    ctx["today"] = _today()
+    return render(request, "finance.html", ctx)
 
 
 @staff_required
 def finance_add(request):
-    """新增收支流水（仅财务）"""
-    if request.method == "POST":
-        if not _has_role(request.user, "财务"):
-            return HttpResponse("只有财务可以录入收支", status=403)
-        ftype = request.POST.get("type")
-        amount = (request.POST.get("amount") or "").strip()
-        reason = (request.POST.get("reason") or "").strip()
-        date = (request.POST.get("date") or "").strip()
-        if ftype not in ("收入", "支出"):
-            return HttpResponse("类型必须是收入或支出", status=400)
-        if not reason:
-            return HttpResponse("事由不能为空", status=400)
-        if not re.match(r"^\d{1,9}(\.\d{1,2})?$", amount):
-            return HttpResponse("金额必须是数字", status=400)
+    """新增收支流水（仅财务）；校验失败时回显表单并保留已填内容"""
+    if not _has_role(request.user, "财务"):
+        return HttpResponse("只有财务可以录入收支", status=403)
+    if request.method != "POST":
+        return redirect("/finance/")
+    ftype = request.POST.get("type")
+    amount = (request.POST.get("amount") or "").strip()
+    reason = (request.POST.get("reason") or "").strip()
+    date = (request.POST.get("date") or "").strip()
+    error, efield = None, None
+    if ftype not in ("收入", "支出"):
+        error, efield = "类型必须是收入或支出", "type"
+    elif not reason:
+        error, efield = "事由不能为空", "reason"
+    elif not re.match(r"^\d{1,9}(\.\d{1,2})?$", amount):
+        error, efield = "金额必须是数字，整数最多9位、最多两位小数", "amount"
+    else:
         try:
             datetime.datetime.strptime(date, "%Y-%m-%d")
         except ValueError:
-            return HttpResponse("日期不正确", status=400)
+            error, efield = "日期不正确", "date"
+    if error is None:
         FinanceRecord.objects.create(类型=ftype, 金额=amount, 事由=reason,
                                      日期=date, 经手人=request.user.username)
         messages.success(request, "收支记录已保存")
         return redirect("/finance/")
-    return HttpResponse("非法请求", status=400)
+    form = request.POST.copy()
+    if efield:
+        form[efield] = ""
+    ctx = _finance_context()
+    ctx.update({"can_add": True, "today": _today(), "error": error, "form": form})
+    return render(request, "finance.html", ctx)
