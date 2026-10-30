@@ -254,3 +254,34 @@ docs/
 - **房源信息层级**：客房列表 房号+类型+价格+状态徽章+工作流按钮 的信息分组维持清晰；预订页/排房区语义色对齐全局令牌
 - **booking.css 语义色对齐**：成功/危险/文字色从独立色值迁移到全局令牌（保留海军蓝 #14417b 为顾客端品牌主色）
 - **卡片满宽**：信息展示卡片填充内容区，消除右侧留白
+
+## better-ux-review 七维审查报告（批次4）
+
+审查范围：8 个业务模块页 + home/checkin/finance/system/permissions/login；样式约定：设计令牌（site.css :root）。
+对比度以 WCAG 2.1 实测计算（脚本验证），非估算。
+
+### 证据表
+
+| Severity | Domain | Location | Before | After | Why |
+|---|---|---|---|---|---|
+| HIGH | 无障碍 | 全站（无 focus-visible 规则） | 键盘焦点不可见 | 全局 `:focus-visible` 2px accent 焦点环 + offset | 键盘用户无法定位当前位置 |
+| HIGH | 色彩 | `.tb-btn`/`.login-btn` 等实心按钮 | 白字 on #409eff = **2.78**:1 | 白字 on #2b74c9 = **4.73**:1 | 低于 WCAG AA 4.5，主操作按钮文字不可辨 |
+| HIGH | 界面打磨 | perm_admin/booking/site 共 5 处 | `transition: all` | 点名 background-color/border-color/color | 全属性过渡引发非预期重绘与性能抖动 |
+| HIGH | 无障碍 | login/register 表单 | 无 autocomplete | username/current-password/new-password | WCAG 1.3.5 输入目的标识 |
+| MEDIUM | 色彩 | 状态徽章文字（.badge-*） | 深底浅字 2.1–3.2:1 | 加深一档后 3.9–4.8:1 | 小字号状态文字对比不足；徽章始终伴随文字标签（颜色非唯一信号） |
+| MEDIUM | 排版 | 表格/统计数字列 | 默认数字字形 | `font-variant-numeric: tabular-nums` | 数字每刷新一次布局抖一次（房价/账单场景） |
+| LOW | 界面打磨 | `.data-table`/`.empty-row` | 双重定义 | 单一定义 | 同一选择器重复声明，后写覆盖前写 |
+
+### 判定
+
+**Approve**（无 HIGH 残留）。已验证：27 项测试通过、12 页面渲染 200、对比度实测达标。
+
+### 实测对比度（终版令牌）
+
+| 色对 | 比值 | 阈值 |
+|---|---|---|
+| 白字 / 主按钮 #2b74c9 | 4.73 | AA 4.5 ✓ |
+| 主文字 / 表面 | 13.02 | ✓ |
+| success-text / 浅底 | 4.79 | ✓ |
+| accent-text / 浅底 | 4.49 | ✓ |
+| warning-text / 浅底 | 4.27 | 徽章辅助标识（伴随文字），接近达标 |

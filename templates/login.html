@@ -16,8 +16,8 @@
         <form action="/login/" method="post">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ next }}">
-            <p><label>用户名：</label><input type="text" name="username" class="input" autocomplete="username" placeholder="员工账号" required autofocus></p>
-            <p><label>密&nbsp;&nbsp;码：</label><input type="password" name="password" class="input" autocomplete="current-password" placeholder="密码" required></p>
+            <p><label>用户名：</label><input type="text" name="username" autocomplete="username" class="input" autocomplete="username" placeholder="员工账号" required autofocus></p>
+            <p><label>密&nbsp;&nbsp;码：</label><input type="password" name="password" autocomplete="current-password" class="input" autocomplete="current-password" placeholder="密码" required></p>
             <p><button type="submit" class="login-btn">登 录</button></p>
         </form>
         <p class="login-foot">还没有账号？<a href="/register/">注册账号</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="/booking/">顾客预订</a></p>

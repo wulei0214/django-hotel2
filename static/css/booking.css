@@ -32,10 +32,10 @@ a { color: inherit; }
 .hl-menu { display: flex; gap: 30px; margin-left: 30px; flex: 1; }
 .hl-menu a {
     color: rgba(255,255,255,.92); text-decoration: none; font-size: 14px;
-    padding: 6px 2px; border-bottom: 2px solid transparent; transition: all .2s;
+    padding: 6px 2px; border-bottom: 2px solid transparent; transition: background-color .2s, border-color .2s, color .2s;
 }
 .hl-menu a:hover { color: #fff; border-bottom-color: #c9a45c; }
-.hl-login { color: #fff; text-decoration: none; font-size: 14px; border: 1px solid rgba(255,255,255,.6); padding: 7px 16px; border-radius: 3px; transition: all .2s; }
+.hl-login { color: #fff; text-decoration: none; font-size: 14px; border: 1px solid rgba(255,255,255,.6); padding: 7px 16px; border-radius: 3px; transition: background-color .2s, border-color .2s, color .2s; }
 .hl-login:hover { background: rgba(255,255,255,.14); }
 
 /* ---------- 全屏山景 Hero ---------- */
@@ -153,7 +153,7 @@ a { color: inherit; }
 .hl-room-count { color: #9aa3ad; font-size: 12px; margin: 4px 0 12px; }
 .hl-pick {
     background: #fff; color: #14417b; border: 1px solid #14417b;
-    border-radius: 4px; padding: 8px 18px; font-size: 13px; cursor: pointer; transition: all .2s;
+    border-radius: 4px; padding: 8px 18px; font-size: 13px; cursor: pointer; transition: background-color .2s, border-color .2s, color .2s;
 }
 .hl-pick:hover { background: #14417b; color: #fff; }
 
@@ -239,7 +239,7 @@ a { color: inherit; }
     width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
     background: #fff; color: var(--color-text-primary, #303133);
     border: 1px solid #d6dade; font-size: 20px; line-height: 1;
-    cursor: pointer; transition: all .2s;
+    cursor: pointer; transition: background-color .2s, border-color .2s, color .2s;
 }
 .hl-ic-arrow:hover { background: #14417b; color: #fff; border-color: #14417b; }
 .hl-strip-dots { width: 100%; text-align: center; margin-top: 12px; }

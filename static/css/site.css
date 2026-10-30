@@ -39,12 +39,12 @@
     --color-border-strong: var(--color-text-disabled);     /* 强边框 */
 
     /* --- Semantics · 交互主色（accent） --- */
-    --color-accent-solid: var(--blue-500);
-    --color-accent-solid-hover: var(--blue-600);
+    --color-accent-solid: #2b74c9;
+    --color-accent-solid-hover: #4a90e2;
     --color-accent-bg: var(--color-accent-bg);
     --color-accent-border: var(--color-accent-border);
     --color-accent-subtle: var(--color-accent-subtle);
-    --color-accent-text: var(--blue-500);
+    --color-accent-text: #1f6fd0;
 
     /* --- Semantics · 状态色（solid / text / bg / border 四角色） --- */
     --color-success-solid: var(--color-success-solid);
@@ -605,7 +605,7 @@ li.warn-info .warn-level { color: var(--color-accent-solid); background: var(--c
     font-size: var(--text-caption);
     cursor: pointer;
     text-decoration: none;
-    transition: all .2s;
+    transition: background-color .2s, border-color .2s, color .2s;
 }
 .tb-btn:hover { border-color: var(--color-accent-solid); color: var(--color-accent-solid); }
 .tb-btn.tb-primary { background: var(--color-accent-solid); border-color: var(--color-accent-solid); color: var(--color-text-inverse); }
@@ -666,6 +666,13 @@ span.badge-toggle { cursor: default; }
 .list-card, .card.list-card { width: auto !important; margin: 0 0 20px !important; }
 .data-table { width: 100% !important; }
 
+
+/* ---------- 无障碍：键盘焦点环（focus-visible，全局） ---------- */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-accent-solid);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+}
 
 /* ---------- 表单工具类（内联样式清退） ---------- */
 .form-error {
