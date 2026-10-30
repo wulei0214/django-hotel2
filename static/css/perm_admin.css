@@ -1,7 +1,21 @@
-/* 权限分配管理页专属样式（图2 双栏布局） */
+/* 角色权限矩阵页样式 */
 .perm-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
-.perm-head h2 { margin: 0 0 6px; color: #303133; font-size: 24px; }
-.perm-code { color: #909399; font-size: 13px; margin: 0; }
+.perm-head h2 { margin: 0 0 8px; color: #303133; font-size: 24px; }
+.perm-code { color: #606266; font-size: 13px; margin: 4px 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.role-tab {
+    display: inline-block;
+    padding: 5px 16px;
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    background: #fff;
+    color: #606266;
+    font-size: 13px;
+    text-decoration: none;
+    transition: all .2s;
+}
+.role-tab:hover { border-color: #409EFF; color: #409EFF; }
+.role-tab.role-active { background: #409EFF; border-color: #409EFF; color: #fff; }
+.perm-note { color: #909399; }
 .perm-actions { display: flex; gap: 10px; }
 .perm-btn {
     display: inline-block;
@@ -16,37 +30,24 @@
 }
 .perm-btn:hover { border-color: #409EFF; color: #409EFF; }
 
-.perm-cols { display: grid; grid-template-columns: 320px 1fr; gap: 18px; align-items: start; }
-.perm-panel {
+.matrix-panel {
     background: #fff;
     border-radius: 8px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, .08);
-    padding: 14px 16px;
+    padding: 10px 20px 16px;
     box-sizing: border-box;
 }
-.perm-panel-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 10px;
+.matrix-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.matrix-table th, .matrix-table td {
     border-bottom: 1px solid #ebeef5;
-    font-weight: 600;
-    color: #303133;
+    padding: 13px 12px;
+    text-align: center;
 }
-.perm-all { font-size: 12px; color: #909399; display: flex; align-items: center; gap: 4px; }
-
-.perm-tree, .perm-sub { list-style: none; margin: 0; padding: 0; }
-.perm-tree > li { margin: 6px 0; }
-.perm-module { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #303133; padding: 7px 4px; cursor: pointer; }
-.perm-sub { padding-left: 26px; }
-.perm-sub label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #606266; padding: 4px 2px; cursor: pointer; }
-.perm-tree input, .perm-cards input { accent-color: #409EFF; cursor: pointer; }
-
-.perm-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; max-height: 62vh; overflow-y: auto; padding-right: 4px; }
-.perm-card { border: 1px solid #ebeef5; border-radius: 6px; padding: 12px 14px; }
-.perm-card-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; color: #303133; padding-bottom: 8px; border-bottom: 1px dashed #ebeef5; margin-bottom: 6px; }
-.perm-card ul { list-style: none; margin: 0; padding: 0; }
-.perm-card li label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #606266; padding: 5px 2px; cursor: pointer; }
+.matrix-table th { background: #f5f7fa; color: #303133; font-weight: 600; }
+.matrix-table .mx-module { text-align: left; color: #303133; font-weight: 500; width: 220px; }
+.matrix-table .mx-footer td { background: #f8f9fb; color: #909399; font-size: 13px; }
+.matrix-table input[type="checkbox"] { width: 17px; height: 17px; accent-color: #409EFF; cursor: pointer; }
+.matrix-table tr:hover td:not(.mx-module) { background: #f5f7fa; }
 
 .perm-save-bar {
     position: sticky;
@@ -55,12 +56,13 @@
     background: #fff;
     border-radius: 8px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, .12);
-    padding: 12px 18px;
+    padding: 13px 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     font-size: 13px;
     color: #606266;
+    z-index: 5;
 }
 .perm-save-btn {
     background: #409EFF;

@@ -1,12 +1,12 @@
-<!-- 权限分配管理（超管专属）：左侧菜单可见性树 + 右侧模块权限卡片，参照主流 RBAC 管理台布局 -->
+<!-- 角色权限矩阵（超管专属）：行=模块，列=查看/新增/修改/删除；查看同时决定菜单可见性 -->
 {% load static %}
 <!DOCTYPE html>
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>分配权限 - 酒店管理系统</title>
+    <title>角色权限管理 - 酒店管理系统</title>
     <link rel="stylesheet" href="/static/css/site.css?v=6">
-    <link rel="stylesheet" href="/static/css/perm_admin.css?v=1">
+    <link rel="stylesheet" href="/static/css/perm_admin.css?v=2">
 </head>
 <body>
 {% if messages %}
@@ -18,138 +18,89 @@
 <div class="main">
     <div class="perm-head">
         <div>
-            <h2>分配权限</h2>
-            <p class="perm-code">角色编号：{{ group.id }}　·　角色名称：{{ group.name }}</p>
+            <h2>角色权限管理</h2>
+            <p class="perm-code">正在编辑角色：
+                {% for name, g in roles %}
+                <a class="role-tab {% if g.id == group.id %}role-active{% endif %}" href="?role={{ g.id }}">{{ name }}</a>
+                {% endfor %}
+            </p>
+            <p class="perm-code perm-note">提示：「查看」同时控制该模块在左侧菜单中的可见性；超级管理员拥有全部权限，不受本页控制。</p>
         </div>
         <div class="perm-actions">
             <a class="perm-btn" href="/home/">← 返回主页</a>
-            <a class="perm-btn" href="/permissions/?role={{ group.id }}">⟳ 刷新数据</a>
         </div>
     </div>
 
-    <div class="perm-cols">
-        <!-- 左栏：菜单可见性树（勾选模块 = 授予 view 权限 = 侧边栏可见） -->
-        <div class="perm-panel">
-            <div class="perm-panel-head">
-                <span>菜单管理</span>
-                <label class="perm-all"><input type="checkbox" id="menu-all"> 全选</label>
-            </div>
-            <ul class="perm-tree">
-                {% for m in modules %}
-                <li>
-                    <label class="perm-module">
-                        <input type="checkbox" class="pm-view" data-model="{{ m.model }}"
-                               data-codename="view_{{ m.model }}"
-                               {% if m.menu_checked %}checked{% endif %}>
-                        {{ m.label }}
-                    </label>
-                    <ul class="perm-sub">
-                        {% for a in m.actions %}
-                        <li><label>
-                            <input type="checkbox" class="perm-item" data-model="{{ m.model }}"
-                                   data-action="{{ a.action }}" data-codename="{{ a.codename }}"
-                                   {% if a.checked %}checked{% endif %}>
-                            {{ a.action }}
-                        </label></li>
-                        {% endfor %}
-                    </ul>
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-
-        <!-- 右栏：模块功能权限卡片（查看/新增/修改/删除 + 单卡全选） -->
-        <div class="perm-panel">
-            <div class="perm-panel-head">
-                <span>功能权限</span>
-                <label class="perm-all"><input type="checkbox" id="perm-all"> 全选</label>
-            </div>
-            <div class="perm-cards">
-                {% for m in modules %}
-                <div class="perm-card" data-model="{{ m.model }}">
-                    <div class="perm-card-head">
-                        <span>{{ m.label }}</span>
-                        <label class="perm-all"><input type="checkbox" class="card-all" data-model="{{ m.model }}"> 全选</label>
-                    </div>
-                    <ul>
-                        {% for a in m.actions %}
-                        <li><label>
-                            <input type="checkbox" class="perm-item" data-model="{{ m.model }}"
-                                   data-action="{{ a.action }}" data-codename="{{ a.codename }}"
-                                   {% if a.checked %}checked{% endif %}>
-                            {{ a.action }}
-                        </label></li>
-                        {% endfor %}
-                    </ul>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-
-    <!-- 保存：仅提交勾选的权限点集合 -->
-    <form id="perm-save-form" action="/permissions/save/" method="post">
+    <form action="/permissions/save/" method="post">
         {% csrf_token %}
         <input type="hidden" name="role" value="{{ group.id }}">
-        <input type="hidden" name="perm" id="perm-payload" value="">
+        <div class="perm-panel matrix-panel">
+            <table class="matrix-table">
+                <tr>
+                    <th class="mx-module">业务模块</th>
+                    {% for a in actions %}
+                    <th class="mx-action">{{ a.label }}</th>
+                    {% endfor %}
+                    <th class="mx-rowall">整行全选</th>
+                </tr>
+                {% for m in modules %}
+                <tr>
+                    <td class="mx-module">{{ m.label }}</td>
+                    {% for a in m.actions %}
+                    <td class="mx-cell">
+                        <input type="checkbox" name="perm" value="{{ a.action }}_{{ m.key }}"
+                               class="mx-check" data-module="{{ m.key }}" data-action="{{ a.action }}"
+                               {% if a.checked %}checked{% endif %}>
+                    </td>
+                    {% endfor %}
+                    <td class="mx-cell"><input type="checkbox" class="mx-rowall" data-module="{{ m.key }}"></td>
+                </tr>
+                {% endfor %}
+                <tr class="mx-footer">
+                    <td>全选所有模块</td>
+                    {% for a in actions %}
+                    <td class="mx-cell"><input type="checkbox" class="mx-colall" data-action="{{ a.action }}"></td>
+                    {% endfor %}
+                    <td class="mx-cell"><input type="checkbox" id="mx-all"></td>
+                </tr>
+            </table>
+        </div>
         <div class="perm-save-bar">
-            <span>已选 <b id="perm-count">{{ perm_total }}</b> / {{ perm_all_count }} 项权限 ·
-                勾选左侧模块即授予该模块菜单可见（view）权限</span>
-            <button type="submit" class="perm-save-btn">保存</button>
+            <span>已勾选 <b id="perm-count">{{ perm_total }}</b> / {{ perm_all_count }} 项权限 ·
+                保存后立即生效（无需重启）</span>
+            <button type="submit" class="perm-save-btn">保存权限</button>
         </div>
     </form>
 </div>
 
 <script>
-    // 联动规则：勾选模块(view) → 联动该模块全部动作；动作变化 → 反推模块勾选状态
-    // 护栏：view 权限是菜单可见性的最小权限，取消 view 时自动取消该模块全部写权限
-    var PERM_ALL = {{ perm_all_count }};
-
-    function codenameSet() {
-        return new Set([...document.querySelectorAll('.perm-item:checked')].map(i => i.dataset.codename));
-    }
-
-    function refreshCount() {
-        document.getElementById('perm-count').textContent = codenameSet().size;
-    }
-
-    function syncModuleState(model) {
-        var items = [...document.querySelectorAll('.perm-item[data-model="' + model + '"]')];
-        var view = items.find(i => i.dataset.action === 'view');
-        if (view && !view.checked) {
-            items.forEach(i => { if (i.dataset.action !== 'view') { i.checked = false; } });
-        }
-        var viewChecked = view ? view.checked : false;
-        var moduleBox = document.querySelector('.pm-view[data-model="' + model + '"]');
-        if (moduleBox) { moduleBox.checked = viewChecked; }
-        var cardAll = document.querySelector('.card-all[data-model="' + model + '"]');
-        if (cardAll) { cardAll.checked = items.every(i => i.checked); }
-        refreshCount();
-    }
-
+    // 权限矩阵联动：整行全选 / 整列全选 / 全部全选，以及单元格变化时的统计
     document.addEventListener('change', function (e) {
         var t = e.target;
-        if (t.classList.contains('pm-view')) {
-            var model = t.dataset.model;
-            document.querySelectorAll('.perm-item[data-model="' + model + '"]').forEach(i => {
-                if (i.dataset.action === 'view' || t.checked) { i.checked = t.checked; }
-            });
-        } else if (t.classList.contains('card-all')) {
-            document.querySelectorAll('.perm-item[data-model="' + t.dataset.model + '"]').forEach(i => { i.checked = t.checked; });
-        } else if (t.classList.contains('perm-item')) {
-            syncModuleState(t.dataset.model);
-        } else if (t.id === 'menu-all' || t.id === 'perm-all') {
-            var on = t.checked;
-            document.querySelectorAll('.pm-view, .card-all').forEach(i => { i.checked = on; });
-            document.querySelectorAll('.perm-item').forEach(i => { i.checked = on; });
+        if (t.id === 'mx-all') {
+            document.querySelectorAll('.mx-check').forEach(function (i) { i.checked = t.checked; });
+            document.querySelectorAll('.mx-rowall, .mx-colall').forEach(function (i) { i.checked = t.checked; });
+        } else if (t.classList.contains('mx-rowall')) {
+            document.querySelectorAll('.mx-check[data-module="' + t.dataset.module + '"]')
+                .forEach(function (i) { i.checked = t.checked; });
+        } else if (t.classList.contains('mx-colall')) {
+            document.querySelectorAll('.mx-check[data-action="' + t.dataset.action + '"]')
+                .forEach(function (i) { i.checked = t.checked; });
+        } else if (t.classList.contains('mx-check')) {
+            var boxes = document.querySelectorAll('.mx-check[data-module="' + t.dataset.module + '"]');
+            var row = document.querySelector('.mx-rowall[data-module="' + t.dataset.module + '"]');
+            if (row) { row.checked = [...boxes].every(function (i) { return i.checked; }); }
+            var col = document.querySelector('.mx-colall[data-action="' + t.dataset.action + '"]');
+            if (col) {
+                var same = document.querySelectorAll('.mx-check[data-action="' + t.dataset.action + '"]');
+                col.checked = [...same].every(function (i) { return i.checked; });
+            }
         }
-        refreshCount();
+        document.getElementById('perm-count').textContent =
+            document.querySelectorAll('.mx-check:checked').length;
     });
-
-    document.getElementById('perm-save-form').addEventListener('submit', function () {
-        document.getElementById('perm-payload').value = [...codenameSet()].join(',');
-    });
-    refreshCount();
+    document.getElementById('perm-count').textContent =
+        document.querySelectorAll('.mx-check:checked').length;
 </script>
 </body>
 </html>
