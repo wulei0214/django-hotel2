@@ -53,14 +53,23 @@
         <input type="submit" value="提交">
 
 </form>{% endif %}
-</div><p>&nbsp;</p><p>&nbsp;</p>
-<div class="card">
-<center>
-<a href="/show_food/">
-    <div class="logo">
-					<h2>菜品信息展示</h2>
-    </div></a>
-    <table border="1" cellspacing="0" style="width: 90%">
+</div><div class="card list-card">
+    <div class="list-toolbar">
+        <form action="/search_food/#list" method="post" class="inline-filter">
+            {% csrf_token %}
+            <select name="columns">
+                        <option value="菜品编号">编号</option>
+                        <option value="菜名">菜名</option>
+                        <option value="价格">价格</option>
+                        <option value="厨师id">厨师编号</option>
+                                          </select>
+            <input type="text" name="value" placeholder="输入查询内容" class="input" style="width:200px !important">
+            <button type="submit" class="tb-btn tb-primary">查询</button>
+            {% if searched %}<a href="/show_food/" class="tb-btn">显示全部</a>{% endif %}
+        </form>
+        {% if searched %}<span class="search-note">查询结果 {{ people_list|length }} 条{% if not people_list %} · 未查询到相关记录，请重新核对信息{% endif %}</span>{% endif %}
+    </div>
+    <table class="data-table">
     <tr>
         <th>菜品编号</th>
         <th>菜品名称</th>
@@ -77,9 +86,11 @@
         {% if perms.hotelapp.delete_food %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
         {% if perms.hotelapp.change_food %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
     </tr>
+    {% empty %}
+    <tr><td colspan="6" class="empty-row">未查询到相关记录，请重新核对信息</td></tr>
     {% endfor %}
-            </center>
-        <div class="page-bar">
+    </table>
+    <div class="page-bar">
             <span>共 {{ page_obj.paginator.count }} 条记录</span>
             <span class="page-nums">
                 {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">‹</a>{% endif %}
@@ -88,36 +99,6 @@
             </span>
             <span>15 条/页</span>
         </div>
-        </center>
-</div><p>&nbsp;</p><p>&nbsp;</p>
-<div class="card" id="search">
-<center>
-	<h2><a>菜品信息查询</a></h2>
-                <form action="/search_food/#search" method="post">
-        {% csrf_token %}
-        <p>根据选择的属性查询菜品信息</p>
-                    <i></i>&nbsp<select name="columns">
-                        <option value="菜品编号">编号</option>
-                        <option value="菜名">菜名</option>
-                        <option value="价格">价格</option>
-                        <option value="厨师id">厨师编号</option>
-                                          </select>
-                    <input type="text" name="value">
-                    <input type="submit">
-                </form>
-    {% if searched and not food %}<p class="no-result">未查询到相关记录，请重新核对信息</p>{% endif %}
-        <table >
-        <tbody>
-        <tr>
-            {% for line in  food %}
-             <td style="display: inline-block">
-                 <p></p>编号：{{line.菜品编号}}<br>菜名：{{line.菜名}}<br>价格：{{ line.价格 }}<br>厨师编号：{{ line.厨师id.员工id }}
-             </td>
-            {% endfor %}
-        </tr>
-        </tbody>
-    </table>
-</center>
 </div>
 </div>
 

@@ -352,10 +352,11 @@ def update_client(request):
 @staff_required
 @permission_required('hotelapp.view_client', raise_exception=True)
 def search_client(request):
+    """顾客信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
     rows, searched = _search(Client, "顾客id", CLIENT_SEARCH_FIELDS, request)
+    people = rows if searched else Client.objects.order_by("顾客id")
     return render(request, "html1.html", {
-        "people_list": Client.objects.order_by("顾客id"),
-        "clients": rows,
+        "people_list": people,
         "searched": searched,
     })
 
@@ -442,10 +443,11 @@ def update_food(request):
 @staff_required
 @permission_required('hotelapp.view_food', raise_exception=True)
 def search_food(request):
+    """菜品信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
     rows, searched = _search(Food, "菜品编号", FOOD_SEARCH_FIELDS, request)
+    people = rows if searched else Food.objects.order_by("菜品编号")
     return render(request, "html4.html", {
-        "people_list": Food.objects.order_by("菜品编号"),
-        "food": rows,
+        "people_list": people,
         "searched": searched,
     })
 
@@ -532,10 +534,11 @@ def update_vip(request):
 @staff_required
 @permission_required('hotelapp.view_vip', raise_exception=True)
 def search_vip(request):
+    """会员信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
     rows, searched = _search(Vip, "会员编号", VIP_SEARCH_FIELDS, request)
+    people = rows if searched else Vip.objects.order_by("会员编号")
     return render(request, "vip.html", {
-        "people_list": Vip.objects.order_by("会员编号"),
-        "vips": rows,
+        "people_list": people,
         "searched": searched,
     })
 
@@ -620,10 +623,11 @@ def update_park(request):
 @staff_required
 @permission_required('hotelapp.view_park', raise_exception=True)
 def search_park(request):
+    """车位信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
     rows, searched = _search(Park, "车位编号", PARK_SEARCH_FIELDS, request)
+    people = rows if searched else Park.objects.order_by("车位编号")
     return render(request, "park.html", {
-        "people_list": Park.objects.order_by("车位编号"),
-        "parks": rows,
+        "people_list": people,
         "searched": searched,
     })
 
@@ -709,10 +713,11 @@ def update_room(request):
 @staff_required
 @permission_required('hotelapp.view_room', raise_exception=True)
 def search_room(request):
+    """客房信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
     rows, searched = _search(Room, "房间号", ROOM_SEARCH_FIELDS, request)
+    people = rows if searched else Room.objects.order_by("房间号")
     return render(request, "room.html", {
-        "people_list": Room.objects.order_by("房间号"),
-        "room": rows,
+        "people_list": people,
         "searched": searched,
     })
 

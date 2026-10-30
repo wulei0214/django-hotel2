@@ -53,14 +53,18 @@
         <input type="submit" value="提交">
 
 </form>{% endif %}
-</div><p>&nbsp;</p><p>&nbsp;</p>
-<div class="card">
-<center>
-<a href="/show_order/">
-    <div class="logo">
-					<h2>订单信息展示</h2>
-    </div></a>
-    <table border="1" cellspacing="0" style="width: 90%">
+</div><div class="card list-card">
+    <div class="list-toolbar">
+        <form action="/search_order/#list" method="post" class="inline-filter">
+            {% csrf_token %}
+            <select name="columns"></select>
+            <input type="text" name="value" placeholder="输入查询内容" class="input" style="width:200px !important">
+            <button type="submit" class="tb-btn tb-primary">查询</button>
+            {% if searched %}<a href="/show_order/" class="tb-btn">显示全部</a>{% endif %}
+        </form>
+        {% if searched %}<span class="search-note">查询结果 {{ people_list|length }} 条{% if not people_list %} · 未查询到相关记录，请重新核对信息{% endif %}</span>{% endif %}
+    </div>
+    <table class="data-table">
     <tr>
         <th>编号</th>
         <th>顾客编号</th>
@@ -80,9 +84,11 @@
         {% if perms.hotelapp.delete_order %}<td><center><button class="btn btn-primary delete">冲账</button></center></td>{% endif %}
         <!--<td><button class="btn btn-primary update">修改</button></td>-->
     </tr>
+    {% empty %}
+    <tr><td colspan="6" class="empty-row">未查询到相关记录，请重新核对信息</td></tr>
     {% endfor %}
-            </center>
-        <div class="page-bar">
+    </table>
+    <div class="page-bar">
             <span>共 {{ page_obj.paginator.count }} 条记录</span>
             <span class="page-nums">
                 {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">‹</a>{% endif %}
@@ -91,30 +97,6 @@
             </span>
             <span>15 条/页</span>
         </div>
-        </center>
-</div><p>&nbsp;</p><p>&nbsp;</p>
-<div class="card" id="search">
-<center>
-    <h2>根据顾客编号查询顾客餐饮消费情况</h2>
-    <form action="/search_order/#search" method="post">
-        {% csrf_token %}
-        <label>顾客编号：</label><input type="text" name="id"/>&nbsp;&nbsp;&nbsp;&nbsp;
-        <input type="submit" value="提交">
-    </form>
-    {% if searched and not food_list %}<p class="no-result">未查询到相关记录，请重新核对信息</p>{% endif %}<br/><br/>
-     <table border="1" cellspacing="0" style="width: 90%">
-    <tr>
-        <th>消费菜品</th>
-        <th>单价</th>
-    </tr>
-    {% for line in food_list %}
-    <tr>
-        <td>{{line.菜名}}</td>
-        <td>{{line.价格}}</td>
-    </tr>
-    {% endfor %}
-    </table>
-</center>
 </div>
 </div>
 

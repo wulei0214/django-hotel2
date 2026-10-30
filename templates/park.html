@@ -58,14 +58,22 @@
         <option value="有车"></option>
     </datalist>
 </form>{% endif %}
-</div><p>&nbsp;</p><p>&nbsp;</p>
-<div class="card">
-<center>
-<a href="/show_park/">
-    <div class="logo">
-					<h2>停车场信息展示</h2>
-    </div></a>
-    <table border="1" cellspacing="0" style="width: 90%">
+</div><div class="card list-card">
+    <div class="list-toolbar">
+        <form action="/search_park/#list" method="post" class="inline-filter">
+            {% csrf_token %}
+            <select name="columns">
+                        <option value="车位编号">车位编号</option>
+                        <option value="当前状态">当前状态</option>
+                        <option value="车辆牌号">车辆牌号</option>
+                                          </select>
+            <input type="text" name="value" placeholder="输入查询内容" class="input" style="width:200px !important">
+            <button type="submit" class="tb-btn tb-primary">查询</button>
+            {% if searched %}<a href="/show_park/" class="tb-btn">显示全部</a>{% endif %}
+        </form>
+        {% if searched %}<span class="search-note">查询结果 {{ people_list|length }} 条{% if not people_list %} · 未查询到相关记录，请重新核对信息{% endif %}</span>{% endif %}
+    </div>
+    <table class="data-table">
     <tr>
         <th>车位编号</th>
         <th>当前状态</th>
@@ -80,9 +88,11 @@
         {% if perms.hotelapp.delete_park %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
         {% if perms.hotelapp.change_park %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
     </tr>
+    {% empty %}
+    <tr><td colspan="5" class="empty-row">未查询到相关记录，请重新核对信息</td></tr>
     {% endfor %}
-    </center>
-        <div class="page-bar">
+    </table>
+    <div class="page-bar">
             <span>共 {{ page_obj.paginator.count }} 条记录</span>
             <span class="page-nums">
                 {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">‹</a>{% endif %}
@@ -91,35 +101,6 @@
             </span>
             <span>15 条/页</span>
         </div>
-        </center>
-</div><p>&nbsp;</p><p>&nbsp;</p>
-<div class="card" id="search">
-<center>
-	<h2><a>车位信息查询</a></h2>
-                <form action="/search_park/#search" method="post">
-        {% csrf_token %}
-        <p>根据选择的属性查询车位信息</p>
-                    <i></i>&nbsp<select name="columns">
-                        <option value="车位编号">车位编号</option>
-                        <option value="当前状态">当前状态</option>
-                        <option value="车辆牌号">车辆牌号</option>
-                                          </select>
-                    <input type="text" name="value">
-                    <input type="submit">
-                </form>
-    {% if searched and not parks %}<p class="no-result">未查询到相关记录，请重新核对信息</p>{% endif %}
-  <table >
-        <tbody >
-        <tr>
-            {% for line in  parks %}
-             <td style="display: inline-block">
-                 <a href="{{ line.url}}" target="_blank"><img src="/static/images/car.jpg" width="200" height="160" /></a><p></p>车位编号：{{line.车位编号}}<br>当前状态：{{line.当前状态}}<br>车辆牌号：{{ line.车辆牌号 }}
-             </td>
-            {% endfor %}
-        </tr>
-        </tbody>
-    </table>
-</center>
 </div>
 </div>
 

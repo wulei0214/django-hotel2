@@ -59,14 +59,22 @@
         <option value="高级会员"></option>
     </datalist>
 </form>{% endif %}
-</div><p>&nbsp;</p><p>&nbsp;</p>
-<div class="card">
-<center>
-<a href="/show_vip/">
-    <div class="logo">
-					<h2>会员信息展示</h2>
-    </div></a>
-    <table border="1" cellspacing="0" style="width: 90%">
+</div><div class="card list-card">
+    <div class="list-toolbar">
+        <form action="/search_vip/#list" method="post" class="inline-filter">
+            {% csrf_token %}
+            <select name="columns">
+                        <option value="会员编号">会员编号</option>
+                        <option value="姓名">姓名</option>
+                        <option value="会员等级">会员等级</option>
+                                          </select>
+            <input type="text" name="value" placeholder="输入查询内容" class="input" style="width:200px !important">
+            <button type="submit" class="tb-btn tb-primary">查询</button>
+            {% if searched %}<a href="/show_vip/" class="tb-btn">显示全部</a>{% endif %}
+        </form>
+        {% if searched %}<span class="search-note">查询结果 {{ people_list|length }} 条{% if not people_list %} · 未查询到相关记录，请重新核对信息{% endif %}</span>{% endif %}
+    </div>
+    <table class="data-table">
     <tr>
         <th>会员编号</th>
         <th>姓名</th>
@@ -83,9 +91,11 @@
         {% if perms.hotelapp.delete_vip %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
         {% if perms.hotelapp.change_vip %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
     </tr>
+    {% empty %}
+    <tr><td colspan="6" class="empty-row">未查询到相关记录，请重新核对信息</td></tr>
     {% endfor %}
-    </center>
-        <div class="page-bar">
+    </table>
+    <div class="page-bar">
             <span>共 {{ page_obj.paginator.count }} 条记录</span>
             <span class="page-nums">
                 {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">‹</a>{% endif %}
@@ -94,37 +104,7 @@
             </span>
             <span>15 条/页</span>
         </div>
-        </center>
-</div><p>&nbsp;</p><p>&nbsp;</p>
-<div class="card" id="search">
-<center>
-	<h2><a>会员信息查询</a></h2>
-                <form action="/search_vip/#search" method="post">
-        {% csrf_token %}
-        <p>根据选择的属性查询会员信息</p>
-                    <i></i>&nbsp<select name="columns">
-                        <option value="会员编号">会员编号</option>
-                        <option value="姓名">姓名</option>
-                        <option value="会员等级">会员等级</option>
-                                          </select>
-                    <input type="text" name="value">
-                    <input type="submit">
-                </form>
-    {% if searched and not vips %}<p class="no-result">未查询到相关记录，请重新核对信息</p>{% endif %}
-        <table >
-        <tbody>
-        <tr>
-            {% for line in  vips %}
-             <td style="display: inline-block">
-                 <p></p>会员编号：{{line.会员编号}}<br>姓名：{{line.姓名}}<br>会员等级：{{ line.会员等级 }}<br>联系方式：{{ line.联系方式}}
-             </td>
-            {% endfor %}
-        </tr>
-        </tbody>
-    </table>
-</center>
 </div>
-
 <script>
     // 图5 工具栏：添加按钮展开录入表单卡
     document.addEventListener('click', function (e) {
