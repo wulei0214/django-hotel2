@@ -15,7 +15,7 @@
 <div class="main">
     <div class="page-head">
         <h2>夜审（Night Audit）</h2>
-        <span class="page-sub">在住账务核对 · 未到(No-Show)处理 · 房费过租 · 营业日结（营业日：{{ today }}）</span>
+        <span class="page-sub">在住账务核对 · 未到订单处理 · 房费过租 · 营业日结（营业日：{{ today }}）</span>
     </div>
 
     <div class="card">
@@ -39,7 +39,7 @@
     </div>
 
     <div class="card">
-        <center><h2>② 未到（No-Show）待处理（{{ expired|length }} 单）</h2></center>
+        <center><h2>② 未到订单待处理（{{ expired|length }} 单）</h2></center>
         <table>
             <tr><th>订单号</th><th>顾客</th><th>联系电话</th><th>房间</th><th>原定入住日期</th><th>说明</th></tr>
             {% for line in expired %}

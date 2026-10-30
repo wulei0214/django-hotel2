@@ -94,7 +94,10 @@ def permission_admin_save(request):
     if group is None:
         messages.error(request, "角色不存在或不可编辑")
         return redirect("/permissions/")
-    requested = set(request.POST.getlist("perm"))
+    # 前端把勾选的权限点以逗号串放入单个隐藏域（也兼容多值提交），此处统一拆分
+    requested = set()
+    for raw in request.POST.getlist("perm"):
+        requested.update(x.strip() for x in raw.split(",") if x.strip())
     granted = requested & ALL_CODENAMES            # 白名单过滤，防伪造提权
     dropped = ALL_CODENAMES - granted
     from django.contrib.auth.models import Permission
