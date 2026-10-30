@@ -1,212 +1,148 @@
-# 酒店管理系统
+# 酒店管理系统（PMS）
 
-基于 Django 4.1 的酒店业务管理系统（Browser/Server 架构），覆盖 **员工、顾客、餐厅、客房、停车场、会员、餐饮订单、客房订单** 8 大模块的增删改查，并实现了 **顾客自助预订 → 入住 → 退房 → 冲账 → 财务报表** 的酒店核心业务闭环，同时完成了：
+本仓库正在将历史 Django 酒店 CRUD 原型，渐进式重构为以**预订、库存、在住、账务**为核心的可运营级单体酒店 PMS。
 
-- **输入约束体系**：全部字段格式校验（前端即时拦截 + 后端白名单兜底）、唯一性字段查重（身份证/手机号/菜名/车牌）
-- **操作反馈体系**：成功 toast、失败红字提示、删除二次确认、出错字段单独清空并保留已填内容
-- **角色权限（RBAC）**：前台 / 值班经理 / 财务 / 店长 四角色 + 超管，页面显隐与接口拦截双层强制
-- **界面改版**：simpleui 同款深色侧边栏 + Element UI 配色，与后台观感一致
-- **安全与性能**：登录保护、操作审计日志、查询缓存、数据库长连接（Redis/Nginx/Celery 升级路线见 `deploy_notes.md`）
+> **当前版本：PMS 2.0 Phase 1 + Phase 2 已完成代码交付。**  
+> **版本约束：PMS 3.0 仅完善现有功能、修复 Bug、处理安全/性能/兼容问题和回归，不新增业务功能。**
 
-管理后台访问 `/admin/`，前台业务系统访问 `/login/` 登录。
+## 1. 项目现状
 
-## 界面截图
+- 当前按单体酒店落地，通过 `Property` 和核心业务表的 `property_id` 为后续连锁/多物业预留隔离能力。
+- 新业务采用模块化单体、Django B/S、API-First；顾客端新页面采用 Django Template + 原生 JavaScript。
+- 新预订页为 `/reserve/`，旧版 `/booking/` 保留，员工端旧页面按业务域逐步迁移。
+- 本地模拟支付仅验证订单、支付状态和账本流转，不会真实扣款或退款。
+- OTA、公安旅业系统、真实支付服务商、POS、停车/车牌识别、电子发票/数电票暂不接入，只保留后续适配边界。
+- 不是微服务架构；当前没有独立 Next.js 前端、DRF、Celery、Redis 或消息队列。
 
-| 页面 | 截图 |
+## 2. 技术架构
+
+| 层 | 技术/模块 |
 |---|---|
-| 员工管理（侧边栏布局） | ![员工管理](docs/shot_index.png) |
-| 顾客管理 | ![顾客管理](docs/shot_client.png) |
-| 会员手机号失焦查重提示 | ![会员查重](docs/shot_vip_unique.png) |
-| 查询无结果提示 | ![查询无结果](docs/shot_search_notfound.png) |
-| 后台管理（simpleui 主题） | ![后台](docs/1.png) |
-| 主界面数据仪表盘 | ![仪表盘](docs/shot_dashboard.png) |
+| Web 框架 | Django 4.1 |
+| 架构 | 模块化单体（Modular Monolith）、B/S、API-First |
+| 页面 | Django Template + 原生 JavaScript |
+| API | Django View + JsonResponse，API v1 |
+| 管理后台 | Django Admin + django-simpleui |
+| 认证授权 | Django User / Session / Group / Permission + 员工任职/岗位授权模型 |
+| 数据库 | 默认 MySQL；配置支持 PostgreSQL / SQLite |
+| 缓存 | 当前默认 LocMemCache |
+| 业务模块 | core、identity、guests、inventory、reservations、billing、api |
+| 兼容层 | hotelapp（历史页面与尚未迁移的模块） |
 
-## 角色与权限
+详细设计见 [技术架构说明](docs/ARCHITECTURE.md)。
 
-| 角色 | 账号 / 密码 | 核心操作 | 明确禁止 |
-|---|---|---|---|
-| 前台 | `front` / `front123456` | 顾客、会员、餐饮订单、客房订单、车位的增改查；菜品、客房查看 | 删除任何记录、员工管理 |
-| 值班经理 | `manager` / `manager123456` | 前台全部操作 + 客房改价 + 订单删除（反结账/冲账权） | 员工管理 |
-| 财务 | `finance` / `finance123456` | 全部业务模块只读（对账、复核） | 任何增删改 |
-| 店长/老板 | `owner` / `owner123456` | 全部模块查看与维护（含员工管理） | 物理删除（行业底线，仅系统超管可执行） |
-| 系统超管 | `admin` / `admin` | 全部权限，含物理删除 | — |
+## 3. 当前已交付模块
 
-实现要点：
+| 模块 | 已交付内容 |
+|---|---|
+| 平台底座 | Property 物业上下文、默认物业配置 |
+| 员工身份 | StaffProfile、PropertyStaffMembership、StaffRoleAssignment，与 Django User 分离 |
+| 住客 | Guest 档案及物业内联系电话去重 |
+| 房型与客房 | RoomType、Room，房态拆分为占用/清洁/维修 |
+| 房价与库存 | RatePlan、DailyRate、RoomTypeInventory，按住宿日管理库存与价格 |
+| 预订 | Reservation、ReservationRoom，幂等键、价格快照、库存 Hold |
+| 在住模型 | Stay 数据模型已建立；完整前台入住/退房流程仍需后续接入 |
+| 账务 | Folio、Payment、LedgerEntry，不可变账本基础 |
+| API | 查房、创建预订、订单查询/取消、Mock 支付、OpenAPI JSON |
+| 顾客端 | 新增 `/reserve/`，旧 `/booking/` 保留 |
 
-- 角色即权限组，定义在 `hotelapp/migrations/0005_role_groups.py`（含权限矩阵与演示账号，可随迁移自动创建）
-- 页面显隐：模板通过 `perms.hotelapp.add_xxx` 等控制导航、录入表单、修改/删除按钮
-- 接口拦截：视图统一挂 `@staff_required`（登录 + 员工身份）与 `@permission_required('hotelapp.add_xxx', raise_exception=True)`，越权返回 403 提示页（`templates/403.html`）
-- 权限校验失败、账号停用等场景均给出中文提示
+**注意：** 历史 `hotelapp` 的员工管理、入住/退房、夜审、财务等页面尚未全部迁移到新领域服务。不要把“模型已建立”误认为“整个业务流程已经上线”。
 
-## 业务流程模块（预订 → 入住 → 退房 → 冲账 → 财务）
+## 4. 当前页面入口
 
-在 8 个基础模块之上，实现了酒店核心业务闭环：
-
-| 页面 | 路由 | 说明 |
+| 页面 | 地址 | 状态 |
 |---|---|---|
-| 主界面工作台 | `/home/` | 数据仪表盘（房间状态环形图、房型库存柱状图、预约预警、顾客证件登记、会员分布、消费统计）+ 按角色显示功能卡片 |
-| 顾客自助预订 | `/booking/` | **无需登录**：选房型、填手机号与日期提交预订（同一手机号同日防重复），房间自动转"已预订" |
-| 入住管理工作台 | `/checkin/` | 待入住预订 / 在住列表 / 近期退房；前台确认入住（可补录身份证）、退房结算（自动写入财务流水）、冲账 |
-| 财务管理 | `/finance/` | 收支流水 + 按日汇总报表（仅财务/值班经理/店长可见）；录入收支仅财务可操作 |
-| 注册 | `/register/` | 自助注册，注册即"前台"角色 |
+| 顾客端新预订 | `/reserve/` | PMS 2.0 新页面 |
+| 顾客端旧预订 | `/booking/` | 历史兼容页面 |
+| 员工登录 | `/login/` | 历史员工端 |
+| 员工工作台 | `/home/` | 历史页面 |
+| 前台入住管理 | `/checkin/` | 待接入新 Reservation / Stay / Folio 流程 |
+| Django Admin | `/admin/` | 管理员后台 |
 
-状态流转与行业规范：
+新页面与截图规则见 [界面说明](docs/UI_GUIDE.md)。仓库旧截图属于历史页面，不作为新预订页的当前效果图。
 
-```
-客房订单：预订 → 已入住 → 已退房，任意状态可「冲账」（状态=已冲账，记录冲账人/时间，不再物理删除）
-房间状态：空闲 ↔ 已预订 / 已入住 → 清洁中 → 空闲；跨状态流转需值班经理
-反结账：已退房 → 已入住，并自动删除对应收入流水（仅值班经理）
-财务报表自动排除「已冲账」记录
-```
+## 5. 业务核心规则
 
-权限对应：预订/入住/退房 → 前台与值班经理；冲账/反结账 → 值班经理；财务录入 → 财务；全局查看 → 店长。物理删除已从业务角色中移除，符合"删除永远走冲账"的行业底线。
+- 入住日期包含，离店日期不包含；价格与库存按每一个住宿日检查。
+- 预订时保存每晚成交价快照，后续调价不改变历史订单金额。
+- 同一预订请求使用 Idempotency-Key，防止重复提交。
+- 房态拆分为占用状态、清洁状态、维修状态；可售判断不能只看单一字段。
+- Reservation（预订合同）、ReservationRoom（房间明细）、Stay（实际入住）分离。
+- Folio（账单）与 Payment（支付流水）、LedgerEntry（账本凭证）分离。
+- LedgerEntry 不允许常规物理删除或直接修改；财务纠错使用红字冲销并记录原因。
+- Mock 支付只允许 dev/test 环境，生产环境不得展示模拟支付或模拟回调。
 
-## 字段约束规范（所有模块统一）
+## 6. 本地开发
 
-### 格式校验（前端 pattern 即时拦截 + 后端白名单正则兜底）
+完整步骤见 [开发与本地运行指南](docs/DEVELOPMENT_GUIDE.md)。
 
-| 字段类型 | 规则 |
-|---|---|
-| 各类编号（工号/顾客编号/会员编号/菜品编号/车位编号/房间号/订单编号） | 1-10 位纯数字（工号/顾客编号/会员编号留空自动分配） |
-| 姓名 | 2-10 位中英文 |
-| 菜名 | 2-20 位中英文或数字；客房类型 2-10 位 |
-| 月薪 / 菜品价格 | 数字，整数最多 6 位 + 最多 2 位小数 |
-| 客房价格 | 1-5 位整数（元/晚） |
-| 工龄 | 1-4 位数字 |
-| 身份证号 | 18 位，末位可为 X |
-| 联系方式 | 11 位手机号（1 开头），输入时自动剔除非数字 |
-| 车牌号 | 省份汉字 + 字母 + 5-6 位（如 黑A12345），车位空闲可留空 |
-| 入住时间 | 日期选择器，后端校验真实日期 |
-| 职务 / 会员等级 / 车位状态 | 只能取规定选项值 |
-
-### 唯一性校验（业务唯一字段）
-
-| 字段 | 说明 |
-|---|---|
-| 顾客.身份证号 | 全局唯一——同名可以，证件号不行 |
-| 会员.联系方式 | 全局唯一——一个手机号对应一个会员 |
-| 菜品.菜名 | 全局唯一 |
-| 停车场.车辆牌号 | 全局唯一（可空），同一辆车只停一个车位 |
-
-实现分三层：
-
-1. **数据库**：模型 `unique=True`（`0004` 迁移），绕过任何代码直接写库也会被拒
-2. **后端**：新增/修改前预检查（修改时排除自身），命中返回精确中文提示；同时注册在 `UNIQUE_FIELDS` 供查重接口使用
-3. **前端**：唯一字段输入框失焦即调 `/check_unique/`，输入框旁即时显示绿字"可用"/红字"已存在"；格式不合格时先提示格式错误、不做查重（避免误导）
-
-## 操作反馈规范
-
-| 场景 | 反馈 |
-|---|---|
-| 录入成功 | 顶部绿色 toast"××添加成功"（自动消失），页面自动滚动到列表区 |
-| 录入失败 | 红色错误条精确到字段；**已正确填写的字段全部保留，仅清空出错字段** |
-| 行内修改成功 | toast"修改成功"后自动刷新；编辑框自动预填当前值，不改直接保存也能通过 |
-| 行内修改失败 | 弹窗展示后端返回的精确原因，保持编辑状态 |
-| 删除 | 先弹页面内确认框（"确定删除该条记录吗？删除后不可恢复。"），确认后 toast"删除成功"并刷新 |
-| 删除被引用的数据 | 返回 400 并说明原因（如"该员工已被菜品、客房或订单信息引用"） |
-| 行内编辑键盘操作 | 编辑行内按 **回车 = 点击"完成"**，所有模块一致 |
-| 查询无结果 | 查询区显示"未查询到相关记录，请重新核对信息"，页面停留在查询区（`#search` 锚点） |
-
-## 部署
-
-1. 创建环境并安装依赖
-
-   ```bash
-   # Python 3.8+（本项目在 3.9 验证）
-   python -m venv venv
-   venv\Scripts\pip install -r requirements.txt
-   ```
-
-   依赖：`Django==4.1`、`PyMySQL==1.0.2`、`django-simpleui==2022.7.29`
-
-2. MySQL 配置（`hotel/settings.py` 中 DATABASES）
-
-   ```sql
-   CREATE DATABASE `hotel` CHARACTER SET 'utf8mb4';
-   CREATE USER 'hotelhotel'@'localhost' IDENTIFIED WITH mysql_native_password BY 'hotelhotel';
-   GRANT ALL PRIVILEGES ON hotel.* TO 'hotelhotel'@'localhost';
-   ```
-
-   演示数据可导入 `hotel.sql`（含 4 个业务演示账号所需的表结构，账号由迁移自动创建）。
-
-3. 初始化并启动
-
-   ```bash
-   python manage.py migrate          # 建表 + 创建角色组与演示账号（0005 迁移）
-   python manage.py runserver
-   ```
-
-4. 访问
-
-   - 前台业务系统：http://127.0.0.1:8000/login/
-   - 管理后台：http://127.0.0.1:8000/admin/（账号见上表，超管 `admin/admin`）
-
-## 代码结构与二次开发指引
-
-```
-hotel/                    项目配置
-  settings.py             数据库/缓存/日志/登录地址（均有注释说明如何换 Redis 等）
-  urls.py                 路由表（分组注释）
-hotelapp/
-  views.py                全部视图。文件头有结构约定：show_/insert_/update_/delete_/search_ 五件套
-                          _first_error 字段级校验、_error_context 表单回填、_search 白名单查询、
-                          UNIQUE_FIELDS 唯一字段注册表——新增模块照此模式即可
-  models.py               8 张业务表（含唯一性约束说明）
-  admin.py                后台注册与列表配置
-  audit_middleware.py     操作审计中间件（POST/删除请求写入 logs/audit.log）
-  migrations/
-    0004_...              唯一性约束迁移
-    0005_role_groups.py   角色权限矩阵 + 演示账号（权限清单即文档）
-templates/                每个页面头部注释说明该页功能；侧边栏/表单/按钮按 perms 显隐
-static/css/site.css       全站样式（分节注释：侧边栏/卡片/表单/表格/toast/确认框等）
-static/css/login_page.css 登录页专属样式
-deploy_notes.md           性能与安全的已落地项、Redis/Nginx/Celery 升级路线
-logs/audit.log            操作审计日志（自动生成）
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\Activate.ps1
+# macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+python manage.py check
+python manage.py migrate
+python manage.py runserver
 ```
 
-**新增一个业务模块的最小步骤**：models 加模型并注册 `UNIQUE_FIELDS`（如需唯一）→ makemigrations + migrate → views.py 按 `show_/insert_/update_/delete_/search_` 五件套 + `_first_error`/`_error_context` 模式实现并挂对应权限装饰器 → urls.py 注册 → 模板复制现有模块结构，菜单加入 `MENU` 列表并包 `{% if perms... %}` → 在 `0005` 风格的迁移里为各角色分配新权限。
+顾客端新页面：<http://127.0.0.1:8000/reserve/>
 
-## 历史版本说明
+默认数据库为 MySQL；也可通过环境变量切换 PostgreSQL 或 SQLite。运行前需要配置数据库连接、Django Secret、默认物业及 Mock 回调密钥。
 
-项目原始版本基于 Django 2.x + 服务端模板（原 README 见 git 历史/原仓库）。当前版本的主要变更：
+## 7. 测试与 CI
 
-- 环境升级 Django 4.1 + Python 3.9，依赖精简（移除未使用的 SQLAlchemy）
-- 修复原版多处缺陷：导航死链、删除/修改按钮失效、eval 注入、列表乱序、失败提示被吞等
-- 新增：登录与 RBAC、字段约束与唯一性、操作反馈体系、审计日志、界面改版（详见上文各节）
+```bash
+python manage.py check
+python manage.py makemigrations --check --dry-run
+python manage.py test
+```
 
+CI 检查结果以对应 PR 最新提交的 GitHub Actions 为准。SQLite CI 不替代真实 MySQL/PostgreSQL 的事务锁和并发压力测试。
 
-## PMS 2.0 重构开发状态
+## 8. 目录结构
 
-当前开发以 PMS 2.0 技术架构与项目需求说明书为目标基线。重构采用模块化单体、物业数据范围和岗位授权分离的路线；现有业务页面将分阶段迁移，不在一个提交中推翻旧功能。
+```text
+apps/
+  core/          # 物业与上下文
+  identity/      # 员工身份、任职和岗位授权
+  guests/        # 住客档案
+  inventory/     # 房型、客房、房价、日库存
+  reservations/  # 预订、预订明细、Stay
+  billing/       # Folio、Payment、LedgerEntry
+  api/           # API v1 与顾客端页面入口
+hotel/           # Django 项目配置与根路由
+hotelapp/        # 历史系统与渐进迁移兼容层
+templates/       # Django 模板
+docs/
+  ARCHITECTURE.md
+  DEVELOPMENT_GUIDE.md
+  CHANGELOG.md
+  UI_GUIDE.md
+  development/   # 分阶段开发记录
+```
 
-### Phase 1：平台底座
+## 9. 文档索引
 
-- 新增 `apps.core.Property`，单店默认物业编码为 `DEFAULT`。
-- 新增员工档案、物业任职关系和岗位授权模型。
-- 旧员工资料会回填到员工档案，但账号绑定必须人工核对后执行。
-- 岗位权限只通过物业任职关系解析，不将物业岗位组写入 `User.groups`。
-- 密钥和数据库配置改为环境变量；CI 使用 SQLite 执行系统检查、迁移检查和测试。
+- [技术架构说明](docs/ARCHITECTURE.md)
+- [本地开发指南](docs/DEVELOPMENT_GUIDE.md)
+- [界面与页面说明](docs/UI_GUIDE.md)
+- [开发变更记录](docs/CHANGELOG.md)
+- [Phase 2 预订与库存开发记录](docs/development/PMS2_PHASE2_RESERVATION_INVENTORY.md)
 
-配置请参考 `.env.example`。详细变更与迁移操作见 `docs/development/PMS2_PHASE1_BASELINE.md`。
+## 10. 推送与文档更新规范
 
-**版本边界：** PMS 2.0 完成架构和业务模块重构；3.0 只用于已交付功能的完善、Bug 修复、性能与安全缺陷修复及回归，不新增业务功能。
+每次推送必须使用中文说明：
+1. 本次新增/开发了什么；
+2. 修复了哪些 Bug 或风险；
+3. 影响哪些模块、API、数据库和配置；
+4. 测试执行结果；
+5. 界面是否变化，是否更新最新截图；
+6. 已知限制与回滚说明。
 
+文档必须与代码同一 PR 更新。不得只推送代码而不留下可追溯的中文变更说明。详见开发指南。
 
-### Phase 2：预订与库存最小闭环
+## 11. 版本路线
 
-- 新增住客、房型、物理房间、房价计划、每日房价和按日库存模型。
-- 新增 Reservation / ReservationRoom / Stay，区分预订合同与实际入住履约。
-- 新增 Folio / LedgerEntry / Payment；账本凭证不允许直接更新或删除，采用红字冲销。
-- 新增 API v1：查房、创建预订、查询预订、待支付取消、Mock 支付意向和 HMAC 模拟回调。
-- 新增库存日历同步与超时 Hold 释放管理命令。
-- Mock 支付只可用于本地开发和 CI，不产生真实扣款或资金清算。
-
-详细说明见 `docs/development/PMS2_PHASE2_RESERVATION_INVENTORY.md`。
-
-后续开发顺序：把现有前台入住/换房/续住/退房迁移到 Stay/Folio/Ledger 服务，再完成夜审与客房工作流，最后替换官网和员工工作台页面。
-
-
-### 顾客端预订页
-
-- 新版页面：`/reserve/`（Django 模板 + API）。
-- 旧版页面：`/booking/` 暂时保留，待新流程回归后再决定切换。
+- PMS 2.0：完成已确定的核心架构和业务模块闭环，按阶段迁移。
+- PMS 3.0：只做现有功能完善、Bug 修复、权限/安全/性能/兼容优化与自动化回归，不增加新业务模块。
