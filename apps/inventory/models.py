@@ -1,5 +1,6 @@
 from django.db import models
 from django.db.models import F, Q
+from django.utils.functional import cached_property
 
 
 class RoomType(models.Model):
@@ -87,7 +88,7 @@ class Room(models.Model):
     def __str__(self):
         return self.number
 
-    @property
+    @cached_property
     def is_sellable_now(self):
         return (
             self.is_active
