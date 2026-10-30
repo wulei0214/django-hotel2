@@ -262,21 +262,18 @@
             $(this).text("完成");
             var type0 = ID.next().text();
             var price0 = ID.next().next().text();
-            var waiter0 = ID.next().next().next().text();
-            ID.next().html('<input type=\"text\" class=\"type\" maxlength=\"10\" value=\"' + type0 + '\"/>');
-            ID.next().next().html('<input type=\"text\" class=\"price\" maxlength=\"5\" value=\"' + price0 + '\"/>');
-            ID.next().next().next().html('<input type=\"text\" class=\"waiter\" maxlength=\"10\" value=\"' + waiter0 + '\"/>');
+            ID.next().html('<input type="text" class="type" maxlength="10" value="' + type0 + '"/>');
+            ID.next().next().html('<input type="text" class="price" maxlength="5" value="' + price0 + '"/>');
         }
         else{
             var id = ID.html();
             var type = ID.next().children().val();
             var price = ID.next().next().children().val();
-            var waiter = ID.next().next().next().children().val();
-            if (vbad(type, VPAT.type10) || vbad(price, VPAT.price5) || vbad(waiter, VPAT.id10)) {
-                alert('客房类型为2-10位中英文或数字；价格为1-5位整数；服务员编号为1-10位数字');
+            if (vbad(type, VPAT.type10) || vbad(price, VPAT.price5)) {
+                alert('客房类型为2-10位中英文或数字；价格为1-5位整数');
                 return;
             }
-            var room = {'id':id, 'type':type, 'price': price, 'waiter':waiter};
+            var room = {'id':id, 'type':type, 'price': price};
             $.post('/update_room/', room).done(function () { showToast('修改成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
         }
     });

@@ -57,8 +57,7 @@
     <div class="list-toolbar">
         <form action="/search_order/#list" method="post" class="inline-filter">
             {% csrf_token %}
-            <select name="columns"></select>
-            <input type="text" name="value" placeholder="输入查询内容" class="input" style="width:200px !important">
+            <input type="text" name="value" placeholder="按顾客编号查询" class="input" style="width:200px !important">
             <button type="submit" class="tb-btn tb-primary">查询</button>
             {% if searched %}<a href="/show_order/" class="tb-btn">显示全部</a>{% endif %}
         </form>

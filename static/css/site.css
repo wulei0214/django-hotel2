@@ -569,3 +569,15 @@ li.warn-info .warn-level { color: #409EFF; background: #fff; border: 1px solid #
 .badge-toggle.on { background: #f0f9eb; color: #67C23A; border: 1px solid #e1f3d8; }
 .badge-toggle.off { background: #fef0f0; color: #F56C6C; border: 1px solid #fde2e2; }
 span.badge-toggle { cursor: default; }
+
+
+/* ---------- 筛选行控件尺寸规范（下拉紧凑、输入框加宽） ---------- */
+.inline-filter select, .filter-form select {
+    width: 170px !important;
+    min-width: 170px;
+}
+.inline-filter input[type="text"], .filter-form input[name="value"] {
+    width: 320px !important;
+}
+.list-card, .card.list-card { width: auto !important; margin: 0 0 20px !important; }
+.data-table { width: 100% !important; }

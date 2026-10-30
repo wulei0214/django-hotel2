@@ -56,8 +56,7 @@
     <div class="list-toolbar">
         <form action="/search_accommodation/#list" method="post" class="inline-filter">
             {% csrf_token %}
-            <select name="columns"></select>
-            <input type="text" name="value" placeholder="输入查询内容" class="input" style="width:200px !important">
+            <input type="text" name="value" placeholder="按顾客编号查询" class="input" style="width:200px !important">
             <button type="submit" class="tb-btn tb-primary">查询</button>
             {% if searched %}<a href="/show_accomodation/" class="tb-btn">显示全部</a>{% endif %}
         </form>
@@ -67,9 +66,13 @@
     <tr>
         <th>编号</th>
         <th>顾客编号</th>
+        <th>联系电话</th>
         <th>客房编号</th>
+        <th>状态</th>
         <th>入住时间</th>
-        <th>操作</th>
+        <th>退房时间</th>
+        <th>收款金额</th>
+        <th>冲账操作</th>
     </tr>
     {% for line in people_list %}
     {% if line.状态 == "已冲账" %}<tr class="voided-row"><td class="id">{{line.id}}</td>{% else %}<tr><td class="id">{{line.id}}</td>{% endif %}

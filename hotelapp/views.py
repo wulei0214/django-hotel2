@@ -698,11 +698,15 @@ def update_room(request):
         ])
         if error:
             return HttpResponse(error, status=400)
-        staff = _get_staff(request.POST.get("waiter"), "服务员")
-        if staff is None:
-            return HttpResponse("修改失败：服务员编号必须存在（职务为服务员）", status=400)
+        update_kwargs = {"客房类型": room_type, "价格": price}
+        waiter = request.POST.get("waiter")
+        if waiter:
+            staff = _get_staff(waiter, "服务员")
+            if staff is None:
+                return HttpResponse("修改失败：服务员编号必须存在（职务为服务员）", status=400)
+            update_kwargs["负责人编号"] = staff
         try:
-            updated = Room.objects.filter(房间号=rid).update(客房类型=room_type, 价格=price, 负责人编号=staff)
+            updated = Room.objects.filter(房间号=rid).update(**update_kwargs)
         except ValueError:
             return HttpResponse("修改失败：房间号和价格必须是数字", status=400)
         if not updated:
