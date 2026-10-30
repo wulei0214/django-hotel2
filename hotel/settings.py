@@ -46,6 +46,11 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "apps.core.apps.CoreConfig",
     "apps.identity.apps.IdentityConfig",
+    "apps.guests.apps.GuestsConfig",
+    "apps.inventory.apps.InventoryConfig",
+    "apps.reservations.apps.ReservationsConfig",
+    "apps.billing.apps.BillingConfig",
+    "apps.api.apps.ApiConfig",
     "hotelapp",
 ]
 
@@ -64,6 +69,11 @@ MIDDLEWARE = [
 ROOT_URLCONF = "hotel.urls"
 LOGIN_URL = "/login/"
 DEFAULT_PROPERTY_CODE = os.environ.get("DEFAULT_PROPERTY_CODE", "DEFAULT")
+PAYMENT_WEBHOOK_SECRET = os.environ.get("PAYMENT_WEBHOOK_SECRET", "")
+if not PAYMENT_WEBHOOK_SECRET:
+    if not DEBUG:
+        raise ImproperlyConfigured("生产环境必须设置 PAYMENT_WEBHOOK_SECRET。")
+    PAYMENT_WEBHOOK_SECRET = get_random_secret_key()
 
 TEMPLATES = [
     {
