@@ -202,7 +202,7 @@ class RoomTypeInventory(models.Model):
         verbose_name = "房型每日库存"
         verbose_name_plural = "房型每日库存"
 
-    @property
+    @cached_property
     def available_count(self):
         return self.total_rooms - self.held - self.sold - self.out_of_service
 
