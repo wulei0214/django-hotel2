@@ -30,10 +30,10 @@
 
     {% if can_add %}
     <div class="card">
-        <center><h2>新增收支记录</h2></center>
+        <h2>新增收支记录</h2>
         <form action="/finance_add/" method="post" style="margin:0 40px">
             {% csrf_token %}
-            {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+            {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
             <p>
                 <label>类型：</label>
                 <select name="type"><option value="收入" {% if form.type == "收入" %}selected{% endif %}>收入</option><option value="支出" {% if form.type == "支出" %}selected{% endif %}>支出</option></select>
@@ -44,14 +44,14 @@
             </p>
             <p>
                 <label>事由：</label><input type="text" name="reason" value="{{ form.reason }}" required maxlength="100" placeholder="如 餐饮收入 / 维修支出 / 采购支出" class="input" style="width:460px !important"/>
-                <button type="submit" class="register-btn" style="width:auto;padding:9px 26px;letter-spacing:2px;">保存</button>
+                <button type="submit" class="tb-btn tb-primary">保存</button>
             </p>
         </form>
     </div>
     {% endif %}
 
     <div class="card">
-        <center><h2>报表分析：按日汇总（元）</h2></center>
+        <h2>报表分析：按日汇总（元）</h2>
         <table>
             <tr><th>日期</th><th>收入</th><th>支出</th><th>结余</th></tr>
             {% for d in day_rows %}
@@ -63,7 +63,7 @@
     </div>
 
     <div class="card">
-        <center><h2>账务流水（{{ records|length }} 条）</h2></center>
+        <h2>账务流水（{{ records|length }} 条）</h2>
         <table>
             <tr><th>#</th><th>类型</th><th>金额（元）</th><th>事由</th><th>关联订单</th><th>日期</th><th>经手人</th></tr>
             {% for r in records %}

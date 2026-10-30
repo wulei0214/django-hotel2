@@ -665,3 +665,39 @@ span.badge-toggle { cursor: default; }
 }
 .list-card, .card.list-card { width: auto !important; margin: 0 0 20px !important; }
 .data-table { width: 100% !important; }
+
+
+/* ---------- 表单工具类（内联样式清退） ---------- */
+.form-error {
+    color: var(--color-danger-text);
+    background: var(--color-danger-bg);
+    border: 1px solid var(--color-danger-border);
+    border-radius: var(--radius-sm);
+    padding: 10px 16px;
+    font-size: var(--text-caption);
+}
+.w-compact { width: 200px !important; }
+.w-wide { width: 460px !important; }
+.w-date { width: 160px !important; }
+
+/* ---------- 侧边栏图标（内联清退） ---------- */
+.sidebar-menu svg, .side-user svg { flex-shrink: 0; }
+
+/* ---------- 模态（folio 弹窗） ---------- */
+.modal-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .4);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.modal-box {
+    background: var(--color-bg-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-pop);
+    padding: 20px 24px;
+    min-width: 320px;
+    max-width: 90vw;
+}

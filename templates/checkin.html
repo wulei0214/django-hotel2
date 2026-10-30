@@ -20,20 +20,20 @@
 
     <div class="card">
         <center><h2>散客直入（无预订，现场办理入住）</h2></center>
-        <form class="wi-form" style="margin:0 40px">
+        <form class="wi-form" >
             <p>
-                <label>姓名：</label><input type="text" class="wi-name" maxlength="10" placeholder="2-10 位中英文" required style="width:200px"/>
-                &nbsp;<label>手机号：</label><input type="text" class="wi-tel" maxlength="11" placeholder="选填" style="width:200px"/>
-                &nbsp;<label>身份证号：</label><input type="text" class="wi-idcard" maxlength="18" placeholder="选填" style="width:200px"/>
+                <label>姓名：</label><input type="text" class="wi-name" maxlength="10" placeholder="2-10 位中英文" required class="w-compact"/>
+                &nbsp;<label>手机号：</label><input type="text" class="wi-tel" maxlength="11" placeholder="选填" class="w-compact"/>
+                &nbsp;<label>身份证号：</label><input type="text" class="wi-idcard" maxlength="18" placeholder="选填" class="w-compact"/>
             </p>
             <p>
                 <label>房间：</label>
-                <select class="wi-room" required style="width:200px">
+                <select class="wi-room" required class="w-compact">
                     <option value="">选择空闲房间…</option>
                     {% for r in rooms %}{% if r.房间状态 == '空闲' %}<option value="{{ r.房间号 }}">{{ r.房间号 }}（{{ r.客房类型 }}，{{ r.价格 }} 元/晚）</option>{% endif %}{% endfor %}
                 </select>
-                &nbsp;<label>押金：</label><input type="text" class="wi-deposit" maxlength="9" placeholder="选填" style="width:200px"/>
-                &nbsp;<button type="button" class="btn btn-primary wi-do" style="background:#2d3a4b;border-color:#2d3a4b">登记入住</button>
+                &nbsp;<label>押金：</label><input type="text" class="wi-deposit" maxlength="9" placeholder="选填" class="w-compact"/>
+                &nbsp;<button type="button" class="btn btn-primary wi-do">登记入住</button>
             </p>
         </form>
     </div>
@@ -58,7 +58,7 @@
                         <option value="{{ r.房间号 }}">{{ r.房间号 }}（{{ r.客房类型 }}，{{ r.价格 }} 元/晚）</option>
                         {% endif %}{% endfor %}
                     </select>
-                    <input type="text" class="ck-idcard" maxlength="18" placeholder="身份证号（18位）" style="width:200px"/>
+                    <input type="text" class="ck-idcard" maxlength="18" placeholder="身份证号（18位）" class="w-compact"/>
                     <button class="btn btn-primary ck-do" data-id="{{ line.id }}">排房确认</button>
                 </td>
                 <td>{% if line.入住时间 < today %}<button class="btn btn-primary ns-do" data-id="{{ line.id }}">标记未到</button>{% else %}—{% endif %}</td>
@@ -81,7 +81,7 @@
                 <td>{{ line.客房编号.房间号 }}（{{ line.客房编号.客房类型 }}）</td>
                 <td>{{ line.联系电话 }}</td>
                 <td>{{ line.入住时间 }}</td>
-                <td><input type="text" class="ci-deposit" maxlength="9" placeholder="押金金额" style="width:200px"/><button class="btn btn-primary ci-do" data-id="{{ line.id }}">办理入住</button></td>
+                <td><input type="text" class="ci-deposit" maxlength="9" placeholder="押金金额" class="w-compact"/><button class="btn btn-primary ci-do" data-id="{{ line.id }}">办理入住</button></td>
                 <td>
                     <select class="cr-room">
                         <option value="">换房至…</option>
@@ -123,7 +123,7 @@
                 <td>{{ line.押金 }}</td>
                 <td><button class="btn btn-primary folio-btn" data-id="{{ line.id }}">查看账单</button></td>
                 <td>
-                    <input type="text" class="co-amount" maxlength="9" placeholder="收款金额" style="width:200px"/>
+                    <input type="text" class="co-amount" maxlength="9" placeholder="收款金额" class="w-compact"/>
                     <button class="btn btn-primary co-do" data-id="{{ line.id }}">退房结算</button>
                     <button class="btn btn-primary co-fast" data-id="{{ line.id }}">快捷离店</button>
                 </td>
