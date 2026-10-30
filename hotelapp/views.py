@@ -16,6 +16,7 @@ hotelapp 视图层：前台 8 大业务模块的全部页面与接口。
   * 视图统一挂 @staff_required（登录+员工身份）与 @permission_required（模块权限）
 """
 
+import csv
 import datetime
 import re
 
@@ -31,6 +32,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
+from django.core.paginator import Paginator
 from django.shortcuts import render, redirect
 
 from .models import (Staff, Room, Client, Food, Vip, Park, Order, Accommodation,
@@ -147,7 +149,47 @@ def _search(model, pk, fields, request):
 @staff_required
 @permission_required('hotelapp.view_staff', raise_exception=True)
 def index(request):
-    return render(request, "index.html", {"people_list": Staff.objects.order_by("员工id")})
+    """员工管理列表（图5）：筛选条件 + 可排序表格 + 分页（15 条/页）"""
+    order = request.GET.get("order", "asc")
+    order_field = "员工id" if order != "desc" else "-员工id"
+    status = request.GET.get("status")
+    queryset = Staff.objects.order_by(order_field)
+    if status in ("on", "off"):
+        queryset = queryset.filter(启用=(status == "on"))
+    paginator = Paginator(queryset, 15)
+    page = paginator.get_page(request.GET.get("page"))
+    return render(request, "index.html", {
+        "page_obj": page, "people_list": page.object_list, "order": order,
+        "status_filter": status or "",
+    })
+
+
+@staff_required
+@permission_required('hotelapp.change_staff', raise_exception=True)
+def staff_toggle(request):
+    """启用/停用员工（图5 是否启用列的开关）"""
+    if request.method != "POST":
+        return HttpResponse("非法请求", status=400)
+    sid = request.POST.get("id")
+    staff = Staff.objects.filter(员工id=sid).first()
+    if staff is None:
+        return HttpResponse("员工不存在", status=400)
+    staff.启用 = not staff.启用
+    staff.save()
+    return JsonResponse({"ok": True, "enabled": staff.启用})
+
+
+@staff_required
+@permission_required('hotelapp.view_staff', raise_exception=True)
+def export_staff(request):
+    """员工数据导出（CSV，UTF-8 BOM 兼容 Excel）"""
+    response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
+    response["Content-Disposition"] = 'attachment; filename="staff.csv"'
+    writer = csv.writer(response)
+    writer.writerow(["员工编号", "姓名", "职务", "月薪", "工龄", "是否启用"])
+    for s in Staff.objects.order_by("员工id"):
+        writer.writerow([s.员工id, s.姓名, s.职务, s.月薪, s.工龄, "启用" if s.启用 else "停用"])
+    return response
 
 
 @staff_required
@@ -234,7 +276,10 @@ def update_staff(request):
 @staff_required
 @permission_required('hotelapp.view_client', raise_exception=True)
 def show_client(request):
-    return render(request, "html1.html", {"people_list": Client.objects.order_by("顾客id")})
+    """顾客信息管理列表（图5）：分页 15 条/页"""
+    paginator = Paginator(Client.objects.order_by("顾客id"), 15)
+    page = paginator.get_page(request.GET.get("page"))
+    return render(request, "html1.html", {"people_list": page.object_list, "page_obj": page})
 
 
 @staff_required
@@ -319,7 +364,10 @@ def search_client(request):
 @staff_required
 @permission_required('hotelapp.view_food', raise_exception=True)
 def show_food(request):
-    return render(request, "html4.html", {"people_list": Food.objects.order_by("菜品编号")})
+    """菜品信息管理列表（图5）：分页 15 条/页"""
+    paginator = Paginator(Food.objects.order_by("菜品编号"), 15)
+    page = paginator.get_page(request.GET.get("page"))
+    return render(request, "html4.html", {"people_list": page.object_list, "page_obj": page})
 
 
 @staff_required
@@ -406,7 +454,10 @@ def search_food(request):
 @staff_required
 @permission_required('hotelapp.view_vip', raise_exception=True)
 def show_vip(request):
-    return render(request, "vip.html", {"people_list": Vip.objects.order_by("会员编号")})
+    """会员信息管理列表（图5）：分页 15 条/页"""
+    paginator = Paginator(Vip.objects.order_by("会员编号"), 15)
+    page = paginator.get_page(request.GET.get("page"))
+    return render(request, "vip.html", {"people_list": page.object_list, "page_obj": page})
 
 
 @staff_required
@@ -493,7 +544,10 @@ def search_vip(request):
 @staff_required
 @permission_required('hotelapp.view_park', raise_exception=True)
 def show_park(request):
-    return render(request, "park.html", {"people_list": Park.objects.order_by("车位编号")})
+    """车位信息管理列表（图5）：分页 15 条/页"""
+    paginator = Paginator(Park.objects.order_by("车位编号"), 15)
+    page = paginator.get_page(request.GET.get("page"))
+    return render(request, "park.html", {"people_list": page.object_list, "page_obj": page})
 
 
 @staff_required
@@ -578,7 +632,10 @@ def search_park(request):
 @staff_required
 @permission_required('hotelapp.view_room', raise_exception=True)
 def show_room(request):
-    return render(request, "room.html", {"people_list": Room.objects.order_by("房间号")})
+    """客房信息管理列表（图5）：分页 15 条/页"""
+    paginator = Paginator(Room.objects.order_by("房间号"), 15)
+    page = paginator.get_page(request.GET.get("page"))
+    return render(request, "room.html", {"people_list": page.object_list, "page_obj": page})
 
 
 @staff_required
@@ -664,7 +721,10 @@ def search_room(request):
 @staff_required
 @permission_required('hotelapp.view_order', raise_exception=True)
 def show_order(request):
-    return render(request, "order.html", {"people_list": Order.objects.order_by("id")})
+    """餐饮订单管理列表（图5）：分页 15 条/页"""
+    paginator = Paginator(Order.objects.order_by("id"), 15)
+    page = paginator.get_page(request.GET.get("page"))
+    return render(request, "order.html", {"people_list": page.object_list, "page_obj": page})
 
 
 @staff_required
@@ -753,7 +813,10 @@ def search_order(request):
 @staff_required
 @permission_required('hotelapp.view_accommodation', raise_exception=True)
 def show_accomodation(request):
-    return render(request, "accomodation.html", {"people_list": Accommodation.objects.order_by("id")})
+    """客房订单管理列表（图5）：分页 15 条/页"""
+    paginator = Paginator(Accommodation.objects.order_by("id"), 15)
+    page = paginator.get_page(request.GET.get("page"))
+    return render(request, "accomodation.html", {"people_list": page.object_list, "page_obj": page})
 
 
 @staff_required
@@ -1075,6 +1138,47 @@ def room_status_change(request):
         return JsonResponse({"ok": True, "status": target})
     return HttpResponse("非法请求", status=400)
 
+
+
+
+# 通用业务数据导出（图5 导出数据按钮）：模块白名单 + 查看权限校验
+EXPORT_MODULES = {
+    "client": ("client", Client, ["顾客编号", "姓名", "身份证号"]),
+    "food": ("food", Food, ["菜品编号", "菜名", "价格", "厨师编号"]),
+    "room": ("room", Room, ["房间号", "客房类型", "价格", "负责人编号", "房间状态"]),
+    "park": ("park", Park, ["车位编号", "当前状态", "车辆牌号"]),
+    "vip": ("vip", Vip, ["会员编号", "姓名", "会员等级", "联系方式"]),
+    "order": ("order", Order, ["订单编号", "顾客编号", "菜品编号", "服务员编号", "桌号", "状态"]),
+    "accommodation": ("accommodation", Accommodation,
+                      ["订单编号", "顾客编号", "客房编号", "入住时间", "状态", "收款金额"]),
+}
+
+
+@staff_required
+def export_module(request, module):
+    """通用业务模块 CSV 导出；按模块白名单取列并校验 view 权限"""
+    info = EXPORT_MODULES.get(module)
+    if info is None:
+        return HttpResponse("未知模块", status=404)
+    model = info[1]
+    if not request.user.has_perm(f"hotelapp.view_{module}"):
+        return HttpResponse("没有导出权限", status=403)
+    response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
+    response["Content-Disposition"] = f'attachment; filename="{module}.csv"'
+    writer = csv.writer(response)
+    writer.writerow(info[2])
+    field_names = {
+        "client": ["顾客id", "姓名", "身份证号"],
+        "food": ["菜品编号", "菜名", "价格", "厨师id"],
+        "room": ["房间号", "客房类型", "价格", "负责人编号", "房间状态"],
+        "park": ["车位编号", "当前状态", "车辆牌号"],
+        "vip": ["会员编号", "姓名", "会员等级", "联系方式"],
+        "order": ["id", "顾客编号", "菜品编号", "服务员编号", "桌号", "状态"],
+        "accommodation": ["id", "顾客id", "客房编号", "入住时间", "状态", "收款金额"],
+    }[module]
+    for row in model.objects.order_by(*[model._meta.pk.name]).values_list(*field_names):
+        writer.writerow([str(x) for x in row])
+    return response
 
 # ---------- 登录 / 注册 / 退出 / 主界面 ----------
 def _has_role(user, *names):

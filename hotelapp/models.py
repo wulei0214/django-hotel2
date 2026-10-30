@@ -175,6 +175,7 @@ class Room(models.Model):
 class Staff(models.Model):
     员工id = models.AutoField(primary_key=True)
     姓名 = models.CharField(max_length=45)
+    启用 = models.BooleanField(default=True, verbose_name="是否启用")
     职务 = models.CharField(max_length=45)
     月薪 = models.CharField(max_length=45)
     工龄 = models.CharField(max_length=45)

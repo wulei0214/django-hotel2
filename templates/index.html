@@ -27,110 +27,126 @@
 
 {% include "_sidebar.html" %}
 
-<div class="card">
-<center>
-    <!--<a href="/insert/">-->
-    <div class="logo">
-					<h2>员工信息录入</h2>
-    </div></center>
-
-<form action="/insert/" method="post" style="margin-left:40px">
-    {% csrf_token %}
-    {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
-
-     <p><label >工号&nbsp;:&nbsp;&nbsp;</label><input type="text" name="id" value="{{ form.id }}" maxlength="10" pattern="\d{1,10}" title="工号必须是1-10位数字，留空则自动分配" placeholder="1-10位数字，留空自动分配" class="input"/></p>
-     <p><label >姓名&nbsp;:&nbsp;&nbsp;</label><input type="text" name="name" value="{{ form.name }}" required minlength="2" maxlength="10" pattern="[\u4e00-\u9fa5A-Za-z·]{2,10}" title="姓名必须是2-10位中英文" placeholder="2-10位中英文" class="input"/></p>
-     <!--<i>职务</i><input type="text" name="job"/><br>-->
-
-     <p><label>职务&nbsp;:&nbsp;&nbsp;</label>&nbsp<select name="job">
-        <option value="总经理">总经理</option>
-        <option value="大堂经理">大堂经理</option>
-        <option value="厨师">厨师</option>
-        <option value="服务员">服务员</option>
-        <option value="保安">保安</option>
-     </select></p>
-     <p><label>月薪&nbsp;:&nbsp;&nbsp;</label><input type="text" name="salary" value="{{ form.salary }}" required maxlength="9" pattern="(0|[1-9]\d{0,5})(\.\d{1,2})?" title="月薪为数字，整数最多6位，最多两位小数" placeholder="如 8000 或 8000.50" class="input"/></p>
-     <p><label>工龄&nbsp;:&nbsp;&nbsp;</label><input type="text" name="time_work" value="{{ form.time_work }}" required maxlength="4" pattern="\d{1,4}" title="工龄必须是1-4位数字" placeholder="1-4位数字" class="input"/></p>
-        <p><input type="submit" value="提交"></p><br/><br/><br/>
-
-<datalist id="job-list">
-        <option value="总经理"></option>
-        <option value="大堂经理"></option>
-        <option value="厨师"></option>
-        <option value="服务员"></option>
-        <option value="保安"></option>
-    </datalist>
-</form>
-</div>
-<p>&nbsp;</p><p>&nbsp;</p>
-<div class="card">
-<a href="/index/">
-    <center>
-    <div class="logo">
-					<h2>员工信息展示</h2>
+<div class="main">
+    <div class="list-head">
+        <h2>员工管理</h2>
+        <div class="toolbar">
+            <button class="tb-btn" onclick="location.reload()">⟳ 刷新数据</button>
+            <a class="tb-btn" href="/export/staff/">⬇ 导出数据</a>
+            {% if perms.hotelapp.add_staff %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加员工</button>{% endif %}
+            {% if perms.hotelapp.change_staff %}<button class="tb-btn" id="btn-edit" disabled>✎ 编辑员工</button>{% endif %}
+        </div>
     </div>
-    </center>
-</a>
-<center>
-    <table border="1" cellspacing="0" style="width: 90%">
-    <tr>
-        <th>工号</th>
-        <th>姓名</th>
-        <th>职务</th>
-        <th>月薪/元</th>
-        <th>工龄/年</th>
-        <th colspan="2">操作</th>
-    </tr>
-    {% for line in people_list %}
-    <tr>
-        <td class="id">{{line.员工id}}</td>
-        <td>{{line.姓名}}</td>
-        <td>{{line.职务}}</td>
-        <td>{{line.月薪 }}</td>
-        <td>{{line.工龄 }}</td>
-        {% if perms.hotelapp.delete_staff %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
-        {% if perms.hotelapp.change_staff %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
-    </tr>
-    {% endfor %}
-    </table>
-</center>
-</div>
-<p>&nbsp;</p><p>&nbsp;</p>
 
+    {% if perms.hotelapp.view_staff %}
+    <details class="filter-panel" {% if status_filter or staffs %}open{% endif %}>
+        <summary>筛选条件</summary>
+        <div class="filter-body">
+            <form action="/index/" method="get" class="filter-form">
+                <label>启用状态：
+                    <select name="status">
+                        <option value="">全部</option>
+                        <option value="on" {% if status_filter == 'on' %}selected{% endif %}>启用</option>
+                        <option value="off" {% if status_filter == 'off' %}selected{% endif %}>停用</option>
+                    </select>
+                </label>
+                <button type="submit" class="tb-btn tb-primary">应用筛选</button>
+            </form>
+            <form action="/search_staff/#search" method="post" class="filter-form">
+                {% csrf_token %}
+                <label>属性查询：
+                    <select name="columns">
+                        <option value="员工id">工号</option>
+                        <option value="姓名">姓名</option>
+                        <option value="职务">职务</option>
+                        <option value="月薪">月薪</option>
+                        <option value="工龄">工龄</option>
+                    </select>
+                </label>
+                <input type="text" name="value" placeholder="查询内容" class="input" style="width:180px !important">
+                <button type="submit" class="tb-btn">查询</button>
+            </form>
+        </div>
+    </details>
 
-<div class="card" id="search">
-    <center>
-        <h2><a>员工信息查询</a></h2>
-                    <form action="/search_staff/#search" method="post">
-        {% csrf_token %}
-            <p>根据选择的属性查询员工信息</p>
-                        <i></i>&nbsp<select name="columns">
-                            <option value="员工id">工号</option>
-                            <option value="姓名">姓名</option>
-                            <option value="职务">职务</option>
-                            <option value="月薪">月薪</option>
-                            <option value="工龄">工龄</option>
-                                              </select>
-                        <input type="text" name="value">
-                        <input type="submit">
-                    </form>
-    {% if searched and not staffs %}<p class="no-result">未查询到相关记录，请重新核对信息</p>{% endif %}
-            <table >
-            <tbody>
-            <tr>
-                {% for line in  staffs %}
-                 <td style="display: inline-block">
-                     <a href="{{ line.url}}" target="_blank"><img src="/static/images/t1.jpg" width="160" height="220" /></a><p></p>编号：{{line.员工id}}<br>姓名：{{line.姓名}}<br>职务：{{ line.职务 }}<br>月薪：{{ line.月薪 }}<br>工龄：{{ line.工龄 }}
-                 </td>
-                {% endfor %}
-            </tr>
-            </tbody>
+    {% if perms.hotelapp.add_staff %}
+    <div class="card" id="form-card" style="display:none">
+        <center><h2>员工信息录入</h2></center>
+        <form action="/insert/" method="post" style="margin-left:40px">
+            {% csrf_token %}
+            {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+            <p><label>工号：</label><input type="text" name="id" value="{{ form.id }}" maxlength="10" pattern="\d{1,10}" title="工号必须是1-10位数字，留空则自动分配" placeholder="1-10位数字，留空自动分配" class="input"/></p>
+            <p><label>姓名：</label><input type="text" name="name" value="{{ form.name }}" required minlength="2" maxlength="10" pattern="[\u4e00-\u9fa5A-Za-z·]{2,10}" title="姓名必须是2-10位中英文" placeholder="2-10位中英文" class="input"/></p>
+            <p><label>职务：</label><select name="job">
+                <option value="总经理">总经理</option>
+                <option value="大堂经理">大堂经理</option>
+                <option value="厨师">厨师</option>
+                <option value="服务员">服务员</option>
+                <option value="保安">保安</option>
+            </select></p>
+            <p><label>月薪：</label><input type="text" name="salary" value="{{ form.salary }}" required maxlength="9" pattern="(0|[1-9]\d{0,5})(\.\d{1,2})?" title="月薪为数字，整数最多6位，最多两位小数" placeholder="如 8000 或 8000.50" class="input"/></p>
+            <p><label>工龄：</label><input type="text" name="time_work" value="{{ form.time_work }}" required maxlength="4" pattern="\d{1,4}" title="工龄必须是1-4位数字" placeholder="1-4位数字" class="input"/></p>
+            <p><button type="submit" class="tb-btn tb-primary">保存</button></p>
+            <datalist id="job-list">
+                <option value="总经理"></option><option value="大堂经理"></option>
+                <option value="厨师"></option><option value="服务员"></option><option value="保安"></option>
+            </datalist>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="card list-card">
+        <center>
+        <table class="data-table">
+        <tr>
+            <th class="col-check"><input type="checkbox" id="check-all"></th>
+            <th><a class="sort-link" href="?order={% if order == 'desc' %}asc{% else %}desc{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">工号 {% if order == 'desc' %}▼{% else %}▲{% endif %}</a></th>
+            <th>姓名</th>
+            <th>职务</th>
+            <th>月薪/元</th>
+            <th>工龄/年</th>
+            <th>是否启用</th>
+            <th colspan="2">操作</th>
+        </tr>
+        {% for line in people_list %}
+        <tr>
+            <td class="col-check"><input type="checkbox" class="row-check" data-id="{{ line.员工id }}"></td>
+            <td class="id">{{ line.员工id }}</td>
+            <td>{{ line.姓名 }}</td>
+            <td>{{ line.职务 }}</td>
+            <td>{{ line.月薪 }}</td>
+            <td>{{ line.工龄 }}</td>
+            <td>
+                {% if perms.hotelapp.change_staff %}
+                <button class="badge-toggle {% if line.启用 %}on{% else %}off{% endif %}" data-id="{{ line.员工id }}" title="点击切换启用/停用">
+                    {% if line.启用 %}启用{% else %}停用{% endif %}
+                </button>
+                {% else %}
+                <span class="badge-toggle {% if line.启用 %}on{% else %}off{% endif %}">{% if line.启用 %}启用{% else %}停用{% endif %}</span>
+                {% endif %}
+            </td>
+            {% if perms.hotelapp.delete_staff %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
+            {% if perms.hotelapp.change_staff %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
+        </tr>
+        {% empty %}
+        <tr><td colspan="9" class="empty-row">暂无员工记录</td></tr>
+        {% endfor %}
         </table>
-    </center>
+        </center>
+        <div class="page-bar">
+            <span>共 {{ page_obj.paginator.count }} 条记录</span>
+            <span class="page-nums">
+                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&order={{ order }}{% if status_filter %}&status={{ status_filter }}{% endif %}">‹</a>{% endif %}
+                <span class="page-cur">{{ page_obj.number }}</span>
+                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&order={{ order }}{% if status_filter %}&status={{ status_filter }}{% endif %}">›</a>{% endif %}
+            </span>
+            <span>15 条/页</span>
+        </div>
+    </div>
+    <p class="op-hint">提示：勾选行后点击“编辑员工”可进入行内编辑；点击“启用/停用”徽章切换员工状态。</p>
 </div>
-<br>
-<br>
-</body>
+{% endif %}
+
 <script src="/static/js/jquery-2.1.4.min.js"></script>
 <script>
     function getCookie(name) {

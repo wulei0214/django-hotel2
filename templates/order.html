@@ -26,7 +26,15 @@
 <div class="page">
 {% include "_sidebar.html" %}
 
-<div class="card">
+    <div class="list-head">
+        <h2>餐厅订单管理</h2>
+        <div class="toolbar">
+            <button class="tb-btn" onclick="location.reload()">⟳ 刷新数据</button>
+            <a class="tb-btn" href="/export/order/">⬇ 导出数据</a>
+            {% if perms.hotelapp.add_order %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加餐厅订单</button>{% endif %}
+        </div>
+    </div>
+<div class="card" id="form-card" style="display:none">
 <center>
 
     <div class="logo">
@@ -73,8 +81,17 @@
         <!--<td><button class="btn btn-primary update">修改</button></td>-->
     </tr>
     {% endfor %}
-    </table>
-</center>
+            </center>
+        <div class="page-bar">
+            <span>共 {{ page_obj.paginator.count }} 条记录</span>
+            <span class="page-nums">
+                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">‹</a>{% endif %}
+                <span class="page-cur">{{ page_obj.number }}</span>
+                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">›</a>{% endif %}
+            </span>
+            <span>15 条/页</span>
+        </div>
+        </center>
 </div><p>&nbsp;</p><p>&nbsp;</p>
 <div class="card" id="search">
 <center>
@@ -100,6 +117,17 @@
 </center>
 </div>
 </div>
+
+<script>
+    // 图5 工具栏：添加按钮展开录入表单卡
+    document.addEventListener('click', function (e) {
+        if (e.target.id === 'btn-add') {
+            var fc = document.getElementById('form-card');
+            if (fc) { fc.style.display = (fc.style.display === 'none') ? '' : 'none'; }
+        }
+    });
+</script>
+
 </body>
 <script src="/static/js/jquery-2.1.4.min.js"></script>
 <script>
