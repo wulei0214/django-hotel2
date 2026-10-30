@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#172d39">
+  <title>在线预订 · {{ property_name }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #18313d;
+      --muted: #6c7e86;
+      --line: #e2e9e9;
+      --paper: #f5f7f5;
+      --card: #ffffff;
+      --accent: #b37b4a;
+      --accent-dark: #875632;
+      --deep: #18323e;
+      --good: #26725d;
+      --bad: #a84e43;
+      --shadow: 0 18px 50px rgba(25, 48, 58, .08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(188, 151, 108, .14), transparent 26rem),
+        var(--paper);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.5;
+    }
+    a { color: inherit; }
+    .topbar {
+      height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(18px, 5vw, 70px);
+      border-bottom: 1px solid rgba(24, 49, 61, .08);
+      background: rgba(255,255,255,.78);
+      backdrop-filter: blur(14px);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: .03em; }
+    .brand-mark {
+      width: 34px; height: 34px; display: grid; place-items: center;
+      border: 1px solid rgba(179,123,74,.5); border-radius: 50%;
+      color: var(--accent-dark); font-family: Georgia, serif; font-size: 20px;
+    }
+    .top-note { color: var(--muted); font-size: 13px; }
+    .shell { width: min(1080px, calc(100% - 36px)); margin: 0 auto; padding: 48px 0 76px; }
+    .hero { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 24px; margin-bottom: 28px; }
+    .eyebrow { color: var(--accent-dark); font-size: 11px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
+    h1 { margin: 10px 0 8px; font-family: Georgia, "Songti SC", serif; font-size: clamp(32px, 5vw, 48px); font-weight: 500; letter-spacing: -.035em; line-height: 1.08; }
+    .hero p { max-width: 620px; margin: 0; color: var(--muted); font-size: 15px; }
+    .property-chip { padding: 9px 13px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.75); color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; align-items: start; }
+    .main-column { min-width: 0; display: grid; gap: 18px; }
+    .panel {
+      padding: clamp(18px, 3vw, 26px); border: 1px solid var(--line); border-radius: 18px;
+      background: var(--card); box-shadow: var(--shadow);
+    }
+    .panel-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 19px; }
+    h2 { margin: 0; font-size: 17px; letter-spacing: -.015em; }
+    .step { color: #a0adb1; font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+    .form-grid { display: grid; grid-template-columns: 1.1fr 1.1fr .8fr .8fr; gap: 12px; }
+    .field { display: grid; gap: 7px; }
+    label { color: #536872; font-size: 12px; font-weight: 650; }
+    input, select {
+      width: 100%; min-height: 46px; padding: 0 12px;
+      border: 1px solid #d9e2e2; border-radius: 10px; background: #fff;
+      color: var(--ink); font: inherit; font-size: 14px; outline: none;
+    }
+    input:focus, select:focus { border-color: #b98b62; box-shadow: 0 0 0 3px rgba(179,123,74,.12); }
+    .search-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 17px; }
+    .hint { color: var(--muted); font-size: 12px; }
+    button {
+      min-height: 44px; padding: 0 18px; border: 0; border-radius: 10px;
+      background: var(--deep); color: white; font: inherit; font-size: 13px;
+      font-weight: 700; cursor: pointer; transition: transform .15s, background .15s, opacity .15s;
+    }
+    button:hover:not(:disabled) { background: #274a58; transform: translateY(-1px); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    button.secondary { color: var(--ink); background: #edf1ef; }
+    button.secondary:hover:not(:disabled) { background: #e3eae6; }
+    button.gold { background: var(--accent); }
+    button.gold:hover:not(:disabled) { background: var(--accent-dark); }
+    .room-list { display: grid; gap: 12px; }
+    .room-card {
+      display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 16px;
+      padding: 17px; border: 1px solid var(--line); border-radius: 13px; background: #fff;
+    }
+    .room-card.selected { border-color: #b98b62; box-shadow: 0 0 0 3px rgba(179,123,74,.1); }
+    .room-name { margin: 0 0 5px; font-size: 15px; font-weight: 750; }
+    .room-meta { color: var(--muted); font-size: 12px; }
+    .night-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
+    .night {
+      padding: 5px 8px; border-radius: 7px; background: #f3f5f2;
+      color: #63757b; font-size: 11px;
+    }
+    .room-price { display: grid; align-content: space-between; justify-items: end; gap: 12px; min-width: 125px; }
+    .price { font-family: Georgia, serif; font-size: 25px; color: var(--ink); white-space: nowrap; }
+    .price small { font-family: inherit; color: var(--muted); font-size: 11px; }
+    .guest-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .notice {
+      min-height: 42px; margin-top: 14px; padding: 10px 12px; border-radius: 9px;
+      background: #f4f6f4; color: var(--muted); font-size: 12px;
+    }
+    .notice.error { background: #fff0ed; color: var(--bad); }
+    .notice.success { background: #edf7f2; color: var(--good); }
+    .empty {
+      padding: 27px 18px; border: 1px dashed #d4dfdd; border-radius: 12px;
+      color: var(--muted); text-align: center; font-size: 13px; background: #fbfcfa;
+    }
+    .summary { position: sticky; top: 22px; overflow: hidden; }
+    .summary-top { margin: -26px -26px 20px; padding: 24px 26px; color: #f8f4ed; background: var(--deep); }
+    .summary-top .eyebrow { color: #d5b38d; }
+    .summary-top h2 { margin-top: 8px; font-family: Georgia, serif; font-size: 22px; font-weight: 500; }
+    .summary-line { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid #edf0ee; font-size: 12px; }
+    .summary-line span:first-child { color: var(--muted); }
+    .summary-line strong { text-align: right; font-weight: 650; }
+    .summary-total { display: flex; align-items: end; justify-content: space-between; padding-top: 18px; }
+    .summary-total span { color: var(--muted); font-size: 12px; }
+    .summary-total strong { font-family: Georgia, serif; font-size: 27px; font-weight: 500; }
+    .summary .notice { margin-top: 18px; }
+    .reservation-result { display: none; }
+    .booking-no { display: inline-block; margin: 8px 0 14px; padding: 7px 10px; border-radius: 7px; background: #f4f6f3; font-family: ui-monospace, monospace; font-size: 13px; letter-spacing: .04em; }
+    .result-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+    .footer { margin-top: 25px; color: #9aa7a8; font-size: 11px; text-align: center; }
+    @media (max-width: 820px) {
+      .layout { grid-template-columns: 1fr; }
+      .summary { position: static; }
+      .summary-top { margin: -26px -26px 20px; }
+    }
+    @media (max-width: 560px) {
+      .topbar { height: 60px; }
+      .top-note { display: none; }
+      .shell { width: min(100% - 24px, 1080px); padding: 31px 0 48px; }
+      .hero { grid-template-columns: 1fr; gap: 12px; margin-bottom: 20px; }
+      .property-chip { justify-self: start; }
+      .form-grid { grid-template-columns: 1fr 1fr; }
+      .form-grid .field:last-child { grid-column: 1 / -1; }
+      .search-row { align-items: stretch; flex-direction: column; }
+      .search-row button { width: 100%; }
+      .room-card { grid-template-columns: 1fr; }
+      .room-price { grid-template-columns: 1fr auto; align-items: center; justify-items: start; }
+      .room-price button { justify-self: end; }
+      .guest-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">H</span><span>{{ property_name }}</span></div>
+    <div class="top-note">官方预订 · 实时房态 · 安心入住</div>
+  </header>
+
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <div class="eyebrow">DIRECT BOOKING</div>
+        <h1>把旅程，安排妥当。</h1>
+        <p>选择入住日期，查看当前房型与逐晚价格。提交后系统会为您暂时保留房量，并生成可查询的预订编号。</p>
+      </div>
+      <div class="property-chip">当前酒店 · {{ property_name }}</div>
+    </section>
+
+    {% if booking_unavailable %}
+      <section class="panel"><div class="notice error">当前酒店暂不可预订，请联系酒店前台。</div></section>
+    {% else %}
+      <form id="csrf-form" hidden>{% csrf_token %}</form>
+      <div class="layout">
+        <div class="main-column">
+          <section class="panel">
+            <div class="panel-head">
+              <div><div class="step">01 / STAY</div><h2>选择入住日期</h2></div>
+              <div class="step">日期按酒店当地时间</div>
+            </div>
+            <form id="search-form">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="check-in">入住日期</label>
+                  <input id="check-in" type="date" value="{{ default_check_in }}" required>
+                </div>
+                <div class="field">
+                  <label for="check-out">离店日期</label>
+                  <input id="check-out" type="date" value="{{ default_check_out }}" required>
+                </div>
+                <div class="field">
+                  <label for="rooms">房间数量</label>
+                  <select id="rooms">
+                    <option value="1">1 间</option>
+                    <option value="2">2 间</option>
+                    <option value="3">3 间</option>
+                    <option value="4">4 间</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="adults">入住成人</label>
+                  <select id="adults">
+                    <option value="1">1 人</option>
+                    <option value="2" selected>2 人</option>
+                    <option value="3">3 人</option>
+                    <option value="4">4 人</option>
+                    <option value="5">5 人</option>
+                    <option value="6">6 人</option>
+                    <option value="7">7 人</option>
+                    <option value="8">8 人</option>
+                  </select>
+                </div>
+              </div>
+              <div class="search-row">
+                <span class="hint">离店日期不计入住宿晚数与房费。</span>
+                <button id="search-button" type="submit">查询可订房型</button>
+              </div>
+            </form>
+            <div id="search-message" class="notice" role="status" aria-live="polite">请选择日期后查询可订房型。</div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div><div class="step">02 / ROOM</div><h2>选择房型</h2></div>
+              <span class="step" id="room-count-label">等待查询</span>
+            </div>
+            <div id="room-list" class="room-list">
+              <div class="empty">房型和逐晚价格会显示在这里。</div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div><div class="step">03 / GUEST</div><h2>填写入住人信息</h2></div>
+              <div class="step">仅用于本次预订联系</div>
+            </div>
+            <div class="guest-grid">
+              <div class="field">
+                <label for="guest-name">入住人姓名</label>
+                <input id="guest-name" type="text" maxlength="80" autocomplete="name" placeholder="请输入姓名">
+              </div>
+              <div class="field">
+                <label for="guest-phone">联系电话</label>
+                <input id="guest-phone" type="tel" maxlength="24" autocomplete="tel" placeholder="用于查询预订">
+              </div>
+            </div>
+            <div id="booking-message" class="notice" role="status" aria-live="polite">选择房型后即可提交预订。</div>
+            <button id="book-button" class="gold" type="button" disabled style="width:100%; margin-top:14px">提交预订</button>
+          </section>
+
+          <section id="reservation-result" class="panel reservation-result">
+            <div class="panel-head">
+              <div><div class="step">04 / CONFIRMATION</div><h2>预订已创建</h2></div>
+              <div class="step" id="reservation-status">待支付</div>
+            </div>
+            <div class="hint">请保存以下预订编号。查询或取消待支付预订时，需要同时提供联系电话。</div>
+            <div id="booking-number" class="booking-no"></div>
+            <div id="booking-detail" class="summary-line"></div>
+            <div id="payment-message" class="notice">库存已暂时保留。请在倒计时结束前完成确认。</div>
+            <div class="result-actions">
+              <button id="payment-button" class="gold" type="button">本地模拟支付成功</button>
+              <button id="cancel-button" class="secondary" type="button">取消待支付预订</button>
+            </div>
+            {% if not mock_payments_enabled %}
+              <div class="notice">当前环境未开放模拟支付；真实支付服务商尚未接入。</div>
+            {% endif %}
+          </section>
+        </div>
+
+        <aside class="panel summary">
+          <div class="summary-top">
+            <div class="eyebrow">YOUR STAY</div>
+            <h2>预订摘要</h2>
+          </div>
+          <div class="summary-line"><span>酒店</span><strong>{{ property_name }}</strong></div>
+          <div class="summary-line"><span>入住</span><strong id="summary-check-in">—</strong></div>
+          <div class="summary-line"><span>离店</span><strong id="summary-check-out">—</strong></div>
+          <div class="summary-line"><span>住宿晚数</span><strong id="summary-nights">—</strong></div>
+          <div class="summary-line"><span>房间数</span><strong id="summary-rooms">1 间</strong></div>
+          <div class="summary-line"><span>房型</span><strong id="summary-room-type">尚未选择</strong></div>
+          <div class="summary-total"><span>预计总价</span><strong id="summary-total">—</strong></div>
+          <div class="notice">最终价格以提交预订时的逐晚价格快照为准。提交后库存保留 15 分钟。</div>
+        </aside>
+      </div>
+      <div class="footer">预订服务由酒店 PMS 提供 · 个人资料仅用于本次预订与联系</div>
+
+      <script>
+        (function () {
+          const mockPaymentsEnabled = {{ mock_payments_enabled|yesno:"true,false" }};
+          const byId = function (id) { return document.getElementById(id); };
+          const searchForm = byId("search-form");
+          const searchButton = byId("search-button");
+          const checkIn = byId("check-in");
+          const checkOut = byId("check-out");
+          const roomsInput = byId("rooms");
+          const adultsInput = byId("adults");
+          const roomList = byId("room-list");
+          const bookButton = byId("book-button");
+          const bookingMessage = byId("booking-message");
+          const searchMessage = byId("search-message");
+          const reservationResult = byId("reservation-result");
+          const paymentButton = byId("payment-button");
+          const cancelButton = byId("cancel-button");
+
+          let selectedRoom = null;
+          let activeReservation = null;
+          let idempotencyKey = null;
+          let lastAvailability = [];
+
+          function element(tag, className, text) {
+            const node = document.createElement(tag);
+            if (className) node.className = className;
+            if (text !== undefined && text !== null) node.textContent = String(text);
+            return node;
+          }
+
+          function setNotice(node, message, kind) {
+            node.textContent = message;
+            node.className = "notice" + (kind ? " " + kind : "");
+          }
+
+          function csrfToken() {
+            const node = document.querySelector("#csrf-form input[name=csrfmiddlewaretoken]");
+            return node ? node.value : "";
+          }
+
+          async function requestJson(url, options) {
+            const response = await fetch(url, Object.assign({
+              headers: { "Accept": "application/json" },
+              credentials: "same-origin"
+            }, options || {}));
+            let body = {};
+            try { body = await response.json(); } catch (_) {}
+            if (!response.ok) throw new Error(body.error || ("请求失败（" + response.status + "）"));
+            return body;
+          }
+
+          function dateSummary() {
+            const nights = Math.round((new Date(checkOut.value + "T00:00:00") - new Date(checkIn.value + "T00:00:00")) / 86400000);
+            byId("summary-check-in").textContent = checkIn.value || "—";
+            byId("summary-check-out").textContent = checkOut.value || "—";
+            byId("summary-nights").textContent = nights > 0 ? (nights + " 晚") : "—";
+            byId("summary-rooms").textContent = roomsInput.value + " 间";
+          }
+
+          function renderRooms(data) {
+            roomList.replaceChildren();
+            lastAvailability = data || [];
+            selectedRoom = null;
+            idempotencyKey = null;
+            bookButton.disabled = true;
+            byId("summary-room-type").textContent = "尚未选择";
+            byId("summary-total").textContent = "—";
+            byId("room-count-label").textContent = lastAvailability.length + " 个房型";
+
+            if (!lastAvailability.length) {
+              roomList.appendChild(element("div", "empty", "当前日期没有配置可售房型或每日价格，请调整日期或联系酒店。"));
+              return;
+            }
+
+            lastAvailability.forEach(function (room) {
+              const card = element("article", "room-card");
+              const info = element("div");
+              info.appendChild(element("h3", "room-name", room.room_type_name));
+              info.appendChild(element("div", "room-meta", "最多入住人数以房型配置为准 · 剩余可订 " + room.available_count + " 间"));
+              const nights = element("div", "night-list");
+              (room.nightly_details || []).forEach(function (night) {
+                nights.appendChild(element("span", "night", night.date + " · ¥" + night.price));
+              });
+              info.appendChild(nights);
+
+              const priceBox = element("div", "room-price");
+              const price = element("div", "price");
+              price.appendChild(document.createTextNode(room.total_amount === null ? "暂不可订" : "¥" + room.total_amount));
+              if (room.total_amount !== null) price.appendChild(element("small", "", " / 合计"));
+              priceBox.appendChild(price);
+              const choose = element("button", "secondary", "选择此房型");
+              choose.type = "button";
+              choose.disabled = room.available_count < Number(roomsInput.value) || room.total_amount === null;
+              choose.addEventListener("click", function () {
+                selectedRoom = room;
+                Array.from(roomList.children).forEach(function (item) { item.classList.remove("selected"); });
+                card.classList.add("selected");
+                byId("summary-room-type").textContent = room.room_type_name;
+                byId("summary-total").textContent = "¥" + room.total_amount;
+                bookButton.disabled = false;
+                setNotice(bookingMessage, "已选择 " + room.room_type_name + "，请填写入住人信息。", "");
+              });
+              priceBox.appendChild(choose);
+              card.appendChild(info);
+              card.appendChild(priceBox);
+              roomList.appendChild(card);
+            });
+          }
+
+          async function searchAvailability(event) {
+            if (event) event.preventDefault();
+            dateSummary();
+            if (!checkIn.value || !checkOut.value || checkOut.value <= checkIn.value) {
+              setNotice(searchMessage, "请确认离店日期晚于入住日期。", "error");
+              return;
+            }
+            searchButton.disabled = true;
+            setNotice(searchMessage, "正在查询房型、逐晚价格与库存…", "");
+            const query = new URLSearchParams({
+              check_in: checkIn.value,
+              check_out: checkOut.value,
+              rooms: roomsInput.value
+            });
+            try {
+              const result = await requestJson("/api/v1/availability?" + query.toString());
+              renderRooms(result.data);
+              setNotice(searchMessage, "查询完成。价格按住宿日逐晚计算，离店日不计费。", "success");
+            } catch (error) {
+              roomList.replaceChildren(element("div", "empty", error.message));
+              setNotice(searchMessage, error.message, "error");
+            } finally {
+              searchButton.disabled = false;
+            }
+          }
+
+          async function createBooking() {
+            if (!selectedRoom) return;
+            const name = byId("guest-name").value.trim();
+            const phone = byId("guest-phone").value.trim();
+            if (!name || !phone) {
+              setNotice(bookingMessage, "请填写入住人姓名和联系电话。", "error");
+              return;
+            }
+
+            bookButton.disabled = true;
+            setNotice(bookingMessage, "正在创建预订并锁定每晚库存…", "");
+            if (!idempotencyKey) {
+              idempotencyKey = (window.crypto && crypto.randomUUID)
+                ? crypto.randomUUID()
+                : ("web-" + Date.now() + "-" + Math.random().toString(16).slice(2));
+            }
+            const payload = {
+              full_name: name,
+              phone: phone,
+              room_type_id: selectedRoom.room_type_id,
+              rate_plan_id: selectedRoom.rate_plan_id,
+              check_in: checkIn.value,
+              check_out: checkOut.value,
+              rooms: Number(roomsInput.value),
+              adults: Number(adultsInput.value),
+              children: 0
+            };
+            try {
+              const result = await requestJson("/api/v1/reservations", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-CSRFToken": csrfToken(),
+                  "Idempotency-Key": idempotencyKey
+                },
+                body: JSON.stringify(payload)
+              });
+              activeReservation = { bookingNo: result.booking_no, phone: phone };
+              byId("booking-number").textContent = result.booking_no;
+              byId("booking-detail").textContent = result.check_in + " 至 " + result.check_out +
+                " · " + result.room_count + " 间 · ¥" + result.total_amount;
+              byId("reservation-status").textContent = result.status === "PENDING" ? "待支付" : result.status;
+              byId("payment-button").hidden = !mockPaymentsEnabled;
+              byId("cancel-button").hidden = result.status !== "PENDING";
+              reservationResult.style.display = "block";
+              setNotice(byId("payment-message"), "订单已创建，库存暂时保留至 " +
+                (result.expires_at ? new Date(result.expires_at).toLocaleTimeString() : "15 分钟后") + "。", "success");
+              setNotice(bookingMessage, "预订创建成功，请保存预订编号。", "success");
+              reservationResult.scrollIntoView({ behavior: "smooth", block: "start" });
+            } catch (error) {
+              setNotice(bookingMessage, error.message, "error");
+              bookButton.disabled = false;
+            }
+          }
+
+          async function simulatePayment() {
+            if (!activeReservation) return;
+            paymentButton.disabled = true;
+            setNotice(byId("payment-message"), "正在创建本地模拟支付单…", "");
+            try {
+              const intent = await requestJson("/api/v1/payments/intents", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
+                body: JSON.stringify({
+                  booking_no: activeReservation.bookingNo,
+                  phone: activeReservation.phone
+                })
+              });
+              const sample = intent.mock_callback_example;
+              if (!sample) {
+                setNotice(byId("payment-message"), "当前环境未提供模拟回调，请使用已接入的支付方式。", "error");
+                return;
+              }
+              const payload = sample.payload;
+              const raw = JSON.stringify({
+                amount: payload.amount,
+                provider_ref: payload.provider_ref,
+                status: payload.status
+              });
+              const callback = await requestJson(sample.url, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Signature": sample.signature
+                },
+                body: raw
+              });
+              byId("reservation-status").textContent = callback.reservation_status;
+              paymentButton.hidden = true;
+              cancelButton.hidden = true;
+              setNotice(byId("payment-message"), "本地模拟支付成功。预订已确认，账本只记录一笔收款凭证。请注意：这不是真实扣款。", "success");
+            } catch (error) {
+              setNotice(byId("payment-message"), error.message, "error");
+              paymentButton.disabled = false;
+            }
+          }
+
+          async function cancelBooking() {
+            if (!activeReservation) return;
+            cancelButton.disabled = true;
+            try {
+              const result = await requestJson(
+                "/api/v1/reservations/" + encodeURIComponent(activeReservation.bookingNo) + "/cancel",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
+                  body: JSON.stringify({ phone: activeReservation.phone })
+                }
+              );
+              byId("reservation-status").textContent = result.status;
+              paymentButton.hidden = true;
+              cancelButton.hidden = true;
+              setNotice(byId("payment-message"), "待支付预订已取消，库存 Hold 已释放。", "success");
+            } catch (error) {
+              setNotice(byId("payment-message"), error.message, "error");
+              cancelButton.disabled = false;
+            }
+          }
+
+          searchForm.addEventListener("submit", searchAvailability);
+          checkIn.addEventListener("change", function () {
+            if (checkOut.value <= checkIn.value) {
+              const next = new Date(checkIn.value + "T00:00:00");
+              next.setDate(next.getDate() + 1);
+              const year = next.getFullYear();
+              const month = String(next.getMonth() + 1).padStart(2, "0");
+              const day = String(next.getDate()).padStart(2, "0");
+              checkOut.value = year + "-" + month + "-" + day;
+            }
+            dateSummary();
+          });
+          checkOut.addEventListener("change", dateSummary);
+          roomsInput.addEventListener("change", function () {
+            dateSummary();
+            if (lastAvailability.length) renderRooms(lastAvailability);
+          });
+          adultsInput.addEventListener("change", function () {
+            if (selectedRoom) {
+              const capacity = Number(adultsInput.value);
+              const maxCapacity = 8 * Number(roomsInput.value);
+              if (capacity > maxCapacity) adultsInput.value = String(maxCapacity);
+            }
+          });
+          bookButton.addEventListener("click", createBooking);
+          paymentButton.addEventListener("click", simulatePayment);
+          cancelButton.addEventListener("click", cancelBooking);
+          dateSummary();
+          searchAvailability();
+        })();
+      </script>
+    {% endif %}
+  </main>
+</body>
+</html>
