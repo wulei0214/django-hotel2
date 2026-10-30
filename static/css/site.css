@@ -701,3 +701,38 @@ span.badge-toggle { cursor: default; }
     min-width: 320px;
     max-width: 90vw;
 }
+
+
+/* ---------- 表单清晰化规范（图5 表单统一） ---------- */
+form[action*="/insert"] p, form[action*="/add"] p, .wi-form p {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+form[action*="/insert"] label, .wi-form label {
+    width: 110px;
+    text-align: right;
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+}
+form[action*="/insert"] input.input, form[action*="/insert"] select {
+    width: 320px !important;
+    max-width: 100%;
+}
+form[action*="/insert"] input[name="id"], form[action*="/insert"] input[name="table"] {
+    width: 180px !important;
+}
+form[action*="/insert"] input[name="price"], form[action*="/insert"] input[name="salary"] {
+    width: 220px !important;
+}
+form[action*="/insert"] input[type="date"] {
+    width: 180px !important;
+}
+
+/* ---------- 表格数字对齐（tabular-nums） ---------- */
+.data-table td, .info-table td, .stat-cards .sc-num, .page-bar {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 卡片满宽（信息展示区填充留白） ---------- */
+.card { width: auto !important; margin: 0 0 var(--space-4) !important; }

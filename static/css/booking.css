@@ -5,7 +5,7 @@
 body {
     margin: 0;
     background: #fff;
-    color: #232323;
+    color: var(--color-text-primary, #303133);
     font-family: "PingFang SC", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
 }
 a { color: inherit; }
@@ -76,7 +76,7 @@ a { color: inherit; }
 .hl-search label { font-size: 12px; color: #9aa3ad; margin-bottom: 5px; letter-spacing: 1px; }
 .hl-search select, .hl-search input[type="date"] {
     border: none; outline: none; font-size: 16px; font-weight: 600;
-    color: #232323; background: transparent; width: 100%;
+    color: var(--color-text-primary, #303133); background: transparent; width: 100%;
     font-family: inherit;
 }
 .hl-btn {
@@ -107,7 +107,7 @@ a { color: inherit; }
 }
 .hl-welcome-left { flex: 1.2; min-width: 300px; }
 .hl-welcome-left h2 { font-size: 24px; margin: 0 0 8px; letter-spacing: 1px; }
-.wl-sub { color: #6b7280; font-size: 14px; margin: 0 0 18px; }
+.wl-sub { color: var(--color-text-muted, #909399); font-size: 14px; margin: 0 0 18px; }
 .wl-sub a { color: #14417b; }
 .hl-promo {
     background: #14417b;
@@ -123,15 +123,15 @@ a { color: inherit; }
 }
 .hl-promo a { color: #ffd88a; font-weight: 600; }
 .hl-icons { flex: 1; min-width: 320px; display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 8px; }
-.hl-icon-item { text-align: center; color: #232323; width: 110px; }
-.hl-icon-item svg { width: 44px; height: 44px; color: #232323; display: block; margin: 0 auto 8px; }
-.hl-icon-item span { font-size: 13px; color: #4b5563; }
+.hl-icon-item { text-align: center; color: var(--color-text-primary, #303133); width: 110px; }
+.hl-icon-item svg { width: 44px; height: 44px; color: var(--color-text-primary, #303133); display: block; margin: 0 auto 8px; }
+.hl-icon-item span { font-size: 13px; color: var(--color-text-secondary, #606266); }
 
 /* ---------- 精选房型 ---------- */
 .hl-rooms, .hl-bookform { max-width: 1180px; margin: 0 auto; padding: 34px 20px 10px; }
 .hl-sec-title {
     display: flex; align-items: center; gap: 12px;
-    font-size: 20px; color: #232323; margin: 0 0 20px; letter-spacing: 1px;
+    font-size: 20px; color: var(--color-text-primary, #303133); margin: 0 0 20px; letter-spacing: 1px;
 }
 .hl-sec-title::before { content: ""; width: 4px; height: 20px; background: #14417b; border-radius: 2px; }
 .hl-room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 22px; }
@@ -159,17 +159,17 @@ a { color: inherit; }
 
 /* ---------- 预订表单 ---------- */
 .hl-success {
-    background: #eef7ee; border: 1px solid #d6ecd6; color: #2f7d32;
+    background: var(--color-success-bg, #f0f9eb); border: 1px solid var(--color-success-border, #e1f3d8); color: var(--color-success-solid, #67c23a);
     border-radius: 6px; padding: 14px 18px; text-align: center; margin-bottom: 16px;
 }
 .hl-error {
-    background: #fdeeee; border: 1px solid #f5d5d5; color: #c0392b;
+    background: var(--color-danger-bg, #fef0f0); border: 1px solid var(--color-danger-border, #fde2e2); color: var(--color-danger-solid, #f56c6c);
     border-radius: 6px; padding: 14px 18px; text-align: center; margin-bottom: 16px;
 }
 .hl-form { background: #f7f8fa; border: 1px solid #e6e9ed; border-radius: 10px; padding: 26px 30px 30px; }
 .hl-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 30px; }
 .hl-form p { margin: 14px 0; }
-.hl-form label { display: inline-block; width: 88px; color: #4b5563; font-size: 14px; }
+.hl-form label { display: inline-block; width: 88px; color: var(--color-text-secondary, #606266); font-size: 14px; }
 .hl-form input, .hl-form select {
     width: calc(100% - 96px); height: 40px;
     border: 1px solid #d6dade; border-radius: 4px;
@@ -237,7 +237,7 @@ a { color: inherit; }
 }
 .hl-ic-arrow {
     width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
-    background: #fff; color: #232323;
+    background: #fff; color: var(--color-text-primary, #303133);
     border: 1px solid #d6dade; font-size: 20px; line-height: 1;
     cursor: pointer; transition: all .2s;
 }
