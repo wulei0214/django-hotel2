@@ -69,6 +69,6 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(model_name="ledgerentry", constraint=models.CheckConstraint(check=~Q(amount=0), name="ck_ledger_amount_nonzero")),
         migrations.AddConstraint(model_name="ledgerentry", constraint=models.CheckConstraint(check=Q(void_of__isnull=True) | Q(void_reason__gt=""), name="ck_ledger_reversal_has_reason")),
         migrations.AddConstraint(model_name="payment", constraint=models.CheckConstraint(check=Q(amount__gt=0), name="ck_payment_amount_positive")),
-        migrations.AddIndex(model_name="ledgerentry", index=models.Index(fields=["property", "business_date"], name="billing_ledg_propert_9f4ef8_idx")),
-        migrations.AddIndex(model_name="ledgerentry", index=models.Index(fields=["folio", "business_date"], name="billing_ledg_folio_i_31c7c2_idx")),
+        migrations.AddIndex(model_name="ledgerentry", index=models.Index(fields=["property", "business_date"], name="idx_ledger_prop_date")),
+        migrations.AddIndex(model_name="ledgerentry", index=models.Index(fields=["folio", "business_date"], name="idx_ledger_folio_date")),
     ]

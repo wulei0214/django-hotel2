@@ -52,7 +52,7 @@ class Reservation(models.Model):
             models.CheckConstraint(check=Q(adult_count__gte=1), name="ck_reservation_adults_positive"),
         ]
         indexes = [
-            models.Index(fields=("property", "status", "check_in"), name="reservations_reserv_propert_77727c_idx"),
+            models.Index(fields=("property", "status", "check_in"), name="idx_res_prop_status_date"),
         ]
         verbose_name = "预订主单"
         verbose_name_plural = "预订主单"
@@ -129,7 +129,7 @@ class Stay(models.Model):
     class Meta:
         ordering = ("-created_at",)
         indexes = [
-            models.Index(fields=("property", "status"), name="reservations_stay_propert_1fc1d7_idx"),
+            models.Index(fields=("property", "status"), name="idx_stay_prop_status"),
         ]
         verbose_name = "实际入住记录"
         verbose_name_plural = "实际入住记录"

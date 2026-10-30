@@ -101,7 +101,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(model_name="dailyrate", constraint=models.CheckConstraint(check=Q(price__gte=0), name="ck_daily_rate_nonnegative")),
         migrations.AddConstraint(model_name="roomtypeinventory", constraint=models.UniqueConstraint(fields=("property", "room_type", "stay_date"), name="uq_inventory_property_type_date")),
         migrations.AddConstraint(model_name="roomtypeinventory", constraint=models.CheckConstraint(check=Q(total_rooms__gte=F("held") + F("sold") + F("out_of_service")), name="ck_inventory_capacity_not_exceeded")),
-        migrations.AddIndex(model_name="room", index=models.Index(fields=["property", "occupancy_status", "housekeeping_status"], name="inventory_room_propert_09dc8a_idx")),
-        migrations.AddIndex(model_name="dailyrate", index=models.Index(fields=["property", "room_type", "stay_date"], name="inventory_daily_propert_5fce20_idx")),
-        migrations.AddIndex(model_name="roomtypeinventory", index=models.Index(fields=["property", "room_type", "stay_date"], name="inventory_roomt_propert_a6a02f_idx")),
+        migrations.AddIndex(model_name="room", index=models.Index(fields=["property", "occupancy_status", "housekeeping_status"], name="idx_room_prop_occ_clean")),
+        migrations.AddIndex(model_name="dailyrate", index=models.Index(fields=["property", "room_type", "stay_date"], name="idx_rate_prop_type_date")),
+        migrations.AddIndex(model_name="roomtypeinventory", index=models.Index(fields=["property", "room_type", "stay_date"], name="idx_inv_prop_type_date")),
     ]

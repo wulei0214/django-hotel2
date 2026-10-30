@@ -80,7 +80,7 @@ class Room(models.Model):
             )
         ]
         indexes = [
-            models.Index(fields=("property", "occupancy_status", "housekeeping_status"), name="inventory_room_propert_09dc8a_idx"),
+            models.Index(fields=("property", "occupancy_status", "housekeeping_status"), name="idx_room_prop_occ_clean"),
         ]
         verbose_name = "物理客房"
         verbose_name_plural = "物理客房"
@@ -159,7 +159,7 @@ class DailyRate(models.Model):
             models.CheckConstraint(check=Q(price__gte=0), name="ck_daily_rate_nonnegative"),
         ]
         indexes = [
-            models.Index(fields=("property", "room_type", "stay_date"), name="inventory_daily_propert_5fce20_idx"),
+            models.Index(fields=("property", "room_type", "stay_date"), name="idx_rate_prop_type_date"),
         ]
         verbose_name = "每日房价"
         verbose_name_plural = "每日房价"
@@ -197,7 +197,7 @@ class RoomTypeInventory(models.Model):
             ),
         ]
         indexes = [
-            models.Index(fields=("property", "room_type", "stay_date"), name="inventory_roomt_propert_a6a02f_idx"),
+            models.Index(fields=("property", "room_type", "stay_date"), name="idx_inv_prop_type_date"),
         ]
         verbose_name = "房型每日库存"
         verbose_name_plural = "房型每日库存"

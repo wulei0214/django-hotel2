@@ -28,6 +28,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="guest",
-            index=models.Index(fields=["property", "full_name"], name="guests_guest_propert_5f0a1d_idx"),
+            index=models.Index(fields=["property", "full_name"], name="idx_guest_prop_name"),
         ),
     ]

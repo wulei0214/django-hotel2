@@ -74,6 +74,6 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(model_name="reservation", constraint=models.CheckConstraint(check=Q(adult_count__gte=1), name="ck_reservation_adults_positive")),
         migrations.AddConstraint(model_name="reservationroom", constraint=models.CheckConstraint(check=Q(check_out__gt=F("check_in")), name="ck_reservation_room_checkout_after_checkin")),
         migrations.AddConstraint(model_name="reservationroom", constraint=models.CheckConstraint(check=Q(amount__gte=0), name="ck_reservation_room_amount_nonnegative")),
-        migrations.AddIndex(model_name="reservation", index=models.Index(fields=["property", "status", "check_in"], name="reservations_reserv_propert_77727c_idx")),
-        migrations.AddIndex(model_name="stay", index=models.Index(fields=["property", "status"], name="reservations_stay_propert_1fc1d7_idx")),
+        migrations.AddIndex(model_name="reservation", index=models.Index(fields=["property", "status", "check_in"], name="idx_res_prop_status_date")),
+        migrations.AddIndex(model_name="stay", index=models.Index(fields=["property", "status"], name="idx_stay_prop_status")),
     ]

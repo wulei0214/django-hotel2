@@ -92,8 +92,8 @@ class LedgerEntry(models.Model):
     class Meta:
         ordering = ("created_at", "id")
         indexes = [
-            models.Index(fields=("property", "business_date"), name="billing_ledg_propert_9f4ef8_idx"),
-            models.Index(fields=("folio", "business_date"), name="billing_ledg_folio_i_31c7c2_idx"),
+            models.Index(fields=("property", "business_date"), name="idx_ledger_prop_date"),
+            models.Index(fields=("folio", "business_date"), name="idx_ledger_folio_date"),
         ]
         constraints = [
             models.CheckConstraint(check=~Q(amount=0), name="ck_ledger_amount_nonzero"),

@@ -23,7 +23,7 @@ class Guest(models.Model):
             )
         ]
         indexes = [
-            models.Index(fields=("property", "full_name"), name="guests_guest_propert_5f0a1d_idx"),
+            models.Index(fields=("property", "full_name"), name="idx_guest_prop_name"),
         ]
         verbose_name = "住客档案"
         verbose_name_plural = "住客档案"
