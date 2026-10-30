@@ -236,3 +236,14 @@ docs/
 - **筛选控件尺寸规范**：下拉选择框固定紧凑宽度（170px），文本输入框加宽（320px）；餐饮订单/客房订单移除空的属性下拉，输入框按查询字段提示
 - **入住管理统一样式**：5 张表格统一 `data-table` 样式，散客直入表单输入框宽度统一
 - **表格满宽**：数据表格 100% 填充卡片宽度，消除右侧留白
+
+## 设计令牌体系落地（site.css 重构）
+
+全站样式迁移到 `:root` 双层设计令牌（Primitives → Semantics），285 处引用：
+
+- **色彩**：交互蓝（--color-accent-solid）、品牌暖金（--color-gold-solid）、状态四色（成功/警告/危险各含 solid/text/bg/border 四角色）、文字三级、边框两级、背景四级——全部经语义令牌引用，硬编码清零
+- **字体体系**：`--font-display`（宋体栈：Noto Serif SC → 系统宋体回退，用于页名/板块标题）+ `--font-body`（黑体栈，正文/表单/数据）；字号收敛为 5 档（xs 12 / caption 13 / body 14 / heading 16 / title 20）
+- **圆角**：sm 4 / md 6 / lg 10 三档（原 9 种归阶）
+- **阴影**：三层 shadow token（边框环+微升+纵深，better-ux 规范）替代 6 种散点阴影
+- **布局**：`--sidebar-w` 单一定义；间距 4px 基数令牌
+- **结构修复**：logout-btn/form 与 .empty-row 重复定义清理、data-table 宽度双定义收敛、移除死文件 my.css 及 8 处引用、7 个废弃 CSS 引用清退（superfish 等——旧导航已移除）、site.css 缓存版本统一 `?v=7`
