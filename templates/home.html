@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <title>主界面 - 酒店管理系统</title>
     <link rel="stylesheet" href="/static/css/site.css?v=6">
-    <script src="/static/js/echarts.min.js"></script>
+    </div>
+<script src="/static/js/echarts.min.js"></script>
 </head>
 <body>
 {% if messages %}
@@ -110,26 +111,6 @@
         </div>
     </section>
 
-    <h3 class="at-sec-title">功能模块</h3>
-    <div class="module-grid">
-        {% for c in cards %}
-        <a class="module-card at-card" href="{{ c.url }}">
-            <div class="module-title">{{ c.title }}</div>
-            <div class="module-desc">{{ c.desc }}</div>
-            <div class="module-go">进入 ›</div>
-        </a>
-        {% endfor %}
-        {% if user.is_superuser %}
-        <a class="module-card at-card" href="/admin/" target="_blank">
-            <div class="module-title">后台管理</div>
-            <div class="module-desc">管理员后台（用户 / 角色组 / 数据）</div>
-            <div class="module-go">进入 ›</div>
-        </a>
-        {% endif %}
-    </div>
-
-    <p class="op-hint">提示：点击卡片进入对应功能模块；菜单可随时切换。顾客预订页：<a href="/booking/" target="_blank">/booking/</a></p>
-</div>
 <script src="/static/js/echarts.min.js"></script>
 <script>
     // 仪表盘：从后端注入的数据初始化 ECharts 图表
@@ -165,10 +146,10 @@
         chart.setOption({
             color: ['#409EFF', '#67C23A'],
             tooltip: { trigger: 'axis' },
-            legend: { bottom: 0, data: ['总房数', '可用房数'], textStyle: { color: '#606266', fontSize: 12 } },
-            grid: { left: 34, right: 12, top: 18, bottom: 44 },
+            legend: { top: 0, data: ['总房数', '可用房数'], textStyle: { color: '#606266', fontSize: 12 } },
+            grid: { left: 34, right: 20, top: 40, bottom: 64 },
             xAxis: { type: 'category', data: dashRoomType.map(function (r) { return r.name; }),
-                     axisLabel: { color: '#606266', interval: 0, rotate: 24, fontSize: 11 },
+                     axisLabel: { color: '#606266', interval: 0, rotate: 32, fontSize: 11 },
                      axisLine: { lineStyle: { color: '#dcdfe6' } } },
             yAxis: { type: 'value', minInterval: 1, axisLabel: { color: '#606266' },
                      splitLine: { lineStyle: { color: '#ebeef5' } } },
