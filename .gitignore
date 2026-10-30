@@ -31,3 +31,9 @@ Thumbs.db
 
 # 环境变量（本地密钥，禁止提交）
 .env
+
+# P0 遗留实现已归档至 refs/snapshots，不随 PMS2 分支分发（见 docs/P0修复与最小预订链路.md）
+hotelapp/api.py
+hotelapp/services/
+hotelapp/migrations/0010_p0_hardening.py
+hotelapp/migrations/0011_backfill_p0_data.py
