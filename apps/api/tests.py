@@ -2,13 +2,14 @@ import json
 from datetime import timedelta
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from apps.core.models import Property
 from apps.inventory.models import DailyRate, RatePlan, RoomType, RoomTypeInventory
 
 
+@override_settings(DEBUG=True, DJANGO_ENV="test", PAYMENT_WEBHOOK_SECRET="api-test-webhook-secret")
 class PublicBookingApiTests(TestCase):
     def setUp(self):
         self.property = Property.objects.get(code="DEFAULT")
