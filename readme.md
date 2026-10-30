@@ -160,3 +160,11 @@ docs/
 > 参考：[WorkOS – RBAC Best Practices](https://workos.com/blog/rbac-best-practices)、
 > [Pathlock – RBAC Comprehensive Guide](https://pathlock.com/blog/role-based-access-control-rbac)、
 > [Mews Role-based permissions](https://help.mews.com/s/article/Role-based-permissions-FAQ?language=en_US)
+
+## 系统环境配置信息（`/system/`）
+
+参照商用 PMS 的「个人中心 / 系统信息」页设计的登录后信息页（左侧菜单 → 系统信息）：
+
+- **欢迎横幅**：姓名 + 角色徽章 + 账号 + 登录时间
+- **当前账号信息卡**：账号编号（`AD-<用户ID>` 补零格式）、姓名、登录账号、角色、超管标志、账号状态
+- **系统环境配置信息卡**：服务器版本、API 基址（`/api/v1/` 绝对地址）、运行模式（development/production）、时区、浏览器语言、系统语言、会话生效/过期时间与剩余有效期（基于 `SESSION_COOKIE_AGE` 与 `user.last_login` 计算）

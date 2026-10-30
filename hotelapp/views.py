@@ -19,6 +19,8 @@ hotelapp 视图层：前台 8 大业务模块的全部页面与接口。
 import datetime
 import re
 
+from django.utils import timezone
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
@@ -1623,3 +1625,32 @@ def night_audit_run(request):
         messages.success(request, f"夜审完成：在住 {living.count()} 单，过租 {total:.2f} 元，未到处理 {noshow} 单")
         return redirect("/nightaudit/")
     return HttpResponse("非法请求", status=400)
+
+
+# ---------- 系统环境配置信息（图4） ----------
+@staff_required
+def system_info(request):
+    """个人与系统环境信息页：管理员信息 + 运行环境 + 会话生命周期"""
+    user = request.user
+    role = _role_name(user)
+    last_login = user.last_login or timezone.now()
+    session_age = int(settings.SESSION_COOKIE_AGE)
+    expire_at = last_login + datetime.timedelta(seconds=session_age)
+    remain_seconds = max(0, int((expire_at - timezone.now()).total_seconds()))
+    hours, rem = divmod(remain_seconds, 3600)
+    minutes = rem // 60
+    browser_lang = (request.META.get("HTTP_ACCEPT_LANGUAGE") or "-").split(",")[0]
+    ctx = {
+        "tz": settings.TIME_ZONE,
+        "admin_no": f"AD-{user.id:08d}",
+        "full_name": user.first_name or user.username,
+        "role": role,
+        "api_base": request.build_absolute_uri("/api/v1/"),
+        "run_mode": "development" if settings.DEBUG else "production",
+        "browser_lang": browser_lang,
+        "sys_lang": settings.LANGUAGE_CODE,
+        "login_at": timezone.localtime(last_login).strftime("%Y-%m-%d %H:%M:%S"),
+        "expire_at": timezone.localtime(expire_at).strftime("%Y-%m-%d %H:%M:%S"),
+        "remain": f"{hours}h {minutes}m",
+    }
+    return render(request, "system.html", ctx)

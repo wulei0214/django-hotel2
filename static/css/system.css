@@ -1,0 +1,41 @@
+/* 系统信息页专属样式（图4） */
+.sys-welcome {
+    background: linear-gradient(135deg, #e8f1fd 0%, #f0f6ff 100%);
+    border-radius: 10px;
+    padding: 26px 32px;
+    margin-bottom: 20px;
+}
+.sys-welcome h2 { margin: 0 0 12px; color: #303133; font-size: 22px; }
+.sys-badges { display: flex; gap: 10px; flex-wrap: wrap; }
+.badge-role {
+    background: #409EFF;
+    color: #fff;
+    font-size: 12px;
+    padding: 3px 12px;
+    border-radius: 4px;
+}
+.badge-item {
+    background: #fff;
+    border: 1px solid #dcdfe6;
+    color: #606266;
+    font-size: 12px;
+    padding: 3px 12px;
+    border-radius: 4px;
+}
+.sys-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+.info-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.info-table th, .info-table td {
+    border: 1px solid #ebeef5;
+    padding: 11px 14px;
+    text-align: left;
+}
+.info-table th { width: 160px; background: #f8f9fb; color: #606266; font-weight: 600; }
+.info-table td { color: #303133; }
+.badge-ok {
+    background: #f0f9eb;
+    color: #67C23A;
+    border: 1px solid #e1f3d8;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+}

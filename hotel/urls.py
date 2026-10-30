@@ -61,6 +61,7 @@ urlpatterns = [
     path('finance_add/', views.finance_add),
     path('check_unique/', views.check_unique),
     path('permissions/', permission_admin.permission_admin_page),
+    path('system/', views.system_info),
     path('permissions/save/', permission_admin.permission_admin_save),
     path('index/', views.index),
     path('insert/', views.insert),
