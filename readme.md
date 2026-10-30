@@ -146,3 +146,17 @@ docs/
 
 - PMS 2.0：完成已确定的核心架构和业务模块闭环，按阶段迁移。
 - PMS 3.0：只做现有功能完善、Bug 修复、权限/安全/性能/兼容优化与自动化回归，不增加新业务模块。
+
+## 权限分配管理（超管专属，`/permissions/`）
+
+参照主流 RBAC 管理台（若依、Mews Role-based Permissions 等）的通用交互实现的权限分配页：
+
+- **角色中心制**：以角色（前台 / 值班经理 / 财务 / 店长）为分配对象，不逐用户授权；角色编号 `R-<组ID>` 展示
+- **左栏 菜单管理**：模块勾选 = `view` 权限 = 侧边栏菜单可见性，父子联动
+- **右栏 功能权限卡片**：每模块 查看/新增/修改/删除 四个权限点 + 单卡全选，实时统计已选数量
+- **保存**：整体覆盖该角色 `hotelapp` 权限集合；服务端按白名单过滤防伪造提权；变更写入审计日志
+- **护栏**：仅超管可访问；前端隐藏按钮不是权限控制，接口层 `permission_required` 双重强制
+
+> 参考：[WorkOS – RBAC Best Practices](https://workos.com/blog/rbac-best-practices)、
+> [Pathlock – RBAC Comprehensive Guide](https://pathlock.com/blog/role-based-access-control-rbac)、
+> [Mews Role-based permissions](https://help.mews.com/s/article/Role-based-permissions-FAQ?language=en_US)

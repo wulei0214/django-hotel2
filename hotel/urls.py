@@ -29,6 +29,7 @@ from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import RedirectView
 from hotelapp import views
+from apps.identity import permission_admin
 from apps.api import pages as api_pages
 
 urlpatterns = [
@@ -59,6 +60,8 @@ urlpatterns = [
     path('finance/', views.finance_manage),
     path('finance_add/', views.finance_add),
     path('check_unique/', views.check_unique),
+    path('permissions/', permission_admin.permission_admin_page),
+    path('permissions/save/', permission_admin.permission_admin_save),
     path('index/', views.index),
     path('insert/', views.insert),
     path('insert_client/', views.insert_client),
