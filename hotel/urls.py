@@ -29,9 +29,11 @@ from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import RedirectView
 from hotelapp import views
+from apps.api import pages as api_pages
 
 urlpatterns = [
     path('api/v1/', include('apps.api.urls')),
+    path('reserve/', api_pages.public_booking_page, name='public_booking_page'),
     path('admin/', admin.site.urls),
     path('', views.home),
     path('home/', views.home),

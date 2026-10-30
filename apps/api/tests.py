@@ -149,3 +149,11 @@ class PublicBookingApiTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()["provider"], "mock")
         self.assertIn("mock_callback_example", response.json())
+
+
+    def test_public_reserve_page_renders_template(self):
+        response = self.client.get("/reserve/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "public/booking.html")
+        self.assertContains(response, "查询可订房型")
+        self.assertContains(response, "/api/v1/availability")

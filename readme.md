@@ -204,3 +204,9 @@ logs/audit.log            操作审计日志（自动生成）
 详细说明见 `docs/development/PMS2_PHASE2_RESERVATION_INVENTORY.md`。
 
 后续开发顺序：把现有前台入住/换房/续住/退房迁移到 Stay/Folio/Ledger 服务，再完成夜审与客房工作流，最后替换官网和员工工作台页面。
+
+
+### 顾客端预订页
+
+- 新版页面：`/reserve/`（Django 模板 + API）。
+- 旧版页面：`/booking/` 暂时保留，待新流程回归后再决定切换。

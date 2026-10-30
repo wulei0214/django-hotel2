@@ -127,7 +127,10 @@ def _create_reservation(
     )
 
     nightly_rates = availability["nightly_details"]
-    per_room_amount = amount / rooms
+    per_room_amount = sum(
+        (Decimal(item["price"]) for item in nightly_rates),
+        start=Decimal("0.00"),
+    )
     for _ in range(rooms):
         ReservationRoom.objects.create(
             property=property_obj,
