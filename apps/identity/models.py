@@ -124,6 +124,8 @@ class StaffRoleAssignment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        verbose_name = "岗位角色分配"
+        verbose_name_plural = verbose_name
         ordering = ("membership_id", "group_id", "starts_at")
         constraints = [
             models.UniqueConstraint(

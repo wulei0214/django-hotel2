@@ -17,6 +17,8 @@ class RoomType(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name = "房型"
+        verbose_name_plural = verbose_name
         ordering = ("code",)
         constraints = [
             models.UniqueConstraint(
@@ -73,6 +75,8 @@ class Room(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name = "房间"
+        verbose_name_plural = verbose_name
         ordering = ("number",)
         constraints = [
             models.UniqueConstraint(
@@ -113,6 +117,8 @@ class RatePlan(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name = "价格计划"
+        verbose_name_plural = verbose_name
         ordering = ("code",)
         constraints = [
             models.UniqueConstraint(
@@ -150,6 +156,8 @@ class DailyRate(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name = "每日房价"
+        verbose_name_plural = verbose_name
         ordering = ("stay_date",)
         constraints = [
             models.UniqueConstraint(
@@ -185,6 +193,8 @@ class RoomTypeInventory(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name = "房型每日库存"
+        verbose_name_plural = verbose_name
         ordering = ("stay_date",)
         constraints = [
             models.UniqueConstraint(

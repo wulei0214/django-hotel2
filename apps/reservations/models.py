@@ -38,6 +38,8 @@ class Reservation(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name = "预订主单"
+        verbose_name_plural = verbose_name
         ordering = ("-created_at",)
         constraints = [
             models.UniqueConstraint(
@@ -90,6 +92,8 @@ class ReservationRoom(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        verbose_name = "预订房间"
+        verbose_name_plural = verbose_name
         ordering = ("id",)
         constraints = [
             models.CheckConstraint(
@@ -127,6 +131,8 @@ class Stay(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name = "在住记录"
+        verbose_name_plural = verbose_name
         ordering = ("-created_at",)
         indexes = [
             models.Index(fields=("property", "status"), name="idx_stay_prop_status"),

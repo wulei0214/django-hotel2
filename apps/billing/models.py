@@ -90,6 +90,8 @@ class LedgerEntry(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        verbose_name = "账本凭证"
+        verbose_name_plural = verbose_name
         ordering = ("created_at", "id")
         indexes = [
             models.Index(fields=("property", "business_date"), name="idx_ledger_prop_date"),

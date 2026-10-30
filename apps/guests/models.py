@@ -15,6 +15,8 @@ class Guest(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name = "住客档案"
+        verbose_name_plural = verbose_name
         ordering = ("id",)
         constraints = [
             models.UniqueConstraint(
