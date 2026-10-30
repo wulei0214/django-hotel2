@@ -373,3 +373,26 @@ def openapi_document(request):
             },
         }
     )
+
+
+
+@require_POST
+def reservation_cancel(request, booking_no):
+    property_obj = getattr(request, "property", None)
+    try:
+        body = _body(request)
+        reservation, changed = cancel_pending_reservation(
+            property_obj=property_obj,
+            booking_no=booking_no,
+            phone=body.get("phone", ""),
+        )
+    except ReservationConflict as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    return JsonResponse({
+        "booking_no": reservation.booking_no,
+        "status": reservation.status,
+        "changed": changed,
+    })
