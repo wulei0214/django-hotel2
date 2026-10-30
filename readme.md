@@ -190,3 +190,17 @@ logs/audit.log            操作审计日志（自动生成）
 配置请参考 `.env.example`。详细变更与迁移操作见 `docs/development/PMS2_PHASE1_BASELINE.md`。
 
 **版本边界：** PMS 2.0 完成架构和业务模块重构；3.0 只用于已交付功能的完善、Bug 修复、性能与安全缺陷修复及回归，不新增业务功能。
+
+
+### Phase 2：预订与库存最小闭环
+
+- 新增住客、房型、物理房间、房价计划、每日房价和按日库存模型。
+- 新增 Reservation / ReservationRoom / Stay，区分预订合同与实际入住履约。
+- 新增 Folio / LedgerEntry / Payment；账本凭证不允许直接更新或删除，采用红字冲销。
+- 新增 API v1：查房、创建预订、查询预订、待支付取消、Mock 支付意向和 HMAC 模拟回调。
+- 新增库存日历同步与超时 Hold 释放管理命令。
+- Mock 支付只可用于本地开发和 CI，不产生真实扣款或资金清算。
+
+详细说明见 `docs/development/PMS2_PHASE2_RESERVATION_INVENTORY.md`。
+
+后续开发顺序：把现有前台入住/换房/续住/退房迁移到 Stay/Folio/Ledger 服务，再完成夜审与客房工作流，最后替换官网和员工工作台页面。
