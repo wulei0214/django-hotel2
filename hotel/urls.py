@@ -60,6 +60,8 @@ urlpatterns = [
     path('finance/', views.finance_manage),
     path('finance_add/', views.finance_add),
     path('check_unique/', views.check_unique),
+    path('client/reveal_id/', views.client_reveal_id),
+    path('vip/reveal_tel/', views.vip_reveal_tel),
     path('permissions/', permission_admin.permission_admin_page),
     path('system/', views.system_info),
     path('staff_toggle/', views.staff_toggle),

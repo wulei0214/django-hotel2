@@ -1,12 +1,13 @@
 <!-- 会员信息管理：录入（手机号唯一且 11 位，失焦查重）/ 展示 / 查询 / 行内编辑删除 -->
 <!DOCTYPE html>
+{% load pms_filters %}
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>酒店信息管理系统</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=9">
+<link rel="stylesheet" href="/static/css/site.css?v=10">
 </head>
 <body>
 {% if messages %}
@@ -78,7 +79,7 @@
         <td class="id">{{line.会员编号}}</td>
         <td>{{line.姓名}}</td>
         <td>{{line.会员等级}}</td>
-        <td>{{line.联系方式 }}</td>
+        <td class="pii-cell">{{line.联系方式|mask_tel}}</td>
         {% if perms.hotelapp.delete_vip %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
         {% if perms.hotelapp.change_vip %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
     </tr>
@@ -124,9 +125,14 @@
         if ($(this).text() == "修改") {
             $(this).text("完成");
             var rank0 = ID.next().next().text();
-            var tel0 = ID.next().next().next().text();
+            // 联系方式列表为遮罩值（V2 P1-1）；编辑态经 reveal 接口取完整值（服务端审计）
             ID.next().next().html('<input type=\"text\" class=\"rank\" maxlength=\"4\" list=\"rank-list\" value=\"' + rank0 + '\"/>');
-            ID.next().next().next().html('<input type=\"text\" class=\"tel\" maxlength=\"11\" value=\"' + tel0 + '\"/>');
+            var idCell = ID.text();
+            var telInput = ID.next().next().next();
+            telInput.html('<input type=\"text\" class=\"tel\" maxlength=\"11\" placeholder=\"加载中...\"/>');
+            $.post('/vip/reveal_tel/', {'id': idCell, csrfmiddlewaretoken: getCookie('csrftoken')})
+                .done(function (res) { telInput.children().val(res.tel); })
+                .fail(function (xhr) { showToast(xhr.responseText || '无法读取联系方式完整值', 'error'); });
         }
         else{
             var id = ID.html();

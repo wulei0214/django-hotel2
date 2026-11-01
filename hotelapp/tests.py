@@ -5,7 +5,7 @@
 from django.contrib.auth.models import Group, User
 from django.test import TestCase
 
-from hotelapp.models import Accommodation, Client, Food, Order, Room, Staff
+from hotelapp.models import Accommodation, Client, Food, Folio, Order, Room, Staff
 
 
 def _make_user(username, group_name, membership_status="ACTIVE"):
@@ -359,3 +359,144 @@ class FolioAccessGateTests(TestCase):
         self.client.force_login(self.fd)
         response = self.client.get("/folio/", {"id": self.acc.id})
         self.assertEqual(response.status_code, 200)
+
+
+class SensitiveFieldMaskingTests(TestCase):
+    """V2 P1-1/P1-2：字段级遮罩 + reveal 审计（DATA-03/Q-01/Q-02 推荐口径）"""
+
+    def setUp(self):
+        self.fd = _make_user("fd701", "前台")
+        self.fin = _make_user("fin701", "财务")
+        self.client_fd = Client.objects.create(姓名="遮罩测试客",
+                                               身份证号="110101199001010011")
+
+    def test_list_renders_masked_idcard_only(self):
+        """DATA-03：响应体不得包含完整身份证（HTML 为遮罩值）"""
+        self.client.force_login(self.fd)
+        response = self.client.get("/show_client/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("110101199001010011", response.content.decode("utf-8"),
+                         "完整身份证不得出现在 HTML 中")
+        self.assertIn("11**************11", response.content.decode("utf-8"),
+                      "应渲染前2后2遮罩值")
+
+    def test_reveal_requires_change_permission(self):
+        """完整值仅限持修改权岗位（前台/经理）；财务只读 403"""
+        self.client.force_login(self.fin)
+        response = self.client.post("/client/reveal_id/", {"id": self.client_fd.顾客id})
+        self.assertEqual(response.status_code, 403, "财务无 change_client 不得 reveal")
+
+        self.client.force_login(self.fd)
+        response = self.client.post("/client/reveal_id/", {"id": self.client_fd.顾客id})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["identify"], "110101199001010011")
+
+    def test_vip_tel_mask_and_reveal(self):
+        from hotelapp.models import Vip
+        vip = Vip.objects.create(姓名="遮罩会员", 会员等级="普通会员", 联系方式="13812345678")
+        self.client.force_login(self.fd)
+        page = self.client.get("/show_vip/")
+        self.assertNotIn("13812345678", page.content.decode("utf-8"))
+        self.assertIn("138****5678", page.content.decode("utf-8"))
+
+        response = self.client.post("/vip/reveal_tel/", {"id": vip.会员编号})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["tel"], "13812345678")
+
+    def test_client_export_contains_masked_idcard(self):
+        """CSV 导出身份证列输出遮罩值（完整值导出默认禁止，V2 §7.1）"""
+        self.client.force_login(self.fd)
+        self.fd.groups.add(Group.objects.get(name="财务"))  # 借财务的 export_pii
+        response = self.client.get("/export/client/")
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8-sig")
+        self.assertNotIn("110101199001010011", body, "CSV 不得包含完整身份证")
+        self.assertIn("11**************11", body)
+
+
+class ExpressCheckoutBalanceTests(TestCase):
+    """V2 E-05/MGR-03：快捷退房的资金差异拦截"""
+
+    def setUp(self):
+        self.fd = _make_user("fd801", "前台")
+        self.client.force_login(self.fd)
+        room = Room.objects.create(房间号=9301, 客房类型="标准间", 价格=300,
+                                   负责人编号_id=_make_staff("保洁丁").pk, 房间状态="已入住")
+        client = Client.objects.create(姓名="退房测试客", 身份证号="110101199001010014")
+        self.acc = Accommodation.objects.create(
+            id=7301, 顾客id=client, 客房编号=room, 状态="已入住", 入住时间="2026-11-02")
+        Folio.objects.create(order=self.acc, 类型="房费", 金额="300",
+                             事由="房费", 日期="2026-11-02", 经手人="test")
+
+    def test_partial_payment_blocks_express_checkout(self):
+        """已收押金与应收不平 → 拦截转普通结账（E-05）"""
+        Folio.objects.create(order=self.acc, 类型="押金", 金额="100",
+                             事由="押金", 日期="2026-11-02", 经手人="test")
+        response = self.client.post("/express_checkout/", {"id": self.acc.id})
+        self.assertEqual(response.status_code, 400)
+        self.acc.refresh_from_db()
+        self.assertEqual(self.acc.状态, "已入住", "拦截后订单状态不变")
+
+    def test_overpayment_blocks_express_checkout(self):
+        """多付 → 需退款流程（MGR-03）"""
+        Folio.objects.create(order=self.acc, 类型="押金", 金额="500",
+                             事由="押金", 日期="2026-11-02", 经手人="test")
+        response = self.client.post("/express_checkout/", {"id": self.acc.id})
+        self.assertEqual(response.status_code, 400)
+
+    def test_clean_balance_express_checkout_ok(self):
+        """无资金往来 → 自动结算应收；有押金恰好持平 → 不重复收款"""
+        response = self.client.post("/express_checkout/", {"id": self.acc.id})
+        self.assertEqual(response.status_code, 200)
+        self.acc.refresh_from_db()
+        self.assertEqual(self.acc.状态, "已退房")
+        self.assertEqual(self.acc.收款金额, "300.00")
+
+
+class ChangeRoomPolicyTests(TestCase):
+    """V2 E-11/MGR-05：跨房型/价差换房需值班经理/店长"""
+
+    def setUp(self):
+        self.fd = _make_user("fd901", "前台")
+        self.dm = _make_user("dm901", "值班经理")
+        self.client.force_login(self.fd)
+        old_room = Room.objects.create(房间号=9401, 客房类型="标准间", 价格=300,
+                                       负责人编号_id=_make_staff("保洁戊").pk, 房间状态="已入住")
+        self.diff_room = Room.objects.create(房间号=9402, 客房类型="大床房", 价格=388,
+                                             房间状态="空闲", 负责人编号_id=_make_staff("保洁己").pk)
+        client = Client.objects.create(姓名="换房测试客", 身份证号="110101199001010015")
+        self.acc = Accommodation.objects.create(
+            id=7401, 顾客id=client, 客房编号=old_room, 状态="已入住", 入住时间="2026-11-02")
+
+    def test_front_desk_cannot_change_to_price_diff_room(self):
+        response = self.client.post("/change_room/", {"id": self.acc.id, "new_room": 9402})
+        self.assertEqual(response.status_code, 403, "跨房型/价差换房需经理")
+
+    def test_manager_can_change_to_price_diff_room(self):
+        self.client.force_login(self.dm)
+        response = self.client.post("/change_room/", {"id": self.acc.id, "new_room": 9402})
+        self.assertEqual(response.status_code, 200)
+        self.acc.refresh_from_db()
+        self.assertEqual(self.acc.客房编号.房间号, 9402)
+
+
+class DefaultPropertyOnlyTests(TestCase):
+    """V2 SCOPE-01/P1-6：单店阶段仅 DEFAULT 物业生效，非 DEFAULT 任职拒绝"""
+
+    def test_membership_on_other_property_denied(self):
+        from apps.core.models import Property
+        from apps.identity.models import StaffProfile, PropertyStaffMembership
+        other = Property.objects.create(code="OTHER", name="别店")
+        user = User.objects.create_user(username="otherp01", password="otherp01-pass123")
+        user.is_staff = True
+        user.save()
+        user.groups.add(Group.objects.get(name="前台"))
+        profile = StaffProfile.objects.create(
+            user=user, full_name="外店员工", employment_status="ACTIVE")
+        PropertyStaffMembership.objects.create(
+            property=other, staff_profile=profile,
+            employee_no="B-001", status="ACTIVE")
+        self.client.force_login(user)
+        response = self.client.get("/show_client/")
+        self.assertEqual(response.status_code, 403,
+                         "非 DEFAULT 物业任职必须被拒绝（回退单店上下文）")

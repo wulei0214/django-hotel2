@@ -1,12 +1,13 @@
 <!-- 客房订单管理：录入（日期选择器，顾客/客房编号须存在）/ 展示 / 按顾客查入住 / 删除 -->
 <!DOCTYPE html>
+{% load pms_filters %}
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>酒店管理系统</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=9">
+<link rel="stylesheet" href="/static/css/site.css?v=10">
 </head>
 <body>
 {% if messages %}
@@ -69,7 +70,7 @@
     {% if line.状态 == "已冲账" %}<tr class="voided-row"><td class="id">{{line.id}}</td>{% else %}<tr><td class="id">{{line.id}}</td>{% endif %}
         <td>{{line.顾客id.顾客id}}</td>
         <td>{{line.客房编号.房间号}}</td>
-        <td>{{line.联系电话}}</td>
+        <td class="pii-cell">{{line.联系电话|mask_tel}}</td>
         <td>{% if line.状态 == '已冲账' %}<span class="badge void-badge">已冲账</span>{% else %}<span class="badge info-badge">{{ line.状态|default:'预订' }}</span>{% endif %}</td>
         <td>{{line.入住时间}}</td>
         <td>{{line.退房时间|default:'—'}}</td>

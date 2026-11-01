@@ -900,3 +900,10 @@ div.toast.warning::before { content: "!"; }
         transition-duration: 0.01ms !important;
     }
 }
+
+/* ---------- 敏感字段遮罩列（V2 P1-1）：视觉提示"已脱敏" ---------- */
+.pii-cell {
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-secondary);
+    letter-spacing: 1px;
+}

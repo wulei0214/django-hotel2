@@ -1,7 +1,11 @@
+import logging
+
 from django.conf import settings
 
 from apps.core.models import Property
 from .models import PropertyStaffMembership
+
+logger = logging.getLogger("hotel.audit")
 
 
 class PropertyContextMiddleware:
@@ -40,6 +44,15 @@ class PropertyContextMiddleware:
             if membership is None:
                 membership = memberships.first()
 
+        # V2 SCOPE-01/P1-6：单店阶段仅 DEFAULT 物业生效——
+        # 员工绑定到其他物业（或伪造会话 active_property_id 指向别店）时，
+        # 忽略该任职并回退 DEFAULT 上下文，同时记录告警审计
+        if membership is not None and membership.property.code != getattr(
+                settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"):
+            logger.warning(
+                "SCOPE 告警：用户 %s 的任职物业 %s 非 DEFAULT，已拒绝并回退单店上下文",
+                request.user.username, membership.property.code)
+            membership = None
         if membership is not None:
             property_obj = membership.property
         else:

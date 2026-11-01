@@ -19,6 +19,7 @@ hotelapp 视图层：前台 8 大业务模块的全部页面与接口。
 import csv
 import datetime
 import functools
+import logging
 import re
 
 from django.utils import timezone
@@ -70,6 +71,7 @@ def _has_active_employment(user):
 
     与 Django 组权限双写配套的失效闸门：停职/离职/任职终止后，
     即使 User.groups 仍保留角色，下一个请求也会被拒绝（AUTH-05）。
+    V2 SCOPE-01/P1-6：仅 DEFAULT 物业任职有效，其他物业任职视同无任职。
     平台超级管理员是技术身份，不受业务任职约束。
     """
     from apps.identity.models import PropertyStaffMembership, StaffProfile
@@ -77,6 +79,7 @@ def _has_active_employment(user):
         staff_profile__user=user,
         staff_profile__employment_status=StaffProfile.EmploymentStatus.ACTIVE,
         status=PropertyStaffMembership.Status.ACTIVE,
+        property__code=settings.DEFAULT_PROPERTY_CODE,
     ).exists()
 
 
@@ -1052,6 +1055,12 @@ def change_room(request):
                 if new_room.房间状态 != "空闲":
                     return HttpResponse(f"目标房间不可用（{new_room.房间状态}）", status=400)
                 old_room = item.客房编号
+                # E-11/MGR-05：跨房型或价差的换房需值班经理/店长处理（价格政策例外）
+                if (new_room.客房类型 != old_room.客房类型
+                        or float(new_room.价格 or 0) != float(old_room.价格 or 0)):
+                    if not _has_role(request.user, "值班经理", "店长"):
+                        return HttpResponse(
+                            "跨房型/价差换房需要值班经理或店长处理", status=403)
                 if item.状态 == "已入住":
                     old_room.房间状态 = "待清洁"
                     new_room.房间状态 = "已入住"
@@ -1076,22 +1085,40 @@ def express_checkout(request):
         try:
             with transaction.atomic():
                 item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"), 状态="已入住")
-                amount = 0.0
+                # 应收 = 房费 + 消费；已收 = 押金 + 收款（不含本次自动结算）
+                due = 0.0
                 for f in Folio.objects.filter(order=item, 类型__in=("房费", "消费")):
                     try:
-                        amount += float(f.金额)
+                        due += float(f.金额)
                     except (TypeError, ValueError):
                         pass
-                if amount <= 0:
-                    amount = float(item.客房编号.价格 or 0)
+                if due <= 0:
+                    due = float(item.客房编号.价格 or 0)
+                paid = 0.0
+                for f in Folio.objects.filter(order=item, 类型__in=("押金", "收款")):
+                    try:
+                        paid += float(f.金额)
+                    except (TypeError, ValueError):
+                        pass
+                # E-05/MGR-03：已有资金往来与应收对不上（多收/部分收）= 账单存在差异，
+                # 快捷退房不得自动抹平——转普通结账人工核对或经理处理
+                if paid != 0 and abs(due - paid) > 0.001:
+                    return HttpResponse(
+                        f"账单存在未核平差异（应收 {due:.2f} / 已收 {paid:.2f}），"
+                        "请转普通结账核对或联系值班经理处理", status=400)
+                amount = round(due - paid, 2)
+                if amount < 0:
+                    return HttpResponse(
+                        f"客人多付 {abs(amount):.2f} 元，请走退款流程后离店", status=400)
                 room = item.客房编号
                 state_machine.require_order_transition(item, "已退房")
                 item.退房时间 = _today()
                 item.save()
                 events.publish("checked_out", order_id=item.id, room_no=room.房间号,
                                amount=f"{amount:.2f}", operator=request.user.username, date=_today())
-                Folio.objects.create(order=item, 类型="收款", 金额=f"{amount:.2f}",
-                                     事由="快捷离店自动结算", 日期=_today(), 经手人=request.user.username)
+                if amount > 0:
+                    Folio.objects.create(order=item, 类型="收款", 金额=f"{amount:.2f}",
+                                         事由="快捷离店自动结算", 日期=_today(), 经手人=request.user.username)
                 item.收款金额 = f"{amount:.2f}"
                 item.save()
         except ValueError as e:
@@ -1271,8 +1298,48 @@ def export_module(request, module):
         "accommodation": ["id", "顾客id", "客房编号", "入住时间", "状态", "收款金额"],
     }[module]
     for row in model.objects.order_by(*[model._meta.pk.name]).values_list(*field_names):
+        row = list(row)
+        if module == "client":
+            # V2 §7.1：身份证完整值导出默认禁止（CSV 输出遮罩值，紧急合规导出待审批流程）
+            row[2] = (row[2] or "")[:2] + "*" * max(0, len(row[2] or "") - 4) + (row[2] or "")[-2:] if len(row[2] or "") >= 6 else row[2]
+        elif module == "vip":
+            row[3] = (row[3] or "")[:3] + "****" + (row[3] or "")[-4:] if len(row[3] or "") >= 8 else row[3]
         writer.writerow([str(x) for x in row])
     return response
+
+# ---------- 敏感字段 reveal（V2 §7.3：完整值按需显示 + 理由审计） ----------
+@staff_required
+@permission_required('hotelapp.change_client', raise_exception=True)
+def client_reveal_id(request):
+    """取顾客身份证完整值：仅限持修改权岗位（前台/值班经理/店长），
+    用于行内核验/修正；每次读取写审计日志（记录操作者与对象，不记录敏感原文）。"""
+    if request.method != "POST":
+        return HttpResponse("非法请求", status=400)
+    try:
+        item = Client.objects.get(顾客id=request.POST.get("id"))
+    except (Client.DoesNotExist, ValueError):
+        return HttpResponse("顾客不存在", status=404)
+    logging.getLogger("hotel.audit").info(
+        "PII reveal 顾客身份证 user=%s 顾客id=%s 用途=行内编辑/核验",
+        request.user.username, item.顾客id)
+    return JsonResponse({"identify": item.身份证号 or ""})
+
+
+@staff_required
+@permission_required('hotelapp.change_vip', raise_exception=True)
+def vip_reveal_tel(request):
+    """取会员联系方式完整值：仅限持修改权岗位；读取写审计。"""
+    if request.method != "POST":
+        return HttpResponse("非法请求", status=400)
+    try:
+        item = Vip.objects.get(会员编号=request.POST.get("id"))
+    except (Vip.DoesNotExist, ValueError):
+        return HttpResponse("会员不存在", status=404)
+    logging.getLogger("hotel.audit").info(
+        "PII reveal 会员联系方式 user=%s 会员编号=%s 用途=行内编辑/服务",
+        request.user.username, item.会员编号)
+    return JsonResponse({"tel": item.联系方式 or ""})
+
 
 # ---------- 登录 / 注册 / 退出 / 主界面 ----------
 def _has_role(user, *names):
