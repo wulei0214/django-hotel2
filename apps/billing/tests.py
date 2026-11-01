@@ -21,6 +21,9 @@ from apps.reservations.services import create_reservation
 )
 class MockPaymentTests(TestCase):
     def setUp(self):
+        # 日期动态取今天，避免硬编码日期随时间过期（入住校验要求不早于今天）
+        self.today = date.today()
+        self.stay_days = (self.today, self.today + timedelta(days=1))
         self.property = Property.objects.create(code="PAY", name="支付测试酒店")
         self.room_type = RoomType.objects.create(
             property=self.property, code="TWIN", name="标准双床房"
@@ -29,9 +32,9 @@ class MockPaymentTests(TestCase):
             property=self.property,
             code="BAR",
             name="门市价",
-            valid_from=date(2026, 11, 1),
+            valid_from=self.today,
         )
-        for day in (date(2026, 11, 1), date(2026, 11, 2)):
+        for day in self.stay_days:
             DailyRate.objects.create(
                 property=self.property,
                 rate_plan=self.rate_plan,
@@ -50,8 +53,8 @@ class MockPaymentTests(TestCase):
             "phone": "13800000001",
             "room_type_id": self.room_type.pk,
             "rate_plan_id": self.rate_plan.pk,
-            "check_in": date(2026, 11, 1),
-            "check_out": date(2026, 11, 3),
+            "check_in": self.today,
+            "check_out": self.today + timedelta(days=2),
             "rooms": 1,
             "adults": 2,
             "children": 0,
