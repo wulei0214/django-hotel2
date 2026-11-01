@@ -6,7 +6,7 @@
     <title>酒店信息管理系统</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=8">
+<link rel="stylesheet" href="/static/css/site.css?v=9">
 </head>
 <body>
 {% if messages %}
@@ -108,13 +108,13 @@
 
 </body>
 <script src="/static/js/jquery-2.1.4.min.js"></script>
-<script src="/static/js/app.js?v=1"></script>
+<script src="/static/js/app.js?v=2"></script>
 
 <script>
     $(".delete").click(function () {
         var id = $(this).closest('tr').find('.id').text();
         askConfirm('确定删除该条记录吗？删除后不可恢复。', function () {
-        $.get('/delete_vip/', {'id': id}).done(function () { showToast('删除成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
+        $.get('/delete_vip/', {'id': id}).done(function () { showToast('删除成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { showToast(xhr.responseText || '操作失败', 'error'); });
         });
     });
 </script>
@@ -133,11 +133,11 @@
             var rank = ID.next().next().children().val();
             var tel = ID.next().next().next().children().val();
             if (vbad(rank, VPAT.viprank) || vbad(tel, VPAT.tel)) {
-                alert('会员等级必须是普通会员或高级会员；联系方式为11位手机号');
+                showToast('会员等级必须是普通会员或高级会员；联系方式为11位手机号', 'error');
                 return;
             }
             var vip = {'id':id, 'rank':rank, 'tel': tel};
-            $.post('/update_vip/', vip).done(function () { showToast('修改成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
+            $.post('/update_vip/', vip).done(function () { showToast('修改成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { showToast(xhr.responseText || '操作失败', 'error'); });
         }
     });
 </script>

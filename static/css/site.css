@@ -368,6 +368,76 @@ div.toast.success { background: var(--color-success-solid); border: 1px solid va
 div.toast.error { background: var(--color-danger-solid); border: 1px solid var(--color-danger-border); }
 div.toast.warning { background: var(--color-warning-solid); border: 1px solid var(--color-warning-border); }
 
+/* ---------- 页内样式化对话框（askConfirm 确认框 / askPrompt 输入框） ----------
+   由 app.js 动态创建，替代原生 confirm()/prompt()：遮罩居中、自动聚焦、点遮罩可关闭 */
+.ask-mask {
+    position: fixed;
+    left: 0; top: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, .45);
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: ask-in .18s ease;
+}
+@keyframes ask-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+.ask-box {
+    background: var(--color-bg-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-pop);
+    padding: 26px 30px 22px;
+    min-width: 320px;
+    max-width: 86vw;
+    text-align: center;
+}
+.ask-msg {
+    font-size: var(--text-body);
+    color: var(--color-text-primary);
+    line-height: 1.6;
+    margin-bottom: 18px;
+    text-align: left;
+}
+.ask-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 12px;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-body);
+    color: var(--color-text-primary);
+    margin-bottom: 18px;
+    outline: none;
+}
+.ask-input:focus { border-color: var(--color-accent-solid); box-shadow: 0 0 0 2px var(--color-accent-subtle); }
+.ask-actions { display: flex; justify-content: center; gap: 14px; }
+.ask-ok, .ask-cancel {
+    border-radius: var(--radius-sm);
+    padding: 9px 26px;
+    cursor: pointer;
+    font-size: var(--text-body);
+    transition: background-color .15s, border-color .15s;
+}
+.ask-ok {
+    background: var(--color-danger-solid);
+    border: 1px solid var(--color-danger-solid);
+    color: var(--color-text-inverse);
+}
+.ask-ok:hover { background: var(--color-danger-solid-hover); border-color: var(--color-danger-solid-hover); }
+.ask-ok.ask-ok-primary {
+    background: var(--color-accent-solid);
+    border-color: var(--color-accent-solid);
+}
+.ask-ok.ask-ok-primary:hover { background: var(--color-accent-solid-hover); border-color: var(--color-accent-solid-hover); }
+.ask-cancel {
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-default);
+    color: var(--color-text-secondary);
+}
+.ask-cancel:hover { border-color: var(--color-border-strong); color: var(--color-text-primary); }
+
 /* 错误条（表单内）同步加强：白字实色底 */
 form p[style*="red"], form .form-error {
     background: var(--color-danger-solid);
@@ -475,6 +545,16 @@ input[list] {
 .warn-badge { background: var(--color-warning-bg); color: var(--color-warning-solid); border: 1px solid var(--color-warning-border); }
 tr.voided-row td { color: var(--color-text-disabled); background: var(--color-bg-voided); }
 tr.voided-row .btn { opacity: .45; }
+/* 状态门控禁用按钮（如已冲账行）：灰化、禁用光标、悬停无反应（覆盖 .btn-primary 的 pointer/hover） */
+button.btn:disabled, button.btn.btn-primary:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+    background: var(--color-bg-subtle) !important;
+    border-color: var(--color-border-default) !important;
+    color: var(--color-text-muted) !important;
+    box-shadow: none;
+    transform: none;
+}
 
 /* ---------- 自定义下拉（职务/等级/状态编辑：全量展示 + 可手输） ---------- */
 .dd-wrap { position: relative; display: inline-block; }

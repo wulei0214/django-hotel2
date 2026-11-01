@@ -6,7 +6,7 @@
     <title>酒店管理系统</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=8">
+<link rel="stylesheet" href="/static/css/site.css?v=9">
 </head>
 <body>
 {% if messages %}
@@ -71,7 +71,7 @@
         <td>{{line.服务员编号.员工id}}</td>
         <td>{{line.桌号}}</td>
         <td>{% if line.状态 == '已冲账' %}<span class="badge void-badge">已冲账</span>{% else %}<span class="badge ok-badge">正常</span>{% endif %}</td>
-        {% if perms.hotelapp.delete_order %}<td><center><button class="btn btn-primary delete">冲账</button></center></td>{% endif %}
+        {% if perms.hotelapp.delete_order %}<td><center>{% if line.状态 == '已冲账' %}<button class="btn btn-primary" disabled title="该订单已冲账，不可重复操作">已冲账</button>{% else %}<button class="btn btn-primary delete">冲账</button>{% endif %}</center></td>{% endif %}
         <!--<td><button class="btn btn-primary update">修改</button></td>-->
     </tr>
     {% empty %}
@@ -102,16 +102,18 @@
 
 </body>
 <script src="/static/js/jquery-2.1.4.min.js"></script>
-<script src="/static/js/app.js?v=1"></script>
+<script src="/static/js/app.js?v=2"></script>
 
 <script>
+    // 冲账：样式化输入对话框（原因写入审计日志）；已冲账行按钮已置灰不可点
     $(".delete").click(function () {
-        var reason = window.prompt('冲账为高危操作，请输入冲账原因（将写入审计日志）：');
-        if (!reason) { return; }
         var id = $(this).closest('tr').find('.id').text();
-        askConfirm('确定冲账该订单吗？冲账后不再计入统计，不可恢复。', function () {
-        $.get('/delete_order/', {'id': id, 'reason': reason}).done(function () { showToast('已冲账'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
-        });
+        askPrompt('冲账为高危操作：冲账后该订单不再计入统计，且不可恢复。请填写冲账原因（将写入审计日志）：', function (reason) {
+            $.get('/delete_order/', {'id': id, 'reason': reason}).done(function () {
+                showToast('已冲账');
+                setTimeout(function () { location.reload(); }, 600);
+            }).fail(function (xhr) { showToast(xhr.responseText || '冲账失败', 'error'); });
+        }, { placeholder: '如：客人重复点单 / 错单作废', okText: '确认冲账' });
     });
 </script>
 </html>

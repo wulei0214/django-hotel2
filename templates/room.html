@@ -6,7 +6,7 @@
     <title>酒店管理系统</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=8">
+<link rel="stylesheet" href="/static/css/site.css?v=9">
 </head>
 <body>
 {% if messages %}
@@ -115,13 +115,13 @@
 
 </body>
 <script src="/static/js/jquery-2.1.4.min.js"></script>
-<script src="/static/js/app.js?v=1"></script>
+<script src="/static/js/app.js?v=2"></script>
 
 <script>
     $(".delete").click(function () {
         var id = $(this).closest('tr').find('.id').text();
         askConfirm('确定删除该条记录吗？删除后不可恢复。', function () {
-        $.get('/delete_room/', {'id': id}).done(function () { showToast('删除成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
+        $.get('/delete_room/', {'id': id}).done(function () { showToast('删除成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { showToast(xhr.responseText || '操作失败', 'error'); });
         });
     });
 </script>
@@ -140,11 +140,11 @@
             var type = ID.next().children().val();
             var price = ID.next().next().children().val();
             if (vbad(type, VPAT.type10) || vbad(price, VPAT.price5)) {
-                alert('客房类型为2-10位中英文或数字；价格为1-5位整数');
+                showToast('客房类型为2-10位中英文或数字；价格为1-5位整数', 'error');
                 return;
             }
             var room = {'id':id, 'type':type, 'price': price};
-            $.post('/update_room/', room).done(function () { showToast('修改成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
+            $.post('/update_room/', room).done(function () { showToast('修改成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { showToast(xhr.responseText || '操作失败', 'error'); });
         }
     });
 </script>

@@ -6,7 +6,7 @@
     <title>酒店管理系统</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=8">
+<link rel="stylesheet" href="/static/css/site.css?v=9">
 </head>
 <body>
 {% if messages %}
@@ -137,13 +137,13 @@
 {% endif %}
 
 <script src="/static/js/jquery-2.1.4.min.js"></script>
-<script src="/static/js/app.js?v=1"></script>
+<script src="/static/js/app.js?v=2"></script>
 
 <script>
     $(".delete").click(function () {
         var id = $(this).closest('tr').find('.id').text();
         askConfirm('确定删除该条记录吗？删除后不可恢复。', function () {
-        $.get('/delete_staff/', {'id': id}).done(function () { showToast('删除成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
+        $.get('/delete_staff/', {'id': id}).done(function () { showToast('删除成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { showToast(xhr.responseText || '操作失败', 'error'); });
         });
     });
 </script>
@@ -165,11 +165,11 @@
             var salary = ID.next().next().next().children().val();
             var time = ID.next().next().next().next().children().val();
             if (vbad(job, VPAT.job) || vbad(salary, VPAT.money) || vbad(time, VPAT.digits4)) {
-                alert('职务必须是规范职务名称；月薪为数字且最多两位小数；工龄为1-4位数字');
+                showToast('职务必须是规范职务名称；月薪为数字且最多两位小数；工龄为1-4位数字', 'error');
                 return;
             }
             var staff = {'id':id, 'job':job, 'salary': salary, 'time':time};
-            $.post('/update_staff/', staff).done(function () { showToast('修改成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
+            $.post('/update_staff/', staff).done(function () { showToast('修改成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { showToast(xhr.responseText || '操作失败', 'error'); });
         }
     });
 </script>

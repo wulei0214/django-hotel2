@@ -89,6 +89,47 @@
         mask.querySelector('.ask-ok').focus();
     }
 
+    /* ---------- 样式化输入对话框（替代原生 prompt，用于冲账原因等高危操作留痕） ----------
+       askPrompt(msg, onOk(value), opts) —— opts: { placeholder, okText, required } */
+    function askPrompt(msg, onOk, opts) {
+        opts = opts || {};
+        var mask = document.createElement('div');
+        mask.className = 'ask-mask';
+        mask.innerHTML =
+            '<div class="ask-box">' +
+            '  <div class="ask-msg"></div>' +
+            '  <input type="text" class="ask-input" />' +
+            '  <div class="ask-actions">' +
+            '    <button type="button" class="ask-ok ask-ok-primary"></button>' +
+            '    <button type="button" class="ask-cancel">取消</button>' +
+            '  </div>' +
+            '</div>';
+        mask.querySelector('.ask-msg').textContent = msg;
+        var okBtn = mask.querySelector('.ask-ok');
+        okBtn.textContent = opts.okText || '确定';
+        var input = mask.querySelector('.ask-input');
+        input.placeholder = opts.placeholder || '';
+        var close = function () { mask.remove(); };
+        okBtn.addEventListener('click', function () {
+            var v = (input.value || '').trim();
+            if (opts.required && !v) {
+                input.style.borderColor = 'var(--color-danger-solid)';
+                input.focus();
+                return;
+            }
+            close();
+            onOk(v);
+        });
+        mask.querySelector('.ask-cancel').addEventListener('click', close);
+        // 输入框内回车直接提交
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); okBtn.click(); }
+        });
+        mask.addEventListener('click', function (e) { if (e.target === mask) close(); });
+        document.body.appendChild(mask);
+        input.focus();
+    }
+
     /* ---------- 按钮加载态（防重复点击） ---------- */
     function btnLoading(btn) {
         if (!btn || btn.dataset.loading) { return function () {}; }
@@ -137,5 +178,6 @@
     window.vbad = vbad;
     window.showToast = showToast;
     window.askConfirm = askConfirm;
+    window.askPrompt = askPrompt;
     window.btnLoading = btnLoading;
 })();

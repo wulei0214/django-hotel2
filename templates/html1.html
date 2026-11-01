@@ -6,7 +6,7 @@
     <title>酒店管理系统</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=8">
+<link rel="stylesheet" href="/static/css/site.css?v=9">
 </head>
 <div>
 {% if messages %}
@@ -99,13 +99,13 @@
 
 </body>
 <script src="/static/js/jquery-2.1.4.min.js"></script>
-<script src="/static/js/app.js?v=1"></script>
+<script src="/static/js/app.js?v=2"></script>
 
 <script>
     $(".delete").click(function () {
         var id = $(this).closest('tr').find('.id').text();
         askConfirm('确定删除该条记录吗？删除后不可恢复。', function () {
-        $.get('/delete_client/', {'id': id}).done(function () { showToast('删除成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
+        $.get('/delete_client/', {'id': id}).done(function () { showToast('删除成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { showToast(xhr.responseText || '操作失败', 'error'); });
         });
     });
 </script>
@@ -124,11 +124,11 @@
             var name = ID.next().children().val();
             var identify = ID.next().next().children().val();
             if (vbad(name, VPAT.name) || vbad(identify, VPAT.idcard)) {
-                alert('姓名为2-10位中英文；身份证号为18位（末位可为X）');
+                showToast('姓名为2-10位中英文；身份证号为18位（末位可为X）', 'error');
                 return;
             }
             var client = {'id':id, 'name':name, 'identify': identify};
-            $.post('/update_client/', client).done(function () { showToast('修改成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { alert(xhr.responseText); });
+            $.post('/update_client/', client).done(function () { showToast('修改成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { showToast(xhr.responseText || '操作失败', 'error'); });
         }
     });
 </script>
