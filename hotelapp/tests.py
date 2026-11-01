@@ -8,14 +8,24 @@ from django.test import TestCase
 from hotelapp.models import Accommodation, Client, Food, Order, Room, Staff
 
 
-def _make_user(username, group_name):
-    """创建员工测试账号（is_staff=True 才能进员工后台）并授予指定角色组"""
+def _make_user(username, group_name, membership_status="ACTIVE"):
+    """创建员工测试账号：is_staff + 角色组 + 完整身份链（RBAC V2 员工门禁要求有效任职）。"""
+    from apps.core.models import Property
+    from apps.identity.models import StaffProfile, PropertyStaffMembership
+
     user = User.objects.create_user(username=username, password=f"{username}-pass123")
     user.is_staff = True
     user.save()
     group = Group.objects.filter(name=group_name).first()
     if group is not None:
         user.groups.add(group)
+    prop, _ = Property.objects.get_or_create(
+        code="DEFAULT", defaults={"name": "测试酒店"})
+    profile = StaffProfile.objects.create(
+        user=user, full_name=username, employment_status="ACTIVE")
+    PropertyStaffMembership.objects.create(
+        property=prop, staff_profile=profile,
+        employee_no=f"E-{username[-4:]}", status=membership_status)
     return user
 
 
@@ -213,3 +223,139 @@ class MatrixSaveConsistencyTests(TestCase):
         self.assertIn("change_room", codenames)
         self.assertIn("view_group", codenames, "后台手工授权的非矩阵权限必须保留")
         self.assertNotIn("delete_room", codenames, "未勾选的矩阵权限应被回收")
+
+
+class UnifiedAuthorizationTests(TestCase):
+    """RBAC V2 P0-1：员工绑定命令创建的账号能登录并按岗位获取旧后台权限（AUTH-02/05）"""
+
+    def setUp(self):
+        from apps.core.models import Property
+        from apps.identity.models import StaffProfile, PropertyStaffMembership
+        self.prop, _ = Property.objects.get_or_create(
+            code="DEFAULT", defaults={"name": "测试酒店"})
+        self.profile = StaffProfile.objects.create(
+            full_name="绑定测试员工", employment_status="ACTIVE")
+        self.membership = PropertyStaffMembership.objects.create(
+            property=self.prop, staff_profile=self.profile,
+            employee_no="F-1001", status="ACTIVE")
+        User.objects.create_user(username="bound01", password="old-pass-123")
+
+    def test_bind_grants_backoffice_access(self):
+        """绑定后：is_staff + 中文组 + 旧视图可访问（双写统一授权）"""
+        import io as _io
+        from contextlib import redirect_stdout
+        from django.core.management import call_command
+        buf = _io.StringIO()
+        with redirect_stdout(buf):
+            call_command("bind_staff_user", employee_no="F-1001",
+                         username="bound01", role="FRONT_DESK",
+                         password="new-pass-123", verbosity=0)
+        user = User.objects.get(username="bound01")
+        self.assertTrue(user.is_staff, "绑定必须打通员工后台登录门禁")
+        self.assertTrue(user.groups.filter(name="前台").exists(), "运行时权限载体=User.groups（双写）")
+        self.assertTrue(user.has_perm("hotelapp.view_client"), "旧视图权限立即生效")
+        self.assertTrue(user.check_password("new-pass-123"), "--password 生效")
+
+        self.client.logout()
+        self.assertTrue(self.client.login(username="bound01", password="new-pass-123"))
+        response = self.client.get("/show_client/")
+        self.assertEqual(response.status_code, 200, "绑定账号必须能访问旧后台（P0-1 验收标准）")
+
+    def test_staff_without_membership_denied(self):
+        """有效账号但无任职关系 → 员工路由拒绝（AUTH-02）"""
+        user = User.objects.create_user(username="noid001", password="noid001-pass123")
+        user.is_staff = True
+        user.save()
+        user.groups.add(Group.objects.get(name="前台"))
+        self.client.force_login(user)
+        response = self.client.get("/show_client/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_suspended_membership_denied(self):
+        """任职暂停 → 立即失权（AUTH-05，不依赖重新登录）"""
+        user = _make_user("susp001", "前台", membership_status="SUSPENDED")
+        self.client.force_login(user)
+        response = self.client.get("/show_client/")
+        self.assertEqual(response.status_code, 403, "任职暂停必须立即拒绝")
+
+
+class AdminHardeningTests(TestCase):
+    """RBAC V2 P0-2：Django Admin 不能绕过业务门禁（评审 P0-2）"""
+
+    def setUp(self):
+        from django.contrib import admin as django_admin
+        self.admin_site = django_admin.site
+        self.root = User.objects.create_superuser("rootv2", password="root-pass123456")
+
+    def test_hidden_module_admin_unregistered(self):
+        """餐饮/停车不注册 Admin：直接 URL 404（SCOPE-02）"""
+        self.client.force_login(self.root)
+        for url in ("/admin/hotelapp/food/", "/admin/hotelapp/park/", "/admin/hotelapp/order/"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 404, f"{url} 必须不可达")
+
+    def test_business_records_cannot_be_physically_deleted(self):
+        """业务记录禁止 Admin 物理删除（评审 P0-2-3）"""
+        from hotelapp.admin import (AccommodationAdmin, ClientAdmin, RoomAdmin,
+                                    StaffAdmin, FinanceRecordAdmin, NightAuditAdmin)
+        from hotelapp.models import Accommodation, Client, Room, Staff, FinanceRecord, NightAudit
+        request = None
+        for admin_cls, model in [(AccommodationAdmin, Accommodation), (ClientAdmin, Client),
+                                 (RoomAdmin, Room), (StaffAdmin, Staff),
+                                 (FinanceRecordAdmin, FinanceRecord), (NightAuditAdmin, NightAudit)]:
+            self.assertFalse(
+                admin_cls(model, self.admin_site).has_delete_permission(request),
+                f"{model.__name__} 的 Admin 物理删除必须关闭")
+
+    def test_order_status_readonly_in_admin(self):
+        """已存在订单的状态/冲账留痕在 Admin 只读（评审 P0-2-2）"""
+        from hotelapp.admin import AccommodationAdmin
+        admin_obj = AccommodationAdmin(Accommodation, self.admin_site)
+        readonly = admin_obj.get_readonly_fields(None, Accommodation())
+        self.assertIn("状态", readonly)
+        self.assertIn("冲账人", readonly)
+
+
+class NightAuditIdempotencyTests(TestCase):
+    """RBAC V2 P1：夜审幂等（AUTH-16/E-17/E-18）——同一营业日不重复执行"""
+
+    def setUp(self):
+        self.dm = _make_user("dm501", "值班经理")
+        self.client.force_login(self.dm)
+
+    def test_duplicate_night_audit_blocked(self):
+        first = self.client.post("/nightaudit_run/")
+        self.assertEqual(first.status_code, 302, "首次夜审成功后跳回工作台")
+        second = self.client.post("/nightaudit_run/")
+        self.assertEqual(second.status_code, 400, "同一营业日第二次夜审必须被拒绝")
+
+    def test_night_audit_records_single_entry(self):
+        from hotelapp.models import NightAudit
+        self.client.post("/nightaudit_run/")
+        self.client.post("/nightaudit_run/")  # 重复被拒
+        self.assertEqual(NightAudit.objects.count(), 1, "重复提交不产生第二份日结")
+
+
+class FolioAccessGateTests(TestCase):
+    """V2 E-30：账单数据需要客房订单查看权限，客房服务员拒绝"""
+
+    def setUp(self):
+        from hotelapp.models import Accommodation, Room
+        self.hk = _make_user("hk601", "客房服务员")
+        self.fd = _make_user("fd601", "前台")
+        room = Room.objects.create(房间号=9201, 客房类型="标准间", 价格=300,
+                                   负责人编号_id=_make_staff("保洁丙").pk, 房间状态="已入住")
+        from hotelapp.models import Client
+        client = Client.objects.create(姓名="账单测试客", 身份证号="110101199001010013")
+        self.acc = Accommodation.objects.create(
+            id=7201, 顾客id=client, 客房编号=room, 状态="已入住", 入住时间="2026-11-02")
+
+    def test_housekeeping_cannot_read_folio(self):
+        self.client.force_login(self.hk)
+        response = self.client.get("/folio/", {"id": self.acc.id})
+        self.assertEqual(response.status_code, 403, "客房服务员不得读取住客账务")
+
+    def test_front_desk_can_read_folio(self):
+        self.client.force_login(self.fd)
+        response = self.client.get("/folio/", {"id": self.acc.id})
+        self.assertEqual(response.status_code, 200)

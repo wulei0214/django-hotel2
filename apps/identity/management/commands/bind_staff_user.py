@@ -42,6 +42,9 @@ class Command(BaseCommand):
         parser.add_argument("--username", required=True)
         parser.add_argument("--property-code", default="DEFAULT")
         parser.add_argument("--role", required=True, choices=ROLE_CHOICES)
+        parser.add_argument(
+            "--password", default="",
+            help="可选：为该账号设置/重置登录密码（不传则要求账号已具备密码）")
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -87,11 +90,21 @@ class Command(BaseCommand):
                 granted_by=None,
             )
 
+        # P0-1 授权载体统一（RBAC V2）：StaffRoleAssignment 是授权记录
+        # （物业任职+有效期+授权人），User.groups 同步镜像同一中文组作为
+        # 旧后台运行时权限载体——两条路径读写同一组，不再有两套目录。
+        user.is_staff = True
+        if options.get("password"):
+            user.set_password(options["password"])
+        user.save()
+        user.groups.add(group)
+
         self.stdout.write(
             self.style.SUCCESS(
                 f"已绑定员工 {membership.employee_no} -> 账号 {user.username}，岗位 {group.name}。"
             )
         )
         self.stdout.write(
-            "注意：未修改 User.groups、is_staff 或 is_superuser；PMS 岗位权限按物业上下文解析。"
+            "授权记录已写入 StaffRoleAssignment（含任职/有效期），"
+            "并同步 User.groups + is_staff 使旧后台权限立即生效。"
         )

@@ -65,9 +65,36 @@ from . import handlers  # noqa: F401  订阅器注册（事件 -> 后台联动�
 from . import state_machine
 
 
+def _has_active_employment(user):
+    """RBAC V2 P0-1：员工须有有效 DEFAULT 任职（档案在职 + 任职 ACTIVE）。
+
+    与 Django 组权限双写配套的失效闸门：停职/离职/任职终止后，
+    即使 User.groups 仍保留角色，下一个请求也会被拒绝（AUTH-05）。
+    平台超级管理员是技术身份，不受业务任职约束。
+    """
+    from apps.identity.models import PropertyStaffMembership, StaffProfile
+    return PropertyStaffMembership.objects.filter(
+        staff_profile__user=user,
+        staff_profile__employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        status=PropertyStaffMembership.Status.ACTIVE,
+    ).exists()
+
+
 def staff_required(view):
-    """登录 + 员工身份双重校验；登录页统一用前台 /login/"""
-    return login_required(staff_member_required(view, login_url='/login/'))
+    """登录 + 员工身份双重校验；登录页统一用前台 /login/。
+
+    RBAC V2 P0-1：非超管员工还必须持有有效酒店任职——
+    账号停用/员工离职/任职暂停立即失权，不依赖重新登录。
+    """
+    @functools.wraps(view)
+    def wrapped(request, *args, **kwargs):
+        user = request.user
+        if (user.is_authenticated and user.is_staff
+                and not user.is_superuser
+                and not _has_active_employment(user)):
+            raise PermissionDenied("当前账号没有有效的酒店任职关系，请联系管理员")
+        return view(request, *args, **kwargs)
+    return login_required(staff_member_required(wrapped, login_url='/login/'))
 
 
 # 各模块查询表单允许使用的字段白名单，用户提交的字段名不在白名单内则忽略查询
@@ -1140,7 +1167,13 @@ def no_show_one(request):
 
 @staff_required
 def folio_api(request):
-    """电子账单数据：订单的全部 Folio 凭证 + 聚合（应收/押金/已收/余额）"""
+    """电子账单数据：订单的全部 Folio 凭证 + 聚合（应收/押金/已收/余额）。
+
+    V2 E-30：账单属于客房订单业务域，需 view_accommodation 权限——
+    仅持员工登录身份（如客房服务员）不得读取住客账务。
+    """
+    if not request.user.has_perm("hotelapp.view_accommodation"):
+        raise PermissionDenied("查看账单需要客房订单查看权限")
     oid = request.GET.get("id")
     try:
         item = Accommodation.objects.get(id=oid)
@@ -1767,29 +1800,39 @@ def night_audit_run(request):
     if request.method == "POST":
         if not request.user.has_perm("hotelapp.night_audit_execute"):
             return HttpResponse("执行夜审需要值班经理/店长授权", status=403)
+        # 幂等守卫（AUTH-16/E-17）：同一营业日只能夜审一次——
+        # 网络重试/重复提交不得重复产生过租收入或未到处理
+        if NightAudit.objects.filter(营业日期=_today()).exists():
+            return HttpResponse(f"营业日 {_today()} 已完成夜审，不能重复执行；"
+                                "如需纠错请走营业日重开审批流程", status=400)
         expired = Accommodation.objects.filter(状态__in=("待确认", "已确认"), 入住时间__lt=_today())
-        noshow = 0
-        for item in expired:
-            events.publish("no_show", order_id=item.id, room_no=item.客房编号.房间号)
-            item.状态 = "未到"
-            item.save()
-            noshow += 1
         living = Accommodation.objects.filter(状态="已入住")
         total = 0.0
-        for item in living:
-            amount = str(item.客房编号.价格)
-            FinanceRecord.objects.create(类型="收入", 金额=amount,
-                                         事由=f"房费过租（订单{item.id}）",
-                                         关联订单=str(item.id), 日期=_today(),
-                                         经手人=request.user.username)
-            try:
-                total += float(amount)
-            except (TypeError, ValueError):
-                pass
-        NightAudit.objects.create(营业日期=_today(), 在住单数=living.count(),
-                                  过租总额=f"{total:.2f}", 未到处理数=noshow,
-                                  操作人=request.user.username,
-                                  执行时间=datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        noshow = 0
+        try:
+            # 事务化（E-18）：No-Show/过租/日结要么全部成功，要么整体回滚
+            with transaction.atomic():
+                for item in expired:
+                    events.publish("no_show", order_id=item.id, room_no=item.客房编号.房间号)
+                    item.状态 = "未到"
+                    item.save()
+                    noshow += 1
+                for item in living:
+                    amount = str(item.客房编号.价格)
+                    FinanceRecord.objects.create(类型="收入", 金额=amount,
+                                                 事由=f"房费过租（订单{item.id}）",
+                                                 关联订单=str(item.id), 日期=_today(),
+                                                 经手人=request.user.username)
+                    try:
+                        total += float(amount)
+                    except (TypeError, ValueError):
+                        pass
+                NightAudit.objects.create(营业日期=_today(), 在住单数=living.count(),
+                                          过租总额=f"{total:.2f}", 未到处理数=noshow,
+                                          操作人=request.user.username,
+                                          执行时间=datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        except Exception:
+            return HttpResponse("夜审执行失败：本次操作已整体回滚，请检查数据后重试", status=500)
         messages.success(request, f"夜审完成：在住 {living.count()} 单，过租 {total:.2f} 元，未到处理 {noshow} 单")
         return redirect("/nightaudit/")
     return HttpResponse("非法请求", status=400)
