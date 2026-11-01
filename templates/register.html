@@ -10,8 +10,8 @@
 <body class="register-body">
 <div class="login-wrap">
     <div class="register-card">
-        <h2>注册员工账号</h2>
-        <p class="register-sub">注册后默认为「前台」角色，可由管理员调整</p>
+        <h2>注册顾客预订账号</h2>
+        <p class="register-sub">注册成功后可用于顾客在线预订；员工后台账号请联系管理员开通</p>
         {% if error %}<p class="login-error">{{ error }}</p>{% endif %}
         <form action="/register/" method="post">
             {% csrf_token %}

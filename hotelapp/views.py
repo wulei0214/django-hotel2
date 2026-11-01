@@ -18,6 +18,7 @@ hotelapp 视图层：前台 8 大业务模块的全部页面与接口。
 
 import csv
 import datetime
+import functools
 import re
 
 from django.utils import timezone
@@ -38,6 +39,28 @@ from django.shortcuts import render, redirect
 from .models import (Staff, Room, Client, Food, Vip, Park, Order, Accommodation,
                      FinanceRecord, NightAudit, Folio, ROOM_STATUS, ORDER_STATUS)
 from . import events
+
+
+# ---------- 模块启停注册表（RBAC 决策：餐饮/停车对接第三方，本阶段隐藏入口） ----------
+# 代码与历史数据全部保留；置 True 即恢复页面（权限矩阵中对应行也同步恢复）
+MODULE_REGISTRY = {
+    "food": False,   # 餐厅管理（菜品）
+    "order": False,  # 餐饮订单（依赖菜品）
+    "park": False,   # 停车场
+}
+
+
+def module_gate(key):
+    """隐藏模块统一门禁：命中则带提示跳回主界面（fail-closed，直接 URL 也不可达）。"""
+    def deco(view):
+        @functools.wraps(view)
+        def wrapper(request, *args, **kwargs):
+            if not MODULE_REGISTRY.get(key, True):
+                messages.warning(request, "该模块已对接第三方系统，暂不开放；历史数据已保留。")
+                return redirect("/home/")
+            return view(request, *args, **kwargs)
+        return wrapper
+    return deco
 from . import handlers  # noqa: F401  订阅器注册（事件 -> 后台联动）
 from . import state_machine
 
@@ -181,8 +204,9 @@ def staff_toggle(request):
 
 @staff_required
 @permission_required('hotelapp.view_staff', raise_exception=True)
+@permission_required("hotelapp.export_pii", raise_exception=True)
 def export_staff(request):
-    """员工数据导出（CSV，UTF-8 BOM 兼容 Excel）"""
+    """员工数据导出（CSV，UTF-8 BOM 兼容 Excel）；含月薪，需「导出敏感数据」权限"""
     response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
     response["Content-Disposition"] = 'attachment; filename="staff.csv"'
     writer = csv.writer(response)
@@ -364,6 +388,7 @@ def search_client(request):
 # ---------- 餐厅信息管理 ----------
 @staff_required
 @permission_required('hotelapp.view_food', raise_exception=True)
+@module_gate("food")
 def show_food(request):
     """菜品信息管理列表（图5）：分页 15 条/页"""
     paginator = Paginator(Food.objects.order_by("菜品编号"), 15)
@@ -373,6 +398,7 @@ def show_food(request):
 
 @staff_required
 @permission_required('hotelapp.add_food', raise_exception=True)
+@module_gate("food")
 def insert_food(request):
     error, efield = None, None
     if request.method == "POST":
@@ -406,6 +432,7 @@ def insert_food(request):
 
 @staff_required
 @permission_required('hotelapp.delete_food', raise_exception=True)
+@module_gate("food")
 def delete_food(request):
     if request.method == "GET":
         try:
@@ -417,6 +444,7 @@ def delete_food(request):
 
 @staff_required
 @permission_required('hotelapp.change_food', raise_exception=True)
+@module_gate("food")
 def update_food(request):
     if request.method == "POST":
         fid = request.POST.get("id")
@@ -442,6 +470,7 @@ def update_food(request):
 
 @staff_required
 @permission_required('hotelapp.view_food', raise_exception=True)
+@module_gate("food")
 def search_food(request):
     """菜品信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
     rows, searched = _search(Food, "菜品编号", FOOD_SEARCH_FIELDS, request)
@@ -546,6 +575,7 @@ def search_vip(request):
 # ---------- 停车场信息管理 ----------
 @staff_required
 @permission_required('hotelapp.view_park', raise_exception=True)
+@module_gate("park")
 def show_park(request):
     """车位信息管理列表（图5）：分页 15 条/页"""
     paginator = Paginator(Park.objects.order_by("车位编号"), 15)
@@ -555,6 +585,7 @@ def show_park(request):
 
 @staff_required
 @permission_required('hotelapp.add_park', raise_exception=True)
+@module_gate("park")
 def insert_park(request):
     error, efield = None, None
     if request.method == "POST":
@@ -585,6 +616,7 @@ def insert_park(request):
 
 @staff_required
 @permission_required('hotelapp.delete_park', raise_exception=True)
+@module_gate("park")
 def delete_park(request):
     if request.method == "GET":
         try:
@@ -596,6 +628,7 @@ def delete_park(request):
 
 @staff_required
 @permission_required('hotelapp.change_park', raise_exception=True)
+@module_gate("park")
 def update_park(request):
     if request.method == "POST":
         pid = request.POST.get("id")
@@ -622,6 +655,7 @@ def update_park(request):
 
 @staff_required
 @permission_required('hotelapp.view_park', raise_exception=True)
+@module_gate("park")
 def search_park(request):
     """车位信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
     rows, searched = _search(Park, "车位编号", PARK_SEARCH_FIELDS, request)
@@ -729,6 +763,7 @@ def search_room(request):
 # ---------- 餐饮订单管理 ----------
 @staff_required
 @permission_required('hotelapp.view_order', raise_exception=True)
+@module_gate("order")
 def show_order(request):
     """餐饮订单管理列表（图5）：分页 15 条/页"""
     paginator = Paginator(Order.objects.order_by("id"), 15)
@@ -738,6 +773,7 @@ def show_order(request):
 
 @staff_required
 @permission_required('hotelapp.add_order', raise_exception=True)
+@module_gate("order")
 def insert_order(request):
     error, efield = None, None
     if request.method == "POST":
@@ -781,6 +817,7 @@ def insert_order(request):
 
 @staff_required
 @permission_required('hotelapp.delete_order', raise_exception=True)
+@module_gate("order")
 def delete_order(request):
     """餐饮订单「冲账」：打已冲账标记并记录冲账人/时间，不再物理删除（值班经理权限）"""
     if request.method == "GET":
@@ -803,6 +840,7 @@ def delete_order(request):
 
 @staff_required
 @permission_required('hotelapp.view_order', raise_exception=True)
+@module_gate("order")
 def search_order(request):
     food_list = []
     searched = False
@@ -1076,10 +1114,10 @@ def walkin_create(request):
 
 @staff_required
 def no_show_one(request):
-    """单独标记未到（值班经理及以上）：过期未确认订单 → 未到，释放房间"""
+    """单独标记未到：过期未确认订单 → 未到，释放房间（需「未到处理」权限）"""
     if request.method == "POST":
-        if not _has_role(request.user, "值班经理"):
-            return HttpResponse("只有值班经理可以标记未到", status=403)
+        if not request.user.has_perm("hotelapp.no_show_handle"):
+            return HttpResponse("处理未到订单需要值班经理/店长授权", status=403)
         try:
             with transaction.atomic():
                 item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"))
@@ -1139,8 +1177,12 @@ def room_status_change(request):
         except (Room.DoesNotExist, ValueError, TypeError):
             return HttpResponse("房间不存在", status=400)
         is_manager = _has_role(request.user, "值班经理", "店长")
-        simple = {("待清洁", "清洁中"), ("清洁中", "待检查"), ("待检查", "空闲")}
-        if (room.房间状态, target) not in simple and not is_manager:
+        simple = {("待清洁", "清洁中"), ("清洁中", "待检查")}
+        # 净房放行（待检查→空闲）独立授权：由当天管理者确认（决策 6：客房不拆检查岗）
+        if (room.房间状态, target) == ("待检查", "空闲"):
+            if not request.user.has_perm("hotelapp.room_release_ready"):
+                return HttpResponse("净房放行需要值班经理/店长确认", status=403)
+        elif (room.房间状态, target) not in simple and not is_manager:
             return HttpResponse("该状态流转需要值班经理操作", status=403)
         room.房间状态 = target
         room.save()
@@ -1169,9 +1211,15 @@ def export_module(request, module):
     info = EXPORT_MODULES.get(module)
     if info is None:
         return HttpResponse("未知模块", status=404)
+    if not MODULE_REGISTRY.get(module, True):
+        messages.warning(request, "该模块已对接第三方系统，暂不开放；历史数据已保留。")
+        return redirect("/home/")
     model = info[1]
     if not request.user.has_perm(f"hotelapp.view_{module}"):
         return HttpResponse("没有导出权限", status=403)
+    # 敏感字段（顾客身份证/会员联系方式）不随查看权限导出：需独立「导出敏感数据」授权
+    if module in ("client", "vip") and not request.user.has_perm("hotelapp.export_pii"):
+        return HttpResponse("导出含敏感字段的数据需要「导出敏感数据」权限", status=403)
     response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
     response["Content-Disposition"] = f'attachment; filename="{module}.csv"'
     writer = csv.writer(response)
@@ -1233,7 +1281,10 @@ def login_view(request):
 
 
 def register_view(request):
-    """注册即「前台」角色：注册成功自动登录进入主界面"""
+    """注册 = 顾客预订账号（P0 安全止血：不再发放 is_staff/员工组）。
+
+    员工后台账号由管理员在后台创建并授权（或 bind_staff_user 绑定），
+    公开注册通道不得产生任何员工后台身份。"""
     if request.user.is_authenticated and request.user.is_staff:
         return redirect("/home/")
     error = None
@@ -1259,12 +1310,10 @@ def register_view(request):
             error = "该用户名已被注册"
         else:
             user = User.objects.create_user(username=username, password=password, first_name=fullname)
-            user.is_staff = True
-            user.save()
-            user.groups.add(Group.objects.get(name="前台"))
+            # 决不发放员工后台身份（is_staff / Group 均不动）——公开注册只产顾客账号
             auth_login(request, user)
-            messages.success(request, "注册成功，欢迎使用酒店管理系统")
-            return redirect("/home/")
+            messages.success(request, "注册成功，可用于顾客预订；员工账号请联系管理员开通")
+            return redirect("/booking/")
     return render(request, "register.html", {"error": error, "form": form})
 
 
@@ -1284,9 +1333,9 @@ def home(request):
         ("房间管理", "房间状态 · 清洁 · 维修", "/show_room/", "hotelapp.view_room"),
         ("顾客管理", "顾客信息维护与查询", "/show_client/", "hotelapp.view_client"),
         ("会员管理", "会员信息维护与查询", "/show_vip/", "hotelapp.view_vip"),
-        ("餐厅管理", "菜品信息维护", "/show_food/", "hotelapp.view_food"),
-        ("餐厅订单", "餐饮订单录入与查询", "/show_order/", "hotelapp.view_order"),
-        ("停车场管理", "车位与车辆管理", "/show_park/", "hotelapp.view_park"),
+        *([("餐厅管理", "菜品信息维护", "/show_food/", "hotelapp.view_food")] if MODULE_REGISTRY["food"] else []),
+        *([("餐厅订单", "餐饮订单录入与查询", "/show_order/", "hotelapp.view_order")] if MODULE_REGISTRY["order"] else []),
+        *([("停车场管理", "车位与车辆管理", "/show_park/", "hotelapp.view_park")] if MODULE_REGISTRY["park"] else []),
         ("财务管理", "流水 · 收支 · 报表分析", "/finance/", None),
         ("员工管理", "员工信息维护", "/index/", "hotelapp.view_staff"),
     ]
@@ -1344,10 +1393,11 @@ def home(request):
         {"name": r["会员等级"] or "普通会员", "value": r["n"]}
         for r in Vip.objects.values("会员等级").annotate(n=Count("会员编号")).order_by("-n")
     ]
-    food_count = Food.objects.count()
+    show_fnb = MODULE_REGISTRY["food"] or MODULE_REGISTRY["order"]
+    food_count = Food.objects.count() if show_fnb else 0
     recent_orders = [
         {"dish": o.菜品编号.菜名, "guest": o.顾客编号.姓名 or "未知顾客", "table": o.桌号}
-        for o in Order.objects.order_by("-id")[:5]
+        for o in (Order.objects.order_by("-id")[:5] if show_fnb else [])
     ]
 
     # 消费统计（收入来自财务流水；已结算房费来自退房订单）——仅财务及以上可见
@@ -1394,6 +1444,7 @@ def home(request):
         "recent_orders": recent_orders,
         "finance_dash": finance_dash,
         "show_finance": can_see_finance,
+        "show_fnb": show_fnb,
     }
     return render(request, "home.html", ctx)
 
@@ -1575,10 +1626,10 @@ def checkout(request):
 
 @staff_required
 def uncheckout(request):
-    """反结账（值班经理及以上）：已退房 → 已入住，删除对应收入流水"""
+    """反结账：已退房 → 已入住，删除对应收入流水（需「反结账」权限：值班经理/店长）"""
     if request.method == "POST":
-        if not _has_role(request.user, "值班经理"):
-            return HttpResponse("只有值班经理可以反结账", status=403)
+        if not request.user.has_perm("hotelapp.reverse_checkout"):
+            return HttpResponse("反结账需要值班经理/店长授权", status=403)
         try:
             with transaction.atomic():
                 item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"), 状态="已退房")
@@ -1598,8 +1649,8 @@ def uncheckout(request):
                 room.save()
                 FinanceRecord.objects.filter(关联订单=str(item.id), 类型="收入").delete()
                 Folio.objects.filter(order=item, 类型="收款").delete()
-        except ValueError as e:
-            return HttpResponse(str(e), status=400)
+        except (ValueError, Accommodation.DoesNotExist) as e:
+            return HttpResponse(str(e) or "订单不存在或状态已变更", status=400)
         return JsonResponse({"ok": True})
     return HttpResponse("非法请求", status=400)
 
@@ -1646,8 +1697,8 @@ def _finance_context():
 
 @staff_required
 def finance_manage(request):
-    """财务管理：流水列表 + 新增收支 + 报表分析（财务/店长/值班经理）"""
-    if not _has_role(request.user, "财务", "店长", "值班经理"):
+    """财务管理：流水列表 + 新增收支 + 报表分析（需「财务管理」权限）"""
+    if not request.user.has_perm("hotelapp.finance_access"):
         raise PermissionDenied
     ctx = _finance_context()
     ctx["can_add"] = _has_role(request.user, "财务")
@@ -1694,8 +1745,8 @@ def finance_add(request):
 # ---------- 夜审（Night Audit） ----------
 @staff_required
 def night_audit(request):
-    """夜审工作台：在住账务核对 + 未到(No-Show)处理 + 营业日结（值班经理/店长）"""
-    if not _has_role(request.user, "值班经理", "店长"):
+    """夜审工作台：在住账务核对 + 未到(No-Show)处理 + 营业日结（需「执行夜审」权限）"""
+    if not request.user.has_perm("hotelapp.night_audit_execute"):
         raise PermissionDenied
     living = Accommodation.objects.filter(状态="已入住").order_by("id")
     expired = Accommodation.objects.filter(状态__in=("待确认", "已确认"), 入住时间__lt=_today())
@@ -1708,10 +1759,10 @@ def night_audit(request):
 
 @staff_required
 def night_audit_run(request):
-    """执行夜审：No-Show 处理 → 房费过租 → 记录日结"""
+    """执行夜审：No-Show 处理 → 房费过租 → 记录日结（需「执行夜审」权限）"""
     if request.method == "POST":
-        if not _has_role(request.user, "值班经理", "店长"):
-            return HttpResponse("只有值班经理/店长可以执行夜审", status=403)
+        if not request.user.has_perm("hotelapp.night_audit_execute"):
+            return HttpResponse("执行夜审需要值班经理/店长授权", status=403)
         expired = Accommodation.objects.filter(状态__in=("待确认", "已确认"), 入住时间__lt=_today())
         noshow = 0
         for item in expired:

@@ -55,11 +55,13 @@ def create_roles(apps, schema_editor):
         group, _ = Group.objects.get_or_create(name=role)
         group.permissions.clear()
         for model_name, codename in perm_list:
-            try:
-                ct = ContentType.objects.get(app_label="hotelapp", model=model_name)
-                perm = Permission.objects.get(content_type=ct, codename=codename)
-            except (ContentType.DoesNotExist, Permission.DoesNotExist):
-                continue
+            # 测试库迁移时 post_migrate 尚未生成 ContentType/Permission 行，
+            # 必须 get_or_create（get 失败静默跳过会让角色组在测试库为空）
+            ct, _ = ContentType.objects.get_or_create(
+                app_label="hotelapp", model=model_name)
+            perm, _ = Permission.objects.get_or_create(
+                content_type=ct, codename=codename,
+                defaults={"name": f"能管理 {model_name}"})
             group.permissions.add(perm)
 
     for username, (password, role) in DEMO_USERS.items():

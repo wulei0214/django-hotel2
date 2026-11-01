@@ -203,3 +203,43 @@ SIMPLEUI_DEFAULT_THEME = "admin.lte.css"
 SIMPLEUI_HOME_INFO = False   # 隐藏 simpleui 自带的英文信息卡（Gitee/Github 面板）
 SIMPLEUI_HOME_TITLE = "酒店管理控制台"
 SIMPLEUI_LOGO = "/static/images/t1.jpg"
+
+# 多物业策略（RBAC 决策 8）：单店运行，仅 DEFAULT 物业生效；
+# PMS2 架构（物业/库存/预订/账务等 app）代码保留但菜单隐藏——URL 仍可直达供开发期排查，
+# 后续多物业启用时删除本配置即恢复完整菜单。
+SIMPLEUI_CONFIG = {
+    "system_name": "酒店管理系统",
+    "menus": [
+        {
+            "name": "酒店业务模块",
+            "icon": "fas fa-hotel",
+            "models": [
+                {"name": "员工信息管理", "icon": "far fa-user", "url": "/admin/hotelapp/staff/"},
+                {"name": "顾客管理", "icon": "far fa-address-book", "url": "/admin/hotelapp/client/"},
+                {"name": "会员信息管理", "icon": "far fa-star", "url": "/admin/hotelapp/vip/"},
+                {"name": "客房信息管理", "icon": "fas fa-bed", "url": "/admin/hotelapp/room/"},
+                {"name": "客房订单管理", "icon": "fas fa-book", "url": "/admin/hotelapp/accommodation/"},
+                {"name": "财务流水", "icon": "fas fa-yen-sign", "url": "/admin/hotelapp/financerecord/"},
+                {"name": "夜审记录", "icon": "far fa-bookmark", "url": "/admin/hotelapp/nightaudit/"},
+                {"name": "账单流水", "icon": "fas fa-shopping-bag", "url": "/admin/hotelapp/folio/"},
+            ],
+        },
+        {
+            "name": "PMS 身份与权限",
+            "icon": "fas fa-id-badge",
+            "models": [
+                {"name": "员工档案", "icon": "far fa-id-card", "url": "/admin/identity/staffprofile/"},
+                {"name": "员工酒店任职关系", "icon": "fas fa-briefcase", "url": "/admin/identity/propertystaffmembership/"},
+                {"name": "员工岗位授权", "icon": "fas fa-key", "url": "/admin/identity/staffroleassignment/"},
+            ],
+        },
+        {
+            "name": "认证和授权",
+            "icon": "fas fa-shield-alt",
+            "models": [
+                {"name": "用户", "icon": "far fa-user", "url": "/admin/auth/user/"},
+                {"name": "组", "icon": "fas fa-users-cog", "url": "/admin/auth/group/"},
+            ],
+        },
+    ],
+}

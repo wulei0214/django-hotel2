@@ -92,6 +92,7 @@
         </div>
     </section>
 
+    {% if show_fnb %}
     <section class="dash-row">
         <div class="dash-card">
             <h4>后勤概览 · 菜品总数</h4>
@@ -111,6 +112,7 @@
             {% endif %}
         </div>
     </section>
+    {% endif %}
 
 <script src="/static/js/echarts.min.js"></script>
 <script>

@@ -22,6 +22,17 @@ ROLE_CHOICES = (
     "PROPERTY_OWNER",
 )
 
+# RBAC 统一角色目录：英文稳定编码 → 中文组名（迁移 0014 已清理英文组，只保留中文目录）。
+# 页面（权限矩阵）与命令（本命令）都写同一个中文组，双轨目录问题不再存在。
+ROLE_CODE_TO_GROUP = {
+    "FRONT_DESK": "前台",
+    "HOUSEKEEPING": "客房服务员",
+    "NIGHT_AUDIT": "夜审员",
+    "FINANCE": "财务",
+    "DUTY_MANAGER": "值班经理",
+    "PROPERTY_OWNER": "店长",
+}
+
 
 class Command(BaseCommand):
     help = "将旧员工档案绑定到 Django User，并按物业任职关系分配岗位模板。"
@@ -47,7 +58,7 @@ class Command(BaseCommand):
                     status=PropertyStaffMembership.Status.ACTIVE,
                 )
             )
-            group = Group.objects.get(name=options["role"])
+            group = Group.objects.get(name=ROLE_CODE_TO_GROUP[options["role"]])
         except (User.DoesNotExist, Property.DoesNotExist, PropertyStaffMembership.DoesNotExist, Group.DoesNotExist) as exc:
             raise CommandError(f"无法完成绑定：{exc}") from exc
 

@@ -23,8 +23,11 @@
                 {% for name, g in roles %}
                 <a class="role-tab {% if g.id == group.id %}role-active{% endif %}" href="?role={{ g.id }}">{{ name }}</a>
                 {% endfor %}
+                {% for name in reserved_roles %}
+                <span class="role-tab role-reserved" title="预留角色，后续版本启用">{{ name }}（预留）</span>
+                {% endfor %}
             </p>
-            <p class="perm-code perm-note">提示：「查看」同时控制该模块在左侧菜单中的可见性；超级管理员拥有全部权限，不受本页控制。</p>
+            <p class="perm-code perm-note">提示：「查看」同时控制该模块在左侧菜单中的可见性；超级管理员拥有全部权限，不受本页控制。灰显模块已对接第三方（预留），保存时权限随之回收。</p>
         </div>
         <div class="perm-actions">
             <a class="perm-btn" href="/home/">← 返回主页</a>
@@ -44,16 +47,17 @@
                     <th class="mx-rowall">整行全选</th>
                 </tr>
                 {% for m in modules %}
-                <tr>
-                    <td class="mx-module">{{ m.label }}</td>
+                <tr {% if m.reserved %}class="mx-reserved" title="已对接第三方系统，模块隐藏中（预留）"{% endif %}>
+                    <td class="mx-module">{{ m.label }}{% if m.reserved %}<span class="mx-tag">预留</span>{% endif %}</td>
                     {% for a in m.actions %}
                     <td class="mx-cell">
                         <input type="checkbox" name="perm" value="{{ a.action }}_{{ m.key }}"
                                class="mx-check" data-module="{{ m.key }}" data-action="{{ a.action }}"
-                               {% if a.checked %}checked{% endif %}>
+                               {% if m.reserved %}disabled{% endif %}
+                               {% if a.checked and not m.reserved %}checked{% endif %}>
                     </td>
                     {% endfor %}
-                    <td class="mx-cell"><input type="checkbox" class="mx-rowall" data-module="{{ m.key }}"></td>
+                    <td class="mx-cell"><input type="checkbox" class="mx-rowall" data-module="{{ m.key }}" {% if m.reserved %}disabled{% endif %}></td>
                 </tr>
                 {% endfor %}
                 <tr class="mx-footer">
@@ -63,6 +67,21 @@
                     {% endfor %}
                     <td class="mx-cell"><input type="checkbox" id="mx-all"></td>
                 </tr>
+            </table>
+        </div>
+        <div class="perm-panel matrix-panel">
+            <h3 class="perm-section-title">高危动作（独立权限点，默认仅值班经理/店长）</h3>
+            <table class="matrix-table action-table">
+                {% for p in action_perms %}
+                <tr>
+                    <td class="mx-module">{{ p.label }}</td>
+                    <td class="mx-cell mx-desc">{{ p.desc }}</td>
+                    <td class="mx-cell">
+                        <input type="checkbox" name="perm" value="{{ p.code }}"
+                               class="mx-action-check" {% if p.checked %}checked{% endif %}>
+                    </td>
+                </tr>
+                {% endfor %}
             </table>
         </div>
         <div class="perm-save-bar">
@@ -79,6 +98,7 @@
         var t = e.target;
         if (t.id === 'mx-all') {
             document.querySelectorAll('.mx-check').forEach(function (i) { i.checked = t.checked; });
+            document.querySelectorAll('.mx-action-check').forEach(function (i) { i.checked = t.checked; });
             document.querySelectorAll('.mx-rowall, .mx-colall').forEach(function (i) { i.checked = t.checked; });
         } else if (t.classList.contains('mx-rowall')) {
             document.querySelectorAll('.mx-check[data-module="' + t.dataset.module + '"]')
@@ -97,10 +117,12 @@
             }
         }
         document.getElementById('perm-count').textContent =
-            document.querySelectorAll('.mx-check:checked').length;
+            document.querySelectorAll('.mx-check:checked').length +
+            document.querySelectorAll('.mx-action-check:checked').length;
     });
     document.getElementById('perm-count').textContent =
-        document.querySelectorAll('.mx-check:checked').length;
+        document.querySelectorAll('.mx-check:checked').length +
+        document.querySelectorAll('.mx-action-check:checked').length;
 </script>
 </body>
 </html>

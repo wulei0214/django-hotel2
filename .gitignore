@@ -37,3 +37,4 @@ hotelapp/api.py
 hotelapp/services/
 hotelapp/migrations/0010_p0_hardening.py
 hotelapp/migrations/0011_backfill_p0_data.py
+docs/_food_check.html
