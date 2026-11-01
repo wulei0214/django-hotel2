@@ -35,7 +35,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
 from django.core.paginator import Paginator
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 
 from .models import (Staff, Room, Client, Food, Vip, Park, Order, Accommodation,
                      FinanceRecord, NightAudit, Folio, ROOM_STATUS, ORDER_STATUS)
@@ -1522,9 +1522,13 @@ def staff_accounts_set_status(request, pk):
     status = request.POST.get("status")
     if status not in ("ACTIVE", "SUSPENDED", "TERMINATED"):
         return HttpResponse("未知状态", status=400)
-    EmployeeLifecycleService.set_employment_status(
-        profile, status=status, ended_by=request.user,
-        reason=request.POST.get("reason") or "")
+    try:
+        EmployeeLifecycleService.set_employment_status(
+            profile, status=status, ended_by=request.user,
+            reason=request.POST.get("reason") or "")
+    except Exception as exc:
+        messages.error(request, f"操作失败：{exc}")
+        return redirect(f"/staff_accounts/{pk}/")
     labels = {"ACTIVE": "已恢复在职", "SUSPENDED": "已暂停任职", "TERMINATED": "已办理离职"}
     messages.success(request, labels[status])
     return redirect(f"/staff_accounts/{pk}/")

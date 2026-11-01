@@ -6,7 +6,7 @@ from django.contrib.auth.models import Group, User
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.identity.models import StaffRoleAssignment
+from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from hotelapp.models import Accommodation, Client, Food, Folio, Order, Room, Staff
 
 
@@ -31,7 +31,7 @@ def _make_user(username, group_name, membership_status="ACTIVE"):
     if group is not None and membership_status == "ACTIVE":
         # 与生产双写一致：角色授权记录（staff_required 门禁要求有效授权）
         from django.utils import timezone as _tz
-        from apps.identity.models import StaffRoleAssignment
+        from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
         StaffRoleAssignment.objects.get_or_create(
             membership=membership, group=group,
             defaults={"starts_at": _tz.now()})
@@ -560,7 +560,7 @@ class EmployeeLifecycleServiceTests(TestCase):
         self.assertTrue(user.has_perm("hotelapp.view_client"))
         self.assertTrue(user.has_perm("hotelapp.night_audit_execute"))
         # 已过期的临时授权：组镜像同步后立即失权
-        from apps.identity.models import StaffRoleAssignment
+        from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
         temp = StaffRoleAssignment.objects.create(
             membership=membership, group=Group.objects.get(name="客房服务员"),
             starts_at=timezone.now() - timedelta(days=2),
@@ -644,3 +644,43 @@ class StaffWorkbenchGUITests(TestCase):
         self.assertTrue(user.has_perm("hotelapp.view_client"))
         self.assertTrue(user.has_perm("hotelapp.view_room"))
         self.assertFalse(user.has_perm("hotelapp.view_staff"), "未授权角色不得越权")
+
+
+class SegregationOfDutiesTests(TestCase):
+    """关联方案 §6.2/§10.3 职责分离（E-35/MGR-14）：禁止自我提权与自我停用"""
+
+    def setUp(self):
+        self.owner = _make_user("owner_sod", "店长")
+
+    def test_owner_cannot_grant_role_to_self(self):
+        """店长不能在工作台给自己分配角色（自我提权）"""
+        profile = StaffProfile.objects.get(user=self.owner)
+        membership = PropertyStaffMembership.objects.get(staff_profile=profile)
+        with self.assertRaises(Exception):
+            self.svc.assign_role(
+                membership=membership, group=Group.objects.get(name="财务"),
+                granted_by=self.owner, reason="给自己加权限")
+        self.assertFalse(self.owner.groups.filter(name="财务").exists())
+
+    def test_owner_cannot_terminate_self(self):
+        """E-35：店长不能对自己执行停职/离职（防止锁死）"""
+        profile = StaffProfile.objects.get(user=self.owner)
+        with self.assertRaises(Exception):
+            self.svc.set_employment_status(
+                profile, status="TERMINATED", ended_by=self.owner, reason="自离")
+        profile.refresh_from_db()
+        self.assertEqual(profile.employment_status, "ACTIVE")
+
+    def test_workbench_blocks_self_operations(self):
+        """GUI 层同样被拦截：给自己授权/离职返回错误提示"""
+        self.client.force_login(self.owner)
+        profile = StaffProfile.objects.get(user=self.owner)
+        response = self.client.post(f"/staff_accounts/{profile.pk}/assign_role/", {
+            "role": "财务", "reason": "自我提权尝试"})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(self.owner.groups.filter(name="财务").exists())
+        response = self.client.post(f"/staff_accounts/{profile.pk}/set_status/", {
+            "status": "TERMINATED", "reason": "自离"})
+        self.assertEqual(response.status_code, 302)
+        profile.refresh_from_db()
+        self.assertEqual(profile.employment_status, "ACTIVE")

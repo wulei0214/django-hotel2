@@ -163,7 +163,15 @@ class EmployeeLifecycleService:
     @transaction.atomic
     def assign_role(cls, *, membership, group, starts_at=None, ends_at=None,
                     granted_by=None, reason=""):
-        """在任职下新增一条角色授权并同步组镜像；重复的同组有效授权幂等返回。"""
+        """在任职下新增一条角色授权并同步组镜像；重复的同组有效授权幂等返回。
+
+        职责分离（方案 §6.2/§10.3）：操作者不能给自己分配任何角色（禁止自我提权）。
+        """
+        target_user = membership.staff_profile.user
+        if (granted_by is not None and target_user is not None
+                and granted_by.pk == target_user.pk):
+            raise EmployeeLifecycleError(
+                "不能为自己分配角色（禁止自我提权）；如需调整请联系其他管理员")
         now = timezone.now()
         starts_at = starts_at or now
         active = StaffRoleAssignment.objects.filter(
@@ -212,6 +220,13 @@ class EmployeeLifecycleService:
         离职：终止全部当前授权、Membership 置 TERMINATED 并填 ended_at；
         deactivate_user=None 表示按策略自动处理（离职→停用账号，暂停→保留）。
         """
+        # E-35：不能对自己执行暂停/离职（避免最后一个管理者把自己锁在门外）
+        target_user = profile.user
+        if (ended_by is not None and target_user is not None
+                and ended_by.pk == target_user.pk
+                and status != StaffProfile.EmploymentStatus.ACTIVE):
+            raise EmployeeLifecycleError(
+                "不能对自己执行停职/离职；如需移交请联系其他管理员或平台管理员")
         now = timezone.now()
         profile.employment_status = status
         profile.save(update_fields=("employment_status", "updated_at"))
