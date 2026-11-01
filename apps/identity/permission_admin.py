@@ -138,8 +138,12 @@ def permission_admin_save(request):
 
     perms = list(Permission.objects.filter(
         content_type__app_label="hotelapp", codename__in=granted))
-    group.permissions.set(perms)
-    audit.info("权限矩阵保存 role=%s(%s) 授予 %s 项 操作人=%s",
-               group.name, group.id, len(granted), request.user.username)
+    # 前后台一致性：本矩阵只管辖 hotelapp 域权限；管理员在 Django admin 单独授予的
+    # 其他 app 权限（如 identity/auth 域）不属于矩阵管辖，必须原样保留，
+    # 否则 set() 整体替换会把后台手工追加的授权静默清空
+    other_perms = list(group.permissions.exclude(content_type__app_label="hotelapp"))
+    group.permissions.set(perms + other_perms)
+    audit.info("权限矩阵保存 role=%s(%s) 授予 %s 项(另保留非矩阵权限 %d 项) 操作人=%s",
+               group.name, group.id, len(granted), len(other_perms), request.user.username)
     messages.success(request, f"角色「{group.name}」权限已保存（{len(granted)} 项）")
     return redirect(f"/permissions/?role={group.id}")

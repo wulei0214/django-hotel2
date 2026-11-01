@@ -670,10 +670,14 @@ def search_park(request):
 @staff_required
 @permission_required('hotelapp.view_room', raise_exception=True)
 def show_room(request):
-    """客房信息管理列表（图5）：分页 15 条/页"""
+    """客房信息管理列表（图5）：分页 15 条/页；is_room_manager 控制维修类按钮显隐"""
     paginator = Paginator(Room.objects.order_by("房间号"), 15)
     page = paginator.get_page(request.GET.get("page"))
-    return render(request, "room.html", {"people_list": page.object_list, "page_obj": page})
+    is_room_manager = _has_role(request.user, "值班经理", "店长")
+    return render(request, "room.html", {
+        "people_list": page.object_list, "page_obj": page,
+        "is_room_manager": is_room_manager,
+    })
 
 
 @staff_required
@@ -1509,7 +1513,7 @@ def checkin_manage(request):
     return render(request, "checkin.html", {
         "rooms": rooms, "pending": pending, "confirmed": confirmed, "living": living,
         "done": done, "pre_arrival": pre_arrival,
-        "today": _today(), "can_void": _has_role(request.user, "值班经理"),
+        "today": _today(), "can_void": request.user.has_perm("hotelapp.reverse_checkout"),
     })
 
 

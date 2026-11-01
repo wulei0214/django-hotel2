@@ -78,11 +78,11 @@
             {% elif line.房间状态 == '待清洁' or line.房间状态 == '清洁中' %}<span class="badge warn-badge">{{ line.房间状态 }}</span>
             {% else %}<span class="badge info-badge">{{ line.房间状态 }}</span>{% endif %}</td>
         <td>
-            {% if line.房间状态 == '待清洁' %}<button class="btn btn-primary st-btn" data-room="{{line.房间号}}" data-target="清洁中">开始清洁</button>{% endif %}
-            {% if line.房间状态 == '清洁中' %}<button class="btn btn-primary st-btn" data-room="{{line.房间号}}" data-target="待检查">清洁完成</button>{% endif %}
-            {% if line.房间状态 == '待检查' %}<button class="btn btn-primary st-btn" data-room="{{line.房间号}}" data-target="空闲">检查通过</button>{% endif %}
-            {% if line.房间状态 != '维修中' and perms.hotelapp.change_room %}<button class="btn btn-primary st-btn-mgr" data-room="{{line.房间号}}" data-target="维修中">置维修中</button>{% endif %}
-            {% if line.房间状态 == '维修中' %}<button class="btn btn-primary st-btn" data-room="{{line.房间号}}" data-target="空闲">修复完成</button>{% endif %}
+            {% if line.房间状态 == '待清洁' and perms.hotelapp.change_room %}<button class="btn btn-primary st-btn" data-room="{{line.房间号}}" data-target="清洁中">开始清洁</button>{% endif %}
+            {% if line.房间状态 == '清洁中' and perms.hotelapp.change_room %}<button class="btn btn-primary st-btn" data-room="{{line.房间号}}" data-target="待检查">清洁完成</button>{% endif %}
+            {% if line.房间状态 == '待检查' and perms.hotelapp.room_release_ready %}<button class="btn btn-primary st-btn" data-room="{{line.房间号}}" data-target="空闲" title="净房放行：由当天管理者确认">检查通过</button>{% endif %}
+            {% if line.房间状态 != '维修中' and is_room_manager %}<button class="btn btn-primary st-btn-mgr" data-room="{{line.房间号}}" data-target="维修中">置维修中</button>{% endif %}
+            {% if line.房间状态 == '维修中' and is_room_manager %}<button class="btn btn-primary st-btn" data-room="{{line.房间号}}" data-target="空闲">修复完成</button>{% endif %}
         </td>
         {% if perms.hotelapp.delete_room %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
         {% if perms.hotelapp.change_room %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}

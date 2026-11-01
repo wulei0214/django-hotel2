@@ -182,3 +182,34 @@ class SensitiveExportPermissionTests(TestCase):
         response = self.client.get("/export/staff/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/csv", response["Content-Type"])
+
+
+class MatrixSaveConsistencyTests(TestCase):
+    """前后台一致性：权限矩阵保存只管辖 hotelapp 域，不覆盖 admin 授予的其他域权限。
+
+    场景：管理员在 Django admin 给某组手工加了非 hotelapp 权限（如 auth.view_group），
+    随后在矩阵页保存该组权限——非矩阵权限必须原样保留，不能被 set() 静默清空。
+    """
+
+    def test_matrix_save_preserves_non_hotelapp_permissions(self):
+        from django.contrib.auth.models import Permission
+        from django.contrib.contenttypes.models import ContentType
+
+        root = User.objects.create_superuser("rootrbac", password="root-pass123456")
+        # 用矩阵管理的角色组（临时组不在 ROLE_GROUPS 白名单内，保存会被拒绝——防提权设计）
+        group = Group.objects.get(name="值班经理")
+        # 模拟管理员在 Django admin 给该组手工授予的非矩阵权限
+        ct_group = ContentType.objects.get_for_model(Group)
+        group.permissions.add(Permission.objects.get(
+            codename="view_group", content_type=ct_group))
+
+        self.client.force_login(root)
+        response = self.client.post("/permissions/save/", {
+            "role": str(group.id), "perm": ["view_room", "change_room"],
+        })
+        self.assertEqual(response.status_code, 302)
+        codenames = set(group.permissions.values_list("codename", flat=True))
+        self.assertIn("view_room", codenames)
+        self.assertIn("change_room", codenames)
+        self.assertIn("view_group", codenames, "后台手工授权的非矩阵权限必须保留")
+        self.assertNotIn("delete_room", codenames, "未勾选的矩阵权限应被回收")
