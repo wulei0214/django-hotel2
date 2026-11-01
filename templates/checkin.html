@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>入住管理 - 酒店管理系统</title>
-    <link rel="stylesheet" href="/static/css/site.css?v=7">
+    <link rel="stylesheet" href="/static/css/site.css?v=8">
 </head>
 <body>
 {% if messages %}
@@ -181,129 +181,7 @@
 </div>
 
 <script src="/static/js/jquery-2.1.4.min.js"></script>
-<script>
-    function getCookie(name) {
-        var v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
-        return v ? v[2] : null;
-    }
-    $.ajaxSetup({ headers: { 'X-CSRFToken': getCookie('csrftoken') } });
-    function showToast(text, tag) {
-        var box = document.querySelector('.toast-box');
-        if (!box) { box = document.createElement('div'); box.className = 'toast-box'; document.body.appendChild(box); }
-        var t = document.createElement('div');
-        t.className = 'toast ' + (tag || 'success');
-        t.textContent = text;
-        box.appendChild(t);
-        setTimeout(function () { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; }, 1800);
-        setTimeout(function () { t.remove(); }, 2300);
-    }
-    $(document).on('click', '.ck-do', function () {
-        var tr = $(this).closest('tr');
-        var room = tr.find('.ck-room').val();
-        var idcard = tr.find('.ck-idcard').val();
-        if (!room) { alert('请先选择要分配的空闲房间'); return; }
-        $.post('/checkin_confirm/', { id: $(this).data('id'), room: room, idcard: idcard })
-         .done(function () { showToast('排房确认完成，房间已锁定'); setTimeout(function () { location.reload(); }, 600); })
-         .fail(function (xhr) { alert(xhr.responseText); });
-    });
-    $(document).on('click', '.ci-do', function () {
-        var tr = $(this).closest('tr');
-        var deposit = tr.find('.ci-deposit').val();
-        $.post('/checkin_in/', { id: $(this).data('id'), deposit: deposit })
-         .done(function () { showToast('入住办理完成'); setTimeout(function () { location.reload(); }, 600); })
-         .fail(function (xhr) { alert(xhr.responseText); });
-    });
-    $(document).on('click', '.ck-cancel', function () {
-        if (!window.confirm('确定取消该预订吗？已锁定的房间将同步释放。')) { return; }
-        $.post('/cancel_booking/', { id: $(this).data('id') })
-         .done(function () { showToast('预订已取消，房间已释放'); setTimeout(function () { location.reload(); }, 600); })
-         .fail(function (xhr) { alert(xhr.responseText); });
-    });
-    $(document).on('click', '.co-do', function () {
-        var tr = $(this).closest('tr');
-        var amount = tr.find('.co-amount').val();
-        if (!amount) { alert('请填写收款金额'); return; }
-        $.post('/checkout/', { id: $(this).data('id'), amount: amount })
-         .done(function () { showToast('退房结算完成，房间已转待清洁'); setTimeout(function () { location.reload(); }, 600); })
-         .fail(function (xhr) { alert(xhr.responseText); });
-    });
-    $(document).on('click', '.ck-void', function () {
-        var reason = window.prompt('冲账为高危操作，请输入冲账原因（将写入审计日志并红字平账）：');
-        if (!reason) { return; }
-        $.get('/delete_accomodation/', { id: $(this).data('id'), reason: reason })
-         .done(function () { showToast('已冲账，红字凭证已生成'); setTimeout(function () { location.reload(); }, 600); })
-         .fail(function (xhr) { alert(xhr.responseText); });
-    });
-    $(document).on('click', '.folio-btn', function () {
-        var id = $(this).data('id');
-        $.get('/folio/', { id: id }, function (res) {
-            document.getElementById('fm-order').textContent = '#' + id;
-            document.getElementById('fm-guest').textContent = res.guest;
-            document.getElementById('fm-room').textContent = res.room;
-            document.getElementById('fm-status').textContent = res.status;
-            document.getElementById('fm-due').textContent = res.due;
-            document.getElementById('fm-deposit').textContent = res.deposit;
-            document.getElementById('fm-paid').textContent = res.paid;
-            document.getElementById('fm-balance').textContent = res.balance;
-            var tb = document.getElementById('fm-rows');
-            tb.innerHTML = '';
-            res.rows.forEach(function (r) {
-                var tr = document.createElement('tr');
-                tr.innerHTML = '<td>' + r.类型 + '</td><td>' + r.金额 + '</td><td>' + r.事由 + '</td><td>' + r.日期 + '</td><td>' + r.经手人 + '</td>';
-                tb.appendChild(tr);
-            });
-            if (!res.rows.length) { tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#909399">暂无账单明细</td></tr>'; }
-            var m = document.getElementById('folio-modal');
-            m.style.display = 'flex';
-        });
-    });
-    $(document).on('click', '.ext-do', function () {
-        var id = $(this).data('id');
-        $.post('/extend_stay/', { id: id })
-         .done(function (res) { showToast('已续住一晚，加收房费 ' + JSON.parse(res).amount + ' 元'); setTimeout(function () { location.reload(); }, 800); })
-         .fail(function (xhr) { alert(xhr.responseText); });
-    });
-    $(document).on('click', '.mv-do', function () {
-        var tr = $(this).closest('tr');
-        var newRoom = tr.find('.mv-room').val();
-        if (!newRoom) { alert('请选择目标房间'); return; }
-        $.post('/change_room/', { id: $(this).data('id'), new_room: newRoom })
-         .done(function () { showToast('换房完成'); setTimeout(function () { location.reload(); }, 600); })
-         .fail(function (xhr) { alert(xhr.responseText); });
-    });
-    $(document).on('click', '.co-fast', function () {
-        if (!window.confirm('快捷离店将按账单聚合自动结算（免查房），确认？')) { return; }
-        $.post('/express_checkout/', { id: $(this).data('id') })
-         .done(function (res) { showToast('快捷离店完成，自动结算 ' + JSON.parse(res).amount + ' 元'); setTimeout(function () { location.reload(); }, 800); })
-         .fail(function (xhr) { alert(xhr.responseText); });
-    });
-    $(document).on('click', '.ns-do', function () {
-        if (!window.confirm('确定将该预订标记为「未到」吗？房间将释放。')) { return; }
-        $.post('/no_show_one/', { id: $(this).data('id') })
-         .done(function () { showToast('已标记未到，房间释放'); setTimeout(function () { location.reload(); }, 600); })
-         .fail(function (xhr) { alert(xhr.responseText); });
-    });
-    $('#today-only').on('change', function () {
-        var only = this.checked;
-        $('tr[data-date]').each(function () {
-            $(this).toggle(!only || $(this).data('date') === '{{ today }}');
-        });
-    });
-    $(document).on('click', '.wi-do', function () {
-        var f = document.querySelector('.wi-form');
-        var data = { name: f.querySelector('.wi-name').value, tel: f.querySelector('.wi-tel').value,
-                     idcard: f.querySelector('.wi-idcard').value, room: f.querySelector('.wi-room').value,
-                     deposit: f.querySelector('.wi-deposit').value };
-        $.post('/walkin_create/', data)
-         .done(function (res) { showToast('散客入住登记成功，订单 #' + JSON.parse(res).id); setTimeout(function () { location.reload(); }, 700); })
-         .fail(function (xhr) { alert(xhr.responseText); });
-    });
-    $(document).on('click', '.ck-uncheck', function () {
-        if (!window.confirm('反结账将退回收款记录，确认继续？')) { return; }
-        $.post('/uncheckout/', { id: $(this).data('id') })
-         .done(function () { showToast('已反结账'); setTimeout(function () { location.reload(); }, 600); })
-         .fail(function (xhr) { alert(xhr.responseText); });
-    });
-</script>
+<script src="/static/js/app.js?v=1"></script>
+
 </body>
 </html>

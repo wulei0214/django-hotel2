@@ -6,7 +6,7 @@
     <title>酒店信息管理系统</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=7">
+<link rel="stylesheet" href="/static/css/site.css?v=8">
 </head>
 <body>
 {% if messages %}
@@ -108,141 +108,8 @@
 
 </body>
 <script src="/static/js/jquery-2.1.4.min.js"></script>
-<script>
-    function getCookie(name) {
-        var v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
-        return v ? v[2] : null;
-    }
-    $.ajaxSetup({ headers: { 'X-CSRFToken': getCookie('csrftoken') } });
-    var VPAT = {
-        id10: /\d{1,10}/.source,
-        digits4: /\d{1,4}/.source,
-        price5: /\d{1,5}/.source,
-        name: /[\u4e00-\u9fa5A-Za-z·]{2,10}/.source,
-        name20: /[\u4e00-\u9fa5A-Za-z0-9·]{2,20}/.source,
-        type10: /[\u4e00-\u9fa5A-Za-z0-9]{2,10}/.source,
-        money: /(0|[1-9]\d{0,5})(\.\d{1,2})?/.source,
-        idcard: /\d{17}[\dXx]/.source,
-        tel: /1\d{10}/.source,
-        plate: /[\u4e00-\u9fa5][A-Z][A-Z0-9]{4,6}/.source,
-        job: '总经理|大堂经理|厨师|服务员|保安',
-        viprank: '普通会员|高级会员',
-        parkstatus: '空闲|有车'
-    };
-    function vbad(v, p) { return !(new RegExp('^(?:' + p + ')$')).test((v || '').trim()); }
-    function showToast(text, tag) {
-        var box = document.querySelector('.toast-box');
-        if (!box) { box = document.createElement('div'); box.className = 'toast-box'; document.body.appendChild(box); }
-        var t = document.createElement('div');
-        t.className = 'toast ' + (tag || 'success');
-        t.textContent = text;
-        box.appendChild(t);
-        setTimeout(function () { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; }, 1800);
-        setTimeout(function () { t.remove(); }, 2300);
-    }
-    function askConfirm(msg, onOk) {
-        var mask = document.createElement('div');
-        mask.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,.35);z-index:9998;display:flex;align-items:center;justify-content:center;';
-        var box = document.createElement('div');
-        box.style.cssText = 'background:#fff;border-radius:8px;padding:26px 30px;box-shadow:0 8px 30px rgba(0,0,0,.2);text-align:center;font-size:14px;color:#303133;min-width:280px;';
-        box.innerHTML = '<div style="margin-bottom:20px;">' + msg + '</div>';
-        var ok = document.createElement('button');
-        ok.textContent = '确定删除';
-        ok.style.cssText = 'background:#F56C6C;border:1px solid #F56C6C;color:#fff;border-radius:4px;padding:8px 24px;cursor:pointer;margin-right:14px;font-size:14px;';
-        var cancel = document.createElement('button');
-        cancel.textContent = '取消';
-        cancel.style.cssText = 'background:#fff;border:1px solid #dcdfe6;color:#606266;border-radius:4px;padding:8px 24px;cursor:pointer;font-size:14px;';
-        ok.onclick = function () { document.body.removeChild(mask); onOk(); };
-        cancel.onclick = function () { document.body.removeChild(mask); };
-        box.appendChild(ok); box.appendChild(cancel); mask.appendChild(box); document.body.appendChild(mask);
-    }
-    $(function () {
-        var p = location.pathname;
-        $('.sidebar-menu a').each(function () {
-            if (this.getAttribute('href') === p) { this.className = 'active'; }
-        });
-        setTimeout(function () { $('.toast').fadeOut(400); }, 2200);
-        if (document.querySelector('.toast')) {
-            var listCard = document.querySelectorAll('.card table')[0];
-            if (listCard) { listCard.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-        }
-    });
-    var UPAT = {
-        'client:身份证号': [VPAT.idcard, '身份证号必须是18位（末位可为X）'],
-        'vip:联系方式': [VPAT.tel, '联系方式必须是11位手机号（1开头）'],
-        'food:菜名': [VPAT.name20, '菜名必须是2-20位中英文或数字'],
-        'park:车辆牌号': [VPAT.plate, '车牌格式必须正确，如 黑A12345']
-    };
-    $(document).on('blur', 'input[data-unique]', function () {
-        var $inp = $(this);
-        var val = ($inp.val() || '').trim();
-        var key = $inp.attr('data-unique') || '';
-        var parts = key.split(':');
-        var tip = $inp.nextAll('.unique-tip').first();
-        if (!tip.length) { tip = $('<span class="unique-tip"></span>'); $inp.after(tip); }
-        if (!val || parts.length < 2) { tip.attr('class', 'unique-tip').text(''); return; }
-        var rule = UPAT[key];
-        if (rule && vbad(val, rule[0])) { tip.attr('class', 'unique-tip bad').text(rule[1]); return; }
-        tip.attr('class', 'unique-tip checking').text('检查中...');
-        $.get('/check_unique/', { model: parts[0], value: val }, function (res) {
-            if (res.exists) { tip.attr('class', 'unique-tip bad').text('该' + parts[1] + '已存在，不能重复'); }
-            else { tip.attr('class', 'unique-tip ok').text(parts[1] + '可用'); }
-        });
-    });
-    // 纯数字/金额输入框：输入时自动剔除非法字符（依据 pattern 判断，含中文区间的除外）
-    $(document).on('input', 'input[pattern]', function () {
-        var p = this.getAttribute('pattern') || '';
-        if (!/\d/.test(p) || p.indexOf('u4e00') !== -1) { return; }
-        if (p.indexOf('.') !== -1) {
-            this.value = this.value.replace(/[^0-9.]/g, '').replace(/\.{2,}/g, '.');
-            return;
-        }
-        if (/X/.test(p)) { this.value = this.value.replace(/[^0-9Xx]/g, ''); return; }
-        this.value = this.value.replace(/[^0-9]/g, '');
-    });
-    // 行内编辑：回车键 = 点击“完成”（所有模块一致）
-    $(document).on('keypress', 'tr input', function (e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            var btn = $(this).closest('tr').find('button.update');
-            if (btn.length) { btn.trigger('click'); }
-        }
-    });
-    // 自定义美化下拉：点击/聚焦展示全部选项，输入可过滤，点击选中（职务/等级/状态）
-    $(document).on('click focus', 'input[list]', function (e) {
-        var $inp = $(this);
-        var $dl = $('#' + ($inp.attr('list') || ''));
-        if (!$dl.length) { return; }
-        $('.dd-panel').remove();
-        if (!$inp.parent().hasClass('dd-wrap')) { $inp.wrapAll('<div class="dd-wrap"></div>'); }
-        var panel = $('<div class="dd-panel"></div>');
-        var opts = $dl.find('option').map(function () { return $(this).attr('value') || $(this).text(); }).get();
-        var render = function () {
-            panel.empty();
-            var q = ($inp.val() || '').trim();
-            var shown = opts.filter(function (o) { return !q || o.indexOf(q) !== -1; });
-            if (!shown.length) { panel.append('<div class="dd-empty">无匹配项，可直接使用当前输入</div>'); }
-            shown.forEach(function (o) {
-                var d = $('<div class="dd-option"></div>').text(o);
-                d.on('mousedown', function (ev) { ev.preventDefault(); $inp.val(o); panel.remove(); });
-                panel.append(d);
-            });
-        };
-        render();
-        $inp.after(panel);
-        e.stopPropagation();
-    });
-    $(document).on('input', 'input[list]', function () {
-        var $inp = $(this);
-        var q = ($inp.val() || '').trim();
-        $inp.closest('.dd-wrap').find('.dd-option').each(function () {
-            $(this).toggle($(this).text().indexOf(q) !== -1);
-        });
-    });
-    $(document).on('click', function (e) {
-        if (!$(e.target).closest('.dd-wrap').length) { $('.dd-panel').remove(); }
-    });
-</script>
+<script src="/static/js/app.js?v=1"></script>
+
 <script>
     $(".delete").click(function () {
         var id = $(this).closest('tr').find('.id').text();

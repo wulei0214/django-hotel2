@@ -11,62 +11,63 @@
    ============================================================ */
 :root {
     /* --- Primitives · 品牌与中性 --- */
-    --blue-500: var(--color-accent-solid);          /* 交互主色（Element 蓝） */
-    --blue-600: var(--color-accent-solid-hover);          /* 主色 hover */
-    --gold-500: var(--color-gold-solid);          /* 品牌暖金（亚朵金，页头/章节签名） */
-    --gold-400: var(--gold-400);          /* 暖金亮步 */
-    --ink-sidebar: var(--ink-sidebar);       /* 侧边栏底色 */
+    --blue-500: #2b74c9;          /* 交互主色（Element 蓝 · AA 对比度校准版 4.7:1） */
+    --blue-600: #4a90e2;          /* 主色 hover */
+    --gold-500: #b9975b;          /* 品牌暖金（亚朵金，页头/章节签名） */
+    --gold-400: #c8a464;          /* 暖金亮步 */
+    --ink-sidebar: #2b2f3a;       /* 侧边栏底色 */
     --ink-sidebar-hover: #3a4d63; /* 侧边栏 hover */
 
     /* --- Semantics · 背景 --- */
-    --color-bg-page: var(--color-bg-page);           /* 页面底 */
+    --color-bg-page: #f0f2f5;           /* 页面底 */
     --color-bg-surface: #ffffff;        /* 卡片/表面 */
-    --color-bg-subtle: var(--color-bg-subtle);         /* 表头/悬停行/浅底 */
-    --color-bg-inset: var(--color-bg-inset);          /* 次级浅底（结果卡/徽章底） */
-    --color-bg-voided: var(--color-bg-voided);         /* 已冲账行 */
+    --color-bg-subtle: #f5f7fa;         /* 表头/悬停行/浅底 */
+    --color-bg-inset: #f8f9fb;          /* 次级浅底（结果卡/徽章底） */
+    --color-bg-voided: #fafafa;         /* 已冲账行 */
 
     /* --- Semantics · 文字 --- */
-    --color-text-primary: var(--color-text-primary);      /* 标题/主要文字 */
-    --color-text-secondary: var(--color-text-secondary);    /* 常规文字 */
-    --color-text-muted: var(--color-text-muted);        /* 次要/占位 */
-    --color-text-disabled: var(--color-text-disabled);     /* 禁用/占位边 */
+    --color-text-primary: #303133;      /* 标题/主要文字 */
+    --color-text-secondary: #606266;    /* 常规文字 */
+    --color-text-muted: #909399;        /* 次要/占位 */
+    --color-text-disabled: #c0c4cc;     /* 禁用/占位边 */
     --color-text-inverse: #ffffff;      /* 深底反白 */
     --color-text-on-accent: #ffffff;    /* 主色底文字 */
 
     /* --- Semantics · 边框 --- */
-    --color-border-default: var(--color-border-default);    /* 输入框/按钮边 */
-    --color-border-separator: var(--color-border-separator);  /* 表格分隔线 */
-    --color-border-strong: var(--color-text-disabled);     /* 强边框 */
+    --color-border-default: #dcdfe6;    /* 输入框/按钮边 */
+    --color-border-separator: #ebeef5;  /* 表格分隔线 */
+    --color-border-strong: #c0c4cc;     /* 强边框 */
 
     /* --- Semantics · 交互主色（accent） --- */
-    --color-accent-solid: #2b74c9;
-    --color-accent-solid-hover: #4a90e2;
-    --color-accent-bg: var(--color-accent-bg);
-    --color-accent-border: var(--color-accent-border);
-    --color-accent-subtle: var(--color-accent-subtle);
+    --color-accent-solid: var(--blue-500);
+    --color-accent-solid-hover: var(--blue-600);
+    --color-accent-bg: #ecf5ff;
+    --color-accent-border: #d9ecff;
+    --color-accent-subtle: rgba(43, 116, 201, .15);
     --color-accent-text: #1f6fd0;
 
     /* --- Semantics · 状态色（solid / text / bg / border 四角色） --- */
-    --color-success-solid: var(--color-success-solid);
-    --color-success-text: var(--color-success-solid);
-    --color-success-bg: var(--color-success-bg);
-    --color-success-border: var(--color-success-border);
-    --color-danger-solid: var(--color-danger-solid);
-    --color-danger-solid-hover: var(--color-danger-solid-hover);
-    --color-danger-text: var(--color-danger-solid);
-    --color-danger-bg: var(--color-danger-bg);
-    --color-danger-border: var(--color-danger-border);
-    --color-warning-solid: var(--color-warning-solid);
-    --color-warning-text: var(--color-warning-solid);
-    --color-warning-bg: var(--color-warning-bg);
-    --color-warning-border: var(--color-warning-border);
+    --color-success-solid: #67c23a;
+    --color-success-text: #67c23a;
+    --color-success-bg: #f0f9eb;
+    --color-success-border: #e1f3d8;
+    --color-danger-solid: #f56c6c;
+    --color-danger-solid-hover: #f78989;
+    --color-danger-text: #f56c6c;
+    --color-danger-bg: #fef0f0;
+    --color-danger-border: #fde2e2;
+    --color-warning-solid: #e6a23c;
+    --color-warning-text: #e6a23c;
+    --color-warning-bg: #fdf6ec;
+    --color-warning-border: #faecd8;
 
     /* --- Semantics · 品牌暖金（标题装饰/章节签名，不做交互色） --- */
     --color-gold-solid: var(--gold-500);
     --color-gold-subtle: rgba(200, 164, 100, .12);
 
     /* --- Typography --- */
-    --font-body: var(--font-body);
+    --font-body: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
+                 "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
     --font-display: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong",
                     "SimSun", var(--font-body);
     --text-xs: 12px;          /* 极小标注 */
@@ -188,7 +189,8 @@ body {
 .logout-form { display: block; margin: 0 !important; }
 .logout-btn {
     width: 100%;
-    background: transparent;
+    background: rgba(255, 255, 255, .08);
+    color: #ffffff !important;
     border: 1px solid rgba(255, 255, 255, .35);
     color: var(--color-text-inverse);
     border-radius: var(--radius-sm);
@@ -326,10 +328,10 @@ button.btn.btn-primary.delete:hover { background: var(--color-danger-solid-hover
     font-size: var(--text-caption);
 }
 
-/* ---------- 消息提示（成功/错误 toast） ---------- */
+/* ---------- 消息提示（成功/错误 toast，实色醒目版） ---------- */
 .toast-box {
     position: fixed;
-    top: 24px;
+    top: 76px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 9999;
@@ -337,39 +339,44 @@ button.btn.btn-primary.delete:hover { background: var(--color-danger-solid-hover
     flex-direction: column;
     gap: 10px;
     align-items: center;
+    pointer-events: none;
 }
 div.toast {
-    min-width: 240px;
-    padding: 12px 24px;
+    min-width: 300px;
+    padding: 14px 26px 14px 22px;
     border-radius: var(--radius-md);
     font-size: var(--text-body);
+    font-weight: 600;
     text-align: center;
-    box-shadow: var(--shadow-pop);
-    animation: toastIn .3s ease;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, .22);
+    color: var(--color-text-inverse);
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
-div.toast.success {
-    background: var(--color-success-bg);
-    color: var(--color-success-solid);
-    border: 1px solid var(--color-success-border);
+div.toast::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, .35);
 }
-div.toast.error {
-    background: var(--color-danger-bg);
-    color: var(--color-danger-solid);
-    border: 1px solid var(--color-danger-border);
-}
-@keyframes toastIn {
-    from { opacity: 0; transform: translateY(-12px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
+div.toast.success { background: var(--color-success-solid); border: 1px solid var(--color-success-border); }
+div.toast.error { background: var(--color-danger-solid); border: 1px solid var(--color-danger-border); }
+div.toast.warning { background: var(--color-warning-solid); border: 1px solid var(--color-warning-border); }
 
-/* 错误提示文字（表单内） */
-form p[style*="red"] {
-    background: var(--color-danger-bg);
-    border: 1px solid var(--color-danger-border);
-    color: var(--color-danger-solid) !important;
+/* 错误条（表单内）同步加强：白字实色底 */
+form p[style*="red"], form .form-error {
+    background: var(--color-danger-solid);
+    border: none;
+    color: var(--color-text-inverse) !important;
     border-radius: var(--radius-sm);
-    padding: 10px 16px;
-    font-size: var(--text-caption);
+    padding: 11px 16px;
+    font-size: var(--text-body);
+    font-weight: 600;
 }
 
 
@@ -622,7 +629,8 @@ li.warn-info .warn-level { color: var(--color-accent-solid); background: var(--c
 .filter-body { display: flex; gap: 26px; flex-wrap: wrap; padding: 10px 4px 14px; }
 .filter-form { display: flex; align-items: center; gap: 8px; font-size: var(--text-caption); color: var(--color-text-secondary); }
 .list-card { padding-bottom: 6px; }
-.data-table { width: 100% !important; border-collapse: collapse; font-size: var(--text-caption); margin: 14px auto; }
+.data-table { width: 100% !important; border-collapse: collapse; font-size: var(--text-caption); margin: 14px auto; table-layout: auto; }
+.data-table td:nth-child(2), .data-table th:nth-child(2) { max-width: 320px; }
 .data-table th { background: var(--color-bg-subtle); color: var(--color-text-secondary); padding: 10px 8px; border-bottom: 2px solid var(--color-border-separator); text-align: center; }
 .data-table th a { color: var(--color-text-secondary); text-decoration: none; }
 .data-table th a:hover { color: var(--color-accent-solid); }
@@ -663,7 +671,7 @@ span.badge-toggle { cursor: default; }
 .inline-filter input[type="text"], .filter-form input[name="value"] {
     width: 320px !important;
 }
-.list-card, .card.list-card { width: auto !important; margin: 0 0 20px !important; }
+.list-card, .card.list-card { width: auto !important; margin: 0 0 20px !important; overflow-x: auto; }
 .data-table { width: 100% !important; }
 
 
@@ -743,3 +751,72 @@ form[action*="/insert"] input[type="date"] {
 
 /* ---------- 卡片满宽（信息展示区填充留白） ---------- */
 .card { width: auto !important; margin: 0 0 var(--space-4) !important; }
+
+
+/* ---------- 交互反馈（按压/加载/禁用） ---------- */
+.btn.btn-primary:active, .tb-btn:active, .badge-toggle:active,
+.perm-save-btn:active, .login-btn:active, .register-btn:active,
+.st-btn:active, .st-btn-mgr:active, .wi-do:active {
+    transform: scale(0.97);
+}
+.btn-is-loading {
+    color: transparent !important;
+    pointer-events: none;
+    position: relative;
+}
+.btn-is-loading::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, .45);
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: btn-spin .6s linear infinite;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+button:disabled, .tb-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+/* ---------- 全局 AJAX 进度条 ---------- */
+.ajax-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    z-index: 10000;
+    background: linear-gradient(90deg, var(--color-accent-solid), var(--color-accent-solid-hover));
+    transform: scaleX(0);
+    transform-origin: left;
+    opacity: 0;
+    transition: transform .3s ease-out, opacity .3s;
+    pointer-events: none;
+}
+.ajax-bar.ajax-active {
+    opacity: 1;
+    animation: ajax-slide 1.2s ease-in-out infinite;
+}
+@keyframes ajax-slide {
+    0% { transform: scaleX(0); transform-origin: left; }
+    50% { transform: scaleX(.7); transform-origin: left; }
+    100% { transform: scaleX(1); transform-origin: left; }
+}
+
+/* ---------- toast 状态图标（✓/✕ 替代圆点） ---------- */
+div.toast { font-size: var(--text-body); }
+div.toast::before {
+    width: auto; height: auto;
+    background: transparent !important;
+    box-shadow: none;
+    font-weight: 700;
+}
+div.toast.success::before { content: "✓"; }
+div.toast.error::before { content: "✕"; }
+div.toast.warning::before { content: "!"; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}
