@@ -1,5 +1,7 @@
+import functools
 import json
-from datetime import date
+import logging
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
@@ -26,6 +28,47 @@ from apps.reservations.services import (
     cancel_pending_reservation,
     normalize_phone,
 )
+
+logger = logging.getLogger("hotel.api")
+
+# 与预订服务/前端预订页同口径的业务边界
+MAX_ROOMS = 10          # 单笔预订最多间数
+MAX_GUESTS = 10         # 成人/儿童各自上限
+MAX_NIGHTS = 30         # 单笔预订最长连住晚数
+
+
+def api_guard(view):
+    """API 统一兜底：未预期异常记日志并返回 JSON 500，不向外暴露堆栈；
+    405 方法错误也统一为 JSON；已预期的业务异常（ValueError/Conflict 等）
+    由各视图自行转换为 4xx。"""
+
+    @functools.wraps(view)
+    def wrapper(request, *args, **kwargs):
+        try:
+            result = view(request, *args, **kwargs)
+        except JsonResponse:  # pragma: no cover - 防御性，正常不可达
+            raise
+        except Exception:
+            logger.exception("API 未预期错误：%s %s", request.method, request.path)
+            return JsonResponse(
+                {"error": "服务器内部错误，请稍后重试或联系管理员。"}, status=500
+            )
+        if getattr(result, "status_code", None) == 405:
+            return JsonResponse({"error": "不支持的 HTTP 方法，请检查请求方式。"}, status=405)
+        return result
+
+    return wrapper
+
+
+def csrf_failure(request, reason=""):
+    """CSRF 失败视图：/api/ 路径返回 JSON（保持 API 错误契约），其余走默认 HTML 页。"""
+    if request.path.startswith("/api/"):
+        return JsonResponse(
+            {"error": f"CSRF 校验失败：{reason or '缺少 CSRF 令牌，请先获取 csrftoken。'}"},
+            status=403,
+        )
+    from django.views.csrf import csrf_failure as default_csrf_failure
+    return default_csrf_failure(request, reason)
 
 
 def _body(request):
@@ -55,6 +98,7 @@ def _integer(value, label, default=None):
 
 
 @require_GET
+@api_guard
 def availability(request):
     property_obj = getattr(request, "property", None)
     if property_obj is None:
@@ -64,10 +108,15 @@ def availability(request):
         check_in = _date(request.GET.get("check_in"), "入住日期")
         check_out = _date(request.GET.get("check_out"), "离店日期")
         rooms = _integer(request.GET.get("rooms", "1"), "房间数")
-        if rooms < 1 or rooms > 10:
-            raise ValueError("房间数必须在 1 至 10 间之间。")
+        if rooms < 1 or rooms > MAX_ROOMS:
+            raise ValueError(f"房间数必须在 1 至 {MAX_ROOMS} 间之间。")
+        # 与创建预订同口径：不接受历史日期的查询（否则库存服务会静默跳过，返回误导性的空列表）
+        if check_in < date.today():
+            raise ValueError("入住日期不能早于今天。")
         if check_out <= check_in:
             raise ValueError("离店日期必须晚于入住日期。")
+        if (check_out - check_in).days > MAX_NIGHTS:
+            raise ValueError(f"单次查询最长 {MAX_NIGHTS} 晚。")
         room_type_id = request.GET.get("room_type_id")
         room_types = RoomType.objects.filter(property=property_obj, is_active=True)
         if room_type_id:
@@ -97,6 +146,7 @@ def availability(request):
 
 
 @require_POST
+@api_guard
 def reservations_create(request):
     property_obj = getattr(request, "property", None)
     if property_obj is None:
@@ -119,6 +169,19 @@ def reservations_create(request):
             "adults": _integer(body.get("adults", 1), "成人数"),
             "children": _integer(body.get("children", 0), "儿童数"),
         }
+        # 业务边界校验（与 OpenAPI schema 声明一致，创建服务兜底）
+        if payload["rooms"] < 1 or payload["rooms"] > MAX_ROOMS:
+            raise ValueError(f"房间数必须在 1 至 {MAX_ROOMS} 间之间。")
+        if payload["adults"] < 1 or payload["adults"] > MAX_GUESTS:
+            raise ValueError(f"成人数必须在 1 至 {MAX_GUESTS} 人之间。")
+        if payload["children"] < 0 or payload["children"] > MAX_GUESTS:
+            raise ValueError(f"儿童数必须在 0 至 {MAX_GUESTS} 人之间。")
+        if payload["check_in"] < date.today():
+            raise ValueError("入住日期不能早于今天。")
+        if payload["check_out"] <= payload["check_in"]:
+            raise ValueError("离店日期必须晚于入住日期。")
+        if (payload["check_out"] - payload["check_in"]).days > MAX_NIGHTS:
+            raise ValueError(f"单笔预订最长 {MAX_NIGHTS} 晚。")
         reservation, created = create_reservation(
             property_obj=property_obj,
             payload=payload,
@@ -150,6 +213,7 @@ def reservations_create(request):
 
 
 @require_GET
+@api_guard
 def reservation_detail(request, booking_no):
     property_obj = getattr(request, "property", None)
     phone = request.GET.get("phone", "")
@@ -195,6 +259,7 @@ def reservation_detail(request, booking_no):
 
 
 @require_POST
+@api_guard
 def payment_intent_create(request):
     property_obj = getattr(request, "property", None)
     try:
@@ -247,6 +312,7 @@ def payment_intent_create(request):
 
 @csrf_exempt
 @require_POST
+@api_guard
 def payment_callback(request):
     if not settings.DEBUG or getattr(settings, "DJANGO_ENV", "dev") not in {"dev", "test"}:
         return JsonResponse({"error": "模拟支付回调仅允许在本地开发和测试环境使用。"}, status=404)
@@ -279,6 +345,7 @@ def payment_callback(request):
 
 
 @require_GET
+@api_guard
 def openapi_document(request):
     return JsonResponse(
         {
@@ -377,6 +444,7 @@ def openapi_document(request):
 
 
 @require_POST
+@api_guard
 def reservation_cancel(request, booking_no):
     property_obj = getattr(request, "property", None)
     try:

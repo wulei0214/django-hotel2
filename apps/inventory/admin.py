@@ -37,3 +37,6 @@ class RoomTypeInventoryAdmin(admin.ModelAdmin):
     list_filter = ("property", "room_type", "stop_sell")
     date_hierarchy = "stay_date"
     readonly_fields = ("version", "updated_at")
+
+# 模型 cached_property 的列头默认显示英文属性名，这里给中文
+RoomTypeInventory.available_count.short_description = "可售房量"

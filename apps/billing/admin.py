@@ -58,3 +58,5 @@ class PaymentAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+# 支付流水的只读展示对后台维护者更友好：默认按创建时间倒序已由 Meta 保证

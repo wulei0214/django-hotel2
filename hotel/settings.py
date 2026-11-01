@@ -68,6 +68,8 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "hotel.urls"
 LOGIN_URL = "/login/"
+# API 路径的 CSRF 失败返回 JSON（保持接口错误契约），页面路径仍走默认 HTML
+CSRF_FAILURE_VIEW = "apps.api.views.csrf_failure"
 DEFAULT_PROPERTY_CODE = os.environ.get("DEFAULT_PROPERTY_CODE", "DEFAULT")
 PAYMENT_WEBHOOK_SECRET = os.environ.get("PAYMENT_WEBHOOK_SECRET", "")
 if not PAYMENT_WEBHOOK_SECRET:
@@ -198,5 +200,6 @@ LOGGING = {
 }
 
 SIMPLEUI_DEFAULT_THEME = "admin.lte.css"
+SIMPLEUI_HOME_INFO = False   # 隐藏 simpleui 自带的英文信息卡（Gitee/Github 面板）
 SIMPLEUI_HOME_TITLE = "酒店管理控制台"
 SIMPLEUI_LOGO = "/static/images/t1.jpg"

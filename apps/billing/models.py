@@ -4,26 +4,34 @@ from django.db.models import Q
 
 
 class Folio(models.Model):
+    """住客账单（户头）：一张预订一个户头，账务凭证挂在户头下。"""
+
     class Status(models.TextChoices):
         OPEN = "OPEN", "未结"
         CLOSED = "CLOSED", "已结"
         VOIDED = "VOIDED", "已作废"
 
     property = models.ForeignKey(
-        "core.Property", on_delete=models.PROTECT, related_name="folios"
+        "core.Property", on_delete=models.PROTECT, related_name="folios",
+        verbose_name="所属酒店",
     )
     reservation = models.OneToOneField(
         "reservations.Reservation",
         on_delete=models.PROTECT,
         related_name="folio",
+        verbose_name="预订主单",
     )
     guest = models.ForeignKey(
-        "guests.Guest", on_delete=models.PROTECT, related_name="folios"
+        "guests.Guest", on_delete=models.PROTECT, related_name="folios",
+        verbose_name="住客",
     )
-    status = models.CharField(max_length=12, choices=Status.choices, default=Status.OPEN)
-    currency = models.CharField(max_length=3, default="CNY")
-    opened_at = models.DateTimeField(auto_now_add=True)
-    closed_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.OPEN,
+        verbose_name="户头状态",
+    )
+    currency = models.CharField(max_length=3, default="CNY", verbose_name="币种")
+    opened_at = models.DateTimeField(auto_now_add=True, verbose_name="开户时间")
+    closed_at = models.DateTimeField(null=True, blank=True, verbose_name="结账时间")
 
     class Meta:
         ordering = ("-opened_at",)
@@ -43,7 +51,10 @@ class ImmutableLedgerEntryQuerySet(models.QuerySet):
 
 
 class LedgerEntry(models.Model):
+    """不可变账本凭证：账务事实只增不改不删，错账用红字冲销（void_of 指向原凭证）。"""
+
     objects = models.Manager.from_queryset(ImmutableLedgerEntryQuerySet)()
+
     class EntryType(models.TextChoices):
         ROOM_CHARGE = "ROOM_CHARGE", "房费"
         DEPOSIT = "DEPOSIT", "押金"
@@ -53,10 +64,12 @@ class LedgerEntry(models.Model):
         REVERSAL = "REVERSAL", "红字冲销"
 
     property = models.ForeignKey(
-        "core.Property", on_delete=models.PROTECT, related_name="ledger_entries"
+        "core.Property", on_delete=models.PROTECT, related_name="ledger_entries",
+        verbose_name="所属酒店",
     )
     folio = models.ForeignKey(
-        Folio, on_delete=models.PROTECT, related_name="entries"
+        Folio, on_delete=models.PROTECT, related_name="entries",
+        verbose_name="住客账单",
     )
     stay = models.ForeignKey(
         "reservations.Stay",
@@ -64,20 +77,34 @@ class LedgerEntry(models.Model):
         blank=True,
         on_delete=models.PROTECT,
         related_name="ledger_entries",
+        verbose_name="关联在住",
+        help_text="房费凭证关联到具体在住记录；其他类型可空",
     )
-    entry_type = models.CharField(max_length=20, choices=EntryType.choices)
+    entry_type = models.CharField(
+        max_length=20, choices=EntryType.choices, verbose_name="凭证类型",
+    )
     # Folio 视角：消费/房费为正；押金/收款为负；余额为正表示客人仍需支付。
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    currency = models.CharField(max_length=3, default="CNY")
-    business_date = models.DateField()
-    reference = models.CharField(max_length=160, unique=True)
-    description = models.CharField(max_length=240, blank=True)
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=2, verbose_name="金额（带符号）",
+        help_text="房费/消费为正，押金/收款为负，不得为 0；红字冲销为负数",
+    )
+    currency = models.CharField(max_length=3, default="CNY", verbose_name="币种")
+    business_date = models.DateField(
+        verbose_name="营业日期",
+        help_text="夜审口径的营业日，非自然日",
+    )
+    reference = models.CharField(
+        max_length=160, unique=True, verbose_name="凭证号",
+        help_text="全局唯一，幂等入账依据",
+    )
+    description = models.CharField(max_length=240, blank=True, verbose_name="摘要")
     posted_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
         on_delete=models.PROTECT,
         related_name="posted_ledger_entries",
+        verbose_name="记账人",
     )
     void_of = models.ForeignKey(
         "self",
@@ -85,13 +112,18 @@ class LedgerEntry(models.Model):
         blank=True,
         on_delete=models.PROTECT,
         related_name="reversals",
+        verbose_name="冲销原凭证",
+        help_text="红字冲销凭证指向被冲销的原凭证；普通凭证为空",
     )
-    void_reason = models.CharField(max_length=240, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    void_reason = models.CharField(
+        max_length=240, blank=True, verbose_name="冲销原因",
+        help_text="红字冲销凭证必填（数据库约束强制）",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="入账时间")
 
     class Meta:
-        verbose_name = "账本凭证"
-        verbose_name_plural = verbose_name
+        verbose_name = "不可变账本凭证"
+        verbose_name_plural = "不可变账本凭证"
         ordering = ("created_at", "id")
         indexes = [
             models.Index(fields=("property", "business_date"), name="idx_ledger_prop_date"),
@@ -104,8 +136,6 @@ class LedgerEntry(models.Model):
                 name="ck_ledger_reversal_has_reason",
             ),
         ]
-        verbose_name = "不可变账本凭证"
-        verbose_name_plural = "不可变账本凭证"
 
     def __str__(self):
         return f"{self.reference}: {self.amount} {self.currency}"
@@ -115,6 +145,8 @@ class LedgerEntry(models.Model):
 
 
 class Payment(models.Model):
+    """支付流水：一笔支付意图及其结果，与预订关联、入账后落到账本凭证。"""
+
     class Status(models.TextChoices):
         CREATED = "CREATED", "已创建"
         PENDING = "PENDING", "待支付"
@@ -126,21 +158,38 @@ class Payment(models.Model):
         REFUNDED = "REFUNDED", "已退款"
 
     property = models.ForeignKey(
-        "core.Property", on_delete=models.PROTECT, related_name="payments"
+        "core.Property", on_delete=models.PROTECT, related_name="payments",
+        verbose_name="所属酒店",
     )
     reservation = models.ForeignKey(
-        "reservations.Reservation", on_delete=models.PROTECT, related_name="payments"
+        "reservations.Reservation", on_delete=models.PROTECT, related_name="payments",
+        verbose_name="预订主单",
     )
-    folio = models.ForeignKey(Folio, on_delete=models.PROTECT, related_name="payments")
-    provider = models.CharField(max_length=24, default="mock")
-    provider_ref = models.CharField(max_length=80, unique=True)
-    method = models.CharField(max_length=24, default="MOCK")
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    currency = models.CharField(max_length=3, default="CNY")
-    status = models.CharField(max_length=24, choices=Status.choices, default=Status.PENDING)
-    paid_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    folio = models.ForeignKey(
+        Folio, on_delete=models.PROTECT, related_name="payments",
+        verbose_name="住客账单",
+    )
+    provider = models.CharField(
+        max_length=24, default="mock", verbose_name="支付渠道",
+        help_text="如 mock（本地模拟）/ wechat / alipay",
+    )
+    provider_ref = models.CharField(
+        max_length=80, unique=True, verbose_name="渠道流水号",
+        help_text="支付渠道返回的唯一引用，回调幂等依据",
+    )
+    method = models.CharField(max_length=24, default="MOCK", verbose_name="支付方式")
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=2, verbose_name="支付金额",
+        help_text="必须大于 0",
+    )
+    currency = models.CharField(max_length=3, default="CNY", verbose_name="币种")
+    status = models.CharField(
+        max_length=24, choices=Status.choices, default=Status.PENDING,
+        verbose_name="支付状态",
+    )
+    paid_at = models.DateTimeField(null=True, blank=True, verbose_name="支付完成时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
     class Meta:
         ordering = ("-created_at",)
