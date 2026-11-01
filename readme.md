@@ -622,3 +622,47 @@ CSS 版本 v=10。
 - 逐角色验证清单与自动化验证矩阵实测结果见
   [docs/角色权限验证指南.md](docs/角色权限验证指南.md)——九角色 curl 探测全部符合设计
   （前台/值班经理/财务/店长/客房服务员按矩阵放行，夜审员/餐饮/停车预留角色 fail-closed 全 403）
+
+## 员工账号权限关联批次（按《后台与前台员工账号权限关联设计方案》落地）
+
+方案核心：StaffProfile（自然人）/ User（登录身份）/ PropertyStaffMembership（DEFAULT 任职）/
+StaffRoleAssignment（岗位授权）四层对象各司其职，**前台业务页、Django Admin、管理命令
+统一走同一套生命周期服务**，不再各自拼接模型。
+
+### Phase 1：统一员工生命周期服务（apps/identity/services.py）
+
+`EmployeeLifecycleService`：create_employee（建档+任职+可选开账号+初始角色，工号/手机/账号
+三重查重）/ provision_account（STAFF-02）/ assign_role（支持临时授权与结束时间，STAFF-07）/
+end_assignment（调岗撤销，历史保留 STAFF-08）/ set_employment_status（暂停/离职/恢复，
+离职终止全部授权并停用账号 STAFF-09）/ reset_password（审计只记事件）。
+**组镜像同步**（_sync_group_mirror）是"授权记录 ↔ User.groups 运行时权限"的唯一同步点——
+修复了反向关系链式 filter 产生的独立 JOIN bug（其他用户的开放授权会令组被错误保留）。
+
+### D-04：is_staff 只管 Django Admin（Phase 2 登录链统一）
+
+- `staff_required` 改为"登录 + DEFAULT 有效任职 + 至少一条有效角色授权"判定链
+  （方案 §6 第 1-4 层），不再要求 is_staff；STAFF-03（无角色拒绝）在门禁层实现
+- `login_view` 同步：登录看员工身份链，不看 is_staff
+- 迁移 0017：**回收全部非 superuser 的 is_staff**；新增 `identity.staff_manage`
+  权限（授予店长）——员工/演示/测试账号此后无 Django Admin 入口（STAFF-10/11）
+- bind_staff_user / seed 命令同步去除 is_staff 发放
+
+### 员工与账号管理工作台（店长 GUI，方案 §4.1/§8）
+
+`/staff_accounts/`（identity.staff_manage 门控，店长+超管）：
+- **员工列表**：姓名/工号/岗位/在职状态/账号状态/当前角色标签/最后登录；不展示月薪（D-08）
+- **新增员工**：建档+DEFAULT 任职+可选开通账号+初始角色多选+旧员工关联（legacy_staff）
+- **员工详情**：资料/任职/账号/角色授权历史一页聚合；账号安全（开通/重置密码/暂停/离职/恢复）；
+  角色分配（支持结束时间=临时兼岗；结束授权保留历史）
+- 所有操作走 EmployeeLifecycleService，写 hotel.audit 审计
+
+### Phase 0：基线盘点命令
+
+`python manage.py audit_employee_data [--output csv]`：只读导出旧 Staff/StaffProfile/
+User/Membership/Assignment 关联现状与问题清单（未映射/孤儿/无角色/多绑定）。
+本店实测：28 条记录（问题 21 条，主要是旧员工未开账号——预期状态）。
+
+### 回归
+
+70 项测试全部通过（新增 8 项：生命周期服务 6 / 工作台 GUI 2），
+覆盖 STAFF-01/02/03/06/07/08/09/10 及越权与 D-04 断言。

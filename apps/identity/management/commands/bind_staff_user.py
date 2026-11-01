@@ -93,7 +93,8 @@ class Command(BaseCommand):
         # P0-1 授权载体统一（RBAC V2）：StaffRoleAssignment 是授权记录
         # （物业任职+有效期+授权人），User.groups 同步镜像同一中文组作为
         # 旧后台运行时权限载体——两条路径读写同一组，不再有两套目录。
-        user.is_staff = True
+        # D-04：is_staff 仅用于 Django Admin，不再随员工绑定发放；
+        # PMS 权限由 StaffRoleAssignment（授权记录）+ User.groups（运行时镜像）承载
         if options.get("password"):
             user.set_password(options["password"])
         user.save()
@@ -106,5 +107,5 @@ class Command(BaseCommand):
         )
         self.stdout.write(
             "授权记录已写入 StaffRoleAssignment（含任职/有效期），"
-            "并同步 User.groups + is_staff 使旧后台权限立即生效。"
+            "并同步 User.groups 使旧后台权限立即生效（is_staff 仅 Django Admin，不再发放）。"
         )

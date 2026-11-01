@@ -907,3 +907,18 @@ div.toast.warning::before { content: "!"; }
     color: var(--color-text-secondary);
     letter-spacing: 1px;
 }
+
+
+/* ---------- 员工与账号管理工作台 ---------- */
+.wb-note { margin: 0 0 var(--space-3); font-size: var(--text-caption); color: var(--color-text-secondary); }
+.wb-form { padding: var(--space-3) var(--space-2); }
+.wb-grid { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.wb-grid label { display: flex; flex-direction: column; gap: 6px; font-size: var(--text-caption); color: var(--color-text-secondary); }
+.wb-check { display: flex; align-items: center; gap: 8px; font-size: var(--text-body) !important; color: var(--color-text-primary) !important; }
+.wb-roles { margin: var(--space-2) 0 var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+.wb-roles-label { font-size: var(--text-caption); color: var(--color-text-secondary); }
+.wb-role { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-caption); }
+.wb-actions { margin-bottom: var(--space-3); }
+.wb-kv th { width: 110px; text-align: right; }
+.btn-danger-solid { background: var(--color-danger-solid) !important; border-color: var(--color-danger-solid) !important; color: var(--color-text-inverse) !important; }
+.btn-danger-solid:hover { background: var(--color-danger-solid-hover) !important; }

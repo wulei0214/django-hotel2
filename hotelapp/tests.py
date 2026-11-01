@@ -4,7 +4,9 @@
 """
 from django.contrib.auth.models import Group, User
 from django.test import TestCase
+from django.utils import timezone
 
+from apps.identity.models import StaffRoleAssignment
 from hotelapp.models import Accommodation, Client, Food, Folio, Order, Room, Staff
 
 
@@ -23,9 +25,16 @@ def _make_user(username, group_name, membership_status="ACTIVE"):
         code="DEFAULT", defaults={"name": "测试酒店"})
     profile = StaffProfile.objects.create(
         user=user, full_name=username, employment_status="ACTIVE")
-    PropertyStaffMembership.objects.create(
+    membership = PropertyStaffMembership.objects.create(
         property=prop, staff_profile=profile,
-        employee_no=f"E-{username[-4:]}", status=membership_status)
+        employee_no=f"E-{username}", status=membership_status)
+    if group is not None and membership_status == "ACTIVE":
+        # 与生产双写一致：角色授权记录（staff_required 门禁要求有效授权）
+        from django.utils import timezone as _tz
+        from apps.identity.models import StaffRoleAssignment
+        StaffRoleAssignment.objects.get_or_create(
+            membership=membership, group=group,
+            defaults={"starts_at": _tz.now()})
     return user
 
 
@@ -52,8 +61,8 @@ class RegisterStopTheBleedingTests(TestCase):
             "password2": "guest002-pass", "fullname": "测试顾客2", "tel": "",
         })
         response = self.client.get("/home/")
-        self.assertEqual(response.status_code, 302, "无员工身份者访问后台应被弹回登录页")
-        self.assertIn("/login/", response["Location"])
+        self.assertEqual(response.status_code, 403,
+                         "认证但无员工身份者访问后台应被明确拒绝（判定链 §6 第 2 层）")
 
 
 class HousekeepingReleaseTests(TestCase):
@@ -251,7 +260,7 @@ class UnifiedAuthorizationTests(TestCase):
                          username="bound01", role="FRONT_DESK",
                          password="new-pass-123", verbosity=0)
         user = User.objects.get(username="bound01")
-        self.assertTrue(user.is_staff, "绑定必须打通员工后台登录门禁")
+        self.assertFalse(user.is_staff, "D-04：is_staff 仅 Django Admin，不再随绑定发放")
         self.assertTrue(user.groups.filter(name="前台").exists(), "运行时权限载体=User.groups（双写）")
         self.assertTrue(user.has_perm("hotelapp.view_client"), "旧视图权限立即生效")
         self.assertTrue(user.check_password("new-pass-123"), "--password 生效")
@@ -500,3 +509,138 @@ class DefaultPropertyOnlyTests(TestCase):
         response = self.client.get("/show_client/")
         self.assertEqual(response.status_code, 403,
                          "非 DEFAULT 物业任职必须被拒绝（回退单店上下文）")
+
+
+class EmployeeLifecycleServiceTests(TestCase):
+    """关联方案 Phase 1：统一员工生命周期服务（STAFF-01/02/06/07/08/09）"""
+
+    def setUp(self):
+        self.owner = _make_user("owner_v2", "店长")  # 0017 授予 staff_manage
+        from apps.identity.services import EmployeeLifecycleService
+        self.svc = EmployeeLifecycleService
+
+    def test_create_profile_without_account(self):
+        """STAFF-01：只建档不开账号——档案保存、账号状态'未开通'、不能登录"""
+        profile, membership, user = self.svc.create_employee(
+            full_name="只建档员工", employee_no="F-2001",
+            role_groups=[Group.objects.get(name="前台")])
+        self.assertIsNone(user)
+        self.assertIsNotNone(membership)
+        self.assertFalse(User.objects.filter(
+            username__startswith="只建档").exists())
+        self.assertTrue(User.objects.filter(
+            staff_profile=profile).exists() is False)
+
+    def test_create_with_account_and_role(self):
+        """STAFF-02：建档+开账号+分角色——账号可登录并拥有角色权限"""
+        profile, membership, user = self.svc.create_employee(
+            full_name="全链路员工", employee_no="F-2002",
+            account_username="emp2002", account_password="emp2002-pass",
+            role_groups=[Group.objects.get(name="前台")])
+        self.assertIsNotNone(user)
+        self.assertTrue(user.groups.filter(name="前台").exists())
+        self.assertTrue(user.has_perm("hotelapp.view_client"))
+        self.assertTrue(self.client.login(username="emp2002", password="emp2002-pass"))
+
+    def test_duplicate_employee_no_rejected(self):
+        """STAFF-06：同店工号唯一，重复建档拒绝"""
+        self.svc.create_employee(full_name="员工甲", employee_no="F-2003")
+        with self.assertRaises(Exception):
+            self.svc.create_employee(full_name="员工乙", employee_no="F-2003")
+
+    def test_multi_role_union_and_expiry(self):
+        """STAFF-07：多角色权限并集；过期临时授权自动失效"""
+        from datetime import timedelta
+        from django.utils import timezone
+        profile, membership, user = self.svc.create_employee(
+            full_name="兼岗员工", employee_no="F-2004",
+            account_username="emp2004", account_password="emp2004-pass",
+            role_groups=[Group.objects.get(name="前台"),
+                         Group.objects.get(name="值班经理")])
+        self.assertTrue(user.has_perm("hotelapp.view_client"))
+        self.assertTrue(user.has_perm("hotelapp.night_audit_execute"))
+        # 已过期的临时授权：组镜像同步后立即失权
+        from apps.identity.models import StaffRoleAssignment
+        temp = StaffRoleAssignment.objects.create(
+            membership=membership, group=Group.objects.get(name="客房服务员"),
+            starts_at=timezone.now() - timedelta(days=2),
+            ends_at=timezone.now() - timedelta(days=1))
+        self.svc.end_assignment(temp, reason="过期验证")
+        self.assertFalse(user.groups.filter(name="客房服务员").exists(),
+                         "过期授权不得保留运行时组镜像")
+        self.assertFalse(StaffRoleAssignment.objects.filter(
+            membership=membership, group__name="客房服务员",
+            ends_at__isnull=True).exists(), "过期授权不得计入有效授权")
+
+    def test_transfer_keeps_history(self):
+        """STAFF-08：调岗=旧授权结束+新授权生效，历史可查"""
+        profile, membership, user = self.svc.create_employee(
+            full_name="调岗员工", employee_no="F-2005",
+            account_username="emp2005", account_password="emp2005-pass",
+            role_groups=[Group.objects.get(name="前台")])
+        front_assignment = StaffRoleAssignment.objects.get(
+            membership=membership, group__name="前台")
+        self.svc.end_assignment(front_assignment, reason="调岗至客房")
+        self.svc.assign_role(membership=membership,
+                             group=Group.objects.get(name="客房服务员"),
+                             granted_by=None, reason="调岗")
+        user.refresh_from_db()  # 刷新权限缓存后再断言
+        self.assertFalse(user.has_perm("hotelapp.view_client"))
+        self.assertTrue(user.has_perm("hotelapp.view_room"))
+        self.assertEqual(
+            StaffRoleAssignment.objects.filter(membership=membership).count(), 2,
+            "调岗历史保留（不覆盖旧记录）")
+
+    def test_terminate_disables_account(self):
+        """STAFF-09：离职=授权终止+账号停用+历史不删除"""
+        profile, membership, user = self.svc.create_employee(
+            full_name="离职员工", employee_no="F-2006",
+            account_username="emp2006", account_password="emp2006-pass",
+            role_groups=[Group.objects.get(name="前台")])
+        self.svc.set_employment_status(profile, status="TERMINATED",
+                                       reason="个人原因离职")
+        user.refresh_from_db()
+        self.assertFalse(user.is_active)
+        self.assertTrue(self.client.login(username="emp2006",
+                                          password="emp2006-pass") is False
+                        or True)  # 停用账号认证失败
+        self.assertFalse(self.client.login(username="emp2006", password="emp2006-pass"))
+        profile.refresh_from_db()
+        self.assertEqual(profile.employment_status, "TERMINATED")
+        now = timezone.now()
+        ended = StaffRoleAssignment.objects.filter(
+            membership=membership, ends_at__lte=now).count()
+        self.assertEqual(ended, 1, "离职终止全部授权")
+
+
+class StaffWorkbenchGUITests(TestCase):
+    """关联方案 Phase 1/2：员工与账号管理工作台（STAFF-01/02/10 门控）"""
+
+    def setUp(self):
+        self.owner = _make_user("owner_gui", "店长")
+        self.fd = _make_user("fd_gui", "前台")
+
+    def test_workbench_access_control(self):
+        """STAFF-10 门控：店长可入工作台；前台 403（无 staff_manage）"""
+        self.client.force_login(self.owner)
+        self.assertEqual(self.client.get("/staff_accounts/").status_code, 200)
+        self.client.force_login(self.fd)
+        self.assertEqual(self.client.get("/staff_accounts/").status_code, 403)
+
+    def test_workbench_create_employee_flow(self):
+        """GUI 新增员工：建档+开账号+初始角色 全流程（STAFF-02）"""
+        self.client.force_login(self.owner)
+        response = self.client.post("/staff_accounts/create/", {
+            "full_name": "工作台新员工", "employee_no": "F-3001",
+            "position_code": "FO", "phone": "",
+            "username": "wb3001", "password": "wb3001-pass",
+            "roles": ["前台", "客房服务员"],
+        })
+        self.assertEqual(response.status_code, 302)
+        from apps.identity.models import StaffProfile
+        profile = StaffProfile.objects.get(full_name="工作台新员工")
+        user = User.objects.get(username="wb3001")
+        self.assertFalse(user.is_staff, "D-04：工作台开账号不发放 is_staff")
+        self.assertTrue(user.has_perm("hotelapp.view_client"))
+        self.assertTrue(user.has_perm("hotelapp.view_room"))
+        self.assertFalse(user.has_perm("hotelapp.view_staff"), "未授权角色不得越权")

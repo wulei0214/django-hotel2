@@ -67,20 +67,29 @@ from . import state_machine
 
 
 def _has_active_employment(user):
-    """RBAC V2 P0-1：员工须有有效 DEFAULT 任职（档案在职 + 任职 ACTIVE）。
+    """RBAC 关联方案 §6：员工身份 = 档案在职 + DEFAULT 任职有效 + 角色授权有效。
 
-    与 Django 组权限双写配套的失效闸门：停职/离职/任职终止后，
-    即使 User.groups 仍保留角色，下一个请求也会被拒绝（AUTH-05）。
-    V2 SCOPE-01/P1-6：仅 DEFAULT 物业任职有效，其他物业任职视同无任职。
+    判定链（登录后每一请求执行，Fail Closed）：
+      1) StaffProfile 指向该账号且在职；2) DEFAULT 任职 ACTIVE；
+      3) 至少一条当前生效的 StaffRoleAssignment（无角色/过期 → STAFF-03/E-37 拒绝）。
+    停职/离职/角色到期立即失权（AUTH-05），不依赖 User.groups 镜像或重新登录。
+    D-04：is_staff 只控制 Django Admin 入口，不参与本判定。
     平台超级管理员是技术身份，不受业务任职约束。
     """
     from apps.identity.models import PropertyStaffMembership, StaffProfile
-    return PropertyStaffMembership.objects.filter(
+    memberships = PropertyStaffMembership.objects.filter(
         staff_profile__user=user,
         staff_profile__employment_status=StaffProfile.EmploymentStatus.ACTIVE,
         status=PropertyStaffMembership.Status.ACTIVE,
         property__code=settings.DEFAULT_PROPERTY_CODE,
-    ).exists()
+    )
+    if not memberships.exists():
+        return False
+    now = timezone.now()
+    from apps.identity.models import StaffRoleAssignment
+    return StaffRoleAssignment.objects.filter(
+        membership__in=memberships, starts_at__lte=now,
+    ).filter(Q(ends_at__isnull=True) | Q(ends_at__gt=now)).exists()
 
 
 def staff_required(view):
@@ -92,12 +101,13 @@ def staff_required(view):
     @functools.wraps(view)
     def wrapped(request, *args, **kwargs):
         user = request.user
-        if (user.is_authenticated and user.is_staff
-                and not user.is_superuser
+        # D-04：PMS 员工门禁 = 登录 + 有效任职/角色授权；is_staff 只管 Django Admin
+        if (user.is_authenticated and not user.is_superuser
                 and not _has_active_employment(user)):
-            raise PermissionDenied("当前账号没有有效的酒店任职关系，请联系管理员")
+            raise PermissionDenied(
+                "当前账号没有有效的酒店任职或岗位授权，请联系管理员分配")
         return view(request, *args, **kwargs)
-    return login_required(staff_member_required(wrapped, login_url='/login/'))
+    return login_required(wrapped, login_url='/login/')
 
 
 # 各模块查询表单允许使用的字段白名单，用户提交的字段名不在白名单内则忽略查询
@@ -1341,6 +1351,205 @@ def vip_reveal_tel(request):
     return JsonResponse({"tel": item.联系方式 or ""})
 
 
+
+
+# ---------- 员工与账号管理工作台（关联方案 Phase 1/2：店长日常人事唯一入口） ----------
+WORKBENCH_ROLES = ["前台", "值班经理", "财务", "店长", "客房服务员",
+                   "夜审员", "餐饮服务员", "餐饮主管", "停车安保"]
+
+
+def _workbench_profile_page(profile):
+    """聚合员工档案/任职/账号/角色授权为一个视图对象（避免三处 Admin 拼接）。"""
+    from apps.identity.models import StaffRoleAssignment
+    from apps.identity.services import EmployeeLifecycleService
+    membership = EmployeeLifecycleService.get_membership(profile)
+    user = profile.user
+    assignments = list(StaffRoleAssignment.objects.filter(
+        membership=membership).select_related("group").order_by("-starts_at")) if membership else []
+    now = timezone.now()
+    return {
+        "profile": profile,
+        "membership": membership,
+        "user": user,
+        "account_state": ("未开通" if user is None else
+                          ("已停用" if not user.is_active else "正常")),
+        "assignments": assignments,
+        "active_roles": [a.group.name for a in assignments
+                         if a.ends_at is None or a.ends_at > now],
+    }
+
+
+@staff_required
+@permission_required("identity.staff_manage", raise_exception=True)
+def staff_accounts(request):
+    """员工与账号管理：列表 + 搜索（店长日常人事唯一入口，方案 §4.1）。"""
+    from apps.identity.models import StaffProfile
+    qs = (StaffProfile.objects.select_related("user")
+          .order_by("-created_at"))
+    q = (request.GET.get("q") or "").strip()
+    rows = []
+    for profile in qs:
+        page = _workbench_profile_page(profile)
+        if q and q not in page["profile"].full_name and q not in (
+                page["membership"].employee_no if page["membership"] else ""):
+            continue
+        rows.append(page)
+    paginator = Paginator(rows, 15)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    return render(request, "staff_accounts.html", {
+        "rows": page_obj.object_list, "page_obj": page_obj, "q": q,
+        "workbench_roles": WORKBENCH_ROLES,
+    })
+
+
+@staff_required
+@permission_required("identity.staff_manage", raise_exception=True)
+def staff_accounts_create(request):
+    """新增员工：建档 + DEFAULT 任职 + 可选开通账号 + 初始角色（方案 §5.1）。"""
+    from apps.identity.services import EmployeeLifecycleService
+    from apps.identity.models import StaffProfile
+    if request.method != "POST":
+        return redirect("/staff_accounts/")
+    full_name = request.POST.get("full_name") or ""
+    employee_no = request.POST.get("employee_no") or ""
+    position_code = request.POST.get("position_code") or "UNASSIGNED"
+    phone = request.POST.get("phone") or ""
+    username = request.POST.get("username") or ""
+    password = request.POST.get("password") or ""
+    roles = request.POST.getlist("roles")
+    legacy_id = request.POST.get("legacy_staff") or ""
+    legacy = Staff.objects.filter(员工id=legacy_id).first() if legacy_id.isdigit() else None
+    try:
+        groups = [Group.objects.get(name=name) for name in roles if name in WORKBENCH_ROLES]
+        profile, membership, user = EmployeeLifecycleService.create_employee(
+            full_name=full_name, employee_no=employee_no,
+            position_code=position_code, phone=phone,
+            legacy_staff=legacy, account_username=username,
+            account_password=password, role_groups=groups, granted_by=request.user)
+    except Exception as exc:
+        messages.error(request, f"创建失败：{exc}")
+        return redirect("/staff_accounts/")
+    messages.success(request, f"员工「{profile.full_name}」已建档"
+                              + ("，账号已开通" if user else "（未开通账号）"))
+    return redirect(f"/staff_accounts/{profile.pk}/")
+
+
+@staff_required
+@permission_required("identity.staff_manage", raise_exception=True)
+def staff_accounts_detail(request, pk):
+    """员工详情：资料/任职/账号/角色授权历史（一个页面展示关联关系）。"""
+    from apps.identity.models import StaffProfile
+    profile = get_object_or_404(StaffProfile, pk=pk)
+    page = _workbench_profile_page(profile)
+    unmapped_staff = Staff.objects.filter(pms_staff_profile__isnull=True)
+    return render(request, "staff_accounts_detail.html", {
+        **page, "unmapped_staff": unmapped_staff,
+        "workbench_roles": WORKBENCH_ROLES, "now": timezone.now(),
+    })
+
+
+@staff_required
+@permission_required("identity.staff_manage", raise_exception=True)
+def staff_accounts_provision(request, pk):
+    """开通/关联登录账号（STAFF-02）。"""
+    from apps.identity.services import EmployeeLifecycleService
+    from apps.identity.models import StaffProfile
+    profile = get_object_or_404(StaffProfile, pk=pk)
+    if request.method != "POST":
+        return redirect(f"/staff_accounts/{pk}/")
+    try:
+        EmployeeLifecycleService.provision_account(
+            profile, username=request.POST.get("username") or "",
+            password=request.POST.get("password") or "", granted_by=request.user)
+    except Exception as exc:
+        messages.error(request, f"开通失败：{exc}")
+        return redirect(f"/staff_accounts/{pk}/")
+    messages.success(request, "登录账号已开通")
+    return redirect(f"/staff_accounts/{pk}/")
+
+
+@staff_required
+@permission_required("identity.staff_manage", raise_exception=True)
+def staff_accounts_assign_role(request, pk):
+    """分配角色：可选结束时间（临时兼岗）+ 原因（STAFF-07）。"""
+    from apps.identity.services import EmployeeLifecycleService
+    from apps.identity.models import StaffProfile
+    profile = get_object_or_404(StaffProfile, pk=pk)
+    membership = EmployeeLifecycleService.get_membership(profile)
+    if request.method != "POST" or membership is None:
+        return redirect(f"/staff_accounts/{pk}/")
+    group = Group.objects.filter(name=request.POST.get("role")).first()
+    ends_at_raw = request.POST.get("ends_at") or ""
+    try:
+        EmployeeLifecycleService.assign_role(
+            membership=membership, group=group,
+            ends_at=(datetime.datetime.strptime(ends_at_raw, "%Y-%m-%dT%H:%M")
+                     if ends_at_raw else None),
+            granted_by=request.user, reason=request.POST.get("reason") or "")
+    except Exception as exc:
+        messages.error(request, f"授权失败：{exc}")
+        return redirect(f"/staff_accounts/{pk}/")
+    messages.success(request, f"已授权角色「{group.name}」")
+    return redirect(f"/staff_accounts/{pk}/")
+
+
+@staff_required
+@permission_required("identity.staff_manage", raise_exception=True)
+def staff_accounts_end_assignment(request, pk, assignment_id):
+    """结束一条角色授权（调岗/撤销；历史保留，STAFF-08）。"""
+    from apps.identity.services import EmployeeLifecycleService
+    from apps.identity.models import StaffProfile
+    profile = get_object_or_404(StaffProfile, pk=pk)
+    assignment = get_object_or_404(
+        StaffRoleAssignment, pk=assignment_id, membership__staff_profile=profile)
+    if request.method == "POST":
+        EmployeeLifecycleService.end_assignment(
+            assignment, ended_by=request.user,
+            reason=request.POST.get("reason") or "调岗/撤销")
+        messages.success(request, "该角色授权已结束")
+    return redirect(f"/staff_accounts/{pk}/")
+
+
+@staff_required
+@permission_required("identity.staff_manage", raise_exception=True)
+def staff_accounts_set_status(request, pk):
+    """停职/离职/恢复（STAFF-09）：终止任职与授权，离职同步停用账号。"""
+    from apps.identity.services import EmployeeLifecycleService
+    from apps.identity.models import StaffProfile
+    profile = get_object_or_404(StaffProfile, pk=pk)
+    if request.method != "POST":
+        return redirect(f"/staff_accounts/{pk}/")
+    status = request.POST.get("status")
+    if status not in ("ACTIVE", "SUSPENDED", "TERMINATED"):
+        return HttpResponse("未知状态", status=400)
+    EmployeeLifecycleService.set_employment_status(
+        profile, status=status, ended_by=request.user,
+        reason=request.POST.get("reason") or "")
+    labels = {"ACTIVE": "已恢复在职", "SUSPENDED": "已暂停任职", "TERMINATED": "已办理离职"}
+    messages.success(request, labels[status])
+    return redirect(f"/staff_accounts/{pk}/")
+
+
+@staff_required
+@permission_required("identity.staff_manage", raise_exception=True)
+def staff_accounts_reset_password(request, pk):
+    """密码重置（审计只记事件不记密码值）。"""
+    from apps.identity.services import EmployeeLifecycleService
+    from apps.identity.models import StaffProfile
+    profile = get_object_or_404(StaffProfile, pk=pk)
+    if request.method != "POST":
+        return redirect(f"/staff_accounts/{pk}/")
+    try:
+        EmployeeLifecycleService.reset_password(
+            profile, new_password=request.POST.get("password") or "",
+            reset_by=request.user)
+    except Exception as exc:
+        messages.error(request, f"重置失败：{exc}")
+        return redirect(f"/staff_accounts/{pk}/")
+    messages.success(request, "密码已重置")
+    return redirect(f"/staff_accounts/{pk}/")
+
+
 # ---------- 登录 / 注册 / 退出 / 主界面 ----------
 def _has_role(user, *names):
     """判断用户是否拥有指定业务角色（超级管理员视为拥有全部角色）"""
@@ -1362,7 +1571,8 @@ def _today():
 
 def login_view(request):
     """统一登录页：登录后进入主界面（或按 next 返回原页面）"""
-    if request.user.is_authenticated and request.user.is_staff:
+    # D-04：登录页重定向看"是否 PMS 员工"（有 DEFAULT 任职），不再看 is_staff
+    if request.user.is_authenticated and _has_active_employment(request.user):
         return redirect("/home/")
     error = None
     next_url = request.GET.get("next", "") or request.POST.get("next", "")
@@ -1373,8 +1583,8 @@ def login_view(request):
             error = "用户名或密码错误"
         elif not user.is_active:
             error = "该账号已被停用"
-        elif not user.is_staff:
-            error = "该账号没有后台访问权限，请联系管理员"
+        elif not _has_active_employment(user):
+            error = "该账号没有员工任职关系或岗位授权，请联系管理员分配"
         else:
             auth_login(request, user)
             next_url = request.POST.get("next") or "/home/"

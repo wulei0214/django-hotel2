@@ -159,7 +159,7 @@ def _build_demo_identity_chain(apps):
         user = User.objects.filter(username=username).first()
         if user is None:
             user = User.objects.create_user(username=username, password=password)
-        user.is_staff = True
+        # D-04：is_staff 仅 Django Admin；演示账号不持有（0017 统一回收）
         user.is_active = True
         user.save()
         group = Group.objects.get(name=role)

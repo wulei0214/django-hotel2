@@ -1,0 +1,113 @@
+<!-- 员工与账号管理（店长日常人事唯一入口）：列表/搜索/新增员工 -->
+{% load pms_filters %}
+{% if messages %}
+<div class="toast-box">
+    {% for m in messages %}<div class="toast {{ m.tags }}">{{ m }}</div>{% endfor %}
+</div>
+{% endif %}
+<!DOCTYPE html>
+{% load pms_filters %}
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>员工与账号管理 - 酒店管理系统</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=10">
+</head>
+<body>
+<div class="page">
+{% include "_sidebar.html" %}
+<div class="main">
+    <div class="list-head">
+        <h2>员工与账号管理</h2>
+        <div class="toolbar">
+            <button class="tb-btn" onclick="location.reload()">⟳ 刷新</button>
+            <button class="tb-btn tb-primary" id="btn-add">＋ 新增员工</button>
+        </div>
+    </div>
+    <p class="wb-note">本页是员工生命周期的唯一入口：建档 → DEFAULT 任职 → 开通账号 → 分配角色 → 在职管理。
+    薪酬维护请到员工管理（旧业务页）；Django Admin 仅平台维护用途。</p>
+
+    <div class="card" id="form-card" style="display:none">
+        <h3 class="perm-section-title">新增员工（建档后可选择性开通账号与分配初始角色）</h3>
+        <form action="/staff_accounts/create/" method="post" class="wb-form">
+            {% csrf_token %}
+            <div class="wb-grid">
+                <label>姓名 *<input type="text" name="full_name" required maxlength="20" class="input"></label>
+                <label>店内工号 *<input type="text" name="employee_no" required maxlength="32" class="input" placeholder="如 F-0012"></label>
+                <label>岗位代码<input type="text" name="position_code" maxlength="32" class="input" placeholder="如 FO / HK / UNASSIGNED"></label>
+                <label>手机号<input type="text" name="phone" maxlength="11" class="input" placeholder="选填"></label>
+                <label>关联旧员工记录<select name="legacy_staff" class="input">
+                    <option value="">（不关联）</option>
+                    {% for s in unmapped_staff %}<option value="{{ s.员工id }}">{{ s.员工id }} - {{ s.姓名 }}</option>{% endfor %}
+                </select></label>
+            </div>
+            <div class="wb-grid">
+                <label class="wb-check"><input type="checkbox" id="wb-open-account"> 同时开通登录账号</label>
+            </div>
+            <div class="wb-grid" id="wb-account-fields" style="display:none">
+                <label>登录账号<input type="text" name="username" maxlength="30" class="input" placeholder="3-30 位字母/数字"></label>
+                <label>初始密码<input type="text" name="password" maxlength="30" class="input" placeholder="至少 6 位，请线下告知本人"></label>
+            </div>
+            <div class="wb-roles">
+                <span class="wb-roles-label">初始角色（可多选，可稍后在详情页分配）：</span>
+                {% for r in workbench_roles %}
+                <label class="wb-role"><input type="checkbox" name="roles" value="{{ r }}"> {{ r }}</label>
+                {% endfor %}
+            </div>
+            <button type="submit" class="tb-btn tb-primary">保存</button>
+        </form>
+    </div>
+
+    <div class="card list-card">
+        <div class="list-toolbar">
+            <form method="get" class="inline-filter">
+                <input type="text" name="q" value="{{ q }}" placeholder="按姓名/工号搜索" class="input" style="width:220px !important">
+                <button type="submit" class="tb-btn tb-primary">查询</button>
+                {% if q %}<a href="/staff_accounts/" class="tb-btn">显示全部</a>{% endif %}
+            </form>
+        </div>
+        <table class="data-table">
+            <tr>
+                <th>姓名</th><th>工号</th><th>岗位代码</th><th>在职状态</th>
+                <th>账号状态</th><th>当前角色</th><th>最后登录</th><th>操作</th>
+            </tr>
+            {% for row in rows %}
+            <tr>
+                <td>{{ row.profile.full_name }}</td>
+                <td>{{ row.membership.employee_no|default:'—' }}</td>
+                <td>{{ row.membership.position_code|default:'—' }}</td>
+                <td><span class="badge {% if row.profile.employment_status == 'ACTIVE' %}ok-badge{% else %}void-badge{% endif %}">{{ row.profile.get_employment_status_display }}</span></td>
+                <td><span class="badge {% if row.account_state == '正常' %}ok-badge{% elif row.account_state == '未开通' %}warn-badge{% else %}void-badge{% endif %}">{{ row.account_state }}</span></td>
+                <td>{% for r in row.active_roles %}<span class="badge info-badge">{{ r }}</span> {% empty %}<span class="warn-info">尚未分配角色</span>{% endfor %}</td>
+                <td>{{ row.user.last_login|date:'Y-m-d H:i'|default:'—' }}</td>
+                <td><a class="tb-btn" href="/staff_accounts/{{ row.profile.pk }}/">详情</a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="empty-row">未查询到员工记录</td></tr>
+            {% endfor %}
+        </table>
+        <div class="page-bar">
+            <span>共 {{ page_obj.paginator.count }} 条记录</span>
+            <span class="page-nums">
+                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">‹</a>{% endif %}
+                <span class="page-cur">{{ page_obj.number }}</span>
+                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">‹</a>{% endif %}
+            </span>
+            <span>15 条/页</span>
+        </div>
+    </div>
+</div>
+</div>
+<script src="/static/js/jquery-2.1.4.min.js"></script>
+<script src="/static/js/app.js?v=2"></script>
+<script>
+    document.getElementById('btn-add').addEventListener('click', function () {
+        var fc = document.getElementById('form-card');
+        fc.style.display = (fc.style.display === 'none') ? '' : 'none';
+    });
+    document.getElementById('wb-open-account').addEventListener('change', function () {
+        document.getElementById('wb-account-fields').style.display = this.checked ? '' : 'none';
+    });
+</script>
+</body>
+</html>

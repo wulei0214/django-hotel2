@@ -78,7 +78,8 @@ class Command(BaseCommand):
             if user is None:
                 user = User.objects.create_user(username=username, password=password)
                 created.append(username)
-            user.is_staff = True
+            # D-04：测试账号不再持有 is_staff（Admin 仅平台身份）；
+            # PMS 权限由角色组 + 身份链承载
             user.is_active = True
             user.set_password(password)
             user.save()
