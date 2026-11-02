@@ -11,7 +11,7 @@
     <div class="card" style="text-align:center; padding:60px 32px;">
         <h2>403 · 没有访问权限</h2>
         <p style="margin:24px 0; color:#606266;">
-            当前角色（{{ user.groups.all.0.name|default:user.username }}）无权访问该功能。<br>
+            当前角色（{{ pms_role_names.0|default:user.username }}）无权访问该功能。<br>
             如需开通权限，请联系店长或系统管理员。
         </p>
         <a href="/" style="color:#409EFF; text-decoration:none;">返回我有权限的首页</a>
