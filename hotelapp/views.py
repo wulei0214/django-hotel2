@@ -1831,6 +1831,15 @@ def booking_page(request):
     return render(request, "booking.html", {"error": error, "ok": ok, "types": types, "today": _today()})
 
 
+@staff_required
+@pms_permission_required('hotelapp.view_accommodation')
+def checkin_workspace(request):
+    """PMS 2.0 前台接待工作台；业务数据通过 /api/v1/front-desk/ 查询。"""
+    return render(request, "frontdesk.html", {
+        "role": _role_name(request.user),
+        "today": _today(),
+    })
+
 # ---------- 入住管理 ----------
 @staff_required
 @pms_permission_required('hotelapp.view_accommodation')
