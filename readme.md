@@ -37,7 +37,7 @@
 |---|---|
 | 平台底座 | Property 物业上下文、默认物业配置 |
 | 员工身份与账号 | StaffProfile、PropertyStaffMembership、StaffRoleAssignment；统一生命周期 Service 管理建档、开通账号、角色授权、暂停/离职和密码重置 |
-| 前台接待 | PMS 2.0 前台工作台 /checkin/；查询 API 与排房、入住、前台收款、退房 POST API 已接入，页面操作控件仍需完成接线 |
+| 前台接待 | PMS 2.0 前台工作台 /checkin/；查询 API、排房、入住、线下收款登记和退房 API 与详情抽屉操作已接通 |
 | 住客 | Guest 档案及物业内联系电话去重 |
 | 房型与客房 | RoomType、Room，房态拆分为占用/清洁/维修 |
 | 房价与库存 | RatePlan、DailyRate、RoomTypeInventory，按住宿日管理库存与价格 |
@@ -57,7 +57,7 @@
 | 顾客端旧预订 | `/booking/` | 历史兼容页面 |
 | 员工登录 | `/login/` | 历史员工端 |
 | 员工工作台 | `/home/` | 历史页面 |
-| 前台入住管理 | `/checkin/` | PMS 2.0 前台工作台；查询页已上线，排房/入住/收款/退房写 API 已接入，页面交互接线待完成 |
+| 前台入住管理 | `/checkin/` | PMS 2.0 工作台；订单详情支持排房、入住、线下收款登记和退房，写操作由 API 二次校验岗位权限 |
 | 旧版入住管理 | `/checkin/legacy/` | 历史入住管理页面回退入口 |
 | Django Admin | `/admin/` | 管理员后台 |
 

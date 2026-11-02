@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>前台接待工作台 - 酒店管理系统</title>
     <link rel="stylesheet" href="/static/css/site.css?v=11">
-    <link rel="stylesheet" href="/static/css/frontdesk.css?v=1">
+    <link rel="stylesheet" href="/static/css/frontdesk.css?v=2">
 </head>
 <body class="fd-body">
 {% include "_sidebar.html" %}
-<main class="main fd-main" id="front-desk" data-api-root="/api/v1/front-desk/">
+<main class="main fd-main" id="front-desk" data-api-root="/api/v1/front-desk/" data-can-operate="{{ pms_perms.hotelapp.change_accommodation|yesno:'true,false' }}">
     <header class="fd-header">
         <div>
             <div class="fd-eyebrow">FRONT DESK</div>
@@ -221,6 +221,11 @@
                 </div>
                 <div id="detail-rooms" class="fd-detail-room-list"></div>
             </div>
+            <div class="fd-detail-section" id="fd-operations-section" hidden>
+                <h3>入住操作</h3>
+                <p id="fd-operations-note" class="fd-operation-note"></p>
+                <div id="detail-operations" class="fd-operations"></div>
+            </div>
             <div class="fd-detail-section">
                 <div class="fd-detail-title-row">
                     <h3>账单摘要</h3>
@@ -240,12 +245,13 @@
             </div>
         </div>
         <footer class="fd-drawer-footer">
-            <span>当前版本提供数据查询；入住/退房等写操作将分阶段接入事务服务。</span>
+            <span>操作权限由服务端按当前物业和员工岗位实时校验；线下收款仅登记已实际收到的款项。</span>
         </footer>
     </section>
 </aside>
 
 <div class="fd-toast" id="fd-toast" role="status" aria-live="polite"></div>
-<script src="/static/js/frontdesk.js?v=1"></script>
+<form id="fd-csrf-token-container" hidden>{% csrf_token %}</form>
+<script src="/static/js/frontdesk.js?v=2"></script>
 </body>
 </html>

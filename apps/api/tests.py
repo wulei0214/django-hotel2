@@ -473,3 +473,54 @@ class FrontDeskWriteApiTests(TestCase):
         self.assertEqual(self.room.housekeeping_status, Room.HousekeepingStatus.DIRTY)
         self.assertEqual(self.folio.status, Folio.Status.CLOSED)
         self.assertEqual(self.reservation.status, Reservation.Status.CHECKED_OUT)
+
+
+class FrontDeskWorkspacePageTests(TestCase):
+    """前台工作台只按当前岗位权限显示写操作能力，服务端仍独立授权。"""
+
+    def setUp(self):
+        self.property = Property.objects.get(code="DEFAULT")
+        self.user = User.objects.create_user(
+            username="frontdesk-page-user",
+            password="TestPass-Page-2026!",
+        )
+        self.profile = StaffProfile.objects.create(
+            user=self.user,
+            full_name="前台页面测试员",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
+        self.membership = PropertyStaffMembership.objects.create(
+            staff_profile=self.profile,
+            property=self.property,
+            employee_no="FD-PAGE-001",
+            status=PropertyStaffMembership.Status.ACTIVE,
+        )
+        self.role = Group.objects.get(name="前台")
+        self.view_permission = Permission.objects.get(
+            content_type__app_label="hotelapp", codename="view_accommodation"
+        )
+        self.change_permission = Permission.objects.get(
+            content_type__app_label="hotelapp", codename="change_accommodation"
+        )
+        self.role.permissions.add(self.view_permission)
+        self.role.permissions.remove(self.change_permission)
+        StaffRoleAssignment.objects.create(
+            membership=self.membership,
+            group=self.role,
+            starts_at=timezone.now() - timedelta(minutes=1),
+        )
+
+    def test_frontdesk_page_shows_read_only_mode_without_change_permission(self):
+        self.client.force_login(self.user)
+        response = self.client.get("/checkin/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-can-operate="false"')
+        self.assertContains(response, 'name="csrfmiddlewaretoken"')
+
+    def test_frontdesk_page_exposes_operations_for_authorized_role(self):
+        self.role.permissions.add(self.change_permission)
+        self.client.force_login(self.user)
+        response = self.client.get("/checkin/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-can-operate="true"')
+        self.assertContains(response, "登记线下收款")

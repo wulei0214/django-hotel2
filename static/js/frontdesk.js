@@ -14,6 +14,7 @@
         assigned: "all",
         readiness: "ALL",
         currentBooking: null,
+        paymentKey: null,
         total: 0
     };
 
@@ -50,15 +51,26 @@
         }, 3200);
     }
 
-    async function api(path) {
+    async function requestApi(path, options) {
+        options = options || {};
+        var method = options.method || "GET";
+        var headers = { "Accept": "application/json" };
+        var requestOptions = {
+            method: method,
+            credentials: "same-origin",
+            headers: headers,
+            cache: "no-store"
+        };
+        if (method !== "GET") {
+            headers["Content-Type"] = "application/json";
+            var tokenInput = document.querySelector("#fd-csrf-token-container input[name='csrfmiddlewaretoken']");
+            if (tokenInput && tokenInput.value) headers["X-CSRFToken"] = tokenInput.value;
+            if (options.idempotencyKey) headers["Idempotency-Key"] = options.idempotencyKey;
+            requestOptions.body = JSON.stringify(options.payload || {});
+        }
         var response;
         try {
-            response = await fetch(apiRoot + path, {
-                method: "GET",
-                credentials: "same-origin",
-                headers: { "Accept": "application/json" },
-                cache: "no-store"
-            });
+            response = await fetch(apiRoot + path, requestOptions);
         } catch (error) {
             throw new Error("网络连接失败，请检查服务器后重试。");
         }
@@ -80,6 +92,18 @@
             throw new Error(typeof detail === "string" ? detail : "请求失败（" + response.status + "）。");
         }
         return payload;
+    }
+
+    function api(path) {
+        return requestApi(path, { method: "GET" });
+    }
+
+    function postApi(path, payload, idempotencyKey) {
+        return requestApi(path, {
+            method: "POST",
+            payload: payload || {},
+            idempotencyKey: idempotencyKey || null
+        });
     }
 
     function setLoading(message) {
@@ -169,13 +193,215 @@
          "detail-charges", "detail-credits", "detail-balance", "detail-created", "detail-updated"
         ].forEach(function (id) { $(id).textContent = "加载中…"; });
         $("detail-rooms").replaceChildren();
+        $("detail-operations").replaceChildren();
+        $("fd-operations-section").hidden = true;
         $("detail-folio-entries").replaceChildren();
+        state.paymentKey = null;
         loadDetail(bookingNo);
     }
 
     function closeDrawer() {
         drawer.classList.remove("is-open");
         drawer.setAttribute("aria-hidden", "true");
+    }
+
+    function operationButton(label, className, handler) {
+        var button = element("button", "fd-btn " + (className || "fd-btn-secondary"), label);
+        button.type = "button";
+        button.addEventListener("click", handler);
+        return button;
+    }
+
+    async function refreshAfterOperation(bookingNo, message) {
+        showToast(message, false);
+        await loadDetail(bookingNo);
+        await loadOverview();
+        await loadList();
+    }
+
+    async function showAssignableRooms(roomLine, roomNode, trigger) {
+        if (roomNode.querySelector(".fd-room-assigner")) return;
+        trigger.disabled = true;
+        try {
+            var payload = await api("rooms/assignable?reservation_room_id=" + encodeURIComponent(roomLine.reservation_room_id));
+            var rooms = payload.data || [];
+            var chooser = element("div", "fd-room-assigner");
+            if (!rooms.length) {
+                chooser.appendChild(element("p", "fd-operation-note",
+                    (payload.meta && payload.meta.reason) || "当前没有符合条件的可分配净房。"));
+                roomNode.appendChild(chooser);
+                return;
+            }
+            var label = element("label", "fd-operation-label", "选择可分配房间");
+            var select = element("select", "fd-operation-select");
+            rooms.forEach(function (room) {
+                var option = element("option", "", room.number + " · " + room.floor + "层 · " + room.room_type);
+                option.value = room.id;
+                select.appendChild(option);
+            });
+            label.appendChild(select);
+            chooser.appendChild(label);
+            var confirmButton = operationButton("确认排房", "fd-btn-primary", async function () {
+                confirmButton.disabled = true;
+                try {
+                    await postApi("reservation-rooms/" + roomLine.reservation_room_id + "/assign", {
+                        room_id: Number(select.value)
+                    });
+                    await refreshAfterOperation(roomLine.booking_no, "已完成排房");
+                } catch (error) {
+                    showToast(error.message, true);
+                    confirmButton.disabled = false;
+                }
+            });
+            chooser.appendChild(confirmButton);
+            roomNode.appendChild(chooser);
+        } catch (error) {
+            showToast(error.message, true);
+        } finally {
+            trigger.disabled = false;
+        }
+    }
+
+    function renderPaymentForm(item, content) {
+        var summary = item.folio_summary || {};
+        if (summary.status !== "OPEN" || !["PENDING", "CONFIRMED", "CHECKED_IN"].includes(item.status)) return;
+        var box = element("div", "fd-payment-box");
+        box.appendChild(element("h4", "", "登记线下收款"));
+        box.appendChild(element("p", "fd-operation-note",
+            "仅用于记录已经实际收到的现金、刷卡或转账；本操作不会发起扣款，也不会向银行核验到账。"));
+        var form = element("form", "fd-payment-form");
+        var amountLabel = element("label", "fd-operation-label", "本次实收金额");
+        var amount = element("input", "fd-operation-input");
+        amount.type = "number";
+        amount.min = "0.01";
+        amount.step = "0.01";
+        amount.required = true;
+        amount.placeholder = "例如 500.00";
+        amountLabel.appendChild(amount);
+        form.appendChild(amountLabel);
+
+        var methodLabel = element("label", "fd-operation-label", "收款方式");
+        var method = element("select", "fd-operation-select");
+        [
+            ["CASH", "现金"],
+            ["CARD", "银行卡 / 刷卡"],
+            ["BANK_TRANSFER", "银行转账"],
+            ["OTHER", "其他"]
+        ].forEach(function (entry) {
+            var option = element("option", "", entry[1]);
+            option.value = entry[0];
+            method.appendChild(option);
+        });
+        methodLabel.appendChild(method);
+        form.appendChild(methodLabel);
+        var submit = element("button", "fd-btn fd-btn-primary", "登记已收款");
+        submit.type = "submit";
+        form.appendChild(submit);
+        box.appendChild(form);
+
+        function resetPaymentKey() {
+            state.paymentKey = null;
+        }
+        amount.addEventListener("input", resetPaymentKey);
+        method.addEventListener("change", resetPaymentKey);
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            var enteredAmount = amount.value.trim();
+            if (!enteredAmount || !Number.isFinite(Number(enteredAmount)) || Number(enteredAmount) <= 0) {
+                showToast("请输入大于 0 的实收金额。", true);
+                return;
+            }
+            if (!window.confirm("请确认这笔款项已经实际收到。系统只登记收款，不会代替 POS、刷卡终端或银行完成收款。")) return;
+            if (!state.paymentKey) {
+                var nonce = (window.crypto && window.crypto.randomUUID)
+                    ? window.crypto.randomUUID()
+                    : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+                state.paymentKey = "fd-manual-" + nonce;
+            }
+            submit.disabled = true;
+            try {
+                await postApi(
+                    "reservations/" + encodeURIComponent(item.booking_no) + "/payments",
+                    { amount: enteredAmount, method: method.value },
+                    state.paymentKey
+                );
+                state.paymentKey = null;
+                await refreshAfterOperation(item.booking_no, "已登记本次实收款项");
+            } catch (error) {
+                showToast(error.message, true);
+                submit.disabled = false;
+            }
+        });
+        content.appendChild(box);
+    }
+
+    function renderOperations(item) {
+        var section = $("fd-operations-section");
+        var content = $("detail-operations");
+        section.hidden = false;
+        content.replaceChildren();
+        var canOperate = root.dataset.canOperate === "true";
+        $("fd-operations-note").textContent = canOperate
+            ? "排房、入住、收款和退房操作均会再次由服务端校验员工任职、岗位权限及订单状态。"
+            : "当前岗位只有查看权限；如需办理排房、入住、收款或退房，请联系具有入住修改权限的员工。";
+
+        (item.rooms || []).forEach(function (roomLine) {
+            var roomNode = element("div", "fd-operation-room");
+            var assigned = roomLine.assigned_room ? roomLine.assigned_room.number : "待分配";
+            var stay = roomLine.stay;
+            roomNode.appendChild(element(
+                "div",
+                "fd-detail-room-label",
+                (roomLine.room_type ? roomLine.room_type.name : "房间") + " · " + assigned
+            ));
+            var actionRow = element("div", "fd-operation-actions");
+            if (canOperate && !stay &&
+                ["CONFIRMED", "CHECKED_IN"].includes(roomLine.reservation_status)) {
+                if (!roomLine.assigned_room) {
+                    var assignButton = operationButton("分配房间", "fd-btn-secondary", function () {
+                        showAssignableRooms(roomLine, roomNode, assignButton);
+                    });
+                    actionRow.appendChild(assignButton);
+                } else {
+                    var checkInButton = operationButton("办理入住", "fd-btn-primary", async function () {
+                        if (!window.confirm("确认住客已到店、身份核验和房间交接已完成，并办理入住？")) return;
+                        checkInButton.disabled = true;
+                        try {
+                            await postApi("reservation-rooms/" + roomLine.reservation_room_id + "/check-in", {});
+                            await refreshAfterOperation(item.booking_no, "入住办理成功");
+                        } catch (error) {
+                            showToast(error.message, true);
+                            checkInButton.disabled = false;
+                        }
+                    });
+                    actionRow.appendChild(checkInButton);
+                }
+            } else if (canOperate && stay && stay.status === "IN_HOUSE") {
+                var checkoutButton = operationButton("办理退房", "fd-btn-primary", async function () {
+                    if (!window.confirm("确认已完成退房核对？系统将按预订价格快照入账，并按账单余额规则办理退房。")) return;
+                    checkoutButton.disabled = true;
+                    try {
+                        await postApi("stays/" + stay.id + "/check-out", {});
+                        await refreshAfterOperation(item.booking_no, "退房办理成功，房间已转为待清洁");
+                    } catch (error) {
+                        showToast(error.message, true);
+                        checkoutButton.disabled = false;
+                    }
+                });
+                actionRow.appendChild(checkoutButton);
+            } else if (stay && stay.status === "CHECKED_OUT") {
+                actionRow.appendChild(element("span", "fd-operation-complete", "该房间已退房"));
+            } else if (roomLine.reservation_status === "PENDING") {
+                actionRow.appendChild(element("span", "fd-operation-note", "预订尚未确认，暂不能排房或办理入住"));
+            }
+            if (actionRow.children.length) roomNode.appendChild(actionRow);
+            content.appendChild(roomNode);
+        });
+
+        if (!item.rooms || !item.rooms.length) {
+            content.appendChild(element("p", "fd-operation-note", "该订单没有房间明细。"));
+        }
+        if (canOperate) renderPaymentForm(item, content);
     }
 
     async function loadDetail(bookingNo) {
@@ -208,6 +434,7 @@
             });
             if (!roomList.children.length) roomList.appendChild(element("div", "fd-detail-room", "暂无房间明细"));
 
+            renderOperations(item);
             $("fd-view-folio").onclick = function () { loadFolio(bookingNo); };
         } catch (error) {
             showToast(error.message, true);
