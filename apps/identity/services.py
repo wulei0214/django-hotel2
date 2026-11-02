@@ -174,12 +174,12 @@ class EmployeeLifecycleService:
         """
         if group is None:
             raise EmployeeLifecycleError("请选择有效的角色")
-        if group is None or group.name not in BUSINESS_ROLE_NAMES:
+        if group.name not in BUSINESS_ROLE_NAMES:
             raise EmployeeLifecycleError("所选角色不在允许的酒店岗位目录中")
         try:
             membership = (
                 PropertyStaffMembership.objects.select_for_update()
-                .select_related("staff_profile__user", "property")
+                .select_related("staff_profile", "property")
                 .get(pk=membership.pk)
             )
         except PropertyStaffMembership.DoesNotExist as exc:
