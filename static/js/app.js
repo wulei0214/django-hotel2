@@ -14,8 +14,26 @@
         var v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
         return v ? v[2] : null;
     }
+    function getCsrfToken() {
+        // With CSRF_USE_SESSIONS the token is intentionally not exposed as a
+        // shared cookie. Read the request-local token rendered into the page.
+        var inputs = document.querySelectorAll('input[name="csrfmiddlewaretoken"]');
+        for (var i = 0; i < inputs.length; i += 1) {
+            if (inputs[i].value) return inputs[i].value;
+        }
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta && meta.content) return meta.content;
+        // Backward-compatible fallback for external pages not yet using the
+        // session-backed CSRF context.
+        return getCookie('csrftoken');
+    }
     if (window.jQuery) {
-        window.jQuery.ajaxSetup({ headers: { 'X-CSRFToken': getCookie('csrftoken') } });
+        window.jQuery.ajaxSetup({
+            beforeSend: function (xhr) {
+                var token = getCsrfToken();
+                if (token) xhr.setRequestHeader('X-CSRFToken', token);
+            }
+        });
         // 全局 AJAX 进度条：任何异步请求期间顶部显示细进度条
         document.addEventListener('DOMContentLoaded', function () {
             var bar = document.createElement('div');
