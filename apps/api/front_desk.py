@@ -15,10 +15,10 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.billing.models import Folio, Payment
+from apps.billing.models import Folio, Payment, Refund
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import Room
-from apps.reservations.models import Reservation, ReservationRoom, Stay
+from apps.reservations.models import NoShowRecord, Reservation, ReservationRoom, Stay
 from apps.reservations.front_desk_services import (
     FrontDeskOperationError,
     assign_room as assign_room_service,
@@ -26,6 +26,16 @@ from apps.reservations.front_desk_services import (
     collect_manual_payment,
     check_out_stay,
 )
+from apps.reservations.lifecycle_services import (
+    LifecycleOperationError,
+    approve_refund as approve_refund_service,
+    change_stay_room,
+    extend_stay,
+    mark_reservation_room_no_show,
+    receive_manual_deposit,
+    request_refund as request_refund_service,
+)
+from hotelapp.models import Accommodation as LegacyAccommodation, Folio as LegacyFolio
 
 from .views import api_guard
 
@@ -199,6 +209,8 @@ def _reservation_room_dto(line, folio_map=None, stay_map=None):
     reservation = line.reservation
     room = line.assigned_room
     stay = (stay_map or {}).get(line.pk)
+    no_show = NoShowRecord.objects.filter(reservation_room_id=line.pk).first()
+    room_segments = list(stay.room_segments.select_related("room").order_by("started_at", "id")) if stay else []
     return {
         "reservation_room_id": line.pk,
         "booking_no": reservation.booking_no,
@@ -223,8 +235,19 @@ def _reservation_room_dto(line, folio_map=None, stay_map=None):
         "stay": ({
             "id": stay.pk,
             "status": stay.status,
-            "actual_check_in": stay.actual_check_in.isoformat() if stay.actual_check_in else None
+            "actual_check_in": stay.actual_check_in.isoformat() if stay.actual_check_in else None,
+            "room_segments": [{
+                "room_number": segment.room.number,
+                "started_at": segment.started_at.isoformat(),
+                "ended_at": segment.ended_at.isoformat() if segment.ended_at else None,
+                "reason": segment.move_reason,
+            } for segment in room_segments],
         } if stay else None),
+        "no_show": ({
+            "id": no_show.pk, "reason": no_show.reason,
+            "processed_at": no_show.processed_at.isoformat(),
+            "released_nights": no_show.released_nights,
+        } if no_show else None),
         "source_system": "PMS2",
     }
 
@@ -493,7 +516,11 @@ def reservation_detail(request, booking_no):
             "stays": [{"id": stay.pk, "status": stay.status, "created_at": stay.created_at.isoformat(), "actual_check_in": stay.actual_check_in.isoformat() if stay.actual_check_in else None, "actual_check_out": stay.actual_check_out.isoformat() if stay.actual_check_out else None} for stay in stays],
         },
         "source_system": "PMS2",
-        "allowed_actions": ["view_detail"],
+        "allowed_actions": (["view_detail"]
+            + (["operate"] if AuthorizationService.has_permission(request.user, property_obj, "hotelapp.change_accommodation") else [])
+            + (["mark_no_show"] if AuthorizationService.has_permission(request.user, property_obj, "hotelapp.no_show_handle") else [])
+            + (["request_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_request") else [])
+            + (["approve_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve") else [])),
     }})
 
 
@@ -583,7 +610,17 @@ def folio_detail(request, booking_no):
         "data": {
             "summary": summary,
             "entries": [{"id": item.pk, "entry_type": item.entry_type, "amount": str(item.amount), "currency": item.currency, "business_date": item.business_date.isoformat(), "reference": item.reference, "description": item.description, "created_at": item.created_at.isoformat()} for item in entries],
-            "payments": [{"provider": item.provider, "provider_ref": item.provider_ref, "method": item.method, "amount": str(item.amount), "status": item.status, "paid_at": item.paid_at.isoformat() if item.paid_at else None} for item in folio.payments.order_by("-created_at")],
+            "payments": [{
+                "id": item.pk, "provider": item.provider, "provider_ref": item.provider_ref,
+                "method": item.method, "amount": str(item.amount), "status": item.status,
+                "paid_at": item.paid_at.isoformat() if item.paid_at else None,
+                "refunds": [{
+                    "id": refund.pk, "amount": str(refund.amount), "reason": refund.reason,
+                    "status": refund.status, "provider_ref": refund.provider_ref,
+                } for refund in item.refunds.order_by("-created_at")],
+            } for item in folio.payments.order_by("-created_at")],
+            "allowed_actions": (["request_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_request") else [])
+                + (["approve_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve") else []),
         }
     })
 
@@ -696,3 +733,296 @@ def check_out(request, stay_id):
         },
         "changed": changed,
     })
+
+
+
+def _front_desk_action_required(permission_code):
+    """要求当前物业员工具有指定的独立业务权限，不隐式继承入住修改权。"""
+    def decorator(view):
+        @wraps(view)
+        def wrapped(request, *args, **kwargs):
+            user = request.user
+            if not user.is_authenticated or not user.is_active:
+                return _response({"error": {"code": "AUTHENTICATION_REQUIRED", "message": "请先登录员工账号。"}}, 401)
+            property_obj = getattr(request, "property", None)
+            membership = getattr(request, "staff_membership", None)
+            if property_obj is None or property_obj.code != getattr(settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"):
+                return _response({"error": {"code": "PROPERTY_UNAVAILABLE", "message": "当前酒店物业不可用。"}}, 503)
+            if membership is None or membership.property_id != property_obj.pk:
+                return _response({"error": {"code": "EMPLOYEE_MEMBERSHIP_REQUIRED", "message": "当前账号没有该酒店的有效任职关系。"}}, 403)
+            if not AuthorizationService.has_permission(user, property_obj, permission_code):
+                return _response({"error": {"code": "PERMISSION_DENIED", "message": "当前岗位没有该项业务操作权限。"}}, 403)
+            request.front_desk_property = property_obj
+            return view(request, *args, **kwargs)
+        return wrapped
+    return decorator
+
+
+def _legacy_date(value):
+    value = str(value or "").strip()
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value[:10]).isoformat()
+    except ValueError:
+        return value
+
+
+def _legacy_money(value):
+    try:
+        number = Decimal(str(value or "0").strip())
+        return str(number.quantize(Decimal("0.01")))
+    except Exception:
+        return None
+
+
+def _legacy_reservation_dto(item):
+    guest = item.顾客id
+    room = item.客房编号
+    return {
+        "booking_no": f"LEGACY-{item.pk}",
+        "legacy_id": item.pk,
+        "status": item.状态 or "历史记录",
+        "status_label": item.状态 or "历史记录",
+        "source": "LEGACY",
+        "source_label": "历史 hotelapp 订单",
+        "guest": {
+            "id": guest.pk if guest else None,
+            "full_name": (guest.姓名 if guest else "") or "历史住客",
+            "phone_masked": _mask_phone(item.联系电话),
+        },
+        "check_in": _legacy_date(item.入住时间),
+        "check_out": _legacy_date(item.退房时间),
+        "room_count": 1,
+        "adult_count": None,
+        "child_count": None,
+        "total_amount": None,
+        "currency": "CNY",
+        "rooms": [{
+            "id": None,
+            "room_type": {"name": room.客房类型 if room else "历史房型"},
+            "assigned_room": {"number": str(room.房间号)} if room else None,
+        }],
+        "room_type": {"name": room.客房类型 if room else "历史房型"},
+        "assigned_room": {"number": str(room.房间号)} if room else None,
+        "legacy_paid_amount": _legacy_money(item.收款金额),
+        "legacy_deposit_amount": _legacy_money(item.押金),
+        "folio_summary": {"status": "LEGACY_ARCHIVE", "currency": "CNY"},
+        "source_system": "LEGACY",
+        "read_only": True,
+    }
+
+
+@require_GET
+@api_guard
+@_front_desk_required
+def legacy_reservations(request):
+    """历史 hotelapp 客房订单只读适配器；不把旧记录伪造为 PMS2 Reservation。"""
+    try:
+        page, page_size = _page_args(request)
+    except ValueError as exc:
+        return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
+    queryset = LegacyAccommodation.objects.select_related("顾客id", "客房编号").order_by("-id")
+    value = (request.GET.get("q") or "").strip()
+    if value:
+        if len(value) > 80:
+            return _response({"error": {"code": "VALIDATION_ERROR", "message": "搜索内容不能超过 80 个字符。"}}, 400)
+        condition = (
+            Q(顾客id__姓名__icontains=value)
+            | Q(联系电话__icontains=value)
+        )
+        if value.isdigit():
+            condition |= Q(id=int(value))
+        queryset = queryset.filter(condition)
+    status = (request.GET.get("status") or "").strip()
+    if status:
+        queryset = queryset.filter(状态=status)
+    rows, meta = _paginate(queryset, page, page_size)
+    return _response({
+        "data": [_legacy_reservation_dto(item) for item in rows],
+        "meta": {**meta, "source_system": "LEGACY", "read_only": True},
+    })
+
+
+@require_GET
+@api_guard
+@_front_desk_required
+def legacy_reservation_detail(request, legacy_id):
+    """历史订单及旧 Folio 原样只读展示，金额不参与 PMS2 账单余额计算。"""
+    item = LegacyAccommodation.objects.select_related("顾客id", "客房编号").filter(pk=legacy_id).first()
+    if item is None:
+        return _response({"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到历史订单。"}}, 404)
+    entries = []
+    for entry in LegacyFolio.objects.filter(order=item).order_by("id"):
+        entries.append({
+            "id": entry.pk,
+            "entry_type": entry.类型,
+            "amount_raw": entry.金额,
+            "business_date": _legacy_date(entry.日期),
+            "description": entry.事由,
+            "operator": entry.经手人,
+            "source_system": "LEGACY",
+        })
+    data = _legacy_reservation_dto(item)
+    data["legacy_entries"] = entries
+    data["legacy_note"] = "历史账单来自旧 hotelapp.Folio，仅按原始凭证展示，不与 PMS2 Folio 汇总或对账。"
+    data["timeline"] = {"created_at": None, "updated_at": None, "stays": []}
+    return _response({"data": data})
+
+
+@require_GET
+@api_guard
+@_front_desk_required
+def available_stay_rooms(request, stay_id):
+    property_obj = request.front_desk_property
+    stay = Stay.objects.filter(pk=stay_id, property=property_obj, status=Stay.Status.IN_HOUSE).select_related("reservation_room").first()
+    if stay is None:
+        return _response({"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到在住记录。"}}, 404)
+    line = stay.reservation_room
+    candidates = Room.objects.filter(
+        property=property_obj, room_type_id=line.room_type_id, is_active=True,
+        occupancy_status=Room.OccupancyStatus.VACANT,
+        housekeeping_status=Room.HousekeepingStatus.CLEAN,
+        maintenance_status=Room.MaintenanceStatus.NORMAL,
+    ).exclude(pk=stay.room_id).exclude(
+        reservation_rooms__property=property_obj,
+        reservation_rooms__check_in__lt=line.check_out,
+        reservation_rooms__check_out__gt=_business_date(property_obj),
+        reservation_rooms__reservation__status__in=(
+            Reservation.Status.PENDING, Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN
+        ),
+    ).order_by("floor", "number").distinct()
+    data = [{"id": room.pk, "number": room.number, "floor": room.floor} for room in candidates]
+    return _response({"data": data, "meta": {"total": len(data), "stay_id": stay.pk}})
+
+
+@api_guard
+@require_POST
+@_front_desk_write_required
+def extend_stay_api(request, stay_id):
+    try:
+        body = _body(request)
+        new_check_out = _parse_date(body.get("new_check_out"), "新的离店日期", None)
+        if new_check_out is None:
+            raise ValueError("必须提供 new_check_out。")
+        stay, line, amount = extend_stay(
+            property_obj=request.front_desk_property, stay_id=stay_id,
+            new_check_out=new_check_out, reason=body.get("reason"),
+            extended_by=request.user,
+        )
+    except ValueError as exc:
+        return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
+    except LifecycleOperationError as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    return _response({"data": {
+        "stay_id": stay.pk, "check_out": line.check_out.isoformat(),
+        "extension_amount": str(amount), "new_room_amount": str(line.amount),
+    }})
+
+
+@api_guard
+@require_POST
+@_front_desk_write_required
+def change_stay_room_api(request, stay_id):
+    try:
+        body = _body(request)
+        room_id = int(body.get("room_id"))
+        stay, changed = change_stay_room(
+            property_obj=request.front_desk_property, stay_id=stay_id,
+            new_room_id=room_id, reason=body.get("reason"), moved_by=request.user,
+        )
+    except (ValueError, TypeError) as exc:
+        return _response({"error": {"code": "VALIDATION_ERROR", "message": "room_id 必须是整数。"}}, 400)
+    except LifecycleOperationError as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    return _response({"data": {
+        "stay_id": stay.pk, "room_id": stay.room_id, "room_number": stay.room.number,
+        "room_segments": [{
+            "room_number": segment.room.number,
+            "started_at": segment.started_at.isoformat(),
+            "ended_at": segment.ended_at.isoformat() if segment.ended_at else None,
+            "reason": segment.move_reason,
+        } for segment in stay.room_segments.select_related("room").order_by("started_at", "id")],
+    }, "changed": changed})
+
+
+@api_guard
+@require_POST
+@_front_desk_action_required("hotelapp.no_show_handle")
+def mark_no_show_api(request, reservation_room_id):
+    try:
+        body = _body(request)
+        record, created = mark_reservation_room_no_show(
+            property_obj=request.front_desk_property, reservation_room_id=reservation_room_id,
+            reason=body.get("reason"), processed_by=request.user,
+        )
+    except LifecycleOperationError as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    return _response({"data": {
+        "no_show_id": record.pk, "reservation_room_id": record.reservation_room_id,
+        "released_nights": record.released_nights, "status": "NO_SHOW",
+    }, "created": created}, 201 if created else 200)
+
+
+@api_guard
+@require_POST
+@_front_desk_write_required
+def receive_deposit_api(request, booking_no):
+    try:
+        body = _body(request)
+        payment, created = receive_manual_deposit(
+            property_obj=request.front_desk_property, booking_no=booking_no,
+            amount=body.get("amount"), method=body.get("method"),
+            idempotency_key=request.headers.get("Idempotency-Key", ""),
+            received_by=request.user,
+        )
+    except LifecycleOperationError as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    return _response({"data": {
+        "payment_id": payment.pk, "provider_ref": payment.provider_ref,
+        "amount": str(payment.amount), "method": payment.method,
+        "status": payment.status, "payment_kind": "DEPOSIT",
+    }, "created": created}, 201 if created else 200)
+
+
+@api_guard
+@require_POST
+@_front_desk_action_required("billing.refund_request")
+def request_refund_api(request, payment_id):
+    try:
+        body = _body(request)
+        refund, created = request_refund_service(
+            property_obj=request.front_desk_property, payment_id=payment_id,
+            amount=body.get("amount"), reason=body.get("reason"),
+            idempotency_key=request.headers.get("Idempotency-Key", ""),
+            requested_by=request.user,
+        )
+    except LifecycleOperationError as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    return _response({"data": {
+        "refund_id": refund.pk, "provider_ref": refund.provider_ref,
+        "payment_id": refund.payment_id, "amount": str(refund.amount),
+        "status": refund.status,
+    }, "created": created}, 201 if created else 200)
+
+
+@api_guard
+@require_POST
+@_front_desk_action_required("billing.refund_approve")
+def approve_refund_api(request, refund_id):
+    try:
+        body = _body(request)
+        if body.get("confirm_refund_paid") is not True:
+            raise ValueError("请确认人工退款已经实际完成后再审批入账。")
+        refund, changed = approve_refund_service(
+            property_obj=request.front_desk_property, refund_id=refund_id,
+            approved_by=request.user,
+        )
+    except ValueError as exc:
+        return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
+    except LifecycleOperationError as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    return _response({"data": {
+        "refund_id": refund.pk, "status": refund.status,
+        "approved_by": refund.approved_by_id,
+    }, "changed": changed})

@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from apps.billing.models import Folio, LedgerEntry, Payment
 from apps.inventory.models import Room
-from .models import Reservation, ReservationRoom, Stay
+from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
 
 
 audit = logging.getLogger("hotel.audit")
@@ -80,6 +80,8 @@ def assign_room(*, property_obj, reservation_room_id, room_id, assigned_by=None)
         raise FrontDeskOperationError("未找到该物业下的预订房间明细。")
 
     reservation = Reservation.objects.select_for_update().get(pk=line.reservation_id)
+    if NoShowRecord.objects.filter(reservation_room=line).exists():
+        raise FrontDeskOperationError("该房间明细已处理为 No-Show，不能再次排房。")
     if reservation.status not in (
         Reservation.Status.CONFIRMED,
         Reservation.Status.CHECKED_IN,
@@ -133,6 +135,8 @@ def check_in_stay(*, property_obj, reservation_room_id, checked_in_by=None):
         raise FrontDeskOperationError("未找到该物业下的预订房间明细。")
 
     reservation = Reservation.objects.select_for_update().get(pk=line.reservation_id)
+    if NoShowRecord.objects.filter(reservation_room=line).exists():
+        raise FrontDeskOperationError("该房间明细已处理为 No-Show，不能办理入住。")
     if reservation.status not in (
         Reservation.Status.CONFIRMED,
         Reservation.Status.CHECKED_IN,
@@ -182,6 +186,10 @@ def check_in_stay(*, property_obj, reservation_room_id, checked_in_by=None):
     )
     room.occupancy_status = Room.OccupancyStatus.OCCUPIED
     room.save(update_fields=("occupancy_status", "updated_at"))
+    StayRoomSegment.objects.create(
+        property=property_obj, stay=stay, room=room, started_at=now,
+        move_reason="初始入住房间", moved_by=checked_in_by,
+    )
 
     reservation.status = Reservation.Status.CHECKED_IN
     reservation.save(update_fields=("status", "updated_at"))
@@ -379,6 +387,7 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
         )
 
     now = timezone.now()
+    StayRoomSegment.objects.filter(stay=stay, ended_at__isnull=True).update(ended_at=now)
     stay.status = Stay.Status.CHECKED_OUT
     stay.actual_check_out = now
     stay.save(update_fields=("status", "actual_check_out", "updated_at"))
