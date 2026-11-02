@@ -56,7 +56,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "django.contrib.sessions.middleware.SessionMiddleware",
+    "apps.identity.session_middleware.SplitSessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -155,6 +155,12 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = not DEBUG
+# PMS retains sessionid; Django Admin gets a separate cookie namespace.
+ADMIN_SESSION_COOKIE_NAME = os.environ.get(
+    "DJANGO_ADMIN_SESSION_COOKIE_NAME", "admin_sessionid"
+)
+# Keep CSRF secrets inside the selected session so both entry points are isolated.
+CSRF_USE_SESSIONS = True
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", default=False)
 SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "0"))
