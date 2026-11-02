@@ -307,6 +307,8 @@ def insert(request):
 @staff_required
 @pms_permission_required('hotelapp.delete_staff')
 def delete_staff(request):
+    if request.method != "POST":
+        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
     if request.method == "GET":
         try:
             Staff.objects.filter(员工id=request.GET.get("id")).delete()
@@ -395,6 +397,8 @@ def insert_client(request):
 @staff_required
 @pms_permission_required('hotelapp.delete_client')
 def delete_client(request):
+    if request.method != "POST":
+        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
     if request.method == "GET":
         try:
             Client.objects.filter(顾客id=request.GET.get("id")).delete()
@@ -489,6 +493,8 @@ def insert_food(request):
 @pms_permission_required('hotelapp.delete_food')
 @module_gate("food")
 def delete_food(request):
+    if request.method != "POST":
+        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
     if request.method == "GET":
         try:
             Food.objects.filter(菜品编号=request.GET.get("id")).delete()
@@ -582,6 +588,8 @@ def insert_vip(request):
 @staff_required
 @pms_permission_required('hotelapp.delete_vip')
 def delete_vip(request):
+    if request.method != "POST":
+        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
     if request.method == "GET":
         try:
             Vip.objects.filter(会员编号=request.GET.get("id")).delete()
@@ -673,6 +681,8 @@ def insert_park(request):
 @pms_permission_required('hotelapp.delete_park')
 @module_gate("park")
 def delete_park(request):
+    if request.method != "POST":
+        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
     if request.method == "GET":
         try:
             Park.objects.filter(车位编号=request.GET.get("id")).delete()
@@ -769,6 +779,8 @@ def insert_room(request):
 @staff_required
 @pms_permission_required('hotelapp.delete_room')
 def delete_room(request):
+    if request.method != "POST":
+        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
     if request.method == "GET":
         try:
             Room.objects.filter(房间号=request.GET.get("id")).delete()
@@ -879,6 +891,8 @@ def insert_order(request):
 @module_gate("order")
 def delete_order(request):
     """餐饮订单「冲账」：打已冲账标记并记录冲账人/时间，不再物理删除（值班经理权限）"""
+    if request.method != "POST":
+        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
     if request.method == "GET":
         try:
             item = Order.objects.get(id=request.GET.get("id"))
@@ -975,13 +989,15 @@ def insert_accomodation(request):
 @pms_permission_required('hotelapp.delete_accommodation')
 def delete_accomodation(request):
     """客房订单「冲账」：打已冲账标记、释放房间、记录冲账人/时间，不再物理删除"""
-    if request.method == "GET":
-        reason = (request.GET.get("reason") or "").strip()
+    if request.method != "POST":
+        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
+    if True:  # 业务逻辑统一 POST 处理
+        reason = (request.POST.get("reason") or "").strip()
         if not reason:
             return HttpResponse("冲账必须填写原因（高危操作需留痕）", status=400)
         try:
             with transaction.atomic():
-                item = Accommodation.objects.select_for_update().get(id=request.GET.get("id"))
+                item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"))
                 if item.状态 == "已冲账":
                     return HttpResponse("该订单已冲账", status=400)
                 room = item.客房编号

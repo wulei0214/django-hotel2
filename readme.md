@@ -782,3 +782,35 @@ Migration 未重命名字段；services/DTO 层使用 booker_guest 语义。
 ### 回归
 
 131 项测试全部通过。
+
+## P0 安全护栏批次（V1.1 §10 Phase 0）
+
+### SQL 备份文件移除（§9.1 P0）
+
+- `hotel.sql`（105 INSERT，含 pbkdf2_sha256 密码哈希）→ **已从仓库移除 + .gitignore**
+- `docs/db_backup_pre_pms2_20261030.sql`（24 INSERT，**含 7 组 auth_user 密码哈希**）→ **已移除**
+- `docs/backup_table_audit_log.sql` → **已移除**
+- ⚠️ Git 历史仍包含这些文件（b0dd324 之前），如确认含真实凭据需用 BFG/filter-repo 清理历史 + 轮换密码
+
+### 旧 GET 写路由 → POST 强制（§2.4 P0）
+
+8 个 delete_* 视图补 `request.method != "POST" → 405` 安全护栏：
+delete_staff / delete_client / delete_food / delete_vip / delete_park / delete_room / delete_order / delete_accomodation
+
+- `delete_accomodation` 冲账逻辑从 GET 块迁移到 POST 处理（`request.GET` → `request.POST`）
+- 旧前端 JS 仍用 `$.get()` 调 delete → 405 拦截；前端 AJAX 需逐页改 POST（后续批次）
+
+### PMS2 Admin 只读收紧（§2.3 P0）
+
+| Admin 模块 | 收紧前 | 收紧后 |
+|---|---|---|
+| guests.GuestAdmin | 可增删改 | **只读**（ReadOnlyAdminMixin） |
+| inventory 5 个 Admin | 可增删改 | **只读** |
+| reservations 2 Admin + Inline | 可增删改 | **只读** |
+| billing.RefundAdmin | **未注册** | 新增只读检索（状态/申请人/审批人/原因） |
+| core.AuditEventAdmin | **未注册** | 新增只读审计时间线（date_hierarchy/action 筛选） |
+| core.LegacyRecordLinkAdmin | **未注册** | 新增映射核验检索（source_model/status 筛选） |
+
+### 测试
+
+131 项测试全部通过（冲账测试从 GET 改 POST 配合安全护栏）。

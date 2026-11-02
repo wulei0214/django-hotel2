@@ -38,3 +38,7 @@ hotelapp/services/
 hotelapp/migrations/0010_p0_hardening.py
 hotelapp/migrations/0011_backfill_p0_data.py
 docs/_food_check.html
+
+# === P0 安全护栏：禁止入库 SQL 备份（含密码哈希/PII） ===
+*.sql
+!docs/schema_only/*.sql

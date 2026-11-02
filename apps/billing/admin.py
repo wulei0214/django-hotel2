@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Folio, LedgerEntry, Payment
+from .models import Folio, LedgerEntry, Payment, Refund
 
 
 class LedgerEntryInline(admin.TabularInline):
@@ -60,3 +60,22 @@ class PaymentAdmin(admin.ModelAdmin):
         return False
 
 # 支付流水的只读展示对后台维护者更友好：默认按创建时间倒序已由 Meta 保证
+
+
+@admin.register(Refund)
+class RefundAdmin(admin.ModelAdmin):
+    """退款记录只读检索（V1.1 §4.4）；审批走 lifecycle service。"""
+    list_display = ("id", "property", "payment", "amount", "status",
+                    "requested_by", "approved_by", "created_at")
+    list_filter = ("status", "property")
+    search_fields = ("provider_ref", "reason")
+    readonly_fields = tuple(f.name for f in Refund._meta.fields)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

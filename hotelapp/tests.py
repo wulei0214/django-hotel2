@@ -146,8 +146,8 @@ class ReverseExecutionRightTests(TestCase):
     def test_finance_can_execute_reverse(self):
         """财务执行冲账：订单打「已冲账」标记并记录冲账人（复核留痕）"""
         self.client.force_login(self.fin)
-        response = self.client.get("/delete_accomodation/", {"id": self.acc.id,
-                                                             "reason": "日期录入错误"})
+        response = self.client.post("/delete_accomodation/", {"id": self.acc.id,
+                                                              "reason": "日期录入错误"})
         self.assertEqual(response.status_code, 200)
         self.acc.refresh_from_db()
         self.assertEqual(self.acc.状态, "已冲账")
@@ -155,7 +155,7 @@ class ReverseExecutionRightTests(TestCase):
 
     def test_front_desk_cannot_reverse(self):
         self.client.force_login(self.fd)
-        response = self.client.get("/delete_accomodation/", {"id": self.acc.id, "reason": "试一下"})
+        response = self.client.post("/delete_accomodation/", {"id": self.acc.id, "reason": "试一下"})
         self.assertEqual(response.status_code, 403, "前台不得执行冲账（财务执行+经理复核）")
         self.acc.refresh_from_db()
         self.assertEqual(self.acc.状态, "已退房")
