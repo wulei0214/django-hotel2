@@ -64,12 +64,34 @@ def drop_sqlite_indexes_for_removed_columns(apps, schema_editor):
             indexes = cursor.fetchall()
             for index_row in indexes:
                 index_name = index_row[1]
+                unique_index = bool(index_row[2])
+                origin = index_row[3] if len(index_row) > 3 else ""
+                # UNIQUE/PRIMARY KEY autoindex 无法 DROP；对应字段由下方 remake-table 操作移除。
+                if unique_index or origin in ("u", "pk"):
+                    continue
                 quoted_index = schema_editor.quote_name(index_name)
                 cursor.execute(f"PRAGMA index_info({quoted_index})")
                 index_columns = {row[2] for row in cursor.fetchall() if row[2]}
                 if index_columns.intersection(removed_columns):
                     schema_editor.execute(f"DROP INDEX IF EXISTS {quoted_index}")
 
+
+def remove_unique_field_client_phone(apps, schema_editor):
+    model = apps.get_model("hotelapp", "Client")
+    field = model._meta.get_field("手机号")
+    if schema_editor.connection.vendor == "sqlite":
+        schema_editor._remake_table(model, delete_field=field)
+    else:
+        schema_editor.remove_field(model, field)
+
+
+def remove_unique_field_nightaudit_business_day(apps, schema_editor):
+    model = apps.get_model("hotelapp", "NightAudit")
+    field = model._meta.get_field("营业日")
+    if schema_editor.connection.vendor == "sqlite":
+        schema_editor._remake_table(model, delete_field=field)
+    else:
+        schema_editor.remove_field(model, field)
 
 class Migration(migrations.Migration):
     # MySQL 的 DROP INDEX / DROP COLUMN 属于不可回滚 DDL；允许迁移在事务外按序执行。
@@ -147,13 +169,21 @@ class Migration(migrations.Migration):
             model_name='accommodation',
             name='离店日期',
         ),
-        migrations.RemoveField(
-            model_name='client',
-            name='手机号',
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunPython(remove_unique_field_client_phone, migrations.RunPython.noop),
+            ],
+            state_operations=[
+                migrations.RemoveField(model_name='client', name='手机号'),
+            ],
         ),
-        migrations.RemoveField(
-            model_name='nightaudit',
-            name='营业日',
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunPython(remove_unique_field_nightaudit_business_day, migrations.RunPython.noop),
+            ],
+            state_operations=[
+                migrations.RemoveField(model_name='nightaudit', name='营业日'),
+            ],
         ),
         migrations.RemoveField(
             model_name='nightaudit',
