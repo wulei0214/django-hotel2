@@ -4,6 +4,8 @@
 """
 from django.contrib.auth.models import Group, User
 from django.test import TestCase
+from datetime import date, timedelta
+from datetime import timedelta
 from django.utils import timezone
 
 from apps.core.models import Property
@@ -814,3 +816,168 @@ class AuditEventAppendOnlyTests(TestCase):
         self.assertNotIn("110101199001010016",
                          (event.after_json or {}).get("masked", ""),
                          "审计事件不得包含完整证件号（已遮罩）")
+
+
+class V11P0ModelTests(TestCase):
+    """V1.1 §9.7.1 P0 模型定稿批次：约束/加密/幂等/权限"""
+
+    def setUp(self):
+        from apps.core.models import Property
+        from apps.guests.models import Guest
+        from apps.reservations.models import Reservation, ReservationRoom, Stay
+        from apps.inventory.models import Room, RoomType
+        self.prop, _ = Property.objects.get_or_create(
+            code="DEFAULT", defaults={"name": "测试酒店"})
+        self.guest = Guest.objects.create(
+            property=self.prop, full_name="P0测试住客", phone="13900001111",
+            phone_normalized="13900001111")
+        self.room_type = RoomType.objects.create(
+            property=self.prop, code="P0T", name="P0 测试房型")
+        from apps.inventory.models import RatePlan
+        self.rate_plan = RatePlan.objects.create(
+            property=self.prop, code="P0BAR", name="P0 门市价",
+            valid_from=date.today())
+        self.room = Room.objects.create(
+            property=self.prop, room_type=self.room_type, number="P001",
+            occupancy_status=Room.OccupancyStatus.VACANT)
+        self.reservation = Reservation.objects.create(
+            property=self.prop, booking_no="P0TEST01", guest=self.guest,
+            check_in=date.today(), check_out=date.today() + timedelta(days=2))
+        self.reservation_room = ReservationRoom.objects.create(
+            property=self.prop, reservation=self.reservation,
+            room_type=self.room_type, rate_plan=self.rate_plan,
+            check_in=date.today(), check_out=date.today() + timedelta(days=2),
+            amount="600.00")
+        self.stay = Stay.objects.create(
+            property=self.prop, reservation_room=self.reservation_room,
+            room=self.room)
+
+    # ---------- M-01 ----------
+    def test_reservation_guest_primary_unique(self):
+        from apps.reservations.models import ReservationGuest
+        ReservationGuest.objects.create(
+            reservation=self.reservation, full_name="主住客", is_primary=True)
+        with self.assertRaises(Exception):
+            ReservationGuest.objects.create(
+                reservation=self.reservation, full_name="第二主住客", is_primary=True)
+        ReservationGuest.objects.create(
+            reservation=self.reservation, full_name="同住人",
+            role=ReservationGuest.Role.ACCOMPANYING)
+
+    # ---------- M-02 ----------
+    def test_guest_document_encrypt_and_reveal(self):
+        from apps.guests.services import register_document, reveal_document
+        from apps.core.models import AuditEvent
+        doc = register_document(
+            guest=self.guest, doc_type="ID_CARD", doc_no="110101199001010017")
+        self.assertNotIn("110101199001010017", doc.doc_no_ciphertext,
+                         "证件号不得明文落库")
+        self.assertNotEqual(doc.doc_no_hash, "110101199001010017")
+        from apps.guests.models import Guest
+        g2 = Guest.objects.create(property=self.prop, full_name="另一位",
+                                  phone="13900002222", phone_normalized="13900002222")
+        with self.assertRaises(Exception):
+            register_document(guest=g2, doc_type="ID_CARD",
+                              doc_no="110101199001010017")
+        fd = _make_user("p0_fd", "前台")
+        with self.assertRaises(Exception):
+            reveal_document(doc, revealed_by=fd)
+        from django.contrib.auth.models import Permission
+        fd.user_permissions.add(
+            Permission.objects.get(codename="document_reveal"))
+        fd = User.objects.get(pk=fd.pk)  # 刷新权限缓存
+        plain = reveal_document(doc, revealed_by=fd, reason="入住核验")
+        self.assertEqual(plain, "110101199001010017")
+        self.assertTrue(AuditEvent.objects.filter(
+            action="guest.document_reveal", entity_id=str(doc.pk)).exists())
+
+    # ---------- M-03 ----------
+    def test_guest_phone_primary_unique_and_shared_flag(self):
+        from apps.guests.models import GuestPhone, Guest
+        GuestPhone.objects.create(guest=self.guest, phone="13900001111",
+                                  phone_normalized="13900001111", is_primary=True)
+        with self.assertRaises(Exception):
+            GuestPhone.objects.create(guest=self.guest, phone="13900002222",
+                                      phone_normalized="13900002222", is_primary=True)
+        g2 = Guest.objects.create(property=self.prop, full_name="家庭成员",
+                                  phone="", phone_normalized="")
+        shared = GuestPhone.objects.create(
+            guest=g2, phone="13900001111", phone_normalized="13900001111",
+            shared_review_required=True, source="前台登记")
+        self.assertTrue(shared.shared_review_required)
+
+    # ---------- M-16 ----------
+    def test_guest_membership_unique_active(self):
+        from apps.guests.models import GuestMembership, Guest
+        GuestMembership.objects.create(
+            property=self.prop, guest=self.guest, member_no="M-P0-001",
+            status=GuestMembership.Status.ACTIVE)
+        with self.assertRaises(Exception):
+            GuestMembership.objects.create(
+                property=self.prop, guest=self.guest, member_no="M-P0-002",
+                status=GuestMembership.Status.ACTIVE)
+        g2 = Guest.objects.create(property=self.prop, full_name="会员冲突客",
+                                  phone="", phone_normalized="")
+        with self.assertRaises(Exception):
+            GuestMembership.objects.create(
+                property=self.prop, guest=g2, member_no="M-P0-001",
+                status=GuestMembership.Status.ACTIVE)
+
+    # ---------- M-04 ----------
+    def test_folio_master_unique_per_reservation(self):
+        from apps.billing.models import Folio
+        Folio.objects.create(
+            property=self.prop, reservation=self.reservation,
+            folio_type=Folio.FolioType.MASTER, guest=self.guest)
+        with self.assertRaises(Exception):
+            Folio.objects.create(
+                property=self.prop, reservation=self.reservation,
+                folio_type=Folio.FolioType.MASTER, guest=self.guest)
+        Folio.objects.create(
+            property=self.prop, reservation=self.reservation,
+            folio_type=Folio.FolioType.GUEST, guest=self.guest)
+        Folio.objects.create(
+            property=self.prop, reservation=self.reservation,
+            folio_type=Folio.FolioType.DEPOSIT, guest=self.guest)
+
+    # ---------- M-08 ----------
+    def test_business_date_one_open_per_property(self):
+        from apps.core.models import BusinessDate
+        bd = BusinessDate.objects.create(
+            property=self.prop, business_date=date.today(),
+            status=BusinessDate.Status.OPEN)
+        with self.assertRaises(Exception):
+            BusinessDate.objects.create(
+                property=self.prop, business_date=date.today() + timedelta(days=1),
+                status=BusinessDate.Status.OPEN)
+        bd.status = BusinessDate.Status.CLOSED
+        bd.save()
+        BusinessDate.objects.create(
+            property=self.prop, business_date=date.today() + timedelta(days=1),
+            status=BusinessDate.Status.OPEN)
+
+    # ---------- M-09 ----------
+    def test_inventory_hold_single_active_per_roomdate(self):
+        from apps.reservations.models import InventoryHold
+        hold = InventoryHold.objects.create(
+            property=self.prop, room_type=self.room_type,
+            stay_date=date.today(), reservation_room=self.reservation_room)
+        with self.assertRaises(Exception):
+            InventoryHold.objects.create(
+                property=self.prop, room_type=self.room_type,
+                stay_date=date.today(), reservation_room=self.reservation_room)
+        hold.status = InventoryHold.HoldStatus.RELEASED
+        hold.released_at = timezone.now()
+        hold.save()
+        InventoryHold.objects.create(
+            property=self.prop, room_type=self.room_type,
+            stay_date=date.today(), reservation_room=self.reservation_room)
+
+    # ---------- M-06 ----------
+    def test_housekeeping_task_state_machine_fields(self):
+        from apps.inventory.models import HousekeepingTask
+        task = HousekeepingTask.objects.create(
+            property=self.prop, room=self.room,
+            task_type=HousekeepingTask.TaskType.DEPARTURE)
+        self.assertEqual(task.status, HousekeepingTask.TaskStatus.PENDING)
+        self.assertIsNone(task.inspected_by, "检查人独立，清洁员不可自检放行")

@@ -1,26 +1,42 @@
+from django.core.exceptions import ValidationError
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
 
 class Folio(models.Model):
-    """住客账单（户头）：一张预订一个户头，账务凭证挂在户头下。"""
+    """住客账单（户头）：V1.1 M-04 支持多账单（主账/住客/公司/内部/押金）。
+
+    规则：每张预订只有一个 MASTER 账单（数据库约束）；预订余额 = 所有未关闭
+    Folio 余额之和；不可变凭证不搬迁——拆账/转账经 FolioTransfer 记录表达。
+    """
 
     class Status(models.TextChoices):
         OPEN = "OPEN", "未结"
         CLOSED = "CLOSED", "已结"
         VOIDED = "VOIDED", "已作废"
 
+    class FolioType(models.TextChoices):
+        MASTER = "MASTER", "主账单"
+        GUEST = "GUEST", "住客分账"
+        COMPANY = "COMPANY", "公司账"
+        HOUSE = "HOUSE", "内部账"
+        DEPOSIT = "DEPOSIT", "押金单"
+
     property = models.ForeignKey(
         "core.Property", on_delete=models.PROTECT, related_name="folios",
         verbose_name="所属酒店",
     )
-    reservation = models.OneToOneField(
+    reservation = models.ForeignKey(
         "reservations.Reservation",
         on_delete=models.PROTECT,
-        related_name="folio",
+        related_name="folios",
         verbose_name="预订主单",
+        help_text="M-04：一单可多账单；MASTER 唯一（数据库约束）",
     )
+    folio_type = models.CharField(
+        max_length=12, choices=FolioType.choices, default=FolioType.MASTER,
+        verbose_name="账单类型")
     guest = models.ForeignKey(
         "guests.Guest", on_delete=models.PROTECT, related_name="folios",
         verbose_name="住客",
@@ -37,9 +53,52 @@ class Folio(models.Model):
         ordering = ("-opened_at",)
         verbose_name = "住客账单"
         verbose_name_plural = "住客账单"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("reservation",),
+                condition=models.Q(folio_type="MASTER"),
+                name="uq_folio_master_per_reservation",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.folio_type == self.FolioType.MASTER and self.reservation_id:
+            dup = Folio.objects.filter(
+                reservation_id=self.reservation_id,
+                folio_type=self.FolioType.MASTER,
+            ).exclude(pk=self.pk).exists()
+            if dup:
+                raise ValidationError("该预订已存在主账单（M-04：MASTER 唯一）")
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.reservation.booking_no} / {self.status}"
+
+
+class FolioTransfer(models.Model):
+    """账务转移记录（V1.1 M-04）：不搬迁原凭证，成对表达转出/转入。"""
+
+    from_folio = models.ForeignKey(
+        Folio, on_delete=models.PROTECT, related_name="transfers_out",
+        verbose_name="转出账单")
+    to_folio = models.ForeignKey(
+        Folio, on_delete=models.PROTECT, related_name="transfers_in",
+        verbose_name="转入账单")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="转移金额")
+    reason = models.CharField(max_length=240, verbose_name="原因")
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="folio_transfers_approved",
+        verbose_name="审批人")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="时间")
+
+    class Meta:
+        verbose_name = "账务转移记录"
+        verbose_name_plural = "账务转移记录"
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"{self.from_folio_id}→{self.to_folio_id} {self.amount}"
 
 
 class ImmutableLedgerEntryQuerySet(models.QuerySet):

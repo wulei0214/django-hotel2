@@ -37,7 +37,7 @@ def verify_mock_callback(raw_body, signature):
 def create_mock_payment_intent(reservation):
     with transaction.atomic():
         reservation = Reservation.objects.select_for_update().select_related(
-            "property", "folio"
+            "property"
         ).get(pk=reservation.pk)
         if reservation.status != Reservation.Status.PENDING:
             raise PaymentConflict("只有待支付预订可以创建支付模拟单。")
@@ -60,7 +60,7 @@ def create_mock_payment_intent(reservation):
         payment = Payment.objects.create(
             property=reservation.property,
             reservation=reservation,
-            folio=reservation.folio,
+            folio=reservation.get_master_folio(),
             provider="mock",
             provider_ref="MOCK-" + uuid.uuid4().hex.upper(),
             method="MOCK",

@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -42,3 +44,201 @@ class Guest(models.Model):
 
     def __str__(self):
         return f"{self.full_name} ({self.phone})"
+
+
+class GuestPhone(models.Model):
+    """客人电话（V1.1 M-03 P0）：可多条、有历史；不以手机号作为自然人唯一主键。"""
+
+    class PhoneType(models.TextChoices):
+        MOBILE = "MOBILE", "手机"
+        HOME = "HOME", "家庭电话"
+        WORK = "WORK", "工作电话"
+        OTHER = "OTHER", "其他"
+
+    guest = models.ForeignKey(
+        Guest, on_delete=models.CASCADE, related_name="phones",
+        verbose_name="所属客人")
+    phone = models.CharField(max_length=24, verbose_name="原始号码")
+    phone_normalized = models.CharField(max_length=24, verbose_name="标准化号码")
+    phone_type = models.CharField(
+        max_length=8, choices=PhoneType.choices, default=PhoneType.MOBILE,
+        verbose_name="号码类型")
+    is_primary = models.BooleanField(default=False, verbose_name="主号码")
+    shared_review_required = models.BooleanField(
+        default=False, verbose_name="共享号码待人工核验",
+        help_text="同一标准化号码关联多个客人时置位（V1.1 M-03 规则 2）")
+    source = models.CharField(
+        max_length=32, blank=True, verbose_name="来源",
+        help_text="预订 / 前台登记 / 会员 / 历史迁移")
+    verified_at = models.DateTimeField(null=True, blank=True, verbose_name="验证时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "客人电话"
+        verbose_name_plural = "客人电话"
+        constraints = [
+            # 每个 Guest 最多一个主号码（M-03 规则 1）
+            models.UniqueConstraint(
+                fields=("guest",), condition=models.Q(is_primary=True),
+                name="uq_guest_phone_primary",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("phone_normalized",), name="idx_guestphone_norm"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.is_primary and self.guest_id:
+            dup = GuestPhone.objects.filter(
+                guest_id=self.guest_id, is_primary=True,
+            ).exclude(pk=self.pk).exists()
+            if dup:
+                raise ValidationError("该客人已有主号码（M-03：每客人一个主号码）")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.guest_id}:{self.phone_normalized}({'主' if self.is_primary else '副'})"
+
+
+class GuestDocument(models.Model):
+    """客人证件（V1.1 M-02 P0）：密文落库、hash 查重、揭示需独立权限并写审计。
+
+    安全规则（§1.4.3）：
+      * 证件号不得明文落库，不得进入普通 DTO/日志/导出；
+      * 查重用 doc_no_hash（HMAC-SHA256 加盐），不查明文；
+      * 揭示需 `guests.document.reveal` 权限，每次写 AuditEvent；
+      * 旧 Client.身份证号 迁移时先加密再写入。
+    """
+
+    class DocType(models.TextChoices):
+        ID_CARD = "ID_CARD", "身份证"
+        PASSPORT = "PASSPORT", "护照"
+        HK_MACAO = "HK_MACAO", "港澳通行证"
+        TAIWAN = "TAIWAN", "台湾通行证"
+        OTHER = "OTHER", "其他"
+
+    guest = models.ForeignKey(
+        Guest, on_delete=models.CASCADE, related_name="documents",
+        verbose_name="所属客人")
+    doc_type = models.CharField(
+        max_length=12, choices=DocType.choices, default=DocType.ID_CARD,
+        verbose_name="证件类型")
+    doc_no_ciphertext = models.TextField(verbose_name="证件号密文")
+    doc_no_hash = models.CharField(max_length=64, verbose_name="证件号哈希",
+                                   help_text="HMAC-SHA256，用于查重，不存明文")
+    issuing_country = models.CharField(max_length=8, blank=True, default="CN",
+                                       verbose_name="签发国家/地区")
+    expiry_date = models.DateField(null=True, blank=True, verbose_name="有效期至")
+    verified_at = models.DateTimeField(null=True, blank=True, verbose_name="核验时间")
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="guest_documents_verified",
+        verbose_name="核验人")
+    retention_until = models.DateField(null=True, blank=True, verbose_name="保留截止日")
+    is_primary = models.BooleanField(default=True, verbose_name="主证件")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "客人证件"
+        verbose_name_plural = "客人证件"
+        constraints = [
+            # 同一物业内同一证件（hash）只能登记一次：重复登记提示已存在，不自动合并
+            models.UniqueConstraint(
+                fields=("guest", "doc_type", "doc_no_hash"),
+                name="uq_guest_doc_hash",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.guest_id}:{self.get_doc_type_display()}(hash {self.doc_no_hash[:8]}…)"
+
+
+class GuestMembership(models.Model):
+    """会员关系（V1.1 M-16 P0）：Guest 之上的物业会员关系，不是第二份自然人主档。"""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "待生效"
+        ACTIVE = "ACTIVE", "有效"
+        SUSPENDED = "SUSPENDED", "暂停"
+        EXPIRED = "EXPIRED", "已过期"
+        TERMINATED = "TERMINATED", "已终止"
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT, related_name="guest_memberships",
+        verbose_name="所属酒店")
+    guest = models.ForeignKey(
+        Guest, on_delete=models.PROTECT, related_name="memberships",
+        verbose_name="客人")
+    member_no = models.CharField(max_length=32, verbose_name="会员编号",
+                                 help_text="按物业唯一；旧编号冲突进入人工复核")
+    level_code = models.CharField(max_length=32, default="STANDARD",
+                                  verbose_name="当前等级代码")
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.ACTIVE,
+        verbose_name="会员状态")
+    joined_at = models.DateField(null=True, blank=True, verbose_name="加入日期")
+    expires_at = models.DateField(null=True, blank=True, verbose_name="有效期至")
+    source = models.CharField(max_length=32, blank=True, verbose_name="来源",
+                              help_text="新建 / 历史导入 / 人工核验")
+    legacy_vip_id = models.CharField(
+        max_length=32, blank=True, verbose_name="旧 Vip 来源映射",
+        help_text="旧 hotelapp.Vip 主键；未核验记录不得计入新会员总数")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "会员关系"
+        verbose_name_plural = "会员关系"
+        constraints = [
+            models.UniqueConstraint(fields=("property", "member_no"),
+                                    name="uq_membership_property_no"),
+            # 同物业同一时点最多一条有效会员关系（M-16 规则 1）
+            models.UniqueConstraint(
+                fields=("property", "guest"), condition=models.Q(status="ACTIVE"),
+                name="uq_membership_property_guest_active",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.status == self.Status.ACTIVE and self.guest_id and self.property_id:
+            dup = GuestMembership.objects.filter(
+                property_id=self.property_id, guest_id=self.guest_id,
+                status=self.Status.ACTIVE,
+            ).exclude(pk=self.pk).exists()
+            if dup:
+                raise ValidationError("该客人已有有效会员关系（M-16 规则 1）")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.member_no} ({self.guest_id}) {self.level_code}"
+
+
+class MembershipLevelHistory(models.Model):
+    """会员等级历史（V1.1 M-16）：不可变，记录旧/新等级、原因、操作者。"""
+
+    membership = models.ForeignKey(
+        GuestMembership, on_delete=models.PROTECT, related_name="level_history",
+        verbose_name="会员关系")
+    from_level = models.CharField(max_length=32, blank=True, verbose_name="原等级")
+    to_level = models.CharField(max_length=32, verbose_name="新等级")
+    reason = models.CharField(max_length=240, blank=True, verbose_name="原因")
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="membership_level_changes",
+        verbose_name="操作者")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="生效时间")
+
+    class Meta:
+        verbose_name = "会员等级历史"
+        verbose_name_plural = "会员等级历史"
+        ordering = ("-created_at",)
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise ValueError("会员等级历史不可修改（只追加）")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError("会员等级历史不可删除")

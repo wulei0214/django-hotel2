@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
 from django.utils.functional import cached_property
@@ -281,3 +282,138 @@ class RoomTypeInventory(models.Model):
 
     def __str__(self):
         return f"{self.room_type} / {self.stay_date} / 可售 {self.available_count}"
+
+
+class HousekeepingTask(models.Model):
+    """清洁任务（V1.1 M-06 P0）：退房自动生成；检查放行权限独立（决策 6）。"""
+
+    class TaskType(models.TextChoices):
+        DEPARTURE = "DEPARTURE", "退房清洁"
+        STAYOVER = "STAYOVER", "住中清扫"
+        DEEP_CLEAN = "DEEP_CLEAN", "深度清洁"
+        INSPECTION = "INSPECTION", "检查"
+        TURNDOWN = "TURNDOWN", "夜床"
+
+    class TaskStatus(models.TextChoices):
+        PENDING = "PENDING", "待清洁"
+        IN_PROGRESS = "IN_PROGRESS", "清洁中"
+        DONE = "DONE", "清洁完成待检查"
+        INSPECTED = "INSPECTED", "检查通过"
+        REJECTED = "REJECTED", "检查退回"
+        CANCELLED = "CANCELLED", "已取消"
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT, related_name="housekeeping_tasks",
+        verbose_name="所属酒店")
+    room = models.ForeignKey(
+        Room, on_delete=models.PROTECT, related_name="housekeeping_tasks",
+        verbose_name="房间")
+    task_type = models.CharField(
+        max_length=12, choices=TaskType.choices, default=TaskType.DEPARTURE,
+        verbose_name="任务类型")
+    status = models.CharField(
+        max_length=12, choices=TaskStatus.choices, default=TaskStatus.PENDING,
+        verbose_name="任务状态",
+        help_text="状态机：PENDING→IN_PROGRESS→DONE→INSPECTED；REJECTED 回 IN_PROGRESS")
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="housekeeping_tasks_assigned",
+        verbose_name="负责员工")
+    started_at = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
+    completed_at = models.DateTimeField(null=True, blank=True, verbose_name="完成时间")
+    inspected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="housekeeping_tasks_inspected",
+        verbose_name="检查人",
+        help_text="净房放行由当天管理者确认（决策 6）")
+    inspected_at = models.DateTimeField(null=True, blank=True, verbose_name="检查时间")
+    checklist = models.JSONField(default=list, blank=True, verbose_name="检查项")
+    notes = models.TextField(blank=True, verbose_name="备注")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "清洁任务"
+        verbose_name_plural = "清洁任务"
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=("property", "status"), name="idx_hk_prop_status"),
+        ]
+
+    def __str__(self):
+        return f"{self.room_id} {self.get_task_type_display()} {self.status}"
+
+
+class MaintenanceTicket(models.Model):
+    """维修工单（V1.1 M-06 P0）：按日期区间影响库存，不能只改当前房态。"""
+
+    class TicketStatus(models.TextChoices):
+        OPEN = "OPEN", "已报修"
+        IN_PROGRESS = "IN_PROGRESS", "维修中"
+        RESTORED = "RESTORED", "已恢复"
+        CANCELLED = "CANCELLED", "已取消"
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT, related_name="maintenance_tickets",
+        verbose_name="所属酒店")
+    room = models.ForeignKey(
+        Room, on_delete=models.PROTECT, related_name="maintenance_tickets",
+        verbose_name="房间")
+    from_date = models.DateField(verbose_name="停用开始日期")
+    to_date = models.DateField(null=True, blank=True, verbose_name="停用结束日期",
+                               help_text="空=恢复前一直停用")
+    reason = models.CharField(max_length=240, verbose_name="报修原因")
+    status = models.CharField(
+        max_length=12, choices=TicketStatus.choices, default=TicketStatus.OPEN,
+        verbose_name="工单状态")
+    ticket_no = models.CharField(max_length=32, unique=True, verbose_name="工单号")
+    reported_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="maintenance_reported",
+        verbose_name="报修人")
+    restored_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="maintenance_restored",
+        verbose_name="恢复人")
+    restored_at = models.DateTimeField(null=True, blank=True, verbose_name="恢复时间")
+    notes = models.TextField(blank=True, verbose_name="备注")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "维修工单"
+        verbose_name_plural = "维修工单"
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"{self.ticket_no} {self.room_id} {self.status}"
+
+
+class RoomInspection(models.Model):
+    """客房检查记录（V1.1 M-06 P0）：PASS 才放行净房。"""
+
+    class InspectResult(models.TextChoices):
+        PASS = "PASS", "通过"
+        FAIL = "FAIL", "不通过"
+
+    task = models.ForeignKey(
+        HousekeepingTask, on_delete=models.PROTECT, related_name="inspections",
+        verbose_name="清洁任务")
+    room = models.ForeignKey(
+        Room, on_delete=models.PROTECT, related_name="inspections",
+        verbose_name="房间")
+    inspector = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="room_inspections", verbose_name="检查人")
+    result = models.CharField(
+        max_length=6, choices=InspectResult.choices, verbose_name="检查结果")
+    checklist_result = models.JSONField(default=dict, blank=True, verbose_name="检查项结果")
+    notes = models.TextField(blank=True, verbose_name="问题描述")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="检查时间")
+
+    class Meta:
+        verbose_name = "客房检查记录"
+        verbose_name_plural = "客房检查记录"
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"{self.room_id} {self.result} @ {self.created_at:%Y-%m-%d %H:%M}"

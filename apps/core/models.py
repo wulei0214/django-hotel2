@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -165,3 +166,92 @@ class LegacyRecordLink(models.Model):
 
     def __str__(self):
         return f"{self.source_model}#{self.source_pk} → {self.target_model}#{self.target_pk} ({self.mapping_status})"
+
+
+class BusinessDate(models.Model):
+    """营业日（V1.1 M-08 P0）：每物业同一时间只能有一个 OPEN 营业日。
+
+    关账后禁止新增/修改该营业日的账务凭证；重开需独立权限、原因、审计。
+    """
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "营业中"
+        CLOSED = "CLOSED", "已关账"
+        REOPENED = "REOPENED", "已重开"
+
+    property = models.ForeignKey(
+        Property, on_delete=models.PROTECT, related_name="business_dates",
+        verbose_name="物业")
+    business_date = models.DateField(verbose_name="营业日期")
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.OPEN,
+        verbose_name="状态")
+    opened_at = models.DateTimeField(auto_now_add=True, verbose_name="开启时间")
+    closed_at = models.DateTimeField(null=True, blank=True, verbose_name="关账时间")
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="business_dates_closed",
+        verbose_name="关账人")
+    reopened_at = models.DateTimeField(null=True, blank=True, verbose_name="重开时间")
+    reopened_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="business_dates_reopened",
+        verbose_name="重开人", related_query_name="reopened")
+    reopen_reason = models.CharField(max_length=240, blank=True, verbose_name="重开原因")
+
+    class Meta:
+        verbose_name = "营业日"
+        verbose_name_plural = "营业日"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("property",), condition=models.Q(status="OPEN"),
+                name="uq_business_date_one_open",
+            ),
+            models.UniqueConstraint(fields=("property", "business_date"),
+                                    name="uq_business_date_per_property"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.status == self.Status.OPEN and self.property_id:
+            dup = BusinessDate.objects.filter(
+                property_id=self.property_id, status=self.Status.OPEN,
+            ).exclude(pk=self.pk).exists()
+            if dup:
+                raise ValidationError("该物业已有 OPEN 营业日（M-08 规则 1）")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.property_id}@{self.business_date} {self.status}"
+
+
+class NightAuditRun(models.Model):
+    """夜审运行记录（V1.1 M-08 P0）：按营业日幂等；失败可恢复可追溯。"""
+
+    class RunStatus(models.TextChoices):
+        RUNNING = "RUNNING", "执行中"
+        SUCCESS = "SUCCESS", "成功"
+        FAILED = "FAILED", "失败"
+
+    business_date = models.ForeignKey(
+        BusinessDate, on_delete=models.PROTECT, related_name="night_audit_runs",
+        verbose_name="营业日")
+    status = models.CharField(
+        max_length=10, choices=RunStatus.choices, default=RunStatus.RUNNING,
+        verbose_name="运行状态")
+    started_at = models.DateTimeField(auto_now_add=True, verbose_name="开始时间")
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="完成时间")
+    executed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="night_audit_runs",
+        verbose_name="执行人")
+    summary = models.JSONField(null=True, blank=True, verbose_name="结果摘要",
+                               help_text="在住、过租、No-Show、异常清单")
+    error_message = models.TextField(blank=True, verbose_name="失败原因")
+
+    class Meta:
+        verbose_name = "夜审运行"
+        verbose_name_plural = "夜审运行"
+        ordering = ("-started_at",)
+
+    def __str__(self):
+        return f"{self.business_date_id} {self.status}"

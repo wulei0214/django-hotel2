@@ -706,3 +706,54 @@ User/Membership/Assignment 关联现状与问题清单（未映射/孤儿/无角
 ### 回归
 
 73 项测试全部通过（新增 3 项 SoD 测试）。
+
+## V1.1 P0 模型定稿批次（§9.7.1）
+
+按《五大模块重构需求与技术设计基线 V1.1》§9.7.1，交付全部 P0 模型/约束/服务。
+
+### 新增模型（M-01/02/03/04/06/08/09/12/16）
+
+| 编号 | 模型 | 关键约束 |
+|---|---|---|
+| M-01 | `ReservationGuest` / `StayGuest` | 每预订最多一条 PRIMARY（条件唯一 + 服务层校验） |
+| M-02 | `GuestDocument` | 证件号 Fernet 加密落库 + HMAC-SHA256 查重；同物业查重防重复 |
+| M-03 | `GuestPhone` | 每客人一个主号码；共享号码标记 `shared_review_required` |
+| M-04 | `Folio` 改 FK + `folio_type` / `FolioTransfer` | MASTER 唯一（条件唯一 + 服务层）；转移不搬迁原凭证 |
+| M-06 | `HousekeepingTask` / `MaintenanceTicket` / `RoomInspection` | 检查人独立（决策 6）；维修按日期区间影响库存 |
+| M-08 | `BusinessDate` / `NightAuditRun` | 每物业一个 OPEN 营业日；夜审运行状态/摘要/失败原因 |
+| M-09 | `InventoryHold` | 同订单明细同住宿日单活跃；释放幂等 |
+| M-12 | `CancellationPolicy` / `DepositPolicy` | 预订创建时快照版本 |
+| M-16 | `GuestMembership` / `MembershipLevelHistory` | 同物业同客人最多一条有效会员关系；会员号唯一；等级历史只追加 |
+
+### 跨引擎条件唯一（服务层双重保护）
+
+MySQL 不支持 partial unique index（Django 静默跳过带 `condition` 的 UniqueConstraint）。
+上述条件唯一规则在**服务层 save() 补齐**：Folio MASTER / GuestPhone 主号码 /
+GuestMembership 有效 / ReservationGuest PRIMARY / InventoryHold 活跃 / BusinessDate OPEN
+——Postgres/SQLite 走 DB 约束，MySQL 走服务层校验，双引擎一致。
+
+### 证件加密服务（apps/guests/services.py）
+
+- **加密**：Fernet（cryptography 库），密钥 `DJANGO_PII_KEY`（生产必须配置独立密钥）；
+  未配置时从 SECRET_KEY 派生（开发回退）
+- **查重**：HMAC-SHA256 加盐 hash，不存明文；同物业查重防重复登记
+- **揭示**：`guests.document.reveal` 独立权限（迁移 0003）；每次写 AuditEvent（不落明文）
+- requirements.txt 增加 `cryptography>=41.0,<42`（42+ Windows Py39 DLL 问题）
+
+### M-01 语义别名
+
+`Reservation.guest` = 预订联系人/预订人（booker）；实际住客由 ReservationGuest/StayGuest 管理。
+Migration 未重命名字段；services/DTO 层使用 booker_guest 语义。
+
+### 迁移
+
+- core 0002: AuditEvent + LegacyRecordLink + BusinessDate + NightAuditRun
+- guests 0003: document_reveal 权限
+- guests 0004: GuestPhone + GuestDocument + GuestMembership + MembershipLevelHistory
+- billing 0004: Folio FK + folio_type + FolioTransfer + MASTER 唯一约束
+- reservations 0004: ReservationGuest + StayGuest + InventoryHold + CancellationPolicy + DepositPolicy
+- identity 0005: must_change_password + last_password_change
+
+### 回归
+
+127 项测试全部通过（新增 8 项 P0 模型测试 + 3 项 SoD + 6 项 D-07）。

@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q
 
@@ -86,8 +87,14 @@ class Reservation(models.Model):
             models.Index(fields=("property", "status", "check_in"), name="idx_res_prop_status_date"),
         ]
 
+    def get_master_folio(self):
+        """M-04：取主账单（多账单后预订余额/支付仍以 MASTER 为锚）。"""
+        return self.folios.filter(folio_type="MASTER").first()
+
     def __str__(self):
         return self.booking_no
+    # V1.1 M-01 语义说明：guest 字段=预订联系人/预订人（booker），不等于实际入住人；
+    # 实际住客由 ReservationGuest / StayGuest 管理（勿把联系人混入入住人数）
 
 
 class ReservationRoom(models.Model):
@@ -259,3 +266,224 @@ class NoShowRecord(models.Model):
 
     def __str__(self):
         return f"{self.reservation_room_id} / NO_SHOW"
+
+
+class ReservationGuest(models.Model):
+    """预订住客快照（V1.1 M-01 P0）：预订联系人与实际预订住客分离。
+
+    规则：每张预订最多一条 PRIMARY 主住客；BOOKER 仅表示联系人，不计入住人数；
+    快照不随 Guest 档案修改而覆盖；变更保留历史不物理删除。
+    """
+
+    class Role(models.TextChoices):
+        BOOKER = "BOOKER", "预订联系人"
+        PRIMARY = "PRIMARY", "主住客"
+        ACCOMPANYING = "ACCOMPANYING", "同住人"
+        PAYER = "PAYER", "付款人"
+
+    reservation = models.ForeignKey(
+        Reservation, on_delete=models.PROTECT, related_name="reservation_guests",
+        verbose_name="预订主单")
+    guest = models.ForeignKey(
+        "guests.Guest", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="reservation_guest_records",
+        verbose_name="关联客人档案",
+        help_text="允许先登记后建档")
+    role = models.CharField(
+        max_length=16, choices=Role.choices, default=Role.PRIMARY,
+        verbose_name="住客角色")
+    full_name = models.CharField(max_length=80, verbose_name="姓名快照")
+    phone = models.CharField(max_length=24, blank=True, verbose_name="电话快照")
+    doc_type = models.CharField(max_length=12, blank=True, verbose_name="证件类型")
+    doc_no_ciphertext = models.TextField(blank=True, verbose_name="证件号密文")
+    doc_no_hash = models.CharField(max_length=64, blank=True, verbose_name="证件号哈希")
+    birth_date = models.DateField(null=True, blank=True, verbose_name="出生日期")
+    nationality = models.CharField(max_length=32, blank=True, verbose_name="国籍/地区")
+    is_primary = models.BooleanField(default=False, verbose_name="主住客标记")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "预订住客"
+        verbose_name_plural = "预订住客"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("reservation",), condition=models.Q(is_primary=True),
+                name="uq_reservation_guest_primary",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.is_primary and self.reservation_id:
+            dup = ReservationGuest.objects.filter(
+                reservation_id=self.reservation_id, is_primary=True,
+            ).exclude(pk=self.pk).exists()
+            if dup:
+                raise ValidationError("该预订已有主住客（M-01：最多一条 PRIMARY）")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.reservation.booking_no}:{self.full_name}({self.role})"
+
+
+class StayGuest(models.Model):
+    """实际入住人员（V1.1 M-01 P0）：占床位者须核验证件；变更留历史。"""
+
+    stay = models.ForeignKey(
+        Stay, on_delete=models.PROTECT, related_name="stay_guests",
+        verbose_name="实际入住")
+    reservation_guest = models.ForeignKey(
+        ReservationGuest, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="stay_guest_records",
+        verbose_name="关联预订住客", help_text="现场加人时可为空")
+    guest = models.ForeignKey(
+        "guests.Guest", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="stay_guest_records",
+        verbose_name="客人档案")
+    full_name = models.CharField(max_length=80, verbose_name="姓名")
+    phone = models.CharField(max_length=24, blank=True, verbose_name="电话")
+    doc_type = models.CharField(max_length=12, blank=True, verbose_name="证件类型")
+    doc_no_ciphertext = models.TextField(blank=True, verbose_name="证件号密文")
+    doc_no_hash = models.CharField(max_length=64, blank=True, verbose_name="证件号哈希")
+    checked_in_at = models.DateTimeField(null=True, blank=True, verbose_name="入住时间")
+    checked_out_at = models.DateTimeField(null=True, blank=True, verbose_name="离店时间")
+    is_primary = models.BooleanField(default=False, verbose_name="主住客")
+    note = models.TextField(blank=True, verbose_name="备注")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "在住人员"
+        verbose_name_plural = "在住人员"
+
+    def __str__(self):
+        return f"{self.stay_id}:{self.full_name}"
+
+
+class InventoryHold(models.Model):
+    """库存冻结明细（V1.1 M-09 P0）：回答"这间被哪张订单冻结"。
+
+    held/sold 计数仍由库存服务维护；本表提供逐日逐单可追溯明细。
+    释放必须幂等：同一 hold 重复释放不重复加库存。
+    """
+
+    class HoldStatus(models.TextChoices):
+        HELD = "HELD", "冻结中"
+        CONFIRMED = "CONFIRMED", "已确认占用"
+        RELEASED = "RELEASED", "已释放"
+        EXPIRED = "EXPIRED", "已过期"
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT, related_name="inventory_holds",
+        verbose_name="所属酒店")
+    room_type = models.ForeignKey(
+        "inventory.RoomType", on_delete=models.PROTECT, related_name="holds",
+        verbose_name="房型")
+    stay_date = models.DateField(verbose_name="住宿日期")
+    reservation_room = models.ForeignKey(
+        ReservationRoom, on_delete=models.PROTECT, related_name="inventory_holds",
+        verbose_name="预订房间明细")
+    quantity = models.PositiveSmallIntegerField(default=1, verbose_name="冻结数量")
+    status = models.CharField(
+        max_length=12, choices=HoldStatus.choices, default=HoldStatus.HELD,
+        verbose_name="状态")
+    expires_at = models.DateTimeField(null=True, blank=True, verbose_name="过期时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    released_at = models.DateTimeField(null=True, blank=True, verbose_name="释放时间")
+
+    class Meta:
+        verbose_name = "库存冻结明细"
+        verbose_name_plural = "库存冻结明细"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("reservation_room", "stay_date"),
+                condition=~models.Q(status__in=("RELEASED", "EXPIRED")),
+                name="uq_hold_active_per_roomdate",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("room_type", "stay_date", "status"),
+                         name="idx_hold_type_date_status"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.status in (self.HoldStatus.HELD, self.HoldStatus.CONFIRMED)                 and self.reservation_room_id and self.stay_date:
+            dup = InventoryHold.objects.filter(
+                reservation_room_id=self.reservation_room_id,
+                stay_date=self.stay_date,
+                status__in=(self.HoldStatus.HELD, self.HoldStatus.CONFIRMED),
+            ).exclude(pk=self.pk).exists()
+            if dup:
+                raise ValidationError("该订单明细在该住宿日已有活跃冻结（M-09）")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.room_type_id}@{self.stay_date} {self.status}"
+
+
+class CancellationPolicy(models.Model):
+    """取消政策（V1.1 M-12 P0）：可计算、可快照；预订创建时保存版本。"""
+
+    class PenaltyType(models.TextChoices):
+        NONE = "NONE", "免费取消"
+        FIRST_NIGHT = "FIRST_NIGHT", "收首晚"
+        PERCENT = "PERCENT", "按比例"
+        FULL_STAY = "FULL_STAY", "全额"
+
+    rate_plan = models.ForeignKey(
+        "inventory.RatePlan", on_delete=models.PROTECT, related_name="cancellation_policies",
+        verbose_name="房价计划")
+    free_cancel_until = models.CharField(
+        max_length=32, verbose_name="免费取消截止",
+        help_text="如 24h_before_checkin 或具体时间表达")
+    penalty_type = models.CharField(
+        max_length=12, choices=PenaltyType.choices, default=PenaltyType.NONE,
+        verbose_name="罚金类型")
+    penalty_value = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name="罚金值", help_text="PERCENT 时为比例（0-100）")
+    no_show_penalty = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name="未到罚金")
+    currency = models.CharField(max_length=3, default="CNY", verbose_name="币种")
+    version = models.PositiveSmallIntegerField(default=1, verbose_name="版本")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "取消政策"
+        verbose_name_plural = "取消政策"
+        ordering = ("rate_plan_id", "-version")
+
+    def __str__(self):
+        return f"{self.rate_plan_id} v{self.version} {self.penalty_type}"
+
+
+class DepositPolicy(models.Model):
+    """押金政策（V1.1 M-12 P0）。"""
+
+    class DepositType(models.TextChoices):
+        NONE = "NONE", "无押金"
+        FIXED = "FIXED", "固定金额"
+        PERCENT = "PERCENT", "按比例"
+
+    rate_plan = models.ForeignKey(
+        "inventory.RatePlan", on_delete=models.PROTECT, related_name="deposit_policies",
+        verbose_name="房价计划")
+    deposit_type = models.CharField(
+        max_length=8, choices=DepositType.choices, default=DepositType.NONE,
+        verbose_name="押金类型")
+    deposit_value = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name="押金值", help_text="FIXED 为金额；PERCENT 为比例")
+    due_before = models.CharField(
+        max_length=32, blank=True, verbose_name="支付截止",
+        help_text="如 48h_before_checkin")
+    refundable = models.BooleanField(default=True, verbose_name="可退")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "押金政策"
+        verbose_name_plural = "押金政策"
+        ordering = ("rate_plan_id", "-created_at")
+
+    def __str__(self):
+        return f"{self.rate_plan_id} {self.deposit_type}"

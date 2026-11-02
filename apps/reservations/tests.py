@@ -79,7 +79,7 @@ class ReservationCreationTests(TestCase):
         self.assertEqual(reservation.status, Reservation.Status.PENDING)
         self.assertEqual(reservation.total_amount, 1000)
         self.assertEqual(reservation.reservation_rooms.count(), 1)
-        self.assertTrue(hasattr(reservation, "folio"))
+        self.assertIsNotNone(reservation.get_master_folio(), "M-04：创建预订生成 MASTER 账单")
         self.assertEqual(
             list(RoomTypeInventory.objects.order_by("stay_date").values_list("held", flat=True)),
             [1, 1],
