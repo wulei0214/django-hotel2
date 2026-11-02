@@ -102,7 +102,6 @@ class EmployeeLifecycleService:
         for group in role_groups or []:
             cls.assign_role(membership=membership, group=group,
                             granted_by=granted_by, reason="入职初始授权")
-        if user:
 
         audit.info("员工创建 user=%s 员工=%s(profile %s) 工号=%s 账号=%s",
                    getattr(granted_by, "username", "system"),
@@ -164,7 +163,7 @@ class EmployeeLifecycleService:
     @transaction.atomic
     def assign_role(cls, *, membership, group, starts_at=None, ends_at=None,
                     granted_by=None, reason=""):
-        """在任职下新增一条角色授权并同步组镜像；重复的同组有效授权幂等返回。
+        """在任职下新增一条角色授权；重复的同组有效授权幂等返回。
 
         职责分离（方案 §6.2/§10.3）：操作者不能给自己分配任何角色（禁止自我提权）。
         """
@@ -184,7 +183,6 @@ class EmployeeLifecycleService:
         assignment = StaffRoleAssignment.objects.create(
             membership=membership, group=group, starts_at=starts_at,
             ends_at=ends_at, granted_by=granted_by)
-        if membership.staff_profile.user_id:
         audit.info("角色授权 user=%s 员工=%s 角色=%s 起=%s 止=%s 原因=%s",
                    getattr(granted_by, "username", "system"),
                    membership.staff_profile.full_name, group.name,
@@ -196,13 +194,12 @@ class EmployeeLifecycleService:
     @classmethod
     @transaction.atomic
     def end_assignment(cls, assignment, *, ended_by=None, reason=""):
-        """结束一条角色授权（ends_at=now，不删除历史）并同步组镜像。"""
+        """结束一条角色授权（ends_at=now，不删除历史）。"""
         now = timezone.now()
         if assignment.ends_at and assignment.ends_at <= now:
             return assignment  # 已结束，幂等
         assignment.ends_at = now
         assignment.save(update_fields=("ends_at",))
-        if assignment.membership.staff_profile.user_id:
         audit.info("角色结束 user=%s 员工=%s 角色=%s 原因=%s",
                    getattr(ended_by, "username", "system"),
                    assignment.membership.staff_profile.full_name,
@@ -256,7 +253,6 @@ class EmployeeLifecycleService:
             elif status == StaffProfile.EmploymentStatus.ACTIVE:
                 user.is_active = True
                 user.save(update_fields=("is_active",))
-            if user.pk:
         audit.info("员工状态变更 user=%s 员工=%s 状态=%s 终止授权=%d 原因=%s",
                    getattr(ended_by, "username", "system"),
                    profile.full_name, status, ended_count, reason or "-")
