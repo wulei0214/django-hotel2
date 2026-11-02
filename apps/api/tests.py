@@ -475,6 +475,39 @@ class FrontDeskWriteApiTests(TestCase):
         self.assertEqual(self.reservation.status, Reservation.Status.CHECKED_OUT)
 
 
+    def test_no_show_and_refund_actions_require_separate_permissions(self):
+        self.client.force_login(self.user)
+        no_show = self.client.post(
+            f"/api/v1/front-desk/reservation-rooms/{self.line.pk}/no-show",
+            data=json.dumps({"reason": "未到店"}),
+            content_type="application/json",
+        )
+        refund_request = self.client.post(
+            "/api/v1/front-desk/payments/999999/refunds",
+            data=json.dumps({"amount": "10.00", "reason": "退款"}),
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="api-refund-denied-001",
+        )
+        refund_approve = self.client.post(
+            "/api/v1/front-desk/refunds/999999/approve",
+            data=json.dumps({"confirm_refund_paid": True}),
+            content_type="application/json",
+        )
+        self.assertEqual(no_show.status_code, 403)
+        self.assertEqual(no_show.json()["error"]["code"], "PERMISSION_DENIED")
+        self.assertEqual(refund_request.status_code, 403)
+        self.assertEqual(refund_request.json()["error"]["code"], "PERMISSION_DENIED")
+        self.assertEqual(refund_approve.status_code, 403)
+        self.assertEqual(refund_approve.json()["error"]["code"], "PERMISSION_DENIED")
+
+    def test_legacy_reservation_list_is_exposed_as_separate_read_only_source(self):
+        self.client.force_login(self.user)
+        response = self.client.get("/api/v1/front-desk/legacy-reservations?page_size=1")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["meta"]["source_system"], "LEGACY")
+        self.assertTrue(response.json()["meta"]["read_only"])
+
+
 class FrontDeskWorkspacePageTests(TestCase):
     """前台工作台只按当前岗位权限显示写操作能力，服务端仍独立授权。"""
 

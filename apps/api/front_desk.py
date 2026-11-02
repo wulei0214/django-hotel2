@@ -774,8 +774,11 @@ def _legacy_date(value):
 
 
 def _legacy_money(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
     try:
-        number = Decimal(str(value or "0").strip())
+        number = Decimal(raw)
         return str(number.quantize(Decimal("0.01")))
     except Exception:
         return None
