@@ -3,6 +3,37 @@
 from django.db import migrations, models
 
 
+
+
+def ensure_mysql_fk_support_indexes(apps, schema_editor):
+    """MySQL 删除复合索引前，先补 FK 单列索引，避免外键依赖索引阻止 DROP INDEX。
+
+    0010 的复合索引以 accommodation_id / reservation_id 为首列，MySQL
+    可能直接复用它作为外键索引。0012 若先删除复合索引会触发 1553。
+    SQLite 不需要这一步，保持其表重建路径不变。
+    """
+    if schema_editor.connection.vendor != "mysql":
+        return
+
+    LedgerEntry = apps.get_model("hotelapp", "LedgerEntry")
+    table = schema_editor.quote_name(LedgerEntry._meta.db_table)
+    columns = ("accommodation_id", "reservation_id")
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(f"SHOW INDEX FROM {table}")
+        rows = cursor.fetchall()
+
+    existing_names = {row[2] for row in rows}
+    for column in columns:
+        index_name = f"ledger_entry_{column}_fk_idx"
+        if index_name in existing_names:
+            continue
+        quoted_index = schema_editor.quote_name(index_name)
+        quoted_column = schema_editor.quote_name(column)
+        schema_editor.execute(
+            f"CREATE INDEX {quoted_index} ON {table} ({quoted_column})"
+        )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,6 +41,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(ensure_mysql_fk_support_indexes, migrations.RunPython.noop),
         # 0010 建立的两个复合索引引用下方将被移除的外键字段。
         # 先删除索引，再删除字段，避免 SQLite 重建表时尝试在缺失字段上重建索引。
         migrations.RemoveIndex(
