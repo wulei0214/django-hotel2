@@ -981,3 +981,50 @@ class V11P0ModelTests(TestCase):
             task_type=HousekeepingTask.TaskType.DEPARTURE)
         self.assertEqual(task.status, HousekeepingTask.TaskStatus.PENDING)
         self.assertIsNone(task.inspected_by, "检查人独立，清洁员不可自检放行")
+
+
+class SuperuserPolicyTests(TestCase):
+    """V1.1 §12.2：superuser 是平台技术身份，不自动获得 PMS 业务入口"""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            "admin_policy", password="admin-pass123456")
+
+    def test_superuser_blocked_from_pms_pages(self):
+        """superuser 无任职 → PMS 业务页面 403（与 AuthorizationService 一致）"""
+        self.client.force_login(self.admin)
+        for url in ("/show_client/", "/home/", "/staff_accounts/", "/show_room/"):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 403,
+                             f"superuser 无任职时 {url} 必须 403")
+
+    def test_superuser_can_access_permission_matrix(self):
+        """/permissions/ 用 _is_superuser 门控（非 staff_required），不受影响"""
+        self.client.force_login(self.admin)
+        response = self.client.get("/permissions/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_superuser_can_access_django_admin_login(self):
+        """superuser 仍可访问 Django Admin 登录页（平台维护入口）；
+        完整 Admin 登录需通过 admin_sessionid（会话隔离），此处验证入口可达"""
+        response = self.client.get("/admin/login/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_superuser_with_employment_and_role_can_access_pms(self):
+        """superuser 如需 PMS 业务入口，须通过正常流程建档+任职+角色授权"""
+        from apps.core.models import Property
+        from apps.identity.models import PropertyStaffMembership, StaffRoleAssignment
+        prop, _ = Property.objects.get_or_create(
+            code="DEFAULT", defaults={"name": "测试酒店"})
+        profile = StaffProfile.objects.create(
+            user=self.admin, full_name="平台管理员", employment_status="ACTIVE")
+        membership = PropertyStaffMembership.objects.create(
+            property=prop, staff_profile=profile,
+            employee_no="P-ADM-01", status="ACTIVE")
+        StaffRoleAssignment.objects.create(
+            membership=membership,
+            group=Group.objects.get(name="前台"))
+        self.client.force_login(self.admin)
+        response = self.client.get("/show_client/")
+        self.assertEqual(response.status_code, 200,
+                         "superuser + 任职 + 角色授权 → 可进 PMS（与普通员工一致）")

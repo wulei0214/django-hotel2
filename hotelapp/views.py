@@ -85,7 +85,8 @@ def _has_active_employment(user):
       3) 至少一条当前生效的 StaffRoleAssignment（无角色/过期 → STAFF-03/E-37 拒绝）。
     停职/离职/角色到期立即失权（AUTH-05），不依赖 User.groups 镜像或重新登录。
     D-04：is_staff 只控制 Django Admin 入口，不参与本判定。
-    平台超级管理员是技术身份，不受业务任职约束。
+    所有用户（含 superuser）进入 PMS 业务页面均须持有有效任职；
+    superuser 仅在 Django Admin 侧拥有平台维护权限（V1.1 §12.2）。
     """
     from apps.identity.models import PropertyStaffMembership, StaffProfile
     memberships = PropertyStaffMembership.objects.filter(
@@ -104,20 +105,23 @@ def _has_active_employment(user):
 
 
 def staff_required(view):
-    """登录 + 员工身份双重校验；登录页统一用前台 /login/。
+    """登录 + 员工身份校验；登录页统一用前台 /login/。
 
-    RBAC V2 P0-1：非超管员工还必须持有有效酒店任职——
-    账号停用/员工离职/任职暂停立即失权，不依赖重新登录。
+    V1.1 §12.2：所有用户（含 superuser）进入 PMS 业务页面均须持有
+    有效酒店任职——账号停用/员工离职/任职暂停立即失权。
+    superuser 仅拥有 Django Admin 平台维护权限，不自动获得 PMS 业务入口。
     """
     @functools.wraps(view)
     def wrapped(request, *args, **kwargs):
         user = request.user
-        # D-04：PMS 员工门禁 = 登录 + 有效任职/角色授权；is_staff 只管 Django Admin
+        # D-04 + V1.1 §12.2：PMS 员工门禁 = 登录 + 有效任职/角色授权；
+        # superuser 不豁免（平台技术身份 ≠ 酒店经营角色，与 AuthorizationService 一致）；
+        # is_staff 只管 Django Admin 入口。
         if user.is_authenticated and not _has_active_employment(user):
             raise PermissionDenied(
                 "当前账号没有有效的酒店任职或岗位授权，请联系管理员分配")
         # D-07：首次登录/被重置密码后强制改密（改密页与登出自身放行）
-        if (user.is_authenticated and not user.is_superuser
+        if (user.is_authenticated
                 and _must_change_password(user)
                 and request.path not in ("/force-password-change/", "/logout/")):
             return redirect("/force-password-change/")
