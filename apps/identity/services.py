@@ -5,7 +5,7 @@
   * 前台业务页、Django Admin、管理命令与未来 API 的员工写操作，
     一律调用本服务——不允许任何入口直接 model.save() 拼接员工/账号/角色关系
   * StaffProfile = 自然人档案；User = 登录身份；PropertyStaffMembership = DEFAULT 任职；
-    StaffRoleAssignment = 岗位授权记录；User.groups = 运行时权限镜像（与授权记录同步）
+    StaffRoleAssignment = 岗位授权记录；User.groups 不参与 PMS 业务授权
   * 所有写操作幂等可重复执行；关键动作写 hotel.audit 审计（不含敏感值）
   * 授权历史不物理删除：调岗/撤销用 ends_at 关闭
 """
@@ -25,29 +25,6 @@ audit = logging.getLogger("hotel.audit")
 def _default_property():
     return Property.objects.filter(
         code="DEFAULT", status=Property.Status.ACTIVE).order_by("id").first()
-
-
-def _sync_group_mirror(user):
-    """把 User.groups 镜像同步为该用户当前有效 RoleAssignment 的组集合。
-
-    这是"授权记录 ↔ 运行时权限"的唯一同步点：
-      * 授权生效（含临时授权未到期）→ 组在镜像中
-      * 授权到期/结束 → 组从镜像移除（下一请求立即失权，AUTH-05/E-37）
-    镜像只增删与身份链对应的业务组，不触碰其他组。
-    """
-    now = timezone.now()
-    # 注意：多值反向关系的条件必须放在同一个 filter(Q(...)) 内——
-    # 链式 .filter() 会产生独立 JOIN，导致其他用户的授权令组被错误保留
-    from django.db.models import Q
-    active_groups = Group.objects.filter(
-        Q(pms_role_assignments__membership__staff_profile__user=user,
-          pms_role_assignments__starts_at__lte=now,
-          pms_role_assignments__ends_at__isnull=True)
-        | Q(pms_role_assignments__membership__staff_profile__user=user,
-            pms_role_assignments__starts_at__lte=now,
-            pms_role_assignments__ends_at__gt=now)
-    ).distinct()
-    user.groups.set(active_groups)
 
 
 class EmployeeLifecycleError(Exception):
@@ -126,7 +103,6 @@ class EmployeeLifecycleService:
             cls.assign_role(membership=membership, group=group,
                             granted_by=granted_by, reason="入职初始授权")
         if user:
-            _sync_group_mirror(user)
 
         audit.info("员工创建 user=%s 员工=%s(profile %s) 工号=%s 账号=%s",
                    getattr(granted_by, "username", "system"),
@@ -152,11 +128,36 @@ class EmployeeLifecycleService:
                                         first_name=profile.full_name)
         profile.user = user
         profile.save(update_fields=("user", "updated_at"))
-        _sync_group_mirror(user)
         audit.info("账号开通 user=%s 员工=%s(profile %s) 账号=%s",
                    getattr(granted_by, "username", "system"),
                    profile.full_name, profile.pk, username)
         return user
+
+    # ---------- 绑定既有账号（迁移/运维入口统一走本服务） ----------
+    @classmethod
+    @transaction.atomic
+    def bind_existing_user(cls, *, membership, user, group, password='', granted_by=None):
+        """把既有 Django 用户绑定到员工任职并授予岗位；不写 is_staff / user.groups。"""
+        profile = membership.staff_profile
+        if not user.is_active:
+            raise EmployeeLifecycleError("不能把员工绑定到已停用账号。")
+        if profile.user_id and profile.user_id != user.pk:
+            raise EmployeeLifecycleError("该员工档案已经绑定其他登录账号。")
+        if StaffProfile.objects.filter(user=user).exclude(pk=profile.pk).exists():
+            raise EmployeeLifecycleError("该登录账号已经绑定其他员工档案。")
+        if password:
+            user.set_password(password)
+            user.save(update_fields=("password",))
+        if profile.user_id != user.pk:
+            profile.user = user
+            profile.save(update_fields=("user", "updated_at"))
+        assignment = cls.assign_role(
+            membership=membership, group=group, granted_by=granted_by,
+            reason="管理命令绑定岗位")
+        audit.info("既有账号绑定 user=%s 员工=%s(profile %s) 岗位=%s",
+                   getattr(granted_by, "username", "system"),
+                   profile.full_name, profile.pk, group.name)
+        return profile, assignment
 
     # ---------- 角色分配 / 结束（STAFF-07/08：兼岗并集、调岗留历史） ----------
     @classmethod
@@ -184,7 +185,6 @@ class EmployeeLifecycleService:
             membership=membership, group=group, starts_at=starts_at,
             ends_at=ends_at, granted_by=granted_by)
         if membership.staff_profile.user_id:
-            _sync_group_mirror(membership.staff_profile.user)
         audit.info("角色授权 user=%s 员工=%s 角色=%s 起=%s 止=%s 原因=%s",
                    getattr(granted_by, "username", "system"),
                    membership.staff_profile.full_name, group.name,
@@ -203,7 +203,6 @@ class EmployeeLifecycleService:
         assignment.ends_at = now
         assignment.save(update_fields=("ends_at",))
         if assignment.membership.staff_profile.user_id:
-            _sync_group_mirror(assignment.membership.staff_profile.user)
         audit.info("角色结束 user=%s 员工=%s 角色=%s 原因=%s",
                    getattr(ended_by, "username", "system"),
                    assignment.membership.staff_profile.full_name,
@@ -258,7 +257,6 @@ class EmployeeLifecycleService:
                 user.is_active = True
                 user.save(update_fields=("is_active",))
             if user.pk:
-                _sync_group_mirror(user)
         audit.info("员工状态变更 user=%s 员工=%s 状态=%s 终止授权=%d 原因=%s",
                    getattr(ended_by, "username", "system"),
                    profile.full_name, status, ended_count, reason or "-")
