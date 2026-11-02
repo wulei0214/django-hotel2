@@ -201,3 +201,60 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"{self.provider_ref} / {self.status}"
+
+
+
+class Refund(models.Model):
+    """退款申请与审批记录；审批仅登记人工退款已实际完成，不调用支付渠道。"""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "待审批"
+        SUCCEEDED = "SUCCEEDED", "已确认完成"
+        REJECTED = "REJECTED", "已驳回"
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT, related_name="refunds",
+        verbose_name="所属酒店",
+    )
+    payment = models.ForeignKey(
+        Payment, on_delete=models.PROTECT, related_name="refunds",
+        verbose_name="原支付流水",
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="退款金额")
+    currency = models.CharField(max_length=3, default="CNY", verbose_name="币种")
+    reason = models.CharField(max_length=240, verbose_name="退款原因")
+    idempotency_key = models.CharField(max_length=64, verbose_name="幂等键")
+    provider_ref = models.CharField(max_length=80, unique=True, verbose_name="退款登记编号")
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.PENDING,
+        verbose_name="退款状态",
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="requested_refunds", verbose_name="申请人",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="approved_refunds", verbose_name="审批人",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="申请时间")
+    processed_at = models.DateTimeField(null=True, blank=True, verbose_name="处理时间")
+
+    class Meta:
+        verbose_name = "退款申请"
+        verbose_name_plural = "退款申请"
+        ordering = ("-created_at",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=("property", "idempotency_key"),
+                name="uq_refund_property_idempotency",
+            ),
+            models.CheckConstraint(check=Q(amount__gt=0), name="ck_refund_amount_positive"),
+        ]
+        permissions = (
+            ("refund_request", "可以登记退款申请"),
+            ("refund_approve", "可以审批退款申请"),
+        )
+
+    def __str__(self):
+        return f"{self.provider_ref} / {self.status}"

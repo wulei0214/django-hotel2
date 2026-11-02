@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
 
@@ -184,3 +185,77 @@ class Stay(models.Model):
 
     def __str__(self):
         return f"{self.reservation_room.reservation.booking_no} / {self.room.number}"
+
+
+
+class StayRoomSegment(models.Model):
+    """在住期间的实际房间区间；Stay.room 始终指向当前房间。"""
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT, related_name="stay_room_segments",
+        verbose_name="所属酒店",
+    )
+    stay = models.ForeignKey(
+        "reservations.Stay", on_delete=models.PROTECT, related_name="room_segments",
+        verbose_name="实际入住",
+    )
+    room = models.ForeignKey(
+        "inventory.Room", on_delete=models.PROTECT, related_name="stay_room_segments",
+        verbose_name="实际房间",
+    )
+    started_at = models.DateTimeField(verbose_name="入住该房间时间")
+    ended_at = models.DateTimeField(null=True, blank=True, verbose_name="离开该房间时间")
+    move_reason = models.CharField(max_length=240, blank=True, verbose_name="变更原因")
+    moved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="stay_room_segments_moved", verbose_name="操作人",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "入住换房历史"
+        verbose_name_plural = "入住换房历史"
+        ordering = ("started_at", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("stay",),
+                condition=models.Q(ended_at__isnull=True),
+                name="uq_stay_one_active_room_segment",
+            ),
+            models.CheckConstraint(
+                check=models.Q(ended_at__isnull=True) | models.Q(ended_at__gt=models.F("started_at")),
+                name="ck_stay_room_segment_time_order",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.stay_id} / {self.room.number}"
+
+
+class NoShowRecord(models.Model):
+    """按预订房间明细记录未到店，可支持多房订单中的部分 No-Show。"""
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT, related_name="no_show_records",
+        verbose_name="所属酒店",
+    )
+    reservation_room = models.OneToOneField(
+        "reservations.ReservationRoom", on_delete=models.PROTECT,
+        related_name="no_show_record", verbose_name="预订房间明细",
+    )
+    reason = models.CharField(max_length=240, verbose_name="未到店处理原因")
+    processed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="processed_no_show_records", verbose_name="处理人",
+    )
+    processed_at = models.DateTimeField(auto_now_add=True, verbose_name="处理时间")
+    inventory_released_from = models.DateField(null=True, blank=True, verbose_name="释放库存起始日")
+    released_nights = models.PositiveSmallIntegerField(default=0, verbose_name="释放住宿晚数")
+
+    class Meta:
+        verbose_name = "未到店处理记录"
+        verbose_name_plural = "未到店处理记录"
+        ordering = ("-processed_at",)
+
+    def __str__(self):
+        return f"{self.reservation_room_id} / NO_SHOW"
