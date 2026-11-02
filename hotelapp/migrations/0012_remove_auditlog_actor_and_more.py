@@ -158,18 +158,22 @@ class Migration(migrations.Migration):
             model_name='accommodation',
             name='reservation',
         ),
+        migrations.RunPython(drop_sqlite_indexes_for_removed_columns, migrations.RunPython.noop),
         migrations.RemoveField(
             model_name='accommodation',
             name='入住日期',
         ),
+        migrations.RunPython(drop_sqlite_indexes_for_removed_columns, migrations.RunPython.noop),
         migrations.RemoveField(
             model_name='accommodation',
             name='实际入住时间',
         ),
+        migrations.RunPython(drop_sqlite_indexes_for_removed_columns, migrations.RunPython.noop),
         migrations.RemoveField(
             model_name='accommodation',
             name='实际退房时间',
         ),
+        migrations.RunPython(drop_sqlite_indexes_for_removed_columns, migrations.RunPython.noop),
         migrations.RemoveField(
             model_name='accommodation',
             name='离店日期',
@@ -198,10 +202,12 @@ class Migration(migrations.Migration):
             model_name='room',
             name='占用状态',
         ),
+        migrations.RunPython(drop_sqlite_indexes_for_removed_columns, migrations.RunPython.noop),
         migrations.RemoveField(
             model_name='room',
             name='清洁状态',
         ),
+        migrations.RunPython(drop_sqlite_indexes_for_removed_columns, migrations.RunPython.noop),
         migrations.RemoveField(
             model_name='room',
             name='维修状态',
