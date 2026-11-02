@@ -16,6 +16,7 @@
         currentBooking: null,
         paymentKey: null,
         depositKey: null,
+        refundKey: null,
         total: 0
     };
 
@@ -679,8 +680,10 @@
                         if (!reason || !reason.trim()) return;
                         requestButton.disabled = true;
                         try {
+                            state.refundKey = state.refundKey || makeIdempotencyKey("fd-refund");
                             await postApi("payments/" + payment.id + "/refunds",
-                                { amount: amount, reason: reason.trim() }, makeIdempotencyKey("fd-refund"));
+                                { amount: amount, reason: reason.trim() }, state.refundKey);
+                            state.refundKey = null;
                             showToast("退款申请已提交，需另一名管理者审批", false);
                             await loadFolio(bookingNo);
                         } catch (error) {

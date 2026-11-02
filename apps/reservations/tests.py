@@ -750,3 +750,39 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         self.reservation.refresh_from_db()
         self.assertEqual(self.folio.status, Folio.Status.CLOSED)
         self.assertEqual(self.reservation.status, Reservation.Status.CHECKED_OUT)
+
+
+    def test_repeating_the_same_extension_target_is_idempotent(self):
+        extension_date = self.tomorrow
+        new_check_out = extension_date + timedelta(days=1)
+        DailyRate.objects.create(
+            property=self.property, rate_plan=self.rate_plan,
+            room_type=self.room_type, stay_date=extension_date,
+            price=Decimal("650.00"),
+        )
+        inventory = RoomTypeInventory.objects.create(
+            property=self.property, room_type=self.room_type,
+            stay_date=extension_date, total_rooms=2,
+        )
+        assign_room(
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            room_id=self.room.pk, assigned_by=self.operator,
+        )
+        stay, _ = check_in_stay(
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            checked_in_by=self.operator,
+        )
+        extend_stay(
+            property_obj=self.property, stay_id=stay.pk,
+            new_check_out=new_check_out, reason="延住",
+            extended_by=self.operator,
+        )
+        _, line, replay_amount = extend_stay(
+            property_obj=self.property, stay_id=stay.pk,
+            new_check_out=new_check_out, reason="延住",
+            extended_by=self.operator,
+        )
+        inventory.refresh_from_db()
+        self.assertEqual(replay_amount, Decimal("0.00"))
+        self.assertEqual(line.amount, Decimal("1250.00"))
+        self.assertEqual(inventory.sold, 1)
