@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import front_desk, guest_center, views
+from . import front_desk, guest_center, staff_center, views
 
 app_name = "api"
 
@@ -41,4 +41,10 @@ urlpatterns = [
     path("rooms/status", guest_center.room_status_list, name="room_status_list"),
     path("room-types", guest_center.room_type_list, name="room_type_list"),
     path("rate-calendar", guest_center.rate_calendar, name="rate_calendar"),
+    # --- Staff 中心 (V1.1 Phase 1) ---
+    path("staff", staff_center.staff_list, name="staff_list"),
+    path("staff/<int:profile_id>", staff_center.staff_detail, name="staff_detail"),
+    # --- Membership (V1.1 Phase 1) ---
+    path("memberships", staff_center.membership_list, name="membership_list"),
+    path("memberships/<int:membership_id>", staff_center.membership_detail, name="membership_detail"),
 ]
