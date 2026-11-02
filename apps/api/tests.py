@@ -6,6 +6,12 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from apps.core.models import Property
+from django.contrib.auth.models import Group, Permission, User
+from apps.billing.models import Folio, LedgerEntry
+from apps.guests.models import Guest
+from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
+from apps.inventory.models import Room
+from apps.reservations.models import Reservation, ReservationRoom, Stay
 from apps.inventory.models import DailyRate, RatePlan, RoomType, RoomTypeInventory
 
 
@@ -157,3 +163,154 @@ class PublicBookingApiTests(TestCase):
         self.assertTemplateUsed(response, "public/booking.html")
         self.assertContains(response, "查询可订房型")
         self.assertContains(response, "/api/v1/availability")
+
+
+class FrontDeskReadApiTests(TestCase):
+    """前台工作台只读 API：物业范围、RBAC、脱敏与账单摘要。"""
+
+    def setUp(self):
+        self.property = Property.objects.get(code="DEFAULT")
+        self.user = User.objects.create_user(
+            username="frontdesk-api-user",
+            password="TestPass-2026!",
+        )
+        self.profile = StaffProfile.objects.create(
+            user=self.user,
+            full_name="前台测试员",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
+        self.membership = PropertyStaffMembership.objects.create(
+            staff_profile=self.profile,
+            property=self.property,
+            employee_no="FD-API-001",
+            status=PropertyStaffMembership.Status.ACTIVE,
+        )
+        self.role = Group.objects.get(name="前台")
+        self.permission = Permission.objects.get(
+            content_type__app_label="hotelapp",
+            codename="view_accommodation",
+        )
+        self.role.permissions.add(self.permission)
+        self.assignment = StaffRoleAssignment.objects.create(
+            membership=self.membership,
+            group=self.role,
+            starts_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        self.check_in = timezone.localdate() + timedelta(days=1)
+        self.check_out = self.check_in + timedelta(days=2)
+        self.room_type = RoomType.objects.create(
+            property=self.property,
+            code="FD-API-KING",
+            name="前台 API 大床房",
+            capacity=2,
+        )
+        self.rate_plan = RatePlan.objects.create(
+            property=self.property,
+            code="FD-API-BAR",
+            name="前台 API 门市价",
+            valid_from=self.check_in - timedelta(days=1),
+        )
+        self.guest = Guest.objects.create(
+            property=self.property,
+            full_name="前台测试住客",
+            phone="13812345678",
+            phone_normalized="13812345678",
+        )
+        self.reservation = Reservation.objects.create(
+            property=self.property,
+            booking_no="RFDTEST0001",
+            guest=self.guest,
+            source="WEBSITE",
+            status=Reservation.Status.CONFIRMED,
+            check_in=self.check_in,
+            check_out=self.check_out,
+            room_count=1,
+            adult_count=2,
+            child_count=0,
+            total_amount=Decimal("600.00"),
+            currency="CNY",
+        )
+        self.room_line = ReservationRoom.objects.create(
+            property=self.property,
+            reservation=self.reservation,
+            room_type=self.room_type,
+            rate_plan=self.rate_plan,
+            check_in=self.check_in,
+            check_out=self.check_out,
+            nightly_rates=[
+                {"date": self.check_in.isoformat(), "price": "300.00", "currency": "CNY"},
+                {"date": (self.check_in + timedelta(days=1)).isoformat(), "price": "300.00", "currency": "CNY"},
+            ],
+            amount=Decimal("600.00"),
+        )
+        self.folio = Folio.objects.create(
+            property=self.property,
+            reservation=self.reservation,
+            guest=self.guest,
+            currency="CNY",
+        )
+        LedgerEntry.objects.create(
+            property=self.property,
+            folio=self.folio,
+            entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+            amount=Decimal("600.00"),
+            currency="CNY",
+            business_date=timezone.localdate(),
+            reference="FD-TEST-CHARGE-001",
+            description="测试房费",
+        )
+        self.room = Room.objects.create(
+            property=self.property,
+            room_type=self.room_type,
+            number="FD101",
+            floor="1",
+            occupancy_status=Room.OccupancyStatus.VACANT,
+            housekeeping_status=Room.HousekeepingStatus.CLEAN,
+            maintenance_status=Room.MaintenanceStatus.NORMAL,
+        )
+
+    def test_front_desk_api_requires_employee_authentication(self):
+        response = self.client.get("/api/v1/front-desk/overview")
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+
+    def test_front_desk_api_requires_view_permission(self):
+        self.role.permissions.remove(self.permission)
+        self.client.force_login(self.user)
+        response = self.client.get("/api/v1/front-desk/overview")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
+
+    def test_front_desk_arrivals_are_property_scoped_and_phone_masked(self):
+        self.client.force_login(self.user)
+        response = self.client.get(
+            "/api/v1/front-desk/arrivals",
+            {"date": self.check_in.isoformat()},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["booking_no"], self.reservation.booking_no)
+        self.assertEqual(data[0]["guest"]["phone_masked"], "138****5678")
+        self.assertNotIn("phone", data[0]["guest"])
+        self.assertNotIn("identity_number", data[0]["guest"])
+
+    def test_front_desk_overview_and_room_readiness(self):
+        self.client.force_login(self.user)
+        overview = self.client.get("/api/v1/front-desk/overview")
+        rooms = self.client.get("/api/v1/front-desk/rooms?readiness=READY")
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(rooms.status_code, 200)
+        self.assertEqual(overview.json()["data"]["unassigned_count"], 1)
+        self.assertTrue(any(item["number"] == "FD101" for item in rooms.json()["data"]))
+
+    def test_front_desk_folio_detail_uses_signed_ledger_balance(self):
+        self.client.force_login(self.user)
+        response = self.client.get(
+            f"/api/v1/front-desk/folios/{self.reservation.booking_no}"
+        )
+        self.assertEqual(response.status_code, 200)
+        summary = response.json()["data"]["summary"]
+        self.assertEqual(summary["charges"], "600.00")
+        self.assertEqual(summary["balance"], "600.00")
