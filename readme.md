@@ -757,3 +757,28 @@ Migration 未重命名字段；services/DTO 层使用 booker_guest 语义。
 ### 回归
 
 127 项测试全部通过（新增 8 项 P0 模型测试 + 3 项 SoD + 6 项 D-07）。
+
+## V1.1 P1 批次：P1 模型定稿 + 统一 API 契约
+
+### P1 模型（§9.7.2）
+
+| 模型 | 说明 |
+|---|---|
+| `CashierShift` | 现金班次对账：开班备用金/应收/实收/差异必须说明；每物业每收银员一个 OPEN 班次 |
+| `ChargeLine` | 账单科目明细：房费/餐饮/服务费/违约金拆分；收入科目聚合依据 |
+| `TaxLine` | 税费行：发票/税额追溯 |
+| `IdempotencyRecord` | 通用幂等记录：property+user+key 唯一；TTL 24h；同 key 同 body 返回首次响应 |
+| `StatusTransition` | 业务状态变更时间线：只追加；与 AuditEvent 互补（时间线 vs 合规） |
+
+### 统一 API 契约（apps/core/api_contract.py）
+
+- **`ApiError`**：七种标准错误码（VALIDATION_ERROR/AUTHENTICATION_REQUIRED/PERMISSION_DENIED/RESOURCE_NOT_FOUND/BUSINESS_CONFLICT/RATE_LIMITED/INTERNAL_ERROR）
+- **`api_response`**：统一 `{data, meta{request_id, source_system, generated_at, pagination}}`
+- **`api_error_response`**：统一 `{error{code,message,field_errors,retryable}, meta}`
+- **`api_view`** 装饰器：捕获 ApiError + 未预期异常 → JSON 500
+- **`paginate`**：统一分页 helper
+- **`idempotent`** 装饰器：Idempotency-Key + body hash → IdempotencyRecord 表（同 key 同 body 返回首次响应；不同 body 409）
+
+### 回归
+
+131 项测试全部通过。
