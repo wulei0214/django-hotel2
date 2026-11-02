@@ -651,11 +651,12 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
                 property_obj=self.property, reservation_room_id=self.line.pk,
                 room_id=self.room.pk, assigned_by=self.operator,
             )
-        with self.assertRaises(LifecycleOperationError):
-            mark_reservation_room_no_show(
-                property_obj=self.property, reservation_room_id=self.line.pk,
-                reason="重复处理", processed_by=self.operator,
-            )
+        duplicate, changed_again = mark_reservation_room_no_show(
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            reason="重复处理", processed_by=self.operator,
+        )
+        self.assertFalse(changed_again)
+        self.assertEqual(duplicate.pk, record.pk)
 
     def test_deposit_refund_requires_separate_approver_and_posts_immutable_entries(self):
         deposit, created = receive_manual_deposit(
@@ -700,3 +701,52 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             LedgerEntry.objects.get(reference=f"refund:{refund.provider_ref}").amount,
             Decimal("100.00"),
         )
+
+
+    def test_partial_no_show_then_last_stay_checkout_closes_multi_room_folio(self):
+        self.reservation.room_count = 2
+        self.reservation.total_amount = Decimal("1200.00")
+        self.reservation.save(update_fields=("room_count", "total_amount", "updated_at"))
+        second_line = ReservationRoom.objects.create(
+            property=self.property, reservation=self.reservation,
+            room_type=self.room_type, rate_plan=self.rate_plan,
+            check_in=self.today, check_out=self.tomorrow,
+            nightly_rates=[{
+                "date": self.today.isoformat(), "price": "600.00", "currency": "CNY"
+            }],
+            amount=Decimal("600.00"),
+        )
+        RoomTypeInventory.objects.create(
+            property=self.property, room_type=self.room_type,
+            stay_date=self.today, total_rooms=2, sold=1,
+        )
+        assign_room(
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            room_id=self.room.pk, assigned_by=self.operator,
+        )
+        stay, _ = check_in_stay(
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            checked_in_by=self.operator,
+        )
+        mark_reservation_room_no_show(
+            property_obj=self.property, reservation_room_id=second_line.pk,
+            reason="第二间房住客未到", processed_by=self.operator,
+        )
+        LedgerEntry.objects.create(
+            property=self.property, folio=self.folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+            amount=Decimal("-600.00"), currency="CNY",
+            business_date=self.today, reference="STAY-PARTIAL-NOSHOW-001",
+            description="已入住客房预付款",
+        )
+
+        checked_out, changed = check_out_stay(
+            property_obj=self.property, stay_id=stay.pk,
+            checked_out_by=self.operator,
+        )
+        self.assertTrue(changed)
+        self.assertEqual(checked_out.status, Stay.Status.CHECKED_OUT)
+        self.folio.refresh_from_db()
+        self.reservation.refresh_from_db()
+        self.assertEqual(self.folio.status, Folio.Status.CLOSED)
+        self.assertEqual(self.reservation.status, Reservation.Status.CHECKED_OUT)
