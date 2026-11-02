@@ -475,7 +475,7 @@ class FrontDeskWriteApiTests(TestCase):
         self.assertEqual(self.reservation.status, Reservation.Status.CHECKED_OUT)
 
 
-    def test_no_show_and_refund_actions_require_separate_permissions(self):
+    def test_front_desk_can_request_but_cannot_no_show_or_approve_refunds(self):
         self.client.force_login(self.user)
         no_show = self.client.post(
             f"/api/v1/front-desk/reservation-rooms/{self.line.pk}/no-show",
@@ -495,8 +495,9 @@ class FrontDeskWriteApiTests(TestCase):
         )
         self.assertEqual(no_show.status_code, 403)
         self.assertEqual(no_show.json()["error"]["code"], "PERMISSION_DENIED")
-        self.assertEqual(refund_request.status_code, 403)
-        self.assertEqual(refund_request.json()["error"]["code"], "PERMISSION_DENIED")
+        # 退款申请权按业务矩阵授予前台；不存在的支付流水应通过业务校验返回 409。
+        self.assertEqual(refund_request.status_code, 409)
+        self.assertEqual(refund_request.json()["error"]["code"], "BUSINESS_CONFLICT")
         self.assertEqual(refund_approve.status_code, 403)
         self.assertEqual(refund_approve.json()["error"]["code"], "PERMISSION_DENIED")
 
