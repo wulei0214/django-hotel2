@@ -39,6 +39,12 @@ class StaffProfile(models.Model):
         default=EmploymentStatus.ACTIVE,
         verbose_name="雇佣状态",
     )
+    must_change_password = models.BooleanField(
+        default=False, verbose_name="须强制改密",
+        help_text="开通账号/重置密码后置位；首次登录强制修改（D-07）")
+    last_password_change = models.DateTimeField(
+        null=True, blank=True, verbose_name="最近密码变更时间")
+
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 

@@ -90,10 +90,14 @@ class EmployeeLifecycleService:
                 username=account_username, password=account_password,
                 first_name=full_name)
             # D-04：is_staff 仅用于 Django Admin；PMS 员工不再自动获得后台入口
+            # D-07：初始密码一次性 → 首登强制改密（见下方 StaffProfile 创建参数）
 
+        must_change = user is not None  # 开了账号就需要首登改密
         profile = StaffProfile.objects.create(
             user=user, full_name=full_name, phone=phone or "",
             employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+            must_change_password=must_change,
+            last_password_change=timezone.now() if must_change else None,
             legacy_staff=legacy_staff)
         membership = PropertyStaffMembership.objects.create(
             property=property_obj, staff_profile=profile,
@@ -105,6 +109,14 @@ class EmployeeLifecycleService:
             cls.assign_role(membership=membership, group=group,
                             granted_by=granted_by, reason="入职初始授权")
 
+        from apps.core.models import AuditEvent
+        AuditEvent.record(
+            action="identity.employee_create", entity_type="StaffProfile",
+            entity_id=profile.pk, actor=granted_by, property_obj=property_obj,
+            after={"employee_no": employee_no, "position_code": position_code,
+                   "account": account_username or None,
+                   "roles": [g.name for g in (role_groups or [])]},
+            reason="入职建档")
         audit.info("员工创建 user=%s 员工=%s(profile %s) 工号=%s 账号=%s",
                    getattr(granted_by, "username", "system"),
                    full_name, profile.pk, employee_no,
@@ -130,8 +142,13 @@ class EmployeeLifecycleService:
             raise EmployeeLifecycleError("初始密码至少 6 位")
         user = User.objects.create_user(username=username, password=password,
                                         first_name=profile.full_name)
+        # D-07：一次性初始密码，首次登录强制改密（set_password 换 session_auth_hash
+        # 自动使该账号旧会话失效）
+        profile.must_change_password = True
+        profile.last_password_change = timezone.now()
         profile.user = user
-        profile.save(update_fields=("user", "updated_at"))
+        profile.save(update_fields=("user", "must_change_password",
+                                    "last_password_change", "updated_at"))
         audit.info("账号开通 user=%s 员工=%s(profile %s) 账号=%s",
                    getattr(granted_by, "username", "system"),
                    profile.full_name, profile.pk, username)
@@ -223,6 +240,13 @@ class EmployeeLifecycleService:
         assignment = StaffRoleAssignment.objects.create(
             membership=membership, group=group, starts_at=starts_at,
             ends_at=ends_at, granted_by=granted_by)
+        from apps.core.models import AuditEvent
+        AuditEvent.record(
+            action="identity.role_assign", entity_type="StaffProfile",
+            entity_id=membership.staff_profile.pk, actor=granted_by,
+            property_obj=membership.property,
+            after={"role": group.name, "ends_at": str(ends_at or "长期")},
+            reason=reason or "-")
         audit.info("角色授权 user=%s 员工=%s 角色=%s 起=%s 止=%s 原因=%s",
                    getattr(granted_by, "username", "system"),
                    membership.staff_profile.full_name, group.name,
@@ -240,6 +264,12 @@ class EmployeeLifecycleService:
             return assignment  # 已结束，幂等
         assignment.ends_at = now
         assignment.save(update_fields=("ends_at",))
+        from apps.core.models import AuditEvent
+        AuditEvent.record(
+            action="identity.role_end", entity_type="StaffProfile",
+            entity_id=assignment.membership.staff_profile.pk,
+            actor=ended_by, property_obj=assignment.membership.property,
+            before={"role": assignment.group.name}, reason=reason or "-")
         audit.info("角色结束 user=%s 员工=%s 角色=%s 原因=%s",
                    getattr(ended_by, "username", "system"),
                    assignment.membership.staff_profile.full_name,
@@ -304,6 +334,12 @@ class EmployeeLifecycleService:
             elif profile_status == StaffProfile.EmploymentStatus.ACTIVE:
                 user.is_active = True
                 user.save(update_fields=("is_active",))
+        from apps.core.models import AuditEvent
+        AuditEvent.record(
+            action="identity.employment_status", entity_type="StaffProfile",
+            entity_id=profile.pk, actor=ended_by,
+            after={"status": status, "ended_assignments": ended_count},
+            reason=reason or "-")
         audit.info("员工状态变更 user=%s 员工=%s 状态=%s 终止授权=%d 原因=%s",
                    getattr(ended_by, "username", "system"),
                    profile.full_name, profile_status, ended_count, reason or "-")
@@ -319,8 +355,18 @@ class EmployeeLifecycleService:
         if not new_password or len(new_password) < 6:
             raise EmployeeLifecycleError("密码至少 6 位")
         user = User.objects.get(pk=profile.user_id)
-        user.set_password(new_password)
+        user.set_password(new_password)  # session_auth_hash 变更 → 旧会话自动失效
         user.save(update_fields=("password",))
+        profile.must_change_password = True
+        profile.last_password_change = timezone.now()
+        profile.save(update_fields=("must_change_password",
+                                    "last_password_change", "updated_at"))
+        from apps.core.models import AuditEvent
+        AuditEvent.record(
+            action="identity.password_reset", entity_type="StaffProfile",
+            entity_id=profile.pk, actor=reset_by,
+            property_obj=_default_property(),
+            reason="管理员重置；审计不记录密码值")
         audit.info("密码重置 user=%s 目标账号=%s",
                    getattr(reset_by, "username", "system"), user.username)
 

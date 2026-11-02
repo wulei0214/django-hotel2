@@ -716,3 +716,100 @@ class SegregationOfDutiesTests(TestCase):
         self.assertEqual(response.status_code, 302)
         profile.refresh_from_db()
         self.assertEqual(profile.employment_status, "ACTIVE")
+
+
+class ForcedPasswordChangeTests(TestCase):
+    """V1.1 C-07/D-07：首登强制改密 + 旧会话失效 + AuditEvent（§9.6-3）"""
+
+    def setUp(self):
+        self.owner = _make_user("owner_d07", "店长")
+        from apps.identity.services import EmployeeLifecycleService
+        self.svc = EmployeeLifecycleService
+
+    def test_provision_sets_must_change_password(self):
+        """STAFF-01→02：先建档不开账号，后开通账号 → 必须强制改密"""
+        from apps.identity.services import EmployeeLifecycleService
+        profile, membership, user = self.svc.create_employee(
+            full_name="建档未开号员工", employee_no="F-7001",
+            role_groups=[Group.objects.get(name="前台")])
+        self.assertIsNone(user)
+        root = User.objects.create_superuser("rootd07", "root-pass123456")
+        account = EmployeeLifecycleService.provision_account(
+            profile, username="d07acc", password="d07acc-pass", granted_by=root)
+        self.assertFalse(account.is_staff, "D-04")
+        profile.refresh_from_db()
+        self.assertTrue(profile.must_change_password, "开通账号后必须强制改密")
+
+    def test_forced_redirect_and_change_flow(self):
+        profile = StaffProfile.objects.get(user=self.owner)
+        profile.must_change_password = True
+        profile.save(update_fields=("must_change_password",))
+        self.client.force_login(self.owner)
+        # 访问业务页被重定向到改密页
+        response = self.client.get("/show_client/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/force-password-change/", response["Location"])
+        # 改密完成 → 清除标记 + 审计事件 + 回业务页
+        response = self.client.post("/force-password-change/", {
+            "new_password1": "brand-new-pass", "new_password2": "brand-new-pass"})
+        self.assertEqual(response.status_code, 302)
+        profile.refresh_from_db()
+        self.assertFalse(profile.must_change_password)
+        self.assertIsNotNone(profile.last_password_change)
+        self.assertEqual(self.client.get("/show_client/").status_code, 200)
+        from apps.core.models import AuditEvent
+        self.assertTrue(AuditEvent.objects.filter(
+            action="identity.password_changed",
+            entity_type="StaffProfile", entity_id=str(profile.pk)).exists())
+
+    def test_reset_password_sets_flag_and_audits(self):
+        from apps.identity.services import EmployeeLifecycleService
+        profile = StaffProfile.objects.get(user=self.owner)
+        root = User.objects.create_superuser("rootd07b", "root-pass123456")
+        EmployeeLifecycleService.reset_password(
+            profile, new_password="resetted-pass", reset_by=root)
+        profile.refresh_from_db()
+        self.assertTrue(profile.must_change_password)
+        from apps.core.models import AuditEvent
+        self.assertTrue(AuditEvent.objects.filter(
+            action="identity.password_reset").exists())
+
+
+class AuditEventAppendOnlyTests(TestCase):
+    """V1.1 M-07：审计事件只追加、不可改删、实体时间线可查"""
+
+    def test_audit_event_immutable(self):
+        from apps.core.models import AuditEvent
+        event = AuditEvent.record(
+            action="test.immutable", entity_type="Test", entity_id="1",
+            reason="追加写验证")
+        with self.assertRaises(ValueError):
+            event.save()
+        with self.assertRaises(ValueError):
+            event.delete()
+
+    def test_entity_timeline_query(self):
+        from apps.core.models import AuditEvent
+        user = _make_user("audit01", "前台")
+        AuditEvent.record(action="a.one", entity_type="Client", entity_id="C1", actor=user)
+        AuditEvent.record(action="a.two", entity_type="Client", entity_id="C1", actor=user)
+        AuditEvent.record(action="a.other", entity_type="Client", entity_id="C2", actor=user)
+        timeline = AuditEvent.objects.filter(
+            entity_type="Client", entity_id="C1").order_by("-created_at")
+        self.assertEqual(timeline.count(), 2)
+        self.assertIn("a.two", [e.action for e in timeline])
+
+    def test_pii_reveal_writes_audit_event(self):
+        """PII 揭示必须落审计事件表（不只文件日志）"""
+        from hotelapp.models import Client
+        client = Client.objects.create(姓名="审计测试客", 身份证号="110101199001010016")
+        fd = _make_user("fd_audit", "前台")
+        self.client.force_login(fd)
+        self.client.post("/client/reveal_id/", {"id": client.顾客id})
+        from apps.core.models import AuditEvent
+        event = AuditEvent.objects.filter(
+            action="guest.pii_reveal", entity_id=str(client.顾客id)).first()
+        self.assertIsNotNone(event, "PII 揭示必须写 AuditEvent")
+        self.assertNotIn("110101199001010016",
+                         (event.after_json or {}).get("masked", ""),
+                         "审计事件不得包含完整证件号（已遮罩）")

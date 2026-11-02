@@ -70,6 +70,13 @@ from . import handlers  # noqa: F401  订阅器注册（事件 -> 后台联动�
 from . import state_machine
 
 
+def _must_change_password(user):
+    """D-07：员工档案标记须强制改密（开通账号/被管理员重置密码后置位）。"""
+    from apps.identity.models import StaffProfile
+    return StaffProfile.objects.filter(
+        user=user, must_change_password=True).exists()
+
+
 def _has_active_employment(user):
     """RBAC 关联方案 §6：员工身份 = 档案在职 + DEFAULT 任职有效 + 角色授权有效。
 
@@ -109,6 +116,11 @@ def staff_required(view):
         if user.is_authenticated and not _has_active_employment(user):
             raise PermissionDenied(
                 "当前账号没有有效的酒店任职或岗位授权，请联系管理员分配")
+        # D-07：首次登录/被重置密码后强制改密（改密页与登出自身放行）
+        if (user.is_authenticated and not user.is_superuser
+                and _must_change_password(user)
+                and request.path not in ("/force-password-change/", "/logout/")):
+            return redirect("/force-password-change/")
         return view(request, *args, **kwargs)
     return login_required(wrapped, login_url='/login/')
 
@@ -1335,6 +1347,12 @@ def client_reveal_id(request):
     logging.getLogger("hotel.audit").info(
         "PII reveal 顾客身份证 user=%s 顾客id=%s 用途=行内编辑/核验",
         request.user.username, item.顾客id)
+    from apps.core.models import AuditEvent
+    AuditEvent.record(
+        action="guest.pii_reveal", entity_type="Client", entity_id=item.顾客id,
+        actor=request.user, reason="行内编辑/核验",
+        after={"masked": (item.身份证号 or "")[:2] + "****" + (item.身份证号 or "")[-2:]},
+        request=request)
     return JsonResponse({"identify": item.身份证号 or ""})
 
 
@@ -1351,6 +1369,12 @@ def vip_reveal_tel(request):
     logging.getLogger("hotel.audit").info(
         "PII reveal 会员联系方式 user=%s 会员编号=%s 用途=行内编辑/服务",
         request.user.username, item.会员编号)
+    from apps.core.models import AuditEvent
+    AuditEvent.record(
+        action="member.pii_reveal", entity_type="Vip", entity_id=item.会员编号,
+        actor=request.user, reason="行内编辑/服务",
+        after={"masked": (item.联系方式 or "")[:3] + "****" + (item.联系方式 or "")[-4:]},
+        request=request)
     return JsonResponse({"tel": item.联系方式 or ""})
 
 
@@ -1554,6 +1578,42 @@ def staff_accounts_reset_password(request, pk):
         return redirect(f"/staff_accounts/{pk}/")
     messages.success(request, "密码已重置")
     return redirect(f"/staff_accounts/{pk}/")
+
+
+
+
+@staff_required
+def force_password_change(request):
+    """D-07：首次登录/密码被重置后强制修改密码；完成后清除标记。"""
+    from apps.identity.models import StaffProfile
+    profile = StaffProfile.objects.filter(user=request.user).first()
+    if profile is None or not profile.must_change_password:
+        return redirect("/home/")
+    error = None
+    if request.method == "POST":
+        new1 = request.POST.get("new_password1") or ""
+        new2 = request.POST.get("new_password2") or ""
+        if len(new1) < 6:
+            error = "密码至少 6 位"
+        elif new1 != new2:
+            error = "两次输入的密码不一致"
+        else:
+            request.user.set_password(new1)  # session_auth_hash 变更 → 其他会话失效
+            request.user.save(update_fields=("password",))
+            profile.must_change_password = False
+            profile.last_password_change = timezone.now()
+            profile.save(update_fields=("must_change_password",
+                                        "last_password_change", "updated_at"))
+            from apps.core.models import AuditEvent
+            AuditEvent.record(
+                action="identity.password_changed", entity_type="StaffProfile",
+                entity_id=profile.pk, actor=request.user,
+                reason="首次登录/被重置后强制改密完成")
+            from django.contrib.auth import update_session_auth_hash
+            update_session_auth_hash(request, request.user)  # 保持当前会话
+            messages.success(request, "密码修改成功，欢迎使用酒店管理系统")
+            return redirect("/home/")
+    return render(request, "force_password_change.html", {"error": error})
 
 
 # ---------- 登录 / 注册 / 退出 / 主界面 ----------

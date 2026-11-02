@@ -39,6 +39,7 @@ urlpatterns = [
     path('', views.home),
     path('home/', views.home),
     path('login/', views.login_view),
+    path('force-password-change/', views.force_password_change),
     path('register/', views.register_view),
     path('logout/', views.logout_view),
     path('booking/', views.booking_page),
