@@ -22,12 +22,12 @@
         <div class="toolbar">
             <button class="tb-btn" onclick="location.reload()">⟳ 刷新数据</button>
             <a class="tb-btn" href="/export/staff/">⬇ 导出数据</a>
-            {% if perms.hotelapp.add_staff %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加员工</button>{% endif %}
-            {% if perms.hotelapp.change_staff %}<button class="tb-btn" id="btn-edit" disabled>✎ 编辑员工</button>{% endif %}
+            {% if pms_perms.hotelapp.add_staff %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加员工</button>{% endif %}
+            {% if pms_perms.hotelapp.change_staff %}<button class="tb-btn" id="btn-edit" disabled>✎ 编辑员工</button>{% endif %}
         </div>
     </div>
 
-    {% if perms.hotelapp.view_staff %}
+    {% if pms_perms.hotelapp.view_staff %}
     <details class="filter-panel" {% if status_filter or staffs %}open{% endif %}>
         <summary>筛选条件</summary>
         <div class="filter-body">
@@ -58,7 +58,7 @@
         </div>
     </details>
 
-    {% if perms.hotelapp.add_staff %}
+    {% if pms_perms.hotelapp.add_staff %}
     <div class="card" id="form-card" style="display:none">
         <center><h2>员工信息录入</h2></center>
         <form action="/insert/" method="post" style="margin-left:40px">
@@ -106,7 +106,7 @@
             <td>{{ line.月薪 }}</td>
             <td>{{ line.工龄 }}</td>
             <td>
-                {% if perms.hotelapp.change_staff %}
+                {% if pms_perms.hotelapp.change_staff %}
                 <button class="badge-toggle {% if line.启用 %}on{% else %}off{% endif %}" data-id="{{ line.员工id }}" title="点击切换启用/停用">
                     {% if line.启用 %}启用{% else %}停用{% endif %}
                 </button>
@@ -114,8 +114,8 @@
                 <span class="badge-toggle {% if line.启用 %}on{% else %}off{% endif %}">{% if line.启用 %}启用{% else %}停用{% endif %}</span>
                 {% endif %}
             </td>
-            {% if perms.hotelapp.delete_staff %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
-            {% if perms.hotelapp.change_staff %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
+            {% if pms_perms.hotelapp.delete_staff %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
+            {% if pms_perms.hotelapp.change_staff %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
         </tr>
         {% empty %}
         <tr><td colspan="9" class="empty-row">暂无员工记录</td></tr>
