@@ -374,7 +374,10 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
         reservation_room__reservation=reservation,
         status=Stay.Status.CHECKED_OUT,
     ).count()
-    final_room_checkout = total_lines > 0 and checked_out_before + 1 >= total_lines
+    no_show_lines = NoShowRecord.objects.filter(
+        property=property_obj, reservation_room__reservation=reservation
+    ).count()
+    final_room_checkout = total_lines > 0 and checked_out_before + no_show_lines + 1 >= total_lines
 
     balance = _folio_balance(folio)
     if balance > 0:

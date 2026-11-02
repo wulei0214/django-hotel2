@@ -283,9 +283,21 @@ def mark_reservation_room_no_show(*, property_obj, reservation_room_id, reason, 
     has_any_stay = Stay.objects.filter(
         property=property_obj, reservation_room_id__in=lines
     ).exists()
-    if lines and no_show_count == len(lines) and not has_any_stay:
-        reservation.status = Reservation.Status.NO_SHOW
-        reservation.save(update_fields=("status", "updated_at"))
+    if lines:
+        completed_stays = Stay.objects.filter(
+            property=property_obj, reservation_room_id__in=lines,
+            status=Stay.Status.CHECKED_OUT,
+        ).count()
+        active_stays = Stay.objects.filter(
+            property=property_obj, reservation_room_id__in=lines,
+            status=Stay.Status.IN_HOUSE,
+        ).exists()
+        if not active_stays and no_show_count + completed_stays == len(lines):
+            reservation.status = (
+                Reservation.Status.NO_SHOW if no_show_count == len(lines)
+                else Reservation.Status.CHECKED_OUT
+            )
+            reservation.save(update_fields=("status", "updated_at"))
     return record, True
 
 
@@ -395,7 +407,11 @@ def approve_refund(*, property_obj, refund_id, approved_by):
     ).exclude(pk=refund.pk).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
     if successful_total + refund.amount > payment.amount:
         raise LifecycleOperationError("原支付可退款余额不足，请核对其他退款申请。")
-    folio = _folio_for_update(property_obj, payment.reservation)
+    folio = Folio.objects.select_for_update().filter(
+        property=property_obj, reservation=payment.reservation
+    ).first()
+    if folio is None or folio.status == Folio.Status.VOIDED:
+        raise LifecycleOperationError("原支付对应账单不存在或已作废，不能登记退款。")
     LedgerEntry.objects.create(
         property=property_obj, folio=folio, entry_type=LedgerEntry.EntryType.REFUND,
         amount=refund.amount, currency=refund.currency,

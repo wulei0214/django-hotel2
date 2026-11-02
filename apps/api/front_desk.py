@@ -600,7 +600,12 @@ def folio_detail(request, booking_no):
         return _response({"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该预订。"}}, 404)
     folio = Folio.objects.filter(property=property_obj, reservation=reservation).prefetch_related("entries", "payments").first()
     if folio is None:
-        return _response({"data": {"folio": None, "summary": _empty_folio_summary(reservation.currency), "entries": [], "payments": []}})
+        return _response({"data": {
+            "folio": None, "summary": _empty_folio_summary(reservation.currency),
+            "entries": [], "payments": [],
+            "allowed_actions": (["request_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_request") else [])
+                + (["approve_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve") else []),
+        }})
     entries = list(folio.entries.order_by("created_at", "id"))
     charges = sum((item.amount for item in entries if item.amount > 0), Decimal("0.00"))
     credits = sum((-item.amount for item in entries if item.amount < 0), Decimal("0.00"))
