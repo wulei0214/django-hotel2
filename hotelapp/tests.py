@@ -7,20 +7,17 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
+from apps.identity.authorization import AuthorizationService
 from hotelapp.models import Accommodation, Client, Food, Folio, Order, Room, Staff
 
 
 def _make_user(username, group_name, membership_status="ACTIVE"):
-    """创建员工测试账号：is_staff + 角色组 + 完整身份链（RBAC V2 员工门禁要求有效任职）。"""
+    """创建员工测试账号：User + DEFAULT Membership + RoleAssignment，不使用 is_staff/全局组。"""
     from apps.core.models import Property
     from apps.identity.models import StaffProfile, PropertyStaffMembership
 
     user = User.objects.create_user(username=username, password=f"{username}-pass123")
-    user.is_staff = True
-    user.save()
     group = Group.objects.filter(name=group_name).first()
-    if group is not None:
-        user.groups.add(group)
     prop, _ = Property.objects.get_or_create(
         code="DEFAULT", defaults={"name": "测试酒店"})
     profile = StaffProfile.objects.create(
@@ -29,12 +26,9 @@ def _make_user(username, group_name, membership_status="ACTIVE"):
         property=prop, staff_profile=profile,
         employee_no=f"E-{username}", status=membership_status)
     if group is not None and membership_status == "ACTIVE":
-        # 与生产双写一致：角色授权记录（staff_required 门禁要求有效授权）
-        from django.utils import timezone as _tz
-        from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
         StaffRoleAssignment.objects.get_or_create(
             membership=membership, group=group,
-            defaults={"starts_at": _tz.now()})
+            defaults={"starts_at": timezone.now()})
     return user
 
 
@@ -250,7 +244,7 @@ class UnifiedAuthorizationTests(TestCase):
         User.objects.create_user(username="bound01", password="old-pass-123")
 
     def test_bind_grants_backoffice_access(self):
-        """绑定后：is_staff + 中文组 + 旧视图可访问（双写统一授权）"""
+        """绑定后仅 Assignment 生效；不写 is_staff/User.groups，旧后台照常可访问。"""
         import io as _io
         from contextlib import redirect_stdout
         from django.core.management import call_command
@@ -261,8 +255,9 @@ class UnifiedAuthorizationTests(TestCase):
                          password="new-pass-123", verbosity=0)
         user = User.objects.get(username="bound01")
         self.assertFalse(user.is_staff, "D-04：is_staff 仅 Django Admin，不再随绑定发放")
-        self.assertTrue(user.groups.filter(name="前台").exists(), "运行时权限载体=User.groups（双写）")
-        self.assertTrue(user.has_perm("hotelapp.view_client"), "旧视图权限立即生效")
+        self.assertFalse(user.groups.exists(), "PMS 角色不得写入全局 User.groups")
+        self.assertTrue(AuthorizationService.has_permission(
+            user, self.prop, "hotelapp.view_client"), "旧视图权限由 AuthorizationService 判定")
         self.assertTrue(user.check_password("new-pass-123"), "--password 生效")
 
         self.client.logout()
@@ -273,9 +268,6 @@ class UnifiedAuthorizationTests(TestCase):
     def test_staff_without_membership_denied(self):
         """有效账号但无任职关系 → 员工路由拒绝（AUTH-02）"""
         user = User.objects.create_user(username="noid001", password="noid001-pass123")
-        user.is_staff = True
-        user.save()
-        user.groups.add(Group.objects.get(name="前台"))
         self.client.force_login(user)
         response = self.client.get("/show_client/")
         self.assertEqual(response.status_code, 403)
@@ -415,7 +407,10 @@ class SensitiveFieldMaskingTests(TestCase):
     def test_client_export_contains_masked_idcard(self):
         """CSV 导出身份证列输出遮罩值（完整值导出默认禁止，V2 §7.1）"""
         self.client.force_login(self.fd)
-        self.fd.groups.add(Group.objects.get(name="财务"))  # 借财务的 export_pii
+        membership = PropertyStaffMembership.objects.get(staff_profile__user=self.fd)
+        StaffRoleAssignment.objects.create(
+            membership=membership, group=Group.objects.get(name="财务"),
+            starts_at=timezone.now())
         response = self.client.get("/export/client/")
         self.assertEqual(response.status_code, 200)
         body = response.content.decode("utf-8-sig")
@@ -497,9 +492,6 @@ class DefaultPropertyOnlyTests(TestCase):
         from apps.identity.models import StaffProfile, PropertyStaffMembership
         other = Property.objects.create(code="OTHER", name="别店")
         user = User.objects.create_user(username="otherp01", password="otherp01-pass123")
-        user.is_staff = True
-        user.save()
-        user.groups.add(Group.objects.get(name="前台"))
         profile = StaffProfile.objects.create(
             user=user, full_name="外店员工", employment_status="ACTIVE")
         PropertyStaffMembership.objects.create(
@@ -538,8 +530,8 @@ class EmployeeLifecycleServiceTests(TestCase):
             account_username="emp2002", account_password="emp2002-pass",
             role_groups=[Group.objects.get(name="前台")])
         self.assertIsNotNone(user)
-        self.assertTrue(user.groups.filter(name="前台").exists())
-        self.assertTrue(user.has_perm("hotelapp.view_client"))
+        self.assertFalse(user.groups.exists())
+        self.assertTrue(AuthorizationService.has_permission(user, Property.objects.get(code="DEFAULT"), "hotelapp.view_client"))
         self.assertTrue(self.client.login(username="emp2002", password="emp2002-pass"))
 
     def test_duplicate_employee_no_rejected(self):
@@ -557,8 +549,8 @@ class EmployeeLifecycleServiceTests(TestCase):
             account_username="emp2004", account_password="emp2004-pass",
             role_groups=[Group.objects.get(name="前台"),
                          Group.objects.get(name="值班经理")])
-        self.assertTrue(user.has_perm("hotelapp.view_client"))
-        self.assertTrue(user.has_perm("hotelapp.night_audit_execute"))
+        self.assertTrue(AuthorizationService.has_permission(user, Property.objects.get(code="DEFAULT"), "hotelapp.view_client"))
+        self.assertTrue(AuthorizationService.has_permission(user, Property.objects.get(code="DEFAULT"), "hotelapp.night_audit_execute"))
         # 已过期的临时授权：组镜像同步后立即失权
         from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
         temp = StaffRoleAssignment.objects.create(
@@ -566,8 +558,9 @@ class EmployeeLifecycleServiceTests(TestCase):
             starts_at=timezone.now() - timedelta(days=2),
             ends_at=timezone.now() - timedelta(days=1))
         self.svc.end_assignment(temp, reason="过期验证")
-        self.assertFalse(user.groups.filter(name="客房服务员").exists(),
-                         "过期授权不得保留运行时组镜像")
+        self.assertFalse(any(
+            a.group.name == "客房服务员" for a in self.svc.active_assignments(membership)),
+            "过期角色不得继续出现在有效授权集合")
         self.assertFalse(StaffRoleAssignment.objects.filter(
             membership=membership, group__name="客房服务员",
             ends_at__isnull=True).exists(), "过期授权不得计入有效授权")
@@ -585,8 +578,8 @@ class EmployeeLifecycleServiceTests(TestCase):
                              group=Group.objects.get(name="客房服务员"),
                              granted_by=None, reason="调岗")
         user.refresh_from_db()  # 刷新权限缓存后再断言
-        self.assertFalse(user.has_perm("hotelapp.view_client"))
-        self.assertTrue(user.has_perm("hotelapp.view_room"))
+        self.assertFalse(AuthorizationService.has_permission(user, Property.objects.get(code="DEFAULT"), "hotelapp.view_client"))
+        self.assertTrue(AuthorizationService.has_permission(user, Property.objects.get(code="DEFAULT"), "hotelapp.view_room"))
         self.assertEqual(
             StaffRoleAssignment.objects.filter(membership=membership).count(), 2,
             "调岗历史保留（不覆盖旧记录）")
@@ -641,9 +634,9 @@ class StaffWorkbenchGUITests(TestCase):
         profile = StaffProfile.objects.get(full_name="工作台新员工")
         user = User.objects.get(username="wb3001")
         self.assertFalse(user.is_staff, "D-04：工作台开账号不发放 is_staff")
-        self.assertTrue(user.has_perm("hotelapp.view_client"))
-        self.assertTrue(user.has_perm("hotelapp.view_room"))
-        self.assertFalse(user.has_perm("hotelapp.view_staff"), "未授权角色不得越权")
+        self.assertTrue(AuthorizationService.has_permission(user, Property.objects.get(code="DEFAULT"), "hotelapp.view_client"))
+        self.assertTrue(AuthorizationService.has_permission(user, Property.objects.get(code="DEFAULT"), "hotelapp.view_room"))
+        self.assertFalse(AuthorizationService.has_permission(user, Property.objects.get(code="DEFAULT"), "hotelapp.view_staff"), "未授权角色不得越权")
 
 
 class SegregationOfDutiesTests(TestCase):
@@ -660,7 +653,10 @@ class SegregationOfDutiesTests(TestCase):
             self.svc.assign_role(
                 membership=membership, group=Group.objects.get(name="财务"),
                 granted_by=self.owner, reason="给自己加权限")
-        self.assertFalse(self.owner.groups.filter(name="财务").exists())
+        membership = PropertyStaffMembership.objects.get(staff_profile__user=self.owner)
+        self.assertFalse(StaffRoleAssignment.objects.filter(
+            membership=membership, group__name="财务",
+            ends_at__isnull=True).exists())
 
     def test_owner_cannot_terminate_self(self):
         """E-35：店长不能对自己执行停职/离职（防止锁死）"""
