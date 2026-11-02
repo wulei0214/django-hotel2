@@ -264,7 +264,7 @@
 
     function renderPaymentForm(item, content) {
         var summary = item.folio_summary || {};
-        if (summary.status !== "OPEN" || !["PENDING", "CONFIRMED", "CHECKED_IN"].includes(item.status)) return;
+        if (summary.status !== "OPEN" || !["CONFIRMED", "CHECKED_IN"].includes(item.status)) return;
         var box = element("div", "fd-payment-box");
         box.appendChild(element("h4", "", "登记线下收款"));
         box.appendChild(element("p", "fd-operation-note",

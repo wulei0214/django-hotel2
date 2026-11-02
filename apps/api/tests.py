@@ -523,4 +523,4 @@ class FrontDeskWorkspacePageTests(TestCase):
         response = self.client.get("/checkin/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'data-can-operate="true"')
-        self.assertContains(response, "登记线下收款")
+        self.assertContains(response, 'id="detail-operations"')
