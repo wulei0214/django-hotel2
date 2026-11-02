@@ -16,6 +16,8 @@ from django.contrib.auth.decorators import user_passes_test
 from django.contrib.auth.models import Group, Permission
 from django.shortcuts import redirect, render
 
+from .roles import BUSINESS_ROLE_NAMES
+
 audit = logging.getLogger("hotel.audit")
 
 # 业务模块注册表：key / 中文名 / Django model 名（用于权限点 codename）
@@ -57,8 +59,7 @@ ALL_CODENAMES = ({f"{action}_{m['model']}" for m in MODULES for action, _ in ACT
                  | {p["code"] for p in ACTION_PERMS})
 
 # 可编辑的业务角色（9 个：5 个现役 + 4 个预留空组；顺序即页面 tab 顺序）
-ROLE_GROUPS = ["前台", "值班经理", "财务", "店长", "客房服务员", "夜审员",
-               "餐饮服务员", "餐饮主管", "停车安保"]
+ROLE_GROUPS = list(BUSINESS_ROLE_NAMES)
 
 # 占位角色（暂不建组，页面灰显提示；后续版本启用时迁移建组即可）
 RESERVED_ROLE_SLOTS = ["收益/房价经理", "审计只读"]

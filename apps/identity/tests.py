@@ -106,7 +106,7 @@ class EmployeeLifecycleServiceTests(TestCase):
             staff_profile=self.profile, property=self.property_obj,
             employee_no="LIFE-001", status=PropertyStaffMembership.Status.ACTIVE,
         )
-        self.group = Group.objects.create(name="LIFECYCLE_FRONT_DESK")
+        self.group, _ = Group.objects.get_or_create(name="前台")
         self.assignment = StaffRoleAssignment.objects.create(
             membership=self.membership, group=self.group,
             starts_at=timezone.now() - timedelta(minutes=1),
@@ -153,7 +153,7 @@ class EmployeeLifecycleServiceTests(TestCase):
 
     def test_role_assignment_normalizes_naive_end_datetime(self):
         end_at = (timezone.localtime() + timedelta(days=1)).replace(tzinfo=None)
-        future_group = Group.objects.create(name="LIFECYCLE_TEMP_ROLE")
+        future_group, _ = Group.objects.get_or_create(name="值班经理")
         assignment = EmployeeLifecycleService.assign_role(
             membership=self.membership, group=future_group,
             ends_at=end_at, granted_by=self.manager,
@@ -165,3 +165,80 @@ class EmployeeLifecycleServiceTests(TestCase):
             EmployeeLifecycleService.assign_role(
                 membership=self.membership, group=None, granted_by=self.manager
             )
+
+    def test_role_assignment_rejects_group_outside_business_role_directory(self):
+        unapproved_group = Group.objects.create(name="Unapproved Global Admin")
+        with self.assertRaises(EmployeeLifecycleError):
+            EmployeeLifecycleService.assign_role(
+                membership=self.membership,
+                group=unapproved_group,
+                granted_by=self.manager,
+            )
+        self.assertFalse(
+            StaffRoleAssignment.objects.filter(
+                membership=self.membership, group=unapproved_group
+            ).exists()
+        )
+
+    def test_role_assignment_rejects_suspended_membership(self):
+        self.membership.status = PropertyStaffMembership.Status.SUSPENDED
+        self.membership.save(update_fields=("status", "updated_at"))
+        manager_role, _ = Group.objects.get_or_create(name="值班经理")
+        with self.assertRaises(EmployeeLifecycleError):
+            EmployeeLifecycleService.assign_role(
+                membership=self.membership,
+                group=manager_role,
+                granted_by=self.manager,
+            )
+
+    def test_role_assignment_rejects_inactive_staff_profile(self):
+        self.profile.employment_status = StaffProfile.EmploymentStatus.INACTIVE
+        self.profile.save(update_fields=("employment_status", "updated_at"))
+        manager_role, _ = Group.objects.get_or_create(name="值班经理")
+        with self.assertRaises(EmployeeLifecycleError):
+            EmployeeLifecycleService.assign_role(
+                membership=self.membership,
+                group=manager_role,
+                granted_by=self.manager,
+            )
+
+
+class IdentityAdminReadOnlyTests(TestCase):
+    """员工身份关系只能由 EmployeeLifecycleService 写入，Admin 只保留读取。"""
+
+    def test_identity_admin_disables_direct_add_change_and_delete(self):
+        from django.contrib import admin as django_admin
+
+        root = User.objects.create_superuser(
+            username="identity-admin-root",
+            email="identity-admin@example.com",
+            password="test-pass-123",
+        )
+        profile = StaffProfile.objects.create(
+            full_name="只读 Admin 员工",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
+        prop, _ = Property.objects.get_or_create(
+            code="DEFAULT", defaults={"name": "默认测试酒店"}
+        )
+        membership = PropertyStaffMembership.objects.create(
+            staff_profile=profile,
+            property=prop,
+            employee_no="ADMIN-READ-001",
+        )
+        group, _ = Group.objects.get_or_create(name="前台")
+        assignment = StaffRoleAssignment.objects.create(
+            membership=membership, group=group
+        )
+
+        for model in (StaffProfile, PropertyStaffMembership, StaffRoleAssignment):
+            model_admin = django_admin.site._registry[model]
+            self.assertFalse(model_admin.has_add_permission(None))
+            self.assertFalse(model_admin.has_change_permission(None))
+            self.assertFalse(model_admin.has_delete_permission(None))
+
+        self.client.force_login(root)
+        response = self.client.get(
+            f"/admin/identity/staffroleassignment/{assignment.pk}/change/"
+        )
+        self.assertEqual(response.status_code, 403)

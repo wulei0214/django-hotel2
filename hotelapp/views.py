@@ -64,6 +64,7 @@ def module_gate(key):
     return deco
 from apps.identity.authorization import AuthorizationService
 from apps.identity.decorators import pms_permission_required
+from apps.identity.roles import BUSINESS_ROLE_NAMES
 
 from . import handlers  # noqa: F401  订阅器注册（事件 -> 后台联动）
 from . import state_machine
@@ -1356,8 +1357,7 @@ def vip_reveal_tel(request):
 
 
 # ---------- 员工与账号管理工作台（关联方案 Phase 1/2：店长日常人事唯一入口） ----------
-WORKBENCH_ROLES = ["前台", "值班经理", "财务", "店长", "客房服务员",
-                   "夜审员", "餐饮服务员", "餐饮主管", "停车安保"]
+WORKBENCH_ROLES = list(BUSINESS_ROLE_NAMES)
 
 
 def _workbench_profile_page(profile):

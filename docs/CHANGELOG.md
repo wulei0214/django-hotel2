@@ -2,6 +2,22 @@
 
 > 规则：每次推送到远程仓库必须追加一条中文记录。不得只记录“代码更新”；必须说明开发内容、修复内容、影响范围、验证方式和界面变化。
 
+## 2026-11-02 — 收紧员工岗位目录与身份 Admin 写入边界
+
+### 修复内容
+- 将 9 个业务岗位抽为统一目录，权限矩阵、员工工作台和生命周期服务共用同一白名单。
+- 角色分配服务增加服务器端岗位白名单检查，并锁定任职记录；员工档案、任职或物业已停用时拒绝新增岗位授权。
+- 关闭 Django Admin 对 StaffProfile、PropertyStaffMembership、StaffRoleAssignment 的直接新增、修改和删除，避免绕过生命周期服务、自我提权保护与审计记录。
+- 增加服务层、伪造 POST 和 Admin 只读边界回归测试。
+
+### 影响范围
+- 新增 apps/identity/roles.py；调整 apps/identity/services.py、apps/identity/admin.py、apps/identity/permission_admin.py、hotelapp/views.py、apps/identity/tests.py 与 hotelapp/tests.py。
+- 不涉及数据库迁移；不改变现有页面样式和业务数据。
+
+### 验证
+- 新增任意 Group 授权拒绝、暂停任职/停用档案拒绝授岗、Admin 直接变更拒绝等测试。
+- GitHub Actions 将运行 Django system check、迁移漂移检查和全量测试；提交前未在本环境执行本地 Django 测试。
+
 ## 2026-11-02 — 补齐多房预订的分房退房账务边界
 
 - 部分退房时允许 Folio 暂时保留其他已预付房间的负余额；最后一间房退房时仍强制整张账单余额为零。

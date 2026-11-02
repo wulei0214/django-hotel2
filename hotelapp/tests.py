@@ -281,6 +281,40 @@ class UnifiedAuthorizationTests(TestCase):
         response = self.client.get("/show_client/")
         self.assertEqual(response.status_code, 403, "任职暂停必须立即拒绝")
 
+    def test_staff_manager_cannot_assign_arbitrary_django_group(self):
+        """伪造 POST 不得越过业务角色目录授予任意 Group。"""
+        from apps.identity.models import StaffProfile, PropertyStaffMembership
+
+        manager = _make_user("role-manager-forge", "店长")
+        target_user = User.objects.create_user(
+            username="role-target-forge", password="target-pass123"
+        )
+        profile = StaffProfile.objects.create(
+            user=target_user,
+            full_name="授权目标员工",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
+        prop = Property.objects.get(code="DEFAULT")
+        membership = PropertyStaffMembership.objects.create(
+            property=prop,
+            staff_profile=profile,
+            employee_no="ROLE-FORGE-001",
+            status=PropertyStaffMembership.Status.ACTIVE,
+        )
+        unapproved = Group.objects.create(name="Unapproved Global Admin")
+
+        self.client.force_login(manager)
+        response = self.client.post(
+            f"/staff_accounts/{profile.pk}/assign_role/",
+            {"role": unapproved.name, "reason": "伪造角色提交"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            StaffRoleAssignment.objects.filter(
+                membership=membership, group=unapproved
+            ).exists()
+        )
+
 
 class AdminHardeningTests(TestCase):
     """RBAC V2 P0-2：Django Admin 不能绕过业务门禁（评审 P0-2）"""

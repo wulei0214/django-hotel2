@@ -19,6 +19,7 @@ from django.utils import timezone
 
 from apps.core.models import Property
 from .models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
+from .roles import BUSINESS_ROLE_NAMES
 
 audit = logging.getLogger("hotel.audit")
 
@@ -173,6 +174,23 @@ class EmployeeLifecycleService:
         """
         if group is None:
             raise EmployeeLifecycleError("请选择有效的角色")
+        if group is None or group.name not in BUSINESS_ROLE_NAMES:
+            raise EmployeeLifecycleError("所选角色不在允许的酒店岗位目录中")
+        try:
+            membership = (
+                PropertyStaffMembership.objects.select_for_update()
+                .select_related("staff_profile__user", "property")
+                .get(pk=membership.pk)
+            )
+        except PropertyStaffMembership.DoesNotExist as exc:
+            raise EmployeeLifecycleError("员工任职关系不存在") from exc
+        if (
+            membership.status != PropertyStaffMembership.Status.ACTIVE
+            or membership.staff_profile.employment_status
+            != StaffProfile.EmploymentStatus.ACTIVE
+            or membership.property.status != Property.Status.ACTIVE
+        ):
+            raise EmployeeLifecycleError("当前任职或员工档案未处于有效状态，不能授予岗位")
         target_user = membership.staff_profile.user
         if (granted_by is not None and target_user is not None
                 and granted_by.pk == target_user.pk):
