@@ -238,7 +238,13 @@ class IdentityAdminReadOnlyTests(TestCase):
             self.assertFalse(model_admin.has_delete_permission(None))
 
         self.client.force_login(root)
-        response = self.client.get(
-            f"/admin/identity/staffroleassignment/{assignment.pk}/change/"
+        change_url = f"/admin/identity/staffroleassignment/{assignment.pk}/change/"
+        response = self.client.get(change_url)
+        self.assertEqual(response.status_code, 200, "超级管理员仍可审计查看岗位授权")
+        denied_post = self.client.post(
+            change_url,
+            {"_save": "保存", "ends_at": ""},
         )
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(denied_post.status_code, 403, "Admin POST 不得修改岗位授权")
+        assignment.refresh_from_db()
+        self.assertIsNone(assignment.ends_at)
