@@ -83,9 +83,10 @@
         <button type="button" class="fd-tab" data-tab="departures">今日离店</button>
         <button type="button" class="fd-tab" data-tab="in-house">在住客人</button>
         <button type="button" class="fd-tab" data-tab="reservations">订单查询</button>
+        <button type="button" class="fd-tab" data-tab="legacy">历史订单</button>
         <button type="button" class="fd-tab" data-tab="rooms">房间视图</button>
         <div class="fd-tabs-spacer"></div>
-        <span class="fd-data-source"><i></i> PMS 2.0 数据</span>
+        <span class="fd-data-source"><i></i> PMS 2.0 / 历史订单只读</span>
     </nav>
 
     <div class="fd-layout">
@@ -252,6 +253,6 @@
 
 <div class="fd-toast" id="fd-toast" role="status" aria-live="polite"></div>
 <form id="fd-csrf-token-container" hidden>{% csrf_token %}</form>
-<script src="/static/js/frontdesk.js?v=2"></script>
+<script src="/static/js/frontdesk.js?v=3"></script>
 </body>
 </html>
