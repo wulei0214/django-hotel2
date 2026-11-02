@@ -17,8 +17,10 @@
     function getCsrfToken() {
         // With CSRF_USE_SESSIONS the token is intentionally not exposed as a
         // shared cookie. Read the request-local token rendered into the page.
-        var input = document.querySelector('input[name="csrfmiddlewaretoken"]');
-        if (input && input.value) return input.value;
+        var inputs = document.querySelectorAll('input[name="csrfmiddlewaretoken"]');
+        for (var i = 0; i < inputs.length; i += 1) {
+            if (inputs[i].value) return inputs[i].value;
+        }
         var meta = document.querySelector('meta[name="csrf-token"]');
         if (meta && meta.content) return meta.content;
         // Backward-compatible fallback for external pages not yet using the

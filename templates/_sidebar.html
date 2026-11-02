@@ -1,5 +1,4 @@
 <aside class="sidebar">
-    <input type="hidden" id="global-csrf-token" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
     <div class="side-logo"><span class="logo-icon">酒</span><span class="logo-text">酒店管理系统</span></div>
     <ul class="sidebar-menu">
         <li{% if request.path == '/home/' %} class="active"{% endif %}><a href="/home/"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="flex-shrink:0"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>主界面</a></li>
