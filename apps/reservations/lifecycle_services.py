@@ -65,6 +65,9 @@ def extend_stay(*, property_obj, stay_id, new_check_out, reason, extended_by=Non
     reservation = Reservation.objects.select_for_update().get(
         pk=line.reservation_id, property=property_obj
     )
+    if reservation.status != Reservation.Status.CHECKED_IN:
+        raise LifecycleOperationError("只有部分或全部已办理入住的预订可以续住。")
+    _folio_for_update(property_obj, reservation)
     old_check_out = line.check_out
     if new_check_out <= old_check_out:
         raise LifecycleOperationError("新的离店日期必须晚于当前离店日期。")
