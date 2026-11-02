@@ -34,6 +34,47 @@ def ensure_mysql_fk_support_indexes(apps, schema_editor):
         )
 
 
+
+
+def drop_sqlite_indexes_for_removed_columns(apps, schema_editor):
+    """SQLite 删除字段前清理所有引用待删列的普通索引。
+
+    0010 为旧 P0 字段创建了 db_index=True / ForeignKey 自动索引。
+    SQLite 的 DROP COLUMN 不会自动清理这些索引，因此必须先移除。
+    仅处理本迁移随后会删除字段的表/列，其他索引保持不动。
+    """
+    if schema_editor.connection.vendor != "sqlite":
+        return
+
+    targets = {
+        "AuditLog": {"actor_id"},
+        "LedgerEntry": {"accommodation_id", "reservation_id", "reverses_id"},
+        "Payment": {"reservation_id"},
+        "Reservation": {"guest_id"},
+        "Accommodation": {"入住日期", "离店日期", "reservation_id"},
+        "Client": {"手机号"},
+        "NightAudit": {"营业日"},
+        "Room": {"占用状态", "清洁状态", "维修状态"},
+    }
+    for model_name, removed_columns in targets.items():
+        model = apps.get_model("hotelapp", model_name)
+        table = model._meta.db_table
+        with schema_editor.connection.cursor() as cursor:
+            constraints = schema_editor.connection.introspection.get_constraints(
+                cursor, table
+            )
+        for index_name, details in constraints.items():
+            columns = set(details.get("columns") or ())
+            if (
+                details.get("index")
+                and not details.get("primary_key")
+                and columns.intersection(removed_columns)
+            ):
+                schema_editor.execute(
+                    f"DROP INDEX IF EXISTS {schema_editor.quote_name(index_name)}"
+                )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -52,6 +93,7 @@ class Migration(migrations.Migration):
             model_name='ledgerentry',
             name='ledger_entr_reserva_7d5a39_idx',
         ),
+        migrations.RunPython(drop_sqlite_indexes_for_removed_columns, migrations.RunPython.noop),
         migrations.RemoveField(
             model_name='auditlog',
             name='actor',
