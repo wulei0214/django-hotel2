@@ -22,7 +22,7 @@
         <div class="toolbar">
             <button class="tb-btn" onclick="location.reload()">⟳ 刷新数据</button>
             <a class="tb-btn" href="/export/food/">⬇ 导出数据</a>
-            {% if perms.hotelapp.add_food %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加餐厅</button>{% endif %}
+            {% if pms_perms.hotelapp.add_food %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加餐厅</button>{% endif %}
         </div>
     </div>
 <div class="card" id="form-card" style="display:none">
@@ -32,7 +32,7 @@
 					<h2>菜品信息录入</h2>
     </div>
 </center>
-{% if perms.hotelapp.add_food %}<form action="/insert_food/" method="post" style="margin-left:40px">
+{% if pms_perms.hotelapp.add_food %}<form action="/insert_food/" method="post" style="margin-left:40px">
     {% csrf_token %}
     {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
 
@@ -74,8 +74,8 @@
         <td>{{line.菜名}}</td>
         <td>{{line.价格}}</td>
         <td>{{line.厨师id.员工id}}</td>
-        {% if perms.hotelapp.delete_food %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
-        {% if perms.hotelapp.change_food %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
+        {% if pms_perms.hotelapp.delete_food %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
+        {% if pms_perms.hotelapp.change_food %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
     </tr>
     {% empty %}
     <tr><td colspan="6" class="empty-row">未查询到相关记录，请重新核对信息</td></tr>
