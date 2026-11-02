@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.db import transaction
+from django.db.models import Sum
 
 from .models import DailyRate, RoomTypeInventory
 
@@ -205,3 +206,30 @@ def release_inventory_hold(reservation):
             row.held -= quantity
             row.version += 1
             row.save(update_fields=("held", "version", "updated_at"))
+
+
+
+@transaction.atomic
+def release_sold_inventory_for_room_line(line, *, from_date):
+    """No-Show 按房间明细释放尚未消耗的未来已售库存。"""
+    dates = list(stay_dates(max(line.check_in, from_date), line.check_out))
+    if not dates:
+        return 0
+    rows = list(
+        RoomTypeInventory.objects.select_for_update()
+        .filter(
+            property=line.property,
+            room_type_id=line.room_type_id,
+            stay_date__in=dates,
+        )
+        .order_by("stay_date")
+    )
+    if len(rows) != len(dates):
+        raise InventoryUnavailable("No-Show 对应库存日历不完整，不能安全释放库存。")
+    if any(row.sold < 1 for row in rows):
+        raise InventoryUnavailable("No-Show 对应已售库存不足，不能重复释放。")
+    for row in rows:
+        row.sold -= 1
+        row.version += 1
+        row.save(update_fields=("sold", "version", "updated_at"))
+    return len(rows)
