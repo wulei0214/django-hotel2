@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import front_desk, views
+from . import front_desk, guest_center, views
 
 app_name = "api"
 
@@ -34,4 +34,11 @@ urlpatterns = [
     path("payments/intents", views.payment_intent_create, name="payment_intent_create"),
     path("payments/callback", views.payment_callback, name="payment_callback"),
     path("openapi.json", views.openapi_document, name="openapi"),
+    # --- Guest 360 (V1.1 Phase 1 只读原型) ---
+    path("guests", guest_center.guest_list, name="guest_list"),
+    path("guests/<int:guest_id>", guest_center.guest_detail, name="guest_detail"),
+    # --- Room 中心 (V1.1 Phase 1 只读原型) ---
+    path("rooms/status", guest_center.room_status_list, name="room_status_list"),
+    path("room-types", guest_center.room_type_list, name="room_type_list"),
+    path("rate-calendar", guest_center.rate_calendar, name="rate_calendar"),
 ]
