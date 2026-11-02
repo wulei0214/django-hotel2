@@ -23,7 +23,7 @@
         <div class="toolbar">
             <button class="tb-btn" onclick="location.reload()">⟳ 刷新数据</button>
             <a class="tb-btn" href="/export/accommodation/">⬇ 导出数据</a>
-            {% if perms.hotelapp.add_accommodation %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加</button>{% endif %}
+            {% if pms_perms.hotelapp.add_accommodation %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加</button>{% endif %}
         </div>
     </div>
 <div class="card" id="form-card" style="display:none">
@@ -33,7 +33,7 @@
 					<h2>客房订单信息录入</h2>
     </div>
 </center>
-{% if perms.hotelapp.add_accommodation %}<form action="/insert_accomodation/" method="post" style="margin-left:40px">
+{% if pms_perms.hotelapp.add_accommodation %}<form action="/insert_accomodation/" method="post" style="margin-left:40px">
     {% csrf_token %}
     {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
 
@@ -75,7 +75,7 @@
         <td>{{line.入住时间}}</td>
         <td>{{line.退房时间|default:'—'}}</td>
         <td>{{line.收款金额}}</td>
-        {% if perms.hotelapp.delete_accommodation %}<td>{% if line.状态 == '已冲账' %}<button class="btn btn-primary" disabled title="该订单已冲账，不可重复操作">已冲账</button>{% else %}<button class="btn btn-primary delete">冲账</button>{% endif %}</td>{% endif %}
+        {% if pms_perms.hotelapp.delete_accommodation %}<td>{% if line.状态 == '已冲账' %}<button class="btn btn-primary" disabled title="该订单已冲账，不可重复操作">已冲账</button>{% else %}<button class="btn btn-primary delete">冲账</button>{% endif %}</td>{% endif %}
         <!--<td><button class="btn btn-primary update">修改</button></td>-->
     </tr>
     {% empty %}
