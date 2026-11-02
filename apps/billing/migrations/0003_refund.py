@@ -39,6 +39,8 @@ class Migration(migrations.Migration):
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ("billing", "0002_alter_folio_closed_at_alter_folio_currency_and_more"),
+        # 保证九个业务角色组已由历史统一授权迁移建立，再分配退款权限。
+        ("hotelapp", "0016_unify_authorization"),
     ]
 
     operations = [

@@ -248,3 +248,51 @@ class IdentityAdminReadOnlyTests(TestCase):
         self.assertEqual(denied_post.status_code, 403, "Admin POST 不得修改岗位授权")
         assignment.refresh_from_db()
         self.assertIsNone(assignment.ends_at)
+
+
+
+class NineRoleCrossModulePermissionRegressionTests(TestCase):
+    """九个业务角色的跨模块关键权限隔离回归。"""
+
+    ROLE_NAMES = (
+        "前台", "值班经理", "财务", "店长", "客房服务员",
+        "夜审员", "餐饮服务员", "餐饮主管", "停车安保",
+    )
+
+    def test_all_nine_business_role_groups_exist(self):
+        present = set(
+            Group.objects.filter(name__in=self.ROLE_NAMES)
+            .values_list("name", flat=True)
+        )
+        self.assertEqual(present, set(self.ROLE_NAMES))
+
+    def test_no_show_and_refund_permissions_follow_separation_of_duties(self):
+        no_show = Permission.objects.get(
+            content_type__app_label="hotelapp", codename="no_show_handle"
+        )
+        refund_request = Permission.objects.get(
+            content_type__app_label="billing", codename="refund_request"
+        )
+        refund_approve = Permission.objects.get(
+            content_type__app_label="billing", codename="refund_approve"
+        )
+        groups = {
+            name: Group.objects.get(name=name)
+            for name in self.ROLE_NAMES
+        }
+        no_show_roles = {
+            name for name, group in groups.items()
+            if group.permissions.filter(pk=no_show.pk).exists()
+        }
+        refund_request_roles = {
+            name for name, group in groups.items()
+            if group.permissions.filter(pk=refund_request.pk).exists()
+        }
+        refund_approve_roles = {
+            name for name, group in groups.items()
+            if group.permissions.filter(pk=refund_approve.pk).exists()
+        }
+        self.assertEqual(no_show_roles, {"值班经理", "店长"})
+        self.assertEqual(refund_request_roles, {"前台", "财务"})
+        self.assertEqual(refund_approve_roles, {"值班经理", "店长"})
+        self.assertFalse(refund_approve_roles & refund_request_roles)
