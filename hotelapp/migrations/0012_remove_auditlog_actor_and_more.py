@@ -10,6 +10,16 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # 0010 建立的两个复合索引引用下方将被移除的外键字段。
+        # 先删除索引，再删除字段，避免 SQLite 重建表时尝试在缺失字段上重建索引。
+        migrations.RemoveIndex(
+            model_name='ledgerentry',
+            name='ledger_entr_accommo_e2c4bf_idx',
+        ),
+        migrations.RemoveIndex(
+            model_name='ledgerentry',
+            name='ledger_entr_reserva_7d5a39_idx',
+        ),
         migrations.RemoveField(
             model_name='auditlog',
             name='actor',
