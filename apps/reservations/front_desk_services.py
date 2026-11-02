@@ -358,14 +358,24 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
             posted_by=checked_out_by,
         )
 
+    total_lines = ReservationRoom.objects.filter(
+        property=property_obj, reservation=reservation
+    ).count()
+    checked_out_before = Stay.objects.filter(
+        property=property_obj,
+        reservation_room__reservation=reservation,
+        status=Stay.Status.CHECKED_OUT,
+    ).count()
+    final_room_checkout = total_lines > 0 and checked_out_before + 1 >= total_lines
+
     balance = _folio_balance(folio)
     if balance > 0:
         raise FrontDeskOperationError(
             f"账单尚有应收余额 {balance:.2f} {folio.currency}，请先完成收款。"
         )
-    if balance < 0:
+    if balance < 0 and final_room_checkout:
         raise FrontDeskOperationError(
-            f"账单存在客人余额 {abs(balance):.2f} {folio.currency}，需先处理退款或余额结转。"
+            f"最后一间房退房后仍有客人余额 {abs(balance):.2f} {folio.currency}，需先处理退款或余额结转。"
         )
 
     now = timezone.now()
@@ -382,25 +392,12 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
         "occupancy_status", "housekeeping_status", "updated_at"
     ))
 
-    total_lines = ReservationRoom.objects.filter(
-        property=property_obj, reservation=reservation
-    ).count()
-    checked_out_lines = Stay.objects.filter(
-        property=property_obj,
-        reservation_room__reservation=reservation,
-        status=Stay.Status.CHECKED_OUT,
-    ).count()
-    active_stays = Stay.objects.filter(
-        property=property_obj,
-        reservation_room__reservation=reservation,
-        status=Stay.Status.IN_HOUSE,
-    ).exists()
-    if total_lines and checked_out_lines == total_lines:
+    if final_room_checkout:
         reservation.status = Reservation.Status.CHECKED_OUT
         folio.status = Folio.Status.CLOSED
         folio.closed_at = now
         folio.save(update_fields=("status", "closed_at"))
-    elif active_stays or checked_out_lines:
+    else:
         reservation.status = Reservation.Status.CHECKED_IN
     reservation.save(update_fields=("status", "updated_at"))
 

@@ -381,6 +381,89 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         )
         self.assertFalse(changed_again)
 
+
+
+    def test_partial_checkout_keeps_prepaid_credit_for_other_room(self):
+        self.reservation.room_count = 2
+        self.reservation.total_amount = Decimal("1200.00")
+        self.reservation.save(update_fields=("room_count", "total_amount", "updated_at"))
+        second_line = ReservationRoom.objects.create(
+            property=self.property,
+            reservation=self.reservation,
+            room_type=self.room_type,
+            rate_plan=self.rate_plan,
+            check_in=self.today,
+            check_out=self.tomorrow,
+            nightly_rates=[
+                {"date": self.today.isoformat(), "price": "600.00", "currency": "CNY"}
+            ],
+            amount=Decimal("600.00"),
+        )
+        second_room = Room.objects.create(
+            property=self.property,
+            room_type=self.room_type,
+            number="ST102",
+            floor="1",
+            occupancy_status=Room.OccupancyStatus.VACANT,
+            housekeeping_status=Room.HousekeepingStatus.CLEAN,
+            maintenance_status=Room.MaintenanceStatus.NORMAL,
+        )
+        assign_room(
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            room_id=self.room.pk, assigned_by=self.operator,
+        )
+        assign_room(
+            property_obj=self.property, reservation_room_id=second_line.pk,
+            room_id=second_room.pk, assigned_by=self.operator,
+        )
+        first_stay, _ = check_in_stay(
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            checked_in_by=self.operator,
+        )
+        second_stay, _ = check_in_stay(
+            property_obj=self.property, reservation_room_id=second_line.pk,
+            checked_in_by=self.operator,
+        )
+        LedgerEntry.objects.create(
+            property=self.property, folio=self.folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+            amount=Decimal("-1200.00"), currency="CNY",
+            business_date=self.today, reference="STAY-PREPAID-MULTI-001",
+            description="多房预付测试",
+        )
+
+        first_out, changed = check_out_stay(
+            property_obj=self.property, stay_id=first_stay.pk,
+            checked_out_by=self.operator,
+        )
+        self.assertTrue(changed)
+        self.folio.refresh_from_db()
+        self.reservation.refresh_from_db()
+        self.assertEqual(first_out.status, Stay.Status.CHECKED_OUT)
+        self.assertEqual(self.folio.status, Folio.Status.OPEN)
+        self.assertEqual(self.reservation.status, Reservation.Status.CHECKED_IN)
+        interim_balance = sum(
+            self.folio.entries.values_list("amount", flat=True),
+            start=Decimal("0.00"),
+        )
+        self.assertEqual(interim_balance, Decimal("-600.00"))
+
+        second_out, changed = check_out_stay(
+            property_obj=self.property, stay_id=second_stay.pk,
+            checked_out_by=self.operator,
+        )
+        self.assertTrue(changed)
+        self.folio.refresh_from_db()
+        self.reservation.refresh_from_db()
+        self.assertEqual(second_out.status, Stay.Status.CHECKED_OUT)
+        self.assertEqual(self.folio.status, Folio.Status.CLOSED)
+        self.assertEqual(self.reservation.status, Reservation.Status.CHECKED_OUT)
+        final_balance = sum(
+            self.folio.entries.values_list("amount", flat=True),
+            start=Decimal("0.00"),
+        )
+        self.assertEqual(final_balance, Decimal("0.00"))
+
     def test_prepaid_reservation_can_checkout_without_second_collection(self):
         assign_room(
             property_obj=self.property,

@@ -1,7 +1,7 @@
-"""前台接待工作台只读查询 API。
+"""PMS 2.0 前台接待查询与写操作 API。
 
-本模块只负责把 PMS 2.0 预订、入住、房间和账单组合为前台 DTO。
-不执行排房/入住/续住/换房/收款/退房写操作；这些操作须由后续事务化领域服务实现。
+查询接口组装预订、Stay、客房和 Folio DTO；写接口只负责认证/权限/参数边界，
+具体事务和状态迁移由 apps.reservations.front_desk_services 负责。
 """
 import json
 from datetime import date
