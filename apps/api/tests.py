@@ -325,3 +325,151 @@ class FrontDeskReadApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
+
+
+
+class FrontDeskWriteApiTests(TestCase):
+    """前台写 API 必须具备当前物业的入住查看与修改权限。"""
+
+    def setUp(self):
+        self.property = Property.objects.get(code="DEFAULT")
+        self.today = timezone.localdate()
+        self.tomorrow = self.today + timedelta(days=1)
+        self.user = User.objects.create_user(
+            username="frontdesk-write-user",
+            password="TestPass-Write-2026!",
+        )
+        self.profile = StaffProfile.objects.create(
+            user=self.user,
+            full_name="写操作前台测试员",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
+        self.membership = PropertyStaffMembership.objects.create(
+            staff_profile=self.profile,
+            property=self.property,
+            employee_no="FD-WRITE-001",
+            status=PropertyStaffMembership.Status.ACTIVE,
+        )
+        self.role = Group.objects.get(name="前台")
+        self.view_permission = Permission.objects.get(
+            content_type__app_label="hotelapp", codename="view_accommodation"
+        )
+        self.change_permission = Permission.objects.get(
+            content_type__app_label="hotelapp", codename="change_accommodation"
+        )
+        self.role.permissions.add(self.view_permission, self.change_permission)
+        StaffRoleAssignment.objects.create(
+            membership=self.membership,
+            group=self.role,
+            starts_at=timezone.now() - timedelta(minutes=1),
+        )
+        self.room_type = RoomType.objects.create(
+            property=self.property,
+            code="FD-WRITE-KING",
+            name="写操作测试大床房",
+            capacity=2,
+        )
+        self.rate_plan = RatePlan.objects.create(
+            property=self.property,
+            code="FD-WRITE-BAR",
+            name="写操作测试房价",
+            valid_from=self.today,
+        )
+        self.guest = Guest.objects.create(
+            property=self.property,
+            full_name="写操作测试住客",
+            phone="13800007777",
+            phone_normalized="13800007777",
+        )
+        self.reservation = Reservation.objects.create(
+            property=self.property,
+            booking_no="RFDWRITE0001",
+            guest=self.guest,
+            status=Reservation.Status.CONFIRMED,
+            check_in=self.today,
+            check_out=self.tomorrow,
+            room_count=1,
+            adult_count=2,
+            total_amount=Decimal("500.00"),
+            currency="CNY",
+        )
+        self.line = ReservationRoom.objects.create(
+            property=self.property,
+            reservation=self.reservation,
+            room_type=self.room_type,
+            rate_plan=self.rate_plan,
+            check_in=self.today,
+            check_out=self.tomorrow,
+            nightly_rates=[{
+                "date": self.today.isoformat(),
+                "price": "500.00",
+                "currency": "CNY",
+            }],
+            amount=Decimal("500.00"),
+        )
+        self.folio = Folio.objects.create(
+            property=self.property,
+            reservation=self.reservation,
+            guest=self.guest,
+            currency="CNY",
+        )
+        self.room = Room.objects.create(
+            property=self.property,
+            room_type=self.room_type,
+            number="FD-W801",
+            floor="8",
+            occupancy_status=Room.OccupancyStatus.VACANT,
+            housekeeping_status=Room.HousekeepingStatus.CLEAN,
+            maintenance_status=Room.MaintenanceStatus.NORMAL,
+        )
+
+    def test_front_desk_write_api_denies_missing_change_permission(self):
+        self.role.permissions.remove(self.change_permission)
+        self.client.force_login(self.user)
+        response = self.client.post(
+            f"/api/v1/front-desk/reservation-rooms/{self.line.pk}/assign",
+            data=json.dumps({"room_id": self.room.pk}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
+
+    def test_assign_checkin_collect_and_checkout_api_flow(self):
+        self.client.force_login(self.user)
+        assigned = self.client.post(
+            f"/api/v1/front-desk/reservation-rooms/{self.line.pk}/assign",
+            data=json.dumps({"room_id": self.room.pk}),
+            content_type="application/json",
+        )
+        self.assertEqual(assigned.status_code, 201, assigned.content)
+        self.assertEqual(assigned.json()["data"]["assigned_room"]["number"], "FD-W801")
+
+        checked_in = self.client.post(
+            f"/api/v1/front-desk/reservation-rooms/{self.line.pk}/check-in",
+            data="{}",
+            content_type="application/json",
+        )
+        self.assertEqual(checked_in.status_code, 201, checked_in.content)
+        stay_id = checked_in.json()["data"]["stay_id"]
+
+        payment = self.client.post(
+            f"/api/v1/front-desk/reservations/{self.reservation.booking_no}/payments",
+            data=json.dumps({"amount": "500.00", "method": "CASH"}),
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="front-desk-write-payment-001",
+        )
+        self.assertEqual(payment.status_code, 201, payment.content)
+
+        checked_out = self.client.post(
+            f"/api/v1/front-desk/stays/{stay_id}/check-out",
+            data="{}",
+            content_type="application/json",
+        )
+        self.assertEqual(checked_out.status_code, 200, checked_out.content)
+        self.room.refresh_from_db()
+        self.folio.refresh_from_db()
+        self.reservation.refresh_from_db()
+        self.assertEqual(self.room.occupancy_status, Room.OccupancyStatus.VACANT)
+        self.assertEqual(self.room.housekeeping_status, Room.HousekeepingStatus.DIRTY)
+        self.assertEqual(self.folio.status, Folio.Status.CLOSED)
+        self.assertEqual(self.reservation.status, Reservation.Status.CHECKED_OUT)

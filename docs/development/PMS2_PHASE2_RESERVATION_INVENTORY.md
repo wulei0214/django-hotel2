@@ -82,6 +82,17 @@ flowchart TD
 
 **Mock 只用于本地/CI 验证状态流转，不是真实收单、扣款、退款或银行清算。** 模拟回调必须满足 DEBUG=True 且 DJANGO_ENV=dev/test；生产环境返回 404。生产支付必须接正式服务商适配器。
 
+## 前台入住写操作 API（第一批）
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| POST | `/api/v1/front-desk/reservation-rooms/{id}/assign` | 将已确认预订明细分配到可售净房，必须同物业、同房型且无日期重叠 |
+| POST | `/api/v1/front-desk/reservation-rooms/{id}/check-in` | 已排房预订转为实际 Stay，并把物理客房占用状态置为在住 |
+| POST | `/api/v1/front-desk/reservations/{booking_no}/payments` | 登记前台已实际收到的现金/刷卡/转账；必须传 `Idempotency-Key` |
+| POST | `/api/v1/front-desk/stays/{id}/check-out` | 房费按 ReservationRoom 价格快照入账，账单余额归零后退房并把房间转为脏房 |
+
+写操作要求当前物业有效员工任职，以及 `hotelapp.view_accommodation` + `hotelapp.change_accommodation`。收款 API 仅作为已收款的业务登记，不是真实支付网关；不能据此宣称资金已由第三方核验。收款超额、账单欠款或客人余额未处理时均不得退房。当前 API 已完成，页面交互接线仍需单独验收。
+
 ## 超时和取消
 
 - 默认 Hold 15 分钟；支付失败时暂不立即释放，等待支付期限到期，避免迟到回调与重新售卖之间发生竞态。

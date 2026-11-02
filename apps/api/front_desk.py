@@ -3,6 +3,7 @@
 本模块只负责把 PMS 2.0 预订、入住、房间和账单组合为前台 DTO。
 不执行排房/入住/续住/换房/收款/退房写操作；这些操作须由后续事务化领域服务实现。
 """
+import json
 from datetime import date
 from decimal import Decimal
 from functools import wraps
@@ -12,12 +13,19 @@ from django.conf import settings
 from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
 
 from apps.billing.models import Folio, Payment
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import Room
 from apps.reservations.models import Reservation, ReservationRoom, Stay
+from apps.reservations.front_desk_services import (
+    FrontDeskOperationError,
+    assign_room as assign_room_service,
+    check_in_stay,
+    collect_manual_payment,
+    check_out_stay,
+)
 
 from .views import api_guard
 
@@ -53,6 +61,39 @@ def _front_desk_required(view):
         return view(request, *args, **kwargs)
     return wrapped
 
+
+
+def _front_desk_write_required(view):
+    """写操作要求当前物业任职同时具备入住查看与修改权限。"""
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        user = request.user
+        if not user.is_authenticated or not user.is_active:
+            return _response({"error": {"code": "AUTHENTICATION_REQUIRED", "message": "请先登录员工账号。"}}, 401)
+        property_obj = getattr(request, "property", None)
+        membership = getattr(request, "staff_membership", None)
+        if property_obj is None or property_obj.code != getattr(settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"):
+            return _response({"error": {"code": "PROPERTY_UNAVAILABLE", "message": "当前酒店物业不可用。"}}, 503)
+        if membership is None or membership.property_id != property_obj.pk:
+            return _response({"error": {"code": "EMPLOYEE_MEMBERSHIP_REQUIRED", "message": "当前账号没有该酒店的有效任职关系。"}}, 403)
+        if not (
+            AuthorizationService.has_permission(user, property_obj, "hotelapp.view_accommodation")
+            and AuthorizationService.has_permission(user, property_obj, "hotelapp.change_accommodation")
+        ):
+            return _response({"error": {"code": "PERMISSION_DENIED", "message": "当前岗位没有入住管理操作权限。"}}, 403)
+        request.front_desk_property = property_obj
+        return view(request, *args, **kwargs)
+    return wrapped
+
+
+def _body(request):
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("请求体必须是有效 JSON。") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("请求体必须是 JSON 对象。")
+    return payload
 
 def _business_date(property_obj):
     try:
@@ -503,8 +544,10 @@ def assignable_rooms(request):
         return _response({"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该预订房间明细。"}}, 404)
     if line.assigned_room_id:
         return _response({"data": [], "meta": {"reason": "该房间明细已经分配房间。"}})
-    if line.reservation.status not in ARRIVAL_STATUSES:
-        return _response({"data": [], "meta": {"reason": "当前订单状态不允许排房。"}})
+    if line.reservation.status not in (
+        Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN
+    ):
+        return _response({"data": [], "meta": {"reason": "仅已确认预订可以排房。"}})
     candidates = Room.objects.filter(
         property=property_obj, room_type=line.room_type, is_active=True,
         occupancy_status=Room.OccupancyStatus.VACANT,
@@ -542,4 +585,114 @@ def folio_detail(request, booking_no):
             "entries": [{"id": item.pk, "entry_type": item.entry_type, "amount": str(item.amount), "currency": item.currency, "business_date": item.business_date.isoformat(), "reference": item.reference, "description": item.description, "created_at": item.created_at.isoformat()} for item in entries],
             "payments": [{"provider": item.provider, "provider_ref": item.provider_ref, "method": item.method, "amount": str(item.amount), "status": item.status, "paid_at": item.paid_at.isoformat() if item.paid_at else None} for item in folio.payments.order_by("-created_at")],
         }
+    })
+
+
+@api_guard
+@require_POST
+@_front_desk_write_required
+def assign_room(request, reservation_room_id):
+    try:
+        body = _body(request)
+        room_id = int(body.get("room_id"))
+        line, changed = assign_room_service(
+            property_obj=request.front_desk_property,
+            reservation_room_id=reservation_room_id,
+            room_id=room_id,
+            assigned_by=request.user,
+        )
+    except ValueError as exc:
+        return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
+    except FrontDeskOperationError as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    return _response({
+        "data": {
+            "reservation_room_id": line.pk,
+            "assigned_room": {
+                "id": line.assigned_room_id,
+                "number": line.assigned_room.number,
+                "floor": line.assigned_room.floor,
+            },
+        },
+        "changed": changed,
+    }, 201 if changed else 200)
+
+
+@api_guard
+@require_POST
+@_front_desk_write_required
+def check_in(request, reservation_room_id):
+    try:
+        stay, created = check_in_stay(
+            property_obj=request.front_desk_property,
+            reservation_room_id=reservation_room_id,
+            checked_in_by=request.user,
+        )
+    except FrontDeskOperationError as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    return _response({
+        "data": {
+            "stay_id": stay.pk,
+            "reservation_room_id": stay.reservation_room_id,
+            "room_id": stay.room_id,
+            "room_number": stay.room.number,
+            "status": stay.status,
+            "actual_check_in": stay.actual_check_in.isoformat() if stay.actual_check_in else None,
+        },
+        "created": created,
+    }, 201 if created else 200)
+
+
+@api_guard
+@require_POST
+@_front_desk_write_required
+def collect_payment(request, booking_no):
+    try:
+        body = _body(request)
+        payment, created = collect_manual_payment(
+            property_obj=request.front_desk_property,
+            booking_no=booking_no,
+            amount=body.get("amount"),
+            method=body.get("method"),
+            idempotency_key=request.headers.get("Idempotency-Key", ""),
+            received_by=request.user,
+        )
+    except ValueError as exc:
+        return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
+    except FrontDeskOperationError as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    return _response({
+        "data": {
+            "payment_id": payment.pk,
+            "provider_ref": payment.provider_ref,
+            "method": payment.method,
+            "amount": str(payment.amount),
+            "currency": payment.currency,
+            "status": payment.status,
+        },
+        "created": created,
+    }, 201 if created else 200)
+
+
+@api_guard
+@require_POST
+@_front_desk_write_required
+def check_out(request, stay_id):
+    try:
+        stay, changed = check_out_stay(
+            property_obj=request.front_desk_property,
+            stay_id=stay_id,
+            checked_out_by=request.user,
+        )
+    except FrontDeskOperationError as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    return _response({
+        "data": {
+            "stay_id": stay.pk,
+            "status": stay.status,
+            "actual_check_out": stay.actual_check_out.isoformat() if stay.actual_check_out else None,
+            "room_id": stay.room_id,
+            "room_number": stay.room.number,
+        },
+        "changed": changed,
     })
