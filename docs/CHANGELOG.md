@@ -38,3 +38,20 @@
 
 ### 版本约束
 - PMS 3.0 只做已有功能完善、Bug 修复、性能/安全/兼容优化和回归，不新增业务功能。
+
+
+## 2026-11-02 — 修复 PMS 迁移链缺失的历史节点
+
+### 修复内容
+- 恢复历史迁移 `hotelapp.0010_p0_hardening` 与 `hotelapp.0011_backfill_p0_data`，与既有 `0012_remove_auditlog_actor_and_more` 的依赖保持一致。
+- 恢复内容来自原始迁移提交，未用空迁移或 no-op 替代。
+- 该修复用于保证全新数据库可以按历史顺序构建中间模型、执行兼容数据回填，再由 0012 按既定路线清理过渡模型；已执行过这些迁移的数据库不会重复执行。
+
+### 影响范围
+- 仅恢复 `hotelapp/migrations/0010_p0_hardening.py`、`hotelapp/migrations/0011_backfill_p0_data.py`，并更新本变更记录。
+- 未修改业务模型、前台页面、API 或现有数据库记录。
+
+### 验证
+- 代码审查确认 0012 明确依赖 0011，0011 明确依赖 0010。
+- GitHub Actions MySQL 8 CI 将在本次提交后重新执行迁移和全量测试；结果以对应 workflow run 为准。
+- 当前尚未宣称 CI 已通过。
