@@ -1028,3 +1028,106 @@ class SuperuserPolicyTests(TestCase):
         response = self.client.get("/show_client/")
         self.assertEqual(response.status_code, 200,
                          "superuser + 任职 + 角色授权 → 可进 PMS（与普通员工一致）")
+
+
+class GuestServiceTests(TestCase):
+    """V1.1 Phase 2：GuestService 写操作（创建/更新/审计）"""
+
+    def setUp(self):
+        from apps.core.models import Property
+        from apps.guests.services import GuestService
+        self.prop, _ = Property.objects.get_or_create(
+            code="DEFAULT", defaults={"name": "测试酒店"})
+        self.svc = GuestService
+        self.staff = _make_user("gs_staff", "前台")
+
+    def test_create_guest_with_phone(self):
+        """创建客人 + 主号码自动登记"""
+        guest = self.svc.create_guest(
+            property_obj=self.prop, full_name="服务测试客",
+            phone="13900009999", created_by=self.staff)
+        self.assertEqual(guest.full_name, "服务测试客")
+        self.assertTrue(guest.phones.filter(is_primary=True).exists())
+        from apps.core.models import AuditEvent
+        self.assertTrue(AuditEvent.objects.filter(
+            action="guest.create", entity_id=str(guest.pk)).exists())
+
+    def test_create_guest_duplicate_phone_rejected(self):
+        """同物业标准化手机号查重拒绝"""
+        self.svc.create_guest(
+            property_obj=self.prop, full_name="首客", phone="13900008888")
+        with self.assertRaises(Exception):
+            self.svc.create_guest(
+                property_obj=self.prop, full_name="二客", phone="13900008888")
+
+    def test_update_guest_with_audit(self):
+        """更新客人：变更写入 AuditEvent before/after"""
+        guest = self.svc.create_guest(
+            property_obj=self.prop, full_name="更新测试", phone="13900007777")
+        old_name = guest.full_name
+        guest, changed = self.svc.update_guest(
+            guest_id=guest.pk, updated_by=self.staff, full_name="改名测试")
+        self.assertIn("full_name", changed)
+        self.assertEqual(changed["full_name"]["before"], old_name)
+        from apps.core.models import AuditEvent
+        self.assertTrue(AuditEvent.objects.filter(
+            action="guest.update", entity_id=str(guest.pk)).exists())
+
+    def test_phone_change_preserves_history(self):
+        """手机号变更：旧 GuestPhone 降级，新号码设主，历史保留"""
+        guest = self.svc.create_guest(
+            property_obj=self.prop, full_name="换号测试", phone="13900006666")
+        self.svc.update_guest(guest_id=guest.pk, updated_by=self.staff,
+                              phone="13900007777")
+        from apps.guests.models import GuestPhone
+        phones = GuestPhone.objects.filter(guest=guest).order_by("-is_primary")
+        self.assertEqual(phones.count(), 2, "旧号码保留历史")
+        self.assertTrue(phones.first().is_primary)
+        self.assertEqual(phones.first().phone_normalized, "13900007777")
+
+
+class MembershipServiceTests(TestCase):
+    """V1.1 Phase 2：GuestMembershipService（创建/等级变更）"""
+
+    def setUp(self):
+        from apps.core.models import Property
+        from apps.guests.models import Guest
+        from apps.guests.services import GuestMembershipService
+        self.prop, _ = Property.objects.get_or_create(
+            code="DEFAULT", defaults={"name": "测试酒店"})
+        self.guest = Guest.objects.create(
+            property=self.prop, full_name="会员测试客",
+            phone="13900005555", phone_normalized="13900005555")
+        self.svc = GuestMembershipService
+        self.staff = _make_user("ms_staff", "前台")
+
+    def test_create_membership(self):
+        m = self.svc.create_membership(
+            property_obj=self.prop, guest=self.guest, member_no="M-P1-001",
+            level_code="STANDARD", created_by=self.staff)
+        self.assertEqual(m.status, "ACTIVE")
+        self.assertEqual(m.level_history.count(), 1)
+        from apps.core.models import AuditEvent
+        self.assertTrue(AuditEvent.objects.filter(
+            action="membership.create", entity_id=str(m.pk)).exists())
+
+    def test_duplicate_active_membership_rejected(self):
+        self.svc.create_membership(
+            property_obj=self.prop, guest=self.guest, member_no="M-P1-002")
+        with self.assertRaises(Exception):
+            self.svc.create_membership(
+                property_obj=self.prop, guest=self.guest, member_no="M-P1-003")
+
+    def test_level_change_writes_history(self):
+        """等级变更：历史记录 before/after + 审计"""
+        m = self.svc.create_membership(
+            property_obj=self.prop, guest=self.guest, member_no="M-P1-004",
+            level_code="STANDARD")
+        self.svc.change_level(
+            membership=m, new_level="GOLD", reason="升级", changed_by=self.staff)
+        m.refresh_from_db()
+        self.assertEqual(m.level_code, "GOLD")
+        self.assertEqual(m.level_history.count(), 2)  # 创建 + 升级
+        from apps.core.models import AuditEvent
+        self.assertTrue(AuditEvent.objects.filter(
+            action="membership.level_change").exists())

@@ -10,6 +10,7 @@ import base64
 import hashlib
 import hmac
 
+from django.db import transaction
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError
@@ -87,3 +88,166 @@ def _mask(value):
     if len(v) < 6:
         return v
     return v[:2] + "*" * (len(v) - 4) + v[-2:]
+
+
+# ---------- V1.1 Phase 2：GuestService（统一客人写入口） ----------
+
+def normalize_phone(raw):
+    """标准化手机号：去空格/横线/括号，保留数字和+号。"""
+    import re
+    return re.sub(r"[^\d+]", "", (raw or "").strip())
+
+
+class GuestServiceError(Exception):
+    """客人服务业务校验失败。"""
+
+
+class GuestService:
+    """Guest/电话/证件唯一写入口（方案 §4.2：前台/Admin/命令统一调此服务）。"""
+
+    @staticmethod
+    def create_guest(*, property_obj, full_name, phone="", email="",
+                     notes="", created_by=None, request=None):
+        """创建客人档案 + 可选主号码；同物业标准化手机号查重。"""
+        from .models import Guest, GuestPhone
+        full_name = (full_name or "").strip()
+        if not full_name:
+            raise GuestServiceError("客人姓名不能为空。")
+        norm = normalize_phone(phone)
+        if norm:
+            existing = Guest.objects.filter(
+                property=property_obj, phone_normalized=norm).first()
+            if existing:
+                raise GuestServiceError(
+                    f"该手机号已关联客人「{existing.full_name}」(ID:{existing.pk})；"
+                    "如为同一人请使用已有档案，如为共享号码请走人工核验流程。")
+        guest = Guest.objects.create(
+            property=property_obj, full_name=full_name,
+            phone=phone, phone_normalized=norm or None,
+            email=email or "", notes=notes or "")
+        if norm:
+            GuestPhone.objects.create(
+                guest=guest, phone=phone, phone_normalized=norm,
+                is_primary=True, source="前台登记")
+        AuditEvent.record(
+            action="guest.create", entity_type="Guest", entity_id=guest.pk,
+            actor=created_by, property_obj=property_obj,
+            after={"full_name": full_name, "phone_masked": _mask(phone)},
+            request=request)
+        return guest
+
+    @staticmethod
+    def update_guest(*, guest_id, updated_by=None, request=None, **fields):
+        """更新客人档案字段；手机号变更保留历史并写审计。"""
+        from .models import Guest, GuestPhone
+        guest = Guest.objects.select_related().get(pk=guest_id)
+        changed = {}
+        for field in ("full_name", "email", "notes"):
+            if field in fields and fields[field] is not None:
+                new_val = str(fields[field]).strip()
+                old_val = getattr(guest, field) or ""
+                if new_val != old_val:
+                    changed[field] = {"before": old_val, "after": new_val}
+                    setattr(guest, field, new_val)
+        phone = fields.get("phone")
+        if phone is not None:
+            norm = normalize_phone(phone)
+            if norm and norm != guest.phone_normalized:
+                old_phone = guest.phone or ""
+                GuestPhone.objects.filter(
+                    guest=guest, is_primary=True).update(is_primary=False)
+                GuestPhone.objects.create(
+                    guest=guest, phone=phone, phone_normalized=norm,
+                    is_primary=True, source="前台变更")
+                guest.phone = phone
+                guest.phone_normalized = norm
+                changed["phone"] = {"before": _mask(old_phone),
+                                    "after": _mask(phone)}
+        if changed:
+            guest.save()
+            AuditEvent.record(
+                action="guest.update", entity_type="Guest", entity_id=guest.pk,
+                actor=updated_by, property_obj=guest.property,
+                before={k: v["before"] for k, v in changed.items()},
+                after={k: v["after"] for k, v in changed.items()},
+                request=request)
+        return guest, changed
+
+    @staticmethod
+    def add_phone(*, guest, phone, phone_type="MOBILE", is_primary=False,
+                  source="前台登记", added_by=None, request=None):
+        """添加电话号码；主号码切换时旧号码自动降级。"""
+        from .models import GuestPhone
+        norm = normalize_phone(phone)
+        if not norm:
+            raise GuestServiceError("电话号码不能为空。")
+        if is_primary:
+            GuestPhone.objects.filter(guest=guest, is_primary=True).update(
+                is_primary=False)
+        phone_obj = GuestPhone.objects.create(
+            guest=guest, phone=phone, phone_normalized=norm,
+            phone_type=phone_type, is_primary=is_primary, source=source)
+        if is_primary:
+            guest.phone = phone
+            guest.phone_normalized = norm
+            guest.save(update_fields=("phone", "phone_normalized", "updated_at"))
+        AuditEvent.record(
+            action="guest.phone_add", entity_type="Guest", entity_id=guest.pk,
+            actor=added_by, property_obj=guest.property,
+            after={"masked": _mask(phone), "type": phone_type,
+                   "is_primary": is_primary},
+            request=request)
+        return phone_obj
+
+
+class GuestMembershipService:
+    """会员关系唯一写入口（V1.1 M-16）。"""
+
+    @staticmethod
+    @transaction.atomic
+    def create_membership(*, property_obj, guest, member_no, level_code="STANDARD",
+                          joined_at=None, source="新建", created_by=None, request=None):
+        from .models import GuestMembership, MembershipLevelHistory
+        if GuestMembership.objects.filter(
+                property=property_obj, guest=guest,
+                status=GuestMembership.Status.ACTIVE).exists():
+            raise GuestServiceError("该客人已有有效会员关系。")
+        if GuestMembership.objects.filter(
+                property=property_obj, member_no=member_no).exists():
+            raise GuestServiceError(f"会员编号 {member_no} 已被使用。")
+        m = GuestMembership.objects.create(
+            property=property_obj, guest=guest, member_no=member_no,
+            level_code=level_code, status=GuestMembership.Status.ACTIVE,
+            joined_at=joined_at, source=source)
+        MembershipLevelHistory.objects.create(
+            membership=m, to_level=level_code,
+            reason="新建会员关系", changed_by=created_by)
+        AuditEvent.record(
+            action="membership.create", entity_type="GuestMembership",
+            entity_id=m.pk, actor=created_by, property_obj=property_obj,
+            after={"member_no": member_no, "level": level_code},
+            request=request)
+        return m
+
+    @staticmethod
+    @transaction.atomic
+    def change_level(*, membership, new_level, reason, changed_by=None, request=None):
+        """等级变更：写历史 + 更新当前等级；同等级不重复变更。"""
+        from .models import MembershipLevelHistory
+        if membership.level_code == new_level:
+            return membership
+        old = membership.level_code
+        membership.level_code = new_level
+        membership.save(update_fields=("level_code", "updated_at"))
+        MembershipLevelHistory.objects.create(
+            membership=membership, from_level=old, to_level=new_level,
+            reason=reason, changed_by=changed_by)
+        AuditEvent.record(
+            action="membership.level_change", entity_type="GuestMembership",
+            entity_id=membership.pk, actor=changed_by,
+            property_obj=membership.property,
+            before={"level": old}, after={"level": new_level}, reason=reason,
+            request=request)
+        return membership
+
+

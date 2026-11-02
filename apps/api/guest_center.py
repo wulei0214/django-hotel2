@@ -8,14 +8,19 @@ import logging
 
 from django.http import JsonResponse
 from django.utils import timezone
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
 
-from apps.core.api_contract import ApiError, api_view, api_response, paginate
+from apps.core.api_contract import (ApiError, api_view, api_response, paginate, idempotent)
 from apps.core.models import AuditEvent
 from apps.guests.models import (
     Guest, GuestDocument, GuestMembership, GuestPhone,
 )
-from apps.guests.services import decrypt_doc_no, _mask
+import json as _json
+
+from apps.guests.services import (
+    decrypt_doc_no, _mask,
+    GuestService, GuestServiceError, GuestMembershipService,
+)
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import (
     DailyRate, RatePlan, Room, RoomType, RoomTypeInventory,
@@ -248,3 +253,64 @@ def rate_calendar(request):
         "closed": dr.closed,
     } for dr in rate_qs]
     return api_response(request, {"inventory": inventory_data, "rates": rate_data})
+
+
+# ---------- Phase 2：Guest 写操作（走 GuestService，不直接写模型） ----------
+
+
+def _parse_body(request):
+    try:
+        return _json.loads(request.body.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, _json.JSONDecodeError):
+        raise ApiError("VALIDATION_ERROR", "请求体必须是有效 JSON。")
+
+
+@require_POST
+@api_view
+@idempotent
+def guest_create(request):
+    """POST /api/v1/guests — 创建客人档案。"""
+    user = request.user
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
+    if not AuthorizationService.has_permission(user, property_obj, "hotelapp.add_client"):
+        raise ApiError("PERMISSION_DENIED", "缺少客人新增权限。")
+    body = _parse_body(request)
+    try:
+        guest = GuestService.create_guest(
+            property_obj=property_obj,
+            full_name=body.get("full_name") or "",
+            phone=body.get("phone") or "",
+            email=body.get("email") or "",
+            notes=body.get("notes") or "",
+            created_by=user, request=request)
+    except GuestServiceError as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    return api_response(request, {"id": guest.pk, "full_name": guest.full_name}, status=201)
+
+
+@require_POST
+@api_view
+@idempotent
+def guest_update(request, guest_id):
+    """PUT/PATCH /api/v1/guests/<id> — 更新客人档案。"""
+    user = request.user
+    property_obj = getattr(request, "property", None)
+    if not AuthorizationService.has_permission(
+            user, property_obj, "hotelapp.change_client"):
+        raise ApiError("PERMISSION_DENIED", "缺少客人修改权限。")
+    body = _parse_body(request)
+    try:
+        guest, changed = GuestService.update_guest(
+            guest_id=guest_id, updated_by=user, request=request,
+            full_name=body.get("full_name"),
+            phone=body.get("phone"),
+            email=body.get("email"),
+            notes=body.get("notes"))
+    except Guest.DoesNotExist:
+        raise ApiError("RESOURCE_NOT_FOUND", "客人不存在。")
+    except GuestServiceError as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    return api_response(request, {"id": guest.pk, "changed": list(changed.keys())})
+

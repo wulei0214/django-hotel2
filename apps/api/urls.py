@@ -37,6 +37,8 @@ urlpatterns = [
     # --- Guest 360 (V1.1 Phase 1 只读原型) ---
     path("guests", guest_center.guest_list, name="guest_list"),
     path("guests/<int:guest_id>", guest_center.guest_detail, name="guest_detail"),
+    path("guests/create", guest_center.guest_create, name="guest_create"),
+    path("guests/<int:guest_id>/update", guest_center.guest_update, name="guest_update"),
     # --- Room 中心 (V1.1 Phase 1 只读原型) ---
     path("rooms/status", guest_center.room_status_list, name="room_status_list"),
     path("room-types", guest_center.room_type_list, name="room_type_list"),
