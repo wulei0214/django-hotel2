@@ -114,7 +114,7 @@
     $(".delete").click(function () {
         var id = $(this).closest('tr').find('.id').text();
         askPrompt('冲账为高危操作：冲账后该记录不再计入统计，且不可恢复。请填写冲账原因（必填，将写入审计日志）：', function (reason) {
-            $.get('/delete_accomodation/', {'id': id, 'reason': reason}).done(function () {
+            $.post('/delete_accomodation/', {'id': id, 'reason': reason, 'csrfmiddlewaretoken': getCookie('csrftoken')}).done(function () {
                 showToast('已冲账');
                 setTimeout(function () { location.reload(); }, 600);
             }).fail(function (xhr) { showToast(xhr.responseText || '冲账失败', 'error'); });

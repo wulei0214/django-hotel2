@@ -113,7 +113,7 @@
     $(".delete").click(function () {
         var id = $(this).closest('tr').find('.id').text();
         askConfirm('确定删除该条记录吗？删除后不可恢复。', function () {
-        $.get('/delete_park/', {'id': id}).done(function () { showToast('删除成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { showToast(xhr.responseText || '操作失败', 'error'); });
+        $.post('/delete_park/', {'id': id, 'csrfmiddlewaretoken': getCookie('csrftoken')}).done(function () { showToast('删除成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { showToast(xhr.responseText || '操作失败', 'error'); });
         });
     });
 </script>
