@@ -58,7 +58,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "apps.identity.session_middleware.SplitSessionMiddleware",
     "django.middleware.common.CommonMiddleware",
-    "apps.identity.session_middleware.SplitCsrfViewMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "apps.identity.middleware.PropertyContextMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -160,9 +160,9 @@ SESSION_COOKIE_SECURE = not DEBUG
 ADMIN_SESSION_COOKIE_NAME = os.environ.get(
     "DJANGO_ADMIN_SESSION_COOKIE_NAME", "admin_sessionid"
 )
-ADMIN_CSRF_COOKIE_NAME = os.environ.get(
-    "DJANGO_ADMIN_CSRF_COOKIE_NAME", "admin_csrftoken"
-)
+# CSRF tokens live inside the selected session. Since PMS and Admin have
+# different session cookies, their CSRF secrets are isolated automatically.
+CSRF_USE_SESSIONS = True
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", default=False)
 SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "0"))

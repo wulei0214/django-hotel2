@@ -327,6 +327,7 @@ class AdminHardeningTests(TestCase):
     def test_hidden_module_admin_unregistered(self):
         """餐饮/停车不注册 Admin：直接 URL 404（SCOPE-02）"""
         self.client.force_login(self.root)
+        self.client.cookies["admin_sessionid"] = self.client.cookies["sessionid"].value
         for url in ("/admin/hotelapp/food/", "/admin/hotelapp/park/", "/admin/hotelapp/order/"):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 404, f"{url} 必须不可达")

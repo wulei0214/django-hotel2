@@ -238,6 +238,8 @@ class IdentityAdminReadOnlyTests(TestCase):
             self.assertFalse(model_admin.has_delete_permission(None))
 
         self.client.force_login(root)
+        # Admin routes read the dedicated cookie, not PMS's sessionid.
+        self.client.cookies["admin_sessionid"] = self.client.cookies["sessionid"].value
         change_url = f"/admin/identity/staffroleassignment/{assignment.pk}/change/"
         response = self.client.get(change_url)
         self.assertEqual(response.status_code, 200, "超级管理员仍可审计查看岗位授权")
@@ -468,22 +470,34 @@ class SplitAuthenticationSessionTests(TestCase):
         self.assertEqual(self.client.get("/home/").status_code, 200)
         self.assertTrue(self.client.cookies["sessionid"].value)
 
-    def test_each_entry_point_uses_its_own_csrf_cookie(self):
+    def test_each_entry_point_uses_its_own_session_backed_csrf_secret(self):
+        import re
         from django.test import Client
 
         client = Client(enforce_csrf_checks=True)
         pms_login_page = client.get("/login/")
         self.assertEqual(pms_login_page.status_code, 200)
-        pms_csrf = client.cookies["csrftoken"].value
+        pms_match = re.search(
+            rb'name="csrfmiddlewaretoken" value="([^"]+)"',
+            pms_login_page.content,
+        )
+        self.assertIsNotNone(pms_match, pms_login_page.content)
+        pms_csrf = pms_match.group(1).decode("ascii")
+        pms_session_key = client.cookies["sessionid"].value
 
         admin_login_page = client.get("/admin/login/")
-        self.assertEqual(admin_login_page.status_code, 200)
-        admin_csrf = client.cookies["admin_csrftoken"].value
+        self.assertEqual(admin_login_page.status_code, 200, admin_login_page.content)
+        admin_match = re.search(
+            rb'name="csrfmiddlewaretoken" value="([^"]+)"',
+            admin_login_page.content,
+        )
+        self.assertIsNotNone(admin_match, admin_login_page.content)
+        admin_csrf = admin_match.group(1).decode("ascii")
+        admin_session_key = client.cookies["admin_sessionid"].value
 
-        self.assertTrue(pms_csrf)
-        self.assertTrue(admin_csrf)
         self.assertNotEqual(pms_csrf, admin_csrf)
-        self.assertEqual(client.cookies["csrftoken"].value, pms_csrf)
+        self.assertNotEqual(pms_session_key, admin_session_key)
+        self.assertEqual(client.cookies["sessionid"].value, pms_session_key)
 
         admin_login = client.post(
             "/admin/login/",
@@ -491,8 +505,8 @@ class SplitAuthenticationSessionTests(TestCase):
                 "username": "split-admin-user",
                 "password": "Admin-pass-2026!",
                 "next": "/admin/",
+                "csrfmiddlewaretoken": admin_csrf,
             },
-            HTTP_X_CSRFTOKEN=admin_csrf,
         )
         self.assertNotEqual(admin_login.status_code, 403, admin_login.content)
         self.assertIn("admin_sessionid", client.cookies)
@@ -502,8 +516,8 @@ class SplitAuthenticationSessionTests(TestCase):
             {
                 "username": "split-pms-user",
                 "password": "Pms-pass-2026!",
+                "csrfmiddlewaretoken": pms_csrf,
             },
-            HTTP_X_CSRFTOKEN=pms_csrf,
         )
         self.assertNotEqual(pms_login.status_code, 403, pms_login.content)
         self.assertEqual(client.get("/home/").status_code, 200)
