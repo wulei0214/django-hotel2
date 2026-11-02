@@ -58,24 +58,22 @@ def drop_sqlite_indexes_for_removed_columns(apps, schema_editor):
     }
     for model_name, removed_columns in targets.items():
         model = apps.get_model("hotelapp", model_name)
-        table = model._meta.db_table
+        table = schema_editor.quote_name(model._meta.db_table)
         with schema_editor.connection.cursor() as cursor:
-            constraints = schema_editor.connection.introspection.get_constraints(
-                cursor, table
-            )
-        for index_name, details in constraints.items():
-            columns = set(details.get("columns") or ())
-            if (
-                details.get("index")
-                and not details.get("primary_key")
-                and columns.intersection(removed_columns)
-            ):
-                schema_editor.execute(
-                    f"DROP INDEX IF EXISTS {schema_editor.quote_name(index_name)}"
-                )
+            cursor.execute(f"PRAGMA index_list({table})")
+            indexes = cursor.fetchall()
+            for index_row in indexes:
+                index_name = index_row[1]
+                quoted_index = schema_editor.quote_name(index_name)
+                cursor.execute(f"PRAGMA index_info({quoted_index})")
+                index_columns = {row[2] for row in cursor.fetchall() if row[2]}
+                if index_columns.intersection(removed_columns):
+                    schema_editor.execute(f"DROP INDEX IF EXISTS {quoted_index}")
 
 
 class Migration(migrations.Migration):
+    # MySQL 的 DROP INDEX / DROP COLUMN 属于不可回滚 DDL；允许迁移在事务外按序执行。
+    atomic = False
 
     dependencies = [
         ('hotelapp', '0011_backfill_p0_data'),
