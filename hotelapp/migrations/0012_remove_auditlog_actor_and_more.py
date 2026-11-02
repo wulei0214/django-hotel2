@@ -46,6 +46,11 @@ def drop_sqlite_indexes_for_removed_columns(apps, schema_editor):
     if schema_editor.connection.vendor != "sqlite":
         return
 
+    # Django 4.1 为 Accommodation.入住日期(db_index=True) 生成的 SQLite 索引名。
+    # DROP COLUMN 在 SQLite 上不会自动移除此索引，先显式清除历史索引。
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute('DROP INDEX IF EXISTS "accommodation_入住日期_8cb0e9e1"')
+
     targets = {
         "AuditLog": {"actor_id"},
         "LedgerEntry": {"accommodation_id", "reservation_id", "reverses_id"},
