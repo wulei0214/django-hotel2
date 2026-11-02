@@ -56,9 +56,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "django.contrib.sessions.middleware.SessionMiddleware",
+    "apps.identity.session_middleware.SplitSessionMiddleware",
     "django.middleware.common.CommonMiddleware",
-    "django.middleware.csrf.CsrfViewMiddleware",
+    "apps.identity.session_middleware.SplitCsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "apps.identity.middleware.PropertyContextMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -155,6 +155,14 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = not DEBUG
+# PMS keeps the historical sessionid/csrftoken cookies. Django Admin uses a
+# separate pair so logging into either entry point never replaces the other.
+ADMIN_SESSION_COOKIE_NAME = os.environ.get(
+    "DJANGO_ADMIN_SESSION_COOKIE_NAME", "admin_sessionid"
+)
+ADMIN_CSRF_COOKIE_NAME = os.environ.get(
+    "DJANGO_ADMIN_CSRF_COOKIE_NAME", "admin_csrftoken"
+)
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", default=False)
 SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "0"))

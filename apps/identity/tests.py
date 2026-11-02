@@ -373,3 +373,138 @@ class NineRoleCrossModulePermissionRegressionTests(TestCase):
                     code in expected[role_name],
                     msg=f"{role_name} 的运行时权限判断不符合矩阵：{code}",
                 )
+
+
+
+class SplitAuthenticationSessionTests(TestCase):
+    """PMS and Django Admin must remain logged in independently in one browser."""
+
+    def setUp(self):
+        from django.contrib.auth.models import Permission
+        from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
+
+        self.property_obj = Property.objects.get(code="DEFAULT")
+        self.pms_user = User.objects.create_user(
+            username="split-pms-user", password="Pms-pass-2026!"
+        )
+        self.admin_user = User.objects.create_superuser(
+            username="split-admin-user",
+            email="split-admin@example.com",
+            password="Admin-pass-2026!",
+        )
+        profile = StaffProfile.objects.create(
+            user=self.pms_user,
+            full_name="隔离会话测试员工",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
+        membership = PropertyStaffMembership.objects.create(
+            staff_profile=profile,
+            property=self.property_obj,
+            employee_no="SPLIT-SESSION-001",
+            position_code="FRONT_DESK",
+            status=PropertyStaffMembership.Status.ACTIVE,
+        )
+        front_desk = Group.objects.get(name="前台")
+        permission = Permission.objects.get(
+            content_type__app_label="hotelapp",
+            codename="view_accommodation",
+        )
+        front_desk.permissions.add(permission)
+        StaffRoleAssignment.objects.create(
+            membership=membership,
+            group=front_desk,
+            starts_at=timezone.now() - timedelta(minutes=1),
+        )
+
+    def _login_both_entry_points(self, client):
+        pms_response = client.post("/login/", {
+            "username": "split-pms-user",
+            "password": "Pms-pass-2026!",
+        })
+        self.assertEqual(pms_response.status_code, 302)
+        pms_session_key = client.cookies["sessionid"].value
+
+        admin_response = client.post("/admin/login/", {
+            "username": "split-admin-user",
+            "password": "Admin-pass-2026!",
+            "next": "/admin/",
+        })
+        self.assertEqual(admin_response.status_code, 302, admin_response.content)
+        admin_session_key = client.cookies["admin_sessionid"].value
+
+        self.assertTrue(pms_session_key)
+        self.assertTrue(admin_session_key)
+        self.assertNotEqual(pms_session_key, admin_session_key)
+        return pms_session_key, admin_session_key
+
+    def test_pms_and_admin_can_stay_logged_in_simultaneously(self):
+        client = self.client
+        pms_session_key, admin_session_key = self._login_both_entry_points(client)
+
+        # The same browser sends both cookies; middleware picks one based on URL.
+        self.assertEqual(client.get("/home/").status_code, 200)
+        self.assertEqual(client.get("/admin/").status_code, 200)
+        self.assertEqual(client.get("/home/").status_code, 200)
+        self.assertEqual(client.get("/admin/").status_code, 200)
+
+        self.assertEqual(client.cookies["sessionid"].value, pms_session_key)
+        self.assertEqual(client.cookies["admin_sessionid"].value, admin_session_key)
+
+    def test_pms_logout_does_not_log_out_admin(self):
+        self._login_both_entry_points(self.client)
+
+        pms_logout = self.client.get("/logout/")
+        self.assertEqual(pms_logout.status_code, 302)
+        self.assertEqual(self.client.get("/home/").status_code, 302)
+        self.assertEqual(self.client.get("/admin/").status_code, 200)
+        self.assertTrue(self.client.cookies["admin_sessionid"].value)
+
+    def test_admin_logout_does_not_log_out_pms(self):
+        self._login_both_entry_points(self.client)
+
+        admin_logout = self.client.post("/admin/logout/")
+        self.assertIn(admin_logout.status_code, (200, 302))
+        self.assertEqual(self.client.get("/admin/").status_code, 302)
+        self.assertEqual(self.client.get("/home/").status_code, 200)
+        self.assertTrue(self.client.cookies["sessionid"].value)
+
+    def test_each_entry_point_uses_its_own_csrf_cookie(self):
+        from django.test import Client
+
+        client = Client(enforce_csrf_checks=True)
+        pms_login_page = client.get("/login/")
+        self.assertEqual(pms_login_page.status_code, 200)
+        pms_csrf = client.cookies["csrftoken"].value
+
+        admin_login_page = client.get("/admin/login/")
+        self.assertEqual(admin_login_page.status_code, 200)
+        admin_csrf = client.cookies["admin_csrftoken"].value
+
+        self.assertTrue(pms_csrf)
+        self.assertTrue(admin_csrf)
+        self.assertNotEqual(pms_csrf, admin_csrf)
+        self.assertEqual(client.cookies["csrftoken"].value, pms_csrf)
+
+        admin_login = client.post(
+            "/admin/login/",
+            {
+                "username": "split-admin-user",
+                "password": "Admin-pass-2026!",
+                "next": "/admin/",
+            },
+            HTTP_X_CSRFTOKEN=admin_csrf,
+        )
+        self.assertNotEqual(admin_login.status_code, 403, admin_login.content)
+        self.assertIn("admin_sessionid", client.cookies)
+
+        pms_login = client.post(
+            "/login/",
+            {
+                "username": "split-pms-user",
+                "password": "Pms-pass-2026!",
+            },
+            HTTP_X_CSRFTOKEN=pms_csrf,
+        )
+        self.assertNotEqual(pms_login.status_code, 403, pms_login.content)
+        self.assertEqual(client.get("/home/").status_code, 200)
+        self.assertEqual(client.get("/admin/").status_code, 200)
