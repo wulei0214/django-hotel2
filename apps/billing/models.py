@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError
+from decimal import Decimal
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
@@ -317,3 +318,113 @@ class Refund(models.Model):
 
     def __str__(self):
         return f"{self.provider_ref} / {self.status}"
+
+
+class CashierShift(models.Model):
+    """现金班次对账（V1.1 M-10 P1）：前台现金收支按班次闭合，差异必须说明。"""
+
+    class ShiftStatus(models.TextChoices):
+        OPEN = "OPEN", "开班中"
+        CLOSED = "CLOSED", "已关班"
+        RECONCILED = "RECONCILED", "已对账"
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT, related_name="cashier_shifts",
+        verbose_name="所属酒店")
+    cashier = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="cashier_shifts", verbose_name="收银员")
+    opened_at = models.DateTimeField(auto_now_add=True, verbose_name="开班时间")
+    closed_at = models.DateTimeField(null=True, blank=True, verbose_name="关班时间")
+    opening_cash = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00"), verbose_name="开班备用金")
+    expected_cash = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="应收现金",
+        help_text="关班时由系统计算（开班备用金 + 现金收入 - 现金支出）")
+    actual_cash = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="实收现金")
+    variance = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="差异金额",
+        help_text="actual - expected；差异必须填写说明")
+    variance_reason = models.CharField(max_length=240, blank=True, verbose_name="差异说明")
+    status = models.CharField(
+        max_length=12, choices=ShiftStatus.choices, default=ShiftStatus.OPEN,
+        verbose_name="班次状态")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "现金班次"
+        verbose_name_plural = "现金班次"
+        ordering = ("-opened_at",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=("property", "cashier"), condition=models.Q(status="OPEN"),
+                name="uq_cashier_shift_one_open",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.property_id}/{self.cashier_id} {self.status}"
+
+
+class ChargeLine(models.Model):
+    """账单科目明细（V1.1 M-11 P1）：一笔凭证拆成房费/餐饮/服务费/税等科目行。
+
+    规则：sum(ChargeLine.amount) = LedgerEntry.amount。
+    """
+
+    class ChargeType(models.TextChoices):
+        ROOM = "ROOM", "房费"
+        FOOD = "FOOD", "餐饮"
+        LAUNDRY = "LAUNDRY", "洗衣"
+        EXTRA_BED = "EXTRA_BED", "加床"
+        SERVICE = "SERVICE", "服务费"
+        PENALTY = "PENALTY", "违约金"
+        OTHER = "OTHER", "其他"
+
+    ledger_entry = models.ForeignKey(
+        LedgerEntry, on_delete=models.PROTECT, related_name="charge_lines",
+        verbose_name="账本凭证")
+    charge_type = models.CharField(
+        max_length=12, choices=ChargeType.choices, verbose_name="科目类型")
+    revenue_code = models.CharField(max_length=32, blank=True, verbose_name="收入科目")
+    description = models.CharField(max_length=240, blank=True, verbose_name="摘要")
+    quantity = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal("1.00"), verbose_name="数量")
+    unit_price = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00"), verbose_name="单价")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="金额")
+    tax_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00"), verbose_name="税额")
+    tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("0.00"), verbose_name="税率%")
+    is_tax_inclusive = models.BooleanField(default=True, verbose_name="含税价")
+    department = models.CharField(max_length=32, blank=True, verbose_name="部门")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "账单科目明细"
+        verbose_name_plural = "账单科目明细"
+        ordering = ("ledger_entry_id", "id")
+
+    def __str__(self):
+        return f"{self.ledger_entry_id}:{self.charge_type} {self.amount}"
+
+
+class TaxLine(models.Model):
+    """税费行（V1.1 M-11 P1）：发票/税额追溯。"""
+
+    charge_line = models.ForeignKey(
+        ChargeLine, on_delete=models.PROTECT, related_name="tax_lines",
+        verbose_name="科目明细")
+    tax_code = models.CharField(max_length=32, verbose_name="税种代码")
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="税率%")
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="税额")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "税费行"
+        verbose_name_plural = "税费行"
+
+    def __str__(self):
+        return f"{self.charge_line_id}:{self.tax_code} {self.tax_amount}"

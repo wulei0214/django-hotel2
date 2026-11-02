@@ -255,3 +255,82 @@ class NightAuditRun(models.Model):
 
     def __str__(self):
         return f"{self.business_date_id} {self.status}"
+
+
+class IdempotencyRecord(models.Model):
+    """通用幂等记录（V1.1 M-14 P1）：统一幂等，不只预订。
+
+    规则：同 key 同 body → 返回首次响应；同 key 不同 body → 409 冲突；
+    并发同 key → 一个处理，其他等待或冲突；TTL 到期清理。
+    """
+
+    class RecordStatus(models.TextChoices):
+        PROCESSING = "PROCESSING", "处理中"
+        COMPLETED = "COMPLETED", "已完成"
+        FAILED = "FAILED", "失败"
+
+    property = models.ForeignKey(
+        Property, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="idempotency_records", verbose_name="物业")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="idempotency_records",
+        verbose_name="用户")
+    key = models.CharField(max_length=128, verbose_name="幂等键")
+    method = models.CharField(max_length=8, verbose_name="HTTP 方法")
+    path = models.CharField(max_length=256, verbose_name="请求路径")
+    request_hash = models.CharField(max_length=64, verbose_name="请求体哈希")
+    response_status = models.PositiveIntegerField(null=True, blank=True, verbose_name="响应状态码")
+    response_body = models.JSONField(null=True, blank=True, verbose_name="首次响应体")
+    status = models.CharField(
+        max_length=12, choices=RecordStatus.choices, default=RecordStatus.PROCESSING,
+        verbose_name="记录状态")
+    expires_at = models.DateTimeField(null=True, blank=True, verbose_name="过期时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "幂等记录"
+        verbose_name_plural = "幂等记录"
+        constraints = [
+            models.UniqueConstraint(fields=("property", "user", "key"),
+                                    name="uq_idempotency_prop_user_key"),
+        ]
+
+    def __str__(self):
+        return f"{self.key} {self.status}"
+
+
+class StatusTransition(models.Model):
+    """业务状态变更时间线（V1.1 M-15 P1/可选）：面向业务时间线（AuditEvent 面向合规）。"""
+
+    entity_type = models.CharField(max_length=64, verbose_name="实体类型")
+    entity_id = models.CharField(max_length=64, verbose_name="实体ID")
+    from_status = models.CharField(max_length=32, blank=True, verbose_name="原状态")
+    to_status = models.CharField(max_length=32, verbose_name="新状态")
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="status_transitions",
+        verbose_name="操作人")
+    reason = models.CharField(max_length=240, blank=True, verbose_name="原因")
+    request_id = models.CharField(max_length=64, blank=True, verbose_name="请求链路ID")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="时间")
+
+    class Meta:
+        verbose_name = "状态变更时间线"
+        verbose_name_plural = "状态变更时间线"
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=("entity_type", "entity_id", "-created_at"),
+                         name="idx_st_entity_time"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise ValueError("状态变更记录不可修改（只追加）")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError("状态变更记录不可删除")
+
+    def __str__(self):
+        return f"{self.entity_type}#{self.entity_id} {self.from_status}→{self.to_status}"
