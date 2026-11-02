@@ -6,6 +6,8 @@ from django.contrib.auth.models import Group, User
 from django.test import TestCase
 from django.utils import timezone
 
+from apps.core.models import Property
+
 from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from apps.identity.authorization import AuthorizationService
 from hotelapp.models import Accommodation, Client, Food, Folio, Order, Room, Staff
