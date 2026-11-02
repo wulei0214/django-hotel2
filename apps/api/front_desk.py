@@ -210,7 +210,14 @@ def _apply_search(queryset, value):
 @_front_desk_required
 def overview(request):
     property_obj = request.front_desk_property
-    day = _business_date(property_obj)
+    try:
+        day = _parse_date(
+            request.GET.get("date"), "业务日期", _business_date(property_obj)
+        )
+    except ValueError as exc:
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400
+        )
     arrivals = ReservationRoom.objects.filter(
         property=property_obj, check_in=day, reservation__status__in=ARRIVAL_STATUSES
     )

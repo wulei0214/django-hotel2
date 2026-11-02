@@ -351,7 +351,8 @@
 
     async function loadOverview() {
         try {
-            var payload = await api("overview");
+            var overviewUrl = "overview" + (state.date ? "?date=" + encodeURIComponent(state.date) : "");
+            var payload = await api(overviewUrl);
             var data = payload.data || {};
             state.date = data.business_date || state.date;
             $("fd-date").value = state.date;
@@ -416,7 +417,7 @@
     $("fd-date").addEventListener("change", function () {
         state.date = $("fd-date").value;
         state.page = 1;
-        loadList();
+        loadAll();
     });
     $("fd-assigned-filter").addEventListener("change", function () {
         state.assigned = $("fd-assigned-filter").value;

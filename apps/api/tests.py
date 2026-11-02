@@ -298,7 +298,9 @@ class FrontDeskReadApiTests(TestCase):
 
     def test_front_desk_overview_and_room_readiness(self):
         self.client.force_login(self.user)
-        overview = self.client.get("/api/v1/front-desk/overview")
+        overview = self.client.get(
+            "/api/v1/front-desk/overview", {"date": self.check_in.isoformat()}
+        )
         rooms = self.client.get("/api/v1/front-desk/rooms?readiness=READY")
         self.assertEqual(overview.status_code, 200)
         self.assertEqual(rooms.status_code, 200)
@@ -314,3 +316,12 @@ class FrontDeskReadApiTests(TestCase):
         summary = response.json()["data"]["summary"]
         self.assertEqual(summary["charges"], "600.00")
         self.assertEqual(summary["balance"], "600.00")
+
+
+    def test_front_desk_overview_rejects_invalid_business_date(self):
+        self.client.force_login(self.user)
+        response = self.client.get(
+            "/api/v1/front-desk/overview", {"date": "not-a-date"}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
