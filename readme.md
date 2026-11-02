@@ -36,12 +36,13 @@
 | 模块 | 已交付内容 |
 |---|---|
 | 平台底座 | Property 物业上下文、默认物业配置 |
-| 员工身份 | StaffProfile、PropertyStaffMembership、StaffRoleAssignment，与 Django User 分离 |
+| 员工身份与账号 | StaffProfile、PropertyStaffMembership、StaffRoleAssignment；统一生命周期 Service 管理建档、开通账号、角色授权、暂停/离职和密码重置 |
+| 前台接待 | PMS 2.0 前台工作台 /checkin/ 与只读查询 API（概览、预抵、在住、房态、订单/账单详情） |
 | 住客 | Guest 档案及物业内联系电话去重 |
 | 房型与客房 | RoomType、Room，房态拆分为占用/清洁/维修 |
 | 房价与库存 | RatePlan、DailyRate、RoomTypeInventory，按住宿日管理库存与价格 |
 | 预订 | Reservation、ReservationRoom，幂等键、价格快照、库存 Hold |
-| 在住模型 | Stay 数据模型已建立；完整前台入住/退房流程仍需后续接入 |
+| 在住模型 | Stay 数据模型已建立；新版前台工作台目前提供查询与详情，排房/办理入住/退房等写操作仍需迁移到新 Reservation / Stay / Folio / Ledger 流程 |
 | 账务 | Folio、Payment、LedgerEntry，不可变账本基础 |
 | API | 查房、创建预订、订单查询/取消、Mock 支付、OpenAPI JSON |
 | 顾客端 | 新增 `/reserve/`，旧 `/booking/` 保留 |
@@ -56,7 +57,8 @@
 | 顾客端旧预订 | `/booking/` | 历史兼容页面 |
 | 员工登录 | `/login/` | 历史员工端 |
 | 员工工作台 | `/home/` | 历史页面 |
-| 前台入住管理 | `/checkin/` | 待接入新 Reservation / Stay / Folio 流程 |
+| 前台入住管理 | `/checkin/` | PMS 2.0 前台工作台；当前为查询/详情入口，配套 API 为只读 |
+| 旧版入住管理 | `/checkin/legacy/` | 历史入住管理页面回退入口 |
 | Django Admin | `/admin/` | 管理员后台 |
 
 新页面与截图规则见 [界面说明](docs/UI_GUIDE.md)。仓库旧截图属于历史页面，不作为新预订页的当前效果图。

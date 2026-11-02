@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from apps.core.models import Property
 from .authorization import AuthorizationService
+from .services import EmployeeLifecycleError, EmployeeLifecycleService
 from .models import (
     PropertyStaffMembership,
     StaffProfile,
@@ -82,3 +83,85 @@ class AuthorizationServiceTests(TestCase):
         self.assertFalse(
             AuthorizationService.has_permission(self.user, self.property_a, code)
         )
+
+
+class EmployeeLifecycleServiceTests(TestCase):
+    """员工生命周期服务的关键输入校验与状态映射。"""
+
+    def setUp(self):
+        self.property_obj, _ = Property.objects.get_or_create(
+            code="DEFAULT", defaults={"name": "默认测试酒店"}
+        )
+        self.manager = User.objects.create_user(
+            username="lifecycle-manager", password="test-pass-123"
+        )
+        self.employee = User.objects.create_user(
+            username="lifecycle-employee", password="test-pass-123"
+        )
+        self.profile = StaffProfile.objects.create(
+            user=self.employee, full_name="同名员工", phone="13800001111",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
+        self.membership = PropertyStaffMembership.objects.create(
+            staff_profile=self.profile, property=self.property_obj,
+            employee_no="LIFE-001", status=PropertyStaffMembership.Status.ACTIVE,
+        )
+        self.group = Group.objects.create(name="LIFECYCLE_FRONT_DESK")
+        self.assignment = StaffRoleAssignment.objects.create(
+            membership=self.membership, group=self.group,
+            starts_at=timezone.now() - timedelta(minutes=1),
+        )
+
+    def test_duplicate_phone_is_rejected_even_for_same_name(self):
+        with self.assertRaises(EmployeeLifecycleError):
+            EmployeeLifecycleService.create_employee(
+                full_name="同名员工", employee_no="LIFE-002",
+                phone=" 13800001111 ",
+            )
+        self.assertEqual(StaffProfile.objects.filter(phone="13800001111").count(), 1)
+
+    def test_suspended_status_maps_to_inactive_profile_and_suspended_membership(self):
+        EmployeeLifecycleService.set_employment_status(
+            self.profile, status="SUSPENDED", ended_by=self.manager, reason="测试暂停"
+        )
+        self.profile.refresh_from_db()
+        self.membership.refresh_from_db()
+        self.assignment.refresh_from_db()
+        self.employee.refresh_from_db()
+        self.assertEqual(self.profile.employment_status, StaffProfile.EmploymentStatus.INACTIVE)
+        self.assertEqual(self.membership.status, PropertyStaffMembership.Status.SUSPENDED)
+        self.assertIsNone(self.assignment.ends_at)
+        self.assertTrue(self.employee.is_active)
+
+    def test_invalid_employment_status_is_rejected_without_mutation(self):
+        with self.assertRaises(EmployeeLifecycleError):
+            EmployeeLifecycleService.set_employment_status(
+                self.profile, status="PAUSED", ended_by=self.manager
+            )
+        self.profile.refresh_from_db()
+        self.membership.refresh_from_db()
+        self.assertEqual(self.profile.employment_status, StaffProfile.EmploymentStatus.ACTIVE)
+        self.assertEqual(self.membership.status, PropertyStaffMembership.Status.ACTIVE)
+
+    def test_role_assignment_rejects_non_positive_effective_period(self):
+        now = timezone.now()
+        with self.assertRaises(EmployeeLifecycleError):
+            EmployeeLifecycleService.assign_role(
+                membership=self.membership, group=self.group,
+                starts_at=now, ends_at=now, granted_by=self.manager,
+            )
+
+    def test_role_assignment_normalizes_naive_end_datetime(self):
+        end_at = (timezone.localtime() + timedelta(days=1)).replace(tzinfo=None)
+        future_group = Group.objects.create(name="LIFECYCLE_TEMP_ROLE")
+        assignment = EmployeeLifecycleService.assign_role(
+            membership=self.membership, group=future_group,
+            ends_at=end_at, granted_by=self.manager,
+        )
+        self.assertTrue(timezone.is_aware(assignment.ends_at))
+
+    def test_role_assignment_requires_a_group(self):
+        with self.assertRaises(EmployeeLifecycleError):
+            EmployeeLifecycleService.assign_role(
+                membership=self.membership, group=None, granted_by=self.manager
+            )

@@ -10,6 +10,7 @@
   * 授权历史不物理删除：调岗/撤销用 ends_at 关闭
 """
 import logging
+from datetime import datetime
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -66,6 +67,7 @@ class EmployeeLifecycleService:
             raise EmployeeLifecycleError("未初始化 DEFAULT 物业，无法建档")
         full_name = (full_name or "").strip()
         employee_no = (employee_no or "").strip()
+        phone = (phone or "").strip()
         if not full_name:
             raise EmployeeLifecycleError("员工姓名不能为空")
         if not employee_no:
@@ -73,8 +75,7 @@ class EmployeeLifecycleService:
         if PropertyStaffMembership.objects.filter(
                 property=property_obj, employee_no=employee_no).exists():
             raise EmployeeLifecycleError(f"工号 {employee_no} 已存在，不能重复建档")
-        if phone and StaffProfile.objects.filter(phone=phone).exclude(
-                full_name=full_name).exists():
+        if phone and StaffProfile.objects.filter(phone=phone).exists():
             raise EmployeeLifecycleError(f"手机号 {phone} 已被其他员工使用")
 
         user = None
@@ -115,6 +116,9 @@ class EmployeeLifecycleService:
     def provision_account(cls, profile, *, username, password, granted_by=None):
         """为已有档案开通登录账号（或修复缺失关联）；幂等：已绑定同账号直接返回。"""
         User = get_user_model()
+        username = (username or "").strip()
+        if not username:
+            raise EmployeeLifecycleError("登录账号不能为空")
         if profile.user_id:
             if profile.user.username == username:
                 return profile.user
@@ -167,13 +171,31 @@ class EmployeeLifecycleService:
 
         职责分离（方案 §6.2/§10.3）：操作者不能给自己分配任何角色（禁止自我提权）。
         """
+        if group is None:
+            raise EmployeeLifecycleError("请选择有效的角色")
         target_user = membership.staff_profile.user
         if (granted_by is not None and target_user is not None
                 and granted_by.pk == target_user.pk):
             raise EmployeeLifecycleError(
                 "不能为自己分配角色（禁止自我提权）；如需调整请联系其他管理员")
         now = timezone.now()
-        starts_at = starts_at or now
+        if starts_at is None:
+            starts_at = now
+        elif not isinstance(starts_at, datetime):
+            raise EmployeeLifecycleError("角色授权开始时间无效")
+        elif timezone.is_naive(starts_at):
+            starts_at = timezone.make_aware(
+                starts_at, timezone.get_current_timezone()
+            )
+        if ends_at is not None:
+            if not isinstance(ends_at, datetime):
+                raise EmployeeLifecycleError("角色授权结束时间无效")
+            if timezone.is_naive(ends_at):
+                ends_at = timezone.make_aware(
+                    ends_at, timezone.get_current_timezone()
+                )
+            if ends_at <= starts_at:
+                raise EmployeeLifecycleError("角色授权结束时间必须晚于开始时间")
         active = StaffRoleAssignment.objects.filter(
             membership=membership, group=group,
             starts_at__lte=now).filter(
@@ -216,24 +238,35 @@ class EmployeeLifecycleService:
         离职：终止全部当前授权、Membership 置 TERMINATED 并填 ended_at；
         deactivate_user=None 表示按策略自动处理（离职→停用账号，暂停→保留）。
         """
+        # 页面使用 SUSPENDED 表示暂停任职；档案模型以 INACTIVE 记录停用状态。
+        if status not in (
+                StaffProfile.EmploymentStatus.ACTIVE,
+                StaffProfile.EmploymentStatus.INACTIVE,
+                StaffProfile.EmploymentStatus.TERMINATED,
+                "SUSPENDED"):
+            raise EmployeeLifecycleError("员工状态无效")
+        profile_status = (
+            StaffProfile.EmploymentStatus.INACTIVE
+            if status == "SUSPENDED" else status
+        )
         # E-35：不能对自己执行暂停/离职（避免最后一个管理者把自己锁在门外）
         target_user = profile.user
         if (ended_by is not None and target_user is not None
                 and ended_by.pk == target_user.pk
-                and status != StaffProfile.EmploymentStatus.ACTIVE):
+                and profile_status != StaffProfile.EmploymentStatus.ACTIVE):
             raise EmployeeLifecycleError(
                 "不能对自己执行停职/离职；如需移交请联系其他管理员或平台管理员")
         now = timezone.now()
-        profile.employment_status = status
+        profile.employment_status = profile_status
         profile.save(update_fields=("employment_status", "updated_at"))
         membership = cls.get_membership(profile)
         ended_count = 0
         if membership is not None:
-            if status == StaffProfile.EmploymentStatus.ACTIVE:
+            if profile_status == StaffProfile.EmploymentStatus.ACTIVE:
                 membership.status = PropertyStaffMembership.Status.ACTIVE
                 membership.ended_at = None
             else:
-                if status == StaffProfile.EmploymentStatus.TERMINATED:
+                if profile_status == StaffProfile.EmploymentStatus.TERMINATED:
                     membership.status = PropertyStaffMembership.Status.TERMINATED
                     membership.ended_at = timezone.localdate()
                     for a in cls.active_assignments(membership):
@@ -247,15 +280,15 @@ class EmployeeLifecycleService:
         if user is not None:
             if deactivate_user is True or (
                     deactivate_user is None
-                    and status == StaffProfile.EmploymentStatus.TERMINATED):
+                    and profile_status == StaffProfile.EmploymentStatus.TERMINATED):
                 user.is_active = False
                 user.save(update_fields=("is_active",))
-            elif status == StaffProfile.EmploymentStatus.ACTIVE:
+            elif profile_status == StaffProfile.EmploymentStatus.ACTIVE:
                 user.is_active = True
                 user.save(update_fields=("is_active",))
         audit.info("员工状态变更 user=%s 员工=%s 状态=%s 终止授权=%d 原因=%s",
                    getattr(ended_by, "username", "system"),
-                   profile.full_name, status, ended_count, reason or "-")
+                   profile.full_name, profile_status, ended_count, reason or "-")
         return membership
 
     # ---------- 密码重置（审计只记事件，不记密码值） ----------
