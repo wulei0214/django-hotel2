@@ -26,7 +26,7 @@ class BreakGlassServiceTests(TestCase):
         self.actor = User.objects.create_user(
             username="breakglass-actor", password="BreakGlass@123"
         )
-        self.actor_group = Group.objects.create(name="值班经理")
+        self.actor_group = Group.objects.get(name="值班经理")
         reopen_permission = Permission.objects.get(
             content_type__app_label="hotelapp",
             codename="business_date_reopen",
@@ -148,7 +148,7 @@ class BreakGlassServiceTests(TestCase):
         reviewer = User.objects.create_user(
             username="breakglass-reviewer", password="Reviewer@123"
         )
-        reviewer_group = Group.objects.create(name="店长-事后复核")
+        reviewer_group, _ = Group.objects.get_or_create(name="店长-事后复核")
         review_permission = Permission.objects.get(
             content_type__app_label="core",
             codename="breakglass_review",
