@@ -77,6 +77,8 @@ urlpatterns = [
     path('system/', views.system_info),
     path('staff_toggle/', views.staff_toggle),
     path('export/staff/', views.export_staff),
+    path('export/staff/request/', views.request_staff_export),
+    path('export/staff/approve/<int:approval_id>/', views.approve_staff_export),
     path('export/<str:module>/', views.export_module),
     path('permissions/save/', permission_admin.permission_admin_save),
     path('index/', views.index),

@@ -192,13 +192,29 @@ class SensitiveExportPermissionTests(TestCase):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 403, f"{url} 需「导出敏感数据」权限")
 
-    def test_finance_can_export_sensitive_csv(self):
-        """财务持有 view_staff（决策 7-2 薪酬可见）+ export_pii → 可导出员工 CSV"""
+    def test_staff_salary_export_requires_reason_and_second_manager_approval(self):
         self.fin = _make_user("fin401", "财务")
         self.client.force_login(self.fin)
-        response = self.client.get("/export/staff/")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("text/csv", response["Content-Type"])
+        self.assertEqual(self.client.get("/export/staff/").status_code, 410)
+        missing_reason = self.client.post(
+            "/export/staff/request/", {},
+            HTTP_IDEMPOTENCY_KEY="salary-export-001")
+        self.assertEqual(missing_reason.status_code, 400)
+        request = self.client.post(
+            "/export/staff/request/",
+            {"reason": "年度薪酬核对及人力成本预算审查"},
+            HTTP_IDEMPOTENCY_KEY="salary-export-001")
+        self.assertEqual(request.status_code, 201)
+        approval_id = request.json()["approval_id"]
+        self.assertEqual(
+            self.client.post(f"/export/staff/approve/{approval_id}/").status_code,
+            403,
+            "申请人不得审批自己的敏感薪酬导出",
+        )
+        self.client.force_login(self.dm)
+        download = self.client.post(f"/export/staff/approve/{approval_id}/")
+        self.assertEqual(download.status_code, 200)
+        self.assertIn("text/csv", download["Content-Type"])
 
 
 class MatrixSaveConsistencyTests(TestCase):
@@ -343,9 +359,17 @@ class AdminHardeningTests(TestCase):
         for admin_cls, model in [(AccommodationAdmin, Accommodation), (ClientAdmin, Client),
                                  (RoomAdmin, Room), (StaffAdmin, Staff),
                                  (FinanceRecordAdmin, FinanceRecord), (NightAuditAdmin, NightAudit)]:
+            admin_obj = admin_cls(model, self.admin_site)
             self.assertFalse(
-                admin_cls(model, self.admin_site).has_delete_permission(request),
+                admin_obj.has_delete_permission(request),
                 f"{model.__name__} 的 Admin 物理删除必须关闭")
+            self.assertFalse(
+                admin_obj.has_add_permission(request),
+                f"{model.__name__} 的 Admin 新增必须关闭")
+            if model.__name__ != "NightAudit":
+                self.assertFalse(
+                    admin_obj.has_change_permission(request),
+                    f"{model.__name__} 的 Admin 修改必须关闭")
 
     def test_order_status_readonly_in_admin(self):
         """已存在订单的状态/冲账留痕在 Admin 只读（评审 P0-2-2）"""
@@ -423,7 +447,9 @@ class SensitiveFieldMaskingTests(TestCase):
     def test_reveal_requires_change_permission(self):
         """完整值仅限持修改权岗位（前台/经理）；财务只读 403"""
         self.client.force_login(self.fin)
-        response = self.client.post("/client/reveal_id/", {"id": self.client_fd.顾客id})
+        response = self.client.post("/client/reveal_id/", {
+            "id": self.client_fd.顾客id, "reason": "办理入住身份核验"
+        })
         self.assertEqual(response.status_code, 403, "财务无 change_client 不得 reveal")
 
         self.client.force_login(self.fd)
@@ -439,7 +465,9 @@ class SensitiveFieldMaskingTests(TestCase):
         self.assertNotIn("13812345678", page.content.decode("utf-8"))
         self.assertIn("138****5678", page.content.decode("utf-8"))
 
-        response = self.client.post("/vip/reveal_tel/", {"id": vip.会员编号})
+        response = self.client.post("/vip/reveal_tel/", {
+            "id": vip.会员编号, "reason": "办理会员联系电话核验"
+        })
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["tel"], "13812345678")
 
@@ -820,7 +848,9 @@ class AuditEventAppendOnlyTests(TestCase):
         client = Client.objects.create(姓名="审计测试客", 身份证号="110101199001010016")
         fd = _make_user("fd_audit", "前台")
         self.client.force_login(fd)
-        self.client.post("/client/reveal_id/", {"id": client.顾客id})
+        self.client.post("/client/reveal_id/", {
+            "id": client.顾客id, "reason": "办理入住身份核验"
+        })
         from apps.core.models import AuditEvent
         event = AuditEvent.objects.filter(
             action="guest.pii_reveal", entity_id=str(client.顾客id)).first()

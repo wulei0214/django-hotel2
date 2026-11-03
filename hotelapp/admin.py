@@ -24,6 +24,12 @@ class NoAdminDeleteMixin:
     不能等价于物理删除权。物理清理属于运维通道（manage.py/SQL，先备份）。
     """
 
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
     def has_delete_permission(self, request, obj=None):
         return False
 
@@ -40,17 +46,30 @@ class OrderStatusReadonlyMixin:
 
 class AccommodationAdmin(OrderStatusReadonlyMixin, NoAdminDeleteMixin, admin.ModelAdmin):
     '''客房订单：状态/冲账留痕只读，禁止物理删除'''
-    list_display = ("顾客id", "客房编号", "状态", "联系电话", "入住时间", "退房时间",
+    list_display = ("顾客id", "客房编号", "状态", "masked_phone", "入住时间", "退房时间",
                     "收款金额", "押金", "冲账人")
     list_filter = ("状态", "客房编号", "入住时间")
+    exclude = ("联系电话",)
     list_per_page = 15
+
+    @admin.display(description="联系电话（脱敏）")
+    def masked_phone(self, obj):
+        value = (obj.联系电话 or "").strip()
+        return value[:3] + "****" + value[-4:] if len(value) >= 8 else ("已隐藏" if value else "—")
 
 
 class ClientAdmin(NoAdminDeleteMixin, admin.ModelAdmin):
     '''顾客信息：身份证号唯一，禁止物理删除（历史订单引用）'''
-    list_display = ("顾客id", "姓名", "身份证号")
-    list_filter = ("顾客id", "姓名", "身份证号")
+    list_display = ("顾客id", "姓名", "masked_identity")
+    list_filter = ("顾客id", "姓名")
+    search_fields = ("姓名",)
+    exclude = ("身份证号",)
     list_per_page = 15
+
+    @admin.display(description="身份证号（脱敏）")
+    def masked_identity(self, obj):
+        value = (obj.身份证号 or "").strip()
+        return value[:2] + "*" * max(0, len(value) - 4) + value[-2:] if len(value) >= 6 else ("已隐藏" if value else "—")
 
 
 class RoomAdmin(NoAdminDeleteMixin, admin.ModelAdmin):
@@ -62,16 +81,28 @@ class RoomAdmin(NoAdminDeleteMixin, admin.ModelAdmin):
 
 class StaffAdmin(NoAdminDeleteMixin, admin.ModelAdmin):
     '''员工信息：月薪可见性受 view_staff 门控（字段遮罩待 P1-1）'''
-    list_display = ("员工id", "姓名", "职务", "月薪", "工龄")
-    list_filter = ("员工id", "姓名", "职务", "月薪", "工龄")
+    list_display = ("员工id", "姓名", "职务", "salary_hidden", "工龄")
+    list_filter = ("员工id", "姓名", "职务")
+    exclude = ("月薪",)
     list_per_page = 15
+
+    @admin.display(description="月薪")
+    def salary_hidden(self, obj):
+        return "受控字段"
 
 
 class VipAdmin(NoAdminDeleteMixin, admin.ModelAdmin):
     '''会员信息：联系方式唯一，禁止物理删除'''
-    list_display = ("会员编号", "姓名", "会员等级", "联系方式")
-    list_filter = ("会员编号", "姓名", "会员等级", "联系方式")
+    list_display = ("会员编号", "姓名", "会员等级", "masked_phone")
+    list_filter = ("会员编号", "姓名", "会员等级")
+    search_fields = ("姓名", "会员编号")
+    exclude = ("联系方式",)
     list_per_page = 15
+
+    @admin.display(description="联系方式（脱敏）")
+    def masked_phone(self, obj):
+        value = (obj.联系方式 or "").strip()
+        return value[:3] + "****" + value[-4:] if len(value) >= 8 else ("已隐藏" if value else "—")
 
 
 class FinanceRecordAdmin(NoAdminDeleteMixin, admin.ModelAdmin):

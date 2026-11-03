@@ -262,16 +262,91 @@ def staff_toggle(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.view_staff')
-@pms_permission_required("hotelapp.export_pii")
 def export_staff(request):
-    """员工数据导出（CSV，UTF-8 BOM 兼容 Excel）；含月薪，需「导出敏感数据」权限"""
+    """旧版敏感员工 CSV 通道停用；完整薪酬导出必须走双人审批。"""
+    return HttpResponse(
+        "旧版薪酬导出已关闭。请先申请敏感导出审批，再由另一位经理账号批准并下载。",
+        status=410,
+    )
+
+
+@staff_required
+def request_staff_export(request):
+    """申请员工薪酬敏感导出；必须填写详细理由并由另一位经理审批。"""
+    if request.method != "POST":
+        return HttpResponse("请使用 POST 提交导出申请。", status=405)
+    if not _has_permission(request, "hotelapp.export_pii"):
+        return HttpResponse("当前岗位没有敏感数据导出申请权限。", status=403)
+    reason = (request.POST.get("reason") or "").strip()
+    if len(reason) < 8 or len(reason) > 240:
+        return HttpResponse("敏感导出必须填写 8 至 240 个字符的详细用途/原因。", status=400)
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        return HttpResponse("当前物业上下文不可用。", status=503)
+    key = (request.headers.get("Idempotency-Key") or "").strip()
+    if not key or len(key) > 64:
+        return HttpResponse("必须提供 1 至 64 个字符的 Idempotency-Key。", status=400)
+    import hashlib
+    entity_id = hashlib.sha256(
+        f"{property_obj.pk}:{request.user.pk}:staff-export:{key}".encode("utf-8")
+    ).hexdigest()
+    from apps.billing.services_v2 import ApprovalService
+    try:
+        approval, created = ApprovalService.request_approval(
+            property_obj=property_obj, action_code="privacy.export_staff",
+            entity_type="StaffExport", entity_id=entity_id,
+            requested_by=request.user, reason=reason,
+            payload={"module": "staff", "contains_salary": True,
+                     "format": "csv", "requested_by": request.user.pk})
+    except ValueError as exc:
+        return HttpResponse(str(exc), status=400)
+    return JsonResponse({
+        "approval_id": approval.pk, "status": approval.status,
+        "created": created,
+        "message": "已提交敏感导出审批；审批人必须是另一位值班经理或店长。",
+    }, status=201 if created else 200, json_dumps_params={"ensure_ascii": False})
+
+
+@staff_required
+def approve_staff_export(request, approval_id):
+    """另一位经理审批并下载薪酬 CSV；审批动作与下载绑定为一次 POST。"""
+    if request.method != "POST":
+        return HttpResponse("请使用 POST 执行审批和下载。", status=405)
+    if not _has_role(request.user, "值班经理", "店长"):
+        return HttpResponse("只有另一位值班经理或店长可以审批薪酬导出。", status=403)
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        return HttpResponse("当前物业上下文不可用。", status=503)
+    from apps.billing.models import ApprovalRecord
+    from apps.billing.services_v2 import ApprovalService
+    approval = ApprovalRecord.objects.filter(
+        pk=approval_id, property=property_obj,
+        action_code="privacy.export_staff", entity_type="StaffExport",
+    ).first()
+    if approval is None:
+        return HttpResponse("导出审批不存在或不属于当前物业。", status=404)
+    try:
+        approval = ApprovalService.approve(
+            approval.pk, approved_by=request.user, property_obj=property_obj)
+    except ValueError as exc:
+        return HttpResponse(str(exc), status=409)
+    if approval.status != ApprovalRecord.Status.APPROVED:
+        return HttpResponse("导出审批已过期或未获批准。", status=409)
+    rows = list(Staff.objects.order_by("员工id"))
     response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
     response["Content-Disposition"] = 'attachment; filename="staff.csv"'
     writer = csv.writer(response)
     writer.writerow(["员工编号", "姓名", "职务", "月薪", "工龄", "是否启用"])
-    for s in Staff.objects.order_by("员工id"):
-        writer.writerow([s.员工id, s.姓名, s.职务, s.月薪, s.工龄, "启用" if s.启用 else "停用"])
+    for s in rows:
+        writer.writerow([s.员工id, s.姓名, s.职务, s.月薪, s.工龄,
+                         "启用" if s.启用 else "停用"])
+    from apps.core.models import AuditEvent
+    AuditEvent.record(
+        action="privacy.export_staff", entity_type="StaffExport",
+        entity_id=approval.entity_id, actor=request.user,
+        property_obj=property_obj,
+        after={"approval_id": approval.pk, "row_count": len(rows)},
+        reason=approval.reason, request=request)
     return response
 
 
@@ -1282,12 +1357,12 @@ def export_module(request, module):
     if not MODULE_REGISTRY.get(module, True):
         messages.warning(request, "该模块已对接第三方系统，暂不开放；历史数据已保留。")
         return redirect("/home/")
+    if not _has_role(request.user, "店长", "财务"):
+        return HttpResponse("首版常规数据导出仅开放给店长和财务。", status=403)
     model = info[1]
     if not _has_permission(request, f"hotelapp.view_{module}"):
         return HttpResponse("没有导出权限", status=403)
-    # 敏感字段（顾客身份证/会员联系方式）不随查看权限导出：需独立「导出敏感数据」授权
-    if module in ("client", "vip") and not _has_permission(request, "hotelapp.export_pii"):
-        return HttpResponse("导出含敏感字段的数据需要「导出敏感数据」权限", status=403)
+    # 顾客身份证与会员电话只导出脱敏值；完整值不通过常规 CSV 导出。
     response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
     response["Content-Disposition"] = f'attachment; filename="{module}.csv"'
     writer = csv.writer(response)
@@ -1301,57 +1376,75 @@ def export_module(request, module):
         "order": ["id", "顾客编号", "菜品编号", "服务员编号", "桌号", "状态"],
         "accommodation": ["id", "顾客id", "客房编号", "入住时间", "状态", "收款金额"],
     }[module]
+    exported_count = 0
     for row in model.objects.order_by(*[model._meta.pk.name]).values_list(*field_names):
         row = list(row)
+        exported_count += 1
         if module == "client":
             # V2 §7.1：身份证完整值导出默认禁止（CSV 输出遮罩值，紧急合规导出待审批流程）
             row[2] = (row[2] or "")[:2] + "*" * max(0, len(row[2] or "") - 4) + (row[2] or "")[-2:] if len(row[2] or "") >= 6 else row[2]
         elif module == "vip":
             row[3] = (row[3] or "")[:3] + "****" + (row[3] or "")[-4:] if len(row[3] or "") >= 8 else row[3]
         writer.writerow([str(x) for x in row])
+    from apps.core.models import AuditEvent
+    AuditEvent.record(
+        action="legacy.export", entity_type="LegacyExport",
+        entity_id=module, actor=request.user,
+        property_obj=getattr(request, "property", None),
+        after={"module": module, "row_count": exported_count,
+               "pii_masked": module in ("client", "vip")},
+        reason="常规业务数据导出", request=request)
     return response
 
 # ---------- 敏感字段 reveal（V2 §7.3：完整值按需显示 + 理由审计） ----------
 @staff_required
-@pms_permission_required('hotelapp.change_client')
+@pms_permission_required('hotelapp.guest_document_reveal')
 def client_reveal_id(request):
     """取顾客身份证完整值：仅限持修改权岗位（前台/值班经理/店长），
     用于行内核验/修正；每次读取写审计日志（记录操作者与对象，不记录敏感原文）。"""
     if request.method != "POST":
         return HttpResponse("非法请求", status=400)
+    reason = (request.POST.get("reason") or "").strip()
+    if len(reason) < 8 or len(reason) > 240:
+        return HttpResponse("揭示身份证必须填写 8 至 240 个字符的业务用途/原因", status=400)
     try:
         item = Client.objects.get(顾客id=request.POST.get("id"))
     except (Client.DoesNotExist, ValueError):
         return HttpResponse("顾客不存在", status=404)
     logging.getLogger("hotel.audit").info(
-        "PII reveal 顾客身份证 user=%s 顾客id=%s 用途=行内编辑/核验",
-        request.user.username, item.顾客id)
+        "PII reveal 顾客身份证 user=%s 顾客id=%s reason=%s",
+        request.user.username, item.顾客id, reason)
     from apps.core.models import AuditEvent
     AuditEvent.record(
         action="guest.pii_reveal", entity_type="Client", entity_id=item.顾客id,
-        actor=request.user, reason="行内编辑/核验",
+        actor=request.user, property_obj=getattr(request, "property", None),
+        reason=reason,
         after={"masked": (item.身份证号 or "")[:2] + "****" + (item.身份证号 or "")[-2:]},
         request=request)
     return JsonResponse({"identify": item.身份证号 or ""})
 
 
 @staff_required
-@pms_permission_required('hotelapp.change_vip')
+@pms_permission_required('hotelapp.guest_phone_reveal')
 def vip_reveal_tel(request):
     """取会员联系方式完整值：仅限持修改权岗位；读取写审计。"""
     if request.method != "POST":
         return HttpResponse("非法请求", status=400)
+    reason = (request.POST.get("reason") or "").strip()
+    if len(reason) < 8 or len(reason) > 240:
+        return HttpResponse("揭示电话必须填写 8 至 240 个字符的业务用途/原因", status=400)
     try:
         item = Vip.objects.get(会员编号=request.POST.get("id"))
     except (Vip.DoesNotExist, ValueError):
         return HttpResponse("会员不存在", status=404)
     logging.getLogger("hotel.audit").info(
-        "PII reveal 会员联系方式 user=%s 会员编号=%s 用途=行内编辑/服务",
-        request.user.username, item.会员编号)
+        "PII reveal 会员联系方式 user=%s 会员编号=%s reason=%s",
+        request.user.username, item.会员编号, reason)
     from apps.core.models import AuditEvent
     AuditEvent.record(
         action="member.pii_reveal", entity_type="Vip", entity_id=item.会员编号,
-        actor=request.user, reason="行内编辑/服务",
+        actor=request.user, property_obj=getattr(request, "property", None),
+        reason=reason,
         after={"masked": (item.联系方式 or "")[:3] + "****" + (item.联系方式 or "")[-4:]},
         request=request)
     return JsonResponse({"tel": item.联系方式 or ""})
