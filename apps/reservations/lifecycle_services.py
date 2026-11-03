@@ -8,7 +8,8 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from apps.billing.models import Folio, LedgerEntry, Payment, Refund
+from apps.billing.models import ApprovalRecord, Folio, LedgerEntry, Payment, Refund
+from apps.billing.services_v2 import ApprovalRecord as RegisteredApprovalRecord, ApprovalService
 from apps.inventory.models import DailyRate, Room, RoomTypeInventory
 from apps.inventory.services import InventoryUnavailable, release_sold_inventory_for_room_line
 from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
@@ -402,6 +403,14 @@ def request_refund(*, property_obj, payment_id, amount, reason, idempotency_key,
         reason=reason, idempotency_key=key, provider_ref="RFD-" + uuid.uuid4().hex.upper(),
         status=Refund.Status.PENDING, requested_by=requested_by,
     )
+    approval, _ = ApprovalService.request_approval(
+        property_obj=property_obj, action_code="billing.refund",
+        entity_type="Refund", entity_id=refund.pk,
+        requested_by=requested_by, reason=reason,
+        payload={"payment_id": payment.pk, "amount": str(amount),
+                 "currency": payment.currency})
+    refund.approval_record = approval
+    refund.save(update_fields=("approval_record",))
     return refund, True
 
 
@@ -419,6 +428,22 @@ def approve_refund(*, property_obj, refund_id, approved_by):
         raise LifecycleOperationError("只有待审批退款申请可以审批。")
     if refund.requested_by_id == approved_by.pk:
         raise LifecycleOperationError("退款申请人不能审批自己的退款申请。")
+    approval = refund.approval_record
+    if approval is None:
+        # 兼容迁移前尚未关联审批记录的待处理退款：补建后仍由第二人审批。
+        approval, _ = ApprovalService.request_approval(
+            property_obj=property_obj, action_code="billing.refund",
+            entity_type="Refund", entity_id=refund.pk,
+            requested_by=refund.requested_by, reason=refund.reason,
+            payload={"payment_id": refund.payment_id,
+                     "amount": str(refund.amount), "currency": refund.currency})
+        refund.approval_record = approval
+        refund.save(update_fields=("approval_record",))
+    if approval.status == ApprovalRecord.Status.PENDING:
+        approval = ApprovalService.approve(
+            approval.pk, approved_by=approved_by, property_obj=property_obj)
+    if approval.status != ApprovalRecord.Status.APPROVED or approval.approved_by_id != approved_by.pk:
+        raise LifecycleOperationError("退款审批记录未由当前审批人批准。")
     payment = Payment.objects.select_for_update().get(pk=refund.payment_id, property=property_obj)
     successful_total = Refund.objects.filter(
         payment=payment, status=Refund.Status.SUCCEEDED
@@ -442,6 +467,12 @@ def approve_refund(*, property_obj, refund_id, approved_by):
     refund.approved_by = approved_by
     refund.processed_at = timezone.now()
     refund.save(update_fields=("status", "approved_by", "processed_at"))
+    from apps.core.models import AuditEvent
+    AuditEvent.record(
+        action="billing.refund_completed", entity_type="Refund",
+        entity_id=refund.pk, actor=approved_by, property_obj=property_obj,
+        after={"amount": str(refund.amount), "status": refund.status},
+        reason=refund.reason)
 
     refunded_total = Refund.objects.filter(
         payment=payment, status=Refund.Status.SUCCEEDED

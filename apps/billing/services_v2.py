@@ -15,75 +15,7 @@ from django.utils import timezone
 from apps.core.models import AuditEvent, Property
 
 
-class ApprovalRecord(models.Model):
-    """审批事实记录（V1.2 §15.3 Q-05/Q-06/Q-14 P0）。
-
-    规则：申请人≠审批人；同一审批只能执行一次；审批后参数变更需重新申请；
-    通过/拒绝/过期/撤销均写 AuditEvent；不可由 Admin 修改或删除。
-    """
-
-    class Status(models.TextChoices):
-        PENDING = "PENDING", "待审批"
-        APPROVED = "APPROVED", "已批准"
-        REJECTED = "REJECTED", "已驳回"
-        EXPIRED = "EXPIRED", "已过期"
-        CANCELLED = "CANCELLED", "已撤销"
-
-    property = models.ForeignKey(
-        Property, on_delete=models.PROTECT, related_name="approval_records",
-        verbose_name="物业")
-    action_code = models.CharField(
-        max_length=64, verbose_name="动作代码",
-        help_text="如 billing.refund.approve / night_audit.reopen")
-    entity_type = models.CharField(max_length=64, verbose_name="目标实体类型")
-    entity_id = models.CharField(max_length=64, verbose_name="目标实体ID")
-    requested_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
-        related_name="approvals_requested", verbose_name="申请人")
-    approved_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True,
-        on_delete=models.PROTECT, related_name="approvals_approved",
-        verbose_name="审批人")
-    status = models.CharField(
-        max_length=12, choices=Status.choices, default=Status.PENDING,
-        verbose_name="审批状态")
-    reason = models.CharField(max_length=240, verbose_name="申请原因")
-    payload_snapshot = models.JSONField(
-        null=True, blank=True, verbose_name="申请参数快照",
-        help_text="审批通过后不可变更；变更需重新申请")
-    idempotency_key = models.CharField(
-        max_length=64, unique=True, verbose_name="幂等键")
-    approved_at = models.DateTimeField(null=True, blank=True, verbose_name="审批时间")
-    expires_at = models.DateTimeField(
-        null=True, blank=True, verbose_name="过期时间",
-        help_text="超时未审批自动过期")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="申请时间")
-
-    class Meta:
-        verbose_name = "审批记录"
-        verbose_name_plural = "审批记录"
-        ordering = ("-created_at",)
-        indexes = [
-            models.Index(fields=("action_code", "status"), name="idx_appr_action_status"),
-            models.Index(fields=("entity_type", "entity_id"), name="idx_appr_entity"),
-        ]
-
-    def save(self, *args, **kwargs):
-        if self.pk is not None and self.status != self.Status.PENDING:
-            # 已决策的审批不可修改（只能通过新记录撤销/重做）
-            if kwargs.pop("force_update", False) is not True:
-                allow_fields = {"approved_by", "approved_at", "status"}
-                update_fields = kwargs.get("update_fields", None)
-                if update_fields and set(update_fields) - allow_fields:
-                    raise ValueError("审批记录已决策字段不可修改")
-        super().save(*args, **kwargs)
-
-    def delete(self, *args, **kwargs):
-        raise ValueError("审批记录不可删除")
-
-    def __str__(self):
-        return f"{self.action_code} {self.entity_type}#{self.entity_id} {self.status}"
-
+from apps.billing.models import ApprovalRecord
 
 class ApprovalService:
     """审批流程唯一写入口（Q-05/Q-06/Q-14 SoD 强制）。"""
@@ -93,14 +25,23 @@ class ApprovalService:
     def request_approval(*, property_obj, action_code, entity_type, entity_id,
                          requested_by, reason, payload=None, expires_hours=48):
         """发起审批申请；幂等（同 key 返回已有记录）。"""
-        idem_key = f"appr:{action_code}:{entity_type}:{entity_id}:{requested_by.pk}"
+        import hashlib
+        reason = str(reason or "").strip()
+        if not reason or len(reason) > 240:
+            raise ValueError("高危操作必须填写 1 至 240 个字符的原因。")
+        if not action_code or not entity_type or entity_id in (None, ""):
+            raise ValueError("审批动作和目标对象不能为空。")
+        if expires_hours <= 0 or expires_hours > 168:
+            raise ValueError("审批有效期必须在 1 至 168 小时之间。")
+        raw_key = f"{property_obj.pk}:{action_code}:{entity_type}:{entity_id}:{requested_by.pk}"
+        idem_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
         existing = ApprovalRecord.objects.filter(idempotency_key=idem_key).first()
         if existing:
             return existing, False
         record = ApprovalRecord.objects.create(
             property=property_obj, action_code=action_code,
             entity_type=entity_type, entity_id=str(entity_id),
-            requested_by=requested_by, reason=reason[:240],
+            requested_by=requested_by, reason=reason,
             payload_snapshot=payload, idempotency_key=idem_key,
             expires_at=now_plus(hours=expires_hours))
         AuditEvent.record(
@@ -115,15 +56,25 @@ class ApprovalService:
     @transaction.atomic
     def approve(record_id, *, approved_by, property_obj):
         """审批通过：申请人≠审批人（SoD Q-05）；写审计。"""
-        record = ApprovalRecord.objects.select_for_update().get(pk=record_id)
+        record = ApprovalRecord.objects.select_for_update().filter(
+            pk=record_id, property=property_obj).first()
+        if record is None:
+            raise ValueError("审批记录不存在或不属于当前物业。")
         if record.requested_by_id == approved_by.pk:
             raise ValueError("申请人不能审批自己的申请（Q-05 SoD）。")
         if record.status != ApprovalRecord.Status.PENDING:
             raise ValueError(f"审批状态为 {record.status}，不可审批。")
         if record.expires_at and record.expires_at < timezone.now():
             record.status = ApprovalRecord.Status.EXPIRED
-            record.save(update_fields=("status",))
-            raise ValueError("审批已过期，请重新申请。")
+            record.approved_at = timezone.now()
+            record.save(update_fields=("status", "approved_at"))
+            AuditEvent.record(
+                action="approval.expire", entity_type=record.entity_type,
+                entity_id=record.entity_id, actor=approved_by,
+                property_obj=property_obj,
+                after={"action_code": record.action_code, "status": "EXPIRED"},
+                reason=record.reason)
+            return record
         record.status = ApprovalRecord.Status.APPROVED
         record.approved_by = approved_by
         record.approved_at = timezone.now()
@@ -140,7 +91,10 @@ class ApprovalService:
     @transaction.atomic
     def reject(record_id, *, approved_by, property_obj, reason=""):
         """审批驳回。"""
-        record = ApprovalRecord.objects.select_for_update().get(pk=record_id)
+        record = ApprovalRecord.objects.select_for_update().filter(
+            pk=record_id, property=property_obj).first()
+        if record is None:
+            raise ValueError("审批记录不存在或不属于当前物业。")
         if record.requested_by_id == approved_by.pk:
             raise ValueError("申请人不能审批自己的申请。")
         if record.status != ApprovalRecord.Status.PENDING:
@@ -195,16 +149,44 @@ class BillingService:
         amount = BillingService._money(amount)
         if amount <= 0:
             raise ValueError("收款金额必须大于 0。")
+        if reservation.property_id != property_obj.pk:
+            raise ValueError("预订不属于当前物业。")
         folio = Folio.objects.select_for_update().filter(
             property=property_obj, reservation=reservation,
             folio_type="MASTER", status="OPEN").first()
         if folio is None:
             raise ValueError("主账单不存在或已关闭。")
+        provider_ref = str(reference or "").strip() or f"FD-{uuid.uuid4().hex.upper()}"
+        if len(provider_ref) > 80:
+            raise ValueError("收款参考号不能超过 80 个字符。")
+        existing = Payment.objects.filter(provider_ref=provider_ref).first()
+        if existing:
+            if (existing.property_id != property_obj.pk
+                    or existing.reservation_id != reservation.pk
+                    or existing.amount != amount or existing.method != method):
+                raise ValueError("该收款参考号已用于不同支付。")
+            return existing
+        from apps.billing.models import ReservationRoom
+        entries = list(folio.entries.values_list("amount", flat=True))
+        balance = sum(entries, start=Decimal("0.00"))
+        expected = sum(
+            ReservationRoom.objects.filter(
+                property=property_obj, reservation=reservation
+            ).values_list("amount", flat=True),
+            start=Decimal("0.00"))
+        posted_room = sum(
+            (entry.amount for entry in folio.entries.filter(
+                entry_type=LedgerEntry.EntryType.ROOM_CHARGE)),
+            start=Decimal("0.00"))
+        outstanding = balance + expected - posted_room
+        if amount > outstanding:
+            raise ValueError(f"收款金额超过当前应收余额 {outstanding:.2f}。")
+        now = timezone.now()
         payment = Payment.objects.create(
             property=property_obj, reservation=reservation, folio=folio,
-            provider="frontdesk", method=method,
-            amount=amount, currency=reservation.currency,
-            status=Payment.Status.PENDING,
+            provider="frontdesk_manual", provider_ref=provider_ref,
+            method=method, amount=amount, currency=reservation.currency,
+            status=Payment.Status.SUCCEEDED, paid_at=now,
         )
         LedgerEntry.objects.create(
             property=property_obj, folio=folio,
@@ -244,12 +226,23 @@ class BillingService:
             total=models.Sum("amount"))["total"] or Decimal("0.00")
         if refunded + pending + amount > payment.amount:
             raise ValueError("累计退款不能超过原支付金额。")
+        reason = str(reason or "").strip()
+        if not reason or len(reason) > 240:
+            raise ValueError("退款申请原因必须填写，且不能超过 240 个字符。")
         refund = Refund.objects.create(
             property=property_obj, payment=payment, amount=amount,
-            currency=payment.currency, reason=reason[:240],
+            currency=payment.currency, reason=reason,
             status=Refund.Status.PENDING, requested_by=requested_by,
             provider_ref=f"RFD-{uuid.uuid4().hex.upper()[:16]}",
             idempotency_key=f"refund:{payment.pk}:{uuid.uuid4().hex[:12]}")
+        approval, _ = ApprovalService.request_approval(
+            property_obj=property_obj, action_code="billing.refund",
+            entity_type="Refund", entity_id=refund.pk,
+            requested_by=requested_by, reason=reason,
+            payload={"payment_id": payment.pk, "amount": str(amount),
+                     "currency": payment.currency})
+        refund.approval_record = approval
+        refund.save(update_fields=("approval_record",))
         AuditEvent.record(
             action="billing.refund_request", entity_type="Refund",
             entity_id=refund.pk, actor=requested_by, property_obj=property_obj,

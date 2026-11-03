@@ -5,6 +5,70 @@ from django.db import models
 from django.db.models import Q
 
 
+
+class ApprovalRecord(models.Model):
+    """不可变高危审批事实；退款、冲销、夜审重开等通过此记录执行双人控制。"""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "待审批"
+        APPROVED = "APPROVED", "已批准"
+        REJECTED = "REJECTED", "已驳回"
+        EXPIRED = "EXPIRED", "已过期"
+        CANCELLED = "CANCELLED", "已撤销"
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT,
+        related_name="approval_records", verbose_name="物业")
+    action_code = models.CharField(max_length=64, verbose_name="动作代码")
+    entity_type = models.CharField(max_length=64, verbose_name="目标实体类型")
+    entity_id = models.CharField(max_length=64, verbose_name="目标实体ID")
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="approvals_requested", verbose_name="申请人")
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="approvals_approved",
+        verbose_name="审批人")
+    status = models.CharField(
+        max_length=12, choices=Status.choices,
+        default=Status.PENDING, verbose_name="审批状态")
+    reason = models.CharField(max_length=240, verbose_name="申请原因")
+    payload_snapshot = models.JSONField(
+        null=True, blank=True, verbose_name="申请参数快照")
+    idempotency_key = models.CharField(
+        max_length=64, unique=True, verbose_name="幂等键")
+    approved_at = models.DateTimeField(null=True, blank=True, verbose_name="审批时间")
+    expires_at = models.DateTimeField(null=True, blank=True, verbose_name="过期时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="申请时间")
+
+    class Meta:
+        verbose_name = "高危审批记录"
+        verbose_name_plural = "高危审批记录"
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=("property", "action_code", "status"),
+                         name="idx_approval_prop_action"),
+            models.Index(fields=("entity_type", "entity_id"),
+                         name="idx_approval_entity"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values_list(
+                "status", flat=True).first()
+            if previous != self.Status.PENDING:
+                raise ValidationError("已决策审批记录不可修改")
+            if self.status == self.Status.PENDING:
+                raise ValidationError("审批记录只允许从待审批转为最终状态")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise RuntimeError("审批记录不可删除")
+
+    def __str__(self):
+        return f"{self.action_code} {self.entity_type}#{self.entity_id} {self.status}"
+
+
 class Folio(models.Model):
     """住客账单（户头）：V1.1 M-04 支持多账单（主账/住客/公司/内部/押金）。
 
@@ -277,6 +341,9 @@ class Refund(models.Model):
         "core.Property", on_delete=models.PROTECT, related_name="refunds",
         verbose_name="所属酒店",
     )
+    approval_record = models.ForeignKey(
+        ApprovalRecord, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="refunds", verbose_name="关联审批记录")
     payment = models.ForeignKey(
         Payment, on_delete=models.PROTECT, related_name="refunds",
         verbose_name="原支付流水",

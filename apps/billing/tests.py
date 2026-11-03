@@ -137,3 +137,69 @@ class MockPaymentTests(TestCase):
                 content_type="application/json",
             )
         self.assertEqual(response.status_code, 404)
+
+
+class ApprovalRecordTests(TestCase):
+    def setUp(self):
+        from apps.billing.services_v2 import ApprovalService
+        self.ApprovalService = ApprovalService
+        self.property = Property.objects.create(code="APR", name="审批测试酒店")
+        self.other_property = Property.objects.create(code="APR2", name="其他审批酒店")
+        self.requester = User.objects.create_user(username="approval-requester")
+        self.approver = User.objects.create_user(username="approval-approver")
+
+    def test_approval_request_is_property_scoped_and_idempotent(self):
+        first, created = self.ApprovalService.request_approval(
+            property_obj=self.property, action_code="billing.refund",
+            entity_type="Refund", entity_id=100,
+            requested_by=self.requester, reason="客人重复扣款申请退款",
+            payload={"amount": "100.00"})
+        replay, replay_created = self.ApprovalService.request_approval(
+            property_obj=self.property, action_code="billing.refund",
+            entity_type="Refund", entity_id=100,
+            requested_by=self.requester, reason="客人重复扣款申请退款",
+            payload={"amount": "100.00"})
+        other, other_created = self.ApprovalService.request_approval(
+            property_obj=self.other_property, action_code="billing.refund",
+            entity_type="Refund", entity_id=100,
+            requested_by=self.requester, reason="另一物业同号退款申请",
+            payload={"amount": "100.00"})
+        self.assertTrue(created)
+        self.assertFalse(replay_created)
+        self.assertTrue(other_created)
+        self.assertEqual(first.pk, replay.pk)
+        self.assertNotEqual(first.pk, other.pk)
+
+    def test_approval_cannot_be_self_approved_or_approved_cross_property(self):
+        record, _ = self.ApprovalService.request_approval(
+            property_obj=self.property, action_code="night_audit.reopen",
+            entity_type="BusinessDate", entity_id=1,
+            requested_by=self.requester, reason="核对营业日错账后申请重开")
+        with self.assertRaises(ValueError):
+            self.ApprovalService.approve(
+                record.pk, approved_by=self.requester, property_obj=self.property)
+        with self.assertRaises(ValueError):
+            self.ApprovalService.approve(
+                record.pk, approved_by=self.approver, property_obj=self.other_property)
+        approved = self.ApprovalService.approve(
+            record.pk, approved_by=self.approver, property_obj=self.property)
+        self.assertEqual(approved.status, "APPROVED")
+        self.assertEqual(approved.approved_by_id, self.approver.pk)
+
+    def test_approval_reason_is_required_and_expiry_is_persisted(self):
+        with self.assertRaises(ValueError):
+            self.ApprovalService.request_approval(
+                property_obj=self.property, action_code="billing.refund",
+                entity_type="Refund", entity_id=1,
+                requested_by=self.requester, reason=" ")
+        record, _ = self.ApprovalService.request_approval(
+            property_obj=self.property, action_code="billing.refund",
+            entity_type="Refund", entity_id=2,
+            requested_by=self.requester, reason="审批超时流程测试")
+        from datetime import timedelta
+        from django.utils import timezone
+        type(record).objects.filter(pk=record.pk).update(
+            expires_at=timezone.now() - timedelta(minutes=1))
+        expired = self.ApprovalService.approve(
+            record.pk, approved_by=self.approver, property_obj=self.property)
+        self.assertEqual(expired.status, "EXPIRED")

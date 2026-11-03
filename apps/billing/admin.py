@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Folio, LedgerEntry, Payment, Refund
+from .models import ApprovalRecord, Folio, LedgerEntry, Payment, Refund
 
 
 class LedgerEntryInline(admin.TabularInline):
@@ -70,6 +70,24 @@ class RefundAdmin(admin.ModelAdmin):
     list_filter = ("status", "property")
     search_fields = ("provider_ref", "reason")
     readonly_fields = tuple(f.name for f in Refund._meta.fields)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ApprovalRecord)
+class ApprovalRecordAdmin(admin.ModelAdmin):
+    list_display = ("id", "property", "action_code", "entity_type", "entity_id",
+                    "requested_by", "approved_by", "status", "created_at")
+    list_filter = ("property", "action_code", "status")
+    search_fields = ("entity_type", "entity_id", "reason", "requested_by__username")
+    readonly_fields = tuple(field.name for field in ApprovalRecord._meta.fields)
 
     def has_add_permission(self, request):
         return False
