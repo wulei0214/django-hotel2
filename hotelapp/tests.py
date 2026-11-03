@@ -471,29 +471,30 @@ class ExpressCheckoutBalanceTests(TestCase):
         Folio.objects.create(order=self.acc, 类型="房费", 金额="300",
                              事由="房费", 日期="2026-11-02", 经手人="test")
 
-    def test_partial_payment_blocks_express_checkout(self):
-        """已收押金与应收不平 → 拦截转普通结账（E-05）"""
+    def test_partial_payment_legacy_quick_checkout_is_retired(self):
+        """旧版快捷退房入口返回 410，不得自动写账或改订单状态。"""
         Folio.objects.create(order=self.acc, 类型="押金", 金额="100",
                              事由="押金", 日期="2026-11-02", 经手人="test")
         response = self.client.post("/express_checkout/", {"id": self.acc.id})
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 410)
         self.acc.refresh_from_db()
-        self.assertEqual(self.acc.状态, "已入住", "拦截后订单状态不变")
+        self.assertEqual(self.acc.状态, "已入住", "退役入口不得修改旧订单")
 
-    def test_overpayment_blocks_express_checkout(self):
-        """多付 → 需退款流程（MGR-03）"""
+    def test_overpayment_legacy_quick_checkout_is_retired(self):
+        """多付不能通过旧快捷入口直接离店；统一转 PMS2 处理。"""
         Folio.objects.create(order=self.acc, 类型="押金", 金额="500",
                              事由="押金", 日期="2026-11-02", 经手人="test")
         response = self.client.post("/express_checkout/", {"id": self.acc.id})
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 410)
 
-    def test_clean_balance_express_checkout_ok(self):
-        """无资金往来 → 自动结算应收；有押金恰好持平 → 不重复收款"""
+    def test_clean_balance_legacy_quick_checkout_is_retired(self):
+        """即使金额持平也不再从旧数据双写；退房只走 PMS2 前台服务。"""
         response = self.client.post("/express_checkout/", {"id": self.acc.id})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 410)
         self.acc.refresh_from_db()
-        self.assertEqual(self.acc.状态, "已退房")
-        self.assertEqual(self.acc.收款金额, "300.00")
+        self.assertEqual(self.acc.状态, "已入住")
+        self.assertFalse(Folio.objects.filter(
+            order=self.acc, 类型="收款", 事由="快捷离店自动结算").exists())
 
 
 class ChangeRoomPolicyTests(TestCase):
@@ -1052,13 +1053,20 @@ class GuestServiceTests(TestCase):
         self.assertTrue(AuditEvent.objects.filter(
             action="guest.create", entity_id=str(guest.pk)).exists())
 
-    def test_create_guest_duplicate_phone_rejected(self):
-        """同物业标准化手机号查重拒绝"""
-        self.svc.create_guest(
+    def test_shared_guest_phone_is_allowed_and_flagged_for_review(self):
+        """手机号是共享联系方式，不做自然人主键；重复号码标记人工核验。"""
+        first = self.svc.create_guest(
             property_obj=self.prop, full_name="首客", phone="13900008888")
-        with self.assertRaises(Exception):
-            self.svc.create_guest(
-                property_obj=self.prop, full_name="二客", phone="13900008888")
+        second = self.svc.create_guest(
+            property_obj=self.prop, full_name="二客", phone="13900008888")
+        self.assertNotEqual(first.pk, second.pk)
+        from apps.guests.models import GuestPhone
+        self.assertEqual(
+            GuestPhone.objects.filter(
+                phone_normalized="13900008888",
+                shared_review_required=True,
+            ).count(), 2
+        )
 
     def test_update_guest_with_audit(self):
         """更新客人：变更写入 AuditEvent before/after"""
@@ -1066,7 +1074,8 @@ class GuestServiceTests(TestCase):
             property_obj=self.prop, full_name="更新测试", phone="13900007777")
         old_name = guest.full_name
         guest, changed = self.svc.update_guest(
-            guest_id=guest.pk, updated_by=self.staff, full_name="改名测试")
+            guest_id=guest.pk, property_obj=self.prop,
+            updated_by=self.staff, full_name="改名测试")
         self.assertIn("full_name", changed)
         self.assertEqual(changed["full_name"]["before"], old_name)
         from apps.core.models import AuditEvent
@@ -1077,8 +1086,8 @@ class GuestServiceTests(TestCase):
         """手机号变更：旧 GuestPhone 降级，新号码设主，历史保留"""
         guest = self.svc.create_guest(
             property_obj=self.prop, full_name="换号测试", phone="13900006666")
-        self.svc.update_guest(guest_id=guest.pk, updated_by=self.staff,
-                              phone="13900007777")
+        self.svc.update_guest(guest_id=guest.pk, property_obj=self.prop,
+                              updated_by=self.staff, phone="13900007777")
         from apps.guests.models import GuestPhone
         phones = GuestPhone.objects.filter(guest=guest).order_by("-is_primary")
         self.assertEqual(phones.count(), 2, "旧号码保留历史")
