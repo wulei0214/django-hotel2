@@ -901,16 +901,18 @@ class SalaryDecisionBoundaryTests(TestCase):
         self.assertEqual(event.reason, "经店长批准的年度薪酬调整")
         self.assertTrue(event.after_json["salary_changed"])
 
-    def test_staff_list_masks_salary_for_front_desk_but_shows_to_finance(self):
+    def test_staff_list_access_boundaries_match_v11(self):
+        """V1.1 权限矩阵：前台无 view_staff→403；财务有 view_staff→200 可见薪酬"""
         self.client.force_login(self.front_desk)
         response = self.client.get("/index/")
-        self.assertEqual(response.status_code, 200)
-        self.assertNotIn("6000.00", response.content.decode("utf-8"))
-        self.assertIn("受控字段", response.content.decode("utf-8"))
+        self.assertEqual(response.status_code, 403,
+                         "前台无 view_staff 权限，不应看到员工列表")
         self.client.force_login(self.finance)
         response = self.client.get("/index/")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("6000.00", response.content.decode("utf-8"))
+        self.assertEqual(response.status_code, 200,
+                         "财务有 view_staff（migration 0018），应可查看")
+        self.assertIn("6000.00", response.content.decode("utf-8"),
+                      "财务应能看到薪酬完整值（Q-03/D-08）")
 
 
 class FinanceStaffReadOnlyTests(TestCase):

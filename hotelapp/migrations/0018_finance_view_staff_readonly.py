@@ -7,7 +7,7 @@ def grant_finance_staff_read(apps, schema_editor):
     ContentType = apps.get_model("contenttypes", "ContentType")
     Permission = apps.get_model("auth", "Permission")
     Group = apps.get_model("auth", "Group")
-    content_type = ContentType.objects.get(app_label="hotelapp", model="staff")
+    content_type, _ = ContentType.objects.get_or_create(        app_label="hotelapp", model="staff")
     permission, _ = Permission.objects.get_or_create(
         content_type=content_type,
         codename="view_staff",
