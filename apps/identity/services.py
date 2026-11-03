@@ -24,11 +24,6 @@ from .roles import BUSINESS_ROLE_NAMES
 audit = logging.getLogger("hotel.audit")
 
 
-def _default_property():
-    return Property.objects.filter(
-        code="DEFAULT", status=Property.Status.ACTIVE).order_by("id").first()
-
-
 class EmployeeLifecycleError(Exception):
     """员工生命周期操作的业务校验失败（消息面向操作者）。"""
 
@@ -38,9 +33,12 @@ class EmployeeLifecycleService:
 
     # ---------- 查询 ----------
     @staticmethod
-    def get_membership(profile):
+    def get_membership(profile, property_obj):
+        if property_obj is None or property_obj.status != Property.Status.ACTIVE:
+            raise EmployeeLifecycleError("必须指定有效物业，不能回退到默认物业。")
         return PropertyStaffMembership.objects.filter(
-            staff_profile=profile).order_by("id").first()
+            staff_profile=profile, property=property_obj
+        ).order_by("id").first()
 
     @staticmethod
     def active_assignments(membership):
@@ -53,19 +51,18 @@ class EmployeeLifecycleService:
     # ---------- 新增员工（STAFF-01：允许只建档不开账号） ----------
     @classmethod
     @transaction.atomic
-    def create_employee(cls, *, full_name, employee_no, position_code="UNASSIGNED",
-                        phone="", started_at=None, legacy_staff=None,
-                        account_username="", account_password="",
+    def create_employee(cls, *, property_obj, full_name, employee_no,
+                        position_code="UNASSIGNED", phone="", started_at=None,
+                        legacy_staff=None, account_username="", account_password="",
                         role_groups=None, granted_by=None):
-        """创建员工档案 + DEFAULT 任职；可选开通账号并分配初始角色。
+        """在服务端明确指定的物业内建档；可选开通账号并分配初始角色。
 
         查重（STAFF-06）：同店工号唯一、同手机号唯一、同账号名唯一。
         返回 (profile, membership, user_or_None)。
         """
         User = get_user_model()
-        property_obj = _default_property()
-        if property_obj is None:
-            raise EmployeeLifecycleError("未初始化 DEFAULT 物业，无法建档")
+        if property_obj is None or property_obj.status != Property.Status.ACTIVE:
+            raise EmployeeLifecycleError("必须指定有效的当前物业，不能回退到 DEFAULT 物业。")
         full_name = (full_name or "").strip()
         employee_no = (employee_no or "").strip()
         phone = (phone or "").strip()
@@ -279,8 +276,8 @@ class EmployeeLifecycleService:
     # ---------- 停用 / 离职（STAFF-09） ----------
     @classmethod
     @transaction.atomic
-    def set_employment_status(cls, profile, *, status, ended_by=None, reason="",
-                              deactivate_user=None):
+    def set_employment_status(cls, profile, *, property_obj, status,
+                              ended_by=None, reason="", deactivate_user=None):
         """暂停（SUSPENDED）/ 离职（TERMINATED）/ 恢复（ACTIVE）。
 
         离职：终止全部当前授权、Membership 置 TERMINATED 并填 ended_at；
@@ -307,7 +304,7 @@ class EmployeeLifecycleService:
         now = timezone.now()
         profile.employment_status = profile_status
         profile.save(update_fields=("employment_status", "updated_at"))
-        membership = cls.get_membership(profile)
+        membership = cls.get_membership(profile, property_obj)
         ended_count = 0
         if membership is not None:
             if profile_status == StaffProfile.EmploymentStatus.ACTIVE:
@@ -348,8 +345,11 @@ class EmployeeLifecycleService:
     # ---------- 密码重置（审计只记事件，不记密码值） ----------
     @classmethod
     @transaction.atomic
-    def reset_password(cls, profile, *, new_password, reset_by=None):
+    def reset_password(cls, profile, *, property_obj, new_password, reset_by=None):
         User = get_user_model()
+        if property_obj is None or not PropertyStaffMembership.objects.filter(
+                staff_profile=profile, property=property_obj).exists():
+            raise EmployeeLifecycleError("员工不属于当前物业，不能重置账号密码。")
         if not profile.user_id:
             raise EmployeeLifecycleError("该员工尚未开通登录账号")
         if not new_password or len(new_password) < 6:
@@ -365,7 +365,7 @@ class EmployeeLifecycleService:
         AuditEvent.record(
             action="identity.password_reset", entity_type="StaffProfile",
             entity_id=profile.pk, actor=reset_by,
-            property_obj=_default_property(),
+            property_obj=property_obj,
             reason="管理员重置；审计不记录密码值")
         audit.info("密码重置 user=%s 目标账号=%s",
                    getattr(reset_by, "username", "system"), user.username)

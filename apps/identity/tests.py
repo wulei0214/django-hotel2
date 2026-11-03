@@ -114,6 +114,7 @@ class EmployeeLifecycleServiceTests(TestCase):
 
     def test_shared_employee_phone_is_allowed_with_distinct_property_employee_numbers(self):
         profile, membership, _ = EmployeeLifecycleService.create_employee(
+            property_obj=self.property_obj,
             full_name="同名员工", employee_no="LIFE-002",
             phone=" 13800001111 ",
         )
@@ -125,7 +126,8 @@ class EmployeeLifecycleServiceTests(TestCase):
 
     def test_suspended_status_maps_to_inactive_profile_and_suspended_membership(self):
         EmployeeLifecycleService.set_employment_status(
-            self.profile, status="SUSPENDED", ended_by=self.manager, reason="测试暂停"
+            self.profile, property_obj=self.property_obj,
+            status="SUSPENDED", ended_by=self.manager, reason="测试暂停"
         )
         self.profile.refresh_from_db()
         self.membership.refresh_from_db()
@@ -139,7 +141,8 @@ class EmployeeLifecycleServiceTests(TestCase):
     def test_invalid_employment_status_is_rejected_without_mutation(self):
         with self.assertRaises(EmployeeLifecycleError):
             EmployeeLifecycleService.set_employment_status(
-                self.profile, status="PAUSED", ended_by=self.manager
+                self.profile, property_obj=self.property_obj,
+                status="PAUSED", ended_by=self.manager
             )
         self.profile.refresh_from_db()
         self.membership.refresh_from_db()

@@ -1363,11 +1363,11 @@ def vip_reveal_tel(request):
 WORKBENCH_ROLES = list(BUSINESS_ROLE_NAMES)
 
 
-def _workbench_profile_page(profile):
-    """聚合员工档案/任职/账号/角色授权为一个视图对象（避免三处 Admin 拼接）。"""
+def _workbench_profile_page(profile, property_obj):
+    """聚合当前物业的员工档案/任职/账号/角色授权为一个视图对象。"""
     from apps.identity.models import StaffRoleAssignment
     from apps.identity.services import EmployeeLifecycleService
-    membership = EmployeeLifecycleService.get_membership(profile)
+    membership = EmployeeLifecycleService.get_membership(profile, property_obj)
     user = profile.user
     assignments = list(StaffRoleAssignment.objects.filter(
         membership=membership).select_related("group").order_by("-starts_at")) if membership else []
@@ -1389,12 +1389,15 @@ def _workbench_profile_page(profile):
 def staff_accounts(request):
     """员工与账号管理：列表 + 搜索（店长日常人事唯一入口，方案 §4.1）。"""
     from apps.identity.models import StaffProfile
-    qs = (StaffProfile.objects.select_related("user")
-          .order_by("-created_at"))
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        return HttpResponse("当前账号没有可用物业上下文", status=503)
+    qs = (StaffProfile.objects.filter(property_memberships__property=property_obj)
+          .select_related("user").distinct().order_by("-created_at"))
     q = (request.GET.get("q") or "").strip()
     rows = []
     for profile in qs:
-        page = _workbench_profile_page(profile)
+        page = _workbench_profile_page(profile, property_obj)
         if q and q not in page["profile"].full_name and q not in (
                 page["membership"].employee_no if page["membership"] else ""):
             continue
@@ -1424,9 +1427,14 @@ def staff_accounts_create(request):
     roles = request.POST.getlist("roles")
     legacy_id = request.POST.get("legacy_staff") or ""
     legacy = Staff.objects.filter(员工id=legacy_id).first() if legacy_id.isdigit() else None
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        messages.error(request, "创建失败：当前账号没有可用物业上下文")
+        return redirect("/staff_accounts/")
     try:
         groups = [Group.objects.get(name=name) for name in roles if name in WORKBENCH_ROLES]
         profile, membership, user = EmployeeLifecycleService.create_employee(
+            property_obj=property_obj,
             full_name=full_name, employee_no=employee_no,
             position_code=position_code, phone=phone,
             legacy_staff=legacy, account_username=username,
@@ -1444,8 +1452,12 @@ def staff_accounts_create(request):
 def staff_accounts_detail(request, pk):
     """员工详情：资料/任职/账号/角色授权历史（一个页面展示关联关系）。"""
     from apps.identity.models import StaffProfile
-    profile = get_object_or_404(StaffProfile, pk=pk)
-    page = _workbench_profile_page(profile)
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        return HttpResponse("当前账号没有可用物业上下文", status=503)
+    profile = get_object_or_404(
+        StaffProfile, pk=pk, property_memberships__property=property_obj)
+    page = _workbench_profile_page(profile, property_obj)
     unmapped_staff = Staff.objects.filter(pms_staff_profile__isnull=True)
     return render(request, "staff_accounts_detail.html", {
         **page, "unmapped_staff": unmapped_staff,
@@ -1459,7 +1471,11 @@ def staff_accounts_provision(request, pk):
     """开通/关联登录账号（STAFF-02）。"""
     from apps.identity.services import EmployeeLifecycleService
     from apps.identity.models import StaffProfile
-    profile = get_object_or_404(StaffProfile, pk=pk)
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        return HttpResponse("当前账号没有可用物业上下文", status=503)
+    profile = get_object_or_404(
+        StaffProfile, pk=pk, property_memberships__property=property_obj)
     if request.method != "POST":
         return redirect(f"/staff_accounts/{pk}/")
     try:
@@ -1479,8 +1495,12 @@ def staff_accounts_assign_role(request, pk):
     """分配角色：可选结束时间（临时兼岗）+ 原因（STAFF-07）。"""
     from apps.identity.services import EmployeeLifecycleService
     from apps.identity.models import StaffProfile
-    profile = get_object_or_404(StaffProfile, pk=pk)
-    membership = EmployeeLifecycleService.get_membership(profile)
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        return HttpResponse("当前账号没有可用物业上下文", status=503)
+    profile = get_object_or_404(
+        StaffProfile, pk=pk, property_memberships__property=property_obj)
+    membership = EmployeeLifecycleService.get_membership(profile, property_obj)
     if request.method != "POST" or membership is None:
         return redirect(f"/staff_accounts/{pk}/")
     group = Group.objects.filter(name=request.POST.get("role")).first()
@@ -1504,9 +1524,14 @@ def staff_accounts_end_assignment(request, pk, assignment_id):
     """结束一条角色授权（调岗/撤销；历史保留，STAFF-08）。"""
     from apps.identity.services import EmployeeLifecycleService
     from apps.identity.models import StaffProfile
-    profile = get_object_or_404(StaffProfile, pk=pk)
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        return HttpResponse("当前账号没有可用物业上下文", status=503)
+    profile = get_object_or_404(
+        StaffProfile, pk=pk, property_memberships__property=property_obj)
     assignment = get_object_or_404(
-        StaffRoleAssignment, pk=assignment_id, membership__staff_profile=profile)
+        StaffRoleAssignment, pk=assignment_id, membership__staff_profile=profile,
+        membership__property=property_obj)
     if request.method == "POST":
         EmployeeLifecycleService.end_assignment(
             assignment, ended_by=request.user,
@@ -1521,7 +1546,11 @@ def staff_accounts_set_status(request, pk):
     """停职/离职/恢复（STAFF-09）：终止任职与授权，离职同步停用账号。"""
     from apps.identity.services import EmployeeLifecycleService
     from apps.identity.models import StaffProfile
-    profile = get_object_or_404(StaffProfile, pk=pk)
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        return HttpResponse("当前账号没有可用物业上下文", status=503)
+    profile = get_object_or_404(
+        StaffProfile, pk=pk, property_memberships__property=property_obj)
     if request.method != "POST":
         return redirect(f"/staff_accounts/{pk}/")
     status = request.POST.get("status")
@@ -1529,7 +1558,7 @@ def staff_accounts_set_status(request, pk):
         return HttpResponse("未知状态", status=400)
     try:
         EmployeeLifecycleService.set_employment_status(
-            profile, status=status, ended_by=request.user,
+            profile, property_obj=property_obj, status=status, ended_by=request.user,
             reason=request.POST.get("reason") or "")
     except Exception as exc:
         messages.error(request, f"操作失败：{exc}")
@@ -1545,12 +1574,17 @@ def staff_accounts_reset_password(request, pk):
     """密码重置（审计只记事件不记密码值）。"""
     from apps.identity.services import EmployeeLifecycleService
     from apps.identity.models import StaffProfile
-    profile = get_object_or_404(StaffProfile, pk=pk)
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        return HttpResponse("当前账号没有可用物业上下文", status=503)
+    profile = get_object_or_404(
+        StaffProfile, pk=pk, property_memberships__property=property_obj)
     if request.method != "POST":
         return redirect(f"/staff_accounts/{pk}/")
     try:
         EmployeeLifecycleService.reset_password(
-            profile, new_password=request.POST.get("password") or "",
+            profile, property_obj=property_obj,
+            new_password=request.POST.get("password") or "",
             reset_by=request.user)
     except Exception as exc:
         messages.error(request, f"重置失败：{exc}")
