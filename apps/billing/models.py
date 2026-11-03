@@ -38,6 +38,9 @@ class Folio(models.Model):
     folio_type = models.CharField(
         max_length=12, choices=FolioType.choices, default=FolioType.MASTER,
         verbose_name="账单类型")
+    master_reservation_key = models.CharField(
+        max_length=32, null=True, blank=True, unique=True, editable=False,
+        verbose_name="主账唯一键")
     guest = models.ForeignKey(
         "guests.Guest", on_delete=models.PROTECT, related_name="folios",
         verbose_name="住客",
@@ -54,15 +57,13 @@ class Folio(models.Model):
         ordering = ("-opened_at",)
         verbose_name = "住客账单"
         verbose_name_plural = "住客账单"
-        constraints = [
-            models.UniqueConstraint(
-                fields=("reservation",),
-                condition=models.Q(folio_type="MASTER"),
-                name="uq_folio_master_per_reservation",
-            ),
-        ]
 
     def save(self, *args, **kwargs):
+        desired_key = str(self.reservation_id) if self.reservation_id and self.folio_type == self.FolioType.MASTER else None
+        if self.master_reservation_key != desired_key:
+            self.master_reservation_key = desired_key
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"master_reservation_key"}
         if self.folio_type == self.FolioType.MASTER and self.reservation_id:
             dup = Folio.objects.filter(
                 reservation_id=self.reservation_id,
@@ -350,18 +351,27 @@ class CashierShift(models.Model):
     status = models.CharField(
         max_length=12, choices=ShiftStatus.choices, default=ShiftStatus.OPEN,
         verbose_name="班次状态")
+    open_shift_key = models.CharField(
+        max_length=96, null=True, blank=True, unique=True, editable=False,
+        verbose_name="开放班次唯一键")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
 
     class Meta:
         verbose_name = "现金班次"
         verbose_name_plural = "现金班次"
         ordering = ("-opened_at",)
-        constraints = [
-            models.UniqueConstraint(
-                fields=("property", "cashier"), condition=models.Q(status="OPEN"),
-                name="uq_cashier_shift_one_open",
-            ),
-        ]
+
+    def save(self, *args, **kwargs):
+        desired_key = (
+            f"{self.property_id}:{self.cashier_id}"
+            if self.property_id and self.cashier_id and self.status == self.ShiftStatus.OPEN
+            else None
+        )
+        if self.open_shift_key != desired_key:
+            self.open_shift_key = desired_key
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"open_shift_key"}
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.property_id}/{self.cashier_id} {self.status}"

@@ -59,6 +59,9 @@ class GuestPhone(models.Model):
         max_length=8, choices=PhoneType.choices, default=PhoneType.MOBILE,
         verbose_name="号码类型")
     is_primary = models.BooleanField(default=False, verbose_name="主号码")
+    primary_guest_key = models.CharField(
+        max_length=32, null=True, blank=True, unique=True, editable=False,
+        verbose_name="主号码唯一键")
     shared_review_required = models.BooleanField(
         default=False, verbose_name="共享号码待人工核验",
         help_text="同一标准化号码关联多个客人时置位（V1.1 M-03 规则 2）")
@@ -72,18 +75,16 @@ class GuestPhone(models.Model):
     class Meta:
         verbose_name = "客人电话"
         verbose_name_plural = "客人电话"
-        constraints = [
-            # 每个 Guest 最多一个主号码（M-03 规则 1）
-            models.UniqueConstraint(
-                fields=("guest",), condition=models.Q(is_primary=True),
-                name="uq_guest_phone_primary",
-            ),
-        ]
         indexes = [
             models.Index(fields=("phone_normalized",), name="idx_guestphone_norm"),
         ]
 
     def save(self, *args, **kwargs):
+        desired_key = str(self.guest_id) if self.guest_id and self.is_primary else None
+        if self.primary_guest_key != desired_key:
+            self.primary_guest_key = desired_key
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"primary_guest_key"}
         if self.is_primary and self.guest_id:
             dup = GuestPhone.objects.filter(
                 guest_id=self.guest_id, is_primary=True,
@@ -170,6 +171,9 @@ class GuestMembership(models.Model):
                                  help_text="按物业唯一；旧编号冲突进入人工复核")
     level_code = models.CharField(max_length=32, default="STANDARD",
                                   verbose_name="当前等级代码")
+    active_guest_key = models.CharField(
+        max_length=64, null=True, blank=True, unique=True, editable=False,
+        verbose_name="有效会员唯一键")
     status = models.CharField(
         max_length=12, choices=Status.choices, default=Status.ACTIVE,
         verbose_name="会员状态")
@@ -189,14 +193,14 @@ class GuestMembership(models.Model):
         constraints = [
             models.UniqueConstraint(fields=("property", "member_no"),
                                     name="uq_membership_property_no"),
-            # 同物业同一时点最多一条有效会员关系（M-16 规则 1）
-            models.UniqueConstraint(
-                fields=("property", "guest"), condition=models.Q(status="ACTIVE"),
-                name="uq_membership_property_guest_active",
-            ),
         ]
 
     def save(self, *args, **kwargs):
+        desired_key = f"{self.property_id}:{self.guest_id}" if self.property_id and self.guest_id and self.status == self.Status.ACTIVE else None
+        if self.active_guest_key != desired_key:
+            self.active_guest_key = desired_key
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"active_guest_key"}
         if self.status == self.Status.ACTIVE and self.guest_id and self.property_id:
             dup = GuestMembership.objects.filter(
                 property_id=self.property_id, guest_id=self.guest_id,

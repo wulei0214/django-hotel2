@@ -183,6 +183,9 @@ class BusinessDate(models.Model):
         Property, on_delete=models.PROTECT, related_name="business_dates",
         verbose_name="物业")
     business_date = models.DateField(verbose_name="营业日期")
+    open_property_key = models.CharField(
+        max_length=32, null=True, blank=True, unique=True, editable=False,
+        verbose_name="开放营业日唯一键")
     status = models.CharField(
         max_length=10, choices=Status.choices, default=Status.OPEN,
         verbose_name="状态")
@@ -203,15 +206,16 @@ class BusinessDate(models.Model):
         verbose_name = "营业日"
         verbose_name_plural = "营业日"
         constraints = [
-            models.UniqueConstraint(
-                fields=("property",), condition=models.Q(status="OPEN"),
-                name="uq_business_date_one_open",
-            ),
             models.UniqueConstraint(fields=("property", "business_date"),
                                     name="uq_business_date_per_property"),
         ]
 
     def save(self, *args, **kwargs):
+        desired_key = str(self.property_id) if self.property_id and self.status == self.Status.OPEN else None
+        if self.open_property_key != desired_key:
+            self.open_property_key = desired_key
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"open_property_key"}
         if self.status == self.Status.OPEN and self.property_id:
             dup = BusinessDate.objects.filter(
                 property_id=self.property_id, status=self.Status.OPEN,

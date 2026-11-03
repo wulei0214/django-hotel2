@@ -390,7 +390,8 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
         )
 
     now = timezone.now()
-    StayRoomSegment.objects.filter(stay=stay, ended_at__isnull=True).update(ended_at=now)
+    StayRoomSegment.objects.filter(stay=stay, ended_at__isnull=True).update(
+        ended_at=now, active_stay_key=None)
     stay.status = Stay.Status.CHECKED_OUT
     stay.actual_check_out = now
     stay.save(update_fields=("status", "actual_check_out", "updated_at"))

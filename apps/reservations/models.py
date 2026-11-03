@@ -212,6 +212,9 @@ class StayRoomSegment(models.Model):
     )
     started_at = models.DateTimeField(verbose_name="入住该房间时间")
     ended_at = models.DateTimeField(null=True, blank=True, verbose_name="离开该房间时间")
+    active_stay_key = models.CharField(
+        max_length=32, null=True, blank=True, unique=True, editable=False,
+        verbose_name="当前房段唯一键")
     move_reason = models.CharField(max_length=240, blank=True, verbose_name="变更原因")
     moved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
@@ -224,16 +227,19 @@ class StayRoomSegment(models.Model):
         verbose_name_plural = "入住换房历史"
         ordering = ("started_at", "id")
         constraints = [
-            models.UniqueConstraint(
-                fields=("stay",),
-                condition=models.Q(ended_at__isnull=True),
-                name="uq_stay_one_active_room_segment",
-            ),
             models.CheckConstraint(
                 check=models.Q(ended_at__isnull=True) | models.Q(ended_at__gt=models.F("started_at")),
                 name="ck_stay_room_segment_time_order",
             ),
         ]
+
+    def save(self, *args, **kwargs):
+        desired_key = str(self.stay_id) if self.stay_id and self.ended_at is None else None
+        if self.active_stay_key != desired_key:
+            self.active_stay_key = desired_key
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"active_stay_key"}
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.stay_id} / {self.room.number}"
@@ -300,6 +306,9 @@ class ReservationGuest(models.Model):
     birth_date = models.DateField(null=True, blank=True, verbose_name="出生日期")
     nationality = models.CharField(max_length=32, blank=True, verbose_name="国籍/地区")
     is_primary = models.BooleanField(default=False, verbose_name="主住客标记")
+    primary_reservation_key = models.CharField(
+        max_length=32, null=True, blank=True, unique=True, editable=False,
+        verbose_name="主住客唯一键")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
@@ -307,13 +316,14 @@ class ReservationGuest(models.Model):
         verbose_name = "预订住客"
         verbose_name_plural = "预订住客"
         constraints = [
-            models.UniqueConstraint(
-                fields=("reservation",), condition=models.Q(is_primary=True),
-                name="uq_reservation_guest_primary",
-            ),
         ]
 
     def save(self, *args, **kwargs):
+        desired_key = str(self.reservation_id) if self.reservation_id and self.is_primary else None
+        if self.primary_reservation_key != desired_key:
+            self.primary_reservation_key = desired_key
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"primary_reservation_key"}
         if self.is_primary and self.reservation_id:
             dup = ReservationGuest.objects.filter(
                 reservation_id=self.reservation_id, is_primary=True,
@@ -386,6 +396,9 @@ class InventoryHold(models.Model):
     status = models.CharField(
         max_length=12, choices=HoldStatus.choices, default=HoldStatus.HELD,
         verbose_name="状态")
+    active_hold_key = models.CharField(
+        max_length=64, null=True, blank=True, unique=True, editable=False,
+        verbose_name="有效冻结唯一键")
     expires_at = models.DateTimeField(null=True, blank=True, verbose_name="过期时间")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     released_at = models.DateTimeField(null=True, blank=True, verbose_name="释放时间")
@@ -394,11 +407,6 @@ class InventoryHold(models.Model):
         verbose_name = "库存冻结明细"
         verbose_name_plural = "库存冻结明细"
         constraints = [
-            models.UniqueConstraint(
-                fields=("reservation_room", "stay_date"),
-                condition=~models.Q(status__in=("RELEASED", "EXPIRED")),
-                name="uq_hold_active_per_roomdate",
-            ),
         ]
         indexes = [
             models.Index(fields=("room_type", "stay_date", "status"),
@@ -406,7 +414,13 @@ class InventoryHold(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        if self.status in (self.HoldStatus.HELD, self.HoldStatus.CONFIRMED)                 and self.reservation_room_id and self.stay_date:
+        active = self.status in (self.HoldStatus.HELD, self.HoldStatus.CONFIRMED)
+        desired_key = f"{self.reservation_room_id}:{self.stay_date.isoformat()}" if active and self.reservation_room_id and self.stay_date else None
+        if self.active_hold_key != desired_key:
+            self.active_hold_key = desired_key
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"active_hold_key"}
+        if active and self.reservation_room_id and self.stay_date:
             dup = InventoryHold.objects.filter(
                 reservation_room_id=self.reservation_room_id,
                 stay_date=self.stay_date,

@@ -154,7 +154,8 @@ class GuestService:
             if norm and norm != guest.phone_normalized:
                 old_phone = guest.phone or ""
                 GuestPhone.objects.filter(
-                    guest=guest, is_primary=True).update(is_primary=False)
+                    guest=guest, is_primary=True).update(
+                        is_primary=False, primary_guest_key=None)
                 shared_phone = GuestPhone.objects.filter(
                     phone_normalized=norm).exclude(guest=guest).exists()
                 if shared_phone:
@@ -188,7 +189,7 @@ class GuestService:
             raise GuestServiceError("电话号码不能为空。")
         if is_primary:
             GuestPhone.objects.filter(guest=guest, is_primary=True).update(
-                is_primary=False)
+                is_primary=False, primary_guest_key=None)
         phone_obj = GuestPhone.objects.create(
             guest=guest, phone=phone, phone_normalized=norm,
             phone_type=phone_type, is_primary=is_primary, source=source)
