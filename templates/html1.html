@@ -7,9 +7,9 @@
     <title>酒店管理系统</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=10">
+<link rel="stylesheet" href="/static/css/site.css?v=12">
 </head>
-<div>
+<body>
 {% if messages %}
 <div class="toast-box">
     {% for m in messages %}<div class="toast {{ m.tags }}">{{ m }}</div>{% endfor %}
@@ -26,15 +26,15 @@
             {% if pms_perms.hotelapp.add_client %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加顾客</button>{% endif %}
         </div>
     </div>
-<div class="card" id="form-card" style="display:none">
-<center>
+<div class="card card-hidden" id="form-card">
+<div class="center-block">
 <div class="logo">
 					<h2>顾客信息录入</h2>
-    </div></center>
+    </div></div>
 
-{% if pms_perms.hotelapp.add_client %}<form action="/insert_client/" method="post" style="margin-left:40px">
+{% if pms_perms.hotelapp.add_client %}<form action="/insert_client/" method="post" class="form-inset">
     {% csrf_token %}
-    {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+    {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
 
         <p><label>顾客编号&nbsp;:&nbsp;&nbsp;</label><input type="text" name="id" value="{{ form.id }}" maxlength="10" pattern="\d{1,10}" title="顾客编号必须是1-10位数字，留空则自动分配" placeholder="1-10位数字，留空自动分配" class="input"/></p>
         <p><label>顾客姓名&nbsp;:&nbsp;&nbsp;</label><input type="text" name="name" value="{{ form.name }}" required minlength="2" maxlength="10" pattern="[\u4e00-\u9fa5A-Za-z·]{2,10}" title="姓名必须是2-10位中英文" placeholder="2-10位中英文" class="input"/></p>
@@ -51,7 +51,7 @@
                         <option value="姓名">姓名</option>
                         <option value="身份证号">身份证号</option>
                                           </select>
-            <input type="text" name="value" placeholder="输入查询内容" class="input" style="width:200px !important">
+            <input type="text" name="value" placeholder="输入查询内容" class="input input-w200">
             <button type="submit" class="tb-btn tb-primary">查询</button>
             {% if searched %}<a href="/show_client/" class="tb-btn">显示全部</a>{% endif %}
         </form>
@@ -69,8 +69,8 @@
         <td class="id">{{line.顾客id}}</td>
         <td>{{line.姓名}}</td>
         <td class="pii-cell">{{line.身份证号|mask_idcard}}</td>
-        {% if pms_perms.hotelapp.delete_client %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
-        {% if pms_perms.hotelapp.change_client %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
+        {% if pms_perms.hotelapp.delete_client %}<td class="td-center"><button class="btn btn-primary delete">删除</button></td>{% endif %}
+        {% if pms_perms.hotelapp.change_client %}<td class="td-center"><button class="btn btn-primary update">修改</button></td>{% endif %}
     </tr>
     {% empty %}
     <tr><td colspan="5" class="empty-row">未查询到相关记录，请重新核对信息</td></tr>
@@ -93,7 +93,7 @@
     document.addEventListener('click', function (e) {
         if (e.target.id === 'btn-add') {
             var fc = document.getElementById('form-card');
-            if (fc) { fc.style.display = (fc.style.display === 'none') ? '' : 'none'; }
+            if (fc) { fc.classList.toggle('card-hidden'); }
         }
     });
 </script>

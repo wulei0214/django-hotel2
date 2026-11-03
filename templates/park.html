@@ -6,7 +6,7 @@
     <title>酒店信息管理</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=10">
+<link rel="stylesheet" href="/static/css/site.css?v=12">
 </head>
 <body>
 {% if messages %}
@@ -25,16 +25,16 @@
             {% if perms.hotelapp.add_park %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加</button>{% endif %}
         </div>
     </div>
-<div class="card" id="form-card" style="display:none">
-<center>
+<div class="card card-hidden" id="form-card">
+<div class="center-block">
     <!--<a href="/insert/">-->
     <div class="logo">
 					<h2>停车场信息录入</h2>
-    </div></center>
+    </div></div>
 
-{% if perms.hotelapp.add_park %}<form action="/insert_park/" method="post" style="margin-left:40px">
+{% if perms.hotelapp.add_park %}<form action="/insert_park/" method="post" class="form-inset">
     {% csrf_token %}
-    {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+    {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
 
     <p><label>车位编号&nbsp;:&nbsp;&nbsp;</label><input type="text" name="id" value="{{ form.id }}" required maxlength="10" pattern="\d{1,10}" title="车位编号必须是1-10位数字" placeholder="1-10位数字" class="input"/></p>
     <p><label>当前状态&nbsp;:&nbsp;&nbsp;</label>&nbsp<select name="status" class="input"/>
@@ -58,7 +58,7 @@
                         <option value="当前状态">当前状态</option>
                         <option value="车辆牌号">车辆牌号</option>
                                           </select>
-            <input type="text" name="value" placeholder="输入查询内容" class="input" style="width:200px !important">
+            <input type="text" name="value" placeholder="输入查询内容" class="input input-w200">
             <button type="submit" class="tb-btn tb-primary">查询</button>
             {% if searched %}<a href="/show_park/" class="tb-btn">显示全部</a>{% endif %}
         </form>
@@ -76,8 +76,8 @@
         <td class="id">{{line.车位编号}}</td>
         <td>{{line.当前状态}}</td>
         <td>{{line.车辆牌号}}</td>
-        {% if perms.hotelapp.delete_park %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
-        {% if perms.hotelapp.change_park %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
+        {% if perms.hotelapp.delete_park %}<td class="td-center"><button class="btn btn-primary delete">删除</button></td>{% endif %}
+        {% if perms.hotelapp.change_park %}<td class="td-center"><button class="btn btn-primary update">修改</button></td>{% endif %}
     </tr>
     {% empty %}
     <tr><td colspan="5" class="empty-row">未查询到相关记录，请重新核对信息</td></tr>
@@ -100,7 +100,7 @@
     document.addEventListener('click', function (e) {
         if (e.target.id === 'btn-add') {
             var fc = document.getElementById('form-card');
-            if (fc) { fc.style.display = (fc.style.display === 'none') ? '' : 'none'; }
+            if (fc) { fc.classList.toggle('card-hidden'); }
         }
     });
 </script>

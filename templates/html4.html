@@ -6,7 +6,7 @@
     <title>酒店信息管理</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=10">
+<link rel="stylesheet" href="/static/css/site.css?v=12">
 </head>
 <body>
 {% if messages %}
@@ -25,16 +25,16 @@
             {% if pms_perms.hotelapp.add_food %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加餐厅</button>{% endif %}
         </div>
     </div>
-<div class="card" id="form-card" style="display:none">
-<center>
+<div class="card card-hidden" id="form-card">
+<div class="center-block">
 
     <div class="logo">
 					<h2>菜品信息录入</h2>
     </div>
-</center>
-{% if pms_perms.hotelapp.add_food %}<form action="/insert_food/" method="post" style="margin-left:40px">
+</div>
+{% if pms_perms.hotelapp.add_food %}<form action="/insert_food/" method="post" class="form-inset">
     {% csrf_token %}
-    {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+    {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
 
          <p><label>菜品编号&nbsp;:&nbsp;&nbsp;</label><input type="text" name="id" value="{{ form.id }}" required maxlength="10" pattern="\d{1,10}" title="菜品编号必须是1-10位数字" placeholder="1-10位数字" class="input"/></p>
      <p><label>菜品名称&nbsp;:&nbsp;&nbsp;</label><input type="text" name="name" value="{{ form.name }}" data-unique="food:菜名" required minlength="2" maxlength="20" pattern="[\u4e00-\u9fa5A-Za-z0-9·]{2,20}" title="菜名必须是2-20位中英文或数字" placeholder="2-20位中英文" class="input"/></p>
@@ -54,7 +54,7 @@
                         <option value="价格">价格</option>
                         <option value="厨师id">厨师编号</option>
                                           </select>
-            <input type="text" name="value" placeholder="输入查询内容" class="input" style="width:200px !important">
+            <input type="text" name="value" placeholder="输入查询内容" class="input input-w200">
             <button type="submit" class="tb-btn tb-primary">查询</button>
             {% if searched %}<a href="/show_food/" class="tb-btn">显示全部</a>{% endif %}
         </form>
@@ -74,8 +74,8 @@
         <td>{{line.菜名}}</td>
         <td>{{line.价格}}</td>
         <td>{{line.厨师id.员工id}}</td>
-        {% if pms_perms.hotelapp.delete_food %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
-        {% if pms_perms.hotelapp.change_food %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
+        {% if pms_perms.hotelapp.delete_food %}<td class="td-center"><button class="btn btn-primary delete">删除</button></td>{% endif %}
+        {% if pms_perms.hotelapp.change_food %}<td class="td-center"><button class="btn btn-primary update">修改</button></td>{% endif %}
     </tr>
     {% empty %}
     <tr><td colspan="6" class="empty-row">未查询到相关记录，请重新核对信息</td></tr>
@@ -98,7 +98,7 @@
     document.addEventListener('click', function (e) {
         if (e.target.id === 'btn-add') {
             var fc = document.getElementById('form-card');
-            if (fc) { fc.style.display = (fc.style.display === 'none') ? '' : 'none'; }
+            if (fc) { fc.classList.toggle('card-hidden'); }
         }
     });
 </script>

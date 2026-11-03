@@ -9,7 +9,7 @@
 <head>
     <meta charset="UTF-8">
     <title>员工详情 - 酒店管理系统</title>
-    <link rel="stylesheet" href="/static/css/site.css?v=10">
+    <link rel="stylesheet" href="/static/css/site.css?v=12">
 </head>
 <body>
 <div class="page">
@@ -40,17 +40,17 @@
         <form action="/staff_accounts/{{ profile.pk }}/provision/" method="post" class="inline-filter wb-actions">
             {% csrf_token %}
             {% if not user %}
-            <input type="text" name="username" class="input" placeholder="登录账号" required maxlength="30" style="width:160px !important">
-            <input type="text" name="password" class="input" placeholder="初始密码（≥6位，线下告知本人）" required style="width:220px !important">
+            <input type="text" name="username" class="input input-w160" placeholder="登录账号" required maxlength="30">
+            <input type="text" name="password" class="input input-w220" placeholder="初始密码（≥6位，线下告知本人）" required>
             <button type="submit" class="tb-btn tb-primary">开通账号</button>
             {% else %}
-            <input type="text" name="password" class="input" placeholder="新密码（≥6位）" required style="width:220px !important">
+            <input type="text" name="password" class="input input-w220" placeholder="新密码（≥6位）" required>
             <button type="submit" class="tb-btn">重置密码</button>
             {% endif %}
         </form>
         <form action="/staff_accounts/{{ profile.pk }}/set_status/" method="post" class="inline-filter wb-actions">
             {% csrf_token %}
-            <input type="text" name="reason" class="input" placeholder="原因（记入审计）" style="width:200px !important">
+            <input type="text" name="reason" class="input input-w200" placeholder="原因（记入审计）">
             {% if profile.employment_status == 'ACTIVE' %}
             <button type="submit" name="status" value="SUSPENDED" class="tb-btn">暂停任职</button>
             <button type="submit" name="status" value="TERMINATED" class="tb-btn btn-danger-solid">办理离职</button>
@@ -67,8 +67,8 @@
             <select name="role" class="input" required>
                 {% for r in workbench_roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
             </select>
-            <input type="datetime-local" name="ends_at" class="input" style="width:200px !important" title="结束时间（留空=长期）">
-            <input type="text" name="reason" class="input" placeholder="授权原因（记入审计）" style="width:180px !important">
+            <input type="datetime-local" name="ends_at" class="input input-w200" title="结束时间（留空=长期）">
+            <input type="text" name="reason" class="input input-w180" placeholder="授权原因（记入审计）">
             <button type="submit" class="tb-btn tb-primary">授权</button>
         </form>
     </div>
@@ -85,7 +85,7 @@
                 <td>{% if a.ends_at and a.ends_at <= now %}<span class="badge void-badge">已结束</span>{% else %}<span class="badge ok-badge">生效中</span>{% endif %}</td>
                 <td>{{ a.granted_by.username|default:'—' }}</td>
                 <td>{% if not a.ends_at or a.ends_at > now %}
-                    <form action="/staff_accounts/{{ profile.pk }}/end_assignment/{{ a.pk }}/" method="post" style="display:inline">
+                    <form action="/staff_accounts/{{ profile.pk }}/end_assignment/{{ a.pk }}/" method="post" class="form-inline">
                         {% csrf_token %}
                         <input type="hidden" name="reason" value="手动结束">
                         <button type="submit" class="tb-btn">结束授权</button>

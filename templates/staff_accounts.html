@@ -11,7 +11,7 @@
 <head>
     <meta charset="UTF-8">
     <title>员工与账号管理 - 酒店管理系统</title>
-    <link rel="stylesheet" href="/static/css/site.css?v=10">
+    <link rel="stylesheet" href="/static/css/site.css?v=12">
 </head>
 <body>
 <div class="page">
@@ -27,7 +27,7 @@
     <p class="wb-note">本页是员工生命周期的唯一入口：建档 → DEFAULT 任职 → 开通账号 → 分配角色 → 在职管理。
     薪酬维护请到员工管理（旧业务页）；Django Admin 仅平台维护用途。</p>
 
-    <div class="card" id="form-card" style="display:none">
+    <div class="card card-hidden" id="form-card">
         <h3 class="perm-section-title">新增员工（建档后可选择性开通账号与分配初始角色）</h3>
         <form action="/staff_accounts/create/" method="post" class="wb-form">
             {% csrf_token %}
@@ -44,7 +44,7 @@
             <div class="wb-grid">
                 <label class="wb-check"><input type="checkbox" id="wb-open-account"> 同时开通登录账号</label>
             </div>
-            <div class="wb-grid" id="wb-account-fields" style="display:none">
+            <div class="wb-grid card-hidden" id="wb-account-fields">
                 <label>登录账号<input type="text" name="username" maxlength="30" class="input" placeholder="3-30 位字母/数字"></label>
                 <label>初始密码<input type="text" name="password" maxlength="30" class="input" placeholder="至少 6 位，请线下告知本人"></label>
             </div>
@@ -61,7 +61,7 @@
     <div class="card list-card">
         <div class="list-toolbar">
             <form method="get" class="inline-filter">
-                <input type="text" name="q" value="{{ q }}" placeholder="按姓名/工号搜索" class="input" style="width:220px !important">
+                <input type="text" name="q" value="{{ q }}" placeholder="按姓名/工号搜索" class="input input-w220">
                 <button type="submit" class="tb-btn tb-primary">查询</button>
                 {% if q %}<a href="/staff_accounts/" class="tb-btn">显示全部</a>{% endif %}
             </form>
@@ -103,10 +103,10 @@
 <script>
     document.getElementById('btn-add').addEventListener('click', function () {
         var fc = document.getElementById('form-card');
-        fc.style.display = (fc.style.display === 'none') ? '' : 'none';
+        fc.classList.toggle('card-hidden');
     });
     document.getElementById('wb-open-account').addEventListener('change', function () {
-        document.getElementById('wb-account-fields').style.display = this.checked ? '' : 'none';
+        document.getElementById('wb-account-fields').classList.toggle('card-hidden', !this.checked);
     });
 </script>
 </body>

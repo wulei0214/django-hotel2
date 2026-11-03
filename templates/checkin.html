@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>入住管理 - 酒店管理系统</title>
-    <link rel="stylesheet" href="/static/css/site.css?v=10">
+    <link rel="stylesheet" href="/static/css/site.css?v=12">
 </head>
 <body>
 {% if messages %}
@@ -19,7 +19,7 @@
     </div>
 
     <div class="card">
-        <center><h2>散客直入（无预订，现场办理入住）</h2></center>
+        <h2 class="card-h2">散客直入（无预订，现场办理入住）</h2>
         <form class="wi-form" >
             <p>
                 <label>姓名：</label><input type="text" class="wi-name" maxlength="10" placeholder="2-10 位中英文" required class="w-compact"/>
@@ -39,9 +39,9 @@
     </div>
 
     <div class="card">
-        <center><h2>待确认预订 · 排房（{{ pending|length }}）
-        <label style="font-size:13px;color:#606266;margin-left:18px;font-weight:normal">
-            <input type="checkbox" id="today-only"> 仅看今日预抵</label></center>
+        <div class="card-title-row"><h2>待确认预订 · 排房（{{ pending|length }}）
+        <label class="today-only-label">
+            <input type="checkbox" id="today-only"> 仅看今日预抵</label></div>
         <table class="data-table">
             <tr><th>订单号</th><th>顾客</th><th>联系电话</th><th>推荐房型/房间</th><th>入住日期</th><th>排房并确认</th><th>未到</th><th>取消</th></tr>
             {% for line in pending %}
@@ -71,7 +71,7 @@
     </div>
 
     <div class="card">
-        <center><h2>已确认待入住（{{ confirmed|length }}）</h2></center>
+        <h2 class="card-h2">已确认待入住（{{ confirmed|length }}）</h2>
         <table class="data-table">
             <tr><th>订单号</th><th>顾客</th><th>房间</th><th>联系电话</th><th>入住日期</th><th>办理入住（收押金）</th><th>取消</th></tr>
             {% for line in confirmed %}
@@ -98,7 +98,7 @@
     </div>
 
     <div class="card">
-        <center><h2>预抵名单（未来 3 天，{{ pre_arrival|length }}）</h2></center>
+        <h2 class="card-h2">预抵名单（未来 3 天，{{ pre_arrival|length }}）</h2>
         <table class="data-table">
             <tr><th>订单号</th><th>顾客</th><th>房间</th><th>入住日期</th><th>联系电话</th></tr>
             {% for line in pre_arrival %}
@@ -110,7 +110,7 @@
     </div>
 
     <div class="card">
-        <center><h2>在住列表（{{ living|length }}）</h2></center>
+        <h2 class="card-h2">在住列表（{{ living|length }}）</h2>
         <table class="data-table">
             <tr><th>订单号</th><th>顾客</th><th>房间</th><th>身份证号</th><th>入住日期</th><th>押金（元）</th><th>电子账单</th><th>退房 / 快捷离店</th><th>续住 / 换房</th>{% if can_void %}<th>冲账</th>{% endif %}</tr>
             {% for line in living %}
@@ -143,7 +143,7 @@
     </div>
 
     <div class="card">
-        <center><h2>近期已退房（最近 10 单）</h2></center>
+        <h2 class="card-h2">近期已退房（最近 10 单）</h2>
         <table class="data-table">
             <tr><th>订单号</th><th>顾客</th><th>房间</th><th>入住日期</th><th>退房日期</th><th>房费（元）</th><th>押金（元）</th><th>电子账单</th>{% if can_void %}<th>反结账</th>{% endif %}</tr>
             {% for line in done %}
@@ -162,21 +162,6 @@
             <tr><td colspan="{% if can_void %}8{% else %}7{% endif %}" class="empty-row">暂无退房记录</td></tr>
             {% endfor %}
         </table>
-    </div>
-</div>
-
-<div id="folio-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9997;align-items:center;justify-content:center;">
-    <div style="background:#fff;border-radius:10px;padding:26px 30px;min-width:520px;max-width:640px;box-shadow:0 10px 40px rgba(0,0,0,.25);">
-        <h3 style="margin:0 0 4px;color:#303133">电子账单 <span id="fm-order"></span></h3>
-        <p style="color:#909399;font-size:12px;margin:0 0 12px">客人：<span id="fm-guest"></span> · 房间：<span id="fm-room"></span> · 状态：<span id="fm-status"></span></p>
-        <table style="width:100%;border-collapse:collapse" border="1" cellspacing="0">
-            <tr><th>类型</th><th>金额（元）</th><th>事由</th><th>日期</th><th>经手人</th></tr>
-            <tbody id="fm-rows"></tbody>
-        </table>
-        <p style="text-align:center;margin:14px 0 0;color:#303133">
-            应收合计：<b id="fm-due"></b> 元 · 已收押金：<b id="fm-deposit"></b> 元 · 已收款项：<b id="fm-paid"></b> 元 · 余额：<b id="fm-balance"></b> 元
-        </p>
-        <p style="text-align:center;margin:14px 0 0"><button class="btn btn-primary" onclick="document.getElementById('folio-modal').style.display='none'">关闭</button></p>
     </div>
 </div>
 

@@ -6,7 +6,7 @@
     <title>酒店管理系统</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=10">
+<link rel="stylesheet" href="/static/css/site.css?v=12">
 </head>
 <body>
 {% if messages %}
@@ -25,16 +25,16 @@
             {% if pms_perms.hotelapp.add_room %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加客房</button>{% endif %}
         </div>
     </div>
-<div class="card" id="form-card" style="display:none">
-<center>
+<div class="card card-hidden" id="form-card">
+<div class="center-block">
 
     <div class="logo">
 					<h2>客房信息录入</h2>
     </div>
-</center>
-{% if pms_perms.hotelapp.add_room %}<form action="/insert_room/" method="post" style="margin-left:40px">
+</div>
+{% if pms_perms.hotelapp.add_room %}<form action="/insert_room/" method="post" class="form-inset">
     {% csrf_token %}
-    {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+    {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
 
     <p><label>房间编号&nbsp;:&nbsp;&nbsp;</label><input type="text" name="id" value="{{ form.id }}" required maxlength="10" pattern="\d{1,10}" title="房间号必须是1-10位数字" placeholder="1-10位数字" class="input"/></p>
     <p><label>客房类型&nbsp;:&nbsp;&nbsp;</label><input type="text" name="type" value="{{ form.type }}" required minlength="2" maxlength="10" pattern="[\u4e00-\u9fa5A-Za-z0-9]{2,10}" title="客房类型必须是2-10位中英文或数字" placeholder="如 标准间" class="input"/></p>
@@ -53,7 +53,7 @@
                         <option value="价格">价格</option>
                         <option value="负责人编号">负责人编号</option>
                                           </select>
-            <input type="text" name="value" placeholder="输入查询内容" class="input" style="width:200px !important">
+            <input type="text" name="value" placeholder="输入查询内容" class="input input-w200">
             <button type="submit" class="tb-btn tb-primary">查询</button>
             {% if searched %}<a href="/show_room/" class="tb-btn">显示全部</a>{% endif %}
         </form>
@@ -84,8 +84,8 @@
             {% if line.房间状态 != '维修中' and is_room_manager %}<button class="btn btn-primary st-btn-mgr" data-room="{{line.房间号}}" data-target="维修中">置维修中</button>{% endif %}
             {% if line.房间状态 == '维修中' and is_room_manager %}<button class="btn btn-primary st-btn" data-room="{{line.房间号}}" data-target="空闲">修复完成</button>{% endif %}
         </td>
-        {% if pms_perms.hotelapp.delete_room %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
-        {% if pms_perms.hotelapp.change_room %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
+        {% if pms_perms.hotelapp.delete_room %}<td class="td-center"><button class="btn btn-primary delete">删除</button></td>{% endif %}
+        {% if pms_perms.hotelapp.change_room %}<td class="td-center"><button class="btn btn-primary update">修改</button></td>{% endif %}
     </tr>
     {% empty %}
     <tr><td colspan="6" class="empty-row">未查询到相关记录，请重新核对信息</td></tr>
@@ -108,7 +108,7 @@
     document.addEventListener('click', function (e) {
         if (e.target.id === 'btn-add') {
             var fc = document.getElementById('form-card');
-            if (fc) { fc.style.display = (fc.style.display === 'none') ? '' : 'none'; }
+            if (fc) { fc.classList.toggle('card-hidden'); }
         }
     });
 </script>

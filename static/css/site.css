@@ -922,3 +922,43 @@ div.toast.warning::before { content: "!"; }
 .wb-kv th { width: 110px; text-align: right; }
 .btn-danger-solid { background: var(--color-danger-solid) !important; border-color: var(--color-danger-solid) !important; color: var(--color-text-inverse) !important; }
 .btn-danger-solid:hover { background: var(--color-danger-solid-hover) !important; }
+
+/* --- 入住管理页补充（checkin.html，原内联样式清退） --- */
+.card-title-row { display: flex; align-items: baseline; gap: var(--space-3); justify-content: center; margin: 0 0 var(--space-2); }
+.card-title-row h2 { margin: 0; }
+.today-only-label { font-size: var(--text-caption); color: var(--color-text-secondary); font-weight: normal; margin-left: var(--space-3); cursor: pointer; }
+.card-h2 { text-align: center; margin: 0 0 var(--space-2); }
+
+/* --- 侧边栏图标 --- */
+.sidebar-menu a svg { flex-shrink: 0; }
+.sidebar-menu-settings { flex: 0 0 auto; margin: 0; padding: 0 10px 6px; }
+
+/* --- 财务页表单（finance.html，原内联样式清退） --- */
+.finance-form { margin: 0 var(--space-8); }
+.input-amount { width: 200px !important; }
+.input-reason { width: 460px !important; }
+
+/* --- 通用工具类（内联样式清退 批次2/3） --- */
+.input-w160 { width: 160px !important; }
+.input-w180 { width: 180px !important; }
+.input-w200 { width: 200px !important; }
+.input-w220 { width: 220px !important; }
+.card-hidden { display: none; }
+.form-inset { margin-left: var(--space-8); }
+.form-inline { display: inline; }
+
+/* --- 403 无权限页 --- */
+.page-full { margin-left: 0; }
+.card-center { text-align: center; padding: 60px var(--space-8); }
+.p-403-lead { margin: var(--space-6) 0; color: var(--color-text-secondary); }
+.link-accent { color: var(--color-accent-solid); text-decoration: none; }
+.link-muted { color: var(--color-text-muted); text-decoration: none; }
+
+/* --- 夜审页 --- */
+.nightaudit-run-form { text-align: center; }
+.nightaudit-run-note { color: var(--color-text-secondary); }
+.nightaudit-run-btn { width: auto; padding: 12px 60px; letter-spacing: 4px; }
+
+.center-block { text-align: center; }
+.center-block > .data-table { margin: 0 auto; }
+.td-center { text-align: center; }

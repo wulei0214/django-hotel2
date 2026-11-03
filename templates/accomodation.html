@@ -7,7 +7,7 @@
     <title>酒店管理系统</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=10">
+<link rel="stylesheet" href="/static/css/site.css?v=12">
 </head>
 <body>
 {% if messages %}
@@ -26,16 +26,16 @@
             {% if pms_perms.hotelapp.add_accommodation %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加</button>{% endif %}
         </div>
     </div>
-<div class="card" id="form-card" style="display:none">
-<center>
+<div class="card card-hidden" id="form-card">
+<div class="center-block">
 
     <div class="logo">
 					<h2>客房订单信息录入</h2>
     </div>
-</center>
-{% if pms_perms.hotelapp.add_accommodation %}<form action="/insert_accomodation/" method="post" style="margin-left:40px">
+</div>
+{% if pms_perms.hotelapp.add_accommodation %}<form action="/insert_accomodation/" method="post" class="form-inset">
     {% csrf_token %}
-    {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+    {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
 
          <p><label>订单编号&nbsp;:&nbsp;&nbsp;</label><input type="text" name="id" value="{{ form.id }}" required maxlength="10" pattern="\d{1,10}" title="订单编号必须是1-10位数字" placeholder="1-10位数字" class="input"/></p>
          <p><label>顾客编号&nbsp;:&nbsp;&nbsp;</label><input type="text" name="client" value="{{ form.client }}" required maxlength="10" pattern="\d{1,10}" title="顾客编号必须是1-10位数字" placeholder="顾客的编号" class="input"/></p>
@@ -48,7 +48,7 @@
     <div class="list-toolbar">
         <form action="/search_accommodation/#list" method="post" class="inline-filter">
             {% csrf_token %}
-            <input type="text" name="value" placeholder="按顾客编号查询" class="input" style="width:200px !important">
+            <input type="text" name="value" placeholder="按顾客编号查询" class="input input-w200">
             <button type="submit" class="tb-btn tb-primary">查询</button>
             {% if searched %}<a href="/show_accomodation/" class="tb-btn">显示全部</a>{% endif %}
         </form>
@@ -99,7 +99,7 @@
     document.addEventListener('click', function (e) {
         if (e.target.id === 'btn-add') {
             var fc = document.getElementById('form-card');
-            if (fc) { fc.style.display = (fc.style.display === 'none') ? '' : 'none'; }
+            if (fc) { fc.classList.toggle('card-hidden'); }
         }
     });
 </script>

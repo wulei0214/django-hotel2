@@ -6,7 +6,7 @@
     <title>酒店管理系统</title>
     <link rel="shortcut icon" href="favicon.ico">
 
-<link rel="stylesheet" href="/static/css/site.css?v=10">
+<link rel="stylesheet" href="/static/css/site.css?v=12">
 </head>
 <body>
 {% if messages %}
@@ -52,18 +52,18 @@
                         <option value="工龄">工龄</option>
                     </select>
                 </label>
-                <input type="text" name="value" placeholder="查询内容" class="input" style="width:180px !important">
+                <input type="text" name="value" placeholder="查询内容" class="input input-w180">
                 <button type="submit" class="tb-btn">查询</button>
             </form>
         </div>
     </details>
 
     {% if can_manage_salary and pms_perms.hotelapp.add_staff %}
-    <div class="card" id="form-card" style="display:none">
-        <center><h2>员工信息录入</h2></center>
-        <form action="/insert/" method="post" style="margin-left:40px">
+    <div class="card card-hidden" id="form-card">
+        <h2 class="card-h2">员工信息录入</h2>
+        <form action="/insert/" method="post" class="form-inset">
             {% csrf_token %}
-            {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+            {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
             <p><label>工号：</label><input type="text" name="id" value="{{ form.id }}" maxlength="10" pattern="\d{1,10}" title="工号必须是1-10位数字，留空则自动分配" placeholder="1-10位数字，留空自动分配" class="input"/></p>
             <p><label>姓名：</label><input type="text" name="name" value="{{ form.name }}" required minlength="2" maxlength="10" pattern="[\u4e00-\u9fa5A-Za-z·]{2,10}" title="姓名必须是2-10位中英文" placeholder="2-10位中英文" class="input"/></p>
             <p><label>职务：</label><select name="job">
@@ -86,7 +86,7 @@
     {% endif %}
 
     <div class="card list-card">
-        <center>
+        <div class="center-block">
         <table class="data-table">
         <tr>
             <th class="col-check"><input type="checkbox" id="check-all"></th>
@@ -115,14 +115,14 @@
                 <span class="badge-toggle {% if line.启用 %}on{% else %}off{% endif %}">{% if line.启用 %}启用{% else %}停用{% endif %}</span>
                 {% endif %}
             </td>
-            {% if pms_perms.hotelapp.delete_staff %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
-            {% if pms_perms.hotelapp.change_staff and can_manage_salary %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
+            {% if pms_perms.hotelapp.delete_staff %}<td class="td-center"><button class="btn btn-primary delete">删除</button></td>{% endif %}
+            {% if pms_perms.hotelapp.change_staff and can_manage_salary %}<td class="td-center"><button class="btn btn-primary update">修改</button></td>{% endif %}
         </tr>
         {% empty %}
         <tr><td colspan="9" class="empty-row">暂无员工记录</td></tr>
         {% endfor %}
         </table>
-        </center>
+        </div>
         <div class="page-bar">
             <span>共 {{ page_obj.paginator.count }} 条记录</span>
             <span class="page-nums">
@@ -179,4 +179,5 @@
         }
     });
 </script>
+</body>
 </html>
