@@ -1,7 +1,7 @@
 # 酒店管理系统（PMS）V2.0
 
 > **架构**：Django 4.1 模块化单体（`apps/` PMS2 + `hotelapp/` 兼容层）+ MySQL 8 / SQLite
-> **代码基线**：`main` 分支 | **测试**：162 项 | **CI**：GitHub Actions（MySQL 8 + SQLite 双引擎）
+> **代码基线**：`main` 分支 | **测试**：174 项 | **CI**：GitHub Actions（MySQL 8 + SQLite 双引擎）
 
 ## 1. 项目现状
 
@@ -20,7 +20,7 @@ PMS2 已建立完整的业务骨架和权限体系。前台入住工作台（`/c
 | **审计** | core.AuditEvent 只追加 + 实体时间线索引 + PII 揭示/角色/退款/薪酬等关键路径接入 |
 | **P0 安全** | GET 写 405 / Admin PMS2 只读 / SQL 移除 / CSRF_USE_SESSIONS / Session 隔离；公开注册 User 创建与订单查询安全仍待收口 |
 | **字段安全** | GuestDocument Fernet 加密 + HMAC 查重 + document_reveal/phone_reveal 独立权限 + PII 揭示审计 |
-| **测试** | 162 项自动化测试（SQLite + MySQL 8 双引擎 CI） |
+| **测试** | 174 项自动化测试（SQLite + MySQL 8 双引擎 CI） |
 
 ## 2. 技术架构
 
@@ -69,13 +69,13 @@ hotelapp/                       # 旧业务兼容层（逐步退役中）
 |---|---|---|
 | **PMS 员工登录** | `/login/` | 员工登录入口（左右分栏企业级版式 v4，[截图](docs/screenshots/login-pms-v4.png)）；放行条件=有员工任职关系（D-04）；`next` 回跳经 `url_has_allowed_host_and_scheme` 安全校验 |
 | **后台登录** | `/admin/` | Django Admin 平台维护入口（simpleui 主题，[截图](docs/screenshots/login-admin.png)），仅超管 |
-| 注册 | `/register/` | 顾客自注册（仅创建顾客账号，不授员工权限） |
+| 注册（已止血） | `/register/` | AUTH-01：不再创建任何 User，302 → `/reserve/` 免注册直订 |
 | 主界面 | `/home/` | PMS2 权威仪表盘（[截图](docs/screenshots/home-pms2-dashboard.png)）：统计卡/四图表/预警/财务卡全部来自 PMS2 模型 |
 | 前台工作台 | `/checkin/` | PMS2 排房/入住/收款/退房（旧页 `/checkin/legacy/`） |
 | 员工与账号管理 | `/staff_accounts/` | 员工全生命周期（店长） |
 | 权限矩阵 | `/permissions/` | 九角色权限分配（超管） |
 | 系统信息 | `/system/` | 环境/会话/个人信息 |
-| 顾客预订 | `/reserve/` | PMS2 公开直订；旧 `/booking/` 待冻结退役 |
+| 顾客预订 | `/reserve/` | PMS2 公开直订（唯一顾客入口）；旧 `/booking/` 已冻结（AUTH-02） |
 
 **双会话隔离**（SplitSessionMiddleware）：PMS 登录写 `sessionid` cookie，Admin 登录写 `admin_sessionid` cookie，两套会话独立——员工登录 PMS 后仍可另登 Admin，互不踢线；CSRF 令牌存会话（`CSRF_USE_SESSIONS`）。
 
@@ -115,7 +115,7 @@ python manage.py runserver 0.0.0.0:8000 --noreload
 
 ## 5. 测试与 CI
 
-- `python manage.py test --noinput` — 162 项测试
+- `python manage.py test --noinput` — 174 项测试
 - CI：GitHub Actions（MySQL 8 + SQLite 双引擎），push/PR 自动触发
 - 验证指南：[docs/角色权限验证指南.md](docs/角色权限验证指南.md)
 
