@@ -554,6 +554,7 @@ class EmployeeLifecycleServiceTests(TestCase):
     def test_create_profile_without_account(self):
         """STAFF-01：只建档不开账号——档案保存、账号状态'未开通'、不能登录"""
         profile, membership, user = self.svc.create_employee(
+            property_obj=Property.objects.get(code="DEFAULT"),
             full_name="只建档员工", employee_no="F-2001",
             role_groups=[Group.objects.get(name="前台")])
         self.assertIsNone(user)
@@ -566,6 +567,7 @@ class EmployeeLifecycleServiceTests(TestCase):
     def test_create_with_account_and_role(self):
         """STAFF-02：建档+开账号+分角色——账号可登录并拥有角色权限"""
         profile, membership, user = self.svc.create_employee(
+            property_obj=Property.objects.get(code="DEFAULT"),
             full_name="全链路员工", employee_no="F-2002",
             account_username="emp2002", account_password="emp2002-pass",
             role_groups=[Group.objects.get(name="前台")])
@@ -585,6 +587,7 @@ class EmployeeLifecycleServiceTests(TestCase):
         from datetime import timedelta
         from django.utils import timezone
         profile, membership, user = self.svc.create_employee(
+            property_obj=Property.objects.get(code="DEFAULT"),
             full_name="兼岗员工", employee_no="F-2004",
             account_username="emp2004", account_password="emp2004-pass",
             role_groups=[Group.objects.get(name="前台"),
@@ -608,6 +611,7 @@ class EmployeeLifecycleServiceTests(TestCase):
     def test_transfer_keeps_history(self):
         """STAFF-08：调岗=旧授权结束+新授权生效，历史可查"""
         profile, membership, user = self.svc.create_employee(
+            property_obj=Property.objects.get(code="DEFAULT"),
             full_name="调岗员工", employee_no="F-2005",
             account_username="emp2005", account_password="emp2005-pass",
             role_groups=[Group.objects.get(name="前台")])
@@ -627,10 +631,12 @@ class EmployeeLifecycleServiceTests(TestCase):
     def test_terminate_disables_account(self):
         """STAFF-09：离职=授权终止+账号停用+历史不删除"""
         profile, membership, user = self.svc.create_employee(
+            property_obj=Property.objects.get(code="DEFAULT"),
             full_name="离职员工", employee_no="F-2006",
             account_username="emp2006", account_password="emp2006-pass",
             role_groups=[Group.objects.get(name="前台")])
-        self.svc.set_employment_status(profile, status="TERMINATED",
+        self.svc.set_employment_status(profile, property_obj=Property.objects.get(code="DEFAULT"),
+                                       status="TERMINATED",
                                        reason="个人原因离职")
         user.refresh_from_db()
         self.assertFalse(user.is_active)
@@ -703,7 +709,8 @@ class SegregationOfDutiesTests(TestCase):
         profile = StaffProfile.objects.get(user=self.owner)
         with self.assertRaises(Exception):
             self.svc.set_employment_status(
-                profile, status="TERMINATED", ended_by=self.owner, reason="自离")
+                profile, property_obj=Property.objects.get(code="DEFAULT"),
+                status="TERMINATED", ended_by=self.owner, reason="自离")
         profile.refresh_from_db()
         self.assertEqual(profile.employment_status, "ACTIVE")
 
@@ -734,6 +741,7 @@ class ForcedPasswordChangeTests(TestCase):
         """STAFF-01→02：先建档不开账号，后开通账号 → 必须强制改密"""
         from apps.identity.services import EmployeeLifecycleService
         profile, membership, user = self.svc.create_employee(
+            property_obj=Property.objects.get(code="DEFAULT"),
             full_name="建档未开号员工", employee_no="F-7001",
             role_groups=[Group.objects.get(name="前台")])
         self.assertIsNone(user)
@@ -771,7 +779,8 @@ class ForcedPasswordChangeTests(TestCase):
         profile = StaffProfile.objects.get(user=self.owner)
         root = User.objects.create_superuser("rootd07b", "root-pass123456")
         EmployeeLifecycleService.reset_password(
-            profile, new_password="resetted-pass", reset_by=root)
+            profile, property_obj=Property.objects.get(code="DEFAULT"),
+            new_password="resetted-pass", reset_by=root)
         profile.refresh_from_db()
         self.assertTrue(profile.must_change_password)
         from apps.core.models import AuditEvent
