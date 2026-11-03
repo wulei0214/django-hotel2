@@ -1,4 +1,5 @@
 from django.core.exceptions import FieldDoesNotExist
+# 安全边界提示：业务权限必须结合认证用户、当前物业、有效员工档案、有效任职和岗位分配计算。菜单隐藏不是授权；页面与 API 都必须服务端复核。平台 superuser 不自动等同于门店岗位。
 from django.db.models import Q
 from django.utils import timezone
 
