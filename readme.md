@@ -171,11 +171,11 @@ python manage.py runserver 0.0.0.0:8000 --noreload
 | [docs/值班经理授权场景设计.md](docs/值班经理授权场景设计.md) | 高危场景权限设计 |
 | [docs/敏感字段权限边界设计.md](docs/敏感字段权限边界设计.md) | 字段级权限边界（待 D-09 确认） |
 | [docs/角色权限验证指南.md](docs/角色权限验证指南.md) | 当前授权模型与回归场景（历史实测需重跑） |
-| [docs/README.md](docs/README.md) | 文档导航与状态规范 |
+| [docs/文档索引.md](docs/文档索引.md) | 文档导航与状态规范 |
 | [docs/PMS2身份认证与员工住客账户体系改造开发方案.md](docs/PMS2身份认证与员工住客账户体系改造开发方案.md) | 身份认证改造评审方案 |
-| [docs/REPOSITORY_DOCS_CODE_AUDIT_2026-11-04.md](docs/REPOSITORY_DOCS_CODE_AUDIT_2026-11-04.md) | 文档与代码一致性审查 |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构说明 |
-| [docs/CHANGELOG.md](docs/CHANGELOG.md) | 变更日志 |
+| [docs/代码与文档审查报告_2026-11-04.md](docs/代码与文档审查报告_2026-11-04.md) | 文档与代码一致性审查 |
+| [docs/系统架构说明.md](docs/系统架构说明.md) | 架构说明 |
+| [docs/更新日志.md](docs/更新日志.md) | 变更日志 |
 
 ## 7. 剩余工作
 
