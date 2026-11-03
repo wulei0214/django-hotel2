@@ -31,14 +31,21 @@ def get_room_type_availability(property_obj, room_type, check_in, check_out, roo
         raise ValueError("房型不存在或未启用。")
 
     if rate_plan is None:
+        # 自动选择房价计划必须落在"该房型在住宿区间实际有价格行"的计划上；
+        # 全局取第一个会导致只有碰巧挂在默认计划下的房型可售（其余房型恒 0 间）
+        scoped = room_type.property.rate_plans.filter(
+            is_active=True,
+            valid_from__lte=check_in,
+        ).filter(models_q_valid_to(check_out - timedelta(days=1)))
         rate_plan = (
-            room_type.property.rate_plans.filter(
-                is_active=True,
-                valid_from__lte=check_in,
+            scoped.filter(
+                daily_rates__room_type=room_type,
+                daily_rates__stay_date__gte=check_in,
+                daily_rates__stay_date__lt=check_out,
             )
-            .filter(models_q_valid_to(check_out - timedelta(days=1)))
             .order_by("valid_from", "id")
             .first()
+            or scoped.order_by("valid_from", "id").first()
         )
     if (
         rate_plan is None

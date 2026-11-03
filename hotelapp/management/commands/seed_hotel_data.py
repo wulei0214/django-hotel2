@@ -12,7 +12,8 @@ from apps.core.models import Property
 from apps.guests.models import Guest, GuestPhone
 from apps.identity.models import (
     PropertyStaffMembership, StaffProfile, StaffRoleAssignment)
-from apps.inventory.models import DailyRate, RatePlan, Room, RoomType
+from apps.inventory.models import (
+    DailyRate, RatePlan, Room, RoomType, RoomTypeInventory)
 from apps.reservations.models import Reservation, ReservationRoom
 
 FIRST = ["张伟","王芳","李娜","刘洋","陈静","杨帆","赵敏","黄磊","周婷","吴昊",
@@ -65,11 +66,22 @@ class Command(BaseCommand):
                 Room.objects.get_or_create(
                     property=prop, number=num,
                     defaults={"room_type": rt, "floor": num[:1]})
-                DailyRate.objects.get_or_create(
-                    property=prop, rate_plan=rp, room_type=rt,
-                    stay_date=date.today() + timedelta(days=i % 7),
-                    defaults={"price": Decimal(str(random.choice(prices)))})
-        self.stdout.write("  OK 房型+房间+价格")
+                # 未来 30 天逐日房价 + 逐日可售库存（公开预订 /reserve/ 的数据源；
+                # 此前库存表为空导致页面所有日期"剩余可订 0 间"）
+                base_price = Decimal(str(prices[i % len(prices)]))
+                for offset in range(30):
+                    day = date.today() + timedelta(days=offset)
+                    DailyRate.objects.get_or_create(
+                        property=prop, rate_plan=rp, room_type=rt,
+                        stay_date=day,
+                        defaults={"price": base_price})
+                room_count = options["rooms_per_type"]
+                for offset in range(30):
+                    day = date.today() + timedelta(days=offset)
+                    RoomTypeInventory.objects.get_or_create(
+                        property=prop, room_type=rt, stay_date=day,
+                        defaults={"total_rooms": room_count})
+        self.stdout.write("  OK 房型+房间+价格+30天库存")
 
         for name, role, emp_no in STAFF:
             username = "staff_" + emp_no.lower().replace("-", "_")
