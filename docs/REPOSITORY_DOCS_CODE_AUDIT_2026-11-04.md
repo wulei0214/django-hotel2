@@ -20,8 +20,8 @@
 | P1 | /manage/staff/ 与 /staff_accounts/ | 新员工中心主要只读，旧 URL 仍承担生命周期写操作 | 迁移写操作、权限、CSRF、审计和测试后再退役 |
 | P1 | apps/reservations/services.py | 创建预订路径会创建 Guest/GuestPhone；自动复用/合并策略未定义 | 产品确认去重策略，不按手机号自动合并 |
 | P1 | settings.py | LocMemCache 不适合多进程共享限流 | 生产限流使用共享缓存或数据库计数 |
-| P2 | docs/ARCHITECTURE.md | 仍有部分段落把 PMS2 前台履约描述为未来工作，与当前 /checkin/ 和 API 不完全一致 | 按页面/API/Service/测试四层更新成熟度 |
-| P2 | docs/DEVELOPMENT_GUIDE.md | /booking/ 仍列为兼容入口，未说明冻结目标 | 更新为旧入口待退役，正式入口 /reserve/ |
+| P2 | docs/系统架构说明.md | 仍有部分段落把 PMS2 前台履约描述为未来工作，与当前 /checkin/ 和 API 不完全一致 | 按页面/API/Service/测试四层更新成熟度 |
+| P2 | docs/开发指南.md | /booking/ 仍列为兼容入口，未说明冻结目标 | 更新为旧入口待退役，正式入口 /reserve/ |
 | P2 | docs/角色权限验证指南.md | 2026-11-02 实测、旧菜单和 User.groups 语义不可直接代表当前 main | 重新执行测试后再记录通过；历史结果标记过期 |
 | P2 | readme.md | 宣称“注册止血”，但注册视图仍创建 User；仍把 /booking/ 列为顾客预订 | 代码修复后再标完成；入口说明需同步 |
 
