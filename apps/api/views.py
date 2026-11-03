@@ -1,4 +1,5 @@
 import functools
+# API 安全阅读提示：公共预订与订单查询属于匿名访问面；必须关注限流、审计、字段脱敏、幂等和生产环境 Mock 支付门禁。页面参数和 booking_no + phone 组合不能代替访问频率控制。
 import json
 import logging
 from datetime import date, timedelta
