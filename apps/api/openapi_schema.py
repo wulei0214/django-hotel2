@@ -24,6 +24,8 @@ CSRF = {"name": "X-CSRFToken", "in": "header", "required": False,
         "description": "Django CSRF token；Session 写操作需要有效 CSRF。", "schema": {"type": "string"}}
 
 def _param(name, location="path", typ="string", required=True, description=""):
+    if location == "path" and name.endswith("_id"):
+        typ = "integer"
     return {"name": name, "in": location, "required": required,
             "description": description, "schema": {"type": typ}}
 
@@ -34,6 +36,10 @@ def _operation(summary, tag, method, *, path_params=(), query=(), body=None,
     params += [_param(q[0], "query", q[1], q[2], q[3] if len(q) > 3 else "") for q in query]
     if method == "post":
         params.append(CSRF)
+    if method == "post" and summary == "创建客房预订":
+        params.append(_param("Idempotency-Key", "header", "string", False, "相同请求使用相同幂等键；最大 128 字符。"))
+    if method == "post" and summary == "处理本地模拟支付回调":
+        params.append(_param("X-Signature", "header", "string", True, "模拟支付回调 HMAC 签名。"))
     responses = {success_code: {"description": success, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": True}}}}}
     responses.update({code: {"description": value["description"], "content": {"application/json": {"schema": {"type": "object", "additionalProperties": True}}}} for code, value in COMMON_ERRORS.items()})
     item = {
@@ -83,6 +89,10 @@ def build_openapi():
             "rooms":{"type":"integer","minimum":1,"maximum":10,"default":1},
             "adults":{"type":"integer","minimum":1,"maximum":10,"default":1},
             "children":{"type":"integer","minimum":0,"maximum":10,"default":0}}))
+    paths[BASE + "/reservations"]["post"]["responses"]["200"] = {
+        "description": "相同 Idempotency-Key 和请求体的幂等重放",
+        "content": {"application/json": {"schema": {"type": "object", "additionalProperties": True}}}
+    }
     add("/reservations/{booking_no}", "get", "使用 Booking Access Token 查询预订", "公开预订", auth=False,
         path_params=["booking_no"], query=[("token","string",False,"Booking Access Token")],
         success="脱敏预订详情；不返回完整手机号、证件号或支付内部流水",
