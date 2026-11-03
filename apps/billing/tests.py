@@ -203,3 +203,99 @@ class ApprovalRecordTests(TestCase):
         expired = self.ApprovalService.approve(
             record.pk, approved_by=self.approver, property_obj=self.property)
         self.assertEqual(expired.status, "EXPIRED")
+
+
+class NightAuditServiceTests(TestCase):
+    def setUp(self):
+        self.today = date.today()
+        self.property = Property.objects.create(code="NA", name="夜审测试酒店")
+        self.room_type = RoomType.objects.create(
+            property=self.property, code="NA-STD", name="夜审标准间")
+        self.rate_plan = RatePlan.objects.create(
+            property=self.property, code="NA-BAR", name="夜审门市价",
+            valid_from=self.today)
+        self.guest = __import__("apps.guests.models", fromlist=["Guest"]).Guest.objects.create(
+            property=self.property, full_name="夜审客人",
+            phone="13800008881", phone_normalized="13800008881")
+        from apps.reservations.models import Reservation, ReservationRoom, Stay
+        from apps.inventory.models import Room
+        from apps.billing.night_audit import NightAuditService
+        from decimal import Decimal
+        from django.contrib.auth.models import User
+
+        self.user = User.objects.create_user(username="night-audit-operator")
+        self.reservation = Reservation.objects.create(
+            property=self.property, booking_no="NIGHTAUDIT0001",
+            guest=self.guest, status=Reservation.Status.CHECKED_IN,
+            check_in=self.today, check_out=self.today + timedelta(days=2),
+            room_count=1, adult_count=1, total_amount=Decimal("800.00"))
+        line = ReservationRoom.objects.create(
+            property=self.property, reservation=self.reservation,
+            room_type=self.room_type, rate_plan=self.rate_plan,
+            check_in=self.today, check_out=self.today + timedelta(days=2),
+            nightly_rates=[
+                {"date": self.today.isoformat(), "price": "400.00", "currency": "CNY"},
+                {"date": (self.today + timedelta(days=1)).isoformat(), "price": "400.00", "currency": "CNY"},
+            ], amount=Decimal("800.00"))
+        room = Room.objects.create(
+            property=self.property, room_type=self.room_type, number="NA101",
+            occupancy_status=Room.OccupancyStatus.OCCUPIED)
+        self.stay = Stay.objects.create(
+            property=self.property, reservation_room=line, room=room,
+            status=Stay.Status.IN_HOUSE)
+        self.NightAuditService = NightAuditService
+
+    def test_night_audit_posts_daily_room_charge_once_and_closes_business_date(self):
+        from apps.billing.models import LedgerEntry
+        from apps.core.models import BusinessDate
+        run, created = self.NightAuditService.run(
+            property_obj=self.property, executed_by=self.user,
+            business_date=self.today)
+        self.assertTrue(created)
+        self.assertEqual(run.status, "SUCCESS")
+        self.assertEqual(run.summary["charge_count"], 1)
+        self.assertEqual(LedgerEntry.objects.filter(
+            property=self.property, business_date=self.today,
+            entry_type=LedgerEntry.EntryType.ROOM_CHARGE).count(), 1)
+        self.assertEqual(BusinessDate.objects.get(
+            property=self.property, business_date=self.today).status,
+            BusinessDate.Status.CLOSED)
+        replay, replay_created = self.NightAuditService.run(
+            property_obj=self.property, executed_by=self.user,
+            business_date=self.today)
+        self.assertFalse(replay_created)
+        self.assertEqual(replay.pk, run.pk)
+        self.assertEqual(LedgerEntry.objects.filter(
+            property=self.property, business_date=self.today).count(), 1)
+
+    def test_night_audit_requires_second_manager_to_reopen(self):
+        from apps.billing.models import LedgerEntry
+        from apps.core.models import BusinessDate
+        from django.contrib.auth.models import User
+        run, _ = self.NightAuditService.run(
+            property_obj=self.property, executed_by=self.user,
+            business_date=self.today)
+        bd = BusinessDate.objects.get(
+            property=self.property, business_date=self.today)
+        requester = User.objects.create_user(username="night-audit-requester")
+        approver = User.objects.create_user(username="night-audit-approver")
+        approval, created = self.NightAuditService.request_reopen(
+            property_obj=self.property, business_date_id=bd.pk,
+            requested_by=requester, reason="营业日账务复核后需要重开")
+        self.assertTrue(created)
+        with self.assertRaises(Exception):
+            self.NightAuditService.approve_reopen(
+                property_obj=self.property, business_date_id=bd.pk,
+                approval_id=approval.pk, approved_by=requester)
+        reopened = self.NightAuditService.approve_reopen(
+            property_obj=self.property, business_date_id=bd.pk,
+            approval_id=approval.pk, approved_by=approver)
+        self.assertEqual(reopened.status, BusinessDate.Status.REOPENED)
+        rerun, rerun_created = self.NightAuditService.run(
+            property_obj=self.property, executed_by=approver,
+            business_date=self.today)
+        self.assertTrue(rerun_created)
+        self.assertEqual(rerun.status, "SUCCESS")
+        self.assertEqual(LedgerEntry.objects.filter(
+            property=self.property, business_date=self.today,
+            entry_type=LedgerEntry.EntryType.ROOM_CHARGE).count(), 1)

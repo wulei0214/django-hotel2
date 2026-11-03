@@ -1,10 +1,14 @@
 from django.urls import path
 
-from . import front_desk, guest_center, staff_center, views
+from . import front_desk, guest_center, night_audit, staff_center, views
 
 app_name = "api"
 
 urlpatterns = [
+    path("night-audit/preview", night_audit.night_audit_preview, name="night_audit_preview"),
+    path("night-audit/run", night_audit.night_audit_run, name="night_audit_run"),
+    path("night-audit/business-dates/<int:business_date_id>/reopen-request", night_audit.night_audit_reopen_request, name="night_audit_reopen_request"),
+    path("night-audit/business-dates/<int:business_date_id>/approvals/<int:approval_id>/approve", night_audit.night_audit_reopen_approve, name="night_audit_reopen_approve"),
     path("front-desk/overview", front_desk.overview, name="front_desk_overview"),
     path("front-desk/arrivals", front_desk.arrivals, name="front_desk_arrivals"),
     path("front-desk/departures", front_desk.departures, name="front_desk_departures"),

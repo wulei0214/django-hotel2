@@ -211,14 +211,19 @@ class BusinessDate(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        desired_key = str(self.property_id) if self.property_id and self.status == self.Status.OPEN else None
+        desired_key = (
+            str(self.property_id)
+            if self.property_id and self.status in (self.Status.OPEN, self.Status.REOPENED)
+            else None
+        )
         if self.open_property_key != desired_key:
             self.open_property_key = desired_key
             if kwargs.get("update_fields") is not None:
                 kwargs["update_fields"] = set(kwargs["update_fields"]) | {"open_property_key"}
-        if self.status == self.Status.OPEN and self.property_id:
+        if self.status in (self.Status.OPEN, self.Status.REOPENED) and self.property_id:
             dup = BusinessDate.objects.filter(
-                property_id=self.property_id, status=self.Status.OPEN,
+                property_id=self.property_id,
+                status__in=(self.Status.OPEN, self.Status.REOPENED),
             ).exclude(pk=self.pk).exists()
             if dup:
                 raise ValidationError("该物业已有 OPEN 营业日（M-08 规则 1）")

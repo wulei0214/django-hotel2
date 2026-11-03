@@ -166,7 +166,7 @@ class BillingService:
                     or existing.amount != amount or existing.method != method):
                 raise ValueError("该收款参考号已用于不同支付。")
             return existing
-        from apps.billing.models import ReservationRoom
+        from apps.reservations.models import ReservationRoom
         entries = list(folio.entries.values_list("amount", flat=True))
         balance = sum(entries, start=Decimal("0.00"))
         expected = sum(
