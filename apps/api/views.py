@@ -297,6 +297,8 @@ def _throttle_deny(request, action):
     return response
 
 
+@require_POST
+@api_guard
 def payment_intent_create(request):
     property_obj = getattr(request, "property", None)
     # AUTH-07（P0-12）：mock 支付门禁——生产环境拒绝创建模拟支付
@@ -391,99 +393,9 @@ def payment_callback(request):
 @require_GET
 @api_guard
 def openapi_document(request):
-    return JsonResponse(
-        {
-            "openapi": "3.1.0",
-            "info": {
-                "title": "Hotel PMS API",
-                "version": "2.0.0",
-                "description": "模块化单体 PMS 的预订、库存与本地模拟支付接口。",
-            },
-            "paths": {
-                "/api/v1/availability": {
-                    "get": {
-                        "summary": "按住宿日期查询房型库存与价格",
-                        "parameters": [
-                            {"name": "check_in", "in": "query", "required": True, "schema": {"type": "string", "format": "date"}},
-                            {"name": "check_out", "in": "query", "required": True, "schema": {"type": "string", "format": "date"}},
-                            {"name": "rooms", "in": "query", "required": False, "schema": {"type": "integer", "minimum": 1, "maximum": 10}},
-                            {"name": "room_type_id", "in": "query", "required": False, "schema": {"type": "integer"}},
-                        ],
-                        "responses": {"200": {"description": "房型、每晚价格和可售库存"}, "400": {"description": "日期或参数无效"}},
-                    }
-                },
-                "/api/v1/reservations": {
-                    "post": {
-                        "summary": "创建预订并冻结每晚库存",
-                        "parameters": [{"name": "Idempotency-Key", "in": "header", "required": True, "schema": {"type": "string", "maxLength": 128}}],
-                        "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateReservation"}}}},
-                        "responses": {"201": {"description": "创建成功"}, "200": {"description": "幂等重放"}, "409": {"description": "库存不足或幂等冲突"}},
-                    }
-                },
-                "/api/v1/reservations/{booking_no}": {
-                    "get": {
-                        "summary": "按预订编号和联系电话查询预订",
-                        "parameters": [
-                            {"name": "booking_no", "in": "path", "required": True, "schema": {"type": "string"}},
-                            {"name": "phone", "in": "query", "required": True, "schema": {"type": "string"}},
-                        ],
-                        "responses": {"200": {"description": "预订详情"}, "404": {"description": "预订不存在或联系方式不匹配"}},
-                    }
-                },
-                "/api/v1/reservations/{booking_no}/cancel": {
-                    "post": {
-                        "summary": "取消待支付预订并释放库存 Hold",
-                        "parameters": [{"name": "booking_no", "in": "path", "required": True, "schema": {"type": "string"}}],
-                        "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object", "required": ["phone"], "properties": {"phone": {"type": "string"}}}}}},
-                        "responses": {"200": {"description": "取消结果"}, "409": {"description": "预订状态不允许取消"}},
-                    }
-                },
-                "/api/v1/payments/intents": {
-                    "post": {
-                        "summary": "创建本地模拟支付单",
-                        "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object", "required": ["booking_no", "phone"], "properties": {"booking_no": {"type": "string"}, "phone": {"type": "string"}}}}}},
-                        "responses": {"201": {"description": "模拟支付单已创建或复用"}, "409": {"description": "预订不可支付"}},
-                    }
-                },
-                "/api/v1/payments/callback": {
-                    "post": {
-                        "summary": "验签并幂等处理本地模拟支付回调，仅 dev/test 可用",
-                        "parameters": [{"name": "X-Signature", "in": "header", "required": True, "schema": {"type": "string"}}],
-                        "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MockPaymentCallback"}}}},
-                        "responses": {"200": {"description": "回调已处理或重复回调"}, "401": {"description": "签名错误"}, "404": {"description": "生产环境禁用"}},
-                    }
-                },
-            },
-            "components": {
-                "schemas": {
-                    "CreateReservation": {
-                        "type": "object",
-                        "required": ["full_name", "phone", "room_type_id", "check_in", "check_out"],
-                        "properties": {
-                            "full_name": {"type": "string", "maxLength": 80},
-                            "phone": {"type": "string", "maxLength": 24},
-                            "room_type_id": {"type": "integer"},
-                            "rate_plan_id": {"type": "integer"},
-                            "check_in": {"type": "string", "format": "date"},
-                            "check_out": {"type": "string", "format": "date"},
-                            "rooms": {"type": "integer", "minimum": 1, "maximum": 10, "default": 1},
-                            "adults": {"type": "integer", "minimum": 1, "default": 1},
-                            "children": {"type": "integer", "minimum": 0, "default": 0},
-                        },
-                    },
-                    "MockPaymentCallback": {
-                        "type": "object",
-                        "required": ["provider_ref", "amount", "status"],
-                        "properties": {
-                            "provider_ref": {"type": "string"},
-                            "amount": {"type": "string"},
-                            "status": {"type": "string", "enum": ["SUCCESS", "FAILED"]},
-                        },
-                    },
-                }
-            },
-        }
-    )
+    """兼容入口：返回完整 PMS2 OpenAPI 3.1 契约。"""
+    from .openapi_schema import openapi_json
+    return openapi_json(request)
 
 
 

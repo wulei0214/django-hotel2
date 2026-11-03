@@ -4,7 +4,7 @@
 > 适用项目：django-hotel2 / PMS2  
 > 核对分支：main  
 > 核对日期：2026-11-04  
-> 状态：第一版基线；接口清单已按当前路由登记，部分管理接口的字段级契约仍需随实现补齐。  
+> 状态：Swagger/OpenAPI 3.1 已实施；当前 60 个已注册 API 路由纳入规范，字段级 DTO 与权限细节仍分批核验。  
 > 重要：本文描述当前代码可见的接口，不代表所有接口均已完成业务验收。
 
 ## 1. 结论：当前是否已有 API 文档
@@ -52,8 +52,8 @@
 |---|---|---|
 | `GET /availability` | 查询房型库存和价格 | 日期、间数等参数；匿名公开 |
 | `POST /reservations` | 创建预订 | JSON；支持幂等键路径 |
-| `GET /reservations/{booking_no}` | 查询预订详情 | 当前实现使用 booking_no + phone；存在安全加固待办 |
-| `POST /reservations/{booking_no}/cancel` | 取消待支付预订 | 当前使用联系电话校验；存在安全加固待办 |
+| `GET /reservations/{booking_no}` | 查询预订详情 | 当前使用 Booking Access Token（X-Booking-Token 请求头或 token 查询参数） |
+| `POST /reservations/{booking_no}/cancel` | 取消待支付预订 | 请求体使用 Booking Access Token，不使用手机号作为凭据 |
 | `POST /payments/intents` | 创建支付意图 | 当前为本地模拟支付路径，必须确认环境门禁 |
 | `POST /payments/callback` | 模拟支付回调 | 仅允许 dev/test，不可用于真实支付 |
 
@@ -150,7 +150,7 @@ Apifox 是测试人员的首选图形化工具。它可以导入 OpenAPI、维�
 5. 导入后设置环境变量：
    - `base_url = http://127.0.0.1:8000`
    - API 前缀为 `/api/v1`
-6. 先测试当前 OpenAPI 已覆盖的公开预订接口；其他管理接口按本文件路由目录创建请求，待 OpenAPI 契约补齐后再统一重新导入/同步。
+6. 当前 OpenAPI 已登记全部 60 个 JSON API 路由和方法；逐项测试前请查看 operation 描述中的 `x-contract-status`，字段级仍待核验的接口需与开发确认实际 DTO。
 
 如果 Apifox 无法访问本机 URL，可先在同一网络环境下使用测试服务器地址；不要把本机地址 `127.0.0.1` 配给远程测试人员。
 
@@ -313,7 +313,7 @@ pytest -q --junitxml=reports/api-test-results.xml
 - 禁止在测试文档、Apifox 环境导出文件、代码仓库中保存真实住客姓名、手机号、证件号、密码、支付凭据或 Session。
 - 不要将真实支付回调或生产支付密钥用于本地模拟支付。
 - `payments/callback` 当前为 dev/test 模拟回调，生产环境预期应拒绝；必须测试 404 门禁。
-- 当前订单查询接口仍有 booking_no + phone 凭据风险；在 Booking Access Token、限流、审计和脱敏完成前，不应把它视为已通过安全验收。
+- 订单详情已使用 Booking Access Token，并实施限流、访问审计和字段白名单脱敏；仍需持续执行安全回归测试。
 - 不得用生产数据验证退款、夜审、入住、退房、取消、库存调整或敏感字段揭示。
 - 所有破坏性测试必须在可重建的测试数据库中执行。
 
@@ -323,7 +323,7 @@ pytest -q --junitxml=reports/api-test-results.xml
 
 - 为全部已注册路由补充准确 HTTP 方法、认证方式、角色权限、请求 Schema、成功响应 Schema、错误响应和示例。
 - 完善 `/api/v1/openapi.json`，覆盖当前路由，不得只列公开预订接口。
-- 对公共订单查询/取消补齐 Booking Access Token、限流、审计、脱敏，再更新文档。
+- 公开订单详情/取消/支付已使用 Booking Access Token；后续重点是回归令牌过期、撤销、重放和限流行为。
 - 统一错误码和响应封套；对既有接口做兼容性评估后分批迁移。
 - 将模拟支付接口标注为 dev/test only，并验证生产门禁。
 - 为敏感字段揭示、退款、夜审、break-glass 等高风险 API 写权限矩阵测试。
@@ -373,8 +373,8 @@ pytest -q --junitxml=reports/api-test-results.xml
 | 提交预订 | `/reserve/` 页面内 | `POST /api/v1/reservations` | 已实现 |
 | 预订确认/成功 | `/reserve/` 页面内结果区 | 创建预订响应；非独立成功页 URL | 已实现为同页结果区 |
 | 创建支付意图 | `/reserve/` 页面内 | `POST /api/v1/payments/intents` | 本地模拟支付；真实支付未实现 |
-| 订单查询 | 当前预订页流程/API | `GET /api/v1/reservations/{booking_no}` | 已实现；访问凭据安全仍需按身份方案加固 |
-| 订单取消 | 当前预订页流程/API | `POST /api/v1/reservations/{booking_no}/cancel` | 已实现；安全加固待验收 |
+| 订单查询 | 当前预订页流程/API | `GET /api/v1/reservations/{booking_no}` | 已实现；使用 Booking Access Token，持续安全回归 |
+| 订单取消 | 当前预订页流程/API | `POST /api/v1/reservations/{booking_no}/cancel` | 已实现；使用 Booking Access Token，持续安全回归 |
 | 员工登录 | `/login/` | Django Session 登录，HTML Form POST | 已实现；不是 JSON 登录 API |
 | 员工退出 | `/logout/` | Django Session logout | 已实现 |
 | 强制修改密码 | `/force-password-change/` | HTML Form POST | 已实现；密码策略/页面行为需回归 |
@@ -416,12 +416,12 @@ pytest -q --junitxml=reports/api-test-results.xml
 | `GET /reserve/` | GET | 匿名 | 返回官网预订页 | 已实现 |
 | `GET /api/v1/availability` | GET | 匿名 | query: check_in、check_out、rooms、room_type_id；返回物业、日期、间数、房型可售数据 | 已实现 |
 | `POST /api/v1/reservations` | POST | 匿名 | JSON: full_name、phone、room_type_id、可选 rate_plan_id、check_in、check_out、rooms、adults、children；支持 Idempotency-Key | 已实现 |
-| `GET /api/v1/reservations/{booking_no}` | GET | 匿名凭据校验 | 当前通过 booking_no + phone 查询 | 已实现；高风险安全待整改 |
-| `POST /api/v1/reservations/{booking_no}/cancel` | POST | 匿名凭据校验 | JSON phone；取消待支付预订 | 已实现；高风险安全待整改 |
-| `POST /api/v1/payments/intents` | POST | 匿名凭据校验 | JSON booking_no、phone；返回模拟支付意图 | 仅本地模拟 |
+| `GET /api/v1/reservations/{booking_no}` | GET | 匿名凭据校验 | 通过 X-Booking-Token 请求头或 token 查询参数校验 | 已实现；高风险安全待整改 |
+| `POST /api/v1/reservations/{booking_no}/cancel` | POST | 匿名凭据校验 | JSON token；取消待支付预订 | 已实现；高风险安全待整改 |
+| `POST /api/v1/payments/intents` | POST | 匿名凭据校验 | JSON booking_no、token；返回模拟支付意图 | 仅 dev/test 模拟支付 |
 | `POST /api/v1/payments/callback` | POST | 回调签名 | JSON provider_ref、amount、status；X-Signature | dev/test only |
 
-当前预订接口的成功响应与错误格式并非统一封套。测试断言应以 `apps/api/views.py` 真实响应为准。不得将手机号查询模式误写为已完成 Booking Access Token。
+当前预订接口的成功响应与错误格式并非统一封套。测试断言应以 `apps/api/views.py` 真实响应为准。公开订单访问凭据为 Booking Access Token；不得在测试用例中继续使用手机号作为订单访问凭据。
 
 ## 10.4 PMS 页面路由（HTML 页面，不是 JSON API）
 
@@ -614,3 +614,67 @@ pytest -q --junitxml=reports/api-test-results.xml
 9. 历史兼容路由：冻结/只读/410 状态逐项核验。
 
 每一组完成后必须同步更新 OpenAPI JSON、Apifox 项目和自动化测试；文档状态应绑定 commit SHA。未经源码核验的字段、状态码、权限码一律标记“待核实”，不得凭经验补写。
+
+
+---
+
+# 14. Swagger / OpenAPI 在线接口文档（实施版）
+
+## 14.1 在线入口
+
+| 地址 | 用途 |
+|---|---|
+| `/api/docs/` | Swagger UI：查看接口、填写参数、发送请求 |
+| `/api/redoc/` | ReDoc：阅读式接口文档 |
+| `/api/v1/openapi.json` | OpenAPI 3.1 JSON；Apifox 导入源 |
+| `/api/v1/openapi.json` | 保留既有兼容入口，不改变 URL |
+
+Swagger UI 和 ReDoc 使用 CDN 加载前端静态资源；部署环境浏览器需能访问对应 CDN。OpenAPI JSON 本身由 Django 本地生成，不依赖第三方文档服务。
+
+## 14.2 Apifox 导入
+
+1. 启动目标 PMS2 环境，先在浏览器访问 `/api/v1/openapi.json`，确认返回 JSON。
+2. 在 Apifox 项目中选择导入 → OpenAPI/Swagger。
+3. 输入完整地址 `https://你的测试域名/api/v1/openapi.json`，或下载 JSON 后从文件导入。
+4. 配置测试环境 Base URL（例如 `http://127.0.0.1:8000`）。
+5. 员工接口先通过浏览器登录 `/login/`，确保请求共享 Django `sessionid` Cookie；Session 写操作还需有效 CSRF Cookie 与 `X-CSRFToken` 请求头。
+6. 公开预订查询/取消/支付使用 Booking Access Token；首次创建预订后保存响应中的 `access_token`，不要用手机号替代。
+7. 模拟支付仅允许 DEBUG 且 DJANGO_ENV 为 dev/test 的环境；不得在生产环境测试模拟支付。
+
+## 14.3 文档范围与状态
+
+本次将当前 `apps/api/urls.py` 注册的业务 API 路径及真实 GET/POST 方法纳入 OpenAPI，包含公开预订、前台接待、夜审、住客、房态、房价、财务摘要、审批、预订管理、审计、员工和会员。
+
+OpenAPI operation 扩展字段 `x-contract-status=implemented-route-field-contract-partial` 表示：路由已注册且方法已从视图装饰器核验，但部分 DTO 字段、全部错误响应和权限码仍需继续逐接口核对。不得将“路由已登记”解释为字段级契约全部验收。
+
+以下不是 JSON API，不会伪造为 Swagger 接口：
+- `/login/`、`/logout/`、`/force-password-change/`：Django Session HTML 页面/表单流程；
+- `/staff_accounts/`、`/permissions/`：现有 HTML 页面和表单动作；
+- `/reserve/`：官网页面；
+- 历史 `hotelapp` URL：旧页面/兼容路由。
+
+## 14.4 认证和测试边界
+
+- 员工 API 使用 Django Session Cookie（`sessionid`），不是 Bearer Token。
+- Session 写请求受 Django CSRF 保护；Apifox 应先获取 CSRF Cookie，再设置 `X-CSRFToken`。
+- 公开预订创建为匿名 API；成功响应的一次性 `access_token` 是订单访问凭据。
+- 公开订单详情支持 `X-Booking-Token` 请求头或 `token` 查询参数；取消、模拟支付请求体使用 `token`。
+- 统一响应封套仅适用于采用 `apps.core.api_contract.api_view` 的新 API；公开预订及部分前台 API 保留各自响应结构，测试断言必须遵循对应接口 Schema。
+- Swagger 的“Try it out”会向当前站点发送真实请求；请仅在测试环境操作，避免对生产数据执行写入。
+
+## 14.5 本次实现文件
+
+- `apps/api/openapi_schema.py`：OpenAPI 3.1 规范生成器、Swagger UI、ReDoc 页面。
+- `apps/api/views.py`：既有 `openapi_document` 兼容入口委托给统一规范生成器。
+- `hotel/urls.py`：注册 `/api/docs/` 和 `/api/redoc/`。
+- `apps/api/test_openapi_schema.py`：文档版本、主要业务路径、Booking Access Token 描述和 UI 路由测试。
+
+## 14.6 尚待继续完成
+
+1. 对所有业务视图逐字段核验请求参数、DTO 响应字段、状态码和业务错误码。
+2. 为分页、列表筛选、金额/日期格式和敏感字段遮罩建立可复用 Schema。
+3. 将权限码、角色限制和物业数据范围精确到每个 operation。
+4. 补充前台入住、退款、夜审、break-glass、住客敏感信息揭示等写操作的集成测试。
+5. 由测试人员在实际测试环境导入 Apifox 并验证 Cookie/CSRF、幂等、限流和错误响应。
+
+本次先完成在线文档入口、当前 API 路由/方法覆盖和基础自动化测试；字段级契约的剩余工作继续按模块验收，不宣称已全部完成。

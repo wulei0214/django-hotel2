@@ -31,9 +31,12 @@ from django.views.generic import RedirectView
 from hotelapp import views
 from apps.identity import permission_admin
 from apps.api import pages as api_pages
+from apps.api import openapi_schema
 
 urlpatterns = [
     path('api/v1/', include('apps.api.urls')),
+    path('api/docs/', openapi_schema.swagger_ui, name='pms2_swagger_ui'),
+    path('api/redoc/', openapi_schema.redoc_ui, name='pms2_redoc_ui'),
     path('reserve/', api_pages.public_booking_page, name='public_booking_page'),
     path('manage/<str:center>/', api_pages.management_center_page, name='pms_management_center'),
     path('admin/', admin.site.urls),
