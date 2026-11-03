@@ -31,7 +31,7 @@ def _param(name, location="path", typ="string", required=True, description=""):
 
 def _operation(summary, tag, method, *, path_params=(), query=(), body=None,
                auth=True, permission="按对应视图的 AuthorizationService/员工任职门禁校验",
-               success="请求成功", success_code="200", notes="", deprecated=False):
+               success="请求成功", success_code="200", notes="", deprecated=False, body_required=True):
     params = [_param(p) for p in path_params]
     params += [_param(q[0], "query", q[1], q[2], q[3] if len(q) > 3 else "") for q in query]
     if method == "post":
@@ -66,7 +66,7 @@ def _operation(summary, tag, method, *, path_params=(), query=(), body=None,
 
 def _obj(required=(), properties=None):
     return {"type": "object", "required": list(required),
-            "properties": properties or {}, "additionalProperties": False}
+            "properties": properties or {}, "additionalProperties": True}
 
 def build_openapi():
     paths = {}
@@ -130,9 +130,9 @@ def build_openapi():
             permission="有效员工任职 + hotelapp.view_accommodation")
     fd_post = [
         ("/front-desk/reservation-rooms/{reservation_room_id}/assign","分配房间",["reservation_room_id"],_obj(["room_id"],{"room_id":{"type":"integer"}})),
-        ("/front-desk/reservation-rooms/{reservation_room_id}/check-in","办理入住",["reservation_room_id"],_obj()),
+        ("/front-desk/reservation-rooms/{reservation_room_id}/check-in","办理入住",["reservation_room_id"],None),
         ("/front-desk/reservations/{booking_no}/payments","收取预订款项",["booking_no"],_obj(["amount","method"],{"amount":{"type":"string"},"method":{"type":"string"}})),
-        ("/front-desk/stays/{stay_id}/check-out","办理退房",["stay_id"],_obj()),
+        ("/front-desk/stays/{stay_id}/check-out","办理退房",["stay_id"],None),
         ("/front-desk/stays/{stay_id}/extend","延长入住",["stay_id"],_obj(["new_check_out"],{"new_check_out":{"type":"string","format":"date"},"reason":{"type":"string"}})),
         ("/front-desk/stays/{stay_id}/change-room","在住换房",["stay_id"],_obj(["room_id"],{"room_id":{"type":"integer"},"reason":{"type":"string"}})),
         ("/front-desk/reservation-rooms/{reservation_room_id}/no-show","标记 No-show",["reservation_room_id"],_obj()),
@@ -147,17 +147,18 @@ def build_openapi():
     # Night audit and emergency access.
     na = [
         ("/night-audit/preview","get","预览夜审",[],None),
-        ("/night-audit/run","post","执行夜审",[],_obj()),
+        ("/night-audit/run","post","执行夜审",[],_obj(properties={"date":{"type":"string","format":"date"}})),
         ("/night-audit/business-dates/{business_date_id}/reopen-request","post","申请重开营业日",["business_date_id"],_obj(["reason"],{"reason":{"type":"string"}})),
-        ("/night-audit/business-dates/{business_date_id}/approvals/{approval_id}/approve","post","审批重开营业日",["business_date_id","approval_id"],_obj()),
+        ("/night-audit/business-dates/{business_date_id}/approvals/{approval_id}/approve","post","审批重开营业日",["business_date_id","approval_id"],None),
         ("/night-audit/business-dates/{business_date_id}/break-glass","post","申请紧急访问",["business_date_id"],_obj(["password","reason"],{"password":{"type":"string","format":"password"},"reason":{"type":"string"}})),
-        ("/night-audit/business-dates/{business_date_id}/break-glass/{record_id}/execute","post","执行紧急访问",["business_date_id","record_id"],_obj()),
+        ("/night-audit/business-dates/{business_date_id}/break-glass/{record_id}/execute","post","执行紧急访问",["business_date_id","record_id"],None),
         ("/night-audit/break-glass/{record_id}/review","post","复核紧急访问记录",["record_id"],_obj(["decision","reason"],{"decision":{"type":"string"},"reason":{"type":"string"}})),
     ]
     for p,m,s,pp,b in na:
         add(p,m,s,"夜审与紧急访问",path_params=pp,
             query=[("date","string",False,"业务日期 YYYY-MM-DD")] if p=="/night-audit/preview" else [],
-            body=b,permission="对应夜审/营业日重开/break-glass 专项权限")
+            body=b,permission="对应夜审/营业日重开/break-glass 专项权限",
+            body_required=(p != "/night-audit/run"))
     
     # Guest, inventory, rates and finance read/write.
     items = [
@@ -174,8 +175,8 @@ def build_openapi():
         ("/daily-rates/{rate_id}/adjust","post","调整每日房价","房价管理",["rate_id"],[],_obj(["price","reason"],{"price":{"type":"string"},"reason":{"type":"string"}}),"hotelapp.change_room"),
         ("/approvals","get","审批记录列表","审批",[],[("status","string",False,"审批状态")],None,"审批查看权限"),
         ("/approvals/request","post","创建审批申请","审批",[],[],_obj(["action_code","entity_type","entity_id","reason"],{"action_code":{"type":"string"},"entity_type":{"type":"string"},"entity_id":{"type":"string"},"reason":{"type":"string"},"payload":{"type":"object"}}),"业务审批申请权限"),
-        ("/approvals/{record_id}/approve","post","批准审批申请","审批",["record_id"],[],_obj(),"审批人权限；申请人与审批人分离"),
-        ("/approvals/{record_id}/reject","post","驳回审批申请","审批",["record_id"],[],_obj(["reason"],{"reason":{"type":"string"}}),"审批人权限；申请人与审批人分离"),
+        ("/approvals/{record_id}/approve","post","批准审批申请","审批",["record_id"],[],None,"审批人权限；申请人与审批人分离"),
+        ("/approvals/{record_id}/reject","post","驳回审批申请","审批",["record_id"],[],_obj(properties={"reason":{"type":"string","default":"驳回"}}),"审批人权限；申请人与审批人分离"),
         ("/reservations-mgmt","get","PMS 预订列表","预订管理",[],[("status","string",False,"预订状态"),("q","string",False,"预订号/住客搜索")],None,"预订查看权限"),
         ("/reservations-mgmt/{booking_no}","get","PMS 预订详情","预订管理",["booking_no"],[],None,"预订查看权限"),
         ("/audit-timeline","get","审计时间线","审计",[],[("entity_type","string",False,"实体类型"),("entity_id","string",False,"实体 ID"),("action","string",False,"动作")],None,"审计查看权限"),
@@ -188,6 +189,7 @@ def build_openapi():
     ]
     for p,m,s,t,pp,qq,b,perm in items:
         add(p,m,s,t,path_params=pp,query=qq,body=b,permission=perm,
+            body_required=(p != "/approvals/reject"),
             success_code="201" if m=="post" and p in ("/guests/create","/memberships/create","/approvals/request") else "200")
     add("/openapi.json","get","获取 OpenAPI 规范","文档",auth=False,success="OpenAPI 3.1 JSON 文档")
     return {
