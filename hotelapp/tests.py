@@ -188,9 +188,11 @@ class SensitiveExportPermissionTests(TestCase):
 
     def test_front_desk_cannot_export_sensitive_csv(self):
         self.client.force_login(self.fd)
-        for url in ("/export/staff/", "/export/client/", "/export/vip/"):
+        retired_staff_export = self.client.get("/export/staff/")
+        self.assertEqual(retired_staff_export.status_code, 410)
+        for url in ("/export/client/", "/export/vip/"):
             response = self.client.get(url)
-            self.assertEqual(response.status_code, 403, f"{url} 需「导出敏感数据」权限")
+            self.assertEqual(response.status_code, 403, f"{url} 需满足当前角色导出策略")
 
     def test_staff_salary_export_requires_reason_and_second_manager_approval(self):
         self.fin = _make_user("fin401", "财务")
@@ -453,7 +455,9 @@ class SensitiveFieldMaskingTests(TestCase):
         self.assertEqual(response.status_code, 403, "财务无 change_client 不得 reveal")
 
         self.client.force_login(self.fd)
-        response = self.client.post("/client/reveal_id/", {"id": self.client_fd.顾客id})
+        response = self.client.post("/client/reveal_id/", {
+            "id": self.client_fd.顾客id, "reason": "办理入住身份核验"
+        })
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["identify"], "110101199001010011")
 
