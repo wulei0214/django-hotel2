@@ -18,7 +18,7 @@ PMS2 已建立完整的业务骨架和权限体系。前台入住工作台（`/c
 | **前台工作台** | /checkin/ PMS2 工作台 + /api/v1/front-desk/ 23 端点（排房/入住/收款/退房/续住/换房/No-Show/退款） |
 | **审批** | ApprovalRecord 持久化 + ApprovalService（退款/重开双人 SoD）+ Break-glass（10 分钟限时） |
 | **审计** | core.AuditEvent 只追加 + 实体时间线索引 + PII 揭示/角色/退款/薪酬等关键路径接入 |
-| **P0 安全** | 注册止血 / GET 写 405 / Admin PMS2 只读 / SQL 移除 / CSRF_USE_SESSIONS / Session 隔离 |
+| **P0 安全** | GET 写 405 / Admin PMS2 只读 / SQL 移除 / CSRF_USE_SESSIONS / Session 隔离；公开注册 User 创建与订单查询安全仍待收口 |
 | **字段安全** | GuestDocument Fernet 加密 + HMAC 查重 + document_reveal/phone_reveal 独立权限 + PII 揭示审计 |
 | **测试** | 162 项自动化测试（SQLite + MySQL 8 双引擎 CI） |
 
@@ -75,7 +75,7 @@ hotelapp/                       # 旧业务兼容层（逐步退役中）
 | 员工与账号管理 | `/staff_accounts/` | 员工全生命周期（店长） |
 | 权限矩阵 | `/permissions/` | 九角色权限分配（超管） |
 | 系统信息 | `/system/` | 环境/会话/个人信息 |
-| 顾客预订 | `/booking/` | 公开预订 |
+| 顾客预订 | `/reserve/` | PMS2 公开直订；旧 `/booking/` 待冻结退役 |
 
 **双会话隔离**（SplitSessionMiddleware）：PMS 登录写 `sessionid` cookie，Admin 登录写 `admin_sessionid` cookie，两套会话独立——员工登录 PMS 后仍可另登 Admin，互不踢线；CSRF 令牌存会话（`CSRF_USE_SESSIONS`）。
 
@@ -170,7 +170,10 @@ python manage.py runserver 0.0.0.0:8000 --noreload
 | [docs/五大模块重构需求设计方案.md](docs/五大模块重构需求设计方案.md) | 五模块重构需求基线 |
 | [docs/值班经理授权场景设计.md](docs/值班经理授权场景设计.md) | 高危场景权限设计 |
 | [docs/敏感字段权限边界设计.md](docs/敏感字段权限边界设计.md) | 字段级权限边界（待 D-09 确认） |
-| [docs/角色权限验证指南.md](docs/角色权限验证指南.md) | 九角色验证清单 |
+| [docs/角色权限验证指南.md](docs/角色权限验证指南.md) | 当前授权模型与回归场景（历史实测需重跑） |
+| [docs/README.md](docs/README.md) | 文档导航与状态规范 |
+| [docs/PMS2身份认证与员工住客账户体系改造开发方案.md](docs/PMS2身份认证与员工住客账户体系改造开发方案.md) | 身份认证改造评审方案 |
+| [docs/REPOSITORY_DOCS_CODE_AUDIT_2026-11-04.md](docs/REPOSITORY_DOCS_CODE_AUDIT_2026-11-04.md) | 文档与代码一致性审查 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构说明 |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | 变更日志 |
 

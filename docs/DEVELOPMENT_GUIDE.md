@@ -79,7 +79,8 @@ python manage.py runserver
 - 顾客端新预订页：`http://127.0.0.1:8000/reserve/`
 - API OpenAPI JSON：`http://127.0.0.1:8000/api/v1/openapi.json`
 - Django Admin：`http://127.0.0.1:8000/admin/`
-- 历史顾客预订页：`http://127.0.0.1:8000/booking/`（旧页面，保留兼容）
+- 顾客端正式直订页：`http://127.0.0.1:8000/reserve/`
+- 旧顾客预订页 `/booking/`：待冻结/退役，不作为正式预订入口；不要在其上新增功能。
 
 物业数据需先初始化。当前默认物业编码由 `DEFAULT_PROPERTY_CODE` 控制，默认值为 `DEFAULT`。房型、物理房间、房价计划、每日价格及库存日历必须有数据，顾客端才会显示可订结果。库存日历同步命令示例见 Phase 2 开发记录。
 

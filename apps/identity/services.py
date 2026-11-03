@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# 业务阅读提示：员工身份、账号、任职和岗位变更必须收口到本服务；View/API 负责权限、参数和响应，不应直接写 User/Profile/Membership/Assignment。邀请激活应扩展本服务的事务方法，不能在 View 或 Invitation Service 直接创建 User。
 """统一员工生命周期服务（PMS_后台与前台员工账号权限关联设计方案 Phase 1）。
 
 设计原则（方案 §4.2/§16）：

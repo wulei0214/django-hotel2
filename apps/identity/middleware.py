@@ -1,4 +1,5 @@
 import logging
+# 请求上下文提示：当前实现按 DEFAULT_PROPERTY_CODE 单店上下文工作。Property 模型可关联多物业不代表登录/切换链路已支持多物业；不得把无效物业选择静默解释为另一个物业。
 
 from django.conf import settings
 
