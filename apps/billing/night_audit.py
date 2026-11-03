@@ -8,7 +8,9 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.billing.models import ApprovalRecord, Folio, LedgerEntry
-from apps.core.models import AuditEvent, BusinessDate, NightAuditRun, Property
+from apps.core.models import (
+    AuditEvent, BreakGlassRecord, BusinessDate, NightAuditRun, Property,
+)
 from apps.reservations.models import NoShowRecord, Reservation, ReservationRoom, Stay
 
 
@@ -278,3 +280,169 @@ class NightAuditService:
                    "status": bd.status, "approval_id": approval.pk},
             reason=reason)
         return bd
+
+
+    @staticmethod
+    @transaction.atomic
+    def request_break_glass(*, property_obj, business_date_id, requested_by,
+                            password, reason, validity_minutes=10):
+        """仅单一有效经理账号的紧急场景发放十分钟、单营业日重开授权。"""
+        from django.db.models import Q
+        from apps.identity.models import StaffRoleAssignment
+
+        reason = str(reason or "").strip()
+        if len(reason) < 8 or len(reason) > 240:
+            raise NightAuditError("紧急重开必须填写 8 至 240 个字符的具体原因。")
+        if validity_minutes != 10:
+            raise NightAuditError("Break-glass 授权窗口固定为 10 分钟。")
+        if not password or not requested_by.check_password(password):
+            raise NightAuditError("二次密码验证失败，未发放紧急授权。")
+
+        now = timezone.now()
+        eligible_users = set(
+            StaffRoleAssignment.objects.filter(
+                membership__property=property_obj,
+                membership__status="ACTIVE",
+                membership__staff_profile__employment_status="ACTIVE",
+                membership__staff_profile__user__is_active=True,
+                membership__staff_profile__user__isnull=False,
+                starts_at__lte=now,
+                group__permissions__content_type__app_label="hotelapp",
+                group__permissions__codename="business_date_reopen",
+            ).filter(
+                Q(ends_at__isnull=True) | Q(ends_at__gt=now)
+            ).values_list(
+                "membership__staff_profile__user_id", flat=True
+            ).distinct()
+        )
+        if eligible_users != {requested_by.pk}:
+            raise NightAuditError(
+                "当前物业存在其他有效营业日重开审批经理，必须走正常双人审批；"
+                "Break-glass 仅适用于唯一有效经理账号的紧急情况。"
+            )
+
+        business_date = BusinessDate.objects.select_for_update().filter(
+            pk=business_date_id, property=property_obj,
+            status=BusinessDate.Status.CLOSED,
+        ).first()
+        if business_date is None:
+            raise NightAuditError("仅已关账营业日可以申请紧急重开。")
+        active = BreakGlassRecord.objects.select_for_update().filter(
+            business_date=business_date,
+            status=BreakGlassRecord.Status.GRANTED,
+            expires_at__gt=now,
+        ).first()
+        if active:
+            raise NightAuditError("该营业日已有有效的 Break-glass 授权。")
+
+        record = BreakGlassRecord.objects.create(
+            property=property_obj, business_date=business_date,
+            requested_by=requested_by, reason=reason,
+            password_verified_at=now,
+            expires_at=now + timedelta(minutes=10),
+            status=BreakGlassRecord.Status.GRANTED,
+        )
+        AuditEvent.record(
+            action="night_audit.break_glass_requested",
+            entity_type="BreakGlassRecord", entity_id=record.pk,
+            actor=requested_by, property_obj=property_obj,
+            after={"business_date": business_date.business_date.isoformat(),
+                   "expires_at": record.expires_at.isoformat(),
+                   "status": record.status},
+            reason=reason)
+        return record
+
+    @staticmethod
+    @transaction.atomic
+    def execute_break_glass(*, property_obj, business_date_id, record_id,
+                            executed_by):
+        """执行单次限时授权；授权绑定申请人、物业和具体营业日。"""
+        record = BreakGlassRecord.objects.select_for_update().filter(
+            pk=record_id, property=property_obj,
+            business_date_id=business_date_id,
+        ).first()
+        if record is None:
+            raise NightAuditError("紧急授权记录不存在或不属于当前物业/营业日。")
+        if record.requested_by_id != executed_by.pk:
+            raise NightAuditError("紧急授权只能由原申请账号执行。")
+        if record.status != BreakGlassRecord.Status.GRANTED:
+            raise NightAuditError("紧急授权已使用、过期或失效，不能再次执行。")
+        now = timezone.now()
+        if record.expires_at <= now:
+            record.status = BreakGlassRecord.Status.EXPIRED
+            record.save(update_fields=("status",))
+            AuditEvent.record(
+                action="night_audit.break_glass_expired",
+                entity_type="BreakGlassRecord", entity_id=record.pk,
+                actor=executed_by, property_obj=property_obj,
+                after={"status": record.status}, reason=record.reason)
+            return None
+
+        business_date = BusinessDate.objects.select_for_update().filter(
+            pk=business_date_id, property=property_obj,
+            status=BusinessDate.Status.CLOSED,
+        ).first()
+        if business_date is None:
+            raise NightAuditError("营业日状态已变化，紧急授权未执行。")
+        business_date.status = BusinessDate.Status.REOPENED
+        business_date.reopened_at = now
+        business_date.reopened_by = executed_by
+        business_date.reopen_reason = record.reason
+        business_date.save(update_fields=(
+            "status", "reopened_at", "reopened_by", "reopen_reason",
+            "open_property_key"))
+        record.status = BreakGlassRecord.Status.USED
+        record.used_at = now
+        record.save(update_fields=("status", "used_at"))
+        AuditEvent.record(
+            action="night_audit.break_glass_executed",
+            entity_type="BusinessDate", entity_id=business_date.pk,
+            actor=executed_by, property_obj=property_obj,
+            after={"business_date": business_date.business_date.isoformat(),
+                   "status": business_date.status,
+                   "break_glass_record_id": record.pk},
+            reason=record.reason)
+        return business_date
+
+    @staticmethod
+    @transaction.atomic
+    def review_break_glass(*, property_obj, record_id, reviewed_by,
+                           decision, reason):
+        """事后独立复核；复核账号必须不同于紧急操作账号。"""
+        from apps.identity.authorization import AuthorizationService
+
+        reason = str(reason or "").strip()
+        if len(reason) < 8 or len(reason) > 240:
+            raise NightAuditError("事后复核必须填写 8 至 240 个字符的复核说明。")
+        if decision not in (
+            BreakGlassRecord.ReviewDecision.CONFIRMED,
+            BreakGlassRecord.ReviewDecision.REJECTED,
+        ):
+            raise NightAuditError("复核结论只能是 CONFIRMED 或 REJECTED。")
+        if not AuthorizationService.has_permission(
+                reviewed_by, property_obj, "core.breakglass_review"):
+            raise NightAuditError("当前账号没有紧急操作事后复核权限。")
+        record = BreakGlassRecord.objects.select_for_update().filter(
+            pk=record_id, property=property_obj,
+        ).first()
+        if record is None:
+            raise NightAuditError("紧急授权记录不存在或不属于当前物业。")
+        if record.requested_by_id == reviewed_by.pk:
+            raise NightAuditError("紧急操作人与事后复核人不能是同一账号。")
+        if record.status != BreakGlassRecord.Status.USED:
+            raise NightAuditError("只有已执行的紧急操作可以进行事后复核。")
+        record.status = BreakGlassRecord.Status.REVIEWED
+        record.reviewed_by = reviewed_by
+        record.reviewed_at = timezone.now()
+        record.review_decision = decision
+        record.review_reason = reason
+        record.save(update_fields=(
+            "status", "reviewed_by", "reviewed_at",
+            "review_decision", "review_reason"))
+        AuditEvent.record(
+            action="night_audit.break_glass_reviewed",
+            entity_type="BreakGlassRecord", entity_id=record.pk,
+            actor=reviewed_by, property_obj=property_obj,
+            after={"decision": decision, "status": record.status},
+            reason=reason)
+        return record

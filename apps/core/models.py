@@ -209,6 +209,9 @@ class BusinessDate(models.Model):
             models.UniqueConstraint(fields=("property", "business_date"),
                                     name="uq_business_date_per_property"),
         ]
+        permissions = (
+            ("breakglass_review", "可以复核紧急营业日重开"),
+        )
 
     def save(self, *args, **kwargs):
         desired_key = (
@@ -231,6 +234,66 @@ class BusinessDate(models.Model):
 
     def __str__(self):
         return f"{self.property_id}@{self.business_date} {self.status}"
+
+
+class BreakGlassRecord(models.Model):
+    """营业日重开紧急例外授权：限时、限对象、二次认证并须独立事后复核。"""
+
+    class Status(models.TextChoices):
+        GRANTED = "GRANTED", "已授权待执行"
+        USED = "USED", "已执行待复核"
+        EXPIRED = "EXPIRED", "已过期"
+        REVIEWED = "REVIEWED", "已完成复核"
+
+    class ReviewDecision(models.TextChoices):
+        CONFIRMED = "CONFIRMED", "复核确认"
+        REJECTED = "REJECTED", "复核有异议"
+
+    property = models.ForeignKey(
+        Property, on_delete=models.PROTECT, related_name="break_glass_records",
+        verbose_name="物业")
+    business_date = models.ForeignKey(
+        BusinessDate, on_delete=models.PROTECT, related_name="break_glass_records",
+        verbose_name="目标营业日")
+    action_code = models.CharField(
+        max_length=64, default="night_audit.reopen", editable=False,
+        verbose_name="授权动作")
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="break_glass_requested", verbose_name="紧急操作人")
+    reason = models.CharField(max_length=240, verbose_name="紧急原因")
+    password_verified_at = models.DateTimeField(verbose_name="二次密码验证时间")
+    expires_at = models.DateTimeField(verbose_name="授权失效时间")
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.GRANTED,
+        verbose_name="状态")
+    used_at = models.DateTimeField(null=True, blank=True, verbose_name="执行时间")
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="break_glass_reviewed", verbose_name="事后复核人")
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name="复核时间")
+    review_decision = models.CharField(
+        max_length=12, choices=ReviewDecision.choices, blank=True,
+        verbose_name="复核结论")
+    review_reason = models.CharField(max_length=240, blank=True, verbose_name="复核说明")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="申请时间")
+
+    class Meta:
+        verbose_name = "营业日紧急重开授权"
+        verbose_name_plural = "营业日紧急重开授权"
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=("property", "status", "expires_at"),
+                         name="idx_breakglass_prop_status"),
+            models.Index(fields=("business_date", "created_at"),
+                         name="idx_breakglass_date_created"),
+        ]
+
+    def delete(self, *args, **kwargs):
+        raise RuntimeError("紧急授权记录不可删除。")
+
+    def __str__(self):
+        return f"{self.property_id}/{self.business_date_id} {self.status}"
 
 
 class NightAuditRun(models.Model):

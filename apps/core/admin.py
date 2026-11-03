@@ -45,3 +45,28 @@ class LegacyRecordLinkAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+from .models import BreakGlassRecord
+
+
+@admin.register(BreakGlassRecord)
+class BreakGlassRecordAdmin(admin.ModelAdmin):
+    """Break-glass 安全记录仅供审计查看，后台不得新增、修改或删除。"""
+    list_display = (
+        "id", "property", "business_date", "requested_by", "reason",
+        "status", "expires_at", "used_at", "reviewed_by", "review_decision",
+    )
+    list_filter = ("property", "status", "review_decision")
+    search_fields = ("reason", "review_reason", "requested_by__username")
+    readonly_fields = tuple(f.name for f in BreakGlassRecord._meta.fields)
+    date_hierarchy = "created_at"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
