@@ -297,6 +297,8 @@ def _throttle_deny(request, action):
     return response
 
 
+@require_POST
+@api_guard
 def payment_intent_create(request):
     property_obj = getattr(request, "property", None)
     # AUTH-07（P0-12）：mock 支付门禁——生产环境拒绝创建模拟支付
