@@ -52,8 +52,8 @@
 |---|---|---|
 | `GET /availability` | 查询房型库存和价格 | 日期、间数等参数；匿名公开 |
 | `POST /reservations` | 创建预订 | JSON；支持幂等键路径 |
-| `GET /reservations/{booking_no}` | 查询预订详情 | 当前实现使用 booking_no + phone；存在安全加固待办 |
-| `POST /reservations/{booking_no}/cancel` | 取消待支付预订 | 当前使用联系电话校验；存在安全加固待办 |
+| `GET /reservations/{booking_no}` | 查询预订详情 | 当前使用 Booking Access Token（X-Booking-Token 请求头或 token 查询参数） |
+| `POST /reservations/{booking_no}/cancel` | 取消待支付预订 | 请求体使用 Booking Access Token，不使用手机号作为凭据 |
 | `POST /payments/intents` | 创建支付意图 | 当前为本地模拟支付路径，必须确认环境门禁 |
 | `POST /payments/callback` | 模拟支付回调 | 仅允许 dev/test，不可用于真实支付 |
 
@@ -313,7 +313,7 @@ pytest -q --junitxml=reports/api-test-results.xml
 - 禁止在测试文档、Apifox 环境导出文件、代码仓库中保存真实住客姓名、手机号、证件号、密码、支付凭据或 Session。
 - 不要将真实支付回调或生产支付密钥用于本地模拟支付。
 - `payments/callback` 当前为 dev/test 模拟回调，生产环境预期应拒绝；必须测试 404 门禁。
-- 当前订单查询接口仍有 booking_no + phone 凭据风险；在 Booking Access Token、限流、审计和脱敏完成前，不应把它视为已通过安全验收。
+- 订单详情已使用 Booking Access Token，并实施限流、访问审计和字段白名单脱敏；仍需持续执行安全回归测试。
 - 不得用生产数据验证退款、夜审、入住、退房、取消、库存调整或敏感字段揭示。
 - 所有破坏性测试必须在可重建的测试数据库中执行。
 
@@ -323,7 +323,7 @@ pytest -q --junitxml=reports/api-test-results.xml
 
 - 为全部已注册路由补充准确 HTTP 方法、认证方式、角色权限、请求 Schema、成功响应 Schema、错误响应和示例。
 - 完善 `/api/v1/openapi.json`，覆盖当前路由，不得只列公开预订接口。
-- 对公共订单查询/取消补齐 Booking Access Token、限流、审计、脱敏，再更新文档。
+- 公开订单详情/取消/支付已使用 Booking Access Token；后续重点是回归令牌过期、撤销、重放和限流行为。
 - 统一错误码和响应封套；对既有接口做兼容性评估后分批迁移。
 - 将模拟支付接口标注为 dev/test only，并验证生产门禁。
 - 为敏感字段揭示、退款、夜审、break-glass 等高风险 API 写权限矩阵测试。
@@ -373,8 +373,8 @@ pytest -q --junitxml=reports/api-test-results.xml
 | 提交预订 | `/reserve/` 页面内 | `POST /api/v1/reservations` | 已实现 |
 | 预订确认/成功 | `/reserve/` 页面内结果区 | 创建预订响应；非独立成功页 URL | 已实现为同页结果区 |
 | 创建支付意图 | `/reserve/` 页面内 | `POST /api/v1/payments/intents` | 本地模拟支付；真实支付未实现 |
-| 订单查询 | 当前预订页流程/API | `GET /api/v1/reservations/{booking_no}` | 已实现；访问凭据安全仍需按身份方案加固 |
-| 订单取消 | 当前预订页流程/API | `POST /api/v1/reservations/{booking_no}/cancel` | 已实现；安全加固待验收 |
+| 订单查询 | 当前预订页流程/API | `GET /api/v1/reservations/{booking_no}` | 已实现；使用 Booking Access Token，持续安全回归 |
+| 订单取消 | 当前预订页流程/API | `POST /api/v1/reservations/{booking_no}/cancel` | 已实现；使用 Booking Access Token，持续安全回归 |
 | 员工登录 | `/login/` | Django Session 登录，HTML Form POST | 已实现；不是 JSON 登录 API |
 | 员工退出 | `/logout/` | Django Session logout | 已实现 |
 | 强制修改密码 | `/force-password-change/` | HTML Form POST | 已实现；密码策略/页面行为需回归 |
@@ -416,12 +416,12 @@ pytest -q --junitxml=reports/api-test-results.xml
 | `GET /reserve/` | GET | 匿名 | 返回官网预订页 | 已实现 |
 | `GET /api/v1/availability` | GET | 匿名 | query: check_in、check_out、rooms、room_type_id；返回物业、日期、间数、房型可售数据 | 已实现 |
 | `POST /api/v1/reservations` | POST | 匿名 | JSON: full_name、phone、room_type_id、可选 rate_plan_id、check_in、check_out、rooms、adults、children；支持 Idempotency-Key | 已实现 |
-| `GET /api/v1/reservations/{booking_no}` | GET | 匿名凭据校验 | 当前通过 booking_no + phone 查询 | 已实现；高风险安全待整改 |
-| `POST /api/v1/reservations/{booking_no}/cancel` | POST | 匿名凭据校验 | JSON phone；取消待支付预订 | 已实现；高风险安全待整改 |
+| `GET /api/v1/reservations/{booking_no}` | GET | 匿名凭据校验 | 通过 X-Booking-Token 请求头或 token 查询参数校验 | 已实现；高风险安全待整改 |
+| `POST /api/v1/reservations/{booking_no}/cancel` | POST | 匿名凭据校验 | JSON token；取消待支付预订 | 已实现；高风险安全待整改 |
 | `POST /api/v1/payments/intents` | POST | 匿名凭据校验 | JSON booking_no、token；返回模拟支付意图 | 仅 dev/test 模拟支付 |
 | `POST /api/v1/payments/callback` | POST | 回调签名 | JSON provider_ref、amount、status；X-Signature | dev/test only |
 
-当前预订接口的成功响应与错误格式并非统一封套。测试断言应以 `apps/api/views.py` 真实响应为准。不得将手机号查询模式误写为已完成 Booking Access Token。
+当前预订接口的成功响应与错误格式并非统一封套。测试断言应以 `apps/api/views.py` 真实响应为准。公开订单访问凭据为 Booking Access Token；不得在测试用例中继续使用手机号作为订单访问凭据。
 
 ## 10.4 PMS 页面路由（HTML 页面，不是 JSON API）
 
