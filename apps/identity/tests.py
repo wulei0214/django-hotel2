@@ -112,13 +112,16 @@ class EmployeeLifecycleServiceTests(TestCase):
             starts_at=timezone.now() - timedelta(minutes=1),
         )
 
-    def test_duplicate_phone_is_rejected_even_for_same_name(self):
-        with self.assertRaises(EmployeeLifecycleError):
-            EmployeeLifecycleService.create_employee(
-                full_name="同名员工", employee_no="LIFE-002",
-                phone=" 13800001111 ",
-            )
-        self.assertEqual(StaffProfile.objects.filter(phone="13800001111").count(), 1)
+    def test_shared_employee_phone_is_allowed_with_distinct_property_employee_numbers(self):
+        profile, membership, _ = EmployeeLifecycleService.create_employee(
+            full_name="同名员工", employee_no="LIFE-002",
+            phone=" 13800001111 ",
+        )
+        self.assertEqual(profile.phone, "13800001111")
+        self.assertEqual(membership.employee_no, "LIFE-002")
+        self.assertEqual(
+            StaffProfile.objects.filter(phone="13800001111").count(), 2
+        )
 
     def test_suspended_status_maps_to_inactive_profile_and_suspended_membership(self):
         EmployeeLifecycleService.set_employment_status(

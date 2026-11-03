@@ -76,8 +76,8 @@ class EmployeeLifecycleService:
         if PropertyStaffMembership.objects.filter(
                 property=property_obj, employee_no=employee_no).exists():
             raise EmployeeLifecycleError(f"工号 {employee_no} 已存在，不能重复建档")
-        if phone and StaffProfile.objects.filter(phone=phone).exists():
-            raise EmployeeLifecycleError(f"手机号 {phone} 已被其他员工使用")
+        # C-03：员工手机号可能是家庭/紧急联系人，可共享；不得作为员工自然人唯一键。
+        # 唯一身份仍由员工档案、物业任职和物业内工号建立。
 
         user = None
         account_username = (account_username or "").strip()

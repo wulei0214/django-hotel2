@@ -1125,54 +1125,13 @@ def change_room(request):
 @staff_required
 @pms_permission_required('hotelapp.change_accommodation')
 def express_checkout(request):
-    """快捷离店：按账单聚合自动结算（免查房），后续流程与普通退房一致"""
-    if request.method == "POST":
-        try:
-            with transaction.atomic():
-                item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"), 状态="已入住")
-                # 应收 = 房费 + 消费；已收 = 押金 + 收款（不含本次自动结算）
-                due = 0.0
-                for f in Folio.objects.filter(order=item, 类型__in=("房费", "消费")):
-                    try:
-                        due += float(f.金额)
-                    except (TypeError, ValueError):
-                        pass
-                if due <= 0:
-                    due = float(item.客房编号.价格 or 0)
-                paid = 0.0
-                for f in Folio.objects.filter(order=item, 类型__in=("押金", "收款")):
-                    try:
-                        paid += float(f.金额)
-                    except (TypeError, ValueError):
-                        pass
-                # E-05/MGR-03：已有资金往来与应收对不上（多收/部分收）= 账单存在差异，
-                # 快捷退房不得自动抹平——转普通结账人工核对或经理处理
-                if paid != 0 and abs(due - paid) > 0.001:
-                    return HttpResponse(
-                        f"账单存在未核平差异（应收 {due:.2f} / 已收 {paid:.2f}），"
-                        "请转普通结账核对或联系值班经理处理", status=400)
-                amount = round(due - paid, 2)
-                if amount < 0:
-                    return HttpResponse(
-                        f"客人多付 {abs(amount):.2f} 元，请走退款流程后离店", status=400)
-                room = item.客房编号
-                state_machine.require_order_transition(item, "已退房")
-                item.退房时间 = _today()
-                item.save()
-                events.publish("checked_out", order_id=item.id, room_no=room.房间号,
-                               amount=f"{amount:.2f}", operator=request.user.username, date=_today())
-                if amount > 0:
-                    Folio.objects.create(order=item, 类型="收款", 金额=f"{amount:.2f}",
-                                         事由="快捷离店自动结算", 日期=_today(), 经手人=request.user.username)
-                item.收款金额 = f"{amount:.2f}"
-                item.save()
-        except ValueError as e:
-            return HttpResponse(str(e), status=400)
-        except Accommodation.DoesNotExist:
-            return HttpResponse("订单不存在或状态已变更", status=400)
-        return JsonResponse({"ok": True, "amount": f"{amount:.2f}"})
-    return HttpResponse("非法请求", status=400)
-
+    """旧版快捷离店已退役，避免在无 PMS2 账本/支付状态核验下自动写账。"""
+    if request.method != "POST":
+        return HttpResponse("旧版快捷离店已退役，请使用 PMS2 前台工作台。", status=410)
+    return HttpResponse(
+        "快捷离店不再允许自动补记收款或绕过未结余额。请使用 PMS2 前台工作台核对账单后办理退房。",
+        status=410,
+    )
 
 @staff_required
 @pms_permission_required('hotelapp.add_accommodation')

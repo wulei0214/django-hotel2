@@ -4,7 +4,7 @@ from django.db import models
 
 
 class Guest(models.Model):
-    """住客档案：预订/在住客人的自然人与联系方式记录，同物业内手机号唯一。"""
+    """住客档案：手机号是可共享联系方式，不作为自然人唯一身份键。"""
 
     property = models.ForeignKey(
         "core.Property", on_delete=models.PROTECT, related_name="guests",
@@ -17,7 +17,7 @@ class Guest(models.Model):
     )
     phone_normalized = models.CharField(
         max_length=24, null=True, blank=True, verbose_name="标准化手机号",
-        help_text="去分隔符后的纯数字手机号，同物业内唯一（预订查询凭据）",
+        help_text="去分隔符后的标准化号码；仅用于检索与候选匹配，不代表自然人唯一身份",
     )
     email = models.EmailField(blank=True, verbose_name="电子邮箱")
     notes = models.TextField(blank=True, verbose_name="备注")
@@ -32,14 +32,9 @@ class Guest(models.Model):
         verbose_name = "住客档案"
         verbose_name_plural = "住客档案"
         ordering = ("id",)
-        constraints = [
-            models.UniqueConstraint(
-                fields=("property", "phone_normalized"),
-                name="uq_guest_property_phone",
-            )
-        ]
         indexes = [
             models.Index(fields=("property", "full_name"), name="idx_guest_prop_name"),
+            models.Index(fields=("property", "phone_normalized"), name="idx_guest_prop_phone"),
         ]
 
     def __str__(self):
@@ -87,6 +82,9 @@ class GuestPhone(models.Model):
         indexes = [
             models.Index(fields=("phone_normalized",), name="idx_guestphone_norm"),
         ]
+        permissions = (
+            ("phone_reveal", "能揭示客人电话号码完整值"),
+        )
 
     def save(self, *args, **kwargs):
         if self.is_primary and self.guest_id:

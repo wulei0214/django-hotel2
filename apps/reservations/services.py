@@ -9,7 +9,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.billing.models import Folio
-from apps.guests.models import Guest
+from apps.guests.models import Guest, GuestPhone
 from apps.inventory.models import DailyRate, RatePlan, RoomType
 from apps.inventory.services import (
     InventoryUnavailable,
@@ -96,13 +96,21 @@ def _create_reservation(
         raise InventoryUnavailable("所选日期暂不可预订。")
 
     phone = normalize_phone(payload["phone"])
-    guest, _ = Guest.objects.get_or_create(
+    # 手机号只用于检索，不把两个使用共享号码的人自动合并为同一自然人。
+    shared_phone = GuestPhone.objects.filter(phone_normalized=phone).exists()
+    if shared_phone:
+        GuestPhone.objects.filter(phone_normalized=phone).update(
+            shared_review_required=True)
+    guest = Guest.objects.create(
         property=property_obj,
+        full_name=payload["full_name"].strip(),
+        phone=payload["phone"].strip(),
         phone_normalized=phone,
-        defaults={
-            "full_name": payload["full_name"].strip(),
-            "phone": payload["phone"].strip(),
-        },
+    )
+    GuestPhone.objects.create(
+        guest=guest, phone=payload["phone"].strip(),
+        phone_normalized=phone, is_primary=True,
+        shared_review_required=shared_phone, source="官网预订",
     )
     booking_no = "R" + secrets.token_hex(10).upper()
     amount = Decimal(availability["total_amount"])
