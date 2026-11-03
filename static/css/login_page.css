@@ -1,22 +1,23 @@
-/* 登录页专属样式：黄色主背景，黄底菱形图案相间 */
+/* 登录页专属样式：品牌暖金背景 + 菱形纹理（令牌对齐版 v3）。
+   依赖 site.css 的 :root 令牌；所有 var() 带旧值 fallback 保证单独可用。 */
 body.login-body {
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: #f7c520;
+    background-color: var(--gold-500, #b9975b);
     background-image:
-        repeating-linear-gradient(45deg,  rgba(255, 255, 255, .14) 0 46px, transparent 46px 92px),
-        repeating-linear-gradient(-45deg, rgba(255, 255, 255, .14) 0 46px, transparent 46px 92px),
-        linear-gradient(160deg, #f9d34e 0%, #f7c520 45%, #efb400 100%);
-    font-family: "PingFang SC", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+        repeating-linear-gradient(45deg,  rgba(255, 255, 255, .08) 0 46px, transparent 46px 92px),
+        repeating-linear-gradient(-45deg, rgba(255, 255, 255, .08) 0 46px, transparent 46px 92px),
+        linear-gradient(160deg, var(--gold-400, #c8a464) 0%, var(--gold-500, #b9975b) 45%, #a3854e 100%);
+    font-family: var(--font-body, "PingFang SC", "Microsoft YaHei", "微软雅黑", Arial, sans-serif);
 }
 .login-wrap { width: 100%; display: flex; justify-content: center; padding: 40px 16px; }
 .login-card {
-    background: #fffdf5;
-    border-radius: 12px;
-    border: 1px solid #f0d98c;
-    box-shadow: 0 14px 44px rgba(120, 84, 0, .28);
+    background: #fffdf8;
+    border-radius: var(--radius-lg, 10px);
+    border: 1px solid #e8d9bd;
+    box-shadow: 0 14px 44px rgba(90, 66, 28, .30);
     padding: 38px 46px 34px;
     width: 420px;
     box-sizing: border-box;
@@ -24,9 +25,9 @@ body.login-body {
 .login-logo {
     width: 56px; height: 56px;
     margin: 0 auto 10px;
-    background: var(--color-accent-solid, #409eff);
-    color: #f7c520;
-    border-radius: 14px;
+    background: var(--color-accent-solid, #2b74c9);
+    color: #ffffff;
+    border-radius: var(--radius-lg, 10px);
     font-size: 26px;
     font-weight: 700;
     display: flex; align-items: center; justify-content: center;
@@ -34,75 +35,75 @@ body.login-body {
 }
 .login-card h2 {
     text-align: center;
-    color: #303133;
+    color: var(--color-text-primary, #303133);
     margin: 0 0 6px;
     letter-spacing: 3px;
 }
-.login-sub { text-align: center; color: #909399; font-size: 13px; margin: 0 0 18px; }
+.login-sub { text-align: center; color: var(--color-text-secondary, #606266); font-size: var(--text-caption, 13px); margin: 0 0 18px; }
 .login-card form { margin: 0 !important; }
 .login-card label { display: inline-block; width: 74px; }
 .login-card .input { width: calc(100% - 86px) !important; }
 .login-card p { margin: 16px 0; }
 .login-error {
-    background: #fef0f0;
-    border: 1px solid #fde2e2;
-    color: #F56C6C;
-    border-radius: 4px;
+    background: var(--color-danger-bg, #fef0f0);
+    border: 1px solid var(--color-danger-border, #fde2e2);
+    color: var(--color-danger-text, #b34a4a);
+    border-radius: var(--radius-sm, 4px);
     padding: 10px 14px;
-    font-size: 13px;
+    font-size: var(--text-caption, 13px);
     text-align: center;
 }
 .login-btn {
     width: 100%;
-    background: var(--color-accent-solid, #409eff);
-    color: #f7c520;
-    border: 1px solid var(--color-accent-solid, #409eff);
-    border-radius: 4px;
+    background: var(--color-accent-solid, #2b74c9);
+    color: var(--color-text-on-accent, #ffffff);
+    border: 1px solid var(--color-accent-solid, #2b74c9);
+    border-radius: var(--radius-sm, 4px);
     padding: 11px 0;
     font-size: 15px;
     letter-spacing: 6px;
     cursor: pointer;
     transition: background .2s;
 }
-.login-btn:hover { background: var(--color-accent-solid-hover, #66b1ff); }
-.login-foot { text-align: center; font-size: 13px; color: #909399; margin-top: 6px !important; }
-.login-foot a { color: #b8860b; text-decoration: none; }
+.login-btn:hover { background: var(--color-accent-solid-hover, #4a90e2); }
+.login-foot { text-align: center; font-size: var(--text-caption, 13px); color: var(--color-text-secondary, #606266); margin-top: 6px !important; }
+.login-foot a { color: var(--color-accent-text, #1f6fd0); text-decoration: none; }
 .login-foot a:hover { text-decoration: underline; }
 
 /* 注册页（白底，严谨风格，长条输入框） */
 body.register-body {
     min-height: 100vh;
-    background: #f5f6f8;
+    background: var(--color-bg-page, #f0f2f5);
     display: flex;
     align-items: center;
     justify-content: center;
 }
 .register-card {
-    background: #ffffff;
-    border: 1px solid #e4e7ed;
-    border-radius: 10px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, .06);
+    background: var(--color-bg-surface, #ffffff);
+    border: 1px solid var(--color-border-default, #dcdfe6);
+    border-radius: var(--radius-lg, 10px);
+    box-shadow: var(--shadow-card, 0 4px 20px rgba(0, 0, 0, .06));
     padding: 36px 44px 32px;
     width: 520px;
     box-sizing: border-box;
 }
-.register-card h2 { text-align: center; color: #303133; letter-spacing: 2px; margin: 0 0 4px; }
-.register-sub { text-align: center; color: #909399; font-size: 13px; margin: 0 0 22px; }
+.register-card h2 { text-align: center; color: var(--color-text-primary, #303133); letter-spacing: 2px; margin: 0 0 4px; }
+.register-sub { text-align: center; color: var(--color-text-secondary, #606266); font-size: var(--text-caption, 13px); margin: 0 0 22px; }
 .register-card p { margin: 18px 0; }
-.register-card label { display: inline-block; width: 84px; color: #606266; }
+.register-card label { display: inline-block; width: 84px; color: var(--color-text-secondary, #606266); }
 .register-card .input { width: calc(100% - 96px) !important; height: 40px !important; }
 .register-btn {
     width: 100%;
-    background: #409EFF;
-    color: #fff;
-    border: 1px solid #409EFF;
-    border-radius: 4px;
+    background: var(--color-accent-solid, #2b74c9);
+    color: var(--color-text-on-accent, #ffffff);
+    border: 1px solid var(--color-accent-solid, #2b74c9);
+    border-radius: var(--radius-sm, 4px);
     padding: 11px 0;
     font-size: 15px;
     letter-spacing: 4px;
     cursor: pointer;
     margin-top: 6px;
 }
-.register-btn:hover { background: #66b1ff; }
-.register-foot { text-align: center; font-size: 13px; color: #909399; margin-top: 10px !important; }
-.register-foot a { color: #409EFF; text-decoration: none; }
+.register-btn:hover { background: var(--color-accent-solid-hover, #4a90e2); }
+.register-foot { text-align: center; font-size: var(--text-caption, 13px); color: var(--color-text-secondary, #606266); margin-top: 10px !important; }
+.register-foot a { color: var(--color-accent-text, #1f6fd0); text-decoration: none; }

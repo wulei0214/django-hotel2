@@ -67,13 +67,17 @@ hotelapp/                       # 旧业务兼容层（逐步退役中）
 
 | 页面 | URL | 说明 |
 |---|---|---|
+| **PMS 员工登录** | `/login/` | 员工登录入口（暖金品牌页，[截图](docs/screenshots/login-pms.png)）；放行条件=有员工任职关系（D-04），超管无任职同样被拒 |
+| **后台登录** | `/admin/` | Django Admin 平台维护入口（simpleui 主题，[截图](docs/screenshots/login-admin.png)），仅超管 |
+| 注册 | `/register/` | 顾客自注册（仅创建顾客账号，不授员工权限） |
 | 主界面 | `/home/` | PMS2 权威仪表盘 |
 | 前台工作台 | `/checkin/` | PMS2 排房/入住/收款/退房（旧页 `/checkin/legacy/`） |
 | 员工与账号管理 | `/staff_accounts/` | 员工全生命周期（店长） |
 | 权限矩阵 | `/permissions/` | 九角色权限分配（超管） |
 | 系统信息 | `/system/` | 环境/会话/个人信息 |
 | 顾客预订 | `/booking/` | 公开预订 |
-| Django Admin | `/admin/` | 平台维护（独立 session） |
+
+**双会话隔离**（SplitSessionMiddleware）：PMS 登录写 `sessionid` cookie，Admin 登录写 `admin_sessionid` cookie，两套会话独立——员工登录 PMS 后仍可另登 Admin，互不踢线；CSRF 令牌存会话（`CSRF_USE_SESSIONS`）。
 
 ## 4. 本地开发
 

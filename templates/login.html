@@ -4,7 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <title>登录 - 酒店管理系统</title>
-    <link rel="stylesheet" href="/static/css/login_page.css?v=2">
+    <link rel="stylesheet" href="/static/css/site.css?v=12">
+    <link rel="stylesheet" href="/static/css/login_page.css?v=3">
 <script src="/static/js/app.js?v=2"></script>
 </head>
 <body class="login-body">
@@ -17,7 +18,7 @@
         <form action="/login/" method="post">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ next }}">
-            <p><label>用户名：</label><input type="text" name="username" autocomplete="username" class="input" autocomplete="username" placeholder="员工账号" required autofocus></p>
+            <p><label>用户名：</label><input type="text" name="username" autocomplete="username" class="input" placeholder="员工账号" required autofocus></p>
             <p><label>密&nbsp;&nbsp;码：</label><input type="password" name="password" autocomplete="current-password" class="input" autocomplete="current-password" placeholder="密码" required></p>
             <p><button type="submit" class="login-btn">登 录</button></p>
         </form>
