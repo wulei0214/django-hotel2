@@ -189,6 +189,8 @@
               const result = await requestJson("/api/v1/availability?" + query.toString());
               renderRooms(result.data);
               setNotice(searchMessage, "查询完成。价格按住宿日逐晚计算，离店日不计费。", "success");
+              // UX：查询成功后滑动到客房选择区，用户无需手动滚动
+              document.getElementById("booking").scrollIntoView({ behavior: "smooth", block: "start" });
             } catch (error) {
               roomList.replaceChildren(element("div", "empty", error.message));
               setNotice(searchMessage, error.message, "error");
