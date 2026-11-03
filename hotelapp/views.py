@@ -1878,131 +1878,18 @@ def logout_view(request):
 
 @staff_required
 def home(request):
-    """主界面：按当前用户权限展示功能模块卡片"""
-    user = request.user
-    entries = [
-        ("入住管理", "预订确认 · 入住登记 · 退房结算", "/checkin/", "hotelapp.view_accommodation"),
-        ("客房预订", "订单状态与预订管理", "/show_accomodation/", "hotelapp.view_accommodation"),
-        ("房间管理", "房间状态 · 清洁 · 维修", "/show_room/", "hotelapp.view_room"),
-        ("顾客管理", "顾客信息维护与查询", "/show_client/", "hotelapp.view_client"),
-        ("会员管理", "会员信息维护与查询", "/show_vip/", "hotelapp.view_vip"),
-        *([("餐厅管理", "菜品信息维护", "/show_food/", "hotelapp.view_food")] if MODULE_REGISTRY["food"] else []),
-        *([("餐厅订单", "餐饮订单录入与查询", "/show_order/", "hotelapp.view_order")] if MODULE_REGISTRY["order"] else []),
-        *([("停车场管理", "车位与车辆管理", "/show_park/", "hotelapp.view_park")] if MODULE_REGISTRY["park"] else []),
-        ("财务管理", "流水 · 收支 · 报表分析", "/finance/", None),
-        ("员工管理", "员工信息维护", "/index/", "hotelapp.view_staff"),
-    ]
-    cards = []
-    for title, desc, url, perm in entries:
-        if perm is None:
-            if not _has_role(user, "财务", "店长", "值班经理"):
-                continue
-        elif not _has_permission(request, perm):
-            continue
-        cards.append({"title": title, "desc": desc, "url": url})
-    stats = {
-        "pending": Accommodation.objects.filter(状态="待确认").count(),
-        "confirmed": Accommodation.objects.filter(状态="已确认").count(),
-        "living": Accommodation.objects.filter(状态="已入住").count(),
-        "cleaning": Room.objects.filter(房间状态__in=("待清洁", "清洁中", "待检查")).count(),
-        "revenue": None,
-    }
-    can_see_finance = _has_role(user, "财务", "店长", "值班经理")
-    if can_see_finance:
-        total = 0.0
-        for r in FinanceRecord.objects.filter(类型="收入"):
-            try:
-                total += float(r.金额)
-            except (TypeError, ValueError):
-                pass
-        stats["revenue"] = f"{total:.2f}"
+    """主界面：PMS2 权威数据仪表盘（P1-11：不再读旧 hotelapp 统计）。"""
+    from apps.api.dashboard import dashboard_data
+    from apps.core.models import Property
+    prop = getattr(request, "property", None)
+    if prop is None:
+        prop = Property.objects.filter(code="DEFAULT").first()
+    stats = dashboard_data(prop)
+    return render(request, "home.html", {
+        "stats": stats, "role": _role_name(request.user),
+        "today": str(timezone.localdate()),
+    })
 
-    # ---------- 数据仪表盘（结合本项目的客房/顾客/会员/财务数据） ----------
-    room_status_counts = [
-        {"name": r["房间状态"] or "空闲", "value": r["n"]}
-        for r in Room.objects.values("房间状态").annotate(n=Count("房间号")).order_by("-n")
-    ]
-    room_type_inventory = [
-        {"name": r["客房类型"], "total": r["total"], "available": r["available"]}
-        for r in Room.objects.values("客房类型").annotate(
-            total=Count("房间号"),
-            available=Count("房间号", filter=Q(房间状态="空闲")),
-        ).order_by("客房类型")
-    ]
-    # 预约预警：今日待入住 / 已过期未入住的预订
-    warnings = []
-    today = _today()
-    for b in Accommodation.objects.filter(状态__in=("待确认", "已确认")).order_by("入住时间"):
-        if not b.入住时间:
-            continue
-        level = "今日待入住" if b.入住时间 == today else ("过期未入住" if b.入住时间 < today else None)
-        if level:
-            warnings.append({"level": level, "guest": b.顾客id.姓名 or "未知顾客",
-                             "tel": b.联系电话 or "-", "date": b.入住时间})
-    client_total = Client.objects.count()
-    client_registered = (Client.objects.exclude(身份证号__isnull=True)
-                                   .exclude(身份证号="").count())
-    vip_counts = [
-        {"name": r["会员等级"] or "普通会员", "value": r["n"]}
-        for r in Vip.objects.values("会员等级").annotate(n=Count("会员编号")).order_by("-n")
-    ]
-    show_fnb = MODULE_REGISTRY["food"] or MODULE_REGISTRY["order"]
-    food_count = Food.objects.count() if show_fnb else 0
-    recent_orders = [
-        {"dish": o.菜品编号.菜名, "guest": o.顾客编号.姓名 or "未知顾客", "table": o.桌号}
-        for o in (Order.objects.order_by("-id")[:5] if show_fnb else [])
-    ]
-
-    # 消费统计（收入来自财务流水；已结算房费来自退房订单）——仅财务及以上可见
-    finance_dash = None
-    if can_see_finance:
-        def _sum_ftype(begin, end, ftype):
-            total = 0.0
-            for r in FinanceRecord.objects.filter(类型=ftype):
-                if begin <= (r.日期 or "") <= end:
-                    try:
-                        total += float(r.金额)
-                    except (TypeError, ValueError):
-                        pass
-            return total
-        week_begin = (datetime.datetime.strptime(today, "%Y-%m-%d")
-                      - datetime.timedelta(days=6)).strftime("%Y-%m-%d")
-        year_begin = today[:4] + "-01-01"
-        settled = 0.0
-        for a in Accommodation.objects.filter(状态="已退房"):
-            if a.收款金额:
-                try:
-                    settled += float(a.收款金额)
-                except (TypeError, ValueError):
-                    pass
-        finance_dash = {
-            "today_in": f"{_sum_ftype(today, today, '收入'):.2f}",
-            "today_out": f"{_sum_ftype(today, today, '支出'):.2f}",
-            "week_in": f"{_sum_ftype(week_begin, today, '收入'):.2f}",
-            "week_out": f"{_sum_ftype(week_begin, today, '支出'):.2f}",
-            "year_in": f"{_sum_ftype(year_begin, today, '收入'):.2f}",
-            "year_out": f"{_sum_ftype(year_begin, today, '支出'):.2f}",
-            "settled": f"{settled:.2f}",
-        }
-
-    ctx = {
-        "cards": cards, "stats": stats, "role": _role_name(user), "today": today,
-        "room_status_counts": room_status_counts,
-        "room_type_inventory": room_type_inventory,
-        "warnings": warnings,
-        "client_dash": {"total": client_total, "registered": client_registered,
-                        "missing": client_total - client_registered},
-        "vip_counts": vip_counts,
-        "food_count": food_count,
-        "recent_orders": recent_orders,
-        "finance_dash": finance_dash,
-        "show_finance": can_see_finance,
-        "show_fnb": show_fnb,
-    }
-    return render(request, "home.html", ctx)
-
-
-# ---------- 顾客预订页（对外，无需登录） ----------
 def booking_page(request):
     """顾客自助预订：查看房型与价格，提交预订申请（状态=预订，待前台确认）"""
     error = None
