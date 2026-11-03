@@ -58,6 +58,18 @@ MANAGEMENT_CENTERS = {
             {"label": "账号", "path": "account.username"},
             {"label": "生效角色", "path": "active_roles"},
         ],
+        "detail": {
+            "id_path": "id", "endpoint": "/api/v1/staff/{id}",
+            "overview": [["full_name", "姓名"], ["employee_no", "物业工号"], ["position_code", "岗位"],
+                         ["phone_masked", "联系电话"], ["employment_status", "雇用状态"],
+                         ["membership_status", "任职状态"], ["account.username", "登录账号"],
+                         ["account.is_active", "账号启用"], ["account.last_login", "最后登录"],
+                         ["active_roles", "生效角色"], ["source_system", "数据来源"]],
+            "tables": [
+                {"title": "岗位授权记录", "key": "assignments", "columns": [
+                    ["role", "角色"], ["active", "生效"], ["starts_at", "开始"], ["ends_at", "结束"]]},
+            ],
+        },
     },
     "guests": {
         "title": "Guest 360", "subtitle": "客人档案、联系方式、会员关系与当前入住",
@@ -70,6 +82,19 @@ MANAGEMENT_CENTERS = {
             {"label": "当前房间", "path": "current_stay.room_number"},
             {"label": "数据来源", "path": "source_system"},
         ],
+        "detail": {
+            "id_path": "id", "endpoint": "/api/v1/guests/{id}",
+            "overview": [["full_name", "客人姓名"], ["phone_masked", "联系电话"], ["email", "电子邮箱"],
+                         ["member.member_no", "会员编号"], ["member.level", "会员等级"],
+                         ["member.status", "会员状态"], ["current_stay.room_number", "当前房间"],
+                         ["current_stay.check_in", "入住日期"], ["source_system", "数据来源"],
+                         ["created_at", "建档时间"]],
+            "tables": [
+                {"title": "预订记录（最近 10 条）", "key": "reservations", "columns": [
+                    ["booking_no", "预订编号"], ["status", "状态"], ["check_in", "入住"],
+                    ["check_out", "离店"], ["rooms", "间数"], ["total_amount", "金额"]]},
+            ],
+        },
     },
     "rooms": {
         "title": "房态与库存中心", "subtitle": "物理客房占用、清洁、维修与可售状态",
@@ -117,6 +142,17 @@ MANAGEMENT_CENTERS = {
             {"label": "有效期", "path": "expires_at"},
             {"label": "旧系统编号", "path": "legacy_vip_id"},
         ],
+        "detail": {
+            "id_path": "id", "endpoint": "/api/v1/memberships/{id}",
+            "overview": [["member_no", "会员编号"], ["guest.full_name", "关联客人"], ["level_code", "会员等级"],
+                         ["status", "会员状态"], ["joined_at", "加入日期"], ["expires_at", "有效期"],
+                         ["legacy_vip_id", "旧系统编号"], ["source_system", "数据来源"]],
+            "tables": [
+                {"title": "等级变更历史", "key": "level_history", "columns": [
+                    ["from_level", "原等级"], ["to_level", "新等级"],
+                    ["reason", "原因"], ["changed_at", "变更时间"]]},
+            ],
+        },
     },
     "reservations": {
         "title": "预订与入住中心", "subtitle": "预订、排房、在住与账单摘要（写操作仍走前台工作流）",
@@ -131,6 +167,25 @@ MANAGEMENT_CENTERS = {
             {"label": "房间数", "path": "room_count"},
             {"label": "订单金额", "path": "total_amount"},
         ],
+        "detail": {
+            "id_path": "booking_no", "endpoint": "/api/v1/front-desk/reservations/{id}",
+            "overview": [["booking_no", "预订编号"], ["status_label", "预订状态"], ["source_label", "预订来源"],
+                         ["guest.full_name", "客人"], ["guest.phone_masked", "联系电话"],
+                         ["check_in", "入住日期"], ["check_out", "离店日期"], ["nights", "晚数"],
+                         ["room_count", "房间数"], ["adult_count", "成人"], ["child_count", "儿童"],
+                         ["total_amount", "订单金额"], ["currency", "币种"],
+                         ["folio_summary.status", "账单状态"], ["folio_summary.charges", "账单消费"],
+                         ["folio_summary.credits", "账单已收"], ["folio_summary.balance", "账单余额"]],
+            "tables": [
+                {"title": "房间明细", "key": "rooms", "columns": [
+                    ["room_type.name", "房型"], ["assigned_room.number", "分配房间"],
+                    ["check_in", "入住"], ["check_out", "离店"], ["nights", "晚数"],
+                    ["amount", "金额"], ["stay.status", "入住状态"]]},
+                {"title": "入住记录（Stay）", "key": "timeline.stays", "columns": [
+                    ["id", "Stay"], ["status", "状态"],
+                    ["actual_check_in", "实际入住"], ["actual_check_out", "实际退房"]]},
+            ],
+        },
     },
 }
 
@@ -154,5 +209,6 @@ def management_center_page(request, center):
         "columns": config["columns"],
         "secondary_endpoint": config.get("secondary_endpoint", ""),
         "secondary_sections": config.get("secondary_sections", []),
+        "detail_config": config.get("detail", {}),
         "property_name": property_obj.name,
     })

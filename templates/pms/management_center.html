@@ -4,24 +4,50 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{{ title }} - PMS2</title>
-    <link rel="stylesheet" href="/static/css/site.css?v=10">
+    <link rel="stylesheet" href="/static/css/site.css?v=12">
     <style>
         .pms-center{padding:24px;max-width:1500px;margin:0 auto}
         .pms-center-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px}
-        .pms-center-head h1{margin:0 0 6px;font-size:24px;color:#243247}
-        .pms-center-sub{color:#778397;margin:0}
-        .pms-panel{background:#fff;border:1px solid #e7ebf1;border-radius:12px;padding:18px;margin-bottom:18px}
+        .pms-center-head h1{margin:0 0 6px;font-size:24px;color:var(--color-text-primary,#243247)}
+        .pms-center-sub{color:var(--color-text-muted,#778397);margin:0}
+        .pms-panel{background:var(--color-bg-surface,#fff);border:1px solid var(--color-border-separator,#e7ebf1);border-radius:var(--radius-lg,12px);padding:18px;margin-bottom:18px}
         .pms-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-        .pms-tools input{min-width:240px;padding:10px 12px;border:1px solid #d9e0e9;border-radius:8px}
-        .pms-tools button{padding:10px 16px;border:0;border-radius:8px;background:#263a55;color:#fff;cursor:pointer}
-        .pms-meta{margin-left:auto;color:#778397;font-size:13px}
+        .pms-tools input{min-width:240px;padding:10px 12px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:var(--radius-md,8px)}
+        .pms-tools button{padding:10px 16px;border:0;border-radius:var(--radius-md,8px);background:var(--color-accent-solid,#263a55);color:#fff;cursor:pointer}
+        .pms-meta{margin-left:auto;color:var(--color-text-muted,#778397);font-size:13px}
         .pms-table-wrap{overflow:auto}
         .pms-table{width:100%;border-collapse:collapse;white-space:nowrap}
-        .pms-table th,.pms-table td{padding:12px 14px;border-bottom:1px solid #edf0f4;text-align:left;font-size:13px}
-        .pms-table th{background:#f7f9fc;color:#637188;font-weight:600}
-        .pms-state{padding:24px;text-align:center;color:#8290a3}
-        .pms-pager{display:flex;justify-content:space-between;align-items:center;padding-top:14px;color:#778397;font-size:13px}
+        .pms-table th,.pms-table td{padding:12px 14px;border-bottom:1px solid var(--color-border-separator,#edf0f4);text-align:left;font-size:13px}
+        .pms-table th{background:var(--color-bg-subtle,#f7f9fc);color:var(--color-text-secondary,#637188);font-weight:600}
+        .pms-table tbody tr:hover{background:var(--color-bg-subtle,#f7f9fc)}
+        .pms-state{padding:24px;text-align:center;color:var(--color-text-muted,#8290a3)}
+        .pms-pager{display:flex;justify-content:space-between;align-items:center;padding-top:14px;color:var(--color-text-muted,#778397);font-size:13px}
+        .pms-row-btn{padding:6px 12px;border:1px solid var(--color-accent-solid,#2b74c9);background:transparent;color:var(--color-accent-solid,#2b74c9);border-radius:var(--radius-md,6px);cursor:pointer;font-size:12px}
+        .pms-row-btn:hover{background:var(--color-accent-bg,#ecf5ff)}
+        .pms-row-btn:focus-visible{outline:2px solid var(--color-accent-solid,#2b74c9);outline-offset:2px}
+        /* ---------- 详情抽屉（§七：列表行 → 详情 API → 右侧抽屉，不造 HTML 详情路由） ---------- */
+        .pms-drawer-mask{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:60;opacity:0;pointer-events:none;transition:opacity .2s}
+        .pms-drawer-mask.is-open{opacity:1;pointer-events:auto}
+        .pms-drawer{position:fixed;top:0;right:0;width:560px;max-width:94vw;height:100vh;background:var(--color-bg-surface,#fff);z-index:61;box-shadow:var(--shadow-pop,0 4px 16px rgba(0,0,0,.14));transform:translateX(105%);transition:transform .25s ease-out;display:flex;flex-direction:column}
+        .pms-drawer.is-open{transform:translateX(0)}
+        .pms-drawer-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--color-border-separator,#e7ebf1)}
+        .pms-drawer-head h2{margin:0;font-size:16px;color:var(--color-text-primary,#243247)}
+        .pms-drawer-close{border:1px solid var(--color-border-default,#dcdfe6);background:transparent;color:var(--color-text-secondary,#606266);border-radius:var(--radius-md,6px);padding:6px 14px;cursor:pointer;font-size:13px}
+        .pms-drawer-close:hover{background:var(--color-bg-subtle,#f5f7fa)}
+        .pms-drawer-body{flex:1;overflow:auto;padding:16px 20px}
+        .pms-drawer-state{padding:32px 0;text-align:center;color:var(--color-text-muted,#8290a3);font-size:13px}
+        .pms-drawer-err{padding:12px 14px;background:var(--color-danger-bg,#fef0f0);border:1px solid var(--color-danger-border,#fde2e2);color:var(--color-danger-text,#b34a4a);border-radius:var(--radius-md,6px);font-size:13px}
+        .pms-kv{width:100%;border-collapse:collapse;margin-bottom:20px}
+        .pms-kv th{width:118px;text-align:right;padding:8px 10px;color:var(--color-text-secondary,#637188);font-weight:600;font-size:13px;background:var(--color-bg-subtle,#f7f9fc);border-bottom:1px solid var(--color-border-separator,#edf0f4);vertical-align:top}
+        .pms-kv td{padding:8px 10px;font-size:13px;border-bottom:1px solid var(--color-border-separator,#edf0f4);color:var(--color-text-primary,#243247);font-variant-numeric:tabular-nums;word-break:break-all}
+        .pms-drawer-body h3{margin:20px 0 8px;font-size:14px;color:var(--color-text-primary,#243247)}
+        .pms-mini{width:100%;border-collapse:collapse}
+        .pms-mini th,.pms-mini td{padding:7px 10px;border-bottom:1px solid var(--color-border-separator,#edf0f4);font-size:12px;text-align:left;font-variant-numeric:tabular-nums}
+        .pms-mini th{background:var(--color-bg-subtle,#f7f9fc);color:var(--color-text-secondary,#637188);font-weight:600}
         @media(max-width:720px){.pms-center{padding:14px}.pms-panel{padding:10px}.pms-tools input{min-width:0;width:100%}}
+        @media (prefers-reduced-motion: reduce){
+            .pms-drawer-mask,.pms-drawer{transition:none}
+        }
     </style>
 </head>
 <body>
@@ -48,7 +74,7 @@
         </table>
       </div>
       <div class="pms-pager">
-        <span id="pms-state-note">数据来自 PMS2 API；此页面为只读工作台。</span>
+        <span id="pms-state-note">数据来自 PMS2 API；列表点击「查看」打开详情抽屉。</span>
         <span style="display:flex;gap:8px;align-items:center">
           <button id="pms-prev" type="button" disabled>上一页</button>
           <span id="pms-page"></span>
@@ -59,8 +85,19 @@
     <div id="pms-secondary"></div>
   </div>
 </div>
+
+<div class="pms-drawer-mask" id="pms-drawer-mask"></div>
+<aside class="pms-drawer" id="pms-drawer" role="dialog" aria-modal="true" aria-labelledby="pms-drawer-title">
+  <div class="pms-drawer-head">
+    <h2 id="pms-drawer-title">详情</h2>
+    <button type="button" class="pms-drawer-close" id="pms-drawer-close">关闭</button>
+  </div>
+  <div class="pms-drawer-body" id="pms-drawer-body"></div>
+</aside>
+
 {{ columns|json_script:"pms-columns" }}
 {{ secondary_sections|json_script:"pms-secondary-sections" }}
+{{ detail_config|json_script:"pms-detail" }}
 <script>
 (function () {
   "use strict";
@@ -68,6 +105,8 @@
   const secondaryEndpoint = "{{ secondary_endpoint|default:''|escapejs }}";
   const columns = JSON.parse(document.getElementById("pms-columns").textContent);
   const sections = JSON.parse(document.getElementById("pms-secondary-sections").textContent);
+  let detail = {};
+  try { detail = JSON.parse(document.getElementById("pms-detail").textContent) || {}; } catch (e) { detail = {}; }
   const head = document.getElementById("pms-head");
   const body = document.getElementById("pms-body");
   const meta = document.getElementById("pms-meta");
@@ -75,6 +114,10 @@
   const pageLabel = document.getElementById("pms-page");
   const prevButton = document.getElementById("pms-prev");
   const nextButton = document.getElementById("pms-next");
+  const drawer = document.getElementById("pms-drawer");
+  const drawerMask = document.getElementById("pms-drawer-mask");
+  const drawerTitle = document.getElementById("pms-drawer-title");
+  const drawerBody = document.getElementById("pms-drawer-body");
   let currentPage = 1;
   function at(item, path) {
     return path.split(".").reduce(function(v,k){return v == null ? null : v[k];},item);
@@ -86,24 +129,97 @@
     if (typeof v === "object") return JSON.stringify(v);
     return String(v);
   }
-  function header(target, cols) {
+  function header(target, cols, extraAction) {
     target.replaceChildren();
     cols.forEach(function(c){const th=document.createElement("th");th.textContent=c.label;target.appendChild(th);});
+    if (extraAction) { const th=document.createElement("th");th.textContent="操作";target.appendChild(th); }
   }
-  function rows(target, cols, data) {
+  function rows(target, cols, data, withAction) {
     target.replaceChildren();
     if (!data.length) {
       const tr=document.createElement("tr"),td=document.createElement("td");
-      td.colSpan=cols.length;td.className="pms-state";td.textContent="当前物业暂无匹配记录";
+      td.colSpan=cols.length+(withAction?1:0);td.className="pms-state";td.textContent="当前物业暂无匹配记录";
       tr.appendChild(td);target.appendChild(tr);return;
     }
     data.forEach(function(item){
       const tr=document.createElement("tr");
       cols.forEach(function(c){const td=document.createElement("td");td.textContent=value(at(item,c.path));tr.appendChild(td);});
+      if (withAction && detail.endpoint) {
+        const td=document.createElement("td");
+        const btn=document.createElement("button");
+        btn.type="button";btn.className="pms-row-btn";btn.textContent="查看";
+        const id=at(item, detail.id_path || "id");
+        btn.addEventListener("click",function(){openDetail(id);});
+        td.appendChild(btn);tr.appendChild(td);
+      }
       target.appendChild(tr);
     });
   }
-  header(head, columns);
+  header(head, columns, !!detail.endpoint);
+  /* ---------- 详情抽屉 ---------- */
+  function closeDrawer() {
+    drawer.classList.remove("is-open");
+    drawerMask.classList.remove("is-open");
+  }
+  drawerMask.addEventListener("click", closeDrawer);
+  document.getElementById("pms-drawer-close").addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", function(e){ if(e.key==="Escape") closeDrawer(); });
+  function kvTable(fields, item) {
+    const table=document.createElement("table");table.className="pms-kv";
+    fields.forEach(function(pair){
+      const path=pair[0], label=pair[1];
+      const v=at(item,path);
+      if(v===null||v===undefined||v==="") return;
+      const tr=document.createElement("tr");
+      const th=document.createElement("th");th.textContent=label;
+      const td=document.createElement("td");td.textContent=value(v);
+      tr.appendChild(th);tr.appendChild(td);table.appendChild(tr);
+    });
+    return table;
+  }
+  function openDetail(id) {
+    if (id===null||id===undefined||id==="") return;
+    drawerTitle.textContent="详情";
+    drawerBody.replaceChildren();
+    const loading=document.createElement("div");loading.className="pms-drawer-state";loading.textContent="读取中…";
+    drawerBody.appendChild(loading);
+    drawer.classList.add("is-open");drawerMask.classList.add("is-open");
+    fetch(detail.endpoint.replace("{id}", encodeURIComponent(String(id))),{
+      method:"GET",credentials:"same-origin",headers:{"Accept":"application/json"}
+    }).then(function(r){return r.json().then(function(p){return {ok:r.ok,payload:p};});}).then(function(res){
+      drawerBody.replaceChildren();
+      if(!res.ok){
+        const msg=res.payload&&res.payload.error&&res.payload.error.message||("读取失败（HTTP 错误）");
+        const err=document.createElement("div");err.className="pms-drawer-err";err.textContent=msg;
+        drawerBody.appendChild(err);return;
+      }
+      const item=res.payload.data;
+      drawerTitle.textContent=value(at(item, detail.overview && detail.overview.length && detail.overview[0][0] || "id"));
+      if(detail.overview) drawerBody.appendChild(kvTable(detail.overview, item));
+      (detail.tables||[]).forEach(function(t){
+        const data=at(item,t.key)||[];
+        if(!Array.isArray(data)||!data.length) return;
+        const h=document.createElement("h3");h.textContent=t.title;drawerBody.appendChild(h);
+        const wrap=document.createElement("div");wrap.className="pms-table-wrap";
+        const table=document.createElement("table");table.className="pms-mini";
+        const thead=document.createElement("thead"),trh=document.createElement("tr");
+        t.columns.forEach(function(c){const th=document.createElement("th");th.textContent=c[1];trh.appendChild(th);});
+        thead.appendChild(trh);
+        const tbody=document.createElement("tbody");
+        data.forEach(function(rowItem){
+          const tr=document.createElement("tr");
+          t.columns.forEach(function(c){const td=document.createElement("td");td.textContent=value(at(rowItem,c[0]));tr.appendChild(td);});
+          tbody.appendChild(tr);
+        });
+        table.appendChild(thead);table.appendChild(tbody);wrap.appendChild(table);drawerBody.appendChild(wrap);
+      });
+    }).catch(function(){
+      drawerBody.replaceChildren();
+      const err=document.createElement("div");err.className="pms-drawer-err";err.textContent="网络错误，请稍后重试。";
+      drawerBody.appendChild(err);
+    });
+  }
+  /* ---------- 列表加载 ---------- */
   async function loadSecondary() {
     if (!secondaryEndpoint || !sections.length) return;
     const holder=document.getElementById("pms-secondary");holder.replaceChildren();
@@ -116,8 +232,8 @@
       const wrap=document.createElement("div");wrap.className="pms-table-wrap";
       const table=document.createElement("table");table.className="pms-table";
       const thead=document.createElement("thead"),tr=document.createElement("tr");
-      header(tr,section.columns);thead.appendChild(tr);
-      const tbody=document.createElement("tbody");rows(tbody,section.columns,payload.data[section.data_key] || []);
+      header(tr,section.columns,false);thead.appendChild(tr);
+      const tbody=document.createElement("tbody");rows(tbody,section.columns,payload.data[section.data_key] || [],false);
       table.appendChild(thead);table.appendChild(tbody);wrap.appendChild(table);
       panel.appendChild(title);panel.appendChild(wrap);holder.appendChild(panel);
     });
@@ -134,7 +250,7 @@
       });
       const payload=await response.json();
       if(!response.ok) throw new Error(payload.error && payload.error.message || "读取失败（HTTP "+response.status+"）");
-      rows(body,columns,Array.isArray(payload.data)?payload.data:[]);
+      rows(body,columns,Array.isArray(payload.data)?payload.data:[],!!detail.endpoint);
       const pageInfo=payload.meta && payload.meta.pagination;
       if(pageInfo) {
         currentPage=pageInfo.page;
@@ -146,7 +262,7 @@
     } catch(error) {
       body.replaceChildren();
       const tr=document.createElement("tr"),td=document.createElement("td");
-      td.colSpan=columns.length;td.className="pms-state";td.textContent=error.message;
+      td.colSpan=columns.length+(detail.endpoint?1:0);td.className="pms-state";td.textContent=error.message;
       tr.appendChild(td);body.appendChild(tr);meta.textContent="数据读取失败";
     }
   }

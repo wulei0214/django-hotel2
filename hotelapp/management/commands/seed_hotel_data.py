@@ -94,10 +94,23 @@ class Command(BaseCommand):
         for i in range(options["guests"]):
             name = FIRST[i % len(FIRST)]
             phone = "138" + str(random.randint(10000000, 99999999))
-            Guest.objects.get_or_create(
+            guest, _created = Guest.objects.get_or_create(
                 property=prop, phone_normalized=phone,
                 defaults={"full_name": name + "(" + str(i+1) + ")",
                           "phone": phone, "phone_normalized": phone})
+            # V1.1 M-03：电话走 GuestPhone（列表脱敏列的数据来源）；对存量客人幂等补建
+            from apps.guests.models import GuestPhone
+            GuestPhone.objects.get_or_create(
+                guest=guest, phone=phone,
+                defaults={"phone_normalized": phone, "is_primary": True})
+            # V1.1 M-16：约三分之一客人带有效会员关系（会员中心演示数据）；按 pk 幂等
+            from apps.guests.models import GuestMembership
+            if guest.pk % 3 == 0:
+                GuestMembership.objects.get_or_create(
+                    property=prop, guest=guest,
+                    defaults={"member_no": "MEM" + prop.code + str(guest.pk).zfill(5),
+                              "level_code": ["STANDARD", "ADVANCED", "ELITE"][(guest.pk // 3) % 3],
+                              "status": "ACTIVE"})
         self.stdout.write("  OK 客人 " + str(Guest.objects.filter(property=prop).count()))
 
         gl = list(Guest.objects.filter(property=prop))

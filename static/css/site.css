@@ -143,11 +143,32 @@ body {
 .logo-text { color: var(--color-text-inverse); font-weight: 600; font-size: var(--text-body); letter-spacing: 1px; white-space: nowrap; }
 .sidebar-menu {
     list-style: none;
-    margin: 12px 0;
+    margin: 0 0 6px;
     padding: 0 10px;
-    flex: 1;
-    overflow-y: auto;
 }
+/* --- 侧边栏业务域分组（滚动容器是 nav 包装层） --- */
+.sidebar-nav-groups { flex: 1 1 auto; overflow-y: auto; min-height: 0; padding-bottom: 10px; }
+.side-group-title {
+    padding: 14px 24px 4px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: rgba(255, 255, 255, .35);
+    user-select: none;
+}
+.side-group-legacy { margin: 10px 10px 0; border-top: 1px solid rgba(255, 255, 255, .08); padding-top: 6px; }
+.side-group-legacy summary {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: var(--radius-md);
+    color: rgba(255, 255, 255, .45); font-size: var(--text-caption);
+    cursor: pointer; list-style: none; user-select: none;
+    transition: background .2s, color .2s;
+}
+.side-group-legacy summary::-webkit-details-marker { display: none; }
+.side-group-legacy summary:hover { background: rgba(255, 255, 255, .07); color: var(--color-text-inverse); }
+.side-group-legacy summary .chev { margin-left: auto; transition: transform .2s; opacity: .7; }
+.side-group-legacy[open] summary .chev { transform: rotate(90deg); }
+.side-group-legacy .sidebar-menu { margin: 2px 0 4px; }
+.side-group-legacy .sidebar-menu a { opacity: .75; }
 .sidebar-menu li { margin: 4px 0; float: none !important; padding: 0 !important; background: transparent !important; }
 .sidebar-menu a {
     display: flex;
@@ -934,7 +955,6 @@ div.toast.warning::before { content: "!"; }
 
 /* --- 侧边栏图标 --- */
 .sidebar-menu a svg { flex-shrink: 0; }
-.sidebar-menu-settings { flex: 0 0 auto; margin: 0; padding: 0 10px 6px; }
 
 /* --- 财务页表单（finance.html，原内联样式清退） --- */
 .finance-form { margin: 0 var(--space-8); }

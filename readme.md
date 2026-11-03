@@ -67,7 +67,7 @@ hotelapp/                       # 旧业务兼容层（逐步退役中）
 
 | 页面 | URL | 说明 |
 |---|---|---|
-| **PMS 员工登录** | `/login/` | 员工登录入口（暖金品牌页，[截图](docs/screenshots/login-pms.png)）；放行条件=有员工任职关系（D-04），超管无任职同样被拒 |
+| **PMS 员工登录** | `/login/` | 员工登录入口（左右分栏企业级版式 v4，[截图](docs/screenshots/login-pms-v4.png)）；放行条件=有员工任职关系（D-04）；`next` 回跳经 `url_has_allowed_host_and_scheme` 安全校验 |
 | **后台登录** | `/admin/` | Django Admin 平台维护入口（simpleui 主题，[截图](docs/screenshots/login-admin.png)），仅超管 |
 | 注册 | `/register/` | 顾客自注册（仅创建顾客账号，不授员工权限） |
 | 主界面 | `/home/` | PMS2 权威仪表盘 |
@@ -136,6 +136,18 @@ python manage.py runserver 0.0.0.0:8000 --noreload
 | LOW | 界面打磨 | `static/css/`（12 个文件） | flexslider/superfish/themify-icons 等零引用死 CSS → 全部删除 | 死代码仍含 20 处 `transition:all` 违规示范 |
 
 复测：`btn-primary` 4.73:1、正文 13.02:1、次要文字 6.11:1、accent 文字 4.95:1 全达标；`#909399` 弱文字（3.08:1）仅限占位/禁用场景，信息性文字用 `--color-text-secondary`。键盘焦点环（`:focus-visible` 全局）、`tabular-nums` 数字列对齐、`{% empty %}` 空状态（16/17 表格，frontdesk 由 JS 兜底）均已在位。161 项测试通过。
+
+### 5.2 PMS 侧边栏重组 + 登录改版 + 详情抽屉（2026-11-04，依据五大中心评审方案 P0/P1）
+
+依据《PMS 2.0 五大业务中心及整体界面改版评审方案》完成 P0 全部与 P1 首项：
+
+- **侧边栏按业务域分组**（[截图](docs/screenshots/sidebar-groups.png)）：运营 / 前台运营 / 客人关系 / 客房运营 / 员工组织 / 财务与日结 / 系统管理 七组，全部入口补齐 Material 图标；五个旧页面（员工管理/顾客管理/客房管理/会员信息管理/客房订单管理）折叠进「历史页面（过渡期）」组（原生 `<details>`，当前页自动展开），等待 P1-12 分阶段退役。
+- **员工登录页 v4 左右分栏**（[截图](docs/screenshots/login-pms-v4.png)）：左深海军蓝品牌区（香槟金点缀）+ 右暖白表单区；移除「注册账号/顾客预订」链接（员工/顾客身份分离，顾客自注册保留在 `/register/` 与 `/reserve/`）；新增显示密码切换与登录加载态；label/for 显式绑定。
+- **next 回跳安全校验**：`login_view` 改用 `url_has_allowed_host_and_scheme`，阻断 `//外部域名` 协议相对地址开放重定向。
+- **管理中心详情抽屉**（[截图](docs/screenshots/reservation-drawer.png)）：员工中心 / Guest 360 / 会员中心 / 预订与入住中心四页列表行新增「查看」→ 调用既有详情 API（`/api/v1/staff/{id}`、`/api/v1/guests/{id}`、`/api/v1/memberships/{id}`、`/api/v1/front-desk/reservations/{booking_no}`）→ 右侧抽屉渲染概览 KV + 关联记录表（岗位授权/预订记录/等级历史/房间明细与 Stay）；按方案 §七 不新增 HTML 详情路由；房态中心无详情 API，不放「查看」按钮。
+- **种子数据补齐**：`seed_hotel_data` 幂等补建 `GuestPhone`（列表脱敏列数据源）与约 1/3 客人的 `GuestMembership`（STANDARD/ADVANCED/ELITE 分布）。
+
+161 项测试通过；店长账号浏览器实测四中心抽屉全部正常。
 
 ## 6. 文档索引
 

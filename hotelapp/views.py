@@ -23,6 +23,7 @@ import logging
 import re
 
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
@@ -1808,13 +1809,23 @@ def _today():
     return datetime.date.today().strftime("%Y-%m-%d")
 
 
+def _safe_login_next(request, candidate):
+    """登录后回跳地址安全校验：仅允许本站相对地址（防 //外部域名 开放重定向）。"""
+    if candidate and url_has_allowed_host_and_scheme(
+            url=candidate, allowed_hosts={request.get_host()},
+            require_https=request.is_secure()):
+        return candidate
+    return "/home/"
+
+
 def login_view(request):
-    """统一登录页：登录后进入主界面（或按 next 返回原页面）"""
+    """统一登录页：登录后进入主界面（或按安全校验后的 next 返回原页面）"""
     # D-04：登录页重定向看"是否 PMS 员工"（有 DEFAULT 任职），不再看 is_staff
     if request.user.is_authenticated and _has_active_employment(request.user):
         return redirect("/home/")
     error = None
-    next_url = request.GET.get("next", "") or request.POST.get("next", "")
+    raw_next = request.GET.get("next", "") or request.POST.get("next", "")
+    next_url = _safe_login_next(request, raw_next) if raw_next else ""
     if request.method == "POST":
         user = authenticate(request, username=request.POST.get("username"),
                             password=request.POST.get("password"))
@@ -1826,10 +1837,7 @@ def login_view(request):
             error = "该账号没有员工任职关系或岗位授权，请联系管理员分配"
         else:
             auth_login(request, user)
-            next_url = request.POST.get("next") or "/home/"
-            if not next_url.startswith("/"):
-                next_url = "/home/"
-            return redirect(next_url)
+            return redirect(_safe_login_next(request, request.POST.get("next")))
     return render(request, "login.html", {"error": error, "next": next_url})
 
 
