@@ -139,11 +139,83 @@ class BillingService:
         return amount
 
     @staticmethod
+    def _business_date(property_obj):
+        from zoneinfo import ZoneInfo
+        try:
+            tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")
+        except Exception:
+            tz = ZoneInfo("Asia/Shanghai")
+        return timezone.localdate(timezone.now(), tz)
+
+    @staticmethod
+    @transaction.atomic
+    def post_entry(*, property_obj, folio, entry_type, amount, reference,
+                   description="", posted_by=None, business_date=None,
+                   currency=None, stay=None, void_of=None, void_reason=""):
+        """账本唯一写入口：追加、强幂等；冲销只能追加等额反向凭证。"""
+        from apps.billing.models import LedgerEntry
+        amount = BillingService._money(amount)
+        reference = str(reference or "").strip()
+        if not reference or len(reference) > 160:
+            raise ValueError("账本凭证号必须为 1 至 160 个字符。")
+        if amount == 0:
+            raise ValueError("账本凭证金额不能为零。")
+        if folio.property_id != property_obj.pk:
+            raise ValueError("账单不属于当前物业。")
+        if stay is not None and stay.property_id != property_obj.pk:
+            raise ValueError("入住记录不属于当前物业。")
+        currency = currency or folio.currency
+        business_date = business_date or BillingService._business_date(property_obj)
+        existing = LedgerEntry.objects.filter(reference=reference).first()
+        if existing is not None:
+            same = (
+                existing.property_id == property_obj.pk
+                and existing.folio_id == folio.pk
+                and existing.stay_id == (stay.pk if stay else None)
+                and existing.entry_type == entry_type
+                and existing.amount == amount
+                and existing.currency == currency
+                and existing.business_date == business_date
+                and existing.void_of_id == (void_of.pk if void_of else None)
+                and existing.void_reason == str(void_reason or "").strip()
+            )
+            if not same:
+                raise ValueError("账本凭证号已用于不同账务事实，拒绝覆盖。")
+            return existing, False
+        if entry_type == LedgerEntry.EntryType.REVERSAL:
+            reason = str(void_reason or "").strip()
+            if void_of is None or not reason:
+                raise ValueError("红字冲销必须关联原凭证并填写原因。")
+            if void_of.property_id != property_obj.pk or void_of.folio_id != folio.pk:
+                raise ValueError("冲销原凭证必须属于同一物业和账单。")
+            if amount != -void_of.amount:
+                raise ValueError("红字冲销金额必须与原凭证等额反向。")
+            if void_of.reversals.exists():
+                raise ValueError("原凭证已经冲销，不能重复冲销。")
+        elif void_of is not None or str(void_reason or "").strip():
+            raise ValueError("只有红字冲销凭证可以关联 void_of 或冲销原因。")
+        entry = LedgerEntry.objects.create(
+            property=property_obj, folio=folio, stay=stay,
+            entry_type=entry_type, amount=amount, currency=currency,
+            business_date=business_date, reference=reference,
+            description=str(description or "")[:240],
+            posted_by=posted_by, void_of=void_of,
+            void_reason=str(void_reason or "").strip())
+        AuditEvent.record(
+            action="billing.ledger_post", entity_type="LedgerEntry",
+            entity_id=entry.pk, actor=posted_by, property_obj=property_obj,
+            after={"reference": reference, "entry_type": entry_type,
+                   "amount": str(amount), "folio_id": folio.pk},
+            reason=void_reason or "")
+        return entry, True
+
+    @staticmethod
     @transaction.atomic
     def collect_payment(*, property_obj, reservation, amount, method,
                         collected_by, reference=""):
         """统一收款（Q-07）：记录支付方式，创建 Payment + LedgerEntry。"""
         from apps.billing.models import Folio, LedgerEntry, Payment
+        method = "TRANSFER" if method == "BANK_TRANSFER" else method
         if method not in BillingService.VALID_PAYMENT_METHODS:
             raise ValueError(f"支付方式必须是 {'、'.join(BillingService.VALID_PAYMENT_METHODS)}")
         amount = BillingService._money(amount)
@@ -163,7 +235,9 @@ class BillingService:
         if existing:
             if (existing.property_id != property_obj.pk
                     or existing.reservation_id != reservation.pk
-                    or existing.amount != amount or existing.method != method):
+                    or existing.amount != amount or existing.method != method
+                    or existing.provider != "frontdesk_manual"
+                    or existing.status != Payment.Status.SUCCEEDED):
                 raise ValueError("该收款参考号已用于不同支付。")
             return existing
         from apps.reservations.models import ReservationRoom
@@ -188,13 +262,13 @@ class BillingService:
             method=method, amount=amount, currency=reservation.currency,
             status=Payment.Status.SUCCEEDED, paid_at=now,
         )
-        LedgerEntry.objects.create(
-            property=property_obj, folio=folio,
+        BillingService.post_entry(
+            property_obj=property_obj, folio=folio,
             entry_type=LedgerEntry.EntryType.PAYMENT,
             amount=-amount, currency=reservation.currency,
-            business_date=timezone.localdate(),
-            reference=f"pay:{payment.pk}",
-            description=f"前台收款（{method}）",
+            business_date=BillingService._business_date(property_obj),
+            reference=f"payment:{provider_ref}",
+            description=f"前台登记收款（{method}）",
             posted_by=collected_by)
         AuditEvent.record(
             action="billing.collect", entity_type="Payment",
@@ -206,35 +280,103 @@ class BillingService:
 
     @staticmethod
     @transaction.atomic
-    def request_refund(*, property_obj, payment_id, amount, reason,
-                       requested_by, request=None):
-        """退款申请（Q-05）：创建 ApprovalRecord + Refund PENDING。"""
-        from apps.billing.models import LedgerEntry, Payment, Refund
+    def record_deposit(*, property_obj, reservation, amount, method,
+                       idempotency_key, received_by=None):
+        """统一登记实际收到的押金；Payment 与 DEPOSIT 凭证原子提交。"""
+        from apps.billing.models import Folio, Payment, LedgerEntry
+        method = str(method or "").strip().upper()
+        if method == "BANK_TRANSFER":
+            method = "TRANSFER"
+        if method not in BillingService.VALID_PAYMENT_METHODS:
+            raise ValueError("押金方式只支持现金、刷卡或转账。")
         amount = BillingService._money(amount)
+        if amount <= 0:
+            raise ValueError("押金金额必须大于零。")
+        if reservation.property_id != property_obj.pk:
+            raise ValueError("预订不属于当前物业。")
+        key = str(idempotency_key or "").strip()
+        if not key or len(key) > 64:
+            raise ValueError("押金登记必须提供 1 至 64 个字符的幂等键。")
+        if reservation.status not in ("CONFIRMED", "CHECKED_IN"):
+            raise ValueError("只有已确认或在住预订可以收取押金。")
+        folio = Folio.objects.select_for_update().filter(
+            property=property_obj, reservation=reservation,
+            status=Folio.Status.OPEN).first()
+        if folio is None:
+            raise ValueError("有效主账单不存在。")
+        provider_ref = f"FDDEP-{property_obj.pk}-{key}"
+        existing = Payment.objects.filter(provider_ref=provider_ref).first()
+        if existing is not None:
+            if (existing.property_id != property_obj.pk
+                    or existing.reservation_id != reservation.pk
+                    or existing.amount != amount or existing.method != method
+                    or existing.provider != "frontdesk_deposit"
+                    or existing.status != Payment.Status.SUCCEEDED):
+                raise ValueError("该幂等键已用于其他押金登记。")
+            return existing, False
+        if reservation.deposit_amount + amount > reservation.total_amount:
+            raise ValueError("累计押金不能超过当前预订房费总额。")
+        payment = Payment.objects.create(
+            property=property_obj, reservation=reservation, folio=folio,
+            provider="frontdesk_deposit", provider_ref=provider_ref,
+            method=method, amount=amount, currency=folio.currency,
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        BillingService.post_entry(
+            property_obj=property_obj, folio=folio,
+            entry_type=LedgerEntry.EntryType.DEPOSIT, amount=-amount,
+            currency=folio.currency,
+            business_date=BillingService._business_date(property_obj),
+            reference=f"deposit:{provider_ref}",
+            description=f"前台登记押金（{method}）", posted_by=received_by)
+        reservation.deposit_amount += amount
+        reservation.save(update_fields=("deposit_amount", "updated_at"))
+        AuditEvent.record(
+            action="billing.deposit_collect", entity_type="Payment",
+            entity_id=payment.pk, actor=received_by, property_obj=property_obj,
+            after={"method": method, "amount": str(amount)},
+            reason="前台实际收取押金")
+        return payment, True
+
+    @staticmethod
+    @transaction.atomic
+    def request_refund(*, property_obj, payment_id, amount, reason,
+                       requested_by, idempotency_key="", request=None):
+        """退款申请唯一入口：校验金额、幂等并建立双人审批记录。"""
+        from apps.billing.models import Payment, Refund
+        amount = BillingService._money(amount)
+        if amount <= 0:
+            raise ValueError("退款金额必须大于零。")
+        reason = str(reason or "").strip()
+        if not reason or len(reason) > 240:
+            raise ValueError("退款申请原因必须填写，且不能超过 240 个字符。")
+        key = str(idempotency_key or "").strip()
+        if not key or len(key) > 64:
+            raise ValueError("退款申请必须提供 1 至 64 个字符的幂等键。")
         payment = Payment.objects.select_for_update().filter(
             pk=payment_id, property=property_obj).first()
         if payment is None:
             raise ValueError("未找到支付流水。")
+        existing = Refund.objects.filter(
+            property=property_obj, idempotency_key=key).first()
+        if existing is not None:
+            if (existing.payment_id != payment.pk
+                    or existing.amount != amount or existing.reason != reason):
+                raise ValueError("该幂等键已用于不同退款申请。")
+            return existing, False
         if payment.status not in (
                 Payment.Status.SUCCEEDED, Payment.Status.PARTIALLY_REFUNDED):
             raise ValueError("只有成功或部分退款的支付可申请退款。")
-        refunded = Refund.objects.filter(
-            payment=payment, status=Refund.Status.SUCCEEDED).aggregate(
-            total=models.Sum("amount"))["total"] or Decimal("0.00")
-        pending = Refund.objects.filter(
-            payment=payment, status=Refund.Status.PENDING).aggregate(
-            total=models.Sum("amount"))["total"] or Decimal("0.00")
-        if refunded + pending + amount > payment.amount:
-            raise ValueError("累计退款不能超过原支付金额。")
-        reason = str(reason or "").strip()
-        if not reason or len(reason) > 240:
-            raise ValueError("退款申请原因必须填写，且不能超过 240 个字符。")
+        reserved = Refund.objects.filter(
+            payment=payment, status__in=(Refund.Status.PENDING, Refund.Status.SUCCEEDED)
+        ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
+        if reserved + amount > payment.amount:
+            raise ValueError("累计退款申请及已完成退款不能超过原支付金额。")
         refund = Refund.objects.create(
             property=property_obj, payment=payment, amount=amount,
             currency=payment.currency, reason=reason,
             status=Refund.Status.PENDING, requested_by=requested_by,
             provider_ref=f"RFD-{uuid.uuid4().hex.upper()[:16]}",
-            idempotency_key=f"refund:{payment.pk}:{uuid.uuid4().hex[:12]}")
+            idempotency_key=key)
         approval, _ = ApprovalService.request_approval(
             property_obj=property_obj, action_code="billing.refund",
             entity_type="Refund", entity_id=refund.pk,
@@ -247,5 +389,81 @@ class BillingService:
             action="billing.refund_request", entity_type="Refund",
             entity_id=refund.pk, actor=requested_by, property_obj=property_obj,
             after={"amount": str(amount), "payment_id": payment.pk},
-            reason=reason[:240], request=request)
-        return refund
+            reason=reason, request=request)
+        return refund, True
+
+    @staticmethod
+    @transaction.atomic
+    def complete_refund(*, property_obj, refund_id, approved_by,
+                        confirm_refund_paid=False):
+        """第二人确认线下退款已实际支付后，追加 REFUND 凭证并更新支付状态。"""
+        from apps.billing.models import Payment, Refund, LedgerEntry
+        if confirm_refund_paid is not True:
+            raise ValueError("必须确认退款已经实际支付给客人。")
+        refund = Refund.objects.select_for_update().filter(
+            pk=refund_id, property=property_obj).first()
+        if refund is None:
+            raise ValueError("退款申请不存在或不属于当前物业。")
+        if refund.status == Refund.Status.SUCCEEDED:
+            return refund, False
+        if refund.status != Refund.Status.PENDING:
+            raise ValueError("只有待审批退款申请可以执行。")
+        if refund.requested_by_id == approved_by.pk:
+            raise ValueError("退款申请人与审批人不能是同一账号。")
+        approval = refund.approval_record
+        if approval is None:
+            approval, _ = ApprovalService.request_approval(
+                property_obj=property_obj, action_code="billing.refund",
+                entity_type="Refund", entity_id=refund.pk,
+                requested_by=refund.requested_by, reason=refund.reason,
+                payload={"payment_id": refund.payment_id,
+                         "amount": str(refund.amount),
+                         "currency": refund.currency})
+            refund.approval_record = approval
+            refund.save(update_fields=("approval_record",))
+        if approval.status == ApprovalRecord.Status.PENDING:
+            approval = ApprovalService.approve(
+                approval.pk, approved_by=approved_by, property_obj=property_obj)
+        if (approval.status != ApprovalRecord.Status.APPROVED
+                or approval.approved_by_id != approved_by.pk):
+            raise ValueError("退款申请没有由当前账号完成有效审批。")
+        payment = Payment.objects.select_for_update().get(
+            pk=refund.payment_id, property=property_obj)
+        successful_total = Refund.objects.filter(
+            payment=payment, status=Refund.Status.SUCCEEDED
+        ).exclude(pk=refund.pk).aggregate(
+            total=models.Sum("amount"))["total"] or Decimal("0.00")
+        if successful_total + refund.amount > payment.amount:
+            raise ValueError("原支付可退款余额不足。")
+        folio = refund.payment.folio
+        if folio.property_id != property_obj.pk or folio.status == "VOIDED":
+            raise ValueError("原支付对应账单不存在或已作废。")
+        BillingService.post_entry(
+            property_obj=property_obj, folio=folio,
+            entry_type=LedgerEntry.EntryType.REFUND,
+            amount=refund.amount, currency=refund.currency,
+            business_date=BillingService._business_date(property_obj),
+            reference=f"refund:{refund.provider_ref}",
+            description=f"人工退款完成：{refund.reason}",
+            posted_by=approved_by)
+        refund.status = Refund.Status.SUCCEEDED
+        refund.approved_by = approved_by
+        refund.processed_at = timezone.now()
+        refund.save(update_fields=("status", "approved_by", "processed_at"))
+        refunded_total = Refund.objects.filter(
+            payment=payment, status=Refund.Status.SUCCEEDED
+        ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
+        payment.status = (Payment.Status.REFUNDED if refunded_total >= payment.amount
+                          else Payment.Status.PARTIALLY_REFUNDED)
+        payment.save(update_fields=("status", "updated_at"))
+        if payment.provider == "frontdesk_deposit":
+            reservation = payment.reservation
+            reservation.deposit_amount = max(
+                Decimal("0.00"), reservation.deposit_amount - refund.amount)
+            reservation.save(update_fields=("deposit_amount", "updated_at"))
+        AuditEvent.record(
+            action="billing.refund_completed", entity_type="Refund",
+            entity_id=refund.pk, actor=approved_by, property_obj=property_obj,
+            after={"amount": str(refund.amount), "status": refund.status},
+            reason=refund.reason)
+        return refund, True

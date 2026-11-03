@@ -1025,6 +1025,7 @@ def approve_refund_api(request, refund_id):
         refund, changed = approve_refund_service(
             property_obj=request.front_desk_property, refund_id=refund_id,
             approved_by=request.user,
+            confirm_refund_paid=True,
         )
     except ValueError as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)

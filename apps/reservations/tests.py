@@ -684,7 +684,7 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         )
         approved, changed = approve_refund(
             property_obj=self.property, refund_id=refund.pk,
-            approved_by=supervisor,
+            approved_by=supervisor, confirm_refund_paid=True,
         )
         self.assertTrue(changed)
         self.assertEqual(approved.status, Refund.Status.SUCCEEDED)

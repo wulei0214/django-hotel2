@@ -8,6 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.billing.models import ApprovalRecord, Folio, LedgerEntry
+from apps.billing.services_v2 import BillingService
 from apps.core.models import (
     AuditEvent, BreakGlassRecord, BusinessDate, NightAuditRun, Property,
 )
@@ -183,8 +184,8 @@ class NightAuditService:
                             f"预订 {row['booking_no']} 没有有效主账单，夜审已整体回滚。"
                         )
                     stay = Stay.objects.get(pk=row["stay_id"], property=property_obj)
-                    LedgerEntry.objects.create(
-                        property=property_obj, folio=folio, stay=stay,
+                    BillingService.post_entry(
+                        property_obj=property_obj, folio=folio, stay=stay,
                         entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
                         amount=Decimal(row["amount"]), currency=row["currency"],
                         business_date=day, reference=row["reference"],

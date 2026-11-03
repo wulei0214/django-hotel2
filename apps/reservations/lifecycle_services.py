@@ -324,166 +324,43 @@ def mark_reservation_room_no_show(*, property_obj, reservation_room_id, reason, 
 def receive_manual_deposit(
     *, property_obj, booking_no, amount, method, idempotency_key, received_by=None
 ):
-    """登记已经实际收到的押金；账本以负数 DEPOSIT 凭证记入住客贷方。"""
-    amount = _money(amount)
-    method = str(method or "").strip().upper()
-    if method not in {"CASH", "CARD", "BANK_TRANSFER", "OTHER"}:
-        raise LifecycleOperationError("押金方式只支持 CASH、CARD、BANK_TRANSFER 或 OTHER。")
-    key = str(idempotency_key or "").strip()
-    if not key or len(key) > 64:
-        raise LifecycleOperationError("押金登记必须提供 1 至 64 个字符的 Idempotency-Key。")
+    """押金登记统一委托 BillingService，避免绕开账务唯一写入口。"""
     reservation = Reservation.objects.select_for_update().filter(
         property=property_obj, booking_no=booking_no,
         status__in=(Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN),
     ).first()
     if reservation is None:
         raise LifecycleOperationError("未找到可收取押金的已确认/在住预订。")
-    folio = _folio_for_update(property_obj, reservation)
-    provider_ref = f"FDDEP-{property_obj.pk}-{key}"
-    existing = Payment.objects.filter(provider_ref=provider_ref).first()
-    if existing:
-        if (
-            existing.reservation_id != reservation.pk or existing.amount != amount
-            or existing.method != method or existing.provider != "frontdesk_deposit"
-        ):
-            raise LifecycleOperationError("该 Idempotency-Key 已用于其他押金登记。")
-        return existing, False
-    already_deposited = reservation.deposit_amount
-    if already_deposited + amount > reservation.total_amount:
-        raise LifecycleOperationError("累计押金不能超过当前预订房费总额。")
-    now = timezone.now()
-    payment = Payment.objects.create(
-        property=property_obj, reservation=reservation, folio=folio,
-        provider="frontdesk_deposit", provider_ref=provider_ref,
-        method=method, amount=amount, currency=folio.currency,
-        status=Payment.Status.SUCCEEDED, paid_at=now,
-    )
-    LedgerEntry.objects.create(
-        property=property_obj, folio=folio, entry_type=LedgerEntry.EntryType.DEPOSIT,
-        amount=-amount, currency=folio.currency, business_date=_property_today(property_obj),
-        reference=f"deposit:{provider_ref}", description=f"前台登记押金（{method}）",
-        posted_by=received_by,
-    )
-    reservation.deposit_amount += amount
-    reservation.save(update_fields=("deposit_amount", "updated_at"))
-    return payment, True
+    from apps.billing.services_v2 import BillingService
+    try:
+        return BillingService.record_deposit(
+            property_obj=property_obj, reservation=reservation, amount=amount,
+            method=method, idempotency_key=idempotency_key, received_by=received_by)
+    except ValueError as exc:
+        raise LifecycleOperationError(str(exc)) from exc
 
 
 @transaction.atomic
 def request_refund(*, property_obj, payment_id, amount, reason, idempotency_key, requested_by):
-    """登记退款申请；待独立审批前不改变账本余额。"""
-    amount = _money(amount)
-    reason = str(reason or "").strip()
-    key = str(idempotency_key or "").strip()
-    if not reason or len(reason) > 240:
-        raise LifecycleOperationError("退款原因必须填写，且不能超过 240 个字符。")
-    if not key or len(key) > 64:
-        raise LifecycleOperationError("退款申请必须提供 1 至 64 个字符的 Idempotency-Key。")
-    payment = Payment.objects.select_for_update().filter(
-        pk=payment_id, property=property_obj
-    ).first()
-    if payment is None:
-        raise LifecycleOperationError("未找到该物业下的支付流水。")
-    existing = Refund.objects.filter(property=property_obj, idempotency_key=key).first()
-    if existing:
-        if existing.payment_id != payment.pk or existing.amount != amount or existing.reason != reason:
-            raise LifecycleOperationError("该 Idempotency-Key 已用于其他退款申请。")
-        return existing, False
-    if payment.status not in (Payment.Status.SUCCEEDED, Payment.Status.PARTIALLY_REFUNDED):
-        raise LifecycleOperationError("只有成功或部分退款的支付流水可以申请退款。")
-    reserved = Refund.objects.filter(
-        payment=payment, status__in=(Refund.Status.PENDING, Refund.Status.SUCCEEDED)
-    ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
-    if reserved + amount > payment.amount:
-        raise LifecycleOperationError(
-            f"累计申请及已完成退款不能超过原支付金额 {payment.amount:.2f}。"
-        )
-    refund = Refund.objects.create(
-        property=property_obj, payment=payment, amount=amount, currency=payment.currency,
-        reason=reason, idempotency_key=key, provider_ref="RFD-" + uuid.uuid4().hex.upper(),
-        status=Refund.Status.PENDING, requested_by=requested_by,
-    )
-    approval, _ = ApprovalService.request_approval(
-        property_obj=property_obj, action_code="billing.refund",
-        entity_type="Refund", entity_id=refund.pk,
-        requested_by=requested_by, reason=reason,
-        payload={"payment_id": payment.pk, "amount": str(amount),
-                 "currency": payment.currency})
-    refund.approval_record = approval
-    refund.save(update_fields=("approval_record",))
-    return refund, True
+    """退款申请统一委托 BillingService；审批事实和业务申请同事务生成。"""
+    from apps.billing.services_v2 import BillingService
+    try:
+        return BillingService.request_refund(
+            property_obj=property_obj, payment_id=payment_id,
+            amount=amount, reason=reason, idempotency_key=idempotency_key,
+            requested_by=requested_by)
+    except ValueError as exc:
+        raise LifecycleOperationError(str(exc)) from exc
 
 
 @transaction.atomic
-def approve_refund(*, property_obj, refund_id, approved_by):
-    """由第二人确认人工退款已实际完成，追加不可变 REFUND 凭证。"""
-    refund = Refund.objects.select_for_update().filter(
-        pk=refund_id, property=property_obj
-    ).first()
-    if refund is None:
-        raise LifecycleOperationError("退款申请不存在。")
-    if refund.status == Refund.Status.SUCCEEDED:
-        return refund, False
-    if refund.status != Refund.Status.PENDING:
-        raise LifecycleOperationError("只有待审批退款申请可以审批。")
-    if refund.requested_by_id == approved_by.pk:
-        raise LifecycleOperationError("退款申请人不能审批自己的退款申请。")
-    approval = refund.approval_record
-    if approval is None:
-        # 兼容迁移前尚未关联审批记录的待处理退款：补建后仍由第二人审批。
-        approval, _ = ApprovalService.request_approval(
-            property_obj=property_obj, action_code="billing.refund",
-            entity_type="Refund", entity_id=refund.pk,
-            requested_by=refund.requested_by, reason=refund.reason,
-            payload={"payment_id": refund.payment_id,
-                     "amount": str(refund.amount), "currency": refund.currency})
-        refund.approval_record = approval
-        refund.save(update_fields=("approval_record",))
-    if approval.status == ApprovalRecord.Status.PENDING:
-        approval = ApprovalService.approve(
-            approval.pk, approved_by=approved_by, property_obj=property_obj)
-    if approval.status != ApprovalRecord.Status.APPROVED or approval.approved_by_id != approved_by.pk:
-        raise LifecycleOperationError("退款审批记录未由当前审批人批准。")
-    payment = Payment.objects.select_for_update().get(pk=refund.payment_id, property=property_obj)
-    successful_total = Refund.objects.filter(
-        payment=payment, status=Refund.Status.SUCCEEDED
-    ).exclude(pk=refund.pk).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
-    if successful_total + refund.amount > payment.amount:
-        raise LifecycleOperationError("原支付可退款余额不足，请核对其他退款申请。")
-    folio = Folio.objects.select_for_update().filter(
-        property=property_obj, reservation=payment.reservation
-    ).first()
-    if folio is None or folio.status == Folio.Status.VOIDED:
-        raise LifecycleOperationError("原支付对应账单不存在或已作废，不能登记退款。")
-    LedgerEntry.objects.create(
-        property=property_obj, folio=folio, entry_type=LedgerEntry.EntryType.REFUND,
-        amount=refund.amount, currency=refund.currency,
-        business_date=_property_today(property_obj),
-        reference=f"refund:{refund.provider_ref}",
-        description=f"人工退款完成：{refund.reason}",
-        posted_by=approved_by,
-    )
-    refund.status = Refund.Status.SUCCEEDED
-    refund.approved_by = approved_by
-    refund.processed_at = timezone.now()
-    refund.save(update_fields=("status", "approved_by", "processed_at"))
-    from apps.core.models import AuditEvent
-    AuditEvent.record(
-        action="billing.refund_completed", entity_type="Refund",
-        entity_id=refund.pk, actor=approved_by, property_obj=property_obj,
-        after={"amount": str(refund.amount), "status": refund.status},
-        reason=refund.reason)
-
-    refunded_total = Refund.objects.filter(
-        payment=payment, status=Refund.Status.SUCCEEDED
-    ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
-    payment.status = (
-        Payment.Status.REFUNDED if refunded_total >= payment.amount
-        else Payment.Status.PARTIALLY_REFUNDED
-    )
-    payment.save(update_fields=("status", "updated_at"))
-    if payment.provider == "frontdesk_deposit":
-        reservation = Reservation.objects.select_for_update().get(pk=payment.reservation_id)
-        reservation.deposit_amount = max(Decimal("0.00"), reservation.deposit_amount - refund.amount)
-        reservation.save(update_fields=("deposit_amount", "updated_at"))
-    return refund, True
+def approve_refund(*, property_obj, refund_id, approved_by,
+                   confirm_refund_paid=False):
+    """审批并确认实际退款；账本写入统一委托 BillingService。"""
+    from apps.billing.services_v2 import BillingService
+    try:
+        return BillingService.complete_refund(
+            property_obj=property_obj, refund_id=refund_id,
+            approved_by=approved_by, confirm_refund_paid=confirm_refund_paid)
+    except ValueError as exc:
+        raise LifecycleOperationError(str(exc)) from exc

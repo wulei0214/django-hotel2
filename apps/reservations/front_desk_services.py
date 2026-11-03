@@ -205,120 +205,45 @@ def check_in_stay(*, property_obj, reservation_room_id, checked_in_by=None):
 
 @transaction.atomic
 def collect_manual_payment(
-    *,
-    property_obj,
-    booking_no,
-    amount,
-    method,
-    idempotency_key,
-    received_by=None,
+    *, property_obj, booking_no, amount, method, idempotency_key, received_by=None
 ):
-    """登记前台已实际收到的现金/刷卡/转账；不调用任何真实支付渠道。"""
-    amount = _money(amount)
+    """前台人工收款：委托 BillingService 统一写入 Payment、LedgerEntry 与审计。"""
     method = str(method or "").strip().upper()
-    if method not in MANUAL_PAYMENT_METHODS:
-        raise FrontDeskOperationError(
-            "收款方式只支持 CASH、CARD、BANK_TRANSFER 或 OTHER。"
-        )
-    idempotency_key = str(idempotency_key or "").strip()
-    if not idempotency_key or len(idempotency_key) > 64:
+    method = "TRANSFER" if method == "BANK_TRANSFER" else method
+    if method not in {"CASH", "CARD", "TRANSFER"}:
+        raise FrontDeskOperationError("收款方式只支持现金、刷卡或转账。")
+    key = str(idempotency_key or "").strip()
+    if not key or len(key) > 64:
         raise FrontDeskOperationError("请提供 1 至 64 个字符的 Idempotency-Key。")
-
-    reservation = (
-        Reservation.objects.select_for_update()
-        .filter(property=property_obj, booking_no=booking_no)
-        .first()
-    )
+    reservation = Reservation.objects.select_for_update().filter(
+        property=property_obj, booking_no=booking_no).first()
     if reservation is None:
         raise FrontDeskOperationError("未找到该物业下的预订。")
     if reservation.status not in (
-        Reservation.Status.CONFIRMED,
-        Reservation.Status.CHECKED_IN,
+        Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN
     ):
         raise FrontDeskOperationError("当前预订状态不允许前台收款。")
-
-    folio = Folio.objects.select_for_update().filter(
-        property=property_obj, reservation=reservation
-    ).first()
-    if folio is None or folio.status != Folio.Status.OPEN:
-        raise FrontDeskOperationError("账单不存在或已关闭，不能收款。")
-
-    provider_ref = f"FD{property_obj.pk}-{idempotency_key}"
+    provider_ref = f"FD{property_obj.pk}-{key}"
     existing = Payment.objects.filter(provider_ref=provider_ref).first()
-    if existing is not None:
-        if (
-            existing.reservation_id != reservation.pk
-            or existing.folio_id != folio.pk
-            or existing.amount != amount
-            or existing.method != method
-            or existing.provider != "frontdesk_manual"
-            or existing.status != Payment.Status.SUCCEEDED
-        ):
-            raise FrontDeskOperationError(
-                "该 Idempotency-Key 已用于其他收款请求，不能重复使用。"
-            )
-        return existing, False
-
-    expected_room_charges = sum(
-        ReservationRoom.objects.filter(
-            property=property_obj, reservation=reservation
-        ).values_list("amount", flat=True),
-        start=Decimal("0.00"),
-    )
-    entries = list(folio.entries.all())
-    current_balance = sum(
-        (entry.amount for entry in entries), start=Decimal("0.00")
-    )
-    posted_room_charges = sum(
-        (
-            entry.amount
-            for entry in entries
-            if entry.entry_type == LedgerEntry.EntryType.ROOM_CHARGE
-        ),
-        start=Decimal("0.00"),
-    )
-    outstanding = current_balance + expected_room_charges - posted_room_charges
-    if outstanding <= 0:
-        raise FrontDeskOperationError("当前账单没有待收余额，不需要重复收款。")
-    if amount > outstanding:
+    if existing is not None and (
+        existing.property_id != property_obj.pk
+        or existing.reservation_id != reservation.pk
+        or existing.amount != _money(amount)
+        or existing.method != method
+        or existing.provider != "frontdesk_manual"
+        or existing.status != Payment.Status.SUCCEEDED
+    ):
         raise FrontDeskOperationError(
-            f"收款金额超过当前应收余额 {outstanding:.2f} {folio.currency}。"
-        )
-
-    now = timezone.now()
-    payment = Payment.objects.create(
-        property=property_obj,
-        reservation=reservation,
-        folio=folio,
-        provider="frontdesk_manual",
-        provider_ref=provider_ref,
-        method=method,
-        amount=amount,
-        currency=folio.currency,
-        status=Payment.Status.SUCCEEDED,
-        paid_at=now,
-    )
-    LedgerEntry.objects.create(
-        property=property_obj,
-        folio=folio,
-        entry_type=LedgerEntry.EntryType.PAYMENT,
-        amount=-amount,
-        currency=folio.currency,
-        business_date=_property_today(property_obj),
-        reference=f"payment:{provider_ref}",
-        description=f"前台登记收款（{method}）",
-        posted_by=received_by,
-    )
-    audit.info(
-        "前台收款 user=%s booking=%s payment=%s method=%s amount=%s currency=%s",
-        getattr(received_by, "username", "system"),
-        reservation.booking_no,
-        payment.provider_ref,
-        method,
-        amount,
-        folio.currency,
-    )
-    return payment, True
+            "该 Idempotency-Key 已用于其他收款请求，不能重复使用。")
+    from apps.billing.services_v2 import BillingService
+    try:
+        payment = BillingService.collect_payment(
+            property_obj=property_obj, reservation=reservation,
+            amount=amount, method=method, collected_by=received_by,
+            reference=provider_ref)
+    except ValueError as exc:
+        raise FrontDeskOperationError(str(exc)) from exc
+    return payment, existing is None
 
 
 @transaction.atomic
@@ -353,13 +278,11 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
     if line.amount > 0 and not folio.entries.filter(
         reference=charge_reference
     ).exists():
-        LedgerEntry.objects.create(
-            property=property_obj,
-            folio=folio,
-            stay=stay,
+        from apps.billing.services_v2 import BillingService
+        BillingService.post_entry(
+            property_obj=property_obj, folio=folio, stay=stay,
             entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-            amount=line.amount,
-            currency=folio.currency,
+            amount=line.amount, currency=folio.currency,
             business_date=_property_today(property_obj),
             reference=charge_reference,
             description=f"房费：{line.check_in.isoformat()} 至 {line.check_out.isoformat()}",
