@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """PMS2 夜审领域服务：只对 PMS2 Stay/Folio/Ledger 写入，不读写旧 FinanceRecord。"""
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
