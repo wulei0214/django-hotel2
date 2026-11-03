@@ -913,6 +913,30 @@ class SalaryDecisionBoundaryTests(TestCase):
         self.assertIn("6000.00", response.content.decode("utf-8"))
 
 
+class FinanceStaffReadOnlyTests(TestCase):
+    """Q-03：财务可查看薪酬，但不能新增或修改员工及薪酬。"""
+
+    def setUp(self):
+        self.finance = _make_user("finance-staff-read", "财务")
+        from hotelapp.models import Staff
+        self.staff = Staff.objects.create(
+            姓名="财务只读员工", 职务="服务员", 月薪="7200.00", 工龄="3")
+
+    def test_finance_can_view_salary_but_cannot_change_it(self):
+        self.client.force_login(self.finance)
+        page = self.client.get("/index/")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "7200.00")
+        response = self.client.post("/update_staff/", {
+            "id": self.staff.员工id, "job": "服务员",
+            "salary": "8000.00", "time": "4",
+            "reason": "无权操作测试薪酬修改",
+        })
+        self.assertIn(response.status_code, (403, 405))
+        self.staff.refresh_from_db()
+        self.assertEqual(self.staff.月薪, "7200.00")
+
+
 class V11P0ModelTests(TestCase):
     """V1.1 §9.7.1 P0 模型定稿批次：约束/加密/幂等/权限"""
 
