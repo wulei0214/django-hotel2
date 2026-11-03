@@ -74,6 +74,19 @@ def _create_reservation(
             raise ReservationConflict("相同 Idempotency-Key 不能用于不同的预订内容。")
         return existing, False
 
+    # §6.4：同手机号同物业未支付 PENDING 上限（默认 2 笔）——
+    # 幂等重放在此之前已返回，不受上限影响；超限不新增 Guest/Reservation/Folio
+    from django.conf import settings as _settings
+    pending_cap = int(getattr(_settings, "PUBLIC_PENDING_RESERVATION_CAP", 2))
+    pending_count = Reservation.objects.filter(
+        property=property_obj,
+        guest__phone_normalized=normalize_phone(payload["phone"]),
+        status=Reservation.Status.PENDING,
+    ).count()
+    if pending_count >= pending_cap:
+        raise ReservationConflict(
+            "该手机号存在过多未支付预订，请先完成支付或取消后再预订。")
+
     check_in = payload["check_in"]
     check_out = payload["check_out"]
     rooms = payload["rooms"]
@@ -223,8 +236,8 @@ def create_reservation(
 
 
 @transaction.atomic
-def cancel_pending_reservation(*, property_obj, booking_no, phone):
-    phone_normalized = normalize_phone(phone)
+def cancel_pending_reservation(*, property_obj, booking_no, reservation_pk):
+    """P0-08：取消凭 Booking Access Token（view 层已校验），按主键定位不再用 phone。"""
     try:
         reservation = (
             Reservation.objects.select_for_update()
@@ -232,11 +245,11 @@ def cancel_pending_reservation(*, property_obj, booking_no, phone):
             .get(
                 property=property_obj,
                 booking_no=booking_no,
-                guest__phone_normalized=phone_normalized,
+                pk=reservation_pk,
             )
         )
     except Reservation.DoesNotExist as exc:
-        raise ReservationConflict("未找到预订记录，请核对预订编号与联系电话。") from exc
+        raise ReservationConflict("未找到预订记录。") from exc
 
     if reservation.status == Reservation.Status.CANCELLED:
         return reservation, False

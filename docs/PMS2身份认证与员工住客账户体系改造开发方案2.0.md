@@ -973,3 +973,54 @@ Guest 重复档案的业务合并政策仍按第 8 节执行，不允许用“�
 9. **联系方式、多物业、MFA、住客 OTP** 均按后续专项推进。
 
 **最终原则：先保证安全、权限、数据一致性和验收可复现，再扩展功能。任何未通过验收的项目必须保持“未完成”状态，不得为了进度将其标记为已实现。**
+
+---
+
+## 21. Phase 0 实施记录与验收（2026-11-04）
+
+### 21.1 验收记录（§15.3 模板）
+
+| 项目 | 记录 |
+|---|---|
+| 阶段 | Phase 0（安全止血与基线恢复） |
+| main commit SHA | 见提交记录（工作区干净后推送的 HEAD） |
+| 工作区 | clean |
+| Python/Django | 3.9.0 / 4.1 |
+| 数据库 | SQLite（单测）+ MySQL 8（目标库，hotel@localhost） |
+| migrations | `makemigrations core add_rate_limit_counter`、`makemigrations reservations add_booking_access_token`；`migrate` 已应用（MySQL 表 core_ratelimitcounter / reservations_bookingaccesstoken 已建） |
+| 自动化测试 | `manage.py test --noinput`；SQLite 181 项 + MySQL 181 项，全部通过、0 failure 0 error |
+| 安全专项 | test_auth_hardening 20 项（注册止血/冻结/登录统一文案×4/登录限流/审计指纹/密码策略×2/mock 门禁×4/token 生命周期/PENDING 上限/429+Retry-After/原子计数/空值桶） |
+| 目标数据库验证 | 通过（MySQL 8 全量 181 项） |
+| 已知问题 | P1-10 员工中心写迁移（Phase 1）；audit 归档策略（P2）；`docs/UI_GUIDE.md` 已由并行会话更名重写 |
+| 回滚方案 | 两个新 migration 可 `migrate <app> <previous>` 逆向；旧路由 410 guard 为纯代码可 revert；token 表为新增不触历史数据 |
+| 结论 | 待业务/安全负责人签署 |
+
+### 21.2 P0/P1 逐项状态（§13）
+
+| 编号 | 状态 | 实施说明 |
+|---|---|---|
+| P0-01~04 | 已实现待验收 | `RateLimitCounter` 表 + `apps/core/rate_limit.py`：F() 原子自增、窗口唯一约束、TTL 惰性清理（cleanup_expired）、HMAC 指纹、空维度不建共享桶、fail-closed、429 带 Retry-After |
+| P0-05 | 已实现待验收 | reservations_create（IP+phone）/detail（IP+booking）/cancel（IP+booking）/payment_intent（IP+booking）四端点全部接入 |
+| P0-06 | 已实现待验收 | api_guard 删除 `except JsonResponse`；未预期异常统一 JSON 500 |
+| P0-07 | 已实现待验收 | IP+phone 双维限流、PENDING 上限（默认 2，PUBLIC_PENDING_RESERVATION_CAP 可配）、幂等绑定 fingerprint（既有）、`release_expired_reservations` 释放命令（幂等+审计） |
+| P0-08 | 已实现待验收 | `BookingAccessToken`（SHA-256 hash、256bit token、离店+30 天有效、可撤销轮换）；创建一次性返回；查询/取消/支付意图全部凭 token（header X-Booking-Token / body token）；`issue_booking_tokens` 补签命令 |
+| P0-09 | 已实现待验收 | 查询白名单：姓名脱敏（张*）、移除 provider_ref/完整手机号/内部字段 |
+| P0-10 | 已实现待验收 | guest.booking_access_viewed/denied、guest.booking_cancelled、public.reservation_created/blocked/rate_limited 全部落 AuditEvent；不含明文凭据 |
+| P0-11 | 已实现待验收 | auth.login_failure 持久审计（username HMAC 指纹）+ IP+username_hash 限流 5/5min |
+| P0-12 | 已实现待验收 | `_is_dev_env()` 门禁唯一入口；测试覆盖生产 403 |
+| P0-13 | 已实现待验收 | 本节记录 + 双引擎测试证据 |
+| P1-01 | 已实现待验收 | 证件/电话揭示统一 `hotelapp.guest_document_reveal/phone_reveal`（AuthorizationService） |
+| P1-02 | 已实现待验收 | 财务明细=finance_access；审批只认 billing.refund_approve；superuser 不再兜底 |
+| P1-03 | 已实现待验收 | create_employee 主路径 `_enforce_password_policy` |
+| P1-04 | 已实现待验收 | cancel_booking 去全部装饰器，匿名/员工统一 302 → /reserve/ |
+| P1-05 | 已实现待验收 | 33 个旧写路由 410（insert/update/delete 全家、checkin_confirm/in、finance_add、walkin_create、checkout/uncheckout/extend_stay/change_room/express_checkout/room_status_change、staff_toggle）；`/booking/` `/register/` redirect；测试断言不写旧表 |
+| P1-06 | 已实现待验收 | PropertyContextMiddleware 重写：无 DEFAULT 任职 → 无物业上下文+security.property_context_denied 审计；移除 active_property_id 半状态 |
+| P1-07 | 已实现待验收 | reservation_center/guest_center superuser 直通清除 |
+| P1-08 | 已实现待验收 | seed_role_test_accounts 生产环境 CommandError 拒绝 |
+| P1-09 | 已实现待验收 | 登录 disabled 分支修正：先查账号再 authenticate，停用原因正确审计 |
+| P1-10 | 暂缓 | Phase 1（AUTH-19~21 员工中心迁移） |
+| P2 | 部分完成 | templates/register.html 已删除；审计归档/HTTPS/密钥轮换为运维事项 |
+
+### 21.3 浏览器端到端验证
+
+/reserve/ 页面全流程：创建订单（CSRF+token 返回）→ 错 token 查询 404（guest.booking_access_denied 落审计）→ 页面取消按钮 token 取消成功（guest.booking_cancelled 落审计）。AuditEvent 数据库取证确认。

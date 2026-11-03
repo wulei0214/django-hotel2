@@ -55,8 +55,15 @@ class Command(BaseCommand):
         parser.add_argument("--password", default=DEFAULT_PASSWORD,
                             help="统一测试密码（默认 Abc123456）")
 
-    @transaction.atomic
     def handle(self, *args, **options):
+        # P1-08（方案 §9.4）：测试账号命令禁止在生产环境执行——
+        # 这些账号密码公开且仅靠固定岗位组授权，生产环境创建即成后门
+        from django.conf import settings as _s
+        if not _s.DEBUG and getattr(_s, "DJANGO_ENV", "dev") not in {"dev", "test"}:
+            raise CommandError("seed_role_test_accounts 禁止在生产环境执行（P1-08）。")
+        return self._handle(*args, **options)
+
+    def _handle(self, *args, **options):
         if os.environ.get("DJANGO_ENV", "dev").strip().lower() == "prod":
             raise CommandError("生产环境禁止创建固定密码测试账号")
         password = options["password"]

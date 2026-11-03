@@ -438,11 +438,10 @@ def financial_summary_api(request):
     summary = BillingService.financial_summary(
         property_obj=property_obj, start_date=start, end_date=end)
     summary["period"] = {"start": str(start), "end": str(end)}
-    # AUTH-06：业务授权统一 AuthorizationService，不再读 User.groups
-    summary["detail_available"] = bool(
-        user.is_superuser
-        or AuthorizationService.has_permission(user, property_obj, "billing.refund_approve")
-        or AuthorizationService.has_permission(user, property_obj, "identity.staff_manage"))
+    # P1-02（方案 §9.2）：财务明细查看 = hotelapp.finance_access；
+    # 明细可见性不使用 refund_approve/staff_manage 替代，superuser 不自动获得业务授权
+    summary["detail_available"] = AuthorizationService.has_permission(
+        user, property_obj, "hotelapp.finance_access")
     if not summary["detail_available"]:
         summary["note"] = "值班经理仅可查看汇总；完整流水请联系财务或店长。"
     return api_response(request, summary)

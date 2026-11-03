@@ -99,7 +99,8 @@ class PublicBookingApiTests(TestCase):
             [1, 1],
         )
 
-    def test_public_reservation_lookup_requires_matching_phone(self):
+    def test_public_reservation_lookup_requires_access_token(self):
+        """P0-08/09：查询凭 Booking Access Token；错误 token 拒绝；响应白名单脱敏"""
         payload = self._reservation_payload()
         created = self.client.post(
             "/api/v1/reservations",
@@ -108,14 +109,21 @@ class PublicBookingApiTests(TestCase):
             HTTP_IDEMPOTENCY_KEY="api-test-key-002",
         )
         booking_no = created.json()["booking_no"]
-        wrong_phone = self.client.get(
-            f"/api/v1/reservations/{booking_no}", {"phone": "13800000099"}
-        )
-        correct_phone = self.client.get(
-            f"/api/v1/reservations/{booking_no}", {"phone": "13800000002"}
-        )
-        self.assertEqual(wrong_phone.status_code, 404)
-        self.assertEqual(correct_phone.status_code, 200)
+        access_token = created.json()["access_token"]
+        self.assertTrue(access_token, "创建成功必须一次性返回访问令牌")
+        wrong_token = self.client.get(
+            f"/api/v1/reservations/{booking_no}",
+            HTTP_X_BOOKING_TOKEN="wrong-token-value")
+        self.assertEqual(wrong_token.status_code, 404)
+        correct = self.client.get(
+            f"/api/v1/reservations/{booking_no}",
+            HTTP_X_BOOKING_TOKEN=access_token)
+        self.assertEqual(correct.status_code, 200)
+        body = correct.json()
+        self.assertIn("*", body["guest_name"], "姓名必须脱敏")
+        self.assertNotIn("provider_ref", body, "不得暴露支付流水标识")
+        self.assertNotIn("13800000002", correct.content.decode(),
+                         "不得返回完整手机号")
 
     def test_pending_reservation_can_be_cancelled_and_releases_stock(self):
         payload = self._reservation_payload()
@@ -126,9 +134,10 @@ class PublicBookingApiTests(TestCase):
             HTTP_IDEMPOTENCY_KEY="api-test-key-003",
         )
         booking_no = created.json()["booking_no"]
+        access_token = created.json()["access_token"]
         cancelled = self.client.post(
             f"/api/v1/reservations/{booking_no}/cancel",
-            data=json.dumps({"phone": "13800000002"}),
+            data=json.dumps({"token": access_token}),
             content_type="application/json",
         )
         self.assertEqual(cancelled.status_code, 200)
@@ -147,9 +156,10 @@ class PublicBookingApiTests(TestCase):
             HTTP_IDEMPOTENCY_KEY="api-test-key-004",
         )
         booking_no = created.json()["booking_no"]
+        access_token = created.json()["access_token"]
         response = self.client.post(
             "/api/v1/payments/intents",
-            data=json.dumps({"booking_no": booking_no, "phone": "13800000002"}),
+            data=json.dumps({"booking_no": booking_no, "token": access_token}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 201)

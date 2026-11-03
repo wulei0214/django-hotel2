@@ -406,3 +406,38 @@ class StatusTransition(models.Model):
 
     def __str__(self):
         return f"{self.entity_type}#{self.entity_id} {self.from_status}→{self.to_status}"
+
+
+class RateLimitCounter(models.Model):
+    """AUTH-02（P0-01~04）：独立限流计数器——AuditEvent 不得充当计数器。
+
+    设计要点（方案 2.0 §6.2）：
+    - key_hash：维度指纹（IP / HMAC(phone) / HMAC(username)+IP / booking_no / token 指纹）；
+      空手机号等缺失维度不形成共享全局桶（P0-02）。
+    - 原子计数：hit() 用 F() 表达式单条 UPDATE 自增（P0-04 并发安全），
+      首次写入用 get_or_create + 事务重试。
+    - TTL：expires_at 到期即可被清理任务/惰性清理删除（P0-03）。
+    """
+
+    key_hash = models.CharField(max_length=64, verbose_name="限流键指纹")
+    action = models.CharField(max_length=64, verbose_name="动作代码")
+    window_start = models.DateTimeField(verbose_name="窗口起点")
+    count = models.PositiveIntegerField(default=0, verbose_name="计数")
+    expires_at = models.DateTimeField(verbose_name="过期时间", db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "限流计数器"
+        verbose_name_plural = verbose_name
+        constraints = [
+            models.UniqueConstraint(
+                fields=("key_hash", "action", "window_start"),
+                name="uniq_ratelimit_key_action_window"),
+        ]
+        indexes = [
+            models.Index(fields=("key_hash", "action", "expires_at"),
+                         name="idx_ratelimit_lookup"),
+        ]
+
+    def __str__(self):
+        return f"{self.action}/{self.key_hash[:12]} x{self.count}"

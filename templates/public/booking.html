@@ -234,7 +234,10 @@
                 },
                 body: JSON.stringify(payload)
               });
-              activeReservation = { bookingNo: result.booking_no, phone: phone };
+              activeReservation = { bookingNo: result.booking_no, token: result.access_token || "" };
+              if (result.access_token) {
+                setNotice(bookingMessage, "预订成功！系统已为该订单生成访问令牌，凭令牌可管理本订单（仅本次显示，请妥善保存）。", "ok");
+              }
               byId("booking-number").textContent = result.booking_no;
               byId("booking-detail").textContent = result.check_in + " 至 " + result.check_out +
                 " · " + result.room_count + " 间 · ¥" + result.total_amount;
@@ -262,7 +265,7 @@
                 headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
                 body: JSON.stringify({
                   booking_no: activeReservation.bookingNo,
-                  phone: activeReservation.phone
+                  token: activeReservation.token
                 })
               });
               const sample = intent.mock_callback_example;
@@ -303,7 +306,7 @@
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
-                  body: JSON.stringify({ phone: activeReservation.phone })
+                  body: JSON.stringify({ token: activeReservation.token })
                 }
               );
               byId("reservation-status").textContent = result.status;

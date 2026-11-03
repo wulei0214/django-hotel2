@@ -73,10 +73,11 @@ def register_document(*, guest, doc_type, doc_no, verified_by=None,
 
 def reveal_document(document, *, revealed_by, reason="", request=None):
     """揭示证件完整值：需要 `guests.document.reveal` 权限；每次写 AuditEvent。"""
-    # AUTH-06：PII 揭示是业务授权，统一 AuthorizationService（物业范围 + 岗位权限）
+    # P1-01（方案 §9.1）：证件揭示唯一正式权限码 hotelapp.guest_document_reveal；
+    # 业务授权统一 AuthorizationService（物业范围 + 岗位权限）
     from apps.identity.authorization import AuthorizationService
     if not AuthorizationService.has_permission(
-            revealed_by, document.guest.property, "guests.document_reveal"):
+            revealed_by, document.guest.property, "hotelapp.guest_document_reveal"):
         raise PermissionDenied("揭示证件完整值需要独立权限")
     plain = decrypt_doc_no(document.doc_no_ciphertext)
     AuditEvent.record(

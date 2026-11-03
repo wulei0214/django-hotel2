@@ -252,6 +252,8 @@ def index(request):
 @staff_required
 @pms_permission_required('hotelapp.change_staff')
 def staff_toggle(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     """启用/停用员工（图5 是否启用列的开关）"""
     if request.method != "POST":
         return HttpResponse("非法请求", status=400)
@@ -356,6 +358,8 @@ def approve_staff_export(request, approval_id):
 @staff_required
 @pms_permission_required('hotelapp.add_staff')
 def insert(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     error, efield = None, None
     if request.method == "POST":
         if not _has_role(request.user, "店长"):
@@ -405,6 +409,8 @@ def insert(request):
 @staff_required
 @pms_permission_required('hotelapp.delete_staff')
 def delete_staff(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     if request.method != "POST":
         return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
     if request.method == "GET":
@@ -435,6 +441,8 @@ def search_staff(request):
 @staff_required
 @pms_permission_required('hotelapp.change_staff')
 def update_staff(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     if request.method != "POST":
         return HttpResponse("员工薪酬修改必须使用 POST。", status=405)
     if not _has_role(request.user, "店长"):
@@ -496,6 +504,8 @@ def show_client(request):
 @staff_required
 @pms_permission_required('hotelapp.add_client')
 def insert_client(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     error, efield = None, None
     if request.method == "POST":
         cid = request.POST.get("id")
@@ -527,6 +537,8 @@ def insert_client(request):
 @staff_required
 @pms_permission_required('hotelapp.delete_client')
 def delete_client(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     if request.method != "POST":
         return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
     if request.method == "GET":
@@ -540,6 +552,8 @@ def delete_client(request):
 @staff_required
 @pms_permission_required('hotelapp.change_client')
 def update_client(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     if request.method == "POST":
         cid = request.POST.get("id")
         name = request.POST.get("name")
@@ -589,6 +603,8 @@ def show_food(request):
 @pms_permission_required('hotelapp.add_food')
 @module_gate("food")
 def insert_food(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     error, efield = None, None
     if request.method == "POST":
         fid = request.POST.get("id")
@@ -623,6 +639,8 @@ def insert_food(request):
 @pms_permission_required('hotelapp.delete_food')
 @module_gate("food")
 def delete_food(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     if request.method != "POST":
         return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
     if request.method == "GET":
@@ -637,6 +655,8 @@ def delete_food(request):
 @pms_permission_required('hotelapp.change_food')
 @module_gate("food")
 def update_food(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     if request.method == "POST":
         fid = request.POST.get("id")
         price = request.POST.get("price")
@@ -685,6 +705,8 @@ def show_vip(request):
 @staff_required
 @pms_permission_required('hotelapp.add_vip')
 def insert_vip(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     error, efield = None, None
     if request.method == "POST":
         vid = request.POST.get("id")
@@ -718,6 +740,8 @@ def insert_vip(request):
 @staff_required
 @pms_permission_required('hotelapp.delete_vip')
 def delete_vip(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     if request.method != "POST":
         return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
     if request.method == "GET":
@@ -731,6 +755,8 @@ def delete_vip(request):
 @staff_required
 @pms_permission_required('hotelapp.change_vip')
 def update_vip(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     if request.method == "POST":
         vid = request.POST.get("id")
         rank = request.POST.get("rank")
@@ -780,6 +806,8 @@ def show_park(request):
 @pms_permission_required('hotelapp.add_park')
 @module_gate("park")
 def insert_park(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     error, efield = None, None
     if request.method == "POST":
         pid = request.POST.get("id")
@@ -811,6 +839,8 @@ def insert_park(request):
 @pms_permission_required('hotelapp.delete_park')
 @module_gate("park")
 def delete_park(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     if request.method != "POST":
         return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
     if request.method == "GET":
@@ -825,6 +855,8 @@ def delete_park(request):
 @pms_permission_required('hotelapp.change_park')
 @module_gate("park")
 def update_park(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     if request.method == "POST":
         pid = request.POST.get("id")
         status = request.POST.get("status")
@@ -878,6 +910,8 @@ def show_room(request):
 @staff_required
 @pms_permission_required('hotelapp.add_room')
 def insert_room(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     error, efield = None, None
     if request.method == "POST":
         rid = request.POST.get("id")
@@ -909,6 +943,8 @@ def insert_room(request):
 @staff_required
 @pms_permission_required('hotelapp.delete_room')
 def delete_room(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     if request.method != "POST":
         return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
     if request.method == "GET":
@@ -922,6 +958,8 @@ def delete_room(request):
 @staff_required
 @pms_permission_required('hotelapp.change_room')
 def update_room(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     if request.method == "POST":
         rid = request.POST.get("id")
         room_type = request.POST.get("type")
@@ -976,6 +1014,8 @@ def show_order(request):
 @pms_permission_required('hotelapp.add_order')
 @module_gate("order")
 def insert_order(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     error, efield = None, None
     if request.method == "POST":
         oid = request.POST.get("id")
@@ -1020,6 +1060,8 @@ def insert_order(request):
 @pms_permission_required('hotelapp.delete_order')
 @module_gate("order")
 def delete_order(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     """餐饮订单「冲账」：打已冲账标记并记录冲账人/时间，不再物理删除（值班经理权限）"""
     if request.method != "POST":
         return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
@@ -1072,6 +1114,8 @@ def show_accomodation(request):
 @staff_required
 @pms_permission_required('hotelapp.add_accommodation')
 def insert_accomodation(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     error, efield = None, None
     if request.method == "POST":
         aid = request.POST.get("id")
@@ -1118,6 +1162,8 @@ def insert_accomodation(request):
 @staff_required
 @pms_permission_required('hotelapp.delete_accommodation')
 def delete_accomodation(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     """客房订单「冲账」：打已冲账标记、释放房间、记录冲账人/时间，不再物理删除"""
     if request.method != "POST":
         return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
@@ -1197,6 +1243,8 @@ def search_accomodation(request):
 @staff_required
 @pms_permission_required('hotelapp.change_accommodation')
 def extend_stay(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     """续住：为在住订单加收一晚房费（Folio 房费凭证）"""
     if request.method == "POST":
         try:
@@ -1214,6 +1262,8 @@ def extend_stay(request):
 @staff_required
 @pms_permission_required('hotelapp.change_accommodation')
 def change_room(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     """换房：在住/已确认订单更换房间，旧房转入清洁链"""
     if request.method == "POST":
         new_no = request.POST.get("new_room")
@@ -1251,6 +1301,8 @@ def change_room(request):
 @staff_required
 @pms_permission_required('hotelapp.change_accommodation')
 def express_checkout(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     """旧版快捷离店已退役，避免在无 PMS2 账本/支付状态核验下自动写账。"""
     if request.method != "POST":
         return HttpResponse("旧版快捷离店已退役，请使用 PMS2 前台工作台。", status=410)
@@ -1262,6 +1314,8 @@ def express_checkout(request):
 @staff_required
 @pms_permission_required('hotelapp.add_accommodation')
 def walkin_create(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     """散客直入（Walk-in）：无预订直接排房入住，收取押金"""
     if request.method == "POST":
         name = (request.POST.get("name") or "").strip()
@@ -1360,6 +1414,8 @@ def folio_api(request):
 # ---------- 房间状态流转 ----------
 @staff_required
 def room_status_change(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     """房间状态流转：前台可做 空闲↔清洁中；维修/修复及跨状态流转仅值班经理及以上"""
     if request.method == "POST":
         room_no = request.POST.get("room")
@@ -1820,11 +1876,18 @@ _LOGIN_FAIL_MESSAGE = "账号或密码不正确，或账号暂不可用"
 
 
 def _audit_login_failure(request, username, reason):
-    """AUTH-04：登录失败对外统一文案；细分原因只进内部安全审计日志。"""
+    """P0-11：登录失败持久化审计（AuditEvent）+ 内部日志。
+
+    username 只存 HMAC 指纹（§16.2 脱敏），细分原因保留在内部日志与审计 reason。"""
     import logging as _logging
+    from apps.core.models import AuditEvent
+    from apps.core.rate_limit import fingerprint
     _logging.getLogger("security").warning(
-        "login_failed ip=%s username=%s reason=%s",
-        request.META.get("REMOTE_ADDR", ""), username[:30], reason)
+        "login_failed ip=%s username_fp=%s reason=%s",
+        request.META.get("REMOTE_ADDR", ""), fingerprint(username)[:12], reason)
+    AuditEvent.record(
+        action="auth.login_failure", entity_type="AuthAttempt",
+        entity_id=fingerprint(username), reason=reason, request=request)
 
 
 def _safe_login_next(request, candidate):
@@ -1846,19 +1909,35 @@ def login_view(request):
     next_url = _safe_login_next(request, raw_next) if raw_next else ""
     if request.method == "POST":
         username = (request.POST.get("username") or "").strip()
+        # §6.3：登录失败限流（IP + username_hash，5 次/5 分钟，fail-closed）
+        from apps.core import rate_limit
+        if not rate_limit.check(request, "auth.login", username=username):
+            _audit_login_failure(request, username, "rate_limited")
+            error = _LOGIN_FAIL_MESSAGE
+            return render(request, "login.html",
+                          {"error": error, "next": next_url}, status=429)
+        # P1-09：authenticate() 对停用账号返回 None（ModelBackend 拒绝 inactive），
+        # 旧 disabled 分支不可达且原因失真；改为先取账号再验证，区分真实原因
+        login_user = User.objects.filter(username__iexact=username).first()
+        if login_user is not None and not login_user.is_active:
+            _audit_login_failure(request, username, "disabled")
+            error = _LOGIN_FAIL_MESSAGE
+            return render(request, "login.html",
+                          {"error": error, "next": next_url})
         user = authenticate(request, username=username,
                             password=request.POST.get("password"))
         if user is None:
             error = _LOGIN_FAIL_MESSAGE
             _audit_login_failure(request, username, "bad_credentials")
-        elif not user.is_active:
-            error = _LOGIN_FAIL_MESSAGE
-            _audit_login_failure(request, username, "disabled")
         elif not _has_active_employment(user):
             error = _LOGIN_FAIL_MESSAGE
             _audit_login_failure(request, username, "no_employment")
         else:
             auth_login(request, user)
+            from apps.core.models import AuditEvent
+            AuditEvent.record(
+                action="auth.login_success", entity_type="User",
+                entity_id=str(user.pk), actor=user, request=request)
             return redirect(_safe_login_next(request, request.POST.get("next")))
     return render(request, "login.html", {"error": error, "next": next_url})
 
@@ -1951,11 +2030,9 @@ def checkin_manage(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.change_accommodation')
-@staff_required
-@pms_permission_required('hotelapp.change_accommodation')
 def cancel_booking(request):
-    """AUTH-02 冻结旧订单取消写（D8）：统一指向 PMS2 公开直订 /reserve/。"""
+    """P1-04（方案 §10.4）：退役兼容入口——去掉员工门禁与重复装饰器，
+    匿名/员工 GET/POST 统一跳转 /reserve/，不触发任何旧表写入。"""
     return redirect("/reserve/", permanent=False)
 
 
@@ -1963,6 +2040,8 @@ def cancel_booking(request):
 @staff_required
 @pms_permission_required('hotelapp.change_accommodation')
 def checkin_confirm(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     """排房确认（待确认 → 已确认）：分配房间并锁房，补录顾客身份证"""
     if request.method == "POST":
         oid = request.POST.get("id")
@@ -1999,6 +2078,8 @@ def checkin_confirm(request):
 @staff_required
 @pms_permission_required('hotelapp.change_accommodation')
 def checkin_in(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     """办理入住（已确认 → 已入住）：收押金，房态转在住"""
     if request.method == "POST":
         oid = request.POST.get("id")
@@ -2028,6 +2109,8 @@ def checkin_in(request):
 @staff_required
 @pms_permission_required('hotelapp.change_accommodation')
 def checkout(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     """已入住 → 已退房：结算收款并写入财务流水，房间转清洁中"""
     if request.method == "POST":
         oid = request.POST.get("id")
@@ -2053,6 +2136,8 @@ def checkout(request):
 
 @staff_required
 def uncheckout(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     """反结账：已退房 → 已入住，删除对应收入流水（需「反结账」权限：值班经理/店长）"""
     if request.method == "POST":
         if not _has_permission(request, "hotelapp.reverse_checkout"):
@@ -2135,6 +2220,8 @@ def finance_manage(request):
 
 @staff_required
 def finance_add(request):
+    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
+    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
     """新增收支流水（仅财务）；校验失败时回显表单并保留已填内容"""
     if not _has_role(request.user, "财务"):
         return HttpResponse("只有财务可以录入收支", status=403)

@@ -83,7 +83,8 @@ def audit_timeline(request):
     """审计时间线：AuditEvent 按实体/动作检索（P1-14）。"""
     user = request.user
     property_obj = getattr(request, "property", None)
-    if not user.is_superuser and not AuthorizationService.has_permission(
+    # P1-07：superuser 不自动获得业务授权（方案 §9.4）
+    if not AuthorizationService.has_permission(
             user, property_obj, "identity.staff_manage"):
         raise ApiError("PERMISSION_DENIED", "缺少审计查看权限。")
     from apps.core.models import AuditEvent

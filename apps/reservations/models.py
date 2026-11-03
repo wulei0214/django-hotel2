@@ -1,3 +1,7 @@
+import datetime
+import hashlib
+from datetime import timedelta
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -501,3 +505,67 @@ class DepositPolicy(models.Model):
 
     def __str__(self):
         return f"{self.rate_plan_id} {self.deposit_type}"
+
+
+class BookingAccessToken(models.Model):
+    """AUTH-05（P0-08）：订单访问令牌——手机号不得单独作为订单访问凭据。
+
+    - 明文 token 仅在预订创建成功时向用户展示一次；库中只存 SHA-256 hash。
+    - 绑定单一 Reservation；过期（预计离店后 30 天）或撤销后立即失效。
+    - 查询/取消凭 token；取消仍遵守既有取消政策与状态机。
+    """
+
+    reservation = models.OneToOneField(
+        Reservation, on_delete=models.CASCADE, related_name="access_token",
+        verbose_name="预订")
+    token_hash = models.CharField(max_length=64, unique=True, verbose_name="令牌哈希")
+    expires_at = models.DateTimeField(verbose_name="过期时间")
+    revoked_at = models.DateTimeField(null=True, blank=True, verbose_name="撤销时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "订单访问令牌"
+        verbose_name_plural = verbose_name
+
+    def __str__(self):
+        return f"token:{self.token_hash[:12]} → {self.reservation.booking_no}"
+
+    @classmethod
+    def issue_for(cls, reservation):
+        """为预订签发新令牌（轮换语义：旧令牌被替换即失效）。返回明文一次。"""
+        import secrets
+        from django.utils import timezone as tz
+        plain = secrets.token_urlsafe(32)  # 256 bit 熵
+        token_hash = hashlib.sha256(plain.encode("utf-8")).hexdigest()
+        default_expiry = reservation.check_out + timedelta(days=30)
+        expires_at = tz.make_aware(datetime.datetime.combine(
+            default_expiry, datetime.time.max))
+        obj, _ = cls.objects.update_or_create(
+            reservation=reservation,
+            defaults={"token_hash": token_hash, "expires_at": expires_at,
+                      "revoked_at": None})
+        return plain
+
+    @classmethod
+    def validate(cls, booking_no, plain_token):
+        """校验 booking_no + 明文 token；返回 Reservation 或 None（不区分失败原因）。"""
+        from django.utils import timezone as tz
+        if not plain_token or not booking_no:
+            return None
+        token_hash = hashlib.sha256(plain_token.encode("utf-8")).hexdigest()
+        now = tz.now()
+        try:
+            token = cls.objects.select_related(
+                "reservation", "reservation__guest").get(token_hash=token_hash)
+        except cls.DoesNotExist:
+            return None
+        if token.revoked_at is not None or token.expires_at < now:
+            return None
+        if token.reservation.booking_no != booking_no.strip().upper():
+            return None
+        return token.reservation
+
+    def revoke(self):
+        from django.utils import timezone as tz
+        self.revoked_at = tz.now()
+        self.save(update_fields=("revoked_at",))

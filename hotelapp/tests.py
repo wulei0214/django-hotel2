@@ -67,41 +67,24 @@ class RegisterStopTheBleedingTests(TestCase):
 
 
 class HousekeepingReleaseTests(TestCase):
-    """决策 6：客房服务员可流转清洁链至「待检查」，净房放行（→空闲）归管理者"""
+    """P1-05（方案 §10）：旧 /room_status/ 写路由已退役（410）。
+
+    清洁链流转与净房放行的业务规则由 PMS2 前台工作台
+    （/api/v1/front-desk/rooms + 房态中心）承接并另行测试。"""
 
     def setUp(self):
         self.hk = _make_user("hk001", "客房服务员")
         self.dm = _make_user("dm001", "值班经理")
-        self.room = Room.objects.create(房间号=9001, 客房类型="标准间", 价格=300,
-                                        负责人编号_id=_make_staff().pk, 房间状态="待清洁")
 
-    def _post_status(self, user, target):
-        self.client.force_login(user)
-        return self.client.post("/room_status/", {"room": self.room.房间号, "status": target})
-
-    def test_housekeeping_can_advance_cleaning_chain(self):
-        self.assertEqual(self._post_status(self.hk, "清洁中").status_code, 200)
-        self.room.refresh_from_db()
-        self.assertEqual(self.room.房间状态, "清洁中")
-        self.assertEqual(self._post_status(self.hk, "待检查").status_code, 200)
-        self.room.refresh_from_db()
-        self.assertEqual(self.room.房间状态, "待检查")
-
-    def test_housekeeping_cannot_release_clean_room(self):
-        self._post_status(self.hk, "清洁中")
-        self._post_status(self.hk, "待检查")
-        response = self._post_status(self.hk, "空闲")
-        self.assertEqual(response.status_code, 403, "无「净房放行」权限不得放行")
-        self.room.refresh_from_db()
-        self.assertEqual(self.room.房间状态, "待检查")
-
-    def test_duty_manager_can_release_clean_room(self):
-        self._post_status(self.hk, "清洁中")
-        self._post_status(self.hk, "待检查")
-        response = self._post_status(self.dm, "空闲")
-        self.assertEqual(response.status_code, 200)
-        self.room.refresh_from_db()
-        self.assertEqual(self.room.房间状态, "空闲")
+    def test_room_status_legacy_route_retired(self):
+        self.client.force_login(self.hk)
+        self.assertEqual(
+            self.client.post("/room_status/", {"room": "9001", "status": "清洁中"}).status_code,
+            410, "旧房态写入口应返回 410 Gone")
+        self.client.force_login(self.dm)
+        self.assertEqual(
+            self.client.post("/room_status/", {"room": "9001", "status": "空闲"}).status_code,
+            410, "旧房态写入口对有权限员工同样 410")
 
 
 class HighRiskActionPermissionTests(TestCase):
@@ -123,12 +106,12 @@ class HighRiskActionPermissionTests(TestCase):
         response = self.client.post("/nightaudit_run/")
         self.assertEqual(response.status_code, 410, "旧夜审入口应返回 410 Gone")
 
-    def test_uncheckout_requires_permission(self):
+    def test_uncheckout_retired(self):
+        """P1-05：旧反结账写入口已退役（PMS2 前台 API 承接）"""
         self.client.force_login(self.fd)
-        self.assertEqual(self.client.post("/uncheckout/", {"id": 1}).status_code, 403)
+        self.assertEqual(self.client.post("/uncheckout/", {"id": 1}).status_code, 410)
         self.client.force_login(self.dm)
-        # 有权限但订单不存在 → 400（证明权限门已通过）
-        self.assertEqual(self.client.post("/uncheckout/", {"id": 999999}).status_code, 400)
+        self.assertEqual(self.client.post("/uncheckout/", {"id": 999999}).status_code, 410)
 
 
 class ReverseExecutionRightTests(TestCase):
@@ -146,15 +129,14 @@ class ReverseExecutionRightTests(TestCase):
             id=7101, 顾客id=client, 客房编号=self.room, 状态="已退房",
             入住时间="2026-11-01", 收款金额="300")
 
-    def test_finance_can_execute_reverse(self):
-        """财务执行冲账：订单打「已冲账」标记并记录冲账人（复核留痕）"""
+    def test_finance_reverse_via_legacy_route_retired(self):
+        """P1-05：旧冲账写入口已退役；冲账由 PMS2 BillingService.reverse_entry 承接"""
         self.client.force_login(self.fin)
         response = self.client.post("/delete_accomodation/", {"id": self.acc.id,
                                                               "reason": "日期录入错误"})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 410)
         self.acc.refresh_from_db()
-        self.assertEqual(self.acc.状态, "已冲账")
-        self.assertEqual(self.acc.冲账人, "fin201")
+        self.assertEqual(self.acc.状态, "已退房", "旧入口不得再改订单状态")
 
     def test_front_desk_cannot_reverse(self):
         self.client.force_login(self.fd)
@@ -541,16 +523,14 @@ class ChangeRoomPolicyTests(TestCase):
         self.acc = Accommodation.objects.create(
             id=7401, 顾客id=client, 客房编号=old_room, 状态="已入住", 入住时间="2026-11-02")
 
-    def test_front_desk_cannot_change_to_price_diff_room(self):
+    def test_change_room_legacy_route_retired(self):
+        """P1-05：旧换房写入口已退役；跨房型/价差规则由 PMS2 换房 API 承接"""
         response = self.client.post("/change_room/", {"id": self.acc.id, "new_room": 9402})
-        self.assertEqual(response.status_code, 403, "跨房型/价差换房需经理")
-
-    def test_manager_can_change_to_price_diff_room(self):
+        self.assertEqual(response.status_code, 410)
         self.client.force_login(self.dm)
-        response = self.client.post("/change_room/", {"id": self.acc.id, "new_room": 9402})
-        self.assertEqual(response.status_code, 200)
-        self.acc.refresh_from_db()
-        self.assertEqual(self.acc.客房编号.房间号, 9402)
+        self.assertEqual(
+            self.client.post("/change_room/", {"id": self.acc.id, "new_room": 9402}).status_code,
+            410)
 
 
 class DefaultPropertyOnlyTests(TestCase):
@@ -872,31 +852,21 @@ class SalaryDecisionBoundaryTests(TestCase):
         self.staff = Staff.objects.create(
             姓名="薪酬测试员工", 职务="服务员", 月薪="6000.00", 工龄="2")
 
-    def test_only_store_manager_can_update_salary_and_reason_is_audited(self):
+    def test_salary_update_via_legacy_route_retired(self):
+        """P1-05：旧 /update_staff/ 已退役——薪酬修改随员工中心迁移（AUTH-19）。"""
         payload = {
             "id": self.staff.员工id, "job": "服务员",
             "salary": "6500.00", "time": "3",
             "reason": "经店长批准的年度薪酬调整",
         }
         self.client.force_login(self.front_desk)
+        # 前台无 change_staff 权限：权限门先拒（403）
         self.assertEqual(self.client.post("/update_staff/", payload).status_code, 403)
-        self.client.force_login(self.finance)
-        self.assertEqual(self.client.post("/update_staff/", payload).status_code, 403)
-
         self.client.force_login(self.manager)
-        missing_reason = dict(payload)
-        missing_reason.pop("reason")
-        self.assertEqual(self.client.post("/update_staff/", missing_reason).status_code, 400)
-        response = self.client.post("/update_staff/", payload)
-        self.assertEqual(response.status_code, 200)
+        # 店长有权限但入口已退役：410，且不得改数据
+        self.assertEqual(self.client.post("/update_staff/", payload).status_code, 410)
         self.staff.refresh_from_db()
-        self.assertEqual(self.staff.月薪, "6500.00")
-        from apps.core.models import AuditEvent
-        event = AuditEvent.objects.filter(
-            action="staff.profile_update", entity_id=str(self.staff.员工id)
-        ).latest("created_at")
-        self.assertEqual(event.reason, "经店长批准的年度薪酬调整")
-        self.assertTrue(event.after_json["salary_changed"])
+        self.assertEqual(self.staff.月薪, "6000.00", "旧入口不得再改薪酬")
 
     def test_staff_list_access_boundaries_match_v11(self):
         """V1.1 权限矩阵：前台无 view_staff→403；财务有 view_staff→200 可见薪酬"""
@@ -997,15 +967,20 @@ class V11P0ModelTests(TestCase):
         with self.assertRaises(Exception):
             register_document(guest=g2, doc_type="ID_CARD",
                               doc_no="110101199001010017")
-        fd = _make_user("p0_fd", "前台")
+        # P1-01：前台/值班经理/店长默认持有揭示权（0017 矩阵）；
+        # 无权限角色（客房服务员）必须被拒
+        hk = _make_user("p0_hk", "客房服务员")
         with self.assertRaises(Exception):
-            reveal_document(doc, revealed_by=fd)
-        from django.contrib.auth.models import Permission
-        # AUTH-06：授权统一走 AuthorizationService（StaffRoleAssignment→Group→Permission）
-        fd_group = Group.objects.get(name="前台")
-        fd_group.permissions.add(
-            Permission.objects.get(codename="document_reveal"))
-        plain = reveal_document(doc, revealed_by=fd, reason="入住核验")
+            reveal_document(doc, revealed_by=hk)
+        from django.contrib.auth.models import ContentType, Permission
+        # P1-01：唯一权限码 hotelapp.guest_document_reveal（AuthorizationService 链路）；
+        # 按正式矩阵给客房服务员岗位补授后即可揭示
+        hk_group = Group.objects.get(name="客房服务员")
+        hk_group.permissions.add(Permission.objects.get(
+            codename="guest_document_reveal",
+            content_type=ContentType.objects.get(app_label="hotelapp",
+                                                 model="client")))
+        plain = reveal_document(doc, revealed_by=hk, reason="入住核验")
         self.assertEqual(plain, "110101199001010017")
         self.assertTrue(AuditEvent.objects.filter(
             action="guest.document_reveal", entity_id=str(doc.pk)).exists())

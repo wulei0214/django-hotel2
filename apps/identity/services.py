@@ -94,6 +94,7 @@ class EmployeeLifecycleService:
                 raise EmployeeLifecycleError(f"登录账号 {account_username} 已被占用")
             if not account_password or len(account_password) < 6:
                 raise EmployeeLifecycleError("初始密码至少 6 位")
+            _enforce_password_policy(account_password)  # P1-03：创建主路径同样走策略
             user = User.objects.create_user(
                 username=account_username, password=account_password,
                 first_name=full_name)

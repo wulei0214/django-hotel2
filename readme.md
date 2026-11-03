@@ -167,6 +167,10 @@ python manage.py runserver 0.0.0.0:8000 --noreload
 
 按方案"开发纪律"（D1-D12 未批准仅做盘点/测试/止血）完成 Phase 0 全部 10 项：注册止血（/register/ 停建 User → 302 /reserve/）、冻结 /booking/ 与 /cancel_booking/ 旧写、登录失败对外统一文案（细分原因入 security 日志）、validate_password 覆盖全部密码设置路径、业务授权清除三处 User.groups/has_perm 直读（approval/财务明细/PII reveal → AuthorizationService）、生产环境拒绝 mock 支付、订单查询/取消 AuditEvent 数据库限流（10 次/5 分钟）+ 审计。新增 12 项加固测试，全量 174 项通过；实施状态表见方案文档末节。Phase 1（邀请激活）待 D1/D6/D12 批准。
 
+### 5.5 身份账户体系 2.0 Phase 0（2026-11-04，正式开发基线）
+
+按 2.0 方案 §14 Phase 0 顺序完成 AUTH-01~13 全部任务：RateLimitCounter 独立限流（原子计数/TTL/HMAC 指纹/空值不建桶/fail-closed/429+Retry-After）；BookingAccessToken 订单访问令牌（创建一次性返回、查询/取消/支付意图全凭 token、字段白名单脱敏）；公开预订防刷（IP+phone 双维、PENDING 上限 2 笔、hold TTL 释放命令）；api_guard 修复；登录持久审计+限流+disabled 分支修正；权限语义修正（证件揭示统一 hotelapp.guest_document_reveal、财务查看与退款审批分离、superuser 直通清除）；33 个旧写路由 410 冻结；单店边界（非 DEFAULT 任职明确拒绝+审计）；seed 生产门禁。新增测试至 181 项，SQLite+MySQL 双引擎全过；端到端浏览器验证审计链完整。逐项状态见方案文档 §21。
+
 ## 6. 文档索引
 
 | 文档 | 内容 |

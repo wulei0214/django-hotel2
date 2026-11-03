@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.core import rate_limit
 from apps.billing.models import Payment
 from apps.core.models import AuditEvent
 from apps.billing.services import (
@@ -25,6 +26,7 @@ from apps.guests.models import Guest
 from apps.inventory.models import RoomType
 from apps.inventory.services import InventoryUnavailable, get_room_type_availability
 from apps.reservations.models import Reservation
+from apps.reservations.models import BookingAccessToken
 from apps.reservations.services import (
     ReservationConflict,
     create_reservation,
@@ -49,8 +51,6 @@ def api_guard(view):
     def wrapper(request, *args, **kwargs):
         try:
             result = view(request, *args, **kwargs)
-        except JsonResponse:  # pragma: no cover - 防御性，正常不可达
-            raise
         except Exception:
             logger.exception("API 未预期错误：%s %s", request.method, request.path)
             return JsonResponse(
@@ -157,6 +157,13 @@ def reservations_create(request):
 
     try:
         body = _body(request)
+        # §6.3/§6.4 公开预订防刷：IP 10/10min + phone_hash 3/10min（fail-closed）
+        raw_phone = str(body.get("phone") or "")
+        if not rate_limit.check(request, "public.reservation_create", phone=raw_phone):
+            AuditEvent.record(
+                action="public.reservation_blocked", entity_type="PublicEndpoint",
+                entity_id="rate_limited", request=request)
+            return _throttle_deny(request, "public.reservation_create")
         payload = {
             "full_name": str(body.get("full_name") or ""),
             "phone": str(body.get("phone") or ""),
@@ -190,6 +197,15 @@ def reservations_create(request):
             payload=payload,
             idempotency_key=request.headers.get("Idempotency-Key", ""),
         )
+        access_token = None
+        if created:
+            access_token = BookingAccessToken.issue_for(reservation)
+            AuditEvent.record(
+                action="public.reservation_created", entity_type="Reservation",
+                entity_id=reservation.booking_no, property_obj=property_obj,
+                after={"rooms": reservation.room_count,
+                       "total": str(reservation.total_amount)},
+                request=request)
     except ReservationConflict as exc:
         return JsonResponse({"error": str(exc)}, status=409)
     except ValueError as exc:
@@ -199,50 +215,52 @@ def reservations_create(request):
     except InventoryUnavailable as exc:
         return JsonResponse({"error": str(exc)}, status=409)
 
-    return JsonResponse(
-        {
-            "booking_no": reservation.booking_no,
-            "status": reservation.status,
-            "check_in": reservation.check_in.isoformat(),
-            "check_out": reservation.check_out.isoformat(),
-            "room_count": reservation.room_count,
-            "total_amount": str(reservation.total_amount),
-            "currency": reservation.currency,
-            "expires_at": reservation.expires_at.isoformat() if reservation.expires_at else None,
-            "created": created,
-        },
-        status=201 if created else 200,
-    )
+    response_body = {
+        "booking_no": reservation.booking_no,
+        "status": reservation.status,
+        "check_in": reservation.check_in.isoformat(),
+        "check_out": reservation.check_out.isoformat(),
+        "room_count": reservation.room_count,
+        "total_amount": str(reservation.total_amount),
+        "currency": reservation.currency,
+        "expires_at": reservation.expires_at.isoformat() if reservation.expires_at else None,
+        "created": created,
+    }
+    if access_token:
+        # P0-08：明文 token 仅此一次返回，请顾客保存
+        response_body["access_token"] = access_token
+    return JsonResponse(response_body, status=201 if created else 200)
 
 
 @require_GET
 @api_guard
 def reservation_detail(request, booking_no):
+    """P0-08/09/10：订单查询凭 Booking Access Token；字段白名单脱敏。"""
     property_obj = getattr(request, "property", None)
-    phone = request.GET.get("phone", "")
-    try:
-        phone_normalized = normalize_phone(phone)
-    except ValueError as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
-
-    reservation = (
-        Reservation.objects.select_related("guest")
-        .filter(
-            property=property_obj,
-            booking_no=booking_no,
-            guest__phone_normalized=phone_normalized,
-        )
-        .first()
-    )
-    if reservation is None:
-        return JsonResponse({"error": "未找到预订记录，请核对预订编号与联系电话。"}, status=404)
-
+    token = request.headers.get("X-Booking-Token", "") or request.GET.get("token", "")
+    from apps.core import rate_limit
+    if not rate_limit.check(request, "public.reservation_query", booking_no=booking_no):
+        return _throttle_deny(request, "public.reservation_query")
+    reservation = BookingAccessToken.validate(booking_no, token)
+    if reservation is None or reservation.property_id != property_obj.pk:
+        AuditEvent.record(
+            action="guest.booking_access_denied", entity_type="Reservation",
+            entity_id=booking_no[:32], reason="detail_token_invalid",
+            request=request)
+        return JsonResponse({"error": "预订编号或访问令牌不正确。"}, status=404)
+    AuditEvent.record(
+        action="guest.booking_access_viewed", entity_type="Reservation",
+        entity_id=reservation.booking_no, property_obj=property_obj,
+        request=request)
+    # §6.5 字段白名单：姓名脱敏；不返回完整手机号/证件号/provider_ref/内部流水
+    guest_name = reservation.guest.full_name or ""
+    masked_name = guest_name[:1] + "*" * max(len(guest_name) - 1, 1)
     payments = reservation.payments.order_by("-created_at")
     return JsonResponse(
         {
             "booking_no": reservation.booking_no,
             "status": reservation.status,
-            "guest_name": reservation.guest.full_name,
+            "guest_name": masked_name,
             "check_in": reservation.check_in.isoformat(),
             "check_out": reservation.check_out.isoformat(),
             "rooms": reservation.room_count,
@@ -250,7 +268,6 @@ def reservation_detail(request, booking_no):
             "currency": reservation.currency,
             "payments": [
                 {
-                    "provider_ref": item.provider_ref,
                     "amount": str(item.amount),
                     "status": item.status,
                     "paid_at": item.paid_at.isoformat() if item.paid_at else None,
@@ -265,60 +282,45 @@ def _is_dev_env():
     return settings.DEBUG and getattr(settings, "DJANGO_ENV", "dev") in {"dev", "test"}
 
 
-def _public_throttle(request, *, phone, action, limit=10, window_seconds=300):
-    """AUTH-08：公共匿名面限流——AuditEvent 持久计数（DB 级，多进程可靠）。
-
-    LocMemCache 不能作为多进程限流唯一机制，故按方案用数据库行计数；
-    同 phone 指纹与同 IP 任一维超限即拒绝，并落一条 blocked 审计。"""
-    import hashlib
-    phone_key = hashlib.sha256((phone or "").encode("utf-8")).hexdigest()[:16]
-    ip = request.META.get("REMOTE_ADDR", "") or ""
-    since = timezone.now() - timedelta(seconds=window_seconds)
-    hits = AuditEvent.objects.filter(
-        entity_type="public_throttle", action=action, created_at__gte=since
-    ).filter(Q(entity_id=phone_key) | Q(entity_id="ip:" + ip)).count()
-    if hits >= limit:
-        AuditEvent.record(
-            action=action, entity_type="public_throttle_blocked",
-            entity_id=phone_key, reason="rate_limited ip=%s" % ip,
-            request=request)
-        return False
+def _throttle_deny(request, action):
+    """429 统一响应：稳定 JSON + Retry-After；落 public.rate_limited 审计。"""
+    from apps.core import rate_limit
+    from apps.core.models import AuditEvent
     AuditEvent.record(
-        action=action, entity_type="public_throttle", entity_id=phone_key,
-        reason="ip=%s" % ip, request=request)
-    return True
+        action="public.rate_limited", entity_type="PublicEndpoint",
+        entity_id=action, reason="ip=%s" % request.META.get("REMOTE_ADDR", ""),
+        request=request)
+    retry = rate_limit.retry_after_seconds(action)
+    response = JsonResponse(
+        {"error": "请求过于频繁，请稍后再试。", "retry_after": retry}, status=429)
+    response["Retry-After"] = str(retry)
+    return response
 
 
-@require_POST
-@api_guard
 def payment_intent_create(request):
     property_obj = getattr(request, "property", None)
-    # AUTH-07：mock 支付门禁——生产环境拒绝创建模拟支付（含金额/状态等信息面）
+    # AUTH-07（P0-12）：mock 支付门禁——生产环境拒绝创建模拟支付
     if not _is_dev_env():
         return JsonResponse({"error": "模拟支付仅在开发/测试环境开放。"}, status=403)
-    # AUTH-08：订单查询面限流（booking_no + phone 组合不能代替频率控制）
-    try:
-        probe_body = _body(request)
-        probe_phone = normalize_phone(probe_body.get("phone"))
-    except Exception:
-        probe_phone = ""
-    if not _public_throttle(request, phone=probe_phone, action="public.payment_intent"):
-        return JsonResponse({"error": "请求过于频繁，请稍后再试。"}, status=429)
     try:
         body = _body(request)
         booking_no = str(body.get("booking_no") or "").strip()
-        phone = normalize_phone(body.get("phone"))
-        reservation = (
-            Reservation.objects.select_related("guest", "property")
-            .filter(
-                property=property_obj,
-                booking_no=booking_no,
-                guest__phone_normalized=phone,
-            )
-            .first()
-        )
-        if reservation is None:
-            return JsonResponse({"error": "未找到预订记录，请核对预订编号与联系电话。"}, status=404)
+        token = str(body.get("token") or "").strip()
+    except Exception:
+        return JsonResponse({"error": "请求体必须是有效 JSON。"}, status=400)
+    # P0-08：订单访问一律凭 Booking Access Token；phone 不再作为凭据
+    reservation = BookingAccessToken.validate(booking_no, token)
+    if reservation is None or reservation.property_id != property_obj.pk:
+        AuditEvent.record(
+            action="guest.booking_access_denied", entity_type="Reservation",
+            entity_id=booking_no[:32], reason="payment_intent_token_invalid",
+            request=request)
+        return JsonResponse({"error": "预订编号或访问令牌不正确。"}, status=404)
+    # §6.3 支付意图限流：IP 10/5min，booking 5/5min（fail-closed）
+    from apps.core import rate_limit
+    if not rate_limit.check(request, "public.payment_intent", booking_no=booking_no):
+        return _throttle_deny(request, "public.payment_intent")
+    try:
         payment = create_mock_payment_intent(reservation)
     except PaymentConflict as exc:
         return JsonResponse({"error": str(exc)}, status=409)
@@ -488,27 +490,50 @@ def openapi_document(request):
 @require_POST
 @api_guard
 def reservation_cancel(request, booking_no):
+    """P0-08/10：订单取消凭 Booking Access Token；取消规则与幂等不变。"""
     property_obj = getattr(request, "property", None)
-    # AUTH-08：取消面限流
-    try:
-        _cancel_body = _body(request)
-        _cancel_phone = normalize_phone(_cancel_body.get("phone"))
-    except Exception:
-        _cancel_phone = ""
-    if not _public_throttle(request, phone=_cancel_phone, action="public.reservation_cancel"):
-        return JsonResponse({"error": "请求过于频繁，请稍后再试。"}, status=429)
     try:
         body = _body(request)
+    except Exception:
+        return JsonResponse({"error": "请求体必须是有效 JSON。"}, status=400)
+    token = str(body.get("token") or "").strip()
+    from apps.core import rate_limit
+    if not rate_limit.check(request, "public.reservation_cancel", booking_no=booking_no):
+        return _throttle_deny(request, "public.reservation_cancel")
+    reservation = BookingAccessToken.validate(booking_no, token)
+    if reservation is None or reservation.property_id != property_obj.pk:
+        AuditEvent.record(
+            action="guest.booking_access_denied", entity_type="Reservation",
+            entity_id=booking_no[:32], reason="cancel_token_invalid",
+            request=request)
+        return JsonResponse({"error": "预订编号或访问令牌不正确。"}, status=404)
+    if reservation.status == Reservation.Status.CANCELLED:
+        # 幂等：已取消的订单重复取消直接返回当前状态，不再变更
+        return JsonResponse({
+            "booking_no": reservation.booking_no,
+            "status": reservation.status,
+            "changed": False,
+        })
+    try:
         reservation, changed = cancel_pending_reservation(
             property_obj=property_obj,
             booking_no=booking_no,
-            phone=body.get("phone", ""),
+            reservation_pk=reservation.pk,
         )
     except ReservationConflict as exc:
+        AuditEvent.record(
+            action="guest.booking_cancelled", entity_type="Reservation",
+            entity_id=booking_no[:32], property_obj=property_obj,
+            reason="cancelled_rejected: %s" % str(exc)[:80], request=request)
         return JsonResponse({"error": str(exc)}, status=409)
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
+    AuditEvent.record(
+        action="guest.booking_cancelled", entity_type="Reservation",
+        entity_id=reservation.booking_no, property_obj=property_obj,
+        after={"status": reservation.status, "changed": changed},
+        request=request)
     return JsonResponse({
         "booking_no": reservation.booking_no,
         "status": reservation.status,

@@ -1,5 +1,7 @@
 import logging
-# 请求上下文提示：当前实现按 DEFAULT_PROPERTY_CODE 单店上下文工作。Property 模型可关联多物业不代表登录/切换链路已支持多物业；不得把无效物业选择静默解释为另一个物业。
+# 请求上下文提示：当前实现按 DEFAULT_PROPERTY_CODE 单店上下文工作（P1-06 边界）。
+# Property 模型可关联多物业不代表登录/切换链路已支持多物业；
+# 不得把无效物业选择静默解释为另一个物业。
 
 from django.conf import settings
 
@@ -10,10 +12,13 @@ logger = logging.getLogger("hotel.audit")
 
 
 class PropertyContextMiddleware:
-    """解析当前请求的物业上下文。
+    """解析当前请求的物业上下文（P1-06 单店边界，方案 §4.2）。
 
-    单店版匿名顾客使用 DEFAULT 物业；员工请求按会话选择的物业查找有效任职，
-    没有选择时默认使用其第一条有效任职。客户端提交的任意 property_id 不可信。
+    - 匿名顾客：使用部署配置的 DEFAULT 物业提供公开面。
+    - 员工：取其在 DEFAULT 物业的有效任职；不接受会话/客户端切换物业。
+    - 任职在其他物业（含伪造指向别店）：明确拒绝——本次请求不提供物业上下文
+      （后续授权判定必然失败），并写安全审计；禁止静默回退 DEFAULT 的半状态。
+    - `active_property_id` 会话切换已移除：多物业登录/切换须另立专项。
     """
 
     def __init__(self, get_response):
@@ -24,7 +29,7 @@ class PropertyContextMiddleware:
         membership = None
 
         if request.user.is_authenticated and request.user.is_active:
-            memberships = (
+            membership = (
                 PropertyStaffMembership.objects.select_related(
                     "staff_profile", "property"
                 )
@@ -33,34 +38,34 @@ class PropertyContextMiddleware:
                     staff_profile__employment_status="ACTIVE",
                     status=PropertyStaffMembership.Status.ACTIVE,
                     property__status=Property.Status.ACTIVE,
+                    property__code=getattr(
+                        settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"),
                 )
                 .order_by("id")
+                .first()
             )
-            selected_id = request.session.get("active_property_id")
-            if selected_id is not None:
-                try:
-                    membership = memberships.filter(property_id=int(selected_id)).first()
-                except (TypeError, ValueError):
-                    membership = None
             if membership is None:
-                membership = memberships.first()
+                # 员工没有 DEFAULT 有效任职（含任职在别店）：明确拒绝并审计
+                from apps.core.models import AuditEvent
+                logger.warning(
+                    "SCOPE 拒绝：用户 %s 无 DEFAULT 有效任职，本次请求不提供物业上下文",
+                    request.user.username)
+                AuditEvent.record(
+                    action="security.property_context_denied",
+                    entity_type="User",
+                    entity_id=str(request.user.pk),
+                    reason="no_default_membership",
+                    request=request)
 
-        # V2 SCOPE-01/P1-6：单店阶段仅 DEFAULT 物业生效——
-        # 员工绑定到其他物业（或伪造会话 active_property_id 指向别店）时，
-        # 忽略该任职并回退 DEFAULT 上下文，同时记录告警审计
-        if membership is not None and membership.property.code != getattr(
-                settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"):
-            logger.warning(
-                "SCOPE 告警：用户 %s 的任职物业 %s 非 DEFAULT，已拒绝并回退单店上下文",
-                request.user.username, membership.property.code)
-            membership = None
         if membership is not None:
             property_obj = membership.property
-        else:
+        elif not request.user.is_authenticated:
+            # 匿名客人按部署配置的 DEFAULT 物业提供公开面
             property_obj = Property.objects.filter(
                 code=getattr(settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"),
                 status=Property.Status.ACTIVE,
             ).first()
+        # 已认证但无 DEFAULT 任职：property_obj 保持 None（视图层拒绝）
 
         request.property = property_obj
         request.staff_membership = membership
