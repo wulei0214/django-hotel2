@@ -1093,10 +1093,24 @@ class SuperuserPolicyTests(TestCase):
                              f"superuser 无任职时 {url} 必须 403")
 
     def test_superuser_can_access_permission_matrix(self):
-        """/permissions/ 用 _is_superuser 门控（非 staff_required），不受影响"""
+        """修复：/permissions/ 属平台会话域（admin_sessionid）。
+
+        超管经 /admin/ 登录后可访问矩阵页；仅持 PMS 会话（sessionid）
+        的超管无法访问——因为 D-04 登录门使超管拿不到 PMS 会话，
+        旧语义（PMS 会话访问矩阵页）会造成超管永远无法进入的死锁。"""
         self.client.force_login(self.admin)
+        # 模拟平台登录：把会话键复制到 admin_sessionid（与 SplitSession 一致）
+        sessionid = self.client.cookies["sessionid"].value
+        self.client.cookies["admin_sessionid"] = sessionid
         response = self.client.get("/permissions/")
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200,
+                         "超管经平台会话必须能访问权限矩阵")
+        # 边界：仅 PMS 会话（无平台会话）→ 302 去平台登录页
+        plain = self.client
+        plain.cookies.pop("admin_sessionid", None)
+        boundary = plain.get("/permissions/")
+        self.assertEqual(boundary.status_code, 302,
+                         "无平台会话的请求必须跳转平台登录")
 
     def test_superuser_can_access_django_admin_login(self):
         """superuser 仍可访问 Django Admin 登录页（平台维护入口）；

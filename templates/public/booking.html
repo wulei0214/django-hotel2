@@ -59,7 +59,7 @@
           <section class="panel"><div class="panel-head"><div><div class="step">01 / AVAILABILITY</div><h3>可订客房与价格</h3></div><span class="muted" id="room-count-label">等待查询</span></div><div id="search-message" class="notice" role="status" aria-live="polite">正在查询可订客房…</div><div id="room-list" class="room-list"><div class="empty">客房与逐晚价格将显示在这里。</div></div></section>
           <section class="panel"><div class="panel-head"><div><div class="step">02 / GUEST DETAILS</div><h3>填写入住人信息</h3></div><span class="muted">仅用于本次预订联系</span></div><div class="guest-grid"><div class="field"><label for="guest-name">入住人姓名</label><input id="guest-name" type="text" maxlength="80" autocomplete="name" placeholder="请输入入住人姓名"></div><div class="field"><label for="guest-phone">联系电话</label><input id="guest-phone" type="tel" maxlength="24" autocomplete="tel" placeholder="用于预订联系与订单查询"></div></div><div id="booking-message" class="notice" role="status" aria-live="polite">选择客房后即可提交预订。</div><button id="book-button" class="btn btn-gold" type="button" disabled style="width:100%;margin-top:14px">确认并提交预订</button></section>
           <section id="reservation-result" class="panel reservation-result"><div class="panel-head"><div><div class="step">03 / BOOKING CONFIRMATION</div><h3>您的预订已创建</h3></div><span class="muted" id="reservation-status">待支付</span></div><p class="muted">请妥善保存预订编号。查询或取消待支付预订时，需要同时提供预订联系电话。</p><div id="booking-number" class="booking-no"></div><div id="booking-detail" class="summary-line"></div><div id="payment-message" class="notice">库存已暂时保留，请留意预订状态。</div><div class="result-actions"><button id="payment-button" class="btn btn-gold" type="button">本地模拟支付成功</button><button id="cancel-button" class="btn btn-light" type="button">取消待支付预订</button></div>{% if not mock_payments_enabled %}<div class="notice">当前环境未开放模拟支付；真实支付服务商尚未接入。</div>{% endif %}</section>
-        </div><aside class="panel summary"><div class="summary-top"><div class="eyebrow">YOUR STAY</div><h3>入住行程摘要</h3></div><div class="summary-line"><span>酒店</span><strong>{{ property_name }}</strong></div><div class="summary-line"><span>入住</span><strong id="summary-check-in">—</strong></div><div class="summary-line"><span>离店</span><strong id="summary-check-out">—</strong></div><div class="summary-line"><span>住宿晚数</span><strong id="summary-nights">—</strong></div><div class="summary-line"><span>房间数量</span><strong id="summary-rooms">1 间</strong></div><div class="summary-line"><span>已选房型</span><strong id="summary-room-type">尚未选择</strong></div><div class="summary-total"><span>预计总价</span><strong id="summary-total">—</strong></div><div class="notice">最终价格以提交预订时的逐晚价格快照为准。库存保留时间以订单返回信息为准。</div></aside></div>
+        </div><aside class="panel summary"><div class="summary-top"><div class="eyebrow">YOUR STAY</div><h3>入住行程摘要</h3></div><div class="summary-line"><span>酒店</span><strong>{{ property_name }}</strong></div><div class="summary-line"><span>入住</span><strong id="summary-check-in">—</strong></div><div class="summary-line"><span>离店</span><strong id="summary-check-out">—</strong></div><div class="summary-line"><span>住宿晚数</span><strong id="summary-nights">—</strong></div><div class="summary-line"><span>房间数量</span><strong id="summary-rooms">1 间</strong></div><div class="summary-line"><span>入住人数</span><strong id="summary-guests">—</strong></div><div class="summary-line"><span>已选房型</span><strong id="summary-room-type">尚未选择</strong></div><div class="summary-total"><span>预计总价</span><strong id="summary-total">—</strong></div><div class="notice">最终价格以提交预订时的逐晚价格快照为准。库存保留时间以订单返回信息为准。</div></aside></div>
       </div></section>
       <div class="footer"><div class="footer-brand">{{ property_name }}</div><p>欢迎下次再见 · 期待为您提供舒适的入住体验</p><small>预订服务由酒店 PMS 提供 · 顾客资料仅用于本次预订与联系</small></div>
             <script>
@@ -119,6 +119,8 @@
             byId("summary-check-out").textContent = checkOut.value || "—";
             byId("summary-nights").textContent = nights > 0 ? (nights + " 晚") : "—";
             byId("summary-rooms").textContent = roomsInput.value + " 间";
+            // 预订表单当前仅提供成人选择（children 固定为 0）
+            byId("summary-guests").textContent = adultsInput.value + " 成人";
           }
 
           function renderRooms(data) {
@@ -149,8 +151,16 @@
 
               const priceBox = element("div", "room-price");
               const price = element("div", "price");
-              price.appendChild(document.createTextNode(room.total_amount === null ? "暂不可订" : "¥" + room.total_amount));
-              if (room.total_amount !== null) price.appendChild(element("small", "", " / 合计"));
+              const nightlyPrices = (room.nightly_details || []).map(function (n) { return Number(n.price); });
+              if (room.total_amount === null || !nightlyPrices.length) {
+                price.appendChild(document.createTextNode("暂不可订"));
+              } else {
+                // UX：卡片只展示每晚房型单价（多晚不同价时标"起"），合计价见行程摘要
+                const minPrice = Math.min.apply(null, nightlyPrices);
+                const uniform = nightlyPrices.every(function (v) { return v === minPrice; });
+                price.appendChild(document.createTextNode("¥" + minPrice));
+                price.appendChild(element("small", "", uniform ? " / 晚" : " / 晚起"));
+              }
               priceBox.appendChild(price);
               const choose = element("button", "secondary", "选择此房型");
               choose.type = "button";

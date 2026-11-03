@@ -17,9 +17,17 @@ from django.utils.http import http_date
 
 
 def is_admin_request(request):
-    """Return True for the Django Admin route, including its login/logout URLs."""
+    """Return True for platform-management routes.
+
+    Includes Django Admin (with its login/logout URLs) and the /permissions/
+    matrix page: both are superuser platform surfaces and must authenticate
+    via the admin session cookie. Without this, a superuser could never reach
+    /permissions/ — the PMS login gate (D-04) rejects employment-less users,
+    and the admin session cookie is not read outside /admin/.
+    """
     path = request.path_info or request.path
-    return path == "/admin" or path.startswith("/admin/")
+    return (path == "/admin" or path.startswith("/admin/")
+            or path == "/permissions" or path.startswith("/permissions/"))
 
 
 class SplitSessionMiddleware(SessionMiddleware):

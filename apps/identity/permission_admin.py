@@ -85,7 +85,7 @@ def _group_codenames(group):
                .values_list("codename", flat=True))
 
 
-@user_passes_test(_is_superuser, login_url="/login/")
+@user_passes_test(_is_superuser, login_url="/admin/login/")
 def permission_admin_page(request):
     """权限矩阵主页：?role=<组id> 选择要编辑的角色，默认第一个"""
     roles = _role_groups()
@@ -126,7 +126,7 @@ def permission_admin_page(request):
     })
 
 
-@user_passes_test(_is_superuser, login_url="/login/")
+@user_passes_test(_is_superuser, login_url="/admin/login/")
 def permission_admin_save(request):
     """保存角色权限：原生复选框多值提交，整体覆盖该角色的权限集合"""
     if request.method != "POST":
