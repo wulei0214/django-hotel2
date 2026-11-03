@@ -43,6 +43,10 @@ class PMS2OpenApiDocumentationTests(TestCase):
         create = spec["paths"]["/api/v1/reservations"]["post"]
         self.assertIn("access_token", create["description"].lower())
 
+    def test_payment_intent_rejects_non_post_methods(self):
+        response = self.client.get("/api/v1/payments/intents")
+        self.assertEqual(response.status_code, 405)
+
     def test_swagger_and_redoc_pages_are_available(self):
         swagger = self.client.get("/api/docs/")
         redoc = self.client.get("/api/redoc/")
