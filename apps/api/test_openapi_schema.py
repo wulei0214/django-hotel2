@@ -8,6 +8,7 @@ class PMS2OpenApiDocumentationTests(TestCase):
         spec = response.json()
         self.assertEqual(spec["openapi"], "3.1.0")
         paths = spec["paths"]
+        self.assertEqual(len(paths), 60, "OpenAPI 应覆盖 apps.api.urls 的全部 60 个注册路由")
         expected = {
             "/api/v1/availability": {"get"},
             "/api/v1/reservations": {"post"},
