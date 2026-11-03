@@ -116,10 +116,10 @@ CI 是合并依据之一，但 SQLite CI 不能替代真实 MySQL/PostgreSQL 的
 
 | 变更类型 | 必须更新 |
 |---|---|
-| 新增业务模块/模型/API | `docs/ARCHITECTURE.md`、对应模块文档、`docs/CHANGELOG.md`、README |
-| Bug 修复 | `docs/CHANGELOG.md`，必要时更新对应业务规则和回归用例 |
+| 新增业务模块/模型/API | `docs/系统架构说明.md`、对应模块文档、`docs/更新日志.md`、README |
+| Bug 修复 | `docs/更新日志.md`，必要时更新对应业务规则和回归用例 |
 | 页面结构/交互修改 | `docs/UI_GUIDE.md`、README 页面说明；使用最新截图替换旧截图 |
-| 配置/依赖/部署变化 | 本文、`docs/ARCHITECTURE.md`、部署说明 |
+| 配置/依赖/部署变化 | 本文、`docs/系统架构说明.md`、部署说明 |
 | 数据库迁移 | 模块文档注明迁移影响、备份/回滚注意事项 |
 
 PR 模板建议采用：
