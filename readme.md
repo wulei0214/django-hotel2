@@ -115,6 +115,24 @@ python manage.py runserver 0.0.0.0:8000 --noreload
 - CI：GitHub Actions（MySQL 8 + SQLite 双引擎），push/PR 自动触发
 - 验证指南：[docs/角色权限验证指南.md](docs/角色权限验证指南.md)
 
+### 5.1 全站 UI 令牌化改造与七维 UX 审查（2026-11-04）
+
+**改造（批次 1–3）**：site.css 建立 `:root` 双层设计令牌（品牌色/语义四角色/字阶/间距/圆角/三层阴影）；全模板 60 处内联样式清退为工具类、15 个页面 `<center>` 全部移除；finance 裸表格转 data-table；删除 12 个零引用死 CSS（flexslider/superfish/themify-icons 等）；修复 4 处结构 bug（`_sidebar.html` 重复 `side-user` 开标签、`html1.html` 裸 div 占用 body 位、`vip.html` 缺 `</div>`、`index.html` 缺 `</body>`）；CSS 引用统一 `site.css?v=12`。
+
+**七维审查（better-ux-review）结论：Approve（HIGH 全部修复）**。证据与修复（对比度均经 WCAG 实测）：
+
+| Severity | 维度 | 位置 | Before → After | Why |
+|---|---|---|---|---|
+| HIGH | 色彩 | `static/css/site.css:926` | `.btn-danger-solid` 白字/`#f56c6c` 实测 2.90:1 → 新令牌 `--color-danger-strong:#d93026`（4.77:1） | 危险按钮标签是常字号文本，必须 ≥4.5:1 |
+| HIGH | 色彩 | `static/css/site.css:542-545` | ok/void/warn 徽章文字用 `-solid` 浅色字（2.0–2.6:1）→ 改用加深的 `-text` 令牌（4.74–5.38:1） | 状态徽章文字达不到可读门槛 |
+| HIGH | 无障碍 | `static/css/site.css:743` | `.badge-toggle` 命中区约 22px → `::after inset:-10px` 扩至约 44px | 命中区过小，误触率高 |
+| MEDIUM | 无障碍 | `templates/permissions.html:80` | 高危操作表无空状态 → 补 `{% empty %}` 行 | 空数据时表格只剩表头，无法区分"无数据/加载失败" |
+| MEDIUM | 界面打磨 | `static/css/site.css:122,351` | 2 处原始 box-shadow → `var(--shadow-sidebar)`/`var(--shadow-pop)` | 阴影必须走令牌，避免散点值回潮 |
+| MEDIUM | 排版 | `static/css/site.css:514,683` | 页面/列表标题 22px → `var(--text-title)`（20px） | 字号归阶，不游离于字阶之外 |
+| LOW | 界面打磨 | `static/css/`（12 个文件） | flexslider/superfish/themify-icons 等零引用死 CSS → 全部删除 | 死代码仍含 20 处 `transition:all` 违规示范 |
+
+复测：`btn-primary` 4.73:1、正文 13.02:1、次要文字 6.11:1、accent 文字 4.95:1 全达标；`#909399` 弱文字（3.08:1）仅限占位/禁用场景，信息性文字用 `--color-text-secondary`。键盘焦点环（`:focus-visible` 全局）、`tabular-nums` 数字列对齐、`{% empty %}` 空状态（16/17 表格，frontdesk 由 JS 兜底）均已在位。161 项测试通过。
+
 ## 6. 文档索引
 
 | 文档 | 内容 |

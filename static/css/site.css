@@ -48,16 +48,17 @@
 
     /* --- Semantics · 状态色（solid / text / bg / border 四角色） --- */
     --color-success-solid: #67c23a;
-    --color-success-text: #67c23a;
+    --color-success-text: #3d7a1e;      /* 徽章文字加深（浅绿底上 4.86:1） */
     --color-success-bg: #f0f9eb;
     --color-success-border: #e1f3d8;
-    --color-danger-solid: #f56c6c;
-    --color-danger-solid-hover: #f78989;
-    --color-danger-text: #f56c6c;
+    --color-danger-solid: #f56c6c;        /* 仅作装饰填充，不做白字按钮底 */
+    --color-danger-strong: #d93026;       /* 白字危险按钮底（白字对比 4.77:1） */
+    --color-danger-strong-hover: #c22c22; /* 强危险 hover（5.71:1） */
+    --color-danger-text: #b34a4a;         /* 徽章文字加深（浅红底上 4.74:1） */
     --color-danger-bg: #fef0f0;
     --color-danger-border: #fde2e2;
     --color-warning-solid: #e6a23c;
-    --color-warning-text: #e6a23c;
+    --color-warning-text: #8f5a0e;      /* 徽章文字加深（浅橙底上 5.38:1） */
     --color-warning-bg: #fdf6ec;
     --color-warning-border: #faecd8;
 
@@ -119,7 +120,7 @@ body {
     z-index: 100;
     display: flex;
     flex-direction: column;
-    box-shadow: 2px 0 12px rgba(0, 0, 0, .18);
+    box-shadow: var(--shadow-sidebar);
 }
 .side-logo {
     height: 62px;
@@ -348,7 +349,7 @@ div.toast {
     font-size: var(--text-body);
     font-weight: 600;
     text-align: center;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, .22);
+    box-shadow: var(--shadow-pop);
     color: var(--color-text-inverse);
     pointer-events: auto;
     display: flex;
@@ -511,7 +512,7 @@ input[list] {
 /* ---------- 主界面门户 / 新页面布局 ---------- */
 .main { margin-left: var(--sidebar-w); padding: 22px 30px 40px; min-width: 0; }
 .page-head { margin: 4px 0 18px; }
-.page-head h2 { margin: 0; color: var(--color-text-primary); font-size: 22px; letter-spacing: 1px; }
+.page-head h2 { margin: 0; color: var(--color-text-primary); font-size: var(--text-title); letter-spacing: 1px; }
 .page-sub { color: var(--color-text-muted); font-size: var(--text-caption); }
 .stat-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
 .stat-card {
@@ -539,10 +540,10 @@ input[list] {
     display: inline-block; padding: 3px 10px; border-radius: var(--radius-lg);
     font-size: var(--text-xs); line-height: 1.4; white-space: nowrap;
 }
-.ok-badge { background: var(--color-success-bg); color: var(--color-success-solid); border: 1px solid var(--color-success-border); }
-.void-badge { background: var(--color-danger-bg); color: var(--color-danger-solid); border: 1px solid var(--color-danger-border); }
+.ok-badge { background: var(--color-success-bg); color: var(--color-success-text); border: 1px solid var(--color-success-border); }
+.void-badge { background: var(--color-danger-bg); color: var(--color-danger-text); border: 1px solid var(--color-danger-border); }
 .info-badge { background: var(--color-accent-bg); color: var(--color-accent-solid); border: 1px solid var(--color-accent-border); }
-.warn-badge { background: var(--color-warning-bg); color: var(--color-warning-solid); border: 1px solid var(--color-warning-border); }
+.warn-badge { background: var(--color-warning-bg); color: var(--color-warning-text); border: 1px solid var(--color-warning-border); }
 tr.voided-row td { color: var(--color-text-disabled); background: var(--color-bg-voided); }
 tr.voided-row .btn { opacity: .45; }
 /* 状态门控禁用按钮（如已冲账行）：灰化、禁用光标、悬停无反应（覆盖 .btn-primary 的 pointer/hover） */
@@ -680,7 +681,7 @@ li.warn-info .warn-level { color: var(--color-accent-solid); background: var(--c
 
 /* ---------- 图5 列表页组件（工具栏/筛选/表格/分页） ---------- */
 .list-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.list-head h2 { margin: 0; color: var(--color-text-primary); font-size: 22px; }
+.list-head h2 { margin: 0; color: var(--color-text-primary); font-size: var(--text-title); }
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
 .tb-btn {
     display: inline-block;
@@ -731,6 +732,7 @@ li.warn-info .warn-level { color: var(--color-accent-solid); background: var(--c
 .page-nums a { color: var(--color-accent-solid); text-decoration: none; padding: 3px 8px; border: 1px solid var(--color-border-default); border-radius: var(--radius-sm); }
 .page-cur { background: var(--color-accent-solid); color: var(--color-text-inverse); padding: 3px 9px; border-radius: var(--radius-sm); }
 .badge-toggle {
+    position: relative;
     border: none;
     background: transparent;
     font-size: var(--text-xs);
@@ -738,8 +740,9 @@ li.warn-info .warn-level { color: var(--color-accent-solid); background: var(--c
     border-radius: var(--radius-lg);
     cursor: pointer;
 }
-.badge-toggle.on { background: var(--color-success-bg); color: var(--color-success-solid); border: 1px solid var(--color-success-border); }
-.badge-toggle.off { background: var(--color-danger-bg); color: var(--color-danger-solid); border: 1px solid var(--color-danger-border); }
+.badge-toggle::after { content: ""; position: absolute; inset: -10px; }
+.badge-toggle.on { background: var(--color-success-bg); color: var(--color-success-text); border: 1px solid var(--color-success-border); }
+.badge-toggle.off { background: var(--color-danger-bg); color: var(--color-danger-text); border: 1px solid var(--color-danger-border); }
 span.badge-toggle { cursor: default; }
 
 
@@ -920,8 +923,8 @@ div.toast.warning::before { content: "!"; }
 .wb-role { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-caption); }
 .wb-actions { margin-bottom: var(--space-3); }
 .wb-kv th { width: 110px; text-align: right; }
-.btn-danger-solid { background: var(--color-danger-solid) !important; border-color: var(--color-danger-solid) !important; color: var(--color-text-inverse) !important; }
-.btn-danger-solid:hover { background: var(--color-danger-solid-hover) !important; }
+.btn-danger-solid { background: var(--color-danger-strong) !important; border-color: var(--color-danger-strong) !important; color: var(--color-text-inverse) !important; }
+.btn-danger-solid:hover { background: var(--color-danger-strong-hover) !important; }
 
 /* --- 入住管理页补充（checkin.html，原内联样式清退） --- */
 .card-title-row { display: flex; align-items: baseline; gap: var(--space-3); justify-content: center; margin: 0 0 var(--space-2); }
