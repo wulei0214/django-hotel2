@@ -4,286 +4,65 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#172d39">
-  <title>在线预订 · {{ property_name }}</title>
+  <meta name="description" content="{{ property_name }} 官方预订网站，查看客房、入住日期与实时房价。">
+  <title>{{ property_name }} · 官方网站与在线预订</title>
   <style>
-    :root {
-      color-scheme: light;
-      --ink: #18313d;
-      --muted: #6c7e86;
-      --line: #e2e9e9;
-      --paper: #f5f7f5;
-      --card: #ffffff;
-      --accent: #b37b4a;
-      --accent-dark: #875632;
-      --deep: #18323e;
-      --good: #26725d;
-      --bad: #a84e43;
-      --shadow: 0 18px 50px rgba(25, 48, 58, .08);
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      color: var(--ink);
-      background:
-        radial-gradient(circle at 8% 0%, rgba(188, 151, 108, .14), transparent 26rem),
-        var(--paper);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-        "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-      line-height: 1.5;
-    }
-    a { color: inherit; }
-    .topbar {
-      height: 68px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 clamp(18px, 5vw, 70px);
-      border-bottom: 1px solid rgba(24, 49, 61, .08);
-      background: rgba(255,255,255,.78);
-      backdrop-filter: blur(14px);
-    }
-    .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: .03em; }
-    .brand-mark {
-      width: 34px; height: 34px; display: grid; place-items: center;
-      border: 1px solid rgba(179,123,74,.5); border-radius: 50%;
-      color: var(--accent-dark); font-family: Georgia, serif; font-size: 20px;
-    }
-    .top-note { color: var(--muted); font-size: 13px; }
-    .shell { width: min(1080px, calc(100% - 36px)); margin: 0 auto; padding: 48px 0 76px; }
-    .hero { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 24px; margin-bottom: 28px; }
-    .eyebrow { color: var(--accent-dark); font-size: 11px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
-    h1 { margin: 10px 0 8px; font-family: Georgia, "Songti SC", serif; font-size: clamp(32px, 5vw, 48px); font-weight: 500; letter-spacing: -.035em; line-height: 1.08; }
-    .hero p { max-width: 620px; margin: 0; color: var(--muted); font-size: 15px; }
-    .property-chip { padding: 9px 13px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.75); color: var(--muted); font-size: 12px; white-space: nowrap; }
-    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; align-items: start; }
-    .main-column { min-width: 0; display: grid; gap: 18px; }
-    .panel {
-      padding: clamp(18px, 3vw, 26px); border: 1px solid var(--line); border-radius: 18px;
-      background: var(--card); box-shadow: var(--shadow);
-    }
-    .panel-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 19px; }
-    h2 { margin: 0; font-size: 17px; letter-spacing: -.015em; }
-    .step { color: #a0adb1; font-size: 11px; font-weight: 700; letter-spacing: .12em; }
-    .form-grid { display: grid; grid-template-columns: 1.1fr 1.1fr .8fr .8fr; gap: 12px; }
-    .field { display: grid; gap: 7px; }
-    label { color: #536872; font-size: 12px; font-weight: 650; }
-    input, select {
-      width: 100%; min-height: 46px; padding: 0 12px;
-      border: 1px solid #d9e2e2; border-radius: 10px; background: #fff;
-      color: var(--ink); font: inherit; font-size: 14px; outline: none;
-    }
-    input:focus, select:focus { border-color: #b98b62; box-shadow: 0 0 0 3px rgba(179,123,74,.12); }
-    .search-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 17px; }
-    .hint { color: var(--muted); font-size: 12px; }
-    button {
-      min-height: 44px; padding: 0 18px; border: 0; border-radius: 10px;
-      background: var(--deep); color: white; font: inherit; font-size: 13px;
-      font-weight: 700; cursor: pointer; transition: transform .15s, background .15s, opacity .15s;
-    }
-    button:hover:not(:disabled) { background: #274a58; transform: translateY(-1px); }
-    button:disabled { opacity: .45; cursor: not-allowed; }
-    button.secondary { color: var(--ink); background: #edf1ef; }
-    button.secondary:hover:not(:disabled) { background: #e3eae6; }
-    button.gold { background: var(--accent); }
-    button.gold:hover:not(:disabled) { background: var(--accent-dark); }
-    .room-list { display: grid; gap: 12px; }
-    .room-card {
-      display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 16px;
-      padding: 17px; border: 1px solid var(--line); border-radius: 13px; background: #fff;
-    }
-    .room-card.selected { border-color: #b98b62; box-shadow: 0 0 0 3px rgba(179,123,74,.1); }
-    .room-name { margin: 0 0 5px; font-size: 15px; font-weight: 750; }
-    .room-meta { color: var(--muted); font-size: 12px; }
-    .night-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
-    .night {
-      padding: 5px 8px; border-radius: 7px; background: #f3f5f2;
-      color: #63757b; font-size: 11px;
-    }
-    .room-price { display: grid; align-content: space-between; justify-items: end; gap: 12px; min-width: 125px; }
-    .price { font-family: Georgia, serif; font-size: 25px; color: var(--ink); white-space: nowrap; }
-    .price small { font-family: inherit; color: var(--muted); font-size: 11px; }
-    .guest-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .notice {
-      min-height: 42px; margin-top: 14px; padding: 10px 12px; border-radius: 9px;
-      background: #f4f6f4; color: var(--muted); font-size: 12px;
-    }
-    .notice.error { background: #fff0ed; color: var(--bad); }
-    .notice.success { background: #edf7f2; color: var(--good); }
-    .empty {
-      padding: 27px 18px; border: 1px dashed #d4dfdd; border-radius: 12px;
-      color: var(--muted); text-align: center; font-size: 13px; background: #fbfcfa;
-    }
-    .summary { position: sticky; top: 22px; overflow: hidden; }
-    .summary-top { margin: -26px -26px 20px; padding: 24px 26px; color: #f8f4ed; background: var(--deep); }
-    .summary-top .eyebrow { color: #d5b38d; }
-    .summary-top h2 { margin-top: 8px; font-family: Georgia, serif; font-size: 22px; font-weight: 500; }
-    .summary-line { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid #edf0ee; font-size: 12px; }
-    .summary-line span:first-child { color: var(--muted); }
-    .summary-line strong { text-align: right; font-weight: 650; }
-    .summary-total { display: flex; align-items: end; justify-content: space-between; padding-top: 18px; }
-    .summary-total span { color: var(--muted); font-size: 12px; }
-    .summary-total strong { font-family: Georgia, serif; font-size: 27px; font-weight: 500; }
-    .summary .notice { margin-top: 18px; }
-    .reservation-result { display: none; }
-    .booking-no { display: inline-block; margin: 8px 0 14px; padding: 7px 10px; border-radius: 7px; background: #f4f6f3; font-family: ui-monospace, monospace; font-size: 13px; letter-spacing: .04em; }
-    .result-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
-    .footer { margin-top: 25px; color: #9aa7a8; font-size: 11px; text-align: center; }
-    @media (max-width: 820px) {
-      .layout { grid-template-columns: 1fr; }
-      .summary { position: static; }
-      .summary-top { margin: -26px -26px 20px; }
-    }
-    @media (max-width: 560px) {
-      .topbar { height: 60px; }
-      .top-note { display: none; }
-      .shell { width: min(100% - 24px, 1080px); padding: 31px 0 48px; }
-      .hero { grid-template-columns: 1fr; gap: 12px; margin-bottom: 20px; }
-      .property-chip { justify-self: start; }
-      .form-grid { grid-template-columns: 1fr 1fr; }
-      .form-grid .field:last-child { grid-column: 1 / -1; }
-      .search-row { align-items: stretch; flex-direction: column; }
-      .search-row button { width: 100%; }
-      .room-card { grid-template-columns: 1fr; }
-      .room-price { grid-template-columns: 1fr auto; align-items: center; justify-items: start; }
-      .room-price button { justify-self: end; }
-      .guest-grid { grid-template-columns: 1fr; }
-    }
+    :root{--ink:#172f38;--muted:#64777b;--paper:#f7f6f2;--line:#e5e4de;--gold:#b88a58;--gold-dark:#91663d;--deep:#17343d;--green:#286b58;--red:#a64e42;--serif:Georgia,"Noto Serif SC","Songti SC",serif}
+    *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:86px}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.6}a{color:inherit;text-decoration:none}button,input,select{font:inherit}
+    .site-header{height:76px;position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;padding:0 clamp(20px,6vw,92px);background:rgba(250,249,246,.94);backdrop-filter:blur(16px);border-bottom:1px solid rgba(23,47,56,.09)}
+    .brand{display:flex;align-items:center;gap:13px;min-width:0}.brand-seal{width:39px;height:39px;border:1px solid var(--gold);border-radius:50%;display:grid;place-items:center;color:var(--gold-dark);font:22px var(--serif)}.brand-name{font:600 16px var(--serif);letter-spacing:.08em;white-space:nowrap}.brand-caption{display:block;color:#899493;font-size:9px;letter-spacing:.2em;text-transform:uppercase}
+    .nav{display:flex;align-items:center;gap:30px;color:#52666b;font-size:12px}.nav a{transition:color .2s}.nav a:hover{color:var(--gold-dark)}.nav .nav-book{padding:11px 19px;background:var(--deep);color:#fff;letter-spacing:.08em}.nav .nav-book:hover{background:#28505b;color:#fff}
+    .hero{min-height:590px;position:relative;display:flex;align-items:center;color:#fff;background:linear-gradient(90deg,rgba(12,31,37,.76),rgba(12,31,37,.25) 64%,rgba(12,31,37,.08)),linear-gradient(0deg,rgba(12,31,37,.22),transparent 45%),url("https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=2200&q=85") center 52%/cover}
+    .hero-inner{width:min(1180px,calc(100% - 48px));margin:0 auto;padding:70px 0 125px}.eyebrow{font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:#d8b98e;font-weight:700}.hero h1{max-width:690px;margin:20px 0 17px;font:400 clamp(42px,6vw,72px)/1.15 var(--serif);letter-spacing:.03em}.hero p{max-width:520px;margin:0;color:rgba(255,255,255,.83);font-size:15px;line-height:1.9}.hero-link{display:inline-flex;align-items:center;gap:18px;margin-top:30px;padding:13px 0;border-bottom:1px solid rgba(255,255,255,.65);font-size:12px;letter-spacing:.12em}.hero-link span{font-size:19px}
+    .booking-dock{position:relative;z-index:2;width:min(1120px,calc(100% - 48px));margin:-58px auto 0;padding:25px 28px;background:#fff;box-shadow:0 18px 55px rgba(21,43,49,.14);border:1px solid rgba(23,47,56,.08)}.dock-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:17px}.dock-title strong{font:19px var(--serif)}.dock-title span{color:#899493;font-size:10px;letter-spacing:.14em}.booking-form{display:grid;grid-template-columns:1.1fr 1.1fr .8fr .8fr auto;gap:12px;align-items:end}.field{display:grid;gap:7px;min-width:0}.field label{font-size:11px;color:#66777a}.field input,.field select{width:100%;height:46px;padding:0 12px;border:1px solid #dedfd9;border-radius:0;background:#fff;color:var(--ink);font-size:13px;outline:none}.field input:focus,.field select:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(184,138,88,.12)}.btn{min-height:46px;padding:0 23px;border:0;border-radius:0;background:var(--deep);color:white;font-size:12px;font-weight:650;letter-spacing:.08em;cursor:pointer;transition:background .2s,transform .2s}.btn:hover:not(:disabled){background:#28515b;transform:translateY(-1px)}.btn:disabled{opacity:.48;cursor:not-allowed}.btn-gold{background:var(--gold);color:#fff}.btn-gold:hover:not(:disabled){background:var(--gold-dark)}.btn-light{background:#eef0eb;color:var(--ink)}.btn-light:hover:not(:disabled){background:#e1e5de}.dock-hint{margin:12px 0 0;color:#8b9692;font-size:10px}
+    .section{width:min(1120px,calc(100% - 48px));margin:0 auto;padding:94px 0}.section-heading{text-align:center;max-width:650px;margin:0 auto 42px}.section-heading .eyebrow{color:var(--gold-dark)}.section-heading h2{margin:12px 0;font:400 clamp(30px,4vw,43px)/1.25 var(--serif)}.section-heading p{margin:0;color:var(--muted);font-size:13px;line-height:1.9}
+    .intro-grid{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center}.intro-image{min-height:400px;background:url("https://images.unsplash.com/photo-1600210472483-8f7b7a3f7c9f?auto=format&fit=crop&w=1200&q=82") center/cover}.intro-copy .eyebrow{color:var(--gold-dark)}.intro-copy h2{margin:13px 0 18px;font:400 38px/1.3 var(--serif)}.intro-copy p{color:var(--muted);font-size:13px;line-height:2}.feature-list{display:flex;flex-wrap:wrap;gap:12px 25px;margin-top:24px;color:#53686b;font-size:11px}.feature-list span:before{content:"✦";margin-right:8px;color:var(--gold)}
+    .amenities{background:#eef0eb}.amenity-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#dfe3dc;border:1px solid #dfe3dc}.amenity{padding:28px 20px;background:#eef0eb;text-align:center}.amenity .symbol{font:27px var(--serif);color:var(--gold-dark)}.amenity strong{display:block;margin:10px 0 4px;font:16px var(--serif)}.amenity small{color:#7a8987;font-size:10px}
+    .booking-area{background:#f1f0eb}.booking-area .section{padding-top:85px;padding-bottom:85px}.booking-intro{text-align:center;margin-bottom:28px}.booking-intro .eyebrow{color:var(--gold-dark)}.booking-intro h2{font:400 38px var(--serif);margin:10px 0}.booking-intro p{color:var(--muted);font-size:12px}
+    .layout{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:22px;align-items:start}.main-column{min-width:0;display:grid;gap:17px}.panel{padding:25px;background:#fff;border:1px solid #e7e5de;box-shadow:0 8px 28px rgba(23,47,56,.045)}.panel-head{display:flex;justify-content:space-between;align-items:start;gap:14px;margin-bottom:19px}.panel-head h3{margin:5px 0 0;font:21px var(--serif)}.step{font-size:9px;color:#a28a6e;letter-spacing:.17em;font-weight:700}.muted{color:var(--muted);font-size:11px}.room-list{display:grid;gap:13px}.room-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;padding:18px;border:1px solid #e9e8e2;background:#fff;transition:border-color .2s,box-shadow .2s}.room-card.selected{border-color:var(--gold);box-shadow:0 0 0 2px rgba(184,138,88,.12)}.room-name{margin:0 0 6px;font:18px var(--serif)}.room-meta{color:#788783;font-size:11px}.night-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.night{padding:5px 8px;background:#f3f3ef;color:#71807b;font-size:10px}.room-price{display:grid;align-content:space-between;justify-items:end;gap:12px;min-width:125px}.price{font:25px var(--serif);white-space:nowrap}.price small{font:10px sans-serif;color:#8a9690}.guest-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.notice{min-height:40px;margin-top:13px;padding:10px 12px;background:#f3f4ef;color:#71807b;font-size:11px}.notice.error{background:#fff0ed;color:var(--red)}.notice.success{background:#edf6f0;color:var(--green)}.empty{padding:27px 18px;border:1px dashed #d8ddd5;color:#82908a;text-align:center;font-size:12px}.summary{position:sticky;top:94px;overflow:hidden}.summary-top{margin:-25px -25px 18px;padding:23px 25px;background:var(--deep);color:white}.summary-top .eyebrow{color:#d7b58c}.summary-top h3{margin:6px 0 0;font:23px var(--serif)}.summary-line{display:flex;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid #eeeee8;font-size:11px}.summary-line span{color:#82908b}.summary-line strong{text-align:right;font-weight:600}.summary-total{display:flex;align-items:end;justify-content:space-between;padding-top:18px}.summary-total span{color:#82908b;font-size:11px}.summary-total strong{font:27px var(--serif)}.summary .notice{margin-top:17px}.reservation-result{display:none}.booking-no{display:inline-block;margin:9px 0 14px;padding:8px 11px;background:#f1f2ed;font:13px ui-monospace,monospace;letter-spacing:.05em}.result-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:15px}
+    .footer{padding:40px 24px;background:#142f38;color:rgba(255,255,255,.65);text-align:center}.footer-brand{font:19px var(--serif);color:#fff;letter-spacing:.1em}.footer p{margin:8px 0;font-size:10px}.footer small{color:rgba(255,255,255,.4);font-size:9px}
+    @media(max-width:850px){.nav{gap:15px}.booking-form{grid-template-columns:1fr 1fr}.booking-form .btn{grid-column:1/-1}.layout{grid-template-columns:1fr}.summary{position:static}.intro-grid{gap:30px}.intro-image{min-height:340px}}
+    @media(max-width:600px){.site-header{height:64px;padding:0 17px}.brand-name{font-size:13px}.brand-seal{width:34px;height:34px}.nav a:not(.nav-book){display:none}.nav .nav-book{padding:9px 12px;font-size:10px}.hero{min-height:520px;background-position:58% center}.hero-inner{width:calc(100% - 38px);padding:45px 0 100px}.hero h1{font-size:43px}.hero p{font-size:13px}.booking-dock{width:calc(100% - 26px);margin-top:-48px;padding:20px 17px}.dock-title span{display:none}.booking-form{grid-template-columns:1fr 1fr;gap:10px}.booking-form .btn{grid-column:1/-1;width:100%}.section{width:calc(100% - 34px);padding:65px 0}.intro-grid{grid-template-columns:1fr;gap:25px}.intro-image{min-height:260px;order:2}.intro-copy h2{font-size:31px}.amenity-grid{grid-template-columns:1fr 1fr}.amenity{padding:22px 10px}.booking-area .section{width:calc(100% - 24px);padding:62px 0}.panel{padding:18px}.summary-top{margin:-18px -18px 17px;padding:20px 18px}.room-card{grid-template-columns:1fr}.room-price{grid-template-columns:1fr auto;align-items:center;justify-items:start}.room-price button{justify-self:end}.guest-grid{grid-template-columns:1fr}.booking-intro h2{font-size:31px}}
   </style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand"><span class="brand-mark">H</span><span>{{ property_name }}</span></div>
-    <div class="top-note">官方预订 · 实时房态 · 安心入住</div>
+  <header class="site-header">
+    <a class="brand" href="#home" aria-label="{{ property_name }} 首页"><span class="brand-seal">H</span><span class="brand-name">{{ property_name }}<span class="brand-caption">HOTEL · OFFICIAL WEBSITE</span></span></a>
+    <nav class="nav" aria-label="主导航"><a href="#home">首页</a><a href="#about">酒店介绍</a><a href="#facilities">酒店设施</a><a href="#booking">客房预订</a><a class="nav-book" href="#booking">立即预订　↗</a></nav>
   </header>
-
-  <main class="shell">
+  <main id="home">
     <section class="hero">
-      <div>
-        <div class="eyebrow">DIRECT BOOKING</div>
-        <h1>把旅程，安排妥当。</h1>
-        <p>选择入住日期，查看当前房型与逐晚价格。提交后系统会为您暂时保留房量，并生成可查询的预订编号。</p>
-      </div>
-      <div class="property-chip">当前酒店 · {{ property_name }}</div>
+      <div class="hero-inner"><div class="eyebrow">A PLACE TO SLOW DOWN</div><h1>在此停留，<br>让旅途回归从容。</h1><p>以舒适的空间、细致的服务与恰到好处的温度，欢迎每一段旅程的到来。</p><a class="hero-link" href="#booking">探索客房与入住体验 <span>↗</span></a></div>
     </section>
-
     {% if booking_unavailable %}
-      <section class="panel"><div class="notice error">当前酒店暂不可预订，请联系酒店前台。</div></section>
+      <section class="section"><div class="panel"><div class="notice error">当前酒店暂不可预订，请联系酒店前台。</div></div></section>
     {% else %}
       <form id="csrf-form" hidden>{% csrf_token %}</form>
-      <div class="layout">
-        <div class="main-column">
-          <section class="panel">
-            <div class="panel-head">
-              <div><div class="step">01 / STAY</div><h2>选择入住日期</h2></div>
-              <div class="step">日期按酒店当地时间</div>
-            </div>
-            <form id="search-form">
-              <div class="form-grid">
-                <div class="field">
-                  <label for="check-in">入住日期</label>
-                  <input id="check-in" type="date" value="{{ default_check_in }}" required>
-                </div>
-                <div class="field">
-                  <label for="check-out">离店日期</label>
-                  <input id="check-out" type="date" value="{{ default_check_out }}" required>
-                </div>
-                <div class="field">
-                  <label for="rooms">房间数量</label>
-                  <select id="rooms">
-                    <option value="1">1 间</option>
-                    <option value="2">2 间</option>
-                    <option value="3">3 间</option>
-                    <option value="4">4 间</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label for="adults">入住成人</label>
-                  <select id="adults">
-                    <option value="1">1 人</option>
-                    <option value="2" selected>2 人</option>
-                    <option value="3">3 人</option>
-                    <option value="4">4 人</option>
-                    <option value="5">5 人</option>
-                    <option value="6">6 人</option>
-                    <option value="7">7 人</option>
-                    <option value="8">8 人</option>
-                  </select>
-                </div>
-              </div>
-              <div class="search-row">
-                <span class="hint">离店日期不计入住宿晚数与房费。</span>
-                <button id="search-button" type="submit">查询可订房型</button>
-              </div>
-            </form>
-            <div id="search-message" class="notice" role="status" aria-live="polite">请选择日期后查询可订房型。</div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <div><div class="step">02 / ROOM</div><h2>选择房型</h2></div>
-              <span class="step" id="room-count-label">等待查询</span>
-            </div>
-            <div id="room-list" class="room-list">
-              <div class="empty">房型和逐晚价格会显示在这里。</div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <div><div class="step">03 / GUEST</div><h2>填写入住人信息</h2></div>
-              <div class="step">仅用于本次预订联系</div>
-            </div>
-            <div class="guest-grid">
-              <div class="field">
-                <label for="guest-name">入住人姓名</label>
-                <input id="guest-name" type="text" maxlength="80" autocomplete="name" placeholder="请输入姓名">
-              </div>
-              <div class="field">
-                <label for="guest-phone">联系电话</label>
-                <input id="guest-phone" type="tel" maxlength="24" autocomplete="tel" placeholder="用于查询预订">
-              </div>
-            </div>
-            <div id="booking-message" class="notice" role="status" aria-live="polite">选择房型后即可提交预订。</div>
-            <button id="book-button" class="gold" type="button" disabled style="width:100%; margin-top:14px">提交预订</button>
-          </section>
-
-          <section id="reservation-result" class="panel reservation-result">
-            <div class="panel-head">
-              <div><div class="step">04 / CONFIRMATION</div><h2>预订已创建</h2></div>
-              <div class="step" id="reservation-status">待支付</div>
-            </div>
-            <div class="hint">请保存以下预订编号。查询或取消待支付预订时，需要同时提供联系电话。</div>
-            <div id="booking-number" class="booking-no"></div>
-            <div id="booking-detail" class="summary-line"></div>
-            <div id="payment-message" class="notice">库存已暂时保留。请在倒计时结束前完成确认。</div>
-            <div class="result-actions">
-              <button id="payment-button" class="gold" type="button">本地模拟支付成功</button>
-              <button id="cancel-button" class="secondary" type="button">取消待支付预订</button>
-            </div>
-            {% if not mock_payments_enabled %}
-              <div class="notice">当前环境未开放模拟支付；真实支付服务商尚未接入。</div>
-            {% endif %}
-          </section>
-        </div>
-
-        <aside class="panel summary">
-          <div class="summary-top">
-            <div class="eyebrow">YOUR STAY</div>
-            <h2>预订摘要</h2>
-          </div>
-          <div class="summary-line"><span>酒店</span><strong>{{ property_name }}</strong></div>
-          <div class="summary-line"><span>入住</span><strong id="summary-check-in">—</strong></div>
-          <div class="summary-line"><span>离店</span><strong id="summary-check-out">—</strong></div>
-          <div class="summary-line"><span>住宿晚数</span><strong id="summary-nights">—</strong></div>
-          <div class="summary-line"><span>房间数</span><strong id="summary-rooms">1 间</strong></div>
-          <div class="summary-line"><span>房型</span><strong id="summary-room-type">尚未选择</strong></div>
-          <div class="summary-total"><span>预计总价</span><strong id="summary-total">—</strong></div>
-          <div class="notice">最终价格以提交预订时的逐晚价格快照为准。提交后库存保留 15 分钟。</div>
-        </aside>
-      </div>
-      <div class="footer">预订服务由酒店 PMS 提供 · 个人资料仅用于本次预订与联系</div>
-
-      <script>
+      <section class="booking-dock" aria-label="快速预订">
+        <div class="dock-title"><strong>预订您的入住</strong><span>BOOK DIRECT · BEST AVAILABLE RATE</span></div>
+        <form id="search-form" class="booking-form">
+          <div class="field"><label for="check-in">入住日期 · CHECK-IN</label><input id="check-in" type="date" value="{{ default_check_in }}" required></div>
+          <div class="field"><label for="check-out">离店日期 · CHECK-OUT</label><input id="check-out" type="date" value="{{ default_check_out }}" required></div>
+          <div class="field"><label for="rooms">房间数量</label><select id="rooms"><option value="1">1 间客房</option><option value="2">2 间客房</option><option value="3">3 间客房</option><option value="4">4 间客房</option></select></div>
+          <div class="field"><label for="adults">入住成人</label><select id="adults"><option value="1">1 位成人</option><option value="2" selected>2 位成人</option><option value="3">3 位成人</option><option value="4">4 位成人</option><option value="5">5 位成人</option><option value="6">6 位成人</option><option value="7">7 位成人</option><option value="8">8 位成人</option></select></div>
+          <button id="search-button" class="btn" type="submit">查询可订客房　→</button>
+        </form>
+        <p class="dock-hint">入住日期按酒店当地时间计算 · 离店日期不计入住宿晚数与房费</p>
+      </section>
+      <section id="about" class="section">
+        <div class="intro-grid"><div class="intro-copy"><div class="eyebrow">WELCOME TO {{ property_name }}</div><h2>一处舒心居停，<br>也是旅途中的美好记忆。</h2><p>从抵达的那一刻起，舒适与安心便融入每个细节。无论是商务出行、城市探索，还是一段轻松假期，我们都期待为您留下一段自在的入住体验。</p><div class="feature-list"><span>贴心服务</span><span>舒适客房</span><span>便捷入住</span><span>安心保障</span></div></div><div class="intro-image" role="img" aria-label="酒店舒适空间展示"></div></div>
+      </section>
+      <section id="facilities" class="amenities"><div class="section"><div class="section-heading"><div class="eyebrow">THOUGHTFUL DETAILS</div><h2>让每一刻，都恰到好处</h2><p>以舒适、便利与细致服务，陪伴您的每一段行程。</p></div><div class="amenity-grid"><div class="amenity"><div class="symbol">⌂</div><strong>舒适客房</strong><small>为休息与放松而设计</small></div><div class="amenity"><div class="symbol">◷</div><strong>便捷入住</strong><small>清晰高效的入住体验</small></div><div class="amenity"><div class="symbol">✧</div><strong>贴心服务</strong><small>关注旅途中的每个细节</small></div><div class="amenity"><div class="symbol">⌖</div><strong>自在出行</strong><small>为城市探索提供便利</small></div></div></div></section>
+      <section id="booking" class="booking-area"><div class="section">
+        <div class="booking-intro"><div class="eyebrow">ROOMS & RESERVATION</div><h2>选择适合您的客房</h2><p>查询实时可售房型与逐晚价格，确认后即可提交预订。</p></div>
+        <div class="layout"><div class="main-column">
+          <section class="panel"><div class="panel-head"><div><div class="step">01 / AVAILABILITY</div><h3>可订客房与价格</h3></div><span class="muted" id="room-count-label">等待查询</span></div><div id="search-message" class="notice" role="status" aria-live="polite">正在查询可订客房…</div><div id="room-list" class="room-list"><div class="empty">客房与逐晚价格将显示在这里。</div></div></section>
+          <section class="panel"><div class="panel-head"><div><div class="step">02 / GUEST DETAILS</div><h3>填写入住人信息</h3></div><span class="muted">仅用于本次预订联系</span></div><div class="guest-grid"><div class="field"><label for="guest-name">入住人姓名</label><input id="guest-name" type="text" maxlength="80" autocomplete="name" placeholder="请输入入住人姓名"></div><div class="field"><label for="guest-phone">联系电话</label><input id="guest-phone" type="tel" maxlength="24" autocomplete="tel" placeholder="用于预订联系与订单查询"></div></div><div id="booking-message" class="notice" role="status" aria-live="polite">选择客房后即可提交预订。</div><button id="book-button" class="btn btn-gold" type="button" disabled style="width:100%;margin-top:14px">确认并提交预订</button></section>
+          <section id="reservation-result" class="panel reservation-result"><div class="panel-head"><div><div class="step">03 / BOOKING CONFIRMATION</div><h3>您的预订已创建</h3></div><span class="muted" id="reservation-status">待支付</span></div><p class="muted">请妥善保存预订编号。查询或取消待支付预订时，需要同时提供预订联系电话。</p><div id="booking-number" class="booking-no"></div><div id="booking-detail" class="summary-line"></div><div id="payment-message" class="notice">库存已暂时保留，请留意预订状态。</div><div class="result-actions"><button id="payment-button" class="btn btn-gold" type="button">本地模拟支付成功</button><button id="cancel-button" class="btn btn-light" type="button">取消待支付预订</button></div>{% if not mock_payments_enabled %}<div class="notice">当前环境未开放模拟支付；真实支付服务商尚未接入。</div>{% endif %}</section>
+        </div><aside class="panel summary"><div class="summary-top"><div class="eyebrow">YOUR STAY</div><h3>入住行程摘要</h3></div><div class="summary-line"><span>酒店</span><strong>{{ property_name }}</strong></div><div class="summary-line"><span>入住</span><strong id="summary-check-in">—</strong></div><div class="summary-line"><span>离店</span><strong id="summary-check-out">—</strong></div><div class="summary-line"><span>住宿晚数</span><strong id="summary-nights">—</strong></div><div class="summary-line"><span>房间数量</span><strong id="summary-rooms">1 间</strong></div><div class="summary-line"><span>已选房型</span><strong id="summary-room-type">尚未选择</strong></div><div class="summary-total"><span>预计总价</span><strong id="summary-total">—</strong></div><div class="notice">最终价格以提交预订时的逐晚价格快照为准。库存保留时间以订单返回信息为准。</div></aside></div>
+      </div></section>
+      <div class="footer"><div class="footer-brand">{{ property_name }}</div><p>欢迎下次再见 · 期待为您提供舒适的入住体验</p><small>预订服务由酒店 PMS 提供 · 顾客资料仅用于本次预订与联系</small></div>
+            <script>
         (function () {
           const mockPaymentsEnabled = {{ mock_payments_enabled|yesno:"true,false" }};
           const byId = function (id) { return document.getElementById(id); };
