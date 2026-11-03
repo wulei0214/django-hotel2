@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{{ title }} - PMS2</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=10">
+    <style>
+        .pms-center{padding:24px;max-width:1500px;margin:0 auto}
+        .pms-center-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px}
+        .pms-center-head h1{margin:0 0 6px;font-size:24px;color:#243247}
+        .pms-center-sub{color:#778397;margin:0}
+        .pms-panel{background:#fff;border:1px solid #e7ebf1;border-radius:12px;padding:18px;margin-bottom:18px}
+        .pms-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+        .pms-tools input{min-width:240px;padding:10px 12px;border:1px solid #d9e0e9;border-radius:8px}
+        .pms-tools button{padding:10px 16px;border:0;border-radius:8px;background:#263a55;color:#fff;cursor:pointer}
+        .pms-meta{margin-left:auto;color:#778397;font-size:13px}
+        .pms-table-wrap{overflow:auto}
+        .pms-table{width:100%;border-collapse:collapse;white-space:nowrap}
+        .pms-table th,.pms-table td{padding:12px 14px;border-bottom:1px solid #edf0f4;text-align:left;font-size:13px}
+        .pms-table th{background:#f7f9fc;color:#637188;font-weight:600}
+        .pms-state{padding:24px;text-align:center;color:#8290a3}
+        .pms-pager{display:flex;justify-content:space-between;align-items:center;padding-top:14px;color:#778397;font-size:13px}
+        @media(max-width:720px){.pms-center{padding:14px}.pms-panel{padding:10px}.pms-tools input{min-width:0;width:100%}}
+    </style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main">
+  <div class="pms-center">
+    <div class="pms-center-head">
+      <div>
+        <h1>{{ title }}</h1>
+        <p class="pms-center-sub">{{ property_name }} · {{ subtitle }}</p>
+      </div>
+      <a href="/checkin/">返回前台接待</a>
+    </div>
+    <section class="pms-panel">
+      <div class="pms-tools">
+        <input id="pms-search" type="search" placeholder="输入关键字搜索">
+        <button id="pms-reload" type="button">查询</button>
+        <span class="pms-meta" id="pms-meta">正在读取 PMS2 数据…</span>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr id="pms-head"></tr></thead>
+          <tbody id="pms-body"><tr><td class="pms-state">正在读取真实业务数据…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pms-pager">
+        <span id="pms-state-note">数据来自 PMS2 API；此页面为只读工作台。</span>
+        <span id="pms-page"></span>
+      </div>
+    </section>
+  </div>
+</div>
+{{ columns|json_script:"pms-columns" }}
+<script>
+(function () {
+  "use strict";
+  const endpoint = "{{ api_endpoint|escapejs }}";
+  const columns = JSON.parse(document.getElementById("pms-columns").textContent);
+  const head = document.getElementById("pms-head");
+  const body = document.getElementById("pms-body");
+  const meta = document.getElementById("pms-meta");
+  const search = document.getElementById("pms-search");
+  columns.forEach(function (col) {
+    const th = document.createElement("th");
+    th.textContent = col.label;
+    head.appendChild(th);
+  });
+  function valueAt(item, path) {
+    return path.split(".").reduce(function (value, key) {
+      return value == null ? null : value[key];
+    }, item);
+  }
+  function display(value) {
+    if (Array.isArray(value)) return value.join("、") || "—";
+    if (value === null || value === undefined || value === "") return "—";
+    if (typeof value === "boolean") return value ? "是" : "否";
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  }
+  function cell(value) {
+    const td = document.createElement("td");
+    td.textContent = display(value);
+    return td;
+  }
+  async function load() {
+    body.replaceChildren();
+    const loading = document.createElement("tr");
+    const loadingCell = document.createElement("td");
+    loadingCell.colSpan = columns.length;
+    loadingCell.className = "pms-state";
+    loadingCell.textContent = "正在读取真实业务数据…";
+    loading.appendChild(loadingCell);
+    body.appendChild(loading);
+    meta.textContent = "读取中…";
+    const params = new URLSearchParams({page:"1",page_size:"50"});
+    if (search.value.trim()) params.set("q", search.value.trim());
+    try {
+      const response = await fetch(endpoint + "?" + params.toString(), {
+        method:"GET", credentials:"same-origin",
+        headers:{"Accept":"application/json"}
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error && payload.error.message || "读取失败（HTTP " + response.status + "）");
+      }
+      const rows = Array.isArray(payload.data) ? payload.data :
+        (payload.data && Array.isArray(payload.data.results) ? payload.data.results : []);
+      body.replaceChildren();
+      if (!rows.length) {
+        const tr=document.createElement("tr"), td=document.createElement("td");
+        td.colSpan=columns.length;td.className="pms-state";td.textContent="当前物业暂无匹配记录";
+        tr.appendChild(td);body.appendChild(tr);
+      } else {
+        rows.forEach(function(item){
+          const tr=document.createElement("tr");
+          columns.forEach(function(col){tr.appendChild(cell(valueAt(item,col.path)));});
+          body.appendChild(tr);
+        });
+      }
+      const pagination = payload.meta && payload.meta.pagination;
+      meta.textContent = pagination ? ("共 " + pagination.total + " 条") : ("已载入 " + rows.length + " 条");
+      document.getElementById("pms-page").textContent = pagination ?
+        ("第 " + pagination.page + " 页 / 每页 " + pagination.page_size + " 条") : "";
+    } catch (error) {
+      body.replaceChildren();
+      const tr=document.createElement("tr"), td=document.createElement("td");
+      td.colSpan=columns.length;td.className="pms-state";td.textContent=error.message;
+      tr.appendChild(td);body.appendChild(tr);
+      meta.textContent="数据读取失败";
+    }
+  }
+  document.getElementById("pms-reload").addEventListener("click", load);
+  search.addEventListener("keydown", function(event){if(event.key==="Enter")load();});
+  load();
+})();
+</script>
+</body>
+</html>

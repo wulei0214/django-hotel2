@@ -35,6 +35,7 @@ from apps.api import pages as api_pages
 urlpatterns = [
     path('api/v1/', include('apps.api.urls')),
     path('reserve/', api_pages.public_booking_page, name='public_booking_page'),
+    path('manage/<str:center>/', api_pages.management_center_page, name='pms_management_center'),
     path('admin/', admin.site.urls),
     path('', views.home),
     path('home/', views.home),
