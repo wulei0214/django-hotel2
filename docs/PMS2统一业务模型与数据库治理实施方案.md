@@ -20,7 +20,7 @@
 2. `docs/五大模块重构需求设计方案.md`
 3. `docs/development/PMS2_PHASE1_BASELINE.md`
 4. `docs/development/PMS2_PHASE2_RESERVATION_INVENTORY.md`
-5. `docs/ARCHITECTURE.md`
+5. `docs/系统架构说明.md`
 6. `docs/敏感字段权限边界设计.md` 及已正式确认的敏感字段决策
 
 本文档负责把上述决策落到统一菜单、唯一数据权威、数据表和字段治理、页面/API/Service 的实施顺序与验收标准上。

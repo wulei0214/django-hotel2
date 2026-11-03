@@ -26,9 +26,9 @@
 
 ## 文档更新
 - [ ] 已更新根目录 `readme.md`
-- [ ] 已更新 `docs/ARCHITECTURE.md`（架构/模块变化时）
-- [ ] 已更新 `docs/DEVELOPMENT_GUIDE.md`（开发/配置变化时）
-- [ ] 已追加 `docs/CHANGELOG.md`
+- [ ] 已更新 `docs/系统架构说明.md`（架构/模块变化时）
+- [ ] 已更新 `docs/开发指南.md`（开发/配置变化时）
+- [ ] 已追加 `docs/更新日志.md`
 - [ ] 已更新对应阶段开发记录
 - [ ] 已更新 `docs/UI_GUIDE.md`（页面变化时）
 
