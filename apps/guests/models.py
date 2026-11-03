@@ -82,9 +82,6 @@ class GuestPhone(models.Model):
         indexes = [
             models.Index(fields=("phone_normalized",), name="idx_guestphone_norm"),
         ]
-        permissions = (
-            ("phone_reveal", "能揭示客人电话号码完整值"),
-        )
 
     def save(self, *args, **kwargs):
         if self.is_primary and self.guest_id:

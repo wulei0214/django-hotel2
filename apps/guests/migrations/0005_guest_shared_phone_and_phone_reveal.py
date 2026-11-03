@@ -32,15 +32,14 @@ class Migration(migrations.Migration):
                 name="idx_guest_prop_phone",
             ),
         ),
-        migrations.AlterModelOptions(
-            name="guestphone",
-            options={
-                "verbose_name": "客人电话",
-                "verbose_name_plural": "客人电话",
-                "permissions": [
-                    ("phone_reveal", "能揭示客人电话号码完整值"),
-                ],
-            },
+        migrations.AlterField(
+            model_name="guest",
+            name="phone_normalized",
+            field=models.CharField(
+                blank=True, max_length=24, null=True,
+                help_text="去分隔符后的标准化号码；仅用于检索与候选匹配，不代表自然人唯一身份",
+                verbose_name="标准化手机号",
+            ),
         ),
         migrations.RunPython(mark_shared_phones, migrations.RunPython.noop),
     ]
