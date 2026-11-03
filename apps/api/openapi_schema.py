@@ -46,7 +46,7 @@ def _operation(summary, tag, method, *, path_params=(), query=(), body=None,
         "x-authentication": "Django Session Cookie" if auth else "匿名/业务凭据",
         "x-permission-boundary": permission,
     }
-    if method == "get" and tag == "公开预订" and "/reservations/{booking_no}" in item.get("operationId", ""):
+    if method == "get" and tag == "公开预订" and summary == "使用 Booking Access Token 查询预订":
         params.append(_param("X-Booking-Token", "header", "string", False, "Booking Access Token"))
     if params:
         item["parameters"] = params
