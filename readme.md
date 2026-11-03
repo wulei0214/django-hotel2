@@ -70,7 +70,7 @@ hotelapp/                       # 旧业务兼容层（逐步退役中）
 | **PMS 员工登录** | `/login/` | 员工登录入口（左右分栏企业级版式 v4，[截图](docs/screenshots/login-pms-v4.png)）；放行条件=有员工任职关系（D-04）；`next` 回跳经 `url_has_allowed_host_and_scheme` 安全校验 |
 | **后台登录** | `/admin/` | Django Admin 平台维护入口（simpleui 主题，[截图](docs/screenshots/login-admin.png)），仅超管 |
 | 注册 | `/register/` | 顾客自注册（仅创建顾客账号，不授员工权限） |
-| 主界面 | `/home/` | PMS2 权威仪表盘 |
+| 主界面 | `/home/` | PMS2 权威仪表盘（[截图](docs/screenshots/home-pms2-dashboard.png)）：统计卡/四图表/预警/财务卡全部来自 PMS2 模型 |
 | 前台工作台 | `/checkin/` | PMS2 排房/入住/收款/退房（旧页 `/checkin/legacy/`） |
 | 员工与账号管理 | `/staff_accounts/` | 员工全生命周期（店长） |
 | 权限矩阵 | `/permissions/` | 九角色权限分配（超管） |
@@ -148,6 +148,20 @@ python manage.py runserver 0.0.0.0:8000 --noreload
 - **种子数据补齐**：`seed_hotel_data` 幂等补建 `GuestPhone`（列表脱敏列数据源）与约 1/3 客人的 `GuestMembership`（STANDARD/ADVANCED/ELITE 分布）。
 
 161 项测试通过；店长账号浏览器实测四中心抽屉全部正常。
+
+### 5.3 数据源澄清 + 全站枚举中文化（2026-11-04）
+
+**两个工作台的数据源结论**：
+- `/home/` 主界面：**PMS2 新模型**（P1-11 切换）。本次修复遗留断裂——视图已切 `dashboard_data` 但模板仍绑定旧扁平键、图表数据未传递，导致页面全空；现统计卡按嵌套键绑定，新增 `dashboard_charts/dashboard_warnings/dashboard_finance` 三个 PMS2 聚合服务（房态分布/房型库存/会员分布/证件登记/预警/财务卡，店长以上可见）。
+- `/checkin/` 前台接待工作台：**PMS2 新模型**（`frontdesk.html` 走 `/api/v1/front-desk/*`）；旧模型页面在 `/checkin/legacy/` 只读过渡。
+
+**全站枚举中文化**（数据库仍存英文码，展示层翻译）：
+- 新建 `apps/core/labels.py` 中央标签模块：模型 `TextChoices` 中文 label 直接派生（房态三维/预订/入住/雇用/会员状态），无 choices 的枚举（币种/会员等级/账单摘要状态）集中定义。
+- API DTO 层统一输出 `*_label` 字段：`guest_center`（会员等级/状态、三维房态、币种、预订状态）、`staff_center`（雇用/任职状态、等级/状态）、`front_desk`（账单状态含"未开账"、币种、Stay 状态、房态三维、电话预订来源）。
+- 五中心列配置与详情抽屉全部切到 `*_label` 路径；`frontdesk.js` 房卡/详情原码显示点改用标签字段。
+- 主界面图表全部中文图例；`seed_hotel_data` 新增"今日运营快照"（在住 2 间+今日预抵 2 单+过期预警 1 单，幂等）。
+
+161 项测试通过；浏览器实测主界面/会员中心/预订中心/房态中心中文显示全部正确。
 
 ## 6. 文档索引
 

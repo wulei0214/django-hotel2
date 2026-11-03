@@ -9,6 +9,7 @@ import json
 
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.core import labels as L
 from apps.core.api_contract import ApiError, api_view, api_response, paginate
 from apps.identity.authorization import AuthorizationService
 from apps.identity.models import (
@@ -53,7 +54,12 @@ def _staff_dto(profile, property_obj):
         "employee_no": membership.employee_no if membership else None,
         "position_code": membership.position_code if membership else None,
         "employment_status": profile.employment_status,
+        "employment_status_label": L.employment_status_labels().get(
+            profile.employment_status, profile.employment_status),
         "membership_status": membership.status if membership else None,
+        "membership_status_label": (
+            L.gmembership_status_labels().get(membership.status, membership.status)
+            if membership else None),
         "account": ({
             "username": user.username, "is_active": user.is_active,
             "last_login": user.last_login.isoformat() if user.last_login else None,
@@ -138,7 +144,9 @@ def membership_list(request):
         "member_no": m.member_no,
         "guest": {"id": m.guest.pk, "full_name": m.guest.full_name},
         "level_code": m.level_code,
+        "level_label": L.member_level_label(m.level_code),
         "status": m.status,
+        "status_label": L.gmembership_status_labels().get(m.status, m.status),
         "joined_at": str(m.joined_at) if m.joined_at else None,
         "expires_at": str(m.expires_at) if m.expires_at else None,
         "legacy_vip_id": m.legacy_vip_id or None,
@@ -166,7 +174,10 @@ def membership_detail(request, membership_id):
     data = {
         "id": m.pk, "member_no": m.member_no,
         "guest": {"id": m.guest.pk, "full_name": m.guest.full_name},
-        "level_code": m.level_code, "status": m.status,
+        "level_code": m.level_code,
+        "level_label": L.member_level_label(m.level_code),
+        "status": m.status,
+        "status_label": L.gmembership_status_labels().get(m.status, m.status),
         "joined_at": str(m.joined_at) if m.joined_at else None,
         "legacy_vip_id": m.legacy_vip_id or None,
         "level_history": [{

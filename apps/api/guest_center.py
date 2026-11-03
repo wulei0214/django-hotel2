@@ -10,6 +10,7 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.core import labels as L
 from apps.core.api_contract import (ApiError, api_view, api_response, paginate, idempotent)
 from apps.core.models import AuditEvent
 from apps.guests.models import (
@@ -53,7 +54,9 @@ def _guest_dto(guest, user, property_obj, include_detail=False):
         "member": ({
             "member_no": membership.member_no,
             "level": membership.level_code,
+            "level_label": L.member_level_label(membership.level_code),
             "status": membership.status,
+            "status_label": L.gmembership_status_labels().get(membership.status, membership.status),
         } if membership else None),
         "current_stay": ({
             "room_number": current_stay.room.number,
@@ -129,8 +132,10 @@ def guest_detail(request, guest_id):
 
     reservations = Reservation.objects.filter(
         property=property_obj, guest=guest).order_by("-created_at")[:10]
+    _res_labels = L.reservation_status_labels()
     reservation_list = [{
         "booking_no": r.booking_no, "status": r.status,
+        "status_label": _res_labels.get(r.status, r.status),
         "check_in": str(r.check_in), "check_out": str(r.check_out),
         "total_amount": str(r.total_amount), "rooms": r.room_count,
     } for r in reservations]
@@ -175,8 +180,11 @@ def room_status_list(request):
         "room_type": {"id": r.room_type.pk, "code": r.room_type.code,
                       "name": r.room_type.name},
         "occupancy_status": r.occupancy_status,
+        "occupancy_label": L.room_label_maps()["occupancy"].get(r.occupancy_status, r.occupancy_status),
         "housekeeping_status": r.housekeeping_status,
+        "housekeeping_label": L.room_label_maps()["housekeeping"].get(r.housekeeping_status, r.housekeeping_status),
         "maintenance_status": r.maintenance_status,
+        "maintenance_label": L.room_label_maps()["maintenance"].get(r.maintenance_status, r.maintenance_status),
         "is_ready": r.is_sellable_now,
         "source_system": "PMS2",
     } for r in items]
@@ -254,6 +262,7 @@ def rate_calendar(request):
         "rate_plan": {"id": dr.rate_plan.pk, "code": dr.rate_plan.code},
         "stay_date": str(dr.stay_date),
         "price": str(dr.price), "currency": dr.currency,
+        "currency_label": L.currency_label(dr.currency),
         "closed": dr.closed,
     } for dr in rate_qs]
     return api_response(request, {"inventory": inventory_data, "rates": rate_data})

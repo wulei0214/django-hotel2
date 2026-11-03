@@ -169,7 +169,7 @@
             card.appendChild(element("span", "", (room.floor || "楼层未设置") + " · " + (room.room_type ? room.room_type.name : "")));
             var badge = badgeFor(room, "rooms");
             card.appendChild(element("span", "fd-status fd-status-" + badge[1], badge[0]));
-            card.appendChild(element("span", "", "占用：" + room.occupancy_status + " · 清洁：" + room.housekeeping_status));
+            card.appendChild(element("span", "", "占用：" + (room.occupancy_label || room.occupancy_status) + " · 清洁：" + (room.housekeeping_label || room.housekeeping_status)));
             card.appendChild(element("span", "", "维修：" + room.maintenance_status));
             grid.appendChild(card);
         });
@@ -716,7 +716,7 @@
             appendCell(row, bookingNo || "—", guest.full_name || "—");
             if (tab === "rooms") {
                 appendCell(row, item.room_type ? item.room_type.name : "—", (item.floor || "楼层未设置") + " · " + item.number);
-                appendCell(row, "当前房态", item.housekeeping_status + " / " + item.maintenance_status);
+                appendCell(row, "当前房态", (item.housekeeping_label || item.housekeeping_status) + " / " + (item.maintenance_label || item.maintenance_status));
                 appendCell(row, "—", "房间视图");
             } else if (tab === "legacy") {
                 appendCell(row, item.room_type ? item.room_type.name : "历史房型",

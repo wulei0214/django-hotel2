@@ -139,6 +139,54 @@ class Command(BaseCommand):
             created += 1
         total = Reservation.objects.filter(property=prop).count()
         self.stdout.write("  OK 预订新建 " + str(created) + " (总 " + str(total) + ")")
+        # ---------- 今日运营快照（让主界面/前台有活数据；幂等） ----------
+        from apps.reservations.models import ReservationRoom, Stay
+        from apps.inventory.models import Room as SeedRoom
+        today = date.today()
+        now = timezone.now()
+        # 1) 两单已确认且未入住 → 今日在住（分配房间 + Stay + 占用房态）
+        for res in Reservation.objects.filter(
+                property=prop, status="CONFIRMED",
+                reservation_rooms__assigned_room__isnull=True).distinct()[:2]:
+            rr = res.reservation_rooms.first()
+            if rr is None:
+                continue
+            room = SeedRoom.objects.filter(
+                property=prop, occupancy_status="VACANT",
+                housekeeping_status="CLEAN").first()
+            if room is None:
+                break
+            rr.assigned_room = room
+            rr.save(update_fields=["assigned_room"])
+            res.status = "CHECKED_IN"
+            res.save(update_fields=["status"])
+            Stay.objects.get_or_create(
+                reservation_room=rr,
+                defaults={"property": prop, "room": room,
+                          "status": "IN_HOUSE", "actual_check_in": now})
+            room.occupancy_status = "OCCUPIED"
+            room.save(update_fields=["occupancy_status"])
+        # 2) 两单待确认/已确认 → 今日预抵
+        for res in Reservation.objects.filter(
+                property=prop, status__in=["PENDING", "CONFIRMED"],
+                check_in__gt=today).order_by("id")[:2]:
+            res.check_in = today
+            res.save(update_fields=["check_in"])
+            res.reservation_rooms.update(check_in=today)
+        # 3) 一单待确认 → 昨日未到（过期预警演示）
+        overdue = Reservation.objects.filter(
+            property=prop, status="PENDING", check_in__gt=today
+        ).order_by("-id").first()
+        if overdue is None:
+            overdue = Reservation.objects.filter(
+                property=prop, status="PENDING", check_in=today
+            ).order_by("-id").first()
+        if overdue is not None:
+            overdue.check_in = today - timedelta(days=1)
+            overdue.save(update_fields=["check_in"])
+            overdue.reservation_rooms.update(
+                check_in=today - timedelta(days=1))
+        self.stdout.write("  OK 今日运营快照（在住/预抵/预警）")
         self.stdout.write(self.style.SUCCESS("真实模拟酒店测试数据创建完成"))
         # P1-10: LegacyRecordLink 填充
         from apps.core.models import LegacyRecordLink

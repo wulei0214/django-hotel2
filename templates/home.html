@@ -31,13 +31,11 @@
     </section>
 
     <section class="at-stats">
-        <div class="at-stat"><div class="stat-num">{{ stats.pending }}</div><div class="stat-label">待入住预订</div></div>
-        <div class="at-stat"><div class="stat-num">{{ stats.confirmed }}</div><div class="stat-label">已确认订单</div></div>
-        <div class="at-stat"><div class="stat-num">{{ stats.living }}</div><div class="stat-label">在住客人</div></div>
-        <div class="at-stat"><div class="stat-num">{{ stats.cleaning }}</div><div class="stat-label">待清洁房间</div></div>
-        {% if stats.revenue != None %}
-        <div class="at-stat"><div class="stat-num">{{ stats.revenue }}</div><div class="stat-label">累计收入（元）</div></div>
-        {% endif %}
+        <div class="at-stat"><div class="stat-num">{{ stats.reservations.arrivals_today }}</div><div class="stat-label">今日预抵</div></div>
+        <div class="at-stat"><div class="stat-num">{{ stats.reservations.departures_today }}</div><div class="stat-label">今日离店</div></div>
+        <div class="at-stat"><div class="stat-num">{{ stats.rooms.occupied }}</div><div class="stat-label">在住房间</div></div>
+        <div class="at-stat"><div class="stat-num">{{ stats.rooms.vacant_clean }}</div><div class="stat-label">空闲净房</div></div>
+        <div class="at-stat"><div class="stat-num">{{ stats.rooms.dirty }}</div><div class="stat-label">待清洁房间</div></div>
     </section>
 
     <h3 class="at-sec-title">数据仪表盘</h3>
@@ -84,35 +82,13 @@
                 <div class="sc"><div class="sc-label">当日收入</div><div class="sc-num">¥{{ finance_dash.today_in }}</div><div class="sc-sub">支出 ¥{{ finance_dash.today_out }}</div></div>
                 <div class="sc"><div class="sc-label">本周收入</div><div class="sc-num">¥{{ finance_dash.week_in }}</div><div class="sc-sub">支出 ¥{{ finance_dash.week_out }}</div></div>
                 <div class="sc"><div class="sc-label">年度收入</div><div class="sc-num">¥{{ finance_dash.year_in }}</div><div class="sc-sub">支出 ¥{{ finance_dash.year_out }}</div></div>
-                <div class="sc"><div class="sc-label">已结算房费</div><div class="sc-num">¥{{ finance_dash.settled }}</div></div>
+                <div class="sc"><div class="sc-label">已收款项</div><div class="sc-num">¥{{ finance_dash.settled }}</div></div>
             </div>
             {% else %}
             <p class="warn-empty">消费数据仅财务 / 值班经理 / 店长可见</p>
             {% endif %}
         </div>
     </section>
-
-    {% if show_fnb %}
-    <section class="dash-row">
-        <div class="dash-card">
-            <h4>后勤概览 · 菜品总数</h4>
-            <div class="big-num">{{ food_count }}</div>
-            <p class="warn-empty ok">菜品库存正常</p>
-        </div>
-        <div class="dash-card dash-wide">
-            <h4>后勤概览 · 最近餐饮订单</h4>
-            {% if recent_orders %}
-            <ul class="recent-list">
-                {% for o in recent_orders %}
-                <li><span class="dot ok-dot"></span>餐饮 - {{ o.dish }}（顾客 {{ o.guest }} · 桌号 {{ o.table }}）</li>
-                {% endfor %}
-            </ul>
-            {% else %}
-            <p class="warn-empty">暂无餐饮订单</p>
-            {% endif %}
-        </div>
-    </section>
-    {% endif %}
 
 <script src="/static/js/echarts.min.js"></script>
 <script>

@@ -16,6 +16,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.billing.models import Folio, Payment, Refund
+from apps.core import labels as L
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import Room
 from apps.reservations.models import NoShowRecord, Reservation, ReservationRoom, Stay
@@ -165,7 +166,8 @@ def _status_label(status):
 
 
 def _source_label(source):
-    return {"WEBSITE": "官网预订", "WALK_IN": "散客直入", "OTA": "渠道预订"}.get(source, source or "其他")
+    return {"WEBSITE": "官网预订", "WALK_IN": "散客直入", "OTA": "渠道预订",
+                "PHONE": "电话预订"}.get(source, source or "其他")
 
 
 def _folio_summaries(property_obj, reservation_ids):
@@ -188,11 +190,13 @@ def _folio_summaries(property_obj, reservation_ids):
         result[folio.reservation_id] = {
             "folio_id": folio.pk,
             "status": folio.status,
+            "status_label": L.folio_summary_status_label(folio.status),
             "charges": str(charges.quantize(Decimal("0.01"))),
             "credits": str(credits.quantize(Decimal("0.01"))),
             "balance": str(balance.quantize(Decimal("0.01"))),
             "pending_payment_count": pending_payments,
             "currency": folio.currency,
+            "currency_label": L.currency_label(folio.currency),
         }
     return result
 
@@ -200,8 +204,10 @@ def _folio_summaries(property_obj, reservation_ids):
 def _empty_folio_summary(currency="CNY"):
     return {
         "folio_id": None, "status": "NOT_OPENED",
+        "status_label": L.folio_summary_status_label("NOT_OPENED"),
         "charges": "0.00", "credits": "0.00", "balance": "0.00",
         "pending_payment_count": 0, "currency": currency,
+        "currency_label": L.currency_label(currency),
     }
 
 
@@ -235,6 +241,7 @@ def _reservation_room_dto(line, folio_map=None, stay_map=None):
         "stay": ({
             "id": stay.pk,
             "status": stay.status,
+            "status_label": L.stay_status_labels().get(stay.status, stay.status),
             "actual_check_in": stay.actual_check_in.isoformat() if stay.actual_check_in else None,
             "room_segments": [{
                 "room_number": segment.room.number,
@@ -508,12 +515,13 @@ def reservation_detail(request, booking_no):
         "child_count": reservation.child_count,
         "total_amount": str(reservation.total_amount),
         "currency": reservation.currency,
+        "currency_label": L.currency_label(reservation.currency),
         "rooms": [_reservation_room_dto(line, folio_map, stay_map) for line in lines],
         "folio_summary": folio_summary,
         "timeline": {
             "created_at": reservation.created_at.isoformat(),
             "updated_at": reservation.updated_at.isoformat(),
-            "stays": [{"id": stay.pk, "status": stay.status, "created_at": stay.created_at.isoformat(), "actual_check_in": stay.actual_check_in.isoformat() if stay.actual_check_in else None, "actual_check_out": stay.actual_check_out.isoformat() if stay.actual_check_out else None} for stay in stays],
+            "stays": [{"id": stay.pk, "status": stay.status, "status_label": L.stay_status_labels().get(stay.status, stay.status), "created_at": stay.created_at.isoformat(), "actual_check_in": stay.actual_check_in.isoformat() if stay.actual_check_in else None, "actual_check_out": stay.actual_check_out.isoformat() if stay.actual_check_out else None} for stay in stays],
         },
         "source_system": "PMS2",
         "allowed_actions": (["view_detail"]
@@ -548,8 +556,11 @@ def rooms(request):
         "floor": room.floor,
         "room_type": {"id": room.room_type_id, "name": room.room_type.name},
         "occupancy_status": room.occupancy_status,
+        "occupancy_label": L.room_label_maps()["occupancy"].get(room.occupancy_status, room.occupancy_status),
         "housekeeping_status": room.housekeeping_status,
+        "housekeeping_label": L.room_label_maps()["housekeeping"].get(room.housekeeping_status, room.housekeeping_status),
         "maintenance_status": room.maintenance_status,
+        "maintenance_label": L.room_label_maps()["maintenance"].get(room.maintenance_status, room.maintenance_status),
         "is_ready": room.is_sellable_now,
     } for room in queryset]
     return _response({"data": data, "meta": {"total": len(data)}})

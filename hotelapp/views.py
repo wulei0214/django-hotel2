@@ -1886,17 +1886,39 @@ def logout_view(request):
 
 @staff_required
 def home(request):
-    """主界面：PMS2 权威数据仪表盘（P1-11：不再读旧 hotelapp 统计）。"""
-    from apps.api.dashboard import dashboard_data
+    """主界面：PMS2 权威数据仪表盘（P1-11 切权威；本次补齐图表数据与模板绑定）。
+
+    修复：home.html 原仍消费旧扁平键 stats.pending 与旧模型图表数据，
+    导致页面统计卡与全部图表为空；现按 dashboard_data 嵌套键绑定，
+    图表/预警/财务卡全部来自 PMS2 模型（apps/api/dashboard.py）。
+    """
+    from apps.api.dashboard import (
+        dashboard_data, dashboard_charts, dashboard_warnings, dashboard_finance)
     from apps.core.models import Property
+    user = request.user
     prop = getattr(request, "property", None)
     if prop is None:
         prop = Property.objects.filter(code="DEFAULT").first()
-    stats = dashboard_data(prop)
-    return render(request, "home.html", {
-        "stats": stats, "role": _role_name(request.user),
+    stats = dashboard_data(prop) if prop else {}
+    charts = dashboard_charts(prop) if prop else {}
+    warnings = dashboard_warnings(prop) if prop else []
+    # 财务卡权限：财务/值班经理/店长（沿用旧页面口径：finance_access 或员工管理）
+    show_finance = bool(prop) and (
+        AuthorizationService.has_permission(user, prop, "hotelapp.finance_access")
+        or AuthorizationService.has_permission(user, prop, "identity.staff_manage"))
+    ctx = {
+        "stats": stats,
+        "role": _role_name(user),
         "today": str(timezone.localdate()),
-    })
+        "room_status_counts": charts.get("room_status_counts", []),
+        "room_type_inventory": charts.get("room_type_inventory", []),
+        "vip_counts": charts.get("vip_counts", []),
+        "client_dash": charts.get("client_dash", []),
+        "warnings": warnings,
+        "show_finance": show_finance,
+        "finance_dash": dashboard_finance(prop) if show_finance and prop else None,
+    }
+    return render(request, "home.html", ctx)
 
 def booking_page(request):
     """顾客自助预订：查看房型与价格，提交预订申请（状态=预订，待前台确认）"""
