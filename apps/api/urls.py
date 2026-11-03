@@ -39,6 +39,8 @@ urlpatterns = [
     path("guests/<int:guest_id>", guest_center.guest_detail, name="guest_detail"),
     path("guests/create", guest_center.guest_create, name="guest_create"),
     path("guests/<int:guest_id>/update", guest_center.guest_update, name="guest_update"),
+    path("guests/<int:guest_id>/documents/<int:document_id>/reveal", guest_center.guest_reveal_document, name="guest_reveal_document"),
+    path("guests/<int:guest_id>/phones/<int:phone_id>/reveal", guest_center.guest_reveal_phone, name="guest_reveal_phone"),
     # --- Room 中心 (V1.1 Phase 1 只读原型) ---
     path("rooms/status", guest_center.room_status_list, name="room_status_list"),
     path("room-types", guest_center.room_type_list, name="room_type_list"),

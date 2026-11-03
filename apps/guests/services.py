@@ -108,19 +108,17 @@ class GuestService:
     @staticmethod
     def create_guest(*, property_obj, full_name, phone="", email="",
                      notes="", created_by=None, request=None):
-        """创建客人档案 + 可选主号码；同物业标准化手机号查重。"""
+        """创建客人档案；共享电话只标记人工核验，不把不同客人自动合并。"""
         from .models import Guest, GuestPhone
         full_name = (full_name or "").strip()
         if not full_name:
             raise GuestServiceError("客人姓名不能为空。")
         norm = normalize_phone(phone)
-        if norm:
-            existing = Guest.objects.filter(
-                property=property_obj, phone_normalized=norm).first()
-            if existing:
-                raise GuestServiceError(
-                    f"该手机号已关联客人「{existing.full_name}」(ID:{existing.pk})；"
-                    "如为同一人请使用已有档案，如为共享号码请走人工核验流程。")
+        shared_phone = bool(norm and GuestPhone.objects.filter(
+            phone_normalized=norm).exists())
+        if shared_phone:
+            GuestPhone.objects.filter(phone_normalized=norm).update(
+                shared_review_required=True)
         guest = Guest.objects.create(
             property=property_obj, full_name=full_name,
             phone=phone, phone_normalized=norm or None,
@@ -128,7 +126,8 @@ class GuestService:
         if norm:
             GuestPhone.objects.create(
                 guest=guest, phone=phone, phone_normalized=norm,
-                is_primary=True, source="前台登记")
+                is_primary=True, source="前台登记",
+                shared_review_required=shared_phone)
         AuditEvent.record(
             action="guest.create", entity_type="Guest", entity_id=guest.pk,
             actor=created_by, property_obj=property_obj,
@@ -137,10 +136,10 @@ class GuestService:
         return guest
 
     @staticmethod
-    def update_guest(*, guest_id, updated_by=None, request=None, **fields):
-        """更新客人档案字段；手机号变更保留历史并写审计。"""
+    def update_guest(*, guest_id, property_obj, updated_by=None, request=None, **fields):
+        """物业范围内更新客人档案；手机号变更保留历史并写审计。"""
         from .models import Guest, GuestPhone
-        guest = Guest.objects.select_related().get(pk=guest_id)
+        guest = Guest.objects.select_related().get(pk=guest_id, property=property_obj)
         changed = {}
         for field in ("full_name", "email", "notes"):
             if field in fields and fields[field] is not None:
@@ -156,9 +155,15 @@ class GuestService:
                 old_phone = guest.phone or ""
                 GuestPhone.objects.filter(
                     guest=guest, is_primary=True).update(is_primary=False)
+                shared_phone = GuestPhone.objects.filter(
+                    phone_normalized=norm).exclude(guest=guest).exists()
+                if shared_phone:
+                    GuestPhone.objects.filter(phone_normalized=norm).update(
+                        shared_review_required=True)
                 GuestPhone.objects.create(
                     guest=guest, phone=phone, phone_normalized=norm,
-                    is_primary=True, source="前台变更")
+                    is_primary=True, source="前台变更",
+                    shared_review_required=shared_phone)
                 guest.phone = phone
                 guest.phone_normalized = norm
                 changed["phone"] = {"before": _mask(old_phone),

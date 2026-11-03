@@ -28,7 +28,7 @@ def timezone_now():
 
 def _staff_dto(profile, property_obj):
     membership = PropertyStaffMembership.objects.filter(
-        staff_profile=profile).first()
+        staff_profile=profile, property=property_obj).first()
     user = profile.user
     now = timezone_now()
     assignments = []
@@ -71,7 +71,9 @@ def staff_list(request):
     if not AuthorizationService.has_permission(user, property_obj, "identity.staff_manage"):
         raise _api_error("PERMISSION_DENIED", "缺少员工管理权限。")
 
-    qs = StaffProfile.objects.select_related("user").order_by("-created_at")
+    qs = StaffProfile.objects.filter(
+        property_memberships__property=property_obj
+    ).select_related("user").distinct().order_by("-created_at")
     q = (request.GET.get("q") or "").strip()
     if q:
         from django.db.models import Q
@@ -93,7 +95,9 @@ def staff_detail(request, profile_id):
     if not AuthorizationService.has_permission(user, property_obj, "identity.staff_manage"):
         raise _api_error("PERMISSION_DENIED", "缺少员工管理权限。")
     try:
-        profile = StaffProfile.objects.select_related("user").get(pk=profile_id)
+        profile = StaffProfile.objects.filter(
+                property_memberships__property=property_obj
+            ).select_related("user").get(pk=profile_id)
     except StaffProfile.DoesNotExist:
         raise _api_error("RESOURCE_NOT_FOUND", "员工不存在。")
     data = _staff_dto(profile, property_obj)

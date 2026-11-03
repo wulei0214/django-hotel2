@@ -63,24 +63,21 @@ def _guest_dto(guest, user, property_obj, include_detail=False):
         "created_at": guest.created_at.isoformat(),
     }
     if include_detail:
-        can_reveal = user.has_perm("guests.document_reveal")
         docs = []
         for doc in GuestDocument.objects.filter(guest=guest):
-            entry = {
+            try:
+                masked = _mask(decrypt_doc_no(doc.doc_no_ciphertext))
+            except Exception:
+                masked = "解密失败"
+            docs.append({
                 "id": doc.pk, "doc_type": doc.doc_type,
-                "masked": None, "is_primary": doc.is_primary,
+                "masked": masked, "is_primary": doc.is_primary,
                 "verified": doc.verified_at is not None,
-            }
-            if can_reveal:
-                try:
-                    plain = decrypt_doc_no(doc.doc_no_ciphertext)
-                    entry["masked"] = _mask(plain)
-                except Exception:
-                    entry["masked"] = "解密失败"
-            docs.append(entry)
+            })
         dto["documents"] = docs
         dto["phones"] = [
-            {"phone": p.phone if can_reveal else (p.phone[:3] + "****" + p.phone[-4:] if len(p.phone) >= 8 else p.phone),
+            {"phone": (p.phone[:3] + "****" + p.phone[-4:]
+                       if len(p.phone) >= 8 else "已隐藏"),
              "type": p.phone_type, "is_primary": p.is_primary}
             for p in phones
         ]
@@ -303,7 +300,8 @@ def guest_update(request, guest_id):
     body = _parse_body(request)
     try:
         guest, changed = GuestService.update_guest(
-            guest_id=guest_id, updated_by=user, request=request,
+            guest_id=guest_id, property_obj=property_obj,
+            updated_by=user, request=request,
             full_name=body.get("full_name"),
             phone=body.get("phone"),
             email=body.get("email"),
@@ -314,3 +312,64 @@ def guest_update(request, guest_id):
         raise ApiError("BUSINESS_CONFLICT", str(exc))
     return api_response(request, {"id": guest.pk, "changed": list(changed.keys())})
 
+
+
+@require_POST
+@api_view
+def guest_reveal_document(request, guest_id, document_id):
+    """按需揭示证件完整值；独立权限、强制原因、逐次审计。"""
+    user = request.user
+    property_obj = getattr(request, "property", None)
+    if property_obj is None or not AuthorizationService.has_permission(
+            user, property_obj, "hotelapp.guest_document_reveal"):
+        raise ApiError("PERMISSION_DENIED", "当前岗位无证件完整值揭示权限。")
+    guest = Guest.objects.filter(pk=guest_id, property=property_obj).first()
+    if guest is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "客人不存在。")
+    document = GuestDocument.objects.filter(pk=document_id, guest=guest).first()
+    if document is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "客人证件不存在。")
+    body = _parse_body(request)
+    reason = str(body.get("reason") or "").strip()
+    if len(reason) < 8 or len(reason) > 240:
+        raise ApiError("VALIDATION_ERROR", "揭示证件必须填写 8 至 240 个字符的业务用途/原因。")
+    try:
+        plain = decrypt_doc_no(document.doc_no_ciphertext)
+    except Exception:
+        raise ApiError("BUSINESS_CONFLICT", "证件密文无法解密，请联系系统管理员。")
+    AuditEvent.record(
+        action="guest.pii_reveal.document", entity_type="GuestDocument",
+        entity_id=document.pk, actor=user, property_obj=property_obj,
+        after={"masked": _mask(plain)}, reason=reason, request=request)
+    return api_response(request, {
+        "guest_id": guest.pk, "document_id": document.pk,
+        "doc_type": document.doc_type, "document_no": plain,
+    })
+
+
+@require_POST
+@api_view
+def guest_reveal_phone(request, guest_id, phone_id):
+    """按需揭示电话完整值；与证件揭示分权，并强制记录业务理由。"""
+    user = request.user
+    property_obj = getattr(request, "property", None)
+    if property_obj is None or not AuthorizationService.has_permission(
+            user, property_obj, "hotelapp.guest_phone_reveal"):
+        raise ApiError("PERMISSION_DENIED", "当前岗位无客人电话完整值揭示权限。")
+    guest = Guest.objects.filter(pk=guest_id, property=property_obj).first()
+    if guest is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "客人不存在。")
+    phone = GuestPhone.objects.filter(pk=phone_id, guest=guest).first()
+    if phone is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "客人电话不存在。")
+    body = _parse_body(request)
+    reason = str(body.get("reason") or "").strip()
+    if len(reason) < 8 or len(reason) > 240:
+        raise ApiError("VALIDATION_ERROR", "揭示电话必须填写 8 至 240 个字符的业务用途/原因。")
+    AuditEvent.record(
+        action="guest.pii_reveal.phone", entity_type="GuestPhone",
+        entity_id=phone.pk, actor=user, property_obj=property_obj,
+        after={"masked": _mask(phone.phone)}, reason=reason, request=request)
+    return api_response(request, {
+        "guest_id": guest.pk, "phone_id": phone.pk, "phone": phone.phone,
+    })
