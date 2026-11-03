@@ -164,6 +164,10 @@ def room_status_list(request):
     room_type_id = request.GET.get("room_type_id")
     if room_type_id:
         qs = qs.filter(room_type_id=room_type_id)
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        from django.db.models import Q
+        qs = qs.filter(Q(number__icontains=q) | Q(room_type__name__icontains=q))
 
     items, pagination = paginate(qs, request)
     data = [{
@@ -214,7 +218,10 @@ def rate_calendar(request):
 
     from datetime import date, timedelta
     start = request.GET.get("start") or str(date.today())
-    days = min(30, int(request.GET.get("days", "14")))
+    try:
+        days = min(30, max(1, int(request.GET.get("days", "14"))))
+    except (TypeError, ValueError):
+        raise ApiError("VALIDATION_ERROR", "days 必须是 1 至 30 的整数。")
     try:
         start_date = date.fromisoformat(start)
     except (TypeError, ValueError):
@@ -372,4 +379,33 @@ def guest_reveal_phone(request, guest_id, phone_id):
         after={"masked": _mask(phone.phone)}, reason=reason, request=request)
     return api_response(request, {
         "guest_id": guest.pk, "phone_id": phone.pk, "phone": phone.phone,
+    })
+
+
+@require_POST
+@api_view
+@idempotent
+def adjust_daily_rate_api(request, rate_id):
+    """每日房价调整 API：店长独立权限、业务原因和领域服务审计。"""
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
+    if not AuthorizationService.has_permission(
+            request.user, property_obj, "inventory.manage_rates"):
+        raise ApiError("PERMISSION_DENIED", "当前岗位没有房价调整权限。")
+    body = _parse_body(request)
+    from apps.inventory.services import adjust_daily_rate
+    try:
+        rate, changed = adjust_daily_rate(
+            property_obj=property_obj, rate_id=rate_id,
+            price=body.get("price"), reason=body.get("reason"),
+            updated_by=request.user, request=request)
+    except ValueError as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    return api_response(request, {
+        "daily_rate_id": rate.pk, "room_type_id": rate.room_type_id,
+        "rate_plan_id": rate.rate_plan_id,
+        "stay_date": rate.stay_date.isoformat(),
+        "price": str(rate.price), "currency": rate.currency,
+        "changed": changed,
     })

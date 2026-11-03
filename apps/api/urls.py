@@ -49,6 +49,7 @@ urlpatterns = [
     path("rooms/status", guest_center.room_status_list, name="room_status_list"),
     path("room-types", guest_center.room_type_list, name="room_type_list"),
     path("rate-calendar", guest_center.rate_calendar, name="rate_calendar"),
+    path("daily-rates/<int:rate_id>/adjust", guest_center.adjust_daily_rate_api, name="adjust_daily_rate"),
     # --- Staff 中心 (V1.1 Phase 1) ---
     path("staff", staff_center.staff_list, name="staff_list"),
     path("staff/<int:profile_id>", staff_center.staff_detail, name="staff_detail"),

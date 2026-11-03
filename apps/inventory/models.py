@@ -160,6 +160,9 @@ class RatePlan(models.Model):
                 name="ck_rate_plan_valid_dates",
             ),
         ]
+        permissions = (
+            ("manage_rates", "能管理酒店每日房价"),
+        )
 
     def __str__(self):
         return f"{self.code} - {self.name}"

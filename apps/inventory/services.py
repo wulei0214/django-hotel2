@@ -233,3 +233,57 @@ def release_sold_inventory_for_room_line(line, *, from_date):
         row.version += 1
         row.save(update_fields=("sold", "version", "updated_at"))
     return len(rows)
+
+
+def adjust_daily_rate(*, property_obj, rate_id, price, reason,
+                      updated_by=None, request=None):
+    """调价唯一写入口：物业校验、价格精度、历史保护和审计。"""
+    from decimal import Decimal, InvalidOperation
+    from zoneinfo import ZoneInfo
+    from django.db import transaction
+    from django.utils import timezone
+    from apps.core.models import AuditEvent
+    from .models import DailyRate
+
+    reason = str(reason or "").strip()
+    if not reason or len(reason) > 240:
+        raise ValueError("调价必须填写 1 至 240 个字符的原因。")
+    try:
+        amount = Decimal(str(price))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError("价格格式无效。") from exc
+    if (not amount.is_finite() or amount < 0
+            or amount != amount.quantize(Decimal("0.01"))):
+        raise ValueError("价格必须是非负且精确到分的金额。")
+    try:
+        tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")
+    except Exception:
+        tz = ZoneInfo("Asia/Shanghai")
+    today = timezone.localdate(timezone.now(), tz)
+
+    with transaction.atomic():
+        rate = DailyRate.objects.select_for_update().filter(
+            pk=rate_id, property=property_obj,
+            rate_plan__property=property_obj,
+            room_type__property=property_obj,
+        ).first()
+        if rate is None:
+            raise ValueError("每日房价不存在或不属于当前物业。")
+        if rate.closed:
+            raise ValueError("该住宿日已关房，不能调整房价。")
+        if rate.stay_date < today:
+            raise ValueError("历史住宿日的房价不可修改。")
+        before = rate.price
+        if before == amount:
+            return rate, False
+        rate.price = amount
+        rate.save(update_fields=("price", "updated_at"))
+        AuditEvent.record(
+            action="inventory.daily_rate_adjust",
+            entity_type="DailyRate", entity_id=rate.pk,
+            actor=updated_by, property_obj=property_obj,
+            before={"price": str(before), "stay_date": rate.stay_date.isoformat()},
+            after={"price": str(amount), "stay_date": rate.stay_date.isoformat()},
+            reason=reason, request=request,
+        )
+        return rate, True
