@@ -1,816 +1,151 @@
-# 酒店管理系统（PMS）
+# 酒店管理系统（PMS）V2.0
 
-本仓库正在将历史 Django 酒店 CRUD 原型，渐进式重构为以**预订、库存、在住、账务**为核心的可运营级单体酒店 PMS。
-
-> **当前版本：PMS 2.0 Phase 1 + Phase 2 已完成代码交付。**  
-> **版本约束：PMS 3.0 仅完善现有功能、修复 Bug、处理安全/性能/兼容问题和回归，不新增业务功能。**
+> **架构**：Django 4.1 模块化单体（`apps/` PMS2 + `hotelapp/` 兼容层）+ MySQL 8 / SQLite
+> **代码基线**：`main` 分支 | **测试**：162 项 | **CI**：GitHub Actions（MySQL 8 + SQLite 双引擎）
 
 ## 1. 项目现状
 
-- 当前按单体酒店落地，通过 `Property` 和核心业务表的 `property_id` 为后续连锁/多物业预留隔离能力。
-- 新业务采用模块化单体、Django B/S、API-First；顾客端新页面采用 Django Template + 原生 JavaScript。
-- 新预订页为 `/reserve/`，旧版 `/booking/` 保留，员工端旧页面按业务域逐步迁移。
-- 本地模拟支付仅验证订单、支付状态和账本流转，不会真实扣款或退款。
-- OTA、公安旅业系统、真实支付服务商、POS、停车/车牌识别、电子发票/数电票暂不接入，只保留后续适配边界。
-- 不是微服务架构；当前没有独立 Next.js 前端、DRF、Celery、Redis 或消息队列。
+PMS2 已建立完整的业务骨架和权限体系。前台入住工作台（`/checkin/`）已使用 PMS2 API；
+员工与账号管理工作台（`/staff_accounts/`）承载员工全生命周期；后台管理体系（Django Admin）
+已收缩为平台维护/只读审计工具。
+
+### 已交付
+
+| 层次 | 内容 |
+|---|---|
+| **PMS2 模型** | Guest/GuestPhone/GuestDocument/GuestMembership、RoomType/Room/RatePlan/DailyRate/RoomTypeInventory、Reservation/ReservationRoom/ReservationGuest/Stay/StayGuest/StayRoomSegment、Folio/LedgerEntry/Payment/Refund/FolioTransfer、HousekeepingTask/MaintenanceTicket/RoomInspection、BusinessDate/NightAuditRun、InventoryHold、CancellationPolicy/DepositPolicy |
+| **员工与授权** | StaffProfile/Membership/RoleAssignment + EmployeeLifecycleService + AuthorizationService + 员工工作台（/staff_accounts/） |
+| **前台工作台** | /checkin/ PMS2 工作台 + /api/v1/front-desk/ 23 端点（排房/入住/收款/退房/续住/换房/No-Show/退款） |
+| **审批** | ApprovalRecord 持久化 + ApprovalService（退款/重开双人 SoD）+ Break-glass（10 分钟限时） |
+| **审计** | core.AuditEvent 只追加 + 实体时间线索引 + PII 揭示/角色/退款/薪酬等关键路径接入 |
+| **P0 安全** | 注册止血 / GET 写 405 / Admin PMS2 只读 / SQL 移除 / CSRF_USE_SESSIONS / Session 隔离 |
+| **字段安全** | GuestDocument Fernet 加密 + HMAC 查重 + document_reveal/phone_reveal 独立权限 + PII 揭示审计 |
+| **测试** | 162 项自动化测试（SQLite + MySQL 8 双引擎 CI） |
 
 ## 2. 技术架构
 
-| 层 | 技术/模块 |
-|---|---|
-| Web 框架 | Django 4.1 |
-| 架构 | 模块化单体（Modular Monolith）、B/S、API-First |
-| 页面 | Django Template + 原生 JavaScript |
-| API | Django View + JsonResponse，API v1 |
-| 管理后台 | Django Admin + django-simpleui |
-| 认证授权 | Django User / Session / Group / Permission + 员工任职/岗位授权模型 |
-| 数据库 | 默认 MySQL；配置支持 PostgreSQL / SQLite |
-| 缓存 | 当前默认 LocMemCache |
-| 业务模块 | core、identity、guests、inventory、reservations、billing、api |
-| 兼容层 | hotelapp（历史页面与尚未迁移的模块） |
-
-详细设计见 [技术架构说明](docs/ARCHITECTURE.md)。
-
-## 3. 当前已交付模块
-
-| 模块 | 已交付内容 |
-|---|---|
-| 平台底座 | Property 物业上下文、默认物业配置 |
-| 员工身份与账号 | StaffProfile、PropertyStaffMembership、StaffRoleAssignment；统一生命周期 Service 管理建档、开通账号、角色授权、暂停/离职和密码重置 |
-| 前台接待 | PMS 2.0 前台工作台 /checkin/；查询 API、排房、入住、线下收款登记和退房 API 与详情抽屉操作已接通 |
-| 住客 | Guest 档案及物业内联系电话去重 |
-| 房型与客房 | RoomType、Room，房态拆分为占用/清洁/维修 |
-| 房价与库存 | RatePlan、DailyRate、RoomTypeInventory，按住宿日管理库存与价格 |
-| 预订 | Reservation、ReservationRoom，幂等键、价格快照、库存 Hold |
-| 在住模型 | Stay 已接入事务化排房、办理入住和退房服务；房费按预订价格快照入账，退房要求 Folio 余额归零，收款登记只记录操作员确认已实际收到的线下款项 |
-| 账务 | Folio、Payment、LedgerEntry，不可变账本基础 |
-| API | 查房、创建预订、订单查询/取消、Mock 支付、OpenAPI JSON |
-| 顾客端 | 新增 `/reserve/`，旧 `/booking/` 保留 |
-
-**注意：** 历史 `hotelapp` 的员工管理、入住/退房、夜审、财务等页面尚未全部迁移到新领域服务。不要把“模型已建立”误认为“整个业务流程已经上线”。
-
-## 4. 当前页面入口
-
-| 页面 | 地址 | 状态 |
-|---|---|---|
-| 顾客端新预订 | `/reserve/` | PMS 2.0 新页面 |
-| 顾客端旧预订 | `/booking/` | 历史兼容页面 |
-| 员工登录 | `/login/` | 历史员工端 |
-| 员工工作台 | `/home/` | 历史页面 |
-| 前台入住管理 | `/checkin/` | PMS 2.0 工作台；订单详情支持排房、入住、线下收款登记和退房，写操作由 API 二次校验岗位权限 |
-| 旧版入住管理 | `/checkin/legacy/` | 历史入住管理页面回退入口 |
-| Django Admin | `/admin/` | 管理员后台 |
-
-新页面与截图规则见 [界面说明](docs/UI_GUIDE.md)。仓库旧截图属于历史页面，不作为新预订页的当前效果图。
-
-## 5. 业务核心规则
-
-- 入住日期包含，离店日期不包含；价格与库存按每一个住宿日检查。
-- 预订时保存每晚成交价快照，后续调价不改变历史订单金额。
-- 同一预订请求使用 Idempotency-Key，防止重复提交。
-- 房态拆分为占用状态、清洁状态、维修状态；可售判断不能只看单一字段。
-- Reservation（预订合同）、ReservationRoom（房间明细）、Stay（实际入住）分离。
-- Folio（账单）与 Payment（支付流水）、LedgerEntry（账本凭证）分离。
-- LedgerEntry 不允许常规物理删除或直接修改；财务纠错使用红字冲销并记录原因。
-- Mock 支付只允许 dev/test 环境，生产环境不得展示模拟支付或模拟回调。
-
-## 6. 本地开发
-
-完整步骤见 [开发与本地运行指南](docs/DEVELOPMENT_GUIDE.md)。
-
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\Activate.ps1
-# macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-python manage.py check
-python manage.py migrate
-python manage.py runserver
 ```
-
-顾客端新页面：<http://127.0.0.1:8000/reserve/>
-
-默认数据库为 MySQL；也可通过环境变量切换 PostgreSQL 或 SQLite。运行前需要配置数据库连接、Django Secret、默认物业及 Mock 回调密钥。
-
-## 7. 测试与 CI
-
-```bash
-python manage.py check
-python manage.py makemigrations --check --dry-run
-python manage.py test
-```
-
-CI 检查结果以对应 PR 最新提交的 GitHub Actions 为准。SQLite CI 不替代真实 MySQL/PostgreSQL 的事务锁和并发压力测试。
-
-## 8. 目录结构
-
-```text
+hotel/                          # Django 项目配置
 apps/
-  core/          # 物业与上下文
-  identity/      # 员工身份、任职和岗位授权
-  guests/        # 住客档案
-  inventory/     # 房型、客房、房价、日库存
-  reservations/  # 预订、预订明细、Stay
-  billing/       # Folio、Payment、LedgerEntry
-  api/           # API v1 与顾客端页面入口
-hotel/           # Django 项目配置与根路由
-hotelapp/        # 历史系统与渐进迁移兼容层
-templates/       # Django 模板
-docs/
-  ARCHITECTURE.md
-  DEVELOPMENT_GUIDE.md
-  CHANGELOG.md
-  UI_GUIDE.md
-  development/   # 分阶段开发记录
+  core/                         # Property、AuditEvent、LegacyRecordLink、BusinessDate、IdempotencyRecord
+  identity/                     # StaffProfile、Membership、RoleAssignment、AuthorizationService
+  guests/                       # Guest、GuestPhone、GuestDocument、GuestMembership
+  inventory/                    # RoomType、Room、RatePlan、DailyRate、RoomTypeInventory
+  reservations/                 # Reservation、ReservationRoom、Stay、StayRoomSegment、NoShowRecord
+  billing/                      # Folio、LedgerEntry、Payment、Refund、FolioTransfer、CashierShift
+  api/                          # /api/v1/ 前台工作台 + 客人中心 + 房态中心 + 员工中心 + 会员
+hotelapp/                       # 旧业务兼容层（逐步退役中）
 ```
 
-## 9. 文档索引
+### 关键服务
 
-- [技术架构说明](docs/ARCHITECTURE.md)
-- [本地开发指南](docs/DEVELOPMENT_GUIDE.md)
-- [界面与页面说明](docs/UI_GUIDE.md)
-- [开发变更记录](docs/CHANGELOG.md)
-- [Phase 2 预订与库存开发记录](docs/development/PMS2_PHASE2_RESERVATION_INVENTORY.md)
-
-## 10. 推送与文档更新规范
-
-每次推送必须使用中文说明：
-1. 本次新增/开发了什么；
-2. 修复了哪些 Bug 或风险；
-3. 影响哪些模块、API、数据库和配置；
-4. 测试执行结果；
-5. 界面是否变化，是否更新最新截图；
-6. 已知限制与回滚说明。
-
-文档必须与代码同一 PR 更新。不得只推送代码而不留下可追溯的中文变更说明。详见开发指南。
-
-## 11. 版本路线
-
-- PMS 2.0：完成已确定的核心架构和业务模块闭环，按阶段迁移。
-- PMS 3.0：只做现有功能完善、Bug 修复、权限/安全/性能/兼容优化与自动化回归，不增加新业务模块。
-
-## 权限分配管理（超管专属，`/permissions/`）
-
-参照主流 RBAC 管理台（若依、Mews Role-based Permissions 等）的通用交互实现的权限分配页：
-
-- **角色中心制**：以角色（前台 / 值班经理 / 财务 / 店长）为分配对象，不逐用户授权；角色编号 `R-<组ID>` 展示
-- **左栏 菜单管理**：模块勾选 = `view` 权限 = 侧边栏菜单可见性，父子联动
-- **右栏 功能权限卡片**：每模块 查看/新增/修改/删除 四个权限点 + 单卡全选，实时统计已选数量
-- **保存**：整体覆盖该角色 `hotelapp` 权限集合；服务端按白名单过滤防伪造提权；变更写入审计日志
-- **护栏**：仅超管可访问；前端隐藏按钮不是权限控制，接口层 `permission_required` 双重强制
-
-> 参考：[WorkOS – RBAC Best Practices](https://workos.com/blog/rbac-best-practices)、
-> [Pathlock – RBAC Comprehensive Guide](https://pathlock.com/blog/role-based-access-control-rbac)、
-> [Mews Role-based permissions](https://help.mews.com/s/article/Role-based-permissions-FAQ?language=en_US)
-
-## 系统环境配置信息（`/system/`）
-
-参照商用 PMS 的「个人中心 / 系统信息」页设计的登录后信息页（左侧菜单 → 系统信息）：
-
-- **欢迎横幅**：姓名 + 角色徽章 + 账号 + 登录时间
-- **当前账号信息卡**：账号编号（`AD-<用户ID>` 补零格式）、姓名、登录账号、角色、超管标志、账号状态
-- **系统环境配置信息卡**：服务器版本、API 基址（`/api/v1/` 绝对地址）、运行模式（development/production）、时区、浏览器语言、系统语言、会话生效/过期时间与剩余有效期（基于 `SESSION_COOKIE_AGE` 与 `user.last_login` 计算）
-
-## 图5 列表页改版（全部业务模块统一）
-
-全部业务模块的管理页面已按统一规范改版：
-
-| 组件 | 说明 |
-|---|---|
-| 工具栏 | 刷新数据 / 导出数据（CSV）/ 添加（按权限显示）|
-| 筛选条件 | 可折叠面板，含属性查询与状态筛选 |
-| 数据表格 | 复选框选择行、可排序编号列、行悬停高亮 |
-| 分页 | 每页 15 条，`共 N 条记录` + 页码导航 |
-| 状态徽章 | 员工管理新增「是否启用」列，点击徽章即可切换（免删除） |
-| 导出 | `/export/<模块>/` CSV（UTF-8 BOM，Excel 直接打开），按 view 权限校验 |
-
-员工管理额外支持：勾选单行后点「编辑员工」直接进入该行行内编辑。
-
-## 变更记录（图5 批次）
-
-- 员工管理：新增 `Staff.启用` 字段（0013 迁移）、启用/停用切换接口、CSV 导出、分页与排序
-- 其余 7 个模块：统一接入工具栏 / 筛选折叠面板 / 分页 / CSV 导出
-- 技术细节：分页使用 `django.core.paginator.Paginator`；导出按模块白名单映射字段并校验 view 权限
-
-## 权限分配管理：矩阵式重设计
-
-应运营反馈完全重做：放弃“左树 + 右卡片”双栏结构，改为**一张权限矩阵表**（与 PMS 2.0 说明书 §5.4.1 岗位权限矩阵同构）——行=业务模块，列=查看/新增/修改/删除，一眼看清每个角色能干什么。
-
-- **角色切换**：页头角色标签（前台 / 值班经理 / 财务 / 店长）点击即切，当前角色高亮
-- **联动全选**：整行全选（一个模块全部动作）、整列全选（所有模块同一动作）、全局全选，三粒度联动
-- **全中文**：界面无英文权限代码；「查看」列同时控制模块菜单可见性
-- **保存即生效**：原生复选框多值提交（无拼接歧义），服务端白名单过滤后整体覆盖，立即生效
-- **超管说明**：页面明确标注超级管理员拥有全部权限、不受此页控制
-
-### 缺陷修复：全选后权限被清空
-
-- **根因**：前端把勾选的权限点以逗号串放入单个字段，后端 `getlist` 按单值处理，与白名单交集为空——保存后角色权限整体清零
-- **修复**：改为原生复选框多值提交（`getlist` 天然支持），彻底消除拼接歧义；实测 空/全选/矩阵 三种提交均正确入库
-- **矩阵重梳**：前台 17 项 / 值班经理 20 项 / 财务 7 项（只读）/ 店长 24 项（无删除），经保存链路写入并逐组校验一致
-
-
-- **修复严重缺陷**：全选/批量保存时，前端把权限点以逗号串放入单个字段，后端按单值处理导致与白名单交集为空——**保存后角色权限被整体清空**。已修复为兼容逗号串与多值两种提交（`apps/identity/permission_admin.py`），实测全选 32 项保存后完整入库
-- **全中文化**：权限点不再显示英文代码（如 `view_client`），改为「查看 / 新增 / 修改 / 删除」纯中文动作名（所属模块由卡片标题表达）；角色编号展示改为 `角色编号：1 · 角色名称：前台`
-- **角色权限矩阵重梳**（经权限页保存链路写入并校验一致）：
-
-| 角色 | 权限集 | 项数 |
+| 服务 | 位置 | 职责 |
 |---|---|---|
-| 前台 | 顾客/会员/餐饮订单/客房订单/车位的 查看+新增+修改；餐厅/客房 查看 | 17 |
-| 值班经理 | 前台全部 + 客房修改 + 餐饮订单/客房订单删除（反结账冲账权） | 20 |
-| 财务 | 7 个业务模块只读 | 7 |
-| 店长 | 全部模块 查看+新增+修改（含员工管理），无删除 | 24 |
+| EmployeeLifecycleService | `apps/identity/services.py` | 员工建档/开账号/分角色/调岗/离职唯一写入口 |
+| AuthorizationService | `apps/identity/authorization.py` | 按物业+有效任职+角色检查动作权限 |
+| GuestService | `apps/guests/services.py` | 客人建档/更新/电话/证件唯一写入口 |
+| GuestMembershipService | `apps/guests/services.py` | 会员关系创建/等级变更 |
+| FrontDeskLifecycleService | `apps/reservations/front_desk_services.py` | 排房/入住/收款/退房 |
+| LifecycleService | `apps/reservations/lifecycle_services.py` | 续住/换房/No-Show/押金/退款审批 |
+| NightAuditService | `apps/billing/night_audit.py` | 营业日/夜审/重开审批/Break-glass |
+| BillingService | `apps/billing/services_v2.py` | 收款/退款/冲销/班次/财务汇总 |
+| DashboardService | `apps/api/dashboard.py` | PMS2 权威仪表盘聚合 |
 
-- **界面英文术语清理**：散客直入页去掉「Walk-in」、夜审页「No-Show」改为「未到订单」，全站已无冗余英文术语
+### 九角色 RBAC
 
-## 信息展示页布局重设计（全部模块）
-
-参照主流 PMS 列表页布局，重设计全部信息展示模块，消除留白与浮动卡片：
-
-- **单卡片集成式结构**：查询筛选行内嵌于列表卡片顶部（属性下拉 + 输入框 + 查询/显示全部），数据表格满宽展示，分页条贴底——不再有漂浮的独立查询卡片和大段空白
-- **查询结果直显主表**：查询时主表直接切换为结果集（附"显示全部"一键还原），空结果时表格内提示"未查询到相关记录，请重新核对信息"
-- **表格样式**：取消 border=1 旧式边框，统一为悬停高亮、细分隔线的现代表格；文本列左对齐
-- 餐饮订单/客房订单的专属查询（消费明细/入住明细）保留为独立结果卡片，仅在查询后出现
-
-## 行内编辑与列表体验修复批次
-
-- **客房管理行内编辑边界修复**：编辑列与房间状态列错位——把状态徽章文本（如「已入住」）填进服务员字段提交，必然校验失败。现改为行内编辑只修改 客房类型/价格（房间状态统一走「状态操作」按钮与工作流），后端 `update_room` 的负责人改为可选（不传则保持不变）
-- **客房订单管理表头补齐**：表头只有 5 列而数据行有 9 列，已补齐 联系电话/状态/退房时间/收款金额 列
-- **筛选控件尺寸规范**：下拉选择框固定紧凑宽度（170px），文本输入框加宽（320px）；餐饮订单/客房订单移除空的属性下拉，输入框按查询字段提示
-- **入住管理统一样式**：5 张表格统一 `data-table` 样式，散客直入表单输入框宽度统一
-- **表格满宽**：数据表格 100% 填充卡片宽度，消除右侧留白
-
-## 设计令牌体系落地（site.css 重构）
-
-全站样式迁移到 `:root` 双层设计令牌（Primitives → Semantics），285 处引用：
-
-- **色彩**：交互蓝（--color-accent-solid）、品牌暖金（--color-gold-solid）、状态四色（成功/警告/危险各含 solid/text/bg/border 四角色）、文字三级、边框两级、背景四级——全部经语义令牌引用，硬编码清零
-- **字体体系**：`--font-display`（宋体栈：Noto Serif SC → 系统宋体回退，用于页名/板块标题）+ `--font-body`（黑体栈，正文/表单/数据）；字号收敛为 5 档（xs 12 / caption 13 / body 14 / heading 16 / title 20）
-- **圆角**：sm 4 / md 6 / lg 10 三档（原 9 种归阶）
-- **阴影**：三层 shadow token（边框环+微升+纵深，better-ux 规范）替代 6 种散点阴影
-- **布局**：`--sidebar-w` 单一定义；间距 4px 基数令牌
-- **结构修复**：logout-btn/form 与 .empty-row 重复定义清理、data-table 宽度双定义收敛、移除死文件 my.css 及 8 处引用、7 个废弃 CSS 引用清退（superfish 等——旧导航已移除）、site.css 缓存版本统一 `?v=7`
-
-## 表单与房源信息清晰化（批次3）
-
-- **录入表单统一规范**：label 固定 110px 右对齐、输入框按字段角色定宽（编号/桌号 180px、名称类 320px、金额/月薪 220px、日期 180px），全部模块录入表单一次对齐
-- **房源信息层级**：客房列表 房号+类型+价格+状态徽章+工作流按钮 的信息分组维持清晰；预订页/排房区语义色对齐全局令牌
-- **booking.css 语义色对齐**：成功/危险/文字色从独立色值迁移到全局令牌（保留海军蓝 #14417b 为顾客端品牌主色）
-- **卡片满宽**：信息展示卡片填充内容区，消除右侧留白
-
-## better-ux-review 七维审查报告（批次4）
-
-审查范围：8 个业务模块页 + home/checkin/finance/system/permissions/login；样式约定：设计令牌（site.css :root）。
-对比度以 WCAG 2.1 实测计算（脚本验证），非估算。
-
-### 证据表
-
-| Severity | Domain | Location | Before | After | Why |
-|---|---|---|---|---|---|
-| HIGH | 无障碍 | 全站（无 focus-visible 规则） | 键盘焦点不可见 | 全局 `:focus-visible` 2px accent 焦点环 + offset | 键盘用户无法定位当前位置 |
-| HIGH | 色彩 | `.tb-btn`/`.login-btn` 等实心按钮 | 白字 on #409eff = **2.78**:1 | 白字 on #2b74c9 = **4.73**:1 | 低于 WCAG AA 4.5，主操作按钮文字不可辨 |
-| HIGH | 界面打磨 | perm_admin/booking/site 共 5 处 | `transition: all` | 点名 background-color/border-color/color | 全属性过渡引发非预期重绘与性能抖动 |
-| HIGH | 无障碍 | login/register 表单 | 无 autocomplete | username/current-password/new-password | WCAG 1.3.5 输入目的标识 |
-| MEDIUM | 色彩 | 状态徽章文字（.badge-*） | 深底浅字 2.1–3.2:1 | 加深一档后 3.9–4.8:1 | 小字号状态文字对比不足；徽章始终伴随文字标签（颜色非唯一信号） |
-| MEDIUM | 排版 | 表格/统计数字列 | 默认数字字形 | `font-variant-numeric: tabular-nums` | 数字每刷新一次布局抖一次（房价/账单场景） |
-| LOW | 界面打磨 | `.data-table`/`.empty-row` | 双重定义 | 单一定义 | 同一选择器重复声明，后写覆盖前写 |
-
-### 判定
-
-**Approve**（无 HIGH 残留）。已验证：27 项测试通过、12 页面渲染 200、对比度实测达标。
-
-### 实测对比度（终版令牌）
-
-| 色对 | 比值 | 阈值 |
+| 角色 | 编码 | 关键边界 |
 |---|---|---|
-| 白字 / 主按钮 #2b74c9 | 4.73 | AA 4.5 ✓ |
-| 主文字 / 表面 | 13.02 | ✓ |
-| success-text / 浅底 | 4.79 | ✓ |
-| accent-text / 浅底 | 4.49 | ✓ |
-| warning-text / 浅底 | 4.27 | 徽章辅助标识（伴随文字），接近达标 |
+| 店长 | PROPERTY_MANAGER | 全模块 + 高危审批 + 薪酬修改 |
+| 值班经理 | DUTY_MANAGER | 运营异常 + 退款复核 + 夜审 + 净房放行；**不可看薪酬** |
+| 前台 | FRONT_DESK | 预订/入住/退房/续住/换房/取消已确认；**不可冲账/退款/审批** |
+| 财务 | FINANCE | 收支录入 + 退款执行 + 薪酬只读；**不办入住/改房态** |
+| 客房服务员 | HOUSEKEEPING | 清洁链至待检查；**净房放行归管理者** |
+| 夜审员 | NIGHT_AUDIT | 预留（当前值班经理/店长兼岗） |
+| 餐饮×2 / 停车 | FNB/PARK | 预留（模块对接第三方） |
 
-## 全站交互反馈体系（app.js 交互基座批次）
+## 3. 页面入口
 
-用户要求"所有的点击和按钮、提示要有明显的展示和友好的交互"。本批次建立集中式交互基座，
-并修复了一个导致此前多处"按钮像被隐藏 / 提示不明显"抱怨的**根本性 CSS 缺陷**。
-
-### 交互基座 `static/js/app.js`（全站共用，页面内不再重复定义）
-
-- **CSRF 自动注入**：jQuery `ajaxSetup` 全局携带 `X-CSRFToken`（jQuery 存在时自动增强）
-- **全局 AJAX 进度条**：任何异步请求期间顶部显示 3px 蓝色滑动进度条（`.ajax-bar`）
-- **校验规则 VPAT**：与后端白名单一致的正则表（工号/身份证/手机号/车牌/金额等），页面直接复用
-- **showToast**：实色底白字 + ✓/✕/! 状态图标，4.2s 开始淡出、4.7s 移除，醒目不遮挡
-- **askConfirm**：页内样式化确认框（替代原生 confirm），自动聚焦"确定"，点遮罩可取消
-- **表单防重复提交**：提交后按钮进入加载态（spinner + disabled），4s 自动恢复
-- **侧边栏高亮**：按 `location.pathname` 自动激活当前菜单
-
-### 交互反馈样式（site.css）
-
-- 按压反馈：主要按钮 `:active` 时 `scale(0.97)`，"按下去"的物理感
-- 加载态：`.btn-is-loading` 文字透明化 + 居中旋转 spinner
-- 禁用态：`opacity .55 + not-allowed` 光标
-- 系统级减动效：`prefers-reduced-motion` 时全部动画降级为瞬时
-
-### 根本性修复：设计令牌自引用腐蚀（重要）
-
-**症状**：此前用户反馈"一些按钮感觉被隐藏了一样""错误和成功提示显示不明显"。
-
-**根因**：批次 1 令牌化脚本对全文件做色值→`var()` 替换时，把 `:root` 令牌定义自身里的
-原始值也替换了，产生 20+ 处循环引用（如 `--color-bg-page: var(--color-bg-page);`、
-`--blue-500: var(--color-accent-solid)` 与 `--color-accent-solid: var(--blue-500)` 互环）。
-按 CSS 规范，循环引用的自定义属性在计算值阶段整组失效——所有引用令牌的背景/文字/边框
-静默退化为透明或继承值，造成按钮"隐形"、toast 底色消失。
-
-**修复**：重建整个 `:root` 令牌块，Primitives 层恢复字面量原始值（`--blue-500: #2b74c9`
-等），Semantics 层仅允许引用 Primitives；全文件扫描确认无残留 `--x: var(--x)`。
-
-### 同批修复
-
-- **html1.html（顾客管理）缺失 messages 提示块**：视图 `messages.success("顾客信息添加成功")`
-  已发送但模板无渲染块 → 补齐与其他模块一致的 `.toast-box` 结构；实测提交后绿底白字
-  "✓ 顾客信息添加成功" 正常弹出
-- **预订/支付测试日期腐化**：`apps/reservations/tests.py`、`apps/billing/tests.py`
-  硬编码 `date(2026, 11, 1)` 已随时间过期，触发"入住日期不能早于今天"校验致 9 项测试报错
-  → 改为 `date.today()` 动态生成，27 项测试全过
-
-### 实测验证（浏览器全链路）
-
-| 场景 | 结果 |
-|---|---|
-| admin 登录 → 主界面仪表盘 | 侧边栏 14 项菜单全部可见，环形图/柱状图/预警列表正常 |
-| 顾客管理 → 添加顾客 → 提交 | 跳回列表 + 绿底白字"✓ 顾客信息添加成功" toast |
-| 行内删除 → 确认框 | askConfirm 弹出（自动聚焦确定）→ 确定后 toast"删除成功" + 列表刷新 |
-| 权限矩阵全选保存 | 32/32 权限全部勾选持久化（保存后回显 40 勾 = 32 权限 + 8 行选联动） |
-| manage.py test | 27 项全部通过 |
-
-## 状态门控按钮与样式化对话框批次（用户反馈修复）
-
-用户反馈两处交互缺陷：① 员工管理点删除后确认框文字"不可恢复。"裸奔在页面左下角；
-② 餐饮订单已冲账的行点击"冲账"仍弹出原生 prompt。全局核查修复如下。
-
-### 根因与修复
-
-| 问题 | 根因 | 修复 |
+| 页面 | URL | 说明 |
 |---|---|---|
-| 确认框文字裸奔在页面底部 | app.js 的 askConfirm 用类名创建对话框，但 site.css **从未定义** `.ask-*` 系列样式（旧版内联样式删除时未移植） | 补齐 `.ask-mask/.ask-box/.ask-msg/.ask-actions/.ask-ok/.ask-cancel/.ask-input` 全套样式：居中遮罩 + 白色圆角卡片 + 危险红确认键 + 淡入动画 |
-| 已冲账行仍可点击冲账 | `order.html` 按钮不区分状态一律渲染可用的"冲账" | 已冲账行渲染 `<button disabled>已冲账</button>`（灰化 + `cursor: not-allowed` + 悬停无反应，高优先级规则覆盖 `.btn-primary`）；accomodation.html 同步 |
-| 原生 prompt 弹窗（丑且不可控） | `order.html` 用 `window.prompt` 收集冲账原因 | app.js 新增 **askPrompt** 样式化输入对话框（占位提示/回车提交/必填红框提醒）；订单冲账原因选填、客房冲账原因必填 |
-| 客房订单冲账必败（连带发现） | 服务端强制要求冲账原因（缺省返回 400），但 UI 的 askConfirm 从未传 `reason` | UI 改用 askPrompt（`required: true`），原因随请求提交，实测通过 |
-| 原生 alert 残留 20 处 | 6 处行内校验错误 + 14 处 AJAX fail 处理器 | 全部替换为 `showToast(文案, 'error')`（红底白字 ✕ 图标），全站不再有原生弹窗 |
-
-### 状态门控总检（全局核查结果）
-
-- **餐饮/客房订单**：已冲账 → 按钮置灰禁用；服务端另有重复冲账/夜审结转/新客入住三重守卫
-- **客房工作流**（room.html）：按钮本就按状态条件渲染（待清洁→开始清洁→清洁完成→检查通过；维修中→修复完成），无越状态按钮
-- **入住管理**（checkin.html）：按订单状态分组展示（待确认排房/已确认入住），无越状态操作
-- **员工管理**：启用/停用徽章切换即状态门控
-
-### 版本与缓存
-
-- `site.css?v=9`、`app.js?v=2` 全模板同步升级（防旧缓存）
-
-### 实测验证
-
-| 场景 | 结果 |
-|---|---|
-| 员工管理点删除 | 对话框居中（几何中心 720,450）、自动聚焦确定、取消正常关闭 |
-| 订单页点正常行"冲账" | 样式化对话框：说明文案 + 原因输入框（占位提示）+ 蓝色"确认冲账" |
-| 订单页已冲账行（301） | 按钮"已冲账"灰化禁用，不可点击 |
-| manage.py test | 27 项全部通过 |
-
-## 后台全中文化与数据一致性批次
-
-用户反馈：`/admin/` 后台仍有很多英文字段；要求后台与前台数据交互处保证一致性、
-数据库字段都有注解、API 接口设计合理且有健壮性。
-
-### 后台全中文化
-
-**根因**：PMS2 架构的六个 app（core/guests/inventory/reservations/billing/identity）
-模型字段几乎都没有 `verbose_name`，Django admin 表单/列头直接显示英文字段名
-（code/full_name/check_in…）。
-
-- **全部模型字段补 `verbose_name`（中文标签）**：酒店物业/住客档案/房型/物理客房/
-  房价计划/每日房价/房型每日库存/预订主单/预订房间明细/实际入住记录/住客账单/
-  不可变账本凭证/支付流水/员工档案/任职关系/岗位授权——admin 列头与表单自动中文化
-- **全字段补 `help_text`（业务规则注解）**：在 admin 编辑页直接显示字段口径
-  （如"幂等键：创建预订时由调用方传入；同酒店内唯一，重放返回原单"、
-  "冻结房量：待支付预订临时冻结的库存；支付成功转 sold，超时释放"）
-- **代码内字段行注释**同步补齐（数据字典式，见各 models.py）
-- 清理 Meta 中重复的 verbose_name 定义；库存可售列补 `short_description`
-- `SIMPLEUI_HOME_INFO = False` 隐藏 simpleui 自带英文信息卡
-
-### 数据一致性（后台 ↔ 前台同一套校验口径）
-
-hotelapp 十张业务表模型新增 `clean()` 校验，与前台视图白名单
-（views `_first_error`）、前端正则（app.js `VPAT`）**三端同口径**：
-
-| 模型 | clean() 规则（与前台一致） |
-|---|---|
-| 员工 Staff | 姓名 2-10 中英文；职务 ∈ {总经理,大堂经理,厨师,服务员,保安}；月薪非负两位小数；工龄 1-4 位数字 |
-| 顾客 Client | 姓名 2-10；身份证 18 位（末位可 X，唯一） |
-| 菜品 Food | 菜名 2-20 唯一；价格非负两位小数 |
-| 会员 Vip | 等级 ∈ {普通会员,高级会员}；手机号 11 位唯一 |
-| 车位 Park | 状态 ∈ {空闲,有车}；车牌格式（如 黑A12345）唯一 |
-| 客房 Room | 类型 2-10；价格 0-99999 整数；状态 ∈ 房态机七态 |
-| 订单/客房订单 | 状态 ∈ 状态机白名单；桌号 1-9999 |
-| 财务/账单流水 | 类型白名单；金额非负两位小数 |
-
-admin 保存走 `full_clean` 自动触发 clean()——**后台手工改数与前台录入遵守同一套规则，
-不再产生脏数据**。实测：后台提交非法职务"总裁"被拦截并提示
-"职务必须是：总经理、大堂经理、厨师、服务员、保安"。前台视图走自己的预检
-（UX 先行），模型 clean 是兜底，不影响既有流程。
-正则常量集中在 hotelapp/models.py 顶部（RE_* 与 *_CHOICES），修改规则需三端同步。
-
-### 数据库字段注解
-
-- 迁移 0002×6（PMS2 apps）+ hotelapp 0013（59 项 AlterField，纯 verbose_name/help_text，
-  无表结构变更）已全部应用
-- 后续在 admin 悬停/查看任一字段都有中文口径说明
-
-### API 健壮性加固（apps/api）
-
-- **api_guard 统一兜底**：未预期异常记日志（hotel.api logger）并返回 JSON 500，
-  不向外暴露堆栈；405 方法错误统一 JSON
-- **CSRF 失败 JSON 化**：新增 `CSRF_FAILURE_VIEW`，`/api/` 路径的 CSRF 拒绝返回
-  JSON 403（原先返回 HTML 页面，破坏 API 错误契约）；页面路径不受影响
-- **业务边界补齐**（与 OpenAPI schema 声明一致）：过期货 date 400（原先库存服务
-  静默跳过返回误导性空列表）；房间数 1-10、成人 1-10、儿童 0-10、最长连住 30 晚
-- 实测：过期日期/日期倒序/越界间数/非法 JSON/错误方法 → 全部 JSON 4xx 中文错误；
-  正常查询 200
-
-### 回归验证
-
-- `manage.py test`：27 项全部通过
-- 迁移 7 个 app 全部应用成功
-- admin 实测：首页快捷操作/侧边栏/预订主单表单（含 help_text）/库存列表列头全中文；
-  员工编辑非法值被 clean() 拦截
-
-## RBAC 权限改造批次（按《PMS_RBAC_权限管理改造方案_评审稿》+ 9 项决策落地）
-
-方案文档：`F:\Downloads\PMS_RBAC_权限管理改造方案_评审稿.docx`（评审稿 §10 评审点已由用户逐项决策）。
-设计产出：[docs/值班经理授权场景设计.md](docs/值班经理授权场景设计.md)、
-[docs/敏感字段权限边界设计.md](docs/敏感字段权限边界设计.md)（D1–D5 待店长拍板后实施）。
-
-### 逐项决策落地
-
-| 决策 | 落地实现 |
-|------|----------|
-| 1. 采用 9 业务角色（收益/房价经理、审计只读预留） | 迁移 0014/0015：统一角色目录 = 前台/值班经理/财务/店长/客房服务员 + 夜审员/餐饮服务员/餐饮主管/停车安保（预留空组）；矩阵页新增 2 个灰显占位 tab；**删除双轨英文组**（FRONT_DESK 等 6 组，双轨目录 P0 修复）；`bind_staff_user` 英文码 → 中文组映射 |
-| 2. 财务建收支；冲账=财务执行+经理复核（无阈值） | `finance_add` 仍限财务；冲账执行权（delete_order/delete_accommodation）授予 财务（原只读补 2 项）+店长；前台不再持有；复核链以冲账人/原因/审计日志留痕，多店启用 ApprovalRecord 双人复核（方案 §5.1 预留） |
-| 3. 前台可独立取消已确认/快捷退房/续住/换房 | 维持 `change_accommodation`（0005 即如此），测试回归确认 |
-| 4. 值班经理授权场景（由开发设计） | 7 个场景以**独立权限点**落地：反结账 `reverse_checkout`、执行夜审 `night_audit_execute`、未到处理 `no_show_handle`、净房放行 `room_release_ready`、冲账执行、财务入口 `finance_access`、敏感导出 `export_pii`；2 个预留场景 + 5 个预测场景记录在设计文档 §二/三，扩展按"权限点→矩阵勾选→视图判断"固定三步 |
-| 5. 夜审值班经理/店长兼岗；重开营业日须其审核 | 夜审工作台/执行改为 `night_audit_execute` 权限门控（值班经理/店长默认持有，夜审员组预留）；`business_date_reopen` 权限点已建，视图待实现 |
-| 6. 客房不拆清洁/检查岗，净房放行归管理者 | 客房服务员组 = view_room+change_room（可推进到「待检查」）；待检查→空闲 需 `room_release_ready`（值班经理/店长） |
-| 7. 餐饮/停车隐藏（对接第三方） | `MODULE_REGISTRY` 启停注册表 + `module_gate` 装饰器（14 视图 fail-closed）；侧边栏/主界面卡片/仪表盘餐饮区块全部移除；导出同步封存；代码与历史数据保留，置 True 即恢复 |
-| 7-2. 敏感字段边界（设计供决策） | **已先行**：员工/顾客/会员 CSV 导出独立授权 `export_pii`（前台 403）；财务补 `view_staff`（月薪可见口径）；完整遮罩边界（月薪 ****、身份证前4后4 等）见设计文档 D1–D5，待用户选择后实施 |
-| 8. 多物业隐藏，仅 DEFAULT | PMS2 架构代码保留；`SIMPLEUI_CONFIG` 后台菜单隐藏 5 个架构分组（URL 仍可达供排查）；前台本就不暴露物业概念 |
-
-### P0 安全止血
-
-**公开注册不再发放员工后台身份**（方案 §0 最高优先级风险）：`register_view` 不再设置
-`is_staff=True`/加入前台组，注册即顾客预订账号，注册后跳转顾客预订页 `/booking/`；
-注册页文案同步。测试：注册账号 is_staff=False、0 组、进 /home/ 被弹回登录。
-
-### 附带修复
-
-- **0005 迁移测试库兼容**：原 `ContentType.get` 在测试库静默跳过（post_migrate 未跑），
-  角色组在测试环境一直是空的——改 get_or_create 后测试库权限与生产一致
-- 权限矩阵页表头 `actions` 变量缺失导致的列头不显示 bug（既有）
-- `uncheckout` 补捕 `DoesNotExist`（不存在的订单原返回 500）
-- 夜审/财务菜单从 `user.groups.all.0.name != '前台'`（脆弱的第一组判断）改为权限点判断
-
-### 验证
-
-- **41 项测试全部通过**（27 既有 + 14 项新 RBAC 决策测试：注册止血/清洁链与净房放行/
-  夜审与反结账权限/冲账执行权分层/隐藏模块门禁/敏感导出授权）
-- curl 分层实测：前台（隐藏模块 302+提示、夜审/财务/敏感导出 403）、值班经理（夜审/财务 200、
-  员工 CSV 403 与月薪口径一致）、admin（矩阵页 9 角色+高危动作区+预留模块灰显）
-- 权限矩阵页实测截图：预留角色灰显、预留模块行置灰、高危动作区独立呈现
-
-## 前后台权限一致性核对批次
-
-前台权限矩阵（9 角色/高危动作/模块隐藏）改动后，对 Django admin 后台与关联模块做
-系统性核对与修复，消除"只改前台、后台不同步"的缺口。
-
-### 核对发现与修复
-
-| # | 缺口 | 影响 | 修复 |
-|---|------|------|------|
-| 1 | **矩阵保存整体覆盖组权限**：`permissions.set()` 只传 hotelapp 白名单权限 | 管理员在 Django admin 手工授予组的其他 app 权限（identity/auth 域）会在下次矩阵保存时**被静默清空**——前后台互操作的数据破坏点 | 矩阵保存只同步 hotelapp 域子集，**非矩阵权限原样保留**（含回归测试：admin 手工授权 → 矩阵保存 → 保留 ✓） |
-| 2 | room.html 工作流按钮无权限条件 | "开始清洁/清洁完成"对无 `change_room` 者也渲染（点击 403）；"检查通过"（净房放行）对非管理者可见 | 按钮显隐与后端门禁同源：清洁链按 `change_room`、净房放行按 `room_release_ready`、维修类按 `is_room_manager`（视图下发） |
-| 3 | checkin 页反结账按钮可见性用组名判断 `_has_role("值班经理")` | 与视图的权限点门禁不同源（组目录变更时静默失效） | 改为 `has_perm("hotelapp.reverse_checkout")`，与 uncheckout 视图同一权限点 |
-
-### 后台 admin 核对结果（全通过）
-
-| 核对项 | 结果 |
-|--------|------|
-| 组列表 | 9 个中文角色组，**无英文组残留** |
-| 组编辑器权限选择器 | 7 个自定义高危权限全部以中文名可见（能净房放行 客房信息/能执行夜审/能反结账 客房订单/能处理未到订单/能访问财务管理/能导出敏感数据/能重开营业日） |
-| 演示账号 admin 边界与矩阵一致 | front：client/vip 模型 200；staff/auth 403；`/permissions/` 直达 302 拒绝（超管专属） |
-| simpleui 菜单 | 仅 酒店业务模块/PMS 身份与权限/认证和授权 三组（多物业架构分组已隐藏） |
-| 房间页按钮实测 | 值班经理见"开始清洁/置维修中"；前台全不渲染（权限一致） |
-
-### 模块隐藏影响面核查（餐饮/停车）
-
-- 事件总线 4 个订阅（checked_out/booking_confirmed/booking_cancelled/no_show）全部在
-  客房订单域，隐藏模块**不影响任何后台联动**
-- 财务页餐饮收入统计基于历史流水（FinanceRecord），仅展示口径，保留
-- 导出白名单中 food/park/order 条目已被门禁拦截（实测 302）
-
-### 回归
-
-- 42 项测试全部通过（新增矩阵保存一致性测试）
-- 房间页按钮显隐实测：值班经理可见、前台无按钮（临时构造待清洁房验证后已恢复数据）
-
-## RBAC V2 第一阶段（评审 P0 修复 + 夜审幂等 + CI）
-
-第二轮评审（GitHub main 审查 + 《RBAC 改造方案 V2 评审稿》）确认第一版方向正确但未验收，
-四个 P0 问题在本批次全部修复。授权统一方案：**StaffRoleAssignment 为授权记录
-（物业任职+有效期+授权人），User.groups 镜像同一中文组作运行时载体——两条路径读写同一组，
-不再有两套目录**；配套任职有效性闸门实现"离职/停职立即失权"。
-
-### P0-1 统一员工授权体系
-
-- `bind_staff_user` 增强：绑定后自动 `is_staff=True` + `User.groups.add(中文组)`（双写），
-  新增 `--password` 可选参数；RoleAssignment 授权记录保留不变
-- `staff_required`（全站单点门禁）升级：非超管员工必须持有有效任职
-  （StaffProfile 在职 + Membership ACTIVE）——停职/离职下一个请求立即 403（AUTH-02/05）
-- 迁移 0016 为演示账号补齐完整身份链（Profile→Membership→RoleAssignment→Group）
-- 测试：绑定账号登录后可访问旧后台（P0-1 验收标准）；无任职 403；任职暂停 403
-
-### P0-2 Django Admin 安全边界
-
-- 餐饮/停车模型**不再注册 Admin**（Food/Order/Park）——业务页与 Admin 入口同时关闭，
-  `/admin/hotelapp/food/` 等返回 404（SCOPE-02），无法绕过 MODULE_REGISTRY
-- 全部业务 ModelAdmin **禁止物理删除**（`NoAdminDeleteMixin`）——`delete_*` 业务权限
-  不再等价于物理删除权，物理清理属运维通道（先备份）
-- 客房订单/餐饮订单的 状态/冲账人/冲账时间 在 Admin **只读**——不能绕过业务状态机
-- 夜审日结记录只读（不可变审计证据）
-
-### P0-3/P0-4 老库兼容与演示账号（迁移 0016）
-
-- 九角色组默认权限 **add-only 幂等补齐**（老库 0005 静默跳过的权限在此补回；不回收用户自定义）
-- 英文组仍有用户的场景：用户先转入映射中文组再移除旧关系并删组（双轨清理收尾）
-- 演示账号环境门禁：`DJANGO_ENV=prod` 不创建且**禁用**已有固定密码演示账号；
-  dev/test 保持可用（身份链完整）
-
-### 评审点名的健壮性问题（随批修复）
-
-- **夜审幂等**（AUTH-16/E-17）：同一营业日重复执行返回 400；过程事务化（E-18 失败整体回滚）；
-  实测第 1 次 302 / 第 2 次 400。历史数据中 2026-10-30 存在 15 条重复日结，
-  保留为审计痕迹，新守卫自部署起生效
-- **folio_api 门禁**（E-30）：账单数据需 `view_accommodation`，客房服务员 403
-
-### P2 CI
-
-新增 `.github/workflows/ci.yml`：push/PR 触发，MySQL 8.0 service 容器，
-自动 migrate + 全量测试——评审"无法独立验证测试"的回应，测试结果以 CI 运行记录为准。
-
-### 回归
-
-52 项测试全部通过（42 + 10 项新增：统一授权 3 / Admin 收紧 3 / 夜审幂等 2 / folio 门禁 2）。
-
-## RBAC V2 第二波（字段级遮罩 + 前台操作边界 + DEFAULT-only）
-
-按 V2 方案 §7.1 推荐矩阵实施字段级权限（Q-01/Q-02 采用推荐口径），并落实前台操作
-边界与单物业硬约束。**这是 P1-1/P1-2/P1-5/P1-6 的落地批次。**
-
-### 字段级遮罩（P1-1，DATA-03/04）
-
-| 字段 | 列表/搜索 | 行内编辑 | CSV 导出 |
-|------|-----------|----------|----------|
-| 顾客身份证号 | 前2后2（`23**************90`） | 经 reveal 端点取完整值 | **遮罩值**（完整值导出默认禁止，V2 §7.1） |
-| 会员联系方式 | 前3后4（`138****5678`） | 经 reveal 端点取完整值 | 遮罩值 |
-| 客房订单联系电话 | 前3后4 | —（只读列） | —（未导出该列） |
-
-- **服务端渲染遮罩**：响应体/HTML 不含完整敏感值（非 CSS 遮罩），过滤器在
-  `hotelapp/templatetags/pms_filters.py`
-- **reveal 按需显示**（V2 §7.3）：`/client/reveal_id/`、`/vip/reveal_tel/` 仅限持
-  **修改权**岗位（前台/值班经理/店长；财务只读 → 403），每次读取写
-  `hotel.audit` 审计（操作者+对象+用途，不记录敏感原文）——回应 Q-04 的审计方向
-- 实测：顾客列表 HTML 中完整身份证零残留；财务 reveal 403；前台 reveal 200 + 审计落盘
-- 员工月薪：员工页本身由 `view_staff` 门控（仅店长/财务/超管），符合 D-08 已确认规则
-
-### 前台操作边界（P1-5）
-
-- **快捷退房资金差异拦截**（E-05/MGR-03）：应收（房费+消费）与已收（押金+收款）
-  不平时拒绝自动结算（转普通结账人工核对）；多付走退款流程；结清时不再重复写收款凭证
-  （修复了原逻辑对已收押金重复全额收款的问题）
-- **换房门控**（E-11/MGR-05）：跨房型或价差的换房需值班经理/店长；同房型同价前台直接处理
-
-### DEFAULT-only 硬约束（P1-6，SCOPE-01）
-
-- 任职门禁与物业上下文中间件**双处对齐**：仅 DEFAULT 物业的任职有效——
-  员工绑定到其他物业（或会话指向别店）一律拒绝进入员工后台，
-  中间件回退单店上下文并写 `hotel.audit` 告警
-
-### 回归
-
-62 项测试全部通过（新增 10 项：遮罩与 reveal 4 / 快捷退房 3 / 换房 2 / DEFAULT-only 1）；
-CSS 版本 v=10。
-
-### 待评审确认后实施（不阻塞本批次）
-
-- Q-04 reveal 理由选择（当前记录"用途=行内编辑/核验"固定值）
-- Q-05/Q-06/Q-14：ApprovalRecord 审批状态流（冲销双人复核、营业日重开）
-- Q-10：No-Show 押金处置政策
-- 续住的每日价格/库存校验（E-08/E-09）依赖新域库存打通，随 P2 统一鉴权批次实施
-
-## 九角色测试账号与验证指南
-
-- 新增管理命令 `seed_role_test_accounts`：一键创建/重置九角色测试账号
-  （幂等，含完整身份链；`DJANGO_ENV=prod` 拒绝执行）
-- 测试阶段统一密码 `Abc123456`（可用 --password 覆盖）；既有演示账号
-  front/manager/finance/owner 同步统一
-- 逐角色验证清单与自动化验证矩阵实测结果见
-  [docs/角色权限验证指南.md](docs/角色权限验证指南.md)——九角色 curl 探测全部符合设计
-  （前台/值班经理/财务/店长/客房服务员按矩阵放行，夜审员/餐饮/停车预留角色 fail-closed 全 403）
-
-## 员工账号权限关联批次（按《后台与前台员工账号权限关联设计方案》落地）
-
-方案核心：StaffProfile（自然人）/ User（登录身份）/ PropertyStaffMembership（DEFAULT 任职）/
-StaffRoleAssignment（岗位授权）四层对象各司其职，**前台业务页、Django Admin、管理命令
-统一走同一套生命周期服务**，不再各自拼接模型。
-
-### Phase 1：统一员工生命周期服务（apps/identity/services.py）
-
-`EmployeeLifecycleService`：create_employee（建档+任职+可选开账号+初始角色，工号/手机/账号
-三重查重）/ provision_account（STAFF-02）/ assign_role（支持临时授权与结束时间，STAFF-07）/
-end_assignment（调岗撤销，历史保留 STAFF-08）/ set_employment_status（暂停/离职/恢复，
-离职终止全部授权并停用账号 STAFF-09）/ reset_password（审计只记事件）。
-**组镜像同步**（_sync_group_mirror）是"授权记录 ↔ User.groups 运行时权限"的唯一同步点——
-修复了反向关系链式 filter 产生的独立 JOIN bug（其他用户的开放授权会令组被错误保留）。
-
-### D-04：is_staff 只管 Django Admin（Phase 2 登录链统一）
-
-- `staff_required` 改为"登录 + DEFAULT 有效任职 + 至少一条有效角色授权"判定链
-  （方案 §6 第 1-4 层），不再要求 is_staff；STAFF-03（无角色拒绝）在门禁层实现
-- `login_view` 同步：登录看员工身份链，不看 is_staff
-- 迁移 0017：**回收全部非 superuser 的 is_staff**；新增 `identity.staff_manage`
-  权限（授予店长）——员工/演示/测试账号此后无 Django Admin 入口（STAFF-10/11）
-- bind_staff_user / seed 命令同步去除 is_staff 发放
-
-### 员工与账号管理工作台（店长 GUI，方案 §4.1/§8）
-
-`/staff_accounts/`（identity.staff_manage 门控，店长+超管）：
-- **员工列表**：姓名/工号/岗位/在职状态/账号状态/当前角色标签/最后登录；不展示月薪（D-08）
-- **新增员工**：建档+DEFAULT 任职+可选开通账号+初始角色多选+旧员工关联（legacy_staff）
-- **员工详情**：资料/任职/账号/角色授权历史一页聚合；账号安全（开通/重置密码/暂停/离职/恢复）；
-  角色分配（支持结束时间=临时兼岗；结束授权保留历史）
-- 所有操作走 EmployeeLifecycleService，写 hotel.audit 审计
-
-### Phase 0：基线盘点命令
-
-`python manage.py audit_employee_data [--output csv]`：只读导出旧 Staff/StaffProfile/
-User/Membership/Assignment 关联现状与问题清单（未映射/孤儿/无角色/多绑定）。
-本店实测：28 条记录（问题 21 条，主要是旧员工未开账号——预期状态）。
-
-### 回归
-
-70 项测试全部通过（新增 8 项：生命周期服务 6 / 工作台 GUI 2），
-覆盖 STAFF-01/02/03/06/07/08/09/10 及越权与 D-04 断言。
-
-## 关联方案批次：代码审查与综合验证报告
-
-按用户要求对新开发模块做代码审查、全量回归与关联旧模块核验，结果如下。
-
-### 代码审查发现并修复（3 项）
-
-| # | 发现 | 修复 |
-|---|------|------|
-| 1 | **组镜像同步独立 JOIN bug**：反向关系链式 `.filter()` 拆分条件，其他用户的开放授权令角色组被错误保留（调岗/离职后权限不清） | 条件合并进单个 `filter(Q(...)\|Q(...))`；附注释警示多值关系陷阱 |
-| 2 | **职责分离缺失**（方案 §6.2/§10.3/E-35）：店长可给自己授权任何角色（自我提权）、可对自己执行停职/离职 | 服务层守卫：禁止给自己分配角色；禁止对自己停职/离职（所有入口共用，GUI/命令/API 一致） |
-| 3 | set_status 视图未捕获服务层业务异常（守卫触发时 500） | 补 try/except + 错误 toast |
-
-### 综合验证结果（活服务器实测）
-
-**新模块**：
-- 工作台 GUI 全流程：店长创建员工（UTF-8 中文名）→ Profile/User/Membership(DEFAULT)/Assignment/
-  组镜像五层落库一致 → 新员工登录 → 访问授权模块 200 → 越权模块 403
-- SoD：店长给自己授权/离职 → 服务层拒绝（GUI 与服务层双验证）
-
-**关联旧模块（数据/接口/交互）**：
-- 旧员工页 /index/ 200（Staff CRUD 不受影响）；客房页（Room.负责人编号 FK）200
-- 餐厅页 302（模块隐藏门禁正确）
-- register/login/logout、bind_staff_user、seed 命令全部正常（is_staff 停止发放后行为一致）
-- 权限矩阵页（超管）不受 staff_manage 影响
-
-**访问边界（D-04 全面生效）**：
-- 前台：PMS 业务 200 / 工作台 403 / Django Admin 302 拒绝
-- 店长：工作台 200 / Django Admin 302 拒绝（is_staff 已回收）
-
-**数据一致性**：
-- 五层对象（User/Profile/Membership/Assignment/组镜像）创建-查询-授权-注销全链路一致
-- audit_employee_data 盘点命令复核：验证数据清理后无孤儿记录
-- 测试数据已清理（验证员工及其账号/任职/授权）
-
-### 回归
-
-73 项测试全部通过（新增 3 项 SoD 测试）。
-
-## V1.1 P0 模型定稿批次（§9.7.1）
-
-按《五大模块重构需求与技术设计基线 V1.1》§9.7.1，交付全部 P0 模型/约束/服务。
-
-### 新增模型（M-01/02/03/04/06/08/09/12/16）
-
-| 编号 | 模型 | 关键约束 |
+| 主界面 | `/home/` | PMS2 权威仪表盘 |
+| 前台工作台 | `/checkin/` | PMS2 排房/入住/收款/退房（旧页 `/checkin/legacy/`） |
+| 员工与账号管理 | `/staff_accounts/` | 员工全生命周期（店长） |
+| 权限矩阵 | `/permissions/` | 九角色权限分配（超管） |
+| 系统信息 | `/system/` | 环境/会话/个人信息 |
+| 顾客预订 | `/booking/` | 公开预订 |
+| Django Admin | `/admin/` | 平台维护（独立 session） |
+
+## 4. 本地开发
+
+```bash
+# 环境
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+
+# 环境变量（.env）
+DJANGO_SECRET_KEY=...
+DJANGO_DEBUG=1
+DJANGO_DB_ENGINE=mysql
+DJANGO_DB_NAME=hotel
+DJANGO_DB_USER=hotelhotel
+DJANGO_DB_PASSWORD=hotelhotel
+
+# 启动
+python manage.py migrate
+python manage.py seed_role_test_accounts   # 九角色测试账号（密码 Abc123456）
+python manage.py seed_hotel_data           # 真实模拟酒店数据
+python manage.py runserver 0.0.0.0:8000 --noreload
+```
+
+### 测试账号
+
+| 角色 | 账号 | 密码 |
 |---|---|---|
-| M-01 | `ReservationGuest` / `StayGuest` | 每预订最多一条 PRIMARY（条件唯一 + 服务层校验） |
-| M-02 | `GuestDocument` | 证件号 Fernet 加密落库 + HMAC-SHA256 查重；同物业查重防重复 |
-| M-03 | `GuestPhone` | 每客人一个主号码；共享号码标记 `shared_review_required` |
-| M-04 | `Folio` 改 FK + `folio_type` / `FolioTransfer` | MASTER 唯一（条件唯一 + 服务层）；转移不搬迁原凭证 |
-| M-06 | `HousekeepingTask` / `MaintenanceTicket` / `RoomInspection` | 检查人独立（决策 6）；维修按日期区间影响库存 |
-| M-08 | `BusinessDate` / `NightAuditRun` | 每物业一个 OPEN 营业日；夜审运行状态/摘要/失败原因 |
-| M-09 | `InventoryHold` | 同订单明细同住宿日单活跃；释放幂等 |
-| M-12 | `CancellationPolicy` / `DepositPolicy` | 预订创建时快照版本 |
-| M-16 | `GuestMembership` / `MembershipLevelHistory` | 同物业同客人最多一条有效会员关系；会员号唯一；等级历史只追加 |
+| 前台 | test_front | Abc123456 |
+| 值班经理 | test_duty | Abc123456 |
+| 财务 | test_finance | Abc123456 |
+| 店长 | test_owner | Abc123456 |
+| 客房服务员 | test_housekeeping | Abc123456 |
+| 夜审员（预留） | test_nightaudit | Abc123456 |
 
-### 跨引擎条件唯一（服务层双重保护）
+## 5. 测试与 CI
 
-MySQL 不支持 partial unique index（Django 静默跳过带 `condition` 的 UniqueConstraint）。
-上述条件唯一规则在**服务层 save() 补齐**：Folio MASTER / GuestPhone 主号码 /
-GuestMembership 有效 / ReservationGuest PRIMARY / InventoryHold 活跃 / BusinessDate OPEN
-——Postgres/SQLite 走 DB 约束，MySQL 走服务层校验，双引擎一致。
+- `python manage.py test --noinput` — 162 项测试
+- CI：GitHub Actions（MySQL 8 + SQLite 双引擎），push/PR 自动触发
+- 验证指南：[docs/角色权限验证指南.md](docs/角色权限验证指南.md)
 
-### 证件加密服务（apps/guests/services.py）
+## 6. 文档索引
 
-- **加密**：Fernet（cryptography 库），密钥 `DJANGO_PII_KEY`（生产必须配置独立密钥）；
-  未配置时从 SECRET_KEY 派生（开发回退）
-- **查重**：HMAC-SHA256 加盐 hash，不存明文；同物业查重防重复登记
-- **揭示**：`guests.document.reveal` 独立权限（迁移 0003）；每次写 AuditEvent（不落明文）
-- requirements.txt 增加 `cryptography>=41.0,<42`（42+ Windows Py39 DLL 问题）
-
-### M-01 语义别名
-
-`Reservation.guest` = 预订联系人/预订人（booker）；实际住客由 ReservationGuest/StayGuest 管理。
-Migration 未重命名字段；services/DTO 层使用 booker_guest 语义。
-
-### 迁移
-
-- core 0002: AuditEvent + LegacyRecordLink + BusinessDate + NightAuditRun
-- guests 0003: document_reveal 权限
-- guests 0004: GuestPhone + GuestDocument + GuestMembership + MembershipLevelHistory
-- billing 0004: Folio FK + folio_type + FolioTransfer + MASTER 唯一约束
-- reservations 0004: ReservationGuest + StayGuest + InventoryHold + CancellationPolicy + DepositPolicy
-- identity 0005: must_change_password + last_password_change
-
-### 回归
-
-127 项测试全部通过（新增 8 项 P0 模型测试 + 3 项 SoD + 6 项 D-07）。
-
-## V1.1 P1 批次：P1 模型定稿 + 统一 API 契约
-
-### P1 模型（§9.7.2）
-
-| 模型 | 说明 |
+| 文档 | 内容 |
 |---|---|
-| `CashierShift` | 现金班次对账：开班备用金/应收/实收/差异必须说明；每物业每收银员一个 OPEN 班次 |
-| `ChargeLine` | 账单科目明细：房费/餐饮/服务费/违约金拆分；收入科目聚合依据 |
-| `TaxLine` | 税费行：发票/税额追溯 |
-| `IdempotencyRecord` | 通用幂等记录：property+user+key 唯一；TTL 24h；同 key 同 body 返回首次响应 |
-| `StatusTransition` | 业务状态变更时间线：只追加；与 AuditEvent 互补（时间线 vs 合规） |
+| [docs/五大模块重构需求设计方案.md](docs/五大模块重构需求设计方案.md) | 五模块重构需求基线 |
+| [docs/值班经理授权场景设计.md](docs/值班经理授权场景设计.md) | 高危场景权限设计 |
+| [docs/敏感字段权限边界设计.md](docs/敏感字段权限边界设计.md) | 字段级权限边界（待 D-09 确认） |
+| [docs/角色权限验证指南.md](docs/角色权限验证指南.md) | 九角色验证清单 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构说明 |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | 变更日志 |
 
-### 统一 API 契约（apps/core/api_contract.py）
+## 7. 剩余工作
 
-- **`ApiError`**：七种标准错误码（VALIDATION_ERROR/AUTHENTICATION_REQUIRED/PERMISSION_DENIED/RESOURCE_NOT_FOUND/BUSINESS_CONFLICT/RATE_LIMITED/INTERNAL_ERROR）
-- **`api_response`**：统一 `{data, meta{request_id, source_system, generated_at, pagination}}`
-- **`api_error_response`**：统一 `{error{code,message,field_errors,retryable}, meta}`
-- **`api_view`** 装饰器：捕获 ApiError + 未预期异常 → JSON 500
-- **`paginate`**：统一分页 helper
-- **`idempotent`** 装饰器：Idempotency-Key + body hash → IdempotencyRecord 表（同 key 同 body 返回首次响应；不同 body 409）
-
-### 回归
-
-131 项测试全部通过。
-
-## P0 安全护栏批次（V1.1 §10 Phase 0）
-
-### SQL 备份文件移除（§9.1 P0）
-
-- `hotel.sql`（105 INSERT，含 pbkdf2_sha256 密码哈希）→ **已从仓库移除 + .gitignore**
-- `docs/db_backup_pre_pms2_20261030.sql`（24 INSERT，**含 7 组 auth_user 密码哈希**）→ **已移除**
-- `docs/backup_table_audit_log.sql` → **已移除**
-- ⚠️ Git 历史仍包含这些文件（b0dd324 之前），如确认含真实凭据需用 BFG/filter-repo 清理历史 + 轮换密码
-
-### 旧 GET 写路由 → POST 强制（§2.4 P0）
-
-8 个 delete_* 视图补 `request.method != "POST" → 405` 安全护栏：
-delete_staff / delete_client / delete_food / delete_vip / delete_park / delete_room / delete_order / delete_accomodation
-
-- `delete_accomodation` 冲账逻辑从 GET 块迁移到 POST 处理（`request.GET` → `request.POST`）
-- 旧前端 JS 仍用 `$.get()` 调 delete → 405 拦截；前端 AJAX 需逐页改 POST（后续批次）
-
-### PMS2 Admin 只读收紧（§2.3 P0）
-
-| Admin 模块 | 收紧前 | 收紧后 |
+| 阶段 | 内容 | 状态 |
 |---|---|---|
-| guests.GuestAdmin | 可增删改 | **只读**（ReadOnlyAdminMixin） |
-| inventory 5 个 Admin | 可增删改 | **只读** |
-| reservations 2 Admin + Inline | 可增删改 | **只读** |
-| billing.RefundAdmin | **未注册** | 新增只读检索（状态/申请人/审批人/原因） |
-| core.AuditEventAdmin | **未注册** | 新增只读审计时间线（date_hierarchy/action 筛选） |
-| core.LegacyRecordLinkAdmin | **未注册** | 新增映射核验检索（source_model/status 筛选） |
+| Phase 1 剩余 | 五模块只读页面原型（HTML+JS 消费 API） | 待开发 |
+| Phase 2 | 写 API（Guest 编辑/Rate 调价/Inventory 调整，走领域服务） | 待开发 |
+| Phase 3 | Guest 合并/会员权益/清洁工单闭环/收银台/经营报表 | 待开发 |
+| Phase 4 | LegacyRecordLink 填充/旧入口退役/旧表归档 | 待开发 |
+| P1 | 字段级遮罩实施（Q-01~Q-04 已定，基础设施就绪） | 待开发 |
+| P1 | ApprovalRecord 接入退款审批 API 端点 | 待开发 |
 
-### 测试
+## 8. 关键业务规则
 
-131 项测试全部通过（冲账测试从 GET 改 POST 配合安全护栏）。
+| 规则 | 来源 |
+|---|---|
+| 快捷退房余额≠0 阻断 | Q-08 |
+| 换房首期限定同房型同价 | Q-09 |
+| No-Show 无政策不没收押金 | Q-10 |
+| 退款申请人≠审批人 | Q-05 |
+| 营业日重开须另一位经理审批 | Q-14 |
+| 敏感揭示须 AuditEvent | Q-04 |
+| PMS2 为唯一业务写权威 | §12.1 |
+| Django Admin 为只读审计工具 | §12.2 |
