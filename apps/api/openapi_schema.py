@@ -46,6 +46,8 @@ def _operation(summary, tag, method, *, path_params=(), query=(), body=None,
         "x-authentication": "Django Session Cookie" if auth else "匿名/业务凭据",
         "x-permission-boundary": permission,
     }
+    if method == "get" and tag == "公开预订" and "/reservations/{booking_no}" in item.get("operationId", ""):
+        params.append(_param("X-Booking-Token", "header", "string", False, "Booking Access Token"))
     if params:
         item["parameters"] = params
     if body:
@@ -82,7 +84,7 @@ def build_openapi():
             "adults":{"type":"integer","minimum":1,"maximum":10,"default":1},
             "children":{"type":"integer","minimum":0,"maximum":10,"default":0}}))
     add("/reservations/{booking_no}", "get", "使用 Booking Access Token 查询预订", "公开预订", auth=False,
-        path_params=["booking_no"], query=[("token","string",False,"也可使用 X-Booking-Token 请求头")],
+        path_params=["booking_no"], query=[("token","string",False,"Booking Access Token")],
         success="脱敏预订详情；不返回完整手机号、证件号或支付内部流水",
         notes="必须提供首次创建预订时返回的 Booking Access Token；不再使用手机号作为查询凭据。")
     add("/reservations/{booking_no}/cancel", "post", "取消待支付预订", "公开预订", auth=False,
@@ -134,7 +136,7 @@ def build_openapi():
     
     # Night audit and emergency access.
     na = [
-        ("/night-audit/preview","get","预览夜审",["date"],None),
+        ("/night-audit/preview","get","预览夜审",[],None),
         ("/night-audit/run","post","执行夜审",[],_obj()),
         ("/night-audit/business-dates/{business_date_id}/reopen-request","post","申请重开营业日",["business_date_id"],_obj(["reason"],{"reason":{"type":"string"}})),
         ("/night-audit/business-dates/{business_date_id}/approvals/{approval_id}/approve","post","审批重开营业日",["business_date_id","approval_id"],_obj()),
@@ -144,7 +146,7 @@ def build_openapi():
     ]
     for p,m,s,pp,b in na:
         add(p,m,s,"夜审与紧急访问",path_params=pp,
-            query=[("date","string",False,"业务日期 YYYY-MM-DD")] if pp==["date"] else [],
+            query=[("date","string",False,"业务日期 YYYY-MM-DD")] if p=="/night-audit/preview" else [],
             body=b,permission="对应夜审/营业日重开/break-glass 专项权限")
     
     # Guest, inventory, rates and finance read/write.
