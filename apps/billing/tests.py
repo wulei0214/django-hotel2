@@ -243,6 +243,10 @@ class NightAuditServiceTests(TestCase):
         self.stay = Stay.objects.create(
             property=self.property, reservation_room=line, room=room,
             status=Stay.Status.IN_HOUSE)
+        from apps.billing.models import Folio
+        Folio.objects.create(
+            property=self.property, reservation=self.reservation,
+            guest=self.guest, currency="CNY")
         self.NightAuditService = NightAuditService
 
     def test_night_audit_posts_daily_room_charge_once_and_closes_business_date(self):
@@ -299,3 +303,53 @@ class NightAuditServiceTests(TestCase):
         self.assertEqual(LedgerEntry.objects.filter(
             property=self.property, business_date=self.today,
             entry_type=LedgerEntry.EntryType.ROOM_CHARGE).count(), 1)
+
+
+class BillingServiceManualCollectionTests(TestCase):
+    def setUp(self):
+        today = date.today()
+        self.property = Property.objects.create(code="BILL", name="统一账务测试酒店")
+        self.room_type = RoomType.objects.create(
+            property=self.property, code="BILL-STD", name="统一账务标准间")
+        self.rate_plan = RatePlan.objects.create(
+            property=self.property, code="BILL-BAR", name="统一账务门市价",
+            valid_from=today)
+        from apps.guests.models import Guest
+        from apps.reservations.models import Reservation, ReservationRoom
+        from apps.billing.models import Folio
+        self.guest = Guest.objects.create(
+            property=self.property, full_name="统一账务客人",
+            phone="13800008882", phone_normalized="13800008882")
+        self.reservation = Reservation.objects.create(
+            property=self.property, booking_no="BILLINGCOLLECT0001",
+            guest=self.guest, status=Reservation.Status.CONFIRMED,
+            check_in=today, check_out=today + timedelta(days=1),
+            room_count=1, adult_count=1, total_amount=Decimal("300.00"))
+        ReservationRoom.objects.create(
+            property=self.property, reservation=self.reservation,
+            room_type=self.room_type, rate_plan=self.rate_plan,
+            check_in=today, check_out=today + timedelta(days=1),
+            nightly_rates=[{"date": today.isoformat(), "price": "300.00", "currency": "CNY"}],
+            amount=Decimal("300.00"))
+        self.folio = Folio.objects.create(
+            property=self.property, reservation=self.reservation,
+            guest=self.guest, currency="CNY")
+        self.operator = User.objects.create_user(username="bill-operator")
+
+    def test_manual_collection_posts_successful_payment_and_is_idempotent(self):
+        from apps.billing.services_v2 import BillingService
+        first = BillingService.collect_payment(
+            property_obj=self.property, reservation=self.reservation,
+            amount="300.00", method="CASH", collected_by=self.operator,
+            reference="POS-CASH-REF-001")
+        replay = BillingService.collect_payment(
+            property_obj=self.property, reservation=self.reservation,
+            amount="300.00", method="CASH", collected_by=self.operator,
+            reference="POS-CASH-REF-001")
+        self.assertEqual(first.pk, replay.pk)
+        self.assertEqual(first.status, Payment.Status.SUCCEEDED)
+        self.assertEqual(LedgerEntry.objects.filter(
+            property=self.property, folio=self.folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT).count(), 1)
+        self.assertEqual(LedgerEntry.objects.get(
+            property=self.property, folio=self.folio).amount, Decimal("-300.00"))

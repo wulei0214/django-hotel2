@@ -5,7 +5,6 @@ from datetime import date
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.billing.models import ApprovalRecord, BusinessDate
 from apps.billing.night_audit import NightAuditError, NightAuditService
 from apps.core.api_contract import ApiError, api_view, api_response
 from apps.identity.authorization import AuthorizationService
