@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import front_desk, guest_center, night_audit, staff_center, views
+from . import front_desk, guest_center, night_audit, staff_center, reservation_center, views
 
 app_name = "api"
 
@@ -53,6 +53,16 @@ urlpatterns = [
     path("room-types", guest_center.room_type_list, name="room_type_list"),
     path("rate-calendar", guest_center.rate_calendar, name="rate_calendar"),
     path("financial-summary", guest_center.financial_summary_api, name="financial_summary"),
+    # --- ApprovalRecord (V1.2 Q-05/Q-06/Q-14) ---
+    path("approvals", approval.approval_list, name="approval_list"),
+    path("approvals/request", approval.approval_request, name="approval_request"),
+    path("approvals/<int:record_id>/approve", approval.approval_approve, name="approval_approve"),
+    path("approvals/<int:record_id>/reject", approval.approval_reject, name="approval_reject"),
+    # --- Reservation 管理 (V1.1 Phase 1) ---
+    path("reservations-mgmt", reservation_center.reservation_list, name="reservation_mgmt_list"),
+    path("reservations-mgmt/<str:booking_no>", reservation_center.reservation_detail_api, name="reservation_mgmt_detail"),
+    # --- AuditEvent 时间线 (P1-14) ---
+    path("audit-timeline", reservation_center.audit_timeline, name="audit_timeline"),
     path("daily-rates/<int:rate_id>/adjust", guest_center.adjust_daily_rate_api, name="adjust_daily_rate"),
     # --- Staff 中心 (V1.1 Phase 1) ---
     path("staff", staff_center.staff_list, name="staff_list"),
