@@ -1,4 +1,5 @@
 from django.conf import settings
+# 业务阅读提示：User 仅表示认证账号；StaffProfile 表示员工档案；PropertyStaffMembership 表示某物业任职；StaffRoleAssignment 表示任职期间的岗位授权。不要把手机号当作认证凭据，也不要把 User.groups 当作员工任职事实。新增字段/约束前先核对 docs 中 D11/D12 决策与数据迁移影响。
 from django.contrib.auth.models import Group
 from django.db import models
 from django.db.models import F, Q
