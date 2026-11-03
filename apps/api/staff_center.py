@@ -5,14 +5,18 @@ Staff API：列表/详情（角色/任职/账号状态/审计时间线）。
 Membership API：列表/详情（等级/状态/旧 Vip 映射状态）。
 统一使用 api_contract 封套；物业范围过滤；权限门控。
 """
-from django.views.decorators.http import require_GET
+import json
+
+from django.views.decorators.http import require_GET, require_POST
 
 from apps.core.api_contract import ApiError, api_view, api_response, paginate
 from apps.identity.authorization import AuthorizationService
 from apps.identity.models import (
     PropertyStaffMembership, StaffProfile, StaffRoleAssignment,
 )
-from apps.guests.models import GuestMembership, MembershipLevelHistory
+from apps.guests.models import Guest, GuestMembership, MembershipLevelHistory
+from apps.guests.services import GuestMembershipService, GuestServiceError
+from apps.core.api_contract import idempotent
 
 from apps.core.api_contract import ApiError
 
@@ -121,6 +125,13 @@ def membership_list(request):
     status_filter = request.GET.get("status")
     if status_filter:
         qs = qs.filter(status=status_filter)
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        from django.db.models import Q
+        qs = qs.filter(
+            Q(member_no__icontains=q) | Q(guest__full_name__icontains=q)
+            | Q(guest__phone__icontains=q)
+        )
     items, pagination = paginate(qs, request)
     data = [{
         "id": m.pk,
@@ -165,3 +176,77 @@ def membership_detail(request, membership_id):
         "source_system": "PMS2",
     }
     return api_response(request, data)
+
+
+def _membership_body(request):
+    try:
+        return json.loads(request.body.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ApiError("VALIDATION_ERROR", "请求体必须是有效 JSON。")
+
+
+@require_POST
+@api_view
+@idempotent
+def membership_create(request):
+    """创建物业内会员关系；不按手机号自动合并客人档案。"""
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
+    if not AuthorizationService.has_permission(
+            request.user, property_obj, "hotelapp.add_vip"):
+        raise ApiError("PERMISSION_DENIED", "缺少会员新增权限。")
+    body = _membership_body(request)
+    guest = Guest.objects.filter(
+        pk=body.get("guest_id"), property=property_obj).first()
+    if guest is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "当前物业下不存在该客人档案。")
+    joined_at = None
+    if body.get("joined_at"):
+        from datetime import date
+        try:
+            joined_at = date.fromisoformat(str(body["joined_at"]))
+        except ValueError:
+            raise ApiError("VALIDATION_ERROR", "joined_at 必须使用 YYYY-MM-DD 格式。")
+    try:
+        membership = GuestMembershipService.create_membership(
+            property_obj=property_obj, guest=guest,
+            member_no=body.get("member_no"),
+            level_code=body.get("level_code") or "STANDARD",
+            joined_at=joined_at, source="PMS2 管理中心",
+            created_by=request.user, request=request)
+    except GuestServiceError as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    return api_response(request, {
+        "id": membership.pk, "member_no": membership.member_no,
+        "guest_id": guest.pk, "level_code": membership.level_code,
+        "status": membership.status,
+    }, status=201)
+
+
+@require_POST
+@api_view
+@idempotent
+def membership_change_level(request, membership_id):
+    """会员等级变更：必须填写业务原因，写等级历史与审计。"""
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
+    if not AuthorizationService.has_permission(
+            request.user, property_obj, "hotelapp.change_vip"):
+        raise ApiError("PERMISSION_DENIED", "缺少会员修改权限。")
+    membership = GuestMembership.objects.filter(
+        pk=membership_id, property=property_obj).first()
+    if membership is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "当前物业下不存在该会员关系。")
+    body = _membership_body(request)
+    try:
+        membership = GuestMembershipService.change_level(
+            membership=membership, new_level=body.get("level_code"),
+            reason=body.get("reason"), changed_by=request.user, request=request)
+    except GuestServiceError as exc:
+        raise ApiError("VALIDATION_ERROR", str(exc))
+    return api_response(request, {
+        "id": membership.pk, "level_code": membership.level_code,
+        "status": membership.status,
+    })

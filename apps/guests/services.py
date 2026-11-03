@@ -214,6 +214,14 @@ class GuestMembershipService:
     def create_membership(*, property_obj, guest, member_no, level_code="STANDARD",
                           joined_at=None, source="新建", created_by=None, request=None):
         from .models import GuestMembership, MembershipLevelHistory
+        member_no = str(member_no or "").strip()
+        level_code = str(level_code or "").strip()
+        if guest.property_id != property_obj.pk:
+            raise GuestServiceError("客人不属于当前物业。")
+        if not member_no or len(member_no) > 32:
+            raise GuestServiceError("会员编号必须为 1 至 32 个字符。")
+        if not level_code or len(level_code) > 32:
+            raise GuestServiceError("会员等级代码必须为 1 至 32 个字符。")
         if GuestMembership.objects.filter(
                 property=property_obj, guest=guest,
                 status=GuestMembership.Status.ACTIVE).exists():
@@ -240,6 +248,12 @@ class GuestMembershipService:
     def change_level(*, membership, new_level, reason, changed_by=None, request=None):
         """等级变更：写历史 + 更新当前等级；同等级不重复变更。"""
         from .models import MembershipLevelHistory
+        reason = str(reason or "").strip()
+        new_level = str(new_level or "").strip()
+        if not reason or len(reason) > 240:
+            raise GuestServiceError("会员等级变更必须填写 1 至 240 个字符的原因。")
+        if not new_level or len(new_level) > 32:
+            raise GuestServiceError("会员等级代码必须为 1 至 32 个字符。")
         if membership.level_code == new_level:
             return membership
         old = membership.level_code

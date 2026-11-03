@@ -55,4 +55,6 @@ urlpatterns = [
     # --- Membership (V1.1 Phase 1) ---
     path("memberships", staff_center.membership_list, name="membership_list"),
     path("memberships/<int:membership_id>", staff_center.membership_detail, name="membership_detail"),
+    path("memberships/create", staff_center.membership_create, name="membership_create"),
+    path("memberships/<int:membership_id>/level", staff_center.membership_change_level, name="membership_change_level"),
 ]
