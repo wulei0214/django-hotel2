@@ -409,3 +409,29 @@ def adjust_daily_rate_api(request, rate_id):
         "price": str(rate.price), "currency": rate.currency,
         "changed": changed,
     })
+
+
+@require_GET
+@api_view
+def financial_summary_api(request):
+    """财务汇总（P1-08/Q-13）：值班经理看汇总；完整流水仅财务/店长。"""
+    user = request.user
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
+    if not AuthorizationService.has_permission(
+            user, property_obj, "hotelapp.finance_access"):
+        raise ApiError("PERMISSION_DENIED", "缺少财务管理权限。")
+    from datetime import date, timedelta
+    from apps.billing.services_v2 import BillingService
+    end = date.today()
+    start = end - timedelta(days=7)
+    summary = BillingService.financial_summary(
+        property_obj=property_obj, start_date=start, end_date=end)
+    summary["period"] = {"start": str(start), "end": str(end)}
+    is_finance = user.groups.filter(name="财务").exists()
+    is_owner = user.groups.filter(name="店长").exists()
+    summary["detail_available"] = bool(is_finance or is_owner or user.is_superuser)
+    if not summary["detail_available"]:
+        summary["note"] = "值班经理仅可查看汇总；完整流水请联系财务或店长。"
+    return api_response(request, summary)

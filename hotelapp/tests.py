@@ -114,11 +114,11 @@ class HighRiskActionPermissionTests(TestCase):
         self.client.force_login(self.dm)
         self.assertEqual(self.client.get("/nightaudit/").status_code, 200)
 
-    def test_night_audit_run_requires_permission(self):
+    def test_old_night_audit_run_retired(self):
+        """P1-09：旧夜审写入口已退役，返回 410"""
         self.client.force_login(self.fd)
-        self.assertEqual(
-            self.client.post("/nightaudit_run/").status_code, 403,
-            "执行夜审需要「执行夜审」权限（值班经理/店长）")
+        response = self.client.post("/nightaudit_run/")
+        self.assertEqual(response.status_code, 410, "旧夜审入口应返回 410 Gone")
 
     def test_uncheckout_requires_permission(self):
         self.client.force_login(self.fd)
@@ -389,17 +389,11 @@ class NightAuditIdempotencyTests(TestCase):
         self.dm = _make_user("dm501", "值班经理")
         self.client.force_login(self.dm)
 
-    def test_duplicate_night_audit_blocked(self):
-        first = self.client.post("/nightaudit_run/")
-        self.assertEqual(first.status_code, 302, "首次夜审成功后跳回工作台")
-        second = self.client.post("/nightaudit_run/")
-        self.assertEqual(second.status_code, 400, "同一营业日第二次夜审必须被拒绝")
-
-    def test_night_audit_records_single_entry(self):
-        from hotelapp.models import NightAudit
-        self.client.post("/nightaudit_run/")
-        self.client.post("/nightaudit_run/")  # 重复被拒
-        self.assertEqual(NightAudit.objects.count(), 1, "重复提交不产生第二份日结")
+    def test_night_audit_page_accessible_to_manager(self):
+        """值班经理可访问夜审工作台页面"""
+        self.client.force_login(self.dm)
+        response = self.client.get("/nightaudit/")
+        self.assertEqual(response.status_code, 200)
 
 
 class FolioAccessGateTests(TestCase):

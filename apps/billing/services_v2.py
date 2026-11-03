@@ -467,3 +467,117 @@ class BillingService:
             after={"amount": str(refund.amount), "status": refund.status},
             reason=refund.reason)
         return refund, True
+
+
+    @staticmethod
+    @transaction.atomic
+    def reverse_entry(*, entry_id, reason, reversed_by, request=None):
+        """红字冲销（V1.1 P1-08/Q-05）：追加反向凭证，不修改原凭证。
+
+        规则：不可冲销红字凭证；同 reference 幂等；须填写原因。
+        """
+        from apps.billing.models import LedgerEntry
+        reason = (reason or "").strip()
+        if not reason:
+            raise ValueError("冲销必须填写原因。")
+        original = LedgerEntry.objects.select_for_update().get(pk=entry_id)
+        existing_ref = f"reversal:{original.reference}"
+        dup = LedgerEntry.objects.filter(reference=existing_ref).first()
+        if dup:
+            return dup, False
+        if original.entry_type == LedgerEntry.EntryType.REVERSAL:
+            raise ValueError("不能冲销一条红字凭证。")
+        reversal = LedgerEntry.objects.create(
+            property=original.property, folio=original.folio,
+            stay=original.stay,
+            entry_type=LedgerEntry.EntryType.REVERSAL,
+            amount=-original.amount, currency=original.currency,
+            business_date=timezone.localdate(),
+            reference=existing_ref,
+            description=f"冲销：{original.description}"[:240],
+            posted_by=reversed_by)
+        AuditEvent.record(
+            action="billing.reverse_entry", entity_type="LedgerEntry",
+            entity_id=original.pk, actor=reversed_by,
+            property_obj=original.property, reason=reason[:240],
+            before={"amount": str(original.amount), "reference": original.reference},
+            after={"reversal_id": reversal.pk, "amount": str(reversal.amount)},
+            request=request)
+        return reversal, True
+
+    @staticmethod
+    @transaction.atomic
+    def open_shift(*, property_obj, cashier, opening_cash=Decimal("0.00")):
+        """开班（CashierShift）。"""
+        from apps.billing.models import CashierShift
+        open_shift = CashierShift.objects.filter(
+            property=property_obj, cashier=cashier,
+            status=CashierShift.ShiftStatus.OPEN).first()
+        if open_shift:
+            return open_shift, False
+        shift = CashierShift.objects.create(
+            property=property_obj, cashier=cashier,
+            opening_cash=BillingService._money(opening_cash))
+        AuditEvent.record(
+            action="billing.shift_open", entity_type="CashierShift",
+            entity_id=shift.pk, actor=cashier, property_obj=property_obj,
+            after={"opening_cash": str(opening_cash)})
+        return shift, True
+
+    @staticmethod
+    @transaction.atomic
+    def close_shift(*, shift_id, actual_cash, closed_by, variance_reason=""):
+        """关班（CashierShift）：计算差异；差异必须说明。"""
+        from apps.billing.models import CashierShift
+        shift = CashierShift.objects.select_for_update().get(pk=shift_id)
+        if shift.status != CashierShift.ShiftStatus.OPEN:
+            raise ValueError("班次已关闭。")
+        actual = BillingService._money(actual_cash)
+        expected = shift.opening_cash
+        shift.expected_cash = expected
+        shift.actual_cash = actual
+        variance = actual - expected
+        shift.variance = variance
+        if variance != 0 and not variance_reason:
+            raise ValueError(f"差异 {variance} 不为零，必须填写差异说明。")
+        shift.variance_reason = variance_reason[:240]
+        shift.status = CashierShift.ShiftStatus.CLOSED
+        shift.closed_at = timezone.now()
+        shift.closed_by = closed_by
+        shift.save()
+        AuditEvent.record(
+            action="billing.shift_close", entity_type="CashierShift",
+            entity_id=shift.pk, actor=closed_by, property_obj=shift.property,
+            after={"expected": str(expected), "actual": str(actual),
+                   "variance": str(variance), "reason": variance_reason})
+        return shift
+
+    @staticmethod
+    def financial_summary(*, property_obj, start_date, end_date):
+        """财务汇总（P1-08/Q-13）：PMS2 LedgerEntry/Payment/Refund 聚合。"""
+        from apps.billing.models import LedgerEntry, Payment, Refund
+        entries = LedgerEntry.objects.filter(
+            property=property_obj,
+            business_date__gte=start_date,
+            business_date__lte=end_date)
+        payments = Payment.objects.filter(
+            property=property_obj,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date)
+        refunds = Refund.objects.filter(
+            property=property_obj,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date)
+        total_revenue = sum(
+            e.amount for e in entries if e.amount > 0) or Decimal("0.00")
+        total_expense = sum(-e.amount for e in entries if e.amount < 0) or Decimal("0.00")
+        return {
+            "total_revenue": str(total_revenue),
+            "total_expense": str(total_expense),
+            "net": str(total_revenue - total_expense),
+            "payment_count": payments.count(),
+            "payment_total": str(sum(p.amount for p in payments) or Decimal("0.00")),
+            "refund_count": refunds.count(),
+            "refund_total": str(sum(r.amount for r in refunds) or Decimal("0.00")),
+            "entry_count": entries.count(),
+        }

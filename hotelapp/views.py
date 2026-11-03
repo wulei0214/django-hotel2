@@ -2321,46 +2321,12 @@ def night_audit(request):
 
 @staff_required
 def night_audit_run(request):
-    """执行夜审：No-Show 处理 → 房费过租 → 记录日结（需「执行夜审」权限）"""
-    if request.method == "POST":
-        if not _has_permission(request, "hotelapp.night_audit_execute"):
-            return HttpResponse("执行夜审需要值班经理/店长授权", status=403)
-        # 幂等守卫（AUTH-16/E-17）：同一营业日只能夜审一次——
-        # 网络重试/重复提交不得重复产生过租收入或未到处理
-        if NightAudit.objects.filter(营业日期=_today()).exists():
-            return HttpResponse(f"营业日 {_today()} 已完成夜审，不能重复执行；"
-                                "如需纠错请走营业日重开审批流程", status=400)
-        expired = Accommodation.objects.filter(状态__in=("待确认", "已确认"), 入住时间__lt=_today())
-        living = Accommodation.objects.filter(状态="已入住")
-        total = 0.0
-        noshow = 0
-        try:
-            # 事务化（E-18）：No-Show/过租/日结要么全部成功，要么整体回滚
-            with transaction.atomic():
-                for item in expired:
-                    events.publish("no_show", order_id=item.id, room_no=item.客房编号.房间号)
-                    item.状态 = "未到"
-                    item.save()
-                    noshow += 1
-                for item in living:
-                    amount = str(item.客房编号.价格)
-                    FinanceRecord.objects.create(类型="收入", 金额=amount,
-                                                 事由=f"房费过租（订单{item.id}）",
-                                                 关联订单=str(item.id), 日期=_today(),
-                                                 经手人=request.user.username)
-                    try:
-                        total += float(amount)
-                    except (TypeError, ValueError):
-                        pass
-                NightAudit.objects.create(营业日期=_today(), 在住单数=living.count(),
-                                          过租总额=f"{total:.2f}", 未到处理数=noshow,
-                                          操作人=request.user.username,
-                                          执行时间=datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
-        except Exception:
-            return HttpResponse("夜审执行失败：本次操作已整体回滚，请检查数据后重试", status=500)
-        messages.success(request, f"夜审完成：在住 {living.count()} 单，过租 {total:.2f} 元，未到处理 {noshow} 单")
-        return redirect("/nightaudit/")
-    return HttpResponse("非法请求", status=400)
+    """旧夜审执行已退役（P1-09 V1.1 §12.4）：请使用 PMS2 NightAuditService API。"""
+    return HttpResponse(
+        "旧夜审写入口已退役（410 Gone）：请使用 /api/v1/night-audit/preview 和 /api/v1/night-audit/run",
+        status=410,
+        headers={"Location": "/api/v1/night-audit/preview"})
+
 
 
 # ---------- 系统环境配置信息（图4） ----------
