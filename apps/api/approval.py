@@ -15,9 +15,10 @@ from apps.identity.authorization import AuthorizationService
 
 def _check_approver(request, property_obj):
     """审批权限检查：值班经理或店长。"""
+    # AUTH-06：业务授权统一 AuthorizationService（值班经理=finance_access，店长=refund_approve）
     if not (
         AuthorizationService.has_permission(request.user, property_obj, "hotelapp.finance_access")
-        or request.user.groups.filter(name__in=("值班经理", "店长")).exists()
+        or AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve")
     ):
         raise ApiError("PERMISSION_DENIED", "审批需要值班经理或店长权限。")
 

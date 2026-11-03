@@ -41,26 +41,29 @@ def _make_staff(name="保洁员"):
 
 
 class RegisterStopTheBleedingTests(TestCase):
-    """决策 P0：公开注册只产顾客预订账号，不得发放员工后台身份"""
+    """AUTH-01（D1/D8）：公开注册通道停止创建 User；住客走 /reserve/ 免注册直订"""
 
-    def test_register_creates_customer_account_without_staff_identity(self):
+    def test_register_no_longer_creates_user(self):
+        before = User.objects.count()
         response = self.client.post("/register/", {
             "username": "guest001", "password": "guest001-pass",
             "password2": "guest001-pass", "fullname": "测试顾客", "tel": "13800001111",
         })
-        self.assertRedirects(response, "/booking/", fetch_redirect_response=False)
-        user = User.objects.get(username="guest001")
-        self.assertFalse(user.is_staff, "公开注册决不能发放 is_staff")
-        self.assertEqual(user.groups.count(), 0, "公开注册决不能加入任何角色组")
+        self.assertRedirects(response, "/reserve/", fetch_redirect_response=False)
+        self.assertEqual(User.objects.count(), before,
+                         "公开注册决不能再创建任何 User（含孤儿顾客账号）")
+        self.assertFalse(User.objects.filter(username="guest001").exists())
 
-    def test_registered_customer_cannot_enter_backoffice(self):
-        self.client.post("/register/", {
-            "username": "guest002", "password": "guest002-pass",
-            "password2": "guest002-pass", "fullname": "测试顾客2", "tel": "",
-        })
+    def test_register_get_also_redirects_to_reserve(self):
+        response = self.client.get("/register/")
+        self.assertRedirects(response, "/reserve/", fetch_redirect_response=False)
+
+    def test_authenticated_without_employment_cannot_enter_backoffice(self):
+        user = User.objects.create_user(username="orphan01", password="orphan01-pass123")
+        self.client.force_login(user)
         response = self.client.get("/home/")
-        self.assertEqual(response.status_code, 403,
-                         "认证但无员工身份者访问后台应被明确拒绝（判定链 §6 第 2 层）")
+        self.assertIn(response.status_code, (302, 403),
+                      "认证但无员工身份者访问后台应被拒绝（判定链 §6 第 2 层）")
 
 
 class HousekeepingReleaseTests(TestCase):
@@ -998,9 +1001,10 @@ class V11P0ModelTests(TestCase):
         with self.assertRaises(Exception):
             reveal_document(doc, revealed_by=fd)
         from django.contrib.auth.models import Permission
-        fd.user_permissions.add(
+        # AUTH-06：授权统一走 AuthorizationService（StaffRoleAssignment→Group→Permission）
+        fd_group = Group.objects.get(name="前台")
+        fd_group.permissions.add(
             Permission.objects.get(codename="document_reveal"))
-        fd = User.objects.get(pk=fd.pk)  # 刷新权限缓存
         plain = reveal_document(doc, revealed_by=fd, reason="入住核验")
         self.assertEqual(plain, "110101199001010017")
         self.assertTrue(AuditEvent.objects.filter(

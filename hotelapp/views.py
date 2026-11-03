@@ -1755,21 +1755,28 @@ def force_password_change(request):
         elif new1 != new2:
             error = "两次输入的密码不一致"
         else:
-            request.user.set_password(new1)  # session_auth_hash 变更 → 其他会话失效
-            request.user.save(update_fields=("password",))
-            profile.must_change_password = False
-            profile.last_password_change = timezone.now()
-            profile.save(update_fields=("must_change_password",
-                                        "last_password_change", "updated_at"))
-            from apps.core.models import AuditEvent
-            AuditEvent.record(
-                action="identity.password_changed", entity_type="StaffProfile",
-                entity_id=profile.pk, actor=request.user,
-                reason="首次登录/被重置后强制改密完成")
-            from django.contrib.auth import update_session_auth_hash
-            update_session_auth_hash(request, request.user)  # 保持当前会话
-            messages.success(request, "密码修改成功，欢迎使用酒店管理系统")
-            return redirect("/home/")
+            try:
+                from django.contrib.auth.password_validation import validate_password
+                from django.core.exceptions import ValidationError as _PwdError
+                validate_password(new1, user=request.user)
+            except _PwdError as exc:
+                error = "；".join(exc.messages)
+            if not error:
+                request.user.set_password(new1)  # session_auth_hash 变更 → 其他会话失效
+                request.user.save(update_fields=("password",))
+                profile.must_change_password = False
+                profile.last_password_change = timezone.now()
+                profile.save(update_fields=("must_change_password",
+                                            "last_password_change", "updated_at"))
+                from apps.core.models import AuditEvent
+                AuditEvent.record(
+                    action="identity.password_changed", entity_type="StaffProfile",
+                    entity_id=profile.pk, actor=request.user,
+                    reason="首次登录/被重置后强制改密完成")
+                from django.contrib.auth import update_session_auth_hash
+                update_session_auth_hash(request, request.user)  # 保持当前会话
+                messages.success(request, "密码修改成功，欢迎使用酒店管理系统")
+                return redirect("/home/")
     return render(request, "force_password_change.html", {"error": error})
 
 
@@ -1809,6 +1816,17 @@ def _today():
     return datetime.date.today().strftime("%Y-%m-%d")
 
 
+_LOGIN_FAIL_MESSAGE = "账号或密码不正确，或账号暂不可用"
+
+
+def _audit_login_failure(request, username, reason):
+    """AUTH-04：登录失败对外统一文案；细分原因只进内部安全审计日志。"""
+    import logging as _logging
+    _logging.getLogger("security").warning(
+        "login_failed ip=%s username=%s reason=%s",
+        request.META.get("REMOTE_ADDR", ""), username[:30], reason)
+
+
 def _safe_login_next(request, candidate):
     """登录后回跳地址安全校验：仅允许本站相对地址（防 //外部域名 开放重定向）。"""
     if candidate and url_has_allowed_host_and_scheme(
@@ -1827,14 +1845,18 @@ def login_view(request):
     raw_next = request.GET.get("next", "") or request.POST.get("next", "")
     next_url = _safe_login_next(request, raw_next) if raw_next else ""
     if request.method == "POST":
-        user = authenticate(request, username=request.POST.get("username"),
+        username = (request.POST.get("username") or "").strip()
+        user = authenticate(request, username=username,
                             password=request.POST.get("password"))
         if user is None:
-            error = "用户名或密码错误"
+            error = _LOGIN_FAIL_MESSAGE
+            _audit_login_failure(request, username, "bad_credentials")
         elif not user.is_active:
-            error = "该账号已被停用"
+            error = _LOGIN_FAIL_MESSAGE
+            _audit_login_failure(request, username, "disabled")
         elif not _has_active_employment(user):
-            error = "该账号没有员工任职关系或岗位授权，请联系管理员分配"
+            error = _LOGIN_FAIL_MESSAGE
+            _audit_login_failure(request, username, "no_employment")
         else:
             auth_login(request, user)
             return redirect(_safe_login_next(request, request.POST.get("next")))
@@ -1842,40 +1864,12 @@ def login_view(request):
 
 
 def register_view(request):
-    """注册 = 顾客预订账号（P0 安全止血：不再发放 is_staff/员工组）。
+    """AUTH-01 注册止血（D1/D8）：公开注册通道停止创建任何 User。
 
-    员工后台账号由管理员在后台创建并授权（或 bind_staff_user 绑定），
-    公开注册通道不得产生任何员工后台身份。"""
-    if request.user.is_authenticated and _has_active_employment(request.user):
-        return redirect("/home/")
-    error = None
-    form = {"username": "", "fullname": "", "tel": ""}
-    if request.method == "POST":
-        username = (request.POST.get("username") or "").strip()
-        password = request.POST.get("password") or ""
-        password2 = request.POST.get("password2") or ""
-        fullname = (request.POST.get("fullname") or "").strip()
-        tel = (request.POST.get("tel") or "").strip()
-        form = {"username": username, "fullname": fullname, "tel": tel}
-        if not re.match(r"^[\w.@+-]{3,30}$", username):
-            error = "用户名须为 3-30 位字母/数字/下划线"
-        elif not fullname:
-            error = "姓名不能为空"
-        elif len(password) < 6:
-            error = "密码至少 6 位"
-        elif password != password2:
-            error = "两次输入的密码不一致"
-        elif tel and not re.match(r"^1\d{10}$", tel):
-            error = "手机号格式不正确"
-        elif User.objects.filter(username=username).exists():
-            error = "该用户名已被注册"
-        else:
-            user = User.objects.create_user(username=username, password=password, first_name=fullname)
-            # 决不发放员工后台身份（is_staff / Group 均不动）——公开注册只产顾客账号
-            auth_login(request, user)
-            messages.success(request, "注册成功，可用于顾客预订；员工账号请联系管理员开通")
-            return redirect("/booking/")
-    return render(request, "register.html", {"error": error, "form": form})
+    住客无需账号即可直订（/reserve/ 免注册）；员工账号由管理员经
+    EmployeeLifecycleService 开通。历史孤儿 User 分类处理见方案 D10。"""
+    return redirect("/reserve/")
+
 
 
 @login_required
@@ -1921,47 +1915,11 @@ def home(request):
     return render(request, "home.html", ctx)
 
 def booking_page(request):
-    """顾客自助预订：查看房型与价格，提交预订申请（状态=预订，待前台确认）"""
-    error = None
-    ok = False
-    types = {}
-    for r in Room.objects.order_by("房间号"):
-        t = types.setdefault(r.客房类型, {"price": int(r.价格 or 0), "count": 0})
-        t["count"] += 1
-        t["price"] = min(t["price"], int(r.价格 or 0))
-    if request.method == "POST":
-        name = (request.POST.get("name") or "").strip()
-        tel = (request.POST.get("tel") or "").strip()
-        room_type = (request.POST.get("room_type") or "").strip()
-        date = (request.POST.get("date") or "").strip()
-        if not re.match(r"^[\u4e00-\u9fa5A-Za-z·]{2,10}$", name):
-            error = "请填写 2-10 位中英文姓名"
-        elif not re.match(r"^1\d{10}$", tel):
-            error = "请填写 11 位手机号（1 开头）"
-        elif not Room.objects.filter(客房类型=room_type).exists():
-            error = "请选择房间类型"
-        else:
-            try:
-                datetime.datetime.strptime(date, "%Y-%m-%d")
-            except ValueError:
-                error = "请选择入住日期"
-            else:
-                if date < _today():
-                    error = "入住日期不能早于今天"
-        if error is None and Accommodation.objects.filter(联系电话=tel, 入住时间=date, 状态="待确认").exists():
-            error = "该手机号在此日期已有预订，请勿重复提交"
-        if error is None:
-            room = (Room.objects.filter(客房类型=room_type, 房间状态="空闲").first()
-                    or Room.objects.filter(客房类型=room_type).first())
-            client = Client.objects.create(姓名=name, 身份证号=None)
-            last = Accommodation.objects.order_by("-id").first()
-            new_id = (last.id + 1) if last else 1
-            Accommodation.objects.create(
-                id=new_id, 顾客id=client, 客房编号=room, 入住时间=date,
-                状态="待确认", 联系电话=tel,
-            )
-            ok = True
-    return render(request, "booking.html", {"error": error, "ok": ok, "types": types, "today": _today()})
+    """AUTH-02 冻结旧预订写入（D8）：统一指向 PMS2 公开直订 /reserve/。
+
+    旧 Accommodation/Client 写路径保留代码待退役，但入口不再可达。"""
+    return redirect("/reserve/", permanent=False)
+
 
 
 @staff_required
@@ -1994,22 +1952,12 @@ def checkin_manage(request):
 
 @staff_required
 @pms_permission_required('hotelapp.change_accommodation')
+@staff_required
+@pms_permission_required('hotelapp.change_accommodation')
 def cancel_booking(request):
-    """取消预订（待确认/已确认 → 已取消）：发布事件释放房间"""
-    if request.method == "POST":
-        try:
-            item = Accommodation.objects.get(id=request.POST.get("id"))
-        except (Accommodation.DoesNotExist, ValueError):
-            return HttpResponse("订单不存在", status=400)
-        if item.状态 not in ("待确认", "已确认"):
-            return HttpResponse("只有待确认/已确认的订单可以取消", status=400)
-        prev = item.状态
-        item.状态 = "已取消"
-        item.save()
-        events.publish("booking_cancelled", order_id=item.id,
-                       room_no=item.客房编号.房间号, prev_status=prev)
-        return JsonResponse({"ok": True})
-    return HttpResponse("非法请求", status=400)
+    """AUTH-02 冻结旧订单取消写（D8）：统一指向 PMS2 公开直订 /reserve/。"""
+    return redirect("/reserve/", permanent=False)
+
 
 
 @staff_required

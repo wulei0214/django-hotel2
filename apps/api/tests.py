@@ -161,7 +161,8 @@ class PublicBookingApiTests(TestCase):
         response = self.client.get("/reserve/")
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "public/booking.html")
-        self.assertContains(response, "查询可订房型")
+        # 32f952b 页面重做后的现行文案
+        self.assertContains(response, "在线预订")
         self.assertContains(response, "/api/v1/availability")
 
 

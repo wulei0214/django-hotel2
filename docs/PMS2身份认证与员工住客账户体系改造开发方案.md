@@ -100,3 +100,25 @@
 ## 开发纪律
 
 D1-D12 未确认前，只能做不改变业务政策的盘点、测试补充和安全止血。每项功能标注已实现/部分实现/未实现/待验收；模型存在不等于功能交付。每个 PR 说明权限、数据、迁移、回滚、测试和已知限制。
+
+## 实施状态（2026-11-04，Phase 0 止血批次）
+
+> 依据"开发纪律"：D1-D12 未正式批准，本批仅执行 Phase 0 盘点/测试/安全止血；Phase 1（邀请激活）待决策批准后启动。
+
+| 任务 | 状态 | 说明 |
+|---|---|---|
+| AUTH-00 基线盘点 | 已实现 | register/booking/mock 支付/订单查询/密码设置点/权限读取点全仓定位完成 |
+| AUTH-01 注册止血 | 已实现 | register_view 不再创建任何 User（GET/POST 均 302 → /reserve/）；登录页注册链接已在前批移除 |
+| AUTH-02 冻结旧 booking | 已实现 | /booking/ 与 /cancel_booking/ 冻结写（302 → /reserve/），旧模型零写入；视图代码保留待退役 |
+| AUTH-03 next 安全校验 | 已实现 | 前批已落地 url_has_allowed_host_and_scheme（含 //host 拒绝），本批复核确认 |
+| AUTH-04 登录错误统一 | 已实现 | 对外统一"账号或密码不正确，或账号暂不可用"；细分原因（bad_credentials/disabled/no_employment）进 security 日志审计 |
+| AUTH-05 密码策略 | 已实现 | validate_password 覆盖 provision_account / bind_existing_user / reset_password / 首次强制改密四条路径 |
+| AUTH-06 权限读取统一 | 已实现 | 清除业务面 User.groups/has_perm 直读：approval 审批、financial_summary 明细可见性、PII reveal 全部改 AuthorizationService（含物业范围） |
+| AUTH-07 mock 支付门禁 | 已实现 | 非 dev/test 环境创建 mock intent 一律 403 |
+| AUTH-08 订单查询安全 | 已实现 | payment_intent/取消面 AuditEvent 数据库行限流（10 次/5 分钟，phone 指纹+IP 双维）+ 全量审计落库；404 文案已统一 |
+| AUTH-09 防刷与测试 | 已实现 | 新增 apps/api/test_auth_hardening.py 12 项加固测试 |
+| Phase 1 邀请激活（AUTH-10~15） | 未实现 | 依赖 D1/D6/D12 正式批准，按纪律暂缓 |
+| Phase 2 联系方式（D11） | 未实现 | 待 D11 决策与真实服务商 |
+| Phase 3 多物业/MFA/OTP | 未实现 | 独立立项 |
+
+**合并附带修复**：并行会话 32f952b 重做 /reserve/ 页面后未同步 test_public_reserve_page_renders_template 断言（旧文案已不存在），本批更新为现行文案。全量 174 项测试通过。

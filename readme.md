@@ -163,6 +163,10 @@ python manage.py runserver 0.0.0.0:8000 --noreload
 
 161 项测试通过；浏览器实测主界面/会员中心/预订中心/房态中心中文显示全部正确。
 
+### 5.4 身份认证 Phase 0 止血（2026-11-04，依据身份账户体系改造方案）
+
+按方案"开发纪律"（D1-D12 未批准仅做盘点/测试/止血）完成 Phase 0 全部 10 项：注册止血（/register/ 停建 User → 302 /reserve/）、冻结 /booking/ 与 /cancel_booking/ 旧写、登录失败对外统一文案（细分原因入 security 日志）、validate_password 覆盖全部密码设置路径、业务授权清除三处 User.groups/has_perm 直读（approval/财务明细/PII reveal → AuthorizationService）、生产环境拒绝 mock 支付、订单查询/取消 AuditEvent 数据库限流（10 次/5 分钟）+ 审计。新增 12 项加固测试，全量 174 项通过；实施状态表见方案文档末节。Phase 1（邀请激活）待 D1/D6/D12 批准。
+
 ## 6. 文档索引
 
 | 文档 | 内容 |

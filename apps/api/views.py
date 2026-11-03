@@ -7,11 +7,13 @@ from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.http import JsonResponse
+from django.db.models import Q
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.billing.models import Payment
+from apps.core.models import AuditEvent
 from apps.billing.services import (
     PaymentConflict,
     create_mock_payment_intent,
@@ -259,10 +261,49 @@ def reservation_detail(request, booking_no):
     )
 
 
+def _is_dev_env():
+    return settings.DEBUG and getattr(settings, "DJANGO_ENV", "dev") in {"dev", "test"}
+
+
+def _public_throttle(request, *, phone, action, limit=10, window_seconds=300):
+    """AUTH-08：公共匿名面限流——AuditEvent 持久计数（DB 级，多进程可靠）。
+
+    LocMemCache 不能作为多进程限流唯一机制，故按方案用数据库行计数；
+    同 phone 指纹与同 IP 任一维超限即拒绝，并落一条 blocked 审计。"""
+    import hashlib
+    phone_key = hashlib.sha256((phone or "").encode("utf-8")).hexdigest()[:16]
+    ip = request.META.get("REMOTE_ADDR", "") or ""
+    since = timezone.now() - timedelta(seconds=window_seconds)
+    hits = AuditEvent.objects.filter(
+        entity_type="public_throttle", action=action, created_at__gte=since
+    ).filter(Q(entity_id=phone_key) | Q(entity_id="ip:" + ip)).count()
+    if hits >= limit:
+        AuditEvent.record(
+            action=action, entity_type="public_throttle_blocked",
+            entity_id=phone_key, reason="rate_limited ip=%s" % ip,
+            request=request)
+        return False
+    AuditEvent.record(
+        action=action, entity_type="public_throttle", entity_id=phone_key,
+        reason="ip=%s" % ip, request=request)
+    return True
+
+
 @require_POST
 @api_guard
 def payment_intent_create(request):
     property_obj = getattr(request, "property", None)
+    # AUTH-07：mock 支付门禁——生产环境拒绝创建模拟支付（含金额/状态等信息面）
+    if not _is_dev_env():
+        return JsonResponse({"error": "模拟支付仅在开发/测试环境开放。"}, status=403)
+    # AUTH-08：订单查询面限流（booking_no + phone 组合不能代替频率控制）
+    try:
+        probe_body = _body(request)
+        probe_phone = normalize_phone(probe_body.get("phone"))
+    except Exception:
+        probe_phone = ""
+    if not _public_throttle(request, phone=probe_phone, action="public.payment_intent"):
+        return JsonResponse({"error": "请求过于频繁，请稍后再试。"}, status=429)
     try:
         body = _body(request)
         booking_no = str(body.get("booking_no") or "").strip()
@@ -448,6 +489,14 @@ def openapi_document(request):
 @api_guard
 def reservation_cancel(request, booking_no):
     property_obj = getattr(request, "property", None)
+    # AUTH-08：取消面限流
+    try:
+        _cancel_body = _body(request)
+        _cancel_phone = normalize_phone(_cancel_body.get("phone"))
+    except Exception:
+        _cancel_phone = ""
+    if not _public_throttle(request, phone=_cancel_phone, action="public.reservation_cancel"):
+        return JsonResponse({"error": "请求过于频繁，请稍后再试。"}, status=429)
     try:
         body = _body(request)
         reservation, changed = cancel_pending_reservation(

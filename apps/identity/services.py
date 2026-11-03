@@ -15,6 +15,8 @@ from datetime import datetime
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 
@@ -27,6 +29,14 @@ audit = logging.getLogger("hotel.audit")
 
 class EmployeeLifecycleError(Exception):
     """员工生命周期操作的业务校验失败（消息面向操作者）。"""
+
+
+def _enforce_password_policy(password, user=None):
+    """AUTH-05：开通/激活/重置/自助改密统一走 Django validate_password。"""
+    try:
+        validate_password(password, user=user)
+    except DjangoValidationError as exc:
+        raise EmployeeLifecycleError("；".join(exc.messages)) from exc
 
 
 class EmployeeLifecycleService:
@@ -138,6 +148,7 @@ class EmployeeLifecycleService:
             raise EmployeeLifecycleError(f"登录账号 {username} 已被占用")
         if not password or len(password) < 6:
             raise EmployeeLifecycleError("初始密码至少 6 位")
+        _enforce_password_policy(password)
         user = User.objects.create_user(username=username, password=password,
                                         first_name=profile.full_name)
         # D-07：一次性初始密码，首次登录强制改密（set_password 换 session_auth_hash
@@ -165,6 +176,7 @@ class EmployeeLifecycleService:
         if StaffProfile.objects.filter(user=user).exclude(pk=profile.pk).exists():
             raise EmployeeLifecycleError("该登录账号已经绑定其他员工档案。")
         if password:
+            _enforce_password_policy(password, user=user)
             user.set_password(password)
             user.save(update_fields=("password",))
         if profile.user_id != user.pk:
@@ -356,6 +368,7 @@ class EmployeeLifecycleService:
         if not new_password or len(new_password) < 6:
             raise EmployeeLifecycleError("密码至少 6 位")
         user = User.objects.get(pk=profile.user_id)
+        _enforce_password_policy(new_password, user=user)
         user.set_password(new_password)  # session_auth_hash 变更 → 旧会话自动失效
         user.save(update_fields=("password",))
         profile.must_change_password = True
