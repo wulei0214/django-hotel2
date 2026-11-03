@@ -34,8 +34,8 @@ def _operation(summary, tag, method, *, path_params=(), query=(), body=None,
     params += [_param(q[0], "query", q[1], q[2], q[3] if len(q) > 3 else "") for q in query]
     if method == "post":
         params.append(CSRF)
-    responses = {success_code: {"description": success}}
-    responses.update(COMMON_ERRORS)
+    responses = {success_code: {"description": success, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": True}}}}}
+    responses.update({code: {"description": value["description"], "content": {"application/json": {"schema": {"type": "object", "additionalProperties": True}}}} for code, value in COMMON_ERRORS.items()})
     item = {
         "tags": [tag], "summary": summary,
         "description": (notes + "\n\n" if notes else "") +
