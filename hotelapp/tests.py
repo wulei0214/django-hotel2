@@ -578,9 +578,11 @@ class EmployeeLifecycleServiceTests(TestCase):
 
     def test_duplicate_employee_no_rejected(self):
         """STAFF-06：同店工号唯一，重复建档拒绝"""
-        self.svc.create_employee(full_name="员工甲", employee_no="F-2003")
+        self.svc.create_employee(property_obj=Property.objects.get(code="DEFAULT"),
+                                 full_name="员工甲", employee_no="F-2003")
         with self.assertRaises(Exception):
-            self.svc.create_employee(full_name="员工乙", employee_no="F-2003")
+            self.svc.create_employee(property_obj=Property.objects.get(code="DEFAULT"),
+                                     full_name="员工乙", employee_no="F-2003")
 
     def test_multi_role_union_and_expiry(self):
         """STAFF-07：多角色权限并集；过期临时授权自动失效"""
