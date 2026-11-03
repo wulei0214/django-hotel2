@@ -24,7 +24,7 @@ def public_booking_page(request):
         )
 
     today = timezone.localdate(timezone.now(), ZoneInfo(property_obj.timezone))
-    return render(
+    response = render(
         request,
         "public/booking.html",
         {
@@ -38,6 +38,10 @@ def public_booking_page(request):
             "booking_unavailable": False,
         },
     )
+    # 页面内联 JS 与后端接口同版本迭代；禁止启发式缓存，
+    # 避免浏览器拿旧脚本调新接口导致"查询无反应"
+    response["Cache-Control"] = "no-cache"
+    return response
 
 
 # V1.2 Phase 1: five real-data, read-only management workspaces.
