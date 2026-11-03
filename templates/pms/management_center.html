@@ -49,93 +49,112 @@
       </div>
       <div class="pms-pager">
         <span id="pms-state-note">数据来自 PMS2 API；此页面为只读工作台。</span>
-        <span id="pms-page"></span>
+        <span style="display:flex;gap:8px;align-items:center">
+          <button id="pms-prev" type="button" disabled>上一页</button>
+          <span id="pms-page"></span>
+          <button id="pms-next" type="button" disabled>下一页</button>
+        </span>
       </div>
     </section>
+    <div id="pms-secondary"></div>
   </div>
 </div>
 {{ columns|json_script:"pms-columns" }}
+{{ secondary_sections|json_script:"pms-secondary-sections" }}
 <script>
 (function () {
   "use strict";
   const endpoint = "{{ api_endpoint|escapejs }}";
+  const secondaryEndpoint = "{{ secondary_endpoint|default:''|escapejs }}";
   const columns = JSON.parse(document.getElementById("pms-columns").textContent);
+  const sections = JSON.parse(document.getElementById("pms-secondary-sections").textContent);
   const head = document.getElementById("pms-head");
   const body = document.getElementById("pms-body");
   const meta = document.getElementById("pms-meta");
   const search = document.getElementById("pms-search");
-  columns.forEach(function (col) {
-    const th = document.createElement("th");
-    th.textContent = col.label;
-    head.appendChild(th);
-  });
-  function valueAt(item, path) {
-    return path.split(".").reduce(function (value, key) {
-      return value == null ? null : value[key];
-    }, item);
+  const pageLabel = document.getElementById("pms-page");
+  const prevButton = document.getElementById("pms-prev");
+  const nextButton = document.getElementById("pms-next");
+  let currentPage = 1;
+  function at(item, path) {
+    return path.split(".").reduce(function(v,k){return v == null ? null : v[k];},item);
   }
-  function display(value) {
-    if (Array.isArray(value)) return value.join("、") || "—";
-    if (value === null || value === undefined || value === "") return "—";
-    if (typeof value === "boolean") return value ? "是" : "否";
-    if (typeof value === "object") return JSON.stringify(value);
-    return String(value);
+  function value(v) {
+    if (Array.isArray(v)) return v.join("、") || "—";
+    if (v === null || v === undefined || v === "") return "—";
+    if (typeof v === "boolean") return v ? "是" : "否";
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
   }
-  function cell(value) {
-    const td = document.createElement("td");
-    td.textContent = display(value);
-    return td;
+  function header(target, cols) {
+    target.replaceChildren();
+    cols.forEach(function(c){const th=document.createElement("th");th.textContent=c.label;target.appendChild(th);});
   }
-  async function load() {
+  function rows(target, cols, data) {
+    target.replaceChildren();
+    if (!data.length) {
+      const tr=document.createElement("tr"),td=document.createElement("td");
+      td.colSpan=cols.length;td.className="pms-state";td.textContent="当前物业暂无匹配记录";
+      tr.appendChild(td);target.appendChild(tr);return;
+    }
+    data.forEach(function(item){
+      const tr=document.createElement("tr");
+      cols.forEach(function(c){const td=document.createElement("td");td.textContent=value(at(item,c.path));tr.appendChild(td);});
+      target.appendChild(tr);
+    });
+  }
+  header(head, columns);
+  async function loadSecondary() {
+    if (!secondaryEndpoint || !sections.length) return;
+    const holder=document.getElementById("pms-secondary");holder.replaceChildren();
+    const response=await fetch(secondaryEndpoint,{credentials:"same-origin",headers:{"Accept":"application/json"}});
+    const payload=await response.json();
+    if(!response.ok) throw new Error(payload.error && payload.error.message || "房价/库存日历读取失败");
+    sections.forEach(function(section){
+      const panel=document.createElement("section");panel.className="pms-panel";
+      const title=document.createElement("h2");title.textContent=section.title;
+      const wrap=document.createElement("div");wrap.className="pms-table-wrap";
+      const table=document.createElement("table");table.className="pms-table";
+      const thead=document.createElement("thead"),tr=document.createElement("tr");
+      header(tr,section.columns);thead.appendChild(tr);
+      const tbody=document.createElement("tbody");rows(tbody,section.columns,payload.data[section.data_key] || []);
+      table.appendChild(thead);table.appendChild(tbody);wrap.appendChild(table);
+      panel.appendChild(title);panel.appendChild(wrap);holder.appendChild(panel);
+    });
+  }
+  async function load(page) {
+    currentPage=Math.max(1,page || 1);meta.textContent="读取中…";
+    prevButton.disabled=true;nextButton.disabled=true;
     body.replaceChildren();
-    const loading = document.createElement("tr");
-    const loadingCell = document.createElement("td");
-    loadingCell.colSpan = columns.length;
-    loadingCell.className = "pms-state";
-    loadingCell.textContent = "正在读取真实业务数据…";
-    loading.appendChild(loadingCell);
-    body.appendChild(loading);
-    meta.textContent = "读取中…";
-    const params = new URLSearchParams({page:"1",page_size:"50"});
-    if (search.value.trim()) params.set("q", search.value.trim());
+    const params=new URLSearchParams({page:String(currentPage),page_size:"50"});
+    if(search.value.trim()) params.set("q",search.value.trim());
     try {
-      const response = await fetch(endpoint + "?" + params.toString(), {
-        method:"GET", credentials:"same-origin",
-        headers:{"Accept":"application/json"}
+      const response=await fetch(endpoint+"?"+params.toString(),{
+        method:"GET",credentials:"same-origin",headers:{"Accept":"application/json"}
       });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error && payload.error.message || "读取失败（HTTP " + response.status + "）");
-      }
-      const rows = Array.isArray(payload.data) ? payload.data :
-        (payload.data && Array.isArray(payload.data.results) ? payload.data.results : []);
+      const payload=await response.json();
+      if(!response.ok) throw new Error(payload.error && payload.error.message || "读取失败（HTTP "+response.status+"）");
+      rows(body,columns,Array.isArray(payload.data)?payload.data:[]);
+      const pageInfo=payload.meta && payload.meta.pagination;
+      if(pageInfo) {
+        currentPage=pageInfo.page;
+        pageLabel.textContent="第 "+pageInfo.page+" 页 / 共 "+Math.max(1,Math.ceil(pageInfo.total/pageInfo.page_size))+" 页";
+        prevButton.disabled=!pageInfo.has_previous;nextButton.disabled=!pageInfo.has_next;
+        meta.textContent="共 "+pageInfo.total+" 条";
+      } else {pageLabel.textContent="";meta.textContent="已载入";}
+      await loadSecondary();
+    } catch(error) {
       body.replaceChildren();
-      if (!rows.length) {
-        const tr=document.createElement("tr"), td=document.createElement("td");
-        td.colSpan=columns.length;td.className="pms-state";td.textContent="当前物业暂无匹配记录";
-        tr.appendChild(td);body.appendChild(tr);
-      } else {
-        rows.forEach(function(item){
-          const tr=document.createElement("tr");
-          columns.forEach(function(col){tr.appendChild(cell(valueAt(item,col.path)));});
-          body.appendChild(tr);
-        });
-      }
-      const pagination = payload.meta && payload.meta.pagination;
-      meta.textContent = pagination ? ("共 " + pagination.total + " 条") : ("已载入 " + rows.length + " 条");
-      document.getElementById("pms-page").textContent = pagination ?
-        ("第 " + pagination.page + " 页 / 每页 " + pagination.page_size + " 条") : "";
-    } catch (error) {
-      body.replaceChildren();
-      const tr=document.createElement("tr"), td=document.createElement("td");
+      const tr=document.createElement("tr"),td=document.createElement("td");
       td.colSpan=columns.length;td.className="pms-state";td.textContent=error.message;
-      tr.appendChild(td);body.appendChild(tr);
-      meta.textContent="数据读取失败";
+      tr.appendChild(td);body.appendChild(tr);meta.textContent="数据读取失败";
     }
   }
-  document.getElementById("pms-reload").addEventListener("click", load);
-  search.addEventListener("keydown", function(event){if(event.key==="Enter")load();});
-  load();
+  document.getElementById("pms-reload").addEventListener("click",function(){load(1);});
+  prevButton.addEventListener("click",function(){load(currentPage-1);});
+  nextButton.addEventListener("click",function(){load(currentPage+1);});
+  search.addEventListener("keydown",function(e){if(e.key==="Enter")load(1);});
+  load(1);
 })();
 </script>
 </body>

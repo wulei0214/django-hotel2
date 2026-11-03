@@ -74,6 +74,27 @@ MANAGEMENT_CENTERS = {
     "rooms": {
         "title": "房态与库存中心", "subtitle": "物理客房占用、清洁、维修与可售状态",
         "permission": "hotelapp.view_room", "endpoint": "/api/v1/rooms/status",
+        "secondary_endpoint": "/api/v1/rate-calendar",
+        "secondary_sections": [
+            {"title": "每日房价", "data_key": "rates", "columns": [
+                {"label": "住宿日期", "path": "stay_date"},
+                {"label": "房型", "path": "room_type.code"},
+                {"label": "房价计划", "path": "rate_plan.code"},
+                {"label": "每晚价格", "path": "price"},
+                {"label": "币种", "path": "currency"},
+                {"label": "是否关房", "path": "closed"},
+            ]},
+            {"title": "房型每日库存", "data_key": "inventory", "columns": [
+                {"label": "住宿日期", "path": "stay_date"},
+                {"label": "房型", "path": "room_type.code"},
+                {"label": "总房量", "path": "total_rooms"},
+                {"label": "冻结", "path": "held"},
+                {"label": "已售", "path": "sold"},
+                {"label": "停用", "path": "out_of_service"},
+                {"label": "可售", "path": "available_count"},
+                {"label": "停售", "path": "stop_sell"},
+            ]},
+        ],
         "columns": [
             {"label": "房间号", "path": "number"},
             {"label": "楼层", "path": "floor"},
@@ -131,5 +152,7 @@ def management_center_page(request, center):
         "subtitle": config["subtitle"],
         "api_endpoint": config["endpoint"],
         "columns": config["columns"],
+        "secondary_endpoint": config.get("secondary_endpoint", ""),
+        "secondary_sections": config.get("secondary_sections", []),
         "property_name": property_obj.name,
     })
