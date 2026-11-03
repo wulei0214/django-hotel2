@@ -22,8 +22,8 @@
         <div class="toolbar">
             <button class="tb-btn" onclick="location.reload()">⟳ 刷新数据</button>
             <a class="tb-btn" href="/export/staff/">⬇ 导出数据</a>
-            {% if pms_perms.hotelapp.add_staff %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加员工</button>{% endif %}
-            {% if pms_perms.hotelapp.change_staff %}<button class="tb-btn" id="btn-edit" disabled>✎ 编辑员工</button>{% endif %}
+            {% if can_manage_salary and pms_perms.hotelapp.add_staff %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加员工</button>{% endif %}
+            {% if can_manage_salary and pms_perms.hotelapp.change_staff %}<button class="tb-btn" id="btn-edit" disabled>✎ 编辑员工</button>{% endif %}
         </div>
     </div>
 
@@ -48,7 +48,7 @@
                         <option value="员工id">工号</option>
                         <option value="姓名">姓名</option>
                         <option value="职务">职务</option>
-                        <option value="月薪">月薪</option>
+                        {% if can_view_salary %}<option value="月薪">月薪</option>{% endif %}
                         <option value="工龄">工龄</option>
                     </select>
                 </label>
@@ -58,7 +58,7 @@
         </div>
     </details>
 
-    {% if pms_perms.hotelapp.add_staff %}
+    {% if can_manage_salary and pms_perms.hotelapp.add_staff %}
     <div class="card" id="form-card" style="display:none">
         <center><h2>员工信息录入</h2></center>
         <form action="/insert/" method="post" style="margin-left:40px">
@@ -75,6 +75,7 @@
             </select></p>
             <p><label>月薪：</label><input type="text" name="salary" value="{{ form.salary }}" required maxlength="9" pattern="(0|[1-9]\d{0,5})(\.\d{1,2})?" title="月薪为数字，整数最多6位，最多两位小数" placeholder="如 8000 或 8000.50" class="input"/></p>
             <p><label>工龄：</label><input type="text" name="time_work" value="{{ form.time_work }}" required maxlength="4" pattern="\d{1,4}" title="工龄必须是1-4位数字" placeholder="1-4位数字" class="input"/></p>
+            <p><label>薪酬录入原因：</label><input type="text" name="salary_reason" required minlength="8" maxlength="240" placeholder="填写入职薪酬依据/审批编号" class="input"/></p>
             <p><button type="submit" class="tb-btn tb-primary">保存</button></p>
             <datalist id="job-list">
                 <option value="总经理"></option><option value="大堂经理"></option>
@@ -103,10 +104,10 @@
             <td class="id">{{ line.员工id }}</td>
             <td>{{ line.姓名 }}</td>
             <td>{{ line.职务 }}</td>
-            <td>{{ line.月薪 }}</td>
+            <td>{% if can_view_salary %}{{ line.月薪 }}{% else %}受控字段{% endif %}</td>
             <td>{{ line.工龄 }}</td>
             <td>
-                {% if pms_perms.hotelapp.change_staff %}
+                {% if pms_perms.hotelapp.change_staff and can_manage_salary %}
                 <button class="badge-toggle {% if line.启用 %}on{% else %}off{% endif %}" data-id="{{ line.员工id }}" title="点击切换启用/停用">
                     {% if line.启用 %}启用{% else %}停用{% endif %}
                 </button>
@@ -115,7 +116,7 @@
                 {% endif %}
             </td>
             {% if pms_perms.hotelapp.delete_staff %}<td><center><button class="btn btn-primary delete">删除</button></center></td>{% endif %}
-            {% if pms_perms.hotelapp.change_staff %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
+            {% if pms_perms.hotelapp.change_staff and can_manage_salary %}<td><center><button class="btn btn-primary update">修改</button></center></td>{% endif %}
         </tr>
         {% empty %}
         <tr><td colspan="9" class="empty-row">暂无员工记录</td></tr>
@@ -168,7 +169,12 @@
                 showToast('职务必须是规范职务名称；月薪为数字且最多两位小数；工龄为1-4位数字', 'error');
                 return;
             }
-            var staff = {'id':id, 'job':job, 'salary': salary, 'time':time};
+            var reason = window.prompt('请填写本次员工资料/薪酬修改的业务原因（至少8个字符）');
+            if (!reason || reason.trim().length < 8) {
+                showToast('必须填写有效的修改原因', 'error');
+                return;
+            }
+            var staff = {'id':id, 'job':job, 'salary': salary, 'time':time, 'reason': reason.trim()};
             $.post('/update_staff/', staff).done(function () { showToast('修改成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { showToast(xhr.responseText || '操作失败', 'error'); });
         }
     });

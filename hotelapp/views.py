@@ -243,6 +243,8 @@ def index(request):
     return render(request, "index.html", {
         "page_obj": page, "people_list": page.object_list, "order": order,
         "status_filter": status or "",
+        "can_view_salary": _has_role(request.user, "财务", "店长"),
+        "can_manage_salary": _has_role(request.user, "店长"),
     })
 
 
@@ -355,6 +357,11 @@ def approve_staff_export(request, approval_id):
 def insert(request):
     error, efield = None, None
     if request.method == "POST":
+        if not _has_role(request.user, "店长"):
+            return HttpResponse("员工薪酬初始录入仅允许店长操作。", status=403)
+        salary_reason = (request.POST.get("salary_reason") or "").strip()
+        if len(salary_reason) < 8 or len(salary_reason) > 240:
+            return HttpResponse("录入薪酬必须填写 8 至 240 个字符的业务原因。", status=400)
         sid = request.POST.get("id")
         name = request.POST.get("name")
         job = request.POST.get("job")
@@ -372,14 +379,25 @@ def insert(request):
             try:
                 if sid:
                     kwargs["员工id"] = sid
-                Staff.objects.create(**kwargs)
+                created_staff = Staff.objects.create(**kwargs)
+                from apps.core.models import AuditEvent
+                AuditEvent.record(
+                    action="staff.salary_initial_set", entity_type="LegacyStaff",
+                    entity_id=created_staff.员工id, actor=request.user,
+                    property_obj=getattr(request, "property", None),
+                    after={"salary_set": True},
+                    reason=salary_reason, request=request)
             except (ValueError, IntegrityError):
                 error, efield = "保存失败：工号必须是数字且不能重复", "id"
             else:
                 messages.success(request, "员工信息添加成功")
                 return redirect("/index/")
     ctx = _error_context(request, efield)
-    ctx.update({"people_list": Staff.objects.order_by("员工id"), "error": error})
+    ctx.update({
+        "people_list": Staff.objects.order_by("员工id"), "error": error,
+        "can_view_salary": _has_role(request.user, "财务", "店长"),
+        "can_manage_salary": _has_role(request.user, "店长"),
+    })
     return render(request, "index.html", ctx)
 
 
@@ -399,37 +417,69 @@ def delete_staff(request):
 @staff_required
 @pms_permission_required('hotelapp.view_staff')
 def search_staff(request):
-    rows, searched = _search(Staff, "员工id", STAFF_SEARCH_FIELDS, request)
+    can_view_salary = _has_role(request.user, "财务", "店长")
+    searchable_fields = list(STAFF_SEARCH_FIELDS)
+    if not can_view_salary:
+        searchable_fields = [field for field in searchable_fields if field != "月薪"]
+    rows, searched = _search(Staff, "员工id", searchable_fields, request)
     return render(request, "index.html", {
         "people_list": Staff.objects.order_by("员工id"),
         "staffs": rows,
         "searched": searched,
+        "can_view_salary": can_view_salary,
+        "can_manage_salary": _has_role(request.user, "店长"),
     })
 
 
 @staff_required
 @pms_permission_required('hotelapp.change_staff')
 def update_staff(request):
-    if request.method == "POST":
-        sid = request.POST.get("id")
-        job = request.POST.get("job")
-        salary = request.POST.get("salary")
-        work_time = request.POST.get("time")
-        error, _ = _first_error([
-            (sid, "id10", "工号", "id"),
-            (job, "job", "职务", "job"),
-            (salary, "money", "月薪", "salary"),
-            (work_time, "digits4", "工龄", "time"),
-        ])
-        if error:
-            return HttpResponse(error, status=400)
-        try:
-            updated = Staff.objects.filter(员工id=sid).update(职务=job, 月薪=salary, 工龄=work_time)
-        except ValueError:
-            return HttpResponse("修改失败：工号非法", status=400)
-        if not updated:
-            return HttpResponse("修改失败：员工不存在", status=400)
-    return render(request, "index.html", {"people_list": Staff.objects.order_by("员工id")})
+    if request.method != "POST":
+        return HttpResponse("员工薪酬修改必须使用 POST。", status=405)
+    if not _has_role(request.user, "店长"):
+        return HttpResponse("员工薪酬及人事字段修改仅允许店长操作；财务岗位只读。", status=403)
+    sid = request.POST.get("id")
+    job = request.POST.get("job")
+    salary = request.POST.get("salary")
+    work_time = request.POST.get("time")
+    reason = (request.POST.get("reason") or "").strip()
+    if len(reason) < 8 or len(reason) > 240:
+        return HttpResponse("修改员工薪酬必须填写 8 至 240 个字符的业务原因。", status=400)
+    error, _ = _first_error([
+        (sid, "id10", "工号", "id"),
+        (job, "job", "职务", "job"),
+        (salary, "money", "月薪", "salary"),
+        (work_time, "digits4", "工龄", "time"),
+    ])
+    if error:
+        return HttpResponse(error, status=400)
+    try:
+        with transaction.atomic():
+            staff = Staff.objects.select_for_update().filter(员工id=sid).first()
+            if staff is None:
+                return HttpResponse("修改失败：员工不存在", status=404)
+            before = {
+                "job": staff.职务,
+                "work_years": staff.工龄,
+                "salary_set": bool(staff.月薪),
+            }
+            salary_changed = str(staff.月薪 or "") != str(salary or "")
+            staff.职务 = job
+            staff.月薪 = salary
+            staff.工龄 = work_time
+            staff.save(update_fields=("职务", "月薪", "工龄"))
+            from apps.core.models import AuditEvent
+            AuditEvent.record(
+                action="staff.profile_update", entity_type="LegacyStaff",
+                entity_id=staff.员工id, actor=request.user,
+                property_obj=getattr(request, "property", None),
+                before=before,
+                after={"job": staff.职务, "work_years": staff.工龄,
+                       "salary_changed": salary_changed},
+                reason=reason, request=request)
+    except ValueError as exc:
+        return HttpResponse(f"修改失败：{exc}", status=400)
+    return JsonResponse({"ok": True, "salary_changed": salary_changed})
 
 
 # ---------- 顾客信息管理 ----------

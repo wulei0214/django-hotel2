@@ -864,6 +864,55 @@ class AuditEventAppendOnlyTests(TestCase):
                          "审计事件不得包含完整证件号（已遮罩）")
 
 
+class SalaryDecisionBoundaryTests(TestCase):
+    """Q-03/D-08：只有店长可修改薪酬；财务只读，其他岗位隐藏。"""
+
+    def setUp(self):
+        self.front_desk = _make_user("salary-fd", "前台")
+        self.finance = _make_user("salary-fin", "财务")
+        self.manager = _make_user("salary-gm", "店长")
+        from hotelapp.models import Staff
+        self.staff = Staff.objects.create(
+            姓名="薪酬测试员工", 职务="服务员", 月薪="6000.00", 工龄="2")
+
+    def test_only_store_manager_can_update_salary_and_reason_is_audited(self):
+        payload = {
+            "id": self.staff.员工id, "job": "服务员",
+            "salary": "6500.00", "time": "3",
+            "reason": "经店长批准的年度薪酬调整",
+        }
+        self.client.force_login(self.front_desk)
+        self.assertEqual(self.client.post("/update_staff/", payload).status_code, 403)
+        self.client.force_login(self.finance)
+        self.assertEqual(self.client.post("/update_staff/", payload).status_code, 403)
+
+        self.client.force_login(self.manager)
+        missing_reason = dict(payload)
+        missing_reason.pop("reason")
+        self.assertEqual(self.client.post("/update_staff/", missing_reason).status_code, 400)
+        response = self.client.post("/update_staff/", payload)
+        self.assertEqual(response.status_code, 200)
+        self.staff.refresh_from_db()
+        self.assertEqual(self.staff.月薪, "6500.00")
+        from apps.core.models import AuditEvent
+        event = AuditEvent.objects.filter(
+            action="staff.profile_update", entity_id=str(self.staff.员工id)
+        ).latest("created_at")
+        self.assertEqual(event.reason, "经店长批准的年度薪酬调整")
+        self.assertTrue(event.after_json["salary_changed"])
+
+    def test_staff_list_masks_salary_for_front_desk_but_shows_to_finance(self):
+        self.client.force_login(self.front_desk)
+        response = self.client.get("/index/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("6000.00", response.content.decode("utf-8"))
+        self.assertIn("受控字段", response.content.decode("utf-8"))
+        self.client.force_login(self.finance)
+        response = self.client.get("/index/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("6000.00", response.content.decode("utf-8"))
+
+
 class V11P0ModelTests(TestCase):
     """V1.1 §9.7.1 P0 模型定稿批次：约束/加密/幂等/权限"""
 
