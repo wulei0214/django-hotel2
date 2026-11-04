@@ -38,7 +38,7 @@ from .registry import (
 )
 from .roles import BUSINESS_ROLE_NAMES
 
-_PHASE0_DOCS = ("11-permissions.md", "12-roles.md")
+_PHASE0_DOCS = ("11-permissions.md", "12-roles.md", "20-findings-register.md")
 
 
 def _phase0_audit_text():

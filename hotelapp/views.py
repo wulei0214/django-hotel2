@@ -318,7 +318,11 @@ def approve_staff_export(request, approval_id):
     """另一位经理审批并下载薪酬 CSV；审批动作与下载绑定为一次 POST。"""
     if request.method != "POST":
         return HttpResponse("请使用 POST 执行审批和下载。", status=405)
-    if not _has_role(request.user, "值班经理", "店长"):
+    # F-06：审批判定改走 AuthorizationService（hotelapp.export_approve，矩阵可管理）
+    from apps.identity.authorization import AuthorizationService
+    property_obj = getattr(request, "property", None)
+    if property_obj is None or not AuthorizationService.has_permission(
+            request.user, property_obj, "hotelapp.export_approve"):
         return HttpResponse("只有另一位值班经理或店长可以审批薪酬导出。", status=403)
     property_obj = getattr(request, "property", None)
     if property_obj is None:

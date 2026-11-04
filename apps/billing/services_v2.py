@@ -495,6 +495,7 @@ class BillingService:
             business_date=timezone.localdate(),
             reference=existing_ref,
             description=f"冲销：{original.description}"[:240],
+            void_of=original, void_reason=reason[:240],  # F-08 口径统一：与 services.reverse_ledger_entry 一致，硬关联原凭证
             posted_by=reversed_by)
         AuditEvent.record(
             action="billing.reverse_entry", entity_type="LedgerEntry",

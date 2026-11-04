@@ -175,11 +175,12 @@ MODULE_REGISTRY_V2 = {
             "change": "hotelapp.change_staff",
             "delete": "hotelapp.delete_staff",
             "approve": NOT_APPLICABLE,
-            "special": ("identity.staff_manage", "hotelapp.export_pii"),
+            "special": ("identity.staff_manage", "hotelapp.export_pii",
+                        "hotelapp.export_approve"),
         },
         "extra_codes": (),
         "notes": "员工与账号工作台（8 视图 + staff API）门禁 identity.staff_manage；"
-                 "敏感薪酬导出审批走 hotelapp.export_pii（F-06：审批侧仍硬编码"
+                 "敏感薪酬导出审批走 hotelapp.export_approve（F-06：原 _has_role 硬编码已迁入权限码）"
                  "_has_role，待 Phase 2/3 迁移到权限码）。",
     },
     "finance": {
@@ -476,6 +477,13 @@ SPECIAL_PERMISSIONS = (
         "module": "night_audit", "risk": "high",
         "requires_reason": True, "requires_confirm": False,
         "note": "break-glass 事后复核（值班经理/店长）；矩阵外点（F-09）",
+    },
+    {
+        "key": "export_approve",
+        "codename": "hotelapp.export_approve",
+        "module": "staff", "risk": "high",
+        "requires_reason": True, "requires_confirm": True,
+        "note": "敏感导出审批（F-06：原 _has_role 硬编码迁入权限码，值班经理/店长语义不变）",
     },
     {
         "key": "export_pii",

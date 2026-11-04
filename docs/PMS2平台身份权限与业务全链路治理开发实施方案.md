@@ -784,3 +784,14 @@ Apifox 导入必须覆盖实际 API 路由。对 HTML 页面流程（登录、�
 ### 当前测试基线
 
  — 234 项全过（181 基线 + 26 平台域 + 25 注册表 + 2 修复适配）
+
+### Phase 5（2026-11-05 完成，§10 各项）
+
+- **员工中心迁移（§10.1）**：/manage/staff/actions/* 七个写端点（staff_center_views.py，全部 staff_required+identity.staff_manage，只调 EmployeeLifecycleService）；旧 /staff_accounts/ 列表/详情只读保留，六个写路由 302 → /manage/staff/；provision_account 服务补 identity.account_provision 审计；reveal_phone 统一服务（guests/services.py）+ 揭示理由强制校验
+- **模块门禁（§10.3）**：test_module_gates.py 路由门禁覆盖率测试（547 行）
+- **F-06 处置**：新增 hotelapp.export_approve 权限码（migration hotelapp.0019，语义不变授予值班经理/店长），approve_staff_export 判定改走 AuthorizationService；registry SPECIAL_PERMISSIONS/staff.special 同步登记
+- **F-08 口径统一**：BillingService.reverse_entry 红字凭证补 void_of/void_reason 硬关联（与 services.reverse_ledger_entry 一致）
+- **i18n 补漏**：前台工作台维修/支付/退款状态英文残留清零（folio DTO 补 *_label）
+- 旧入口治理（§10.4）核对：33×410 + register/booking/cancel_booking redirect 均在位
+
+测试基线：SQLite  334 项全过（含并行会话员工中心迁移测试）。

@@ -19,7 +19,7 @@
 | 编号 | 缺口 | 证据 | 处置归属 |
 |---|---|---|---|
 | F-05 | OpenAPI 漂移：daily-rates adjust 文档写 change_room，实际执行 inventory.manage_rates | 11-permissions；openapi_schema.py:175 | Phase 4 契约核验 |
-| F-06 | 敏感导出审批硬编码角色名（_has_role），绕开权限矩阵 | hotelapp/views.py:320,1466-1470 | Phase 2/3 权限执行点迁移 |
+| F-06 | 敏感导出审批硬编码角色名（_has_role），绕开权限矩阵 | hotelapp/views.py:320,1466-1470 | **已处置（Phase 5，2026-11-05）**：新增 `hotelapp.export_approve` 权限码（migration hotelapp.0019，语义不变授予值班经理/店长），approve_staff_export 判定改走 AuthorizationService；registry SPECIAL_PERMISSIONS 与 staff 模块 special 元组同步登记 |
 | F-07 | `guests.document_reveal` 孤儿权限点（仅定义，代码用 hotelapp 码） | guests/migrations/0003 | Phase 2 清理（登记后删除或映射） |
 | F-08 | reverse_checkout / room_release_ready 权限悬空（唯一检查点在 410 死代码，PMS2 无对应 API） | 11-permissions | Phase 4：front-desk 补 API 或登记退役 |
 | F-09 | /permissions/ 矩阵只管辖 hotelapp 域 41 点；billing.refund_*、identity.staff_manage、inventory.manage_rates、core.breakglass_review 矩阵外 | 12-roles 漂移分析 | Phase 2 跨 App RBAC 注册表（核心动因） |
