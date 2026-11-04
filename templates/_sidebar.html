@@ -45,10 +45,9 @@
         {% if pms_perms.hotelapp.night_audit_execute %}<li{% if request.path == '/nightaudit/' %} class="active"{% endif %}><a href="/nightaudit/"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>夜审</a></li>{% endif %}
     </ul>
     {% endif %}
-    {# ── 系统管理 ── #}
-    <div class="side-group-title">系统管理</div>
+    {# ── 个人设置：仅 PMS 员工本人信息，不包含平台治理入口 ── #}
+    <div class="side-group-title">个人设置</div>
     <ul class="sidebar-menu">
-        {% if user.is_superuser %}<li{% if request.path == '/platform/permissions/' %} class="active"{% endif %}><a href="/platform/permissions/"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>权限管理</a></li>{% endif %}
         <li{% if request.path == '/system/' %} class="active"{% endif %}><a href="/system/"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-3.31 0-8 1.66-8 5v1h16v-1c0-3.34-4.69-5-8-5z"/></svg>个人中心</a></li>
     </ul>
     {# ── 历史页面（过渡期折叠组，P1-12 分阶段退役） ── #}
