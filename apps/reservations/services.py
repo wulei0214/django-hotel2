@@ -17,7 +17,7 @@ from apps.inventory.services import (
     hold_inventory_for_reservation,
     release_inventory_hold,
 )
-from .models import Reservation, ReservationRoom
+from .models import BookingAccessToken, Reservation, ReservationRoom
 
 
 class ReservationConflict(Exception):
@@ -72,7 +72,7 @@ def _create_reservation(
     if existing:
         if existing.request_fingerprint != fingerprint:
             raise ReservationConflict("相同 Idempotency-Key 不能用于不同的预订内容。")
-        return existing, False
+        return existing, False, None  # 重放不重复暴露令牌（明文只在首次创建返回）
 
     # §6.4：同手机号同物业未支付 PENDING 上限（默认 2 笔）——
     # 幂等重放在此之前已返回，不受上限影响；超限不新增 Guest/Reservation/Folio
@@ -171,7 +171,10 @@ def _create_reservation(
         currency=reservation.currency,
     )
     hold_inventory_for_reservation(reservation)
-    return reservation, True
+    # F-01（审计缺口登记册 P0）：访问令牌必须在创建事务内签发——
+    # 事务外签发失败会产生"已扣库存但顾客拿不到令牌"的孤儿订单。
+    access_token = BookingAccessToken.issue_for(reservation)
+    return reservation, True, access_token
 
 
 def create_reservation(
@@ -231,7 +234,7 @@ def create_reservation(
         if existing:
             if existing.request_fingerprint != fingerprint:
                 raise ReservationConflict("相同 Idempotency-Key 已用于其他预订内容。")
-            return existing, False
+            return existing, False, None
         raise
 
 

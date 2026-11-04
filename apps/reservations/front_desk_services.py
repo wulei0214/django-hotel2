@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from apps.billing.models import Folio, LedgerEntry, Payment
 from apps.inventory.models import Room
+from apps.core.models import AuditEvent
 from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
 
 
@@ -116,6 +117,11 @@ def assign_room(*, property_obj, reservation_room_id, room_id, assigned_by=None)
         line.pk,
         room.number,
     )
+    AuditEvent.record(
+        action="frontdesk.room_assigned", entity_type="ReservationRoom",
+        entity_id=str(line.pk), actor=assigned_by, property_obj=property_obj,
+        after={"booking_no": reservation.booking_no, "room": room.number},
+        reason="前台排房")
     return line, True
 
 
@@ -200,6 +206,12 @@ def check_in_stay(*, property_obj, reservation_room_id, checked_in_by=None):
         stay.pk,
         room.number,
     )
+    AuditEvent.record(
+        action="frontdesk.checked_in", entity_type="Stay",
+        entity_id=str(stay.pk), actor=checked_in_by, property_obj=property_obj,
+        after={"booking_no": reservation.booking_no, "room": room.number,
+               "status": stay.status},
+        reason="前台办理入住")
     return stay, True
 
 
@@ -344,4 +356,10 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
         stay.pk,
         room.number,
     )
+    AuditEvent.record(
+        action="frontdesk.checked_out", entity_type="Stay",
+        entity_id=str(stay.pk), actor=checked_out_by, property_obj=property_obj,
+        after={"booking_no": reservation.booking_no, "room": room.number,
+               "status": stay.status},
+        reason="前台办理退房")
     return stay, True

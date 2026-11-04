@@ -192,14 +192,12 @@ def reservations_create(request):
             raise ValueError("离店日期必须晚于入住日期。")
         if (payload["check_out"] - payload["check_in"]).days > MAX_NIGHTS:
             raise ValueError(f"单笔预订最长 {MAX_NIGHTS} 晚。")
-        reservation, created = create_reservation(
+        reservation, created, access_token = create_reservation(
             property_obj=property_obj,
             payload=payload,
             idempotency_key=request.headers.get("Idempotency-Key", ""),
         )
-        access_token = None
         if created:
-            access_token = BookingAccessToken.issue_for(reservation)
             AuditEvent.record(
                 action="public.reservation_created", entity_type="Reservation",
                 entity_id=reservation.booking_no, property_obj=property_obj,

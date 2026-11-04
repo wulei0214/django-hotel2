@@ -70,7 +70,7 @@ class ReservationCreationTests(TestCase):
         }
 
     def test_create_reservation_holds_inventory_and_creates_folio(self):
-        reservation, created = create_reservation(
+        reservation, created, _tk = create_reservation(
             property_obj=self.property,
             payload=self.payload,
             idempotency_key="reservation-test-001",
@@ -86,12 +86,12 @@ class ReservationCreationTests(TestCase):
         )
 
     def test_same_idempotency_key_returns_same_reservation(self):
-        first, created = create_reservation(
+        first, created, _tk = create_reservation(
             property_obj=self.property,
             payload=self.payload,
             idempotency_key="reservation-test-002",
         )
-        second, created_again = create_reservation(
+        second, created_again, _tk = create_reservation(
             property_obj=self.property,
             payload=self.payload,
             idempotency_key="reservation-test-002",

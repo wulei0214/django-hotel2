@@ -12,6 +12,7 @@ from apps.billing.models import ApprovalRecord, Folio, LedgerEntry, Payment, Ref
 from apps.billing.services_v2 import ApprovalRecord as RegisteredApprovalRecord, ApprovalService
 from apps.inventory.models import DailyRate, Room, RoomTypeInventory
 from apps.inventory.services import InventoryUnavailable, release_sold_inventory_for_room_line
+from apps.core.models import AuditEvent
 from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
 
 
@@ -166,6 +167,12 @@ def extend_stay(*, property_obj, stay_id, new_check_out, reason, extended_by=Non
     reservation.total_amount = sum((item[1] for item in line_summaries), Decimal("0.00"))
     reservation.save(update_fields=("check_out", "total_amount", "updated_at"))
 
+    AuditEvent.record(
+        action="frontdesk.stay_extended", entity_type="Stay",
+        entity_id=str(stay.pk), actor=extended_by, property_obj=property_obj,
+        after={"new_check_out": str(stay.reservation_room.check_out),
+               "extension_amount": str(extension_amount)},
+        reason=reason[:240])
     return stay, line, extension_amount
 
 
@@ -247,6 +254,11 @@ def change_stay_room(*, property_obj, stay_id, new_room_id, reason, moved_by=Non
     stay.save(update_fields=("room", "updated_at"))
     line.assigned_room = new_room
     line.save(update_fields=("assigned_room",))
+    AuditEvent.record(
+        action="frontdesk.stay_room_changed", entity_type="Stay",
+        entity_id=str(stay.pk), actor=moved_by, property_obj=property_obj,
+        after={"new_room": new_room.number, "reason": reason[:240]},
+        reason="在住换房")
     return stay, True
 
 
@@ -317,6 +329,13 @@ def mark_reservation_room_no_show(*, property_obj, reservation_room_id, reason, 
                 else Reservation.Status.CHECKED_OUT
             )
             reservation.save(update_fields=("status", "updated_at"))
+    AuditEvent.record(
+        action="frontdesk.no_show_processed", entity_type="ReservationRoom",
+        entity_id=str(record.reservation_room_id), actor=processed_by,
+        property_obj=property_obj,
+        after={"released_nights": record.released_nights,
+               "reason": reason[:240]},
+        reason="No-Show 处理")
     return record, True
 
 

@@ -59,7 +59,7 @@ class MockPaymentTests(TestCase):
             "adults": 2,
             "children": 0,
         }
-        self.reservation, _ = create_reservation(
+        self.reservation, _, _tk = create_reservation(
             property_obj=self.property,
             payload=payload,
             idempotency_key="payment-test-reservation",
