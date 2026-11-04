@@ -348,3 +348,266 @@ PMS 登出只清理 PMS Session，不得清理两份平台 Cookie。
 7. 生产配置与回滚步骤经过评审。
 
 在上述标准全部满足前，状态只能标记为“设计已确认 / 实施待开始”或“实施中”，不得宣称 Cookie 网络传输隔离已完成。
+
+
+---
+
+# 设计修订：P0 可施工细化与 P1 运维验收补充
+
+> 本节为本次评审后的强制修订，优先级高于本文前文中相对概括的描述。原方案 A 决策不变。本节补齐前，文档状态仍为“设计待完善”，不得进入阶段 1 编码。
+
+## A. P0-1 双 Cookie 状态机
+
+### A.1 状态定义
+
+平台只有一个服务端 Session。两个路径 Cookie 是该 Session Key 的两个传输别名，不是两份独立会话。
+
+| 状态 | 服务端平台 Session | 门户 Cookie（/platform/） | Admin Cookie（/admin/） | 处理 |
+|---|---|---|---|---|
+| S0 未登录 | 不存在/未认证 | 缺失 | 缺失 | 按原平台门禁跳转登录 |
+| S1 已登录完整 | 有效 | 存在且有效 | 存在且有效 | 两个入口均认证为同一平台用户 |
+| S2 部分 Cookie | 有效或未知 | 仅一份存在 | 另一份缺失 | 不创建新 Session；验证现存 Cookie，成功后补发缺失别名；失败则清理两份并按匿名处理 |
+| S3 无效/过期 | 不存在、过期、签名/后端读取失败 | 一份或两份无效 | 一份或两份无效 | 不回退到其他 Cookie；安全清理并按匿名处理，不返回 500 |
+| S4 Session 轮换中 | 新 Session Key 已建立，旧 Key 应失效 | 可能仍为旧值 | 可能仍为旧值 | 同一响应对两个 Path 写入同一个新 Key；禁止旧响应覆盖新 Key |
+| S5 登出中 | Session 正在 flush/delete | 可能残留 | 可能残留 | 服务端先失效，再发送两份 Path 精确的删除 Cookie |
+| S6 已登出 | 不存在/已失效 | 缺失 | 缺失 | 两个入口均回到匿名流程 |
+
+### A.2 状态转换
+
+- S0 → S1：只允许通过平台认证成功触发。认证完成、Session Key 轮换和保存成功后，同一响应设置两份 Cookie。
+- S1 → S4：Django 登录安全机制触发 Session Key 轮换，或其他明确的 Session Key 变更。两份 Cookie 必须在同一响应同步写入新 Key。
+- S1 → S2：浏览器只携带一份 Cookie，可能由用户清理、浏览器策略或历史部署造成。服务端验证该 Cookie 指向的 Session 后，可在当前响应补齐另一 Path 的 Cookie；不能仅凭“另一份缺失”判定用户已登出。
+- S2 → S1：现存 Cookie 对应 Session 有效、用户仍满足平台超管门禁，补发缺失 Cookie。
+- S2 → S3：现存 Cookie 无效、Session 不存在或账号不再满足平台门禁。清理两份 Cookie，按匿名/403 的既有门禁行为处理。
+- S1/S2 → S5 → S6：平台登出或平台身份撤销。先使服务端 Session 失效，再删除两份 Cookie。
+- 任意状态遇到 Session 后端暂时不可用、数据库连接错误等基础设施异常：不得把基础设施异常伪装成“无效 Cookie”并清理会话；应按正常 5xx/故障处理并记录不含凭证的错误。只有可识别的无效/过期 Session 才进入 S3。
+
+### A.3 关键不变量
+
+1. 平台门户与 Admin 永远映射同一个平台 Session Key。
+2. 任何时候都不得因某一 Cookie 缺失而新建第二个平台 Session。
+3. 不允许 Cookie 间回退：/platform/ 不读取 Admin Cookie，/admin/ 不读取门户 Cookie。
+4. 不允许平台 Cookie 回退读取 PMS sessionid，反之亦然。
+5. 同一响应不得为两个平台 Cookie 写入不同 Session Key。
+6. Session 已在服务端失效时，残留 Cookie 不得恢复身份。
+7. Cookie 值、Session Key 不得进入日志、审计详情或错误页面。
+
+## B. P0-2 Cookie 规格表与多 Cookie 写入/删除模型
+
+### B.1 单一规格表
+
+实现必须维护唯一的 Cookie 规格注册表（Cookie Specification Registry），路径识别、读取、写入、刷新、删除和测试全部从同一规格表派生，不得在多个函数中散落硬编码名称与 Path。
+
+| 规格 ID | 身份域 | 名称 | Path | 读取路由 | 写入策略 |
+|---|---|---|---|---|---|
+| PMS | PMS | sessionid（沿用现有配置） | / | PMS 路由 | 保持现有 Django Session 行为 |
+| PLATFORM_PORTAL | 平台 | platform_sessionid | /platform/ | /platform/* | 平台 Session 保存/轮换时写入 |
+| PLATFORM_ADMIN | 平台 | django_admin_sessionid | /admin/ | /admin/* | 平台 Session 保存/轮换时写入 |
+| LEGACY_PLATFORM | 历史平台 | admin_sessionid | 历史 Path 集合 | 仅迁移清理，不再认证读取 | 只发送过期删除指令 |
+
+规格表至少包含：cookie_name、path、domain、secure、httponly、samesite、身份域、读取路由分类、是否可写入、是否仅清理。Domain 必须能表达“未设置/host-only”，不能将空字符串和父域配置混为一谈。
+
+### B.2 SplitSessionMiddleware 职责
+
+SplitSessionMiddleware 应按以下顺序工作：
+
+1. 依据规范化后的 request.path_info 分类为 PMS、平台门户、Django Admin、兼容跳转或其他公开路径。
+2. 只从当前分类允许的 Cookie 名称读取 Session Key。
+3. 使用现有 Django Session Engine 加载对应 Session；不得自行解析或拼接 Session 数据。
+4. 将当前请求的 Session 对象绑定到 request.session，保持 Django Authentication/CSRF Middleware 的既有依赖顺序。
+5. 响应阶段按当前身份域的 Cookie 规格写入、刷新或删除 Cookie。
+6. 平台域写入时对 PLATFORM_PORTAL 与 PLATFORM_ADMIN 两条规格执行多 Cookie 写入，值必须相同。
+7. 删除操作按规格逐项调用响应的 delete_cookie，明确传入匹配的 Path、Domain、Secure、SameSite 参数；不得只删除当前请求路径的 Cookie。
+8. PMS 响应不得写入或删除平台 Cookie，平台响应不得写入或删除 PMS Cookie，除明确的历史平台 Cookie 迁移清理外。
+
+### B.3 多 Cookie 写入/删除接口约束
+
+建议在中间件内部抽取可单元测试的私有操作（名称由实现人员决定）：
+
+- set_platform_session_cookies(response, session_key, expiry)：遍历两条平台 Cookie 规格，设置相同 session_key 和一致的过期属性。
+- delete_platform_session_cookies(response)：遍历两条平台规格及历史迁移规格，逐项发出删除指令。
+- set_pms_session_cookie(response, session_key, expiry)：沿用 PMS 现有行为，不复用平台规格。
+- resolve_session_cookie_spec(path)：只返回唯一的读取规格；对兼容路径返回明确的兼容分类，不得模糊归入平台主路径。
+
+这些是职责契约，不要求必须使用上述函数名。所有 Set-Cookie/Delete-Cookie 行为都必须可测试。
+
+### B.4 写入时机与 Django 兼容
+
+- 必须兼容 Django SessionMiddleware 的 save、modified、accessed、SESSION_SAVE_EVERY_REQUEST、浏览器关闭时会话等语义。
+- 不能简单地每个请求无条件重写 Cookie，避免缓存污染、响应头膨胀和并发旧值覆盖。
+- Session Key 发生轮换时，必须在轮换后的响应同步写入两份新 Cookie。
+- 如果响应状态为 500，不得因为中间件保存逻辑而持久化一个半完成 Session；遵循 Django 当前版本 SessionMiddleware 的错误处理语义。
+- 若 Session 保存抛出 UpdateError/SessionInterrupted，应保留明确的并发登出保护语义，不得吞掉异常后继续发放旧 Cookie。
+- 不允许在一个响应中混用不同的 max-age/expires；两份平台 Cookie 必须完全一致。
+
+## C. P0-3 四个关键动作的行为契约
+
+### C.1 登录
+
+- 认证入口继续为 /admin/login/，不增加第二套平台认证。
+- 认证成功后由平台 Session 域创建/轮换 Session。
+- 同一响应必须设置两个平台 Cookie，两个 Cookie 值相同、Path 各自准确。
+- 登录失败不得创建已认证平台 Session，不得留下其中一份有效 Cookie。
+- 登录成功后的重定向目标必须是本地允许路径，不能引入开放重定向。
+- 测试：登录响应 Set-Cookie 数量、名称、Path、属性、值相等；随后分别访问 /platform/ 和 /admin/ 均为同一用户。
+
+### C.2 登出
+
+- Django Admin 原生 logout 行为必须先核实，不能假设 Django Admin 会自动清除第二份 Cookie。
+- 平台登出必须使服务端平台 Session 失效，并在同一响应清除两份平台 Cookie。
+- 若 Admin logout 由 Django 内置视图处理，应通过受控扩展/包装确保双 Cookie 删除，不得仅靠模板 JS 或客户端跳转。
+- PMS logout 只清理 PMS Cookie，不清理平台 Cookie。
+- 测试：从 /admin/ 发起登出后，两个平台入口都失效；从 PMS 登出后，平台两个入口仍有效。
+
+### C.3 Session Key 轮换
+
+- 登录认证成功、密码变更等 Django 认证安全流程可能触发 cycle_key/flush，必须覆盖真实调用路径。
+- Session Key 轮换必须在响应中同步写入两个新 Cookie。
+- 并发请求可能出现响应乱序：旧请求不得在新 Key 轮换后将旧 Key 再次写回浏览器。实施前必须明确并验证并发控制策略；不能只依赖“同一个响应 set 两次”就宣称解决。
+- 测试：并发触发轮换与普通访问，模拟响应乱序，最终浏览器 Cookie 仍是有效的新 Key。
+
+### C.4 无效 Cookie
+
+必须区分以下情况：
+
+1. Cookie 缺失：匿名流程，不是异常。
+2. Session Key 对应记录不存在/已过期：清理当前平台 Cookie 规格，并同步清理平台另一规格，按匿名流程处理。
+3. Cookie 格式异常或后端无法解码且被 Session Engine 明确判定为无效：清理两份平台 Cookie，按匿名流程处理。
+4. Session Store、数据库、缓存基础设施故障：不能当作无效 Cookie；应保留故障响应并告警，避免误删有效登录态。
+5. 用户已登录但不满足平台超管门禁：按现有 403 与审计规则处理，不得把它降级成匿名后自动跳登录。
+
+所有无效 Cookie 路径均不得产生 500、无限重定向、登录循环或跨域身份回退。日志只记录分类、请求 ID、路由类别和异常类型，不记录 Cookie 原文、Session Key 或完整请求头。
+
+## D. P0-4 旧 Cookie 清理：按历史 Path/Domain 组合清理
+
+“清理所有路径”不能理解为服务端可以枚举浏览器 Cookie Jar 中任意未知 Path。浏览器不会在请求中告知 Cookie 原始 Path；服务端只能根据部署历史与配置清单发送删除指令。因此必须建立**历史 Cookie 作用域清单**。
+
+### D.1 清理范围
+
+至少盘点并覆盖以下候选 Path（最终以 Git 历史、部署配置、历史响应头和运维记录确认）：
+
+- /
+- /admin/
+- /platform/
+- /permissions/
+- /permissions/save/
+- 旧版本曾配置过的其他明确 Path
+- 空 Path/框架默认 Path 的历史实际结果（如存在，需验证浏览器行为）
+
+对每个历史 Cookie Name × Path × Domain 组合分别发出过期删除指令。不能只清理 admin_sessionid; Path=/。
+
+### D.2 历史名称与域名
+
+- 历史名称至少核查 admin_sessionid、曾配置过的 ADMIN_SESSION_COOKIE_NAME 值，以及任何曾用于平台 Session 的别名。
+- Domain 维度至少核查 host-only（不设置 Domain）和历史部署实际设置过的每个 Domain。
+- 不得凭空向未知父域发送删除 Cookie；Domain 必须来自可证实的历史配置。
+- 如果历史环境组合无法确定，交付风险说明和管理员侧清理指引，不得宣称“所有浏览器残留已清除”。
+
+### D.3 清理策略
+
+- 迁移响应中为所有已知历史组合发送过期 Set-Cookie。
+- 新版本认证读取逻辑不再接受旧名称，不设置旧 Cookie。
+- 删除响应必须核对浏览器最终 Cookie Jar，证明同名不同 Path 的旧 Cookie 已消失。
+- 清理操作可幂等重复执行；已经不存在的 Cookie 再删除不得引发异常。
+- 测试至少构造同名 admin_sessionid 在多个 Path/Domain 下并存的浏览器场景。
+
+## E. P0-5 /permissions* 兼容路径分类
+
+当前 URL 配置需要特别注意：/permissions/ 先注册 RedirectView；/permissions/save/ 既有一个 RedirectView 路由，又在后续出现同一路径到 permission_admin_save 的直接路由。Django URL Resolver 按顺序匹配，后者可能不可达；必须在阶段 0 核实并记录实际命中路由，不能仅按注释判断。
+
+### E.1 分类表
+
+| 路径 | 分类 | 方法 | Session 选择 | 目标行为 |
+|---|---|---|---|---|
+| /permissions/ | LEGACY_PLATFORM_REDIRECT | GET/HEAD | 不加载平台 Session | 302 到 /platform/permissions/ |
+| /permissions/save/ | LEGACY_PLATFORM_REDIRECT 或 LEGACY_PLATFORM_POST（待阶段 0 判定） | GET/HEAD/POST 分别核验 | 不得默认加载平台 Cookie | 保留既有兼容契约；若 POST 仍有真实调用方，必须在平台目标路径执行授权和 CSRF，不得将 POST 无条件 302 丢失语义 |
+| /platform/permissions/ | PLATFORM_PORTAL | GET | platform_sessionid | 平台门禁与权限矩阵展示 |
+| /platform/permissions/save/ | PLATFORM_PORTAL | POST | platform_sessionid | 平台门禁、权限保存授权、CSRF |
+
+### E.2 实施约束
+
+- 兼容路径必须在 Cookie 路由分类器中显式列出，不能用 startswith('/permissions') 简单并入平台 Path。
+- GET/HEAD 纯跳转不得要求浏览器发送平台 Cookie；跳转目标收到请求后才发送 Path=/platform/ Cookie。
+- POST 不得在没有方法级评估的情况下由 RedirectView 自动处理。先确认当前调用方、状态码、请求体、CSRF 与幂等影响，再冻结保留/拒绝/迁移行为。
+- 必须清查重复 URL pattern，最终保证每个兼容路径只有一个有效路由定义。
+- 验收需验证 /permissions/save/ 实际解析到的 view、允许方法、状态码、Location、CSRF 与权限行为。
+
+## F. P1 补充：路由、缓存、日志、审计、回滚与浏览器验收
+
+### F.1 路由
+
+- 维护完整路径分类清单：平台门户、Django Admin、PMS、公开、兼容跳转、静态资源、未知路径。
+- 路由匹配必须使用 path_info 的边界匹配，避免 /administrator/ 被误判为 /admin/。
+- /admin 与 /platform 的末尾斜杠、子路径、404、静态资源和媒体资源均需覆盖。
+- 未分类路径默认不得读取平台 Cookie；不允许“未知即平台”。
+- 认证重定向必须避免循环，登录页自身必须能在无 Session 状态下正常加载。
+
+### F.2 缓存与代理
+
+- 所有依赖 Session 的平台响应应设置适当的 Cache-Control（至少 private，敏感页面 no-store 按现有安全策略评估）。
+- 代理/CDN 不得缓存带 Set-Cookie 的登录、登出、权限矩阵或平台个人响应。
+- 反向代理必须透传多个 Set-Cookie 响应头，不能把它们错误合并成一个 Cookie。
+- 缓存键不能忽略身份上下文；平台认证页面不得被公共缓存命中。
+- 验收通过浏览器与代理两侧检查多个 Set-Cookie 头完整保留。
+
+### F.3 日志与审计
+
+- 禁止记录 Cookie 请求头、Set-Cookie 响应头、Session Key、CSRF Token。
+- 代理 access log、应用 request log、异常追踪平台均需检查脱敏配置。
+- 登录成功/失败、平台登出、Session 失效、无效 Cookie 清理、管理员禁用等安全事件按现有 AuditEvent 能力记录必要元数据。
+- AuditEvent 只记录操作者、事件类型、结果、请求 ID、IP（按现有策略）、路由类别；不得写 Cookie 值、Session Key、CSRF Token。
+- 无效 Cookie 的高频请求可做限速/聚合告警，避免审计日志被刷爆。
+- Session 后端故障与用户 Cookie 无效必须区分事件类型。
+
+### F.4 回滚
+
+- 回滚前确认新版本发出的两份 Path Cookie 的名称和作用域。
+- 回滚版本若只识别旧 admin_sessionid，不得自动接受新 Cookie 值作为认证凭证。
+- 回滚方案应明确：清理新 Cookie、旧版本重新登录、部署顺序、代理缓存清理和验证步骤。
+- 不允许新旧版本长期并行接受多套平台 Cookie；滚动发布期间需保证所有实例对 Cookie 规格兼容，或采用维护窗口/蓝绿切换。
+- 回滚后重新执行身份域与 Cookie 请求矩阵，不能仅以服务进程启动成功作为回滚成功。
+
+### F.5 真实浏览器验收
+
+必须用 Playwright 或 Selenium 运行真实浏览器，检查：
+
+- document.cookie 不可读取 HttpOnly 平台 Cookie；
+- 对 /login/、/reserve/、/api/v1/* 的真实 Request Headers 不包含两种平台 Cookie；
+- 对 /platform/* 只发送 platform_sessionid，不发送 django_admin_sessionid；
+- 对 /admin/* 只发送 django_admin_sessionid，不发送 platform_sessionid；
+- Set-Cookie 响应包含两份不同 Path 的 Cookie，值相同；
+- Cookie 部分缺失时能补齐，不发生登录循环；
+- 无效/过期 Cookie 不导致 500；
+- 平台登出后两份 Cookie 与服务端 Session 均失效；
+- PMS 登出不影响平台会话，平台登出不影响 PMS 会话；
+- 多 Path 同名旧 Cookie 清理后浏览器 Cookie Jar 中不残留；
+- 并发轮换响应乱序后最终 Cookie 仍有效；
+- 代理层没有合并 Set-Cookie 或缓存认证响应。
+
+测试证据必须脱敏，保留构建 SHA、浏览器版本、测试用例编号、Request/Response Cookie 名称与 Path、状态码和结果；绝不保存 Cookie 值。
+
+## G. 阶段门槛与状态更新
+
+### G.1 P0 设计完成门槛
+
+以下五项全部落实并通过设计评审，才允许进入阶段 1（实现 Cookie 路由模型与单元测试）：
+
+- [ ] P0-1 双 Cookie 状态机及不变量。
+- [ ] P0-2 Cookie 规格注册表与 SplitSessionMiddleware 多 Cookie 写入/删除契约。
+- [ ] P0-3 登录、登出、轮换、无效 Cookie 四类动作契约。
+- [ ] P0-4 历史 Cookie Name × Path × Domain 清理盘点策略。
+- [ ] P0-5 /permissions* 兼容路径分类及重复路由核查要求。
+
+### G.2 P1 施工前/实施验收门槛
+
+- [ ] 路由全分类和未知路径默认策略。
+- [ ] 代理/CDN 缓存与多 Set-Cookie 透传。
+- [ ] 日志脱敏与 AuditEvent 事件边界。
+- [ ] 回滚/滚动发布策略。
+- [ ] 真实浏览器 E2E 和证据归档。
+
+### G.3 当前状态
+
+本次修订只更新设计文档，不修改代码、设置、路由、数据库或认证行为。P0-1 至 P0-5 已形成设计契约，但仍需技术评审确认；阶段 1 尚未开始。P1 为实施前必须落地的工程与验收要求。
+
+**不得将“文档补齐”描述为 Cookie 隔离已实施或已完成。**
