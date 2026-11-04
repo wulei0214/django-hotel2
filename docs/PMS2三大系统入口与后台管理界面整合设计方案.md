@@ -271,3 +271,41 @@
 | D-05 | Django Admin 命名 | 数据维护（Django Admin） |
 | D-06 | 入口整合边界 | 只整合导航，不整合认证、Session、权限 |
 | D-07 | Cookie 网络层隔离 | 当前路径结构下单 Cookie Path 无法同时精确覆盖 `/platform/` 与 `/admin/`；本轮不改认证，专项后续处理 |
+
+
+## 12. 实施记录（2026-11-05）
+
+### 12.1 已提交的页面与测试调整
+
+| 内容 | 文件 | 提交 |
+|---|---|---|
+| 本方案基线 | `docs/PMS2三大系统入口与后台管理界面整合设计方案.md` | `450769f` |
+| 平台顶部导航命名为“权限与角色 / 运行与安全 / 数据维护（Django Admin）” | `templates/platform/base.html` | `ffd63bf` |
+| 平台首页改为三张治理/数据维护卡片，并提供预约、PMS 登录跨入口链接 | `templates/platform/home.html` | `429c981` |
+| PMS 侧栏移除平台权限入口，个人设置只保留个人中心 | `templates/_sidebar.html` | `3a564c6` |
+| 环境页展示上下文移除 API 基址、Cookie 名称、默认物业编码，增加安全配置状态 | `apps/identity/platform.py` | `a18267f` |
+| 环境页按部署、运行、安全、会话四组展示，DEBUG 开启标红 | `templates/platform/system.html` | `077f866` |
+| 平台首页/环境页响应式布局与权限矩阵外层布局优化 | `static/css/platform.css` | `29d8e28` |
+| 权限矩阵添加独立布局容器，不改表单字段和保存逻辑 | `templates/platform/permissions.html` | `325681f`、`a4bb106`（模板闭合修正） |
+| 平台首页入口、环境配置脱敏与分组测试更新 | `apps/identity/test_platform.py` | `bc260be`、`b991693`、`01eec48` |
+
+### 12.2 本轮未改动
+
+- 未修改 `apps/identity/platform.py` 的门禁装饰器和平台授权判断。
+- 未修改 `apps/identity/session_middleware.py`、Session 存储、登录/登出行为或 Cookie Path。
+- 未修改路由、数据库、权限数据、权限矩阵保存逻辑、业务服务。
+- 未新增审计记录入口；AuditEvent 卡片仍暂缓。
+- 未将平台管理员自动赋予 PMS 任职或角色。
+
+### 12.3 验证状态
+
+- 已补充/更新平台首页入口、环境页敏感配置不展示、DEBUG 状态、PMS 侧栏不暴露平台入口等测试断言。
+- 当前执行环境无法直接运行仓库 Django 测试，因此不把测试标记为本地通过。
+- GitHub Actions 对提交 `a4bb106` 的 Django CI 与 tests 工作流已触发，结果待完成后核对。
+- 必须以工作流最终结果为准；如失败，修复后重新运行并记录。
+
+### 12.4 Cookie 网络传输隔离的剩余事项
+
+本轮维持现有 Session 读取隔离，没有实现浏览器网络层 Cookie Path 隔离。当前 `admin_sessionid` 若仍使用 Path=/，浏览器访问 `/reserve/` 或 `/login/` 时可能仍会发送该 Cookie；PMS 中间件不会读取它，但这不等于请求未携带。
+
+这是已识别的安全边界缺口，不能标记为完成。后续应单独设计并测试平台与 Admin 两条路径的 Cookie 作用域、会话轮换、兼容迁移、登出清理和反向代理行为。推荐优先评估独立管理子域；如继续同域，应验证使用不同 Cookie 名称分别绑定 `/admin/` 与 `/platform/` 的方案，不能只改一个 Path 导致其中一侧登录失效。
