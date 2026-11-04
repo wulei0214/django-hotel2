@@ -795,3 +795,9 @@ Apifox 导入必须覆盖实际 API 路由。对 HTML 页面流程（登录、�
 - 旧入口治理（§10.4）核对：33×410 + register/booking/cancel_booking redirect 均在位
 
 测试基线：SQLite  334 项全过（含并行会话员工中心迁移测试）。
+
+### Phase 4.4 交付补充（2026-11-05）
+
+- **Pytest + Requests 真实 HTTP 冒烟套件**：api_tests/（9 用例：公开面/预订幂等/令牌查询取消/员工登录/权限拒绝/旧路由退役/OpenAPI 契约），JUnit 报告 api_tests/reports/junit-p0.xml；运行方式见 docs/PMS2接口文档与测试人员使用指南.md §5.1
+- **Apifox 交付物**：docs/接口文档/openapi.json（60 paths 快照含 servers）+ apifox-env-template.json 环境变量模板（无真实密钥）
+- Django 层 JUnit 收集（unittest-xml-reporting）为运维可选项，未纳入 CI（记录待办）

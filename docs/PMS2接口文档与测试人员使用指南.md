@@ -144,9 +144,16 @@ Apifox 是测试人员的首选图形化工具。它可以导入 OpenAPI、维�
 
 1. 启动 Django 项目：`python manage.py runserver`。
 2. 浏览器打开 `http://127.0.0.1:8000/api/v1/openapi.json`，确认能返回 JSON。
+   - 仓库内已有导出快照：`docs/接口文档/openapi.json`（60 paths / 60 operations，
+     OpenAPI 3.1，含 x-contract-status/x-required-permission/限流与幂等标注），
+     无需启动服务也可直接导入。
 3. 打开 Apifox，新建项目，选择导入。
-4. 选择 OpenAPI / Swagger，使用 URL 导入：
-   `http://127.0.0.1:8000/api/v1/openapi.json`。
+4. 选择 OpenAPI / Swagger，两种方式任选：
+   - 文件导入：选择 `docs/接口文档/openapi.json`；
+   - URL 导入：`http://127.0.0.1:8000/api/v1/openapi.json`（服务运行中）。
+   环境变量模板：`docs/接口文档/apifox-env-template.json`（环境管理 → 导入），
+   含 baseUrl/测试账号占位/Cookie 名与 Booking Access Token 说明；禁止提交
+   真实密钥、Cookie、Session 值或住客数据。
 5. 导入后设置环境变量：
    - `base_url = http://127.0.0.1:8000`
    - API 前缀为 `/api/v1`
@@ -184,7 +191,24 @@ Apifox 是测试人员的首选图形化工具。它可以导入 OpenAPI、维�
 
 ## 5. Python + Requests + Pytest 自动化测试
 
-### 5.1 安装依赖
+### 5.1 现成 P0 冒烟套件（api_tests/，推荐直接使用）
+
+仓库已内置真实 HTTP 冒烟套件 `api_tests/`（Pytest + Requests，9 用例）：
+公开面/预订创建幂等/令牌查询取消/员工登录/权限拒绝/旧路由退役/OpenAPI 契约，
+并输出 JUnit 报告 `api_tests/reports/junit-p0.xml`。
+
+```bash
+# 前置：Django 服务已运行（默认 PMS_BASE_URL=http://127.0.0.1:8000）
+cd api_tests
+../.venv/Scripts/python.exe -m pytest          # Windows
+python3 -m pytest                              # macOS/Linux
+# 自定义目标实例：设置环境变量 PMS_BASE_URL；员工账号 PMS_STAFF_USER/PMS_STAFF_PASSWORD
+```
+
+限流提示：套件每轮含 2 次预订写请求与 1 次登录；连续多轮触发 429 属预期，
+等待窗口或重启开发库计数（RateLimitCounter）后重试。
+
+### 5.2 自行编写用例的安装依赖
 
 ```bash
 python -m pip install requests pytest
