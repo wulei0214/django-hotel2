@@ -1,8 +1,10 @@
 {% extends "platform/base.html" %}
 {# 角色权限矩阵（超管专属，§6.1 迁移至 /platform/permissions/）：行=模块，列=查看/新增/修改/删除；查看同时决定菜单可见性 #}
-{% block title %}角色权限管理{% endblock %}
+{% block title %}角色权限管理</div>
+{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="/static/css/perm_admin.css?v=2">{% endblock %}
 {% block content %}
+<div class="pf-permissions">
 <div class="perm-head">
     <div>
         <h2>角色权限管理</h2>
