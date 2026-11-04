@@ -277,6 +277,8 @@ class SystemPageSplitTests(TestCase):
         self.assertNotIn("系统环境配置信息", content)
         self.assertNotIn("运行模式", content)
         self.assertIn("修改我的密码", content)
+        self.assertNotIn('href="/platform/permissions/"', content,
+                         "PMS 侧栏不得暴露平台权限入口")
 
     def test_pms_system_page_self_password_change(self):
         """/system/ 自助改密：POST 新密码 → 成功、审计、当前会话保持、可新密码登录"""
