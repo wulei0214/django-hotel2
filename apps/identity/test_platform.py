@@ -74,9 +74,18 @@ class PlatformAccessTests(TestCase):
         self._platform_login(self.superadmin)
         response = self.client.get("/platform/")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "平台管理面")
+        self.assertContains(response, "平台管理")
         self.assertEqual(self.client.get("/platform/permissions/").status_code, 200)
         self.assertEqual(self.client.get("/platform/system/").status_code, 200)
+
+    def test_platform_home_has_three_management_cards_and_cross_entry_links(self):
+        self._platform_login(self.superadmin)
+        response = self.client.get("/platform/")
+        self.assertEqual(response.status_code, 200)
+        for label in ("权限与角色", "平台运行与安全", "数据维护（Django Admin）",
+                      "/reserve/", "/login/"):
+            self.assertContains(response, label)
+        self.assertNotContains(response, "审计记录")
 
     def test_platform_session_uses_admin_session_cookie(self):
         """平台页响应使用 admin_sessionid（PMS sessionid 不被平台面读写）"""
