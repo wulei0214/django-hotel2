@@ -95,14 +95,15 @@ def platform_system_info(request):
         "run_mode": getattr(settings, "DJANGO_ENV", "dev"),
         "tz": settings.TIME_ZONE,
         "sys_lang": settings.LANGUAGE_CODE,
-        "api_base": request.build_absolute_uri("/api/v1/"),
         "session_age_hours": session_age // 3600,
-        "session_cookie_name": settings.SESSION_COOKIE_NAME,
-        "admin_session_cookie_name": settings.ADMIN_SESSION_COOKIE_NAME,
-        "csrf_use_sessions": settings.CSRF_USE_SESSIONS,
         "session_expire_at_browser_close": bool(
             settings.SESSION_EXPIRE_AT_BROWSER_CLOSE),
-        "default_property_code": getattr(
-            settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"),
+        # 以下是配置状态展示，不代表对反向代理或外部网络的主动探测。
+        "https_redirect": bool(settings.SECURE_SSL_REDIRECT),
+        "session_cookie_secure": bool(settings.SESSION_COOKIE_SECURE),
+        "csrf_cookie_secure": bool(settings.CSRF_COOKIE_SECURE),
+        "hsts_enabled": bool(settings.SECURE_HSTS_SECONDS),
+        "hsts_seconds": int(settings.SECURE_HSTS_SECONDS),
+        "csrf_use_sessions": bool(settings.CSRF_USE_SESSIONS),
     }
     return render(request, "platform/system.html", ctx)

@@ -8,6 +8,7 @@ platform_superadmin_check 体检命令。
 import io
 from contextlib import redirect_stdout
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.management import call_command
@@ -73,9 +74,18 @@ class PlatformAccessTests(TestCase):
         self._platform_login(self.superadmin)
         response = self.client.get("/platform/")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "平台管理面")
+        self.assertContains(response, "平台管理")
         self.assertEqual(self.client.get("/platform/permissions/").status_code, 200)
         self.assertEqual(self.client.get("/platform/system/").status_code, 200)
+
+    def test_platform_home_has_three_management_cards_and_cross_entry_links(self):
+        self._platform_login(self.superadmin)
+        response = self.client.get("/platform/")
+        self.assertEqual(response.status_code, 200)
+        for label in ("权限与角色", "平台运行与安全", "数据维护（Django Admin）",
+                      "/reserve/", "/login/"):
+            self.assertContains(response, label)
+        self.assertNotContains(response, "审计记录")
 
     def test_platform_session_uses_admin_session_cookie(self):
         """平台页响应使用 admin_sessionid（PMS sessionid 不被平台面读写）"""
@@ -275,6 +285,8 @@ class SystemPageSplitTests(TestCase):
         self.assertNotIn("系统环境配置信息", content)
         self.assertNotIn("运行模式", content)
         self.assertIn("修改我的密码", content)
+        self.assertNotIn('href="/platform/permissions/"', content,
+                         "PMS 侧栏不得暴露平台权限入口")
 
     def test_pms_system_page_self_password_change(self):
         """/system/ 自助改密：POST 新密码 → 成功、审计、当前会话保持、可新密码登录"""
@@ -313,8 +325,14 @@ class SystemPageSplitTests(TestCase):
         for marker in ("李测试", "赵同事", "pf_me", "pf_other", "E-pf_me",
                        "AD-", "工号", "姓名", "任职"):
             self.assertNotIn(marker, content, f"平台环境页不得包含 PII：{marker}")
-        for env_marker in ("DEBUG", "运行模式", "时区", "会话", "API 基址"):
+        for env_marker in ("DEBUG", "运行环境", "时区", "会话", "安全", "部署"):
             self.assertIn(env_marker, content)
+        for internal_value in ("API 基址", "admin_sessionid", "sessionid", "DEFAULT"):
+            self.assertNotIn(internal_value, content)
+        if settings.DEBUG:
+            self.assertIn("pf-status-danger", content)
+        else:
+            self.assertIn("pf-status-ok", content)
 
     def test_pms_session_cannot_reach_platform_system_page(self):
         """PMS 员工会话访问 /platform/system/ → 302（域隔离保持）"""
