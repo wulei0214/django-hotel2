@@ -518,3 +518,109 @@ class PMS2IdempotencyContractTests(TestCase):
             self.assertFalse(header[0]["required"],
                              f"{path} 的 @idempotent 装饰器在缺少幂等键时放行，应声明可选")
             self.assertIn("x-idempotency", operation)
+
+
+class PMS2FieldLevelConsistencyTests(TestCase):
+    """抽样：组件 schema 字段与视图/服务实际返回键逐项一致（禁止虚构字段）。"""
+
+    def setUp(self):
+        self.spec = build_openapi()
+        self.schemas = self.spec["components"]["schemas"]
+
+    def test_staff_dto_matches_staff_center_dto(self):
+        """StaffDto 必须覆盖 staff_center._staff_dto 的全部键（AUTH-14/17）。"""
+        props = self.schemas["StaffDto"]["properties"]
+        for name in ("id", "full_name", "phone_masked", "employee_no",
+                     "position_code", "employment_status",
+                     "employment_status_label", "membership_status",
+                     "membership_status_label", "account", "invitation",
+                     "active_roles", "assignments", "source_system"):
+            self.assertIn(name, props, f"StaffDto 缺少视图实际返回字段：{name}")
+        account = props["account"]["anyOf"][0]
+        self.assertIn("username", account["properties"])
+        self.assertIn("is_active", account["properties"])
+        self.assertIn("password_pending", account["properties"],
+                      "AUTH-14：unusable password 邀请待激活标记必须入契约")
+        self.assertIn("last_login", account["properties"])
+        invitation = props["invitation"]["anyOf"][0]
+        for name in ("id", "status", "status_label", "expires_at", "resend_count"):
+            self.assertIn(name, invitation["properties"],
+                          f"AUTH-17 邀请摘要缺少字段：{name}")
+
+    def test_folio_detail_data_declares_nullable_folio_and_summary(self):
+        props = self.schemas["FolioDetailData"]["properties"]
+        for name in ("folio", "summary", "entries", "payments", "allowed_actions"):
+            self.assertIn(name, props, f"FolioDetailData 缺少视图实际返回键：{name}")
+        self.assertEqual(
+            props["summary"]["anyOf"][0]["$ref"],
+            "#/components/schemas/FolioSummaryDto")
+
+    def test_availability_query_params_match_view_reads(self):
+        """availability 视图只读取 check_in/check_out/rooms/room_type_id。"""
+        operation = self.spec["paths"][BASE + "/availability"]["get"]
+        params = {p["name"]: p for p in operation["parameters"]}
+        self.assertEqual(
+            sorted(params), ["check_in", "check_out", "room_type_id", "rooms"],
+            "availability 契约参数与视图实际读取不一致")
+        self.assertTrue(params["check_in"]["required"])
+        self.assertTrue(params["check_out"]["required"])
+        self.assertFalse(params["rooms"]["required"])
+        self.assertFalse(params["room_type_id"]["required"])
+        self.assertEqual(params["rooms"]["schema"]["type"], "integer")
+        self.assertEqual(params["check_in"]["schema"]["format"], "date")
+
+    def test_night_audit_preview_query_and_run_body_match_view(self):
+        preview = self.spec["paths"][BASE + "/night-audit/preview"]["get"]
+        self.assertEqual(
+            {p["name"] for p in preview["parameters"]}, {"date"},
+            "夜审预览视图只读取 date 查询参数")
+        run = self.spec["paths"][BASE + "/night-audit/run"]["post"]
+        body = run["requestBody"]["content"]["application/json"]["schema"]
+        self.assertEqual(
+            sorted(body["properties"]), ["date"],
+            "夜审执行视图只读取 body.date")
+        self.assertFalse(run["requestBody"]["required"],
+                         "视图对空请求体兼容（json.loads('' or '{}')）")
+
+    def test_error_detail_codes_cover_api_error_status_codes(self):
+        from apps.core.api_contract import ApiError
+        description = self.schemas["ErrorDetail"]["properties"]["code"]["description"]
+        for code in ApiError.STATUS_CODES:
+            self.assertIn(code, description,
+                          f"ErrorDetail.code 说明缺少稳定错误码 {code}")
+
+
+class PMS2ParameterConsistencyTests(TestCase):
+    """路径模板变量、幂等键长度与业务域 tag 分组一致性。"""
+
+    def setUp(self):
+        self.spec = build_openapi()
+
+    def test_path_template_variables_have_matching_path_parameters(self):
+        for path, path_item in self.spec["paths"].items():
+            for method, operation in path_item.items():
+                declared = {p["name"] for p in operation.get("parameters", [])
+                            if p["in"] == "path"}
+                variables = set(re.findall(r"\{(\w+)\}", path))
+                self.assertEqual(
+                    variables, declared,
+                    f"{method.upper()} {path} 路径变量 {variables} 与 "
+                    f"path 参数声明 {declared} 不一致")
+
+    def test_idempotency_key_max_length_matches_validation_site(self):
+        """公开面 128（idempotent 装饰器截断）；前台收款/押金/退款 64（服务强校验）。"""
+        create = self.spec["paths"][BASE + "/reservations"]["post"]
+        header = next(p for p in create["parameters"]
+                      if p["name"] == "Idempotency-Key")
+        self.assertEqual(header["schema"]["maxLength"], 128)
+        collect = self.spec["paths"][
+            BASE + "/front-desk/reservations/{booking_no}/payments"]["post"]
+        header = next(p for p in collect["parameters"]
+                      if p["name"] == "Idempotency-Key")
+        self.assertEqual(header["schema"]["maxLength"], 64)
+
+    def test_tags_cover_required_business_domains(self):
+        declared = {t["name"] for t in self.spec["tags"]}
+        for domain in ("公开预订", "前台接待", "住客中心", "房态库存", "会员中心",
+                       "员工中心", "审批", "夜审与紧急访问", "支付"):
+            self.assertIn(domain, declared, f"缺少业务域分组 tag：{domain}")

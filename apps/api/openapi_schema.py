@@ -88,16 +88,19 @@ def s_nullable(schema):
 # ---------------------------------------------------------------------------
 # 参数构造器
 # ---------------------------------------------------------------------------
-def P(name, desc, typ="string", location="path", required=True, example=None):
+def P(name, desc, typ="string", location="path", required=True, example=None,
+      fmt=None):
     schema = {"type": typ}
     if example is not None:
         schema["example"] = example
+    if fmt is not None:
+        schema["format"] = fmt
     return {"name": name, "in": location, "required": required,
             "description": desc, "schema": schema}
 
 
-def Q(name, desc, typ="string", required=False, example=None):
-    return P(name, desc, typ, "query", required, example)
+def Q(name, desc, typ="string", required=False, example=None, fmt=None):
+    return P(name, desc, typ, "query", required, example, fmt)
 
 
 def PQ(page_default=20, size_max=100):
@@ -129,8 +132,8 @@ COMPONENTS = {
     }, desc="统一分页元数据；部分列表会附加 date/source_system/read_only 等附加字段。"),
     "ErrorDetail": s_obj({
         "code": s_str("稳定错误码：VALIDATION_ERROR/AUTHENTICATION_REQUIRED/PERMISSION_DENIED/"
-                      "RESOURCE_NOT_FOUND/BUSINESS_CONFLICT/PROPERTY_UNAVAILABLE/"
-                      "EMPLOYEE_MEMBERSHIP_REQUIRED/INTERNAL_ERROR。"),
+                      "RESOURCE_NOT_FOUND/BUSINESS_CONFLICT/RATE_LIMITED/"
+                      "PROPERTY_UNAVAILABLE/EMPLOYEE_MEMBERSHIP_REQUIRED/INTERNAL_ERROR。"),
         "message": s_str("人类可读错误信息（中文）。"),
         "field_errors": s_nullable(s_obj(desc="字段级校验错误映射。")),
         "retryable": s_nullable(s_bool("是否建议原样重试。")),
@@ -374,11 +377,12 @@ COMPONENTS = {
         "refunds": s_arr(_ref("RefundDto")),
     }),
     "FolioDetailData": s_obj({
+        "folio": s_nullable(s_obj(desc="未开账时为 null 键；已开账时视图不返回该键。")),
         "summary": s_nullable(_ref("FolioSummaryDto")),
         "entries": s_arr(_ref("FolioEntryDto")),
         "payments": s_arr(_ref("FolioPaymentDto")),
         "allowed_actions": s_arr(s_str(), "request_refund / approve_refund（按权限）。"),
-    }, desc="未开账时 summary 为 null 且 entries/payments 为空。"),
+    }, desc="未开账时 folio 为 null、summary 为空账摘要且 entries/payments 为空。"),
     "LegacyReservationDto": s_obj({
         "booking_no": s_str("LEGACY-{id} 形式的展示编号。"),
         "legacy_id": s_int("旧 hotelapp.Accommodation 主键。"),
@@ -540,8 +544,16 @@ COMPONENTS = {
         "membership_status_label": s_nullable(s_str()),
         "account": s_nullable(s_obj({
             "username": s_str(), "is_active": s_bool(),
+            "password_pending": s_bool("unusable password = 邀请待激活账号（激活前不可登录）。"),
             "last_login": s_nullable(s_str("", format="date-time")),
-        })),
+        }, desc="关联登录账号；无则为 null。")),
+        "invitation": s_nullable(s_obj({
+            "id": s_int("邀请记录 ID。"),
+            "status": s_str("邀请状态。"),
+            "status_label": s_str("邀请状态中文标签。"),
+            "expires_at": s_str("邀请过期时间。", format="date-time"),
+            "resend_count": s_int("重发次数。"),
+        }, desc="AUTH-17：该员工在本物业最近一条员工邀请；不含 token 摘要，无则为 null。")),
         "active_roles": s_arr(s_str(), "当前生效角色（组名）。"),
         "assignments": s_arr(s_obj({
             "id": s_int(), "role": s_str("角色组名。"), "active": s_bool(),
@@ -624,8 +636,8 @@ RL_SOURCE = "apps.core.rate_limit.DEFAULT_LIMITS（方案 §6.3）"
 
 op("/availability", "get", "公开预订", "查询房型库存与价格",
    status="verified", auth=False,
-   query=[Q("check_in", "入住日期 YYYY-MM-DD；不得早于今天。", "string", True, "2026-11-05"),
-          Q("check_out", "离店日期 YYYY-MM-DD；必须晚于入住日期。", "string", True, "2026-11-07"),
+   query=[Q("check_in", "入住日期 YYYY-MM-DD；不得早于今天。", "string", True, "2026-11-05", fmt="date"),
+          Q("check_out", "离店日期 YYYY-MM-DD；必须晚于入住日期。", "string", True, "2026-11-07", fmt="date"),
           Q("rooms", "房间数，1-10，默认 1。", "integer", False, 1),
           Q("room_type_id", "可选；只查询指定房型。", "integer", False, 1)],
    ok=(("200", "物业、日期与逐房型可售结果列表"),),
@@ -1099,7 +1111,7 @@ op("/room-types", "get", "房态库存", "房型列表",
 
 op("/rate-calendar", "get", "房价管理", "房价日历",
    status="partial",
-   query=[Q("start", "开始日期 YYYY-MM-DD；缺省今天。", "string", False, "2026-11-05"),
+   query=[Q("start", "开始日期 YYYY-MM-DD；缺省今天。", "string", False, "2026-11-05", fmt="date"),
           Q("days", "查询天数 1-30，默认 14。", "integer", False, 14),
           Q("room_type_id", "房型 ID。", "integer")],
    permission="有效员工 + hotelapp.view_room",
