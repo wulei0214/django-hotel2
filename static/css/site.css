@@ -185,7 +185,21 @@ body {
     line-height: 1.4 !important;
 }
 .sidebar-menu a:hover { background: rgba(255, 255, 255, .07) !important; color: var(--color-text-inverse) !important; }
-.sidebar-menu a.active { background: var(--color-accent-subtle) !important; color: var(--color-accent-solid) !important; }
+.sidebar-menu a.active {
+    background: var(--color-accent-subtle) !important;
+    color: #ffffff !important;
+    font-weight: 500;
+    box-shadow: inset 3px 0 0 var(--gold-500);
+}
+.sidebar-menu a.active svg { color: var(--gold-400); }
+/* 模板把 active 类放在 <li> 上（非 <a>），必须用 li.active > a 匹配 */
+.sidebar-menu li.active > a {
+    background: var(--color-accent-subtle) !important;
+    color: #ffffff !important;
+    font-weight: 500;
+    box-shadow: inset 3px 0 0 var(--gold-500);
+}
+.sidebar-menu li.active > a svg { color: var(--gold-400); }
 .side-user {
     border-top: 1px solid rgba(255, 255, 255, .08);
     padding: 14px 16px 16px;

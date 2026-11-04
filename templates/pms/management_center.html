@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{{ title }} - PMS2</title>
-    <link rel="stylesheet" href="/static/css/site.css?v=12">
+    <link rel="stylesheet" href="/static/css/site.css?v=14">
     <style>
         .pms-center{padding:24px;max-width:1500px;margin:0 auto}
         .pms-center-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px}
@@ -227,15 +227,42 @@
     const payload=await response.json();
     if(!response.ok) throw new Error(payload.error && payload.error.message || "房价/库存日历读取失败");
     sections.forEach(function(section){
+      const data=payload.data[section.data_key] || [];
       const panel=document.createElement("section");panel.className="pms-panel";
-      const title=document.createElement("h2");title.textContent=section.title;
+      const title=document.createElement("h2");title.textContent=section.title+"（共 "+data.length+" 行）";
       const wrap=document.createElement("div");wrap.className="pms-table-wrap";
       const table=document.createElement("table");table.className="pms-table";
       const thead=document.createElement("thead"),tr=document.createElement("tr");
       header(tr,section.columns,false);thead.appendChild(tr);
-      const tbody=document.createElement("tbody");rows(tbody,section.columns,payload.data[section.data_key] || [],false);
+      const tbody=document.createElement("tbody");
       table.appendChild(thead);table.appendChild(tbody);wrap.appendChild(table);
-      panel.appendChild(title);panel.appendChild(wrap);holder.appendChild(panel);
+      panel.appendChild(title);panel.appendChild(wrap);
+      // 客户端分页（图1 同款：上一页/第 N 页/共 M 页/下一页），长表每页 8 行
+      const PAGE=8, pages=Math.max(1, Math.ceil(data.length/PAGE));
+      let current=1;
+      const pager=document.createElement("div");pager.className="pms-pager";
+      const prev=document.createElement("button");prev.type="button";prev.textContent="上一页";prev.disabled=true;
+      const label=document.createElement("span");
+      const next=document.createElement("button");next.type="button";next.textContent="下一页";
+      pager.appendChild(prev);
+      pager.appendChild(label);
+      pager.appendChild(next);
+      panel.appendChild(pager);
+      function renderPage(){
+        tbody.replaceChildren();
+        const start=(current-1)*PAGE;
+        data.slice(start,start+PAGE).forEach(function(item){
+          const rowItem=document.createElement("tr");
+          section.columns.forEach(function(c){const td=document.createElement("td");td.textContent=value(at(item,c.path));rowItem.appendChild(td);});
+          tbody.appendChild(rowItem);
+        });
+        label.textContent="第 "+current+" 页 / 共 "+pages+" 页";
+        prev.disabled=current<=1;next.disabled=current>=pages;
+      }
+      prev.addEventListener("click",function(){if(current>1){current--;renderPage();}});
+      next.addEventListener("click",function(){if(current<pages){current++;renderPage();}});
+      renderPage();
+      holder.appendChild(panel);
     });
   }
   async function load(page) {

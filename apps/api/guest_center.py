@@ -250,7 +250,8 @@ def rate_calendar(request):
         rate_qs = rate_qs.filter(room_type_id=room_type_id)
 
     inventory_data = [{
-        "room_type": {"id": inv.room_type.pk, "code": inv.room_type.code},
+        "room_type": {"id": inv.room_type.pk, "code": inv.room_type.code,
+                      "name": inv.room_type.name},
         "stay_date": str(inv.stay_date),
         "total_rooms": inv.total_rooms, "held": inv.held,
         "sold": inv.sold, "out_of_service": inv.out_of_service,
@@ -258,8 +259,10 @@ def rate_calendar(request):
         "stop_sell": inv.stop_sell,
     } for inv in inv_qs]
     rate_data = [{
-        "room_type": {"id": dr.room_type.pk, "code": dr.room_type.code},
-        "rate_plan": {"id": dr.rate_plan.pk, "code": dr.rate_plan.code},
+        "room_type": {"id": dr.room_type.pk, "code": dr.room_type.code,
+                      "name": dr.room_type.name},
+        "rate_plan": {"id": dr.rate_plan.pk, "code": dr.rate_plan.code,
+                      "name": dr.rate_plan.name},
         "stay_date": str(dr.stay_date),
         "price": str(dr.price), "currency": dr.currency,
         "currency_label": L.currency_label(dr.currency),
