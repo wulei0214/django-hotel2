@@ -1,0 +1,29 @@
+{% extends "platform/base.html" %}
+{% block title %}平台首页{% endblock %}
+{% block content %}
+<div class="pf-heading">
+    <h2>平台管理面</h2>
+    <p>平台身份域入口（§6.1）：会话域 admin_sessionid，与 PMS 员工面（sessionid）严格隔离。</p>
+</div>
+<div class="pf-grid">
+    <div class="pf-card">
+        <h4>角色权限矩阵</h4>
+        <p>按角色配置业务模块 CRUD 与高危动作权限点；「查看」列同时控制 PMS 菜单可见性。仅管辖 hotelapp 域权限。</p>
+        <a class="pf-card-link" href="/platform/permissions/">进入权限矩阵</a>
+    </div>
+    <div class="pf-card">
+        <h4>平台环境信息</h4>
+        <p>运行模式 / 版本 / 时区 / 语言 / API 基址 / 会话策略。本页不含任何员工个人信息。</p>
+        <a class="pf-card-link" href="/platform/system/">查看环境信息</a>
+    </div>
+    <div class="pf-card">
+        <h4>Django Admin</h4>
+        <p>平台数据维护后台（simpleui）：用户、员工档案、任职与审计事件等技术管理入口。</p>
+        <a class="pf-card-link" href="/admin/">打开 Django Admin</a>
+    </div>
+</div>
+<div class="pf-note">
+    边界提示：平台超管是平台技术身份，<strong>不会</strong>自动获得 PMS 业务权限；
+    如需进入 PMS 员工面，必须按正常流程建档、任职并分配岗位角色（与普通员工一致）。
+</div>
+{% endblock %}

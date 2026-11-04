@@ -224,7 +224,10 @@ class MatrixSaveConsistencyTests(TestCase):
             codename="view_group", content_type=ct_group))
 
         self.client.force_login(root)
-        response = self.client.post("/permissions/save/", {
+        # §6.1：矩阵保存已迁移至 /platform/permissions/save/（平台会话域）
+        sessionid = self.client.cookies["sessionid"].value
+        self.client.cookies["admin_sessionid"] = sessionid
+        response = self.client.post("/platform/permissions/save/", {
             "role": str(group.id), "perm": ["view_room", "change_room"],
         })
         self.assertEqual(response.status_code, 302)
@@ -1093,7 +1096,7 @@ class SuperuserPolicyTests(TestCase):
                              f"superuser 无任职时 {url} 必须 403")
 
     def test_superuser_can_access_permission_matrix(self):
-        """修复：/permissions/ 属平台会话域（admin_sessionid）。
+        """§6.1：矩阵页迁移至 /platform/permissions/，旧 /permissions/ 302 兼容跳转。
 
         超管经 /admin/ 登录后可访问矩阵页；仅持 PMS 会话（sessionid）
         的超管无法访问——因为 D-04 登录门使超管拿不到 PMS 会话，
@@ -1102,13 +1105,17 @@ class SuperuserPolicyTests(TestCase):
         # 模拟平台登录：把会话键复制到 admin_sessionid（与 SplitSession 一致）
         sessionid = self.client.cookies["sessionid"].value
         self.client.cookies["admin_sessionid"] = sessionid
-        response = self.client.get("/permissions/")
+        legacy = self.client.get("/permissions/")
+        self.assertEqual(legacy.status_code, 302,
+                         "旧 /permissions/ 入口必须 302 兼容跳转")
+        self.assertEqual(legacy["Location"], "/platform/permissions/")
+        response = self.client.get("/platform/permissions/")
         self.assertEqual(response.status_code, 200,
                          "超管经平台会话必须能访问权限矩阵")
         # 边界：仅 PMS 会话（无平台会话）→ 302 去平台登录页
         plain = self.client
         plain.cookies.pop("admin_sessionid", None)
-        boundary = plain.get("/permissions/")
+        boundary = plain.get("/platform/permissions/")
         self.assertEqual(boundary.status_code, 302,
                          "无平台会话的请求必须跳转平台登录")
 

@@ -1,0 +1,37 @@
+{% comment %} 平台管理面独立布局（§6.1）：不含 PMS _sidebar.html，
+导航仅：平台首页 / 权限矩阵 / 环境信息 / 返回 Django Admin。 {% endcomment %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}平台管理{% endblock %} - PMS2 平台管理面</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=12">
+    <link rel="stylesheet" href="/static/css/platform.css?v=1">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+<header class="pf-topbar">
+    <span class="pf-brand"><span class="pf-logo">平</span>PMS2 平台管理</span>
+    <nav class="pf-nav" aria-label="平台导航">
+        <a href="/platform/" {% if nav_active == 'home' %}class="active"{% endif %}>平台首页</a>
+        <a href="/platform/permissions/" {% if nav_active == 'permissions' %}class="active"{% endif %}>权限矩阵</a>
+        <a href="/platform/system/" {% if nav_active == 'system' %}class="active"{% endif %}>环境信息</a>
+        <a href="/admin/">返回 Django Admin</a>
+    </nav>
+    <span class="pf-user">
+        <span class="pf-chip">平台超管</span>
+        <span>{{ user.username }}</span>
+    </span>
+</header>
+{% if messages %}
+<div class="toast-box">
+    {% for m in messages %}<div class="toast {{ m.tags }}">{{ m }}</div>{% endfor %}
+</div>
+{% endif %}
+<div class="main pf-main">
+    {% block content %}{% endblock %}
+</div>
+</body>
+</html>

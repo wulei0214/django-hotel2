@@ -1,0 +1,115 @@
+{% extends "platform/base.html" %}
+{# 角色权限矩阵（超管专属，§6.1 迁移至 /platform/permissions/）：行=模块，列=查看/新增/修改/删除；查看同时决定菜单可见性 #}
+{% block title %}角色权限管理{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="/static/css/perm_admin.css?v=2">{% endblock %}
+{% block content %}
+<div class="perm-head">
+    <div>
+        <h2>角色权限管理</h2>
+        <p class="perm-code">正在编辑角色：
+            {% for name, g in roles %}
+            <a class="role-tab {% if g.id == group.id %}role-active{% endif %}" href="?role={{ g.id }}">{{ name }}</a>
+            {% endfor %}
+            {% for name in reserved_roles %}
+            <span class="role-tab role-reserved" title="预留角色，后续版本启用">{{ name }}（预留）</span>
+            {% endfor %}
+        </p>
+        <p class="perm-code perm-note">提示：「查看」同时控制该模块在 PMS 菜单中的可见性；超级管理员拥有全部权限，不受本页控制。灰显模块已对接第三方（预留），保存时权限随之回收。</p>
+    </div>
+    <div class="perm-actions">
+        <a class="perm-btn" href="/platform/">← 返回平台首页</a>
+    </div>
+</div>
+
+<form action="/platform/permissions/save/" method="post">
+    {% csrf_token %}
+    <input type="hidden" name="role" value="{{ group.id }}">
+    <div class="perm-panel matrix-panel">
+        <table class="matrix-table">
+            <tr>
+                <th class="mx-module">业务模块</th>
+                {% for a in actions %}
+                <th class="mx-action">{{ a.label }}</th>
+                {% endfor %}
+                <th class="mx-rowall">整行全选</th>
+            </tr>
+            {% for m in modules %}
+            <tr {% if m.reserved %}class="mx-reserved" title="已对接第三方系统，模块隐藏中（预留）"{% endif %}>
+                <td class="mx-module">{{ m.label }}{% if m.reserved %}<span class="mx-tag">预留</span>{% endif %}</td>
+                {% for a in m.actions %}
+                <td class="mx-cell">
+                    <input type="checkbox" name="perm" value="{{ a.action }}_{{ m.key }}"
+                           class="mx-check" data-module="{{ m.key }}" data-action="{{ a.action }}"
+                           {% if m.reserved %}disabled{% endif %}
+                           {% if a.checked and not m.reserved %}checked{% endif %}>
+                </td>
+                {% endfor %}
+                <td class="mx-cell"><input type="checkbox" class="mx-rowall" data-module="{{ m.key }}" {% if m.reserved %}disabled{% endif %}></td>
+            </tr>
+            {% endfor %}
+            <tr class="mx-footer">
+                <td>全选所有模块</td>
+                {% for a in actions %}
+                <td class="mx-cell"><input type="checkbox" class="mx-colall" data-action="{{ a.action }}"></td>
+                {% endfor %}
+                <td class="mx-cell"><input type="checkbox" id="mx-all"></td>
+            </tr>
+        </table>
+    </div>
+    <div class="perm-panel matrix-panel">
+        <h3 class="perm-section-title">高危动作（独立权限点，默认仅值班经理/店长）</h3>
+        <table class="matrix-table action-table">
+            {% for p in action_perms %}
+            <tr>
+                <td class="mx-module">{{ p.label }}</td>
+                <td class="mx-cell mx-desc">{{ p.desc }}</td>
+                <td class="mx-cell">
+                    <input type="checkbox" name="perm" value="{{ p.code }}"
+                           class="mx-action-check" {% if p.checked %}checked{% endif %}>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="3" class="empty-row">暂无高危操作权限记录</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+    <div class="perm-save-bar">
+        <span>已勾选 <b id="perm-count">{{ perm_total }}</b> / {{ perm_all_count }} 项权限 ·
+            保存后立即生效（无需重启）</span>
+        <button type="submit" class="perm-save-btn">保存权限</button>
+    </div>
+</form>
+
+<script>
+    // 权限矩阵联动：整行全选 / 整列全选 / 全部全选，以及单元格变化时的统计
+    document.addEventListener('change', function (e) {
+        var t = e.target;
+        if (t.id === 'mx-all') {
+            document.querySelectorAll('.mx-check').forEach(function (i) { i.checked = t.checked; });
+            document.querySelectorAll('.mx-action-check').forEach(function (i) { i.checked = t.checked; });
+            document.querySelectorAll('.mx-rowall, .mx-colall').forEach(function (i) { i.checked = t.checked; });
+        } else if (t.classList.contains('mx-rowall')) {
+            document.querySelectorAll('.mx-check[data-module="' + t.dataset.module + '"]')
+                .forEach(function (i) { i.checked = t.checked; });
+        } else if (t.classList.contains('mx-colall')) {
+            document.querySelectorAll('.mx-check[data-action="' + t.dataset.action + '"]')
+                .forEach(function (i) { i.checked = t.checked; });
+        } else if (t.classList.contains('mx-check')) {
+            var boxes = document.querySelectorAll('.mx-check[data-module="' + t.dataset.module + '"]');
+            var row = document.querySelector('.mx-rowall[data-module="' + t.dataset.module + '"]');
+            if (row) { row.checked = [...boxes].every(function (i) { return i.checked; }); }
+            var col = document.querySelector('.mx-colall[data-action="' + t.dataset.action + '"]');
+            if (col) {
+                var same = document.querySelectorAll('.mx-check[data-action="' + t.dataset.action + '"]');
+                col.checked = [...same].every(function (i) { return i.checked; });
+            }
+        }
+        document.getElementById('perm-count').textContent =
+            document.querySelectorAll('.mx-check:checked').length +
+            document.querySelectorAll('.mx-action-check:checked').length;
+    });
+    document.getElementById('perm-count').textContent =
+        document.querySelectorAll('.mx-check:checked').length +
+        document.querySelectorAll('.mx-action-check:checked').length;
+</script>
+{% endblock %}

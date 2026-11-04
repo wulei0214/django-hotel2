@@ -1,0 +1,73 @@
+/* 平台管理面（/platform/）独立布局：不使用 PMS _sidebar.html。
+   依赖 site.css 的设计变量（:root），自身只定义平台顶部导航与卡片。 */
+
+.main.pf-main { margin-left: 0; padding: 24px 32px 48px; }
+
+.pf-topbar {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    background: #1f2430;
+    color: #fff;
+    padding: 0 28px;
+    min-height: 54px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .18);
+}
+.pf-brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; color: #fff; }
+.pf-brand .pf-logo {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 6px;
+    background: var(--gold-500, #b9975b); color: #fff; font-size: 14px; font-weight: 700;
+}
+.pf-nav { display: flex; align-items: stretch; gap: 6px; flex: 1 1 auto; }
+.pf-nav a {
+    display: inline-flex; align-items: center;
+    padding: 17px 14px;
+    color: rgba(255, 255, 255, .78);
+    font-size: 14px; text-decoration: none;
+    border-bottom: 2px solid transparent;
+    transition: color .15s, border-color .15s;
+}
+.pf-nav a:hover { color: #fff; }
+.pf-nav a.active { color: #fff; border-bottom-color: var(--gold-400, #c8a464); }
+.pf-user { display: flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(255, 255, 255, .85); }
+.pf-user .pf-chip {
+    padding: 3px 10px; border-radius: 999px;
+    background: rgba(255, 255, 255, .12); font-size: 12px;
+}
+
+.pf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; margin-top: 18px; }
+.pf-card {
+    background: var(--color-bg-surface, #fff);
+    border: 1px solid #e4e7ed;
+    border-radius: 8px;
+    padding: 20px 22px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .05);
+}
+.pf-card h4 { margin: 0 0 10px; font-size: 16px; color: #303133; }
+.pf-card p { margin: 0 0 14px; font-size: 13px; color: #909399; line-height: 1.6; }
+.pf-card a.pf-card-link {
+    display: inline-block;
+    padding: 8px 18px;
+    border-radius: 5px;
+    background: var(--blue-500, #2b74c9);
+    color: #fff; font-size: 13px; text-decoration: none;
+}
+.pf-card a.pf-card-link:hover { background: var(--blue-600, #4a90e2); }
+
+.pf-note {
+    margin-top: 22px;
+    padding: 12px 16px;
+    border: 1px solid #faecd8;
+    background: #fdf6ec;
+    color: #b88230;
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+.pf-heading h2 { margin: 0 0 6px; color: #303133; font-size: 22px; }
+.pf-heading p { margin: 0; color: #909399; font-size: 13px; }
+
+.pf-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; margin-top: 18px; }
+.dash-card { background: #fff; border: 1px solid #e4e7ed; border-radius: 8px; padding: 18px 20px; }
+.dash-card h4 { margin: 0 0 12px; color: #303133; font-size: 15px; }

@@ -749,3 +749,38 @@ Apifox 导入必须覆盖实际 API 路由。对 HTML 页面流程（登录、�
 - 文档、代码、迁移和测试结果对应同一提交基线。
 
 **本方案的执行顺序总结：先盘清现状，再隔离平台身份；先定义真实权限点，再重构权限矩阵；同时以真实 HTTP 请求验证 PMS2 业务数据流，最后治理员工生命周期、敏感信息和旧入口。**
+
+---
+
+## 16. 实施状态记录
+
+### Phase 0（2026-11-04 完成）
+
+只读审计报告包：docs/audit/phase0/（工作流 A-H 全交付，缺口登记册 P0×4/P1×7/P2×3）。测试基线 SQLite+MySQL 各 181 项全过。
+
+### Phase 1（2026-11-05 实现，待验收）
+
+- platform_superadmin_required 三项不变量装饰器（未登录 302 /admin/login/；非超管 403；半状态 403+security.platform_denied 审计）
+- /platform/ 独立布局（无 PMS sidebar）：首页/权限矩阵/环境信息三页；旧 /permissions/ 302 兼容
+- /system/ 拆分：PMS 个人页（仅本人）+ /platform/system/ 环境页（无 PII）
+- PropertyContextMiddleware 平台路径豁免（F-10 审计噪声消除）
+- platform_superadmin_check 只读体检命令
+- 补齐缺失的 django.template.context_processors.csrf 模板处理器（修复性偏离，已注释）
+- 新增 26 项测试（apps/identity/test_platform.py）
+
+### Phase 2（2026-11-05 实现，待验收）
+
+- apps/identity/registry.py 单一权威代码注册表：11 模块（7 ACTIVE/2 PLANNED/1 RETIRED/1 平台）/9 角色/14 专项权限
+- hotelapp MODULE_REGISTRY 收敛为 registry 派生（module_gate 行为不变）
+- validate_registry() 一致性校验（重复 code/未知 codename/PLANNED 授权检测）
+- 发现并测试钉住：矩阵保存白名单含 PLANNED 模块 12 点（N-1，Phase 3 修复）
+- 25 项测试（apps/identity/test_registry.py）+ docs/audit/phase0/25-rbac-registry.md 映射文档
+
+### 紧急安全修复（2026-11-04，缺口登记册批准项）
+
+- F-01：BookingAccessToken 移入创建事务（消除孤儿订单风险）
+- F-03：前台六核心动作补 AuditEvent DB 审计（room_assigned/checked_in/checked_out/stay_extended/stay_room_changed/no_show_processed）
+
+### 当前测试基线
+
+ — 234 项全过（181 基线 + 26 平台域 + 25 注册表 + 2 修复适配）

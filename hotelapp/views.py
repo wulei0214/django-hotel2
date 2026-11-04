@@ -44,12 +44,14 @@ from . import events
 
 
 # ---------- 模块启停注册表（RBAC 决策：餐饮/停车对接第三方，本阶段隐藏入口） ----------
-# 代码与历史数据全部保留；置 True 即恢复页面（权限矩阵中对应行也同步恢复）
-MODULE_REGISTRY = {
-    "food": False,   # 餐厅管理（菜品）
-    "order": False,  # 餐饮订单（依赖菜品）
-    "park": False,   # 停车场
-}
+# §7 跨 App RBAC 注册表（apps/identity/registry.py）自 Phase 2 起是模块启停的
+# 唯一权威定义：food/order/park 三个旧门禁键映射到注册表的 fnb/parking 模块，
+# 状态非 ACTIVE 即隐藏。此处仅保留旧的键值开关视图，module_gate 行为不变；
+# 代码与历史数据全部保留，注册表把对应模块置 ACTIVE 即恢复页面。
+from apps.identity.registry import legacy_module_gate_keys, module_gate_open
+
+MODULE_REGISTRY = {key: module_gate_open(key)
+                   for key in legacy_module_gate_keys()}
 
 
 def module_gate(key):
@@ -2281,30 +2283,79 @@ def night_audit_run(request):
 
 
 
-# ---------- 系统环境配置信息（图4） ----------
+# ---------- 系统环境配置信息（图4 → §6.1 拆分为员工个人页） ----------
 @staff_required
 def system_info(request):
-    """个人与系统环境信息页：管理员信息 + 运行环境 + 会话生命周期"""
+    """PMS 员工个人页（§6.1）：仅本人信息（姓名/账号/角色/任职/本人最后登录）
+    + 修改自己密码。平台环境信息已拆至 /platform/system/（平台会话域），
+    本页不得渲染任何平台级配置或其他员工的 PII。"""
     user = request.user
     role = _role_name(user)
+
+    error = None
+    if request.method == "POST":
+        # 自助改密：与 /force-password-change/ 同一套校验规则（D-07 逻辑复用）
+        new1 = request.POST.get("new_password1") or ""
+        new2 = request.POST.get("new_password2") or ""
+        if len(new1) < 6:
+            error = "密码至少 6 位"
+        elif new1 != new2:
+            error = "两次输入的密码不一致"
+        else:
+            try:
+                from django.contrib.auth.password_validation import validate_password
+                from django.core.exceptions import ValidationError as _PwdError
+                validate_password(new1, user=request.user)
+            except _PwdError as exc:
+                error = "；".join(exc.messages)
+        if not error:
+            from django.contrib.auth import update_session_auth_hash
+            from apps.identity.models import StaffProfile as _StaffProfile
+            user.set_password(new1)  # session_auth_hash 变更 → 其他会话失效
+            user.save(update_fields=("password",))
+            update_session_auth_hash(request, user)  # 当前会话保持登录
+            profile = _StaffProfile.objects.filter(user=user).first()
+            if profile is not None and profile.must_change_password:
+                profile.must_change_password = False
+                profile.last_password_change = timezone.now()
+                profile.save(update_fields=("must_change_password",
+                                            "last_password_change", "updated_at"))
+            from apps.core.models import AuditEvent
+            AuditEvent.record(
+                action="identity.password_changed", entity_type="StaffProfile",
+                entity_id=str(profile.pk if profile else user.pk),
+                actor=user, reason="self_change_via_pms_me", request=request)
+            messages.success(request, "密码已修改")
+            return redirect("/system/")
+
+    membership = getattr(request, "staff_membership", None)
+    property_obj = getattr(request, "property", None)
+    from apps.identity.models import PropertyStaffMembership as _PropertyStaffMembership
     last_login = user.last_login or timezone.now()
     session_age = int(settings.SESSION_COOKIE_AGE)
     expire_at = last_login + datetime.timedelta(seconds=session_age)
     remain_seconds = max(0, int((expire_at - timezone.now()).total_seconds()))
     hours, rem = divmod(remain_seconds, 3600)
     minutes = rem // 60
-    browser_lang = (request.META.get("HTTP_ACCEPT_LANGUAGE") or "-").split(",")[0]
+    full_name = user.first_name or (
+        membership.staff_profile.full_name if membership is not None else ""
+    ) or user.username
     ctx = {
-        "tz": settings.TIME_ZONE,
         "admin_no": f"AD-{user.id:08d}",
-        "full_name": user.first_name or user.username,
+        "full_name": full_name,
         "role": role,
-        "api_base": request.build_absolute_uri("/api/v1/"),
-        "run_mode": "development" if settings.DEBUG else "production",
-        "browser_lang": browser_lang,
-        "sys_lang": settings.LANGUAGE_CODE,
+        "property_label": (
+            f"{property_obj.name}（{property_obj.code}）"
+            if property_obj is not None else "未解析到有效任职物业"),
+        "employee_no": membership.employee_no if membership is not None else "",
+        "membership_status": (
+            membership.status if membership is not None else "NONE"),
+        "membership_status_label": (
+            dict(_PropertyStaffMembership.Status.choices).get(
+                membership.status) if membership is not None else "无有效任职"),
         "login_at": timezone.localtime(last_login).strftime("%Y-%m-%d %H:%M:%S"),
         "expire_at": timezone.localtime(expire_at).strftime("%Y-%m-%d %H:%M:%S"),
         "remain": f"{hours}h {minutes}m",
+        "password_error": error,
     }
-    return render(request, "system.html", ctx)
+    return render(request, "pms/me.html", ctx)

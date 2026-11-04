@@ -90,6 +90,9 @@ TEMPLATES = [
             "context_processors": [
                 "django.template.context_processors.debug",
                 "django.template.context_processors.request",
+                # §6.1：csrf 处理器补齐（{% csrf_token %} 需要它渲染令牌；
+                # 平台/业务表单 POST 依赖此令牌，缺失会渲染空值导致浏览器提交 403）
+                "django.template.context_processors.csrf",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "apps.identity.context_processors.pms_context",

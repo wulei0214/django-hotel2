@@ -12,10 +12,10 @@
 import logging
 
 from django.contrib import messages
-from django.contrib.auth.decorators import user_passes_test
 from django.contrib.auth.models import Group, Permission
 from django.shortcuts import redirect, render
 
+from .platform import platform_superadmin_required
 from .roles import BUSINESS_ROLE_NAMES
 
 audit = logging.getLogger("hotel.audit")
@@ -71,10 +71,6 @@ RESERVED_ROLE_SLOTS = ["收益/房价经理", "审计只读"]
 # 隐藏模块保存时允许保留的权限点：无（模块隐藏 → 权限随之回收，重启用时再授予）
 
 
-def _is_superuser(user):
-    return user.is_authenticated and user.is_superuser
-
-
 def _role_groups():
     groups = {g.name: g for g in Group.objects.filter(name__in=ROLE_GROUPS)}
     return [(name, groups[name]) for name in ROLE_GROUPS if name in groups]
@@ -85,13 +81,13 @@ def _group_codenames(group):
                .values_list("codename", flat=True))
 
 
-@user_passes_test(_is_superuser, login_url="/admin/login/")
+@platform_superadmin_required
 def permission_admin_page(request):
-    """权限矩阵主页：?role=<组id> 选择要编辑的角色，默认第一个"""
+    """权限矩阵主页（§6.1 迁移至 /platform/permissions/）：?role=<组id> 选择要编辑的角色"""
     roles = _role_groups()
     if not roles:
         messages.error(request, "尚未初始化业务角色组，请先执行 migrate 初始化。")
-        return redirect("/home/")
+        return redirect("/platform/")
     selected = request.GET.get("role")
     group = next((g for _, g in roles if str(g.id) == selected), roles[0][1])
     owned = _group_codenames(group)
@@ -114,7 +110,7 @@ def permission_admin_page(request):
             "checked": p["code"] in owned,
         })
 
-    return render(request, "permissions.html", {
+    return render(request, "platform/permissions.html", {
         "roles": roles,
         "reserved_roles": RESERVED_ROLE_SLOTS,
         "group": group,
@@ -126,16 +122,16 @@ def permission_admin_page(request):
     })
 
 
-@user_passes_test(_is_superuser, login_url="/admin/login/")
+@platform_superadmin_required
 def permission_admin_save(request):
-    """保存角色权限：原生复选框多值提交，整体覆盖该角色的权限集合"""
+    """保存角色权限（§6.1 迁移至 /platform/permissions/save/）：整体覆盖该角色的权限集合"""
     if request.method != "POST":
-        return redirect("/permissions/")
+        return redirect("/platform/permissions/")
     roles = _role_groups()
     group = next((g for _, g in roles if str(g.id) == request.POST.get("role")), None)
     if group is None:
         messages.error(request, "角色不存在或不可编辑")
-        return redirect("/permissions/")
+        return redirect("/platform/permissions/")
 
     # 原生复选框多值提交：getlist 直接得到每个勾选的权限点，无拼接歧义
     requested = set(request.POST.getlist("perm"))
@@ -151,4 +147,4 @@ def permission_admin_save(request):
     audit.info("权限矩阵保存 role=%s(%s) 授予 %s 项(另保留非矩阵权限 %d 项) 操作人=%s",
                group.name, group.id, len(granted), len(other_perms), request.user.username)
     messages.success(request, f"角色「{group.name}」权限已保存（{len(granted)} 项）")
-    return redirect(f"/permissions/?role={group.id}")
+    return redirect(f"/platform/permissions/?role={group.id}")

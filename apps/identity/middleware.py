@@ -7,6 +7,7 @@ from django.conf import settings
 
 from apps.core.models import Property
 from .models import PropertyStaffMembership
+from .session_middleware import is_admin_request
 
 logger = logging.getLogger("hotel.audit")
 
@@ -27,6 +28,15 @@ class PropertyContextMiddleware:
     def __call__(self, request):
         property_obj = None
         membership = None
+
+        if is_admin_request(request):
+            # 平台路径（/admin/、/platform/、/permissions/）不属于 PMS 物业上下文域
+            # （缺口 F-10）：平台超管无 DEFAULT 任职是正常状态，跳过任职解析，
+            # 不产生 security.property_context_denied 审计噪声。
+            request.property = None
+            request.staff_membership = None
+            request.staff_profile = None
+            return self.get_response(request)
 
         if request.user.is_authenticated and request.user.is_active:
             membership = (

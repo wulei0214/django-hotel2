@@ -7,6 +7,9 @@
   /index/ /insert/ ...      员工管理（index 即员工模块首页）
   /show_client/ ...         其余 7 个模块：show_/insert_/update_/delete_/search_ 五件套
   /admin/                   Django 后台（simpleui 主题，超管用）
+  /platform/ ...            平台管理面（§6.1：首页/权限矩阵/环境信息；admin_sessionid 会话域）
+  /permissions/             旧矩阵入口 → 302 兼容跳转 /platform/permissions/
+  /system/                  PMS 员工个人页（仅本人信息 + 自助改密）
 
 所有业务路由均受登录 + 模块权限保护，见 hotelapp/views.py 各视图装饰器。
 """
@@ -30,6 +33,7 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 from hotelapp import views
 from apps.identity import permission_admin
+from apps.identity import platform as identity_platform
 from apps.api import pages as api_pages
 from apps.api import openapi_schema
 
@@ -76,7 +80,15 @@ urlpatterns = [
     path('staff_accounts/<int:pk>/end_assignment/<int:assignment_id>/', views.staff_accounts_end_assignment, name='staff_accounts_end_assignment'),
     path('staff_accounts/<int:pk>/set_status/', views.staff_accounts_set_status, name='staff_accounts_set_status'),
     path('staff_accounts/<int:pk>/reset_password/', views.staff_accounts_reset_password, name='staff_accounts_reset_password'),
-    path('permissions/', permission_admin.permission_admin_page),
+    # ---- 平台身份域（§6.1）：/platform/ 平台管理面，会话域 admin_sessionid ----
+    path('platform/', identity_platform.platform_home, name='platform_home'),
+    path('platform/permissions/', permission_admin.permission_admin_page, name='platform_permissions'),
+    path('platform/permissions/save/', permission_admin.permission_admin_save, name='platform_permissions_save'),
+    path('platform/system/', identity_platform.platform_system_info, name='platform_system'),
+    # 旧 /permissions/ 入口 302 兼容跳转（矩阵页已迁移至 /platform/permissions/）
+    path('permissions/', RedirectView.as_view(url='/platform/permissions/', permanent=False)),
+    path('permissions/save/', RedirectView.as_view(url='/platform/permissions/save/', permanent=False)),
+    # PMS 员工个人页（仅本人信息 + 自助改密；平台环境信息在 /platform/system/）
     path('system/', views.system_info),
     path('staff_toggle/', views.staff_toggle),
     path('export/staff/', views.export_staff),
