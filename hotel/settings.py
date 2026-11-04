@@ -68,6 +68,13 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "hotel.urls"
 LOGIN_URL = "/login/"
+# AUTH-14/15（方案 §5.3）：员工邀请 token 有效期（小时，默认 24）；变更须经业务负责人批准
+IDENTITY_INVITATION_TTL_HOURS = int(
+    os.environ.get("DJANGO_INVITATION_TTL_HOURS", "24"))
+# §5.3：生成邀请绝对 URL 的规范 Host（留空则用请求 Host——受 ALLOWED_HOSTS 校验，
+# 且不读取 X-Forwarded-Host）
+IDENTITY_INVITATION_CANONICAL_HOST = os.environ.get(
+    "DJANGO_INVITATION_CANONICAL_HOST", "").strip()
 # API 路径的 CSRF 失败返回 JSON（保持接口错误契约），页面路径仍走默认 HTML
 CSRF_FAILURE_VIEW = "apps.api.views.csrf_failure"
 DEFAULT_PROPERTY_CODE = os.environ.get("DEFAULT_PROPERTY_CODE", "DEFAULT")
@@ -158,10 +165,30 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = not DEBUG
-# PMS retains sessionid; Django Admin gets a separate cookie namespace.
+# PMS retains sessionid @ /；平台身份域用两个 Path Cookie 作为同一平台
+# Session 的传输别名（Cookie 网络隔离专项 §B.1）：
+#   platform_sessionid @ /platform/    平台门户
+#   django_admin_sessionid @ /admin/   Django Admin
+#   admin_sessionid（历史组合）仅发送过期删除指令，不再认证读取
 ADMIN_SESSION_COOKIE_NAME = os.environ.get(
-    "DJANGO_ADMIN_SESSION_COOKIE_NAME", "admin_sessionid"
+    "DJANGO_ADMIN_SESSION_COOKIE_NAME", "django_admin_sessionid"
 )
+PLATFORM_PORTAL_COOKIE_NAME = os.environ.get(
+    "DJANGO_PLATFORM_PORTAL_COOKIE_NAME", "platform_sessionid"
+)
+LEGACY_PLATFORM_COOKIE_NAME = os.environ.get(
+    "DJANGO_LEGACY_PLATFORM_COOKIE_NAME", "admin_sessionid"
+)
+# 历史 admin_sessionid 出现过的 Path 组合（§D.1 清理范围）；特殊部署可用
+# DJANGO_LEGACY_PLATFORM_COOKIE_PATHS 覆盖（逗号分隔）。
+LEGACY_PLATFORM_COOKIE_PATHS = [
+    p.strip()
+    for p in os.environ.get(
+        "DJANGO_LEGACY_PLATFORM_COOKIE_PATHS",
+        "/,/admin/,/platform/,/permissions/,/permissions/save/",
+    ).split(",")
+    if p.strip()
+]
 # Keep CSRF secrets inside the selected session so both entry points are isolated.
 CSRF_USE_SESSIONS = True
 CSRF_COOKIE_SECURE = not DEBUG

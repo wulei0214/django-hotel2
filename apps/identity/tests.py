@@ -245,7 +245,7 @@ class IdentityAdminReadOnlyTests(TestCase):
 
         self.client.force_login(root)
         # Admin routes read the dedicated cookie, not PMS's sessionid.
-        self.client.cookies["admin_sessionid"] = self.client.cookies["sessionid"].value
+        self.client.cookies["django_admin_sessionid"] = self.client.cookies["sessionid"].value
         change_url = f"/admin/identity/staffroleassignment/{assignment.pk}/change/"
         response = self.client.get(change_url)
         self.assertEqual(response.status_code, 200, "超级管理员仍可审计查看岗位授权")
@@ -437,7 +437,7 @@ class SplitAuthenticationSessionTests(TestCase):
             "next": "/admin/",
         })
         self.assertEqual(admin_response.status_code, 302, admin_response.content)
-        admin_session_key = client.cookies["admin_sessionid"].value
+        admin_session_key = client.cookies["django_admin_sessionid"].value
 
         self.assertTrue(pms_session_key)
         self.assertTrue(admin_session_key)
@@ -455,7 +455,7 @@ class SplitAuthenticationSessionTests(TestCase):
         self.assertEqual(client.get("/admin/").status_code, 200)
 
         self.assertEqual(client.cookies["sessionid"].value, pms_session_key)
-        self.assertEqual(client.cookies["admin_sessionid"].value, admin_session_key)
+        self.assertEqual(client.cookies["django_admin_sessionid"].value, admin_session_key)
 
     def test_pms_logout_does_not_log_out_admin(self):
         self._login_both_entry_points(self.client)
@@ -464,7 +464,7 @@ class SplitAuthenticationSessionTests(TestCase):
         self.assertEqual(pms_logout.status_code, 302)
         self.assertEqual(self.client.get("/home/").status_code, 302)
         self.assertEqual(self.client.get("/admin/").status_code, 200)
-        self.assertTrue(self.client.cookies["admin_sessionid"].value)
+        self.assertTrue(self.client.cookies["django_admin_sessionid"].value)
 
     def test_admin_logout_does_not_log_out_pms(self):
         self._login_both_entry_points(self.client)
@@ -498,7 +498,7 @@ class SplitAuthenticationSessionTests(TestCase):
         )
         self.assertIsNotNone(admin_match, admin_login_page.content)
         admin_csrf = admin_match.group(1).decode("ascii")
-        admin_session_key = client.cookies["admin_sessionid"].value
+        admin_session_key = client.cookies["django_admin_sessionid"].value
 
         self.assertNotEqual(pms_csrf, admin_csrf)
         self.assertNotEqual(pms_session_key, admin_session_key)
@@ -514,7 +514,7 @@ class SplitAuthenticationSessionTests(TestCase):
             },
         )
         self.assertNotEqual(admin_login.status_code, 403, admin_login.content)
-        self.assertIn("admin_sessionid", client.cookies)
+        self.assertIn("django_admin_sessionid", client.cookies)
 
         pms_login = client.post(
             "/login/",

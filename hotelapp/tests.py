@@ -226,7 +226,7 @@ class MatrixSaveConsistencyTests(TestCase):
         self.client.force_login(root)
         # §6.1：矩阵保存已迁移至 /platform/permissions/save/（平台会话域）
         sessionid = self.client.cookies["sessionid"].value
-        self.client.cookies["admin_sessionid"] = sessionid
+        self.client.cookies["platform_sessionid"] = sessionid
         response = self.client.post("/platform/permissions/save/", {
             "role": str(group.id), "perm": ["view_room", "change_room"],
         })
@@ -336,7 +336,7 @@ class AdminHardeningTests(TestCase):
     def test_hidden_module_admin_unregistered(self):
         """餐饮/停车不注册 Admin：直接 URL 404（SCOPE-02）"""
         self.client.force_login(self.root)
-        self.client.cookies["admin_sessionid"] = self.client.cookies["sessionid"].value
+        self.client.cookies["django_admin_sessionid"] = self.client.cookies["sessionid"].value
         for url in ("/admin/hotelapp/food/", "/admin/hotelapp/park/", "/admin/hotelapp/order/"):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 404, f"{url} 必须不可达")
@@ -1104,9 +1104,10 @@ class SuperuserPolicyTests(TestCase):
         的超管无法访问——因为 D-04 登录门使超管拿不到 PMS 会话，
         旧语义（PMS 会话访问矩阵页）会造成超管永远无法进入的死锁。"""
         self.client.force_login(self.admin)
-        # 模拟平台登录：把会话键复制到 admin_sessionid（与 SplitSession 一致）
+        # 模拟平台登录：把会话键复制到两份平台 Cookie（与 SplitSession §B.1 一致）
         sessionid = self.client.cookies["sessionid"].value
-        self.client.cookies["admin_sessionid"] = sessionid
+        self.client.cookies["platform_sessionid"] = sessionid
+        self.client.cookies["django_admin_sessionid"] = sessionid
         legacy = self.client.get("/permissions/")
         self.assertEqual(legacy.status_code, 302,
                          "旧 /permissions/ 入口必须 302 兼容跳转")
@@ -1116,14 +1117,15 @@ class SuperuserPolicyTests(TestCase):
                          "超管经平台会话必须能访问权限矩阵")
         # 边界：仅 PMS 会话（无平台会话）→ 302 去平台登录页
         plain = self.client
-        plain.cookies.pop("admin_sessionid", None)
+        plain.cookies.pop("platform_sessionid", None)
+        plain.cookies.pop("django_admin_sessionid", None)
         boundary = plain.get("/platform/permissions/")
         self.assertEqual(boundary.status_code, 302,
                          "无平台会话的请求必须跳转平台登录")
 
     def test_superuser_can_access_django_admin_login(self):
         """superuser 仍可访问 Django Admin 登录页（平台维护入口）；
-        完整 Admin 登录需通过 admin_sessionid（会话隔离），此处验证入口可达"""
+        完整 Admin 登录需通过 django_admin_sessionid（会话隔离），此处验证入口可达"""
         response = self.client.get("/admin/login/")
         self.assertEqual(response.status_code, 200)
 

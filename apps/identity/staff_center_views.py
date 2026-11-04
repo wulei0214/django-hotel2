@@ -9,18 +9,28 @@
   * 结束授权  POST /manage/staff/actions/<pk>/end_assignment/<assignment_id>/
   * 任职状态  POST /manage/staff/actions/<pk>/set_status/
   * 密码重置  POST /manage/staff/actions/<pk>/reset_password/
+  * 邀请创建  POST /manage/staff/actions/<pk>/invite/          （AUTH-17，方案 §5.3）
+  * 邀请撤销  POST /manage/staff/actions/<pk>/invite/revoke/
+  * 邀请重发  POST /manage/staff/actions/<pk>/invite/resend/
 
 门禁：@staff_required（登录 + DEFAULT 有效任职 + 强制改密拦截）
       + @pms_permission_required("identity.staff_manage")，与旧 /staff_accounts/ 完全一致。
 
 写入纪律：六个写操作一律调用 EmployeeLifecycleService——本模块不直接
 create_user / 改 Group / set_password；服务自带事务与 AuditEvent。
-EmployeeLifecycleError 统一转 ApiError("VALIDATION_ERROR") → HTTP 400 中文提示。
-响应契约沿用 apps.core.api_contract 封套（{data, meta} / {error, meta}）。
+邀请三操作（AUTH-17）调用 EmployeeInvitationService（状态机收口）+
+EmployeeLifecycleService（账号开通）——本模块不直接创建 User 或 Invitation。
+EmployeeLifecycleError / InvitationError 统一转 ApiError("VALIDATION_ERROR")
+→ HTTP 400 中文提示。响应契约沿用 apps.core.api_contract 封套（{data, meta}）。
 
 初始密码语义（§10.1 步骤 1.f）：管理员留空时由服务端生成强随机密码，
 仅在本次响应中返回一次（"初始密码仅本次显示"），不落库不落审计；
 无论生成或手输，开通/重置后 must_change_password=True，首登强制改密。
+
+邀请语义（AUTH-17，§5.3）：创建/重发响应返回一次性明文链接
+（/invite/accept?token=...，仅本次显示）；界面文案固定为
+"邀请链接已生成，请复制并人工发送"——不配置邮件/短信供应商，
+不得显示"发送成功"。邀请操作同样限流（§5.3，identity.invitation_manage）。
 """
 import datetime
 import secrets
@@ -29,15 +39,22 @@ import string
 from django.contrib.auth.models import Group
 from django.http import HttpResponse
 from django.shortcuts import render
+from django.utils import timezone
 
+from apps.core import rate_limit
 from apps.core.api_contract import ApiError, api_response, api_view
 from apps.identity.decorators import pms_permission_required
+from apps.identity.invitation_services import (
+    EmployeeInvitationService,
+    InvitationError,
+    invite_accept_url,
+)
 from apps.identity.roles import BUSINESS_ROLE_NAMES
 from apps.identity.services import (
     EmployeeLifecycleError,
     EmployeeLifecycleService,
 )
-from .models import StaffProfile, StaffRoleAssignment
+from .models import Invitation, StaffProfile, StaffRoleAssignment
 
 # 任职状态动作白名单（SUSPENDED 由服务层映射为档案 INACTIVE）
 STATUS_ACTIONS = ("ACTIVE", "SUSPENDED", "TERMINATED")
@@ -241,6 +258,97 @@ def _action_reset_password(request, pk):
     return api_response(request, data)
 
 
+# ---------- 邀请激活（AUTH-17，方案 §5.2/§5.3：状态机与 token 收口服务层） ----------
+
+# §5.3：邀请创建/重发/撤销接口必须限流（已认证管理面，IP 维度防脚本滥用）
+INVITE_RATE_ACTION = "identity.invitation_manage"
+
+
+def _invite_rate_guard(request):
+    if not rate_limit.check(request, INVITE_RATE_ACTION):
+        raise ApiError("RATE_LIMITED", "邀请操作过于频繁，请稍后再试。")
+
+
+def _get_membership_or_error(profile, property_obj):
+    membership = EmployeeLifecycleService.get_membership(profile, property_obj)
+    if membership is None:
+        raise ApiError("VALIDATION_ERROR",
+                       "该员工在当前物业没有有效任职记录，不能发起邀请。")
+    return membership
+
+
+def _action_invite(request, pk):
+    """创建邀请（AUTH-17）：撤销旧邀请 + 预开通待激活账号 + 返回一次性链接。
+
+    明文链接（/invite/accept?token=...）仅本次响应显示；文案固定
+    "邀请链接已生成，请复制并人工发送"——不出现"发送成功"（§5.3）。
+    """
+    _invite_rate_guard(request)
+    property_obj = getattr(request, "property", None)
+    profile = _get_profile_or_error(pk, property_obj)
+    membership = _get_membership_or_error(profile, property_obj)
+    username = (request.POST.get("username") or "").strip()
+    try:
+        invitation, raw_token = EmployeeInvitationService.create_invitation(
+            profile, membership, request.user, username=username,
+            request=request)
+    except InvitationError as exc:
+        raise ApiError("VALIDATION_ERROR", str(exc))
+    return api_response(request, {
+        "message": "邀请链接已生成，请复制并人工发送给本人；链接仅本次显示，"
+                   f"有效期至 {timezone.localtime(invitation.expires_at):%Y-%m-%d %H:%M}",
+        "invitation_id": invitation.pk,
+        "invite_url": invite_accept_url(request, raw_token),
+        "username": profile.user.username if profile.user else username,
+        "expires_at": invitation.expires_at.isoformat(),
+    })
+
+
+def _action_invite_revoke(request, pk):
+    """撤销邀请（AUTH-17）：原链接立即失效；仅待激活邀请可撤销。"""
+    _invite_rate_guard(request)
+    property_obj = getattr(request, "property", None)
+    profile = _get_profile_or_error(pk, property_obj)
+    invitation = (Invitation.objects.filter(
+        staff_profile=profile, membership__property=property_obj,
+        status=Invitation.Status.PENDING).order_by("-id").first())
+    if invitation is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "该员工没有待激活的邀请，无需撤销。")
+    try:
+        EmployeeInvitationService.revoke(invitation, revoked_by=request.user,
+                                         request=request)
+    except InvitationError as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    return api_response(request, {
+        "message": "邀请已撤销，原邀请链接立即失效", "invitation_id": invitation.pk,
+    })
+
+
+def _action_invite_resend(request, pk):
+    """重发邀请（AUTH-17）：旧 token 全部失效，生成新一次性链接（仅本次显示）。"""
+    _invite_rate_guard(request)
+    property_obj = getattr(request, "property", None)
+    profile = _get_profile_or_error(pk, property_obj)
+    invitation = (Invitation.objects.filter(
+        staff_profile=profile, membership__property=property_obj)
+        .exclude(status=Invitation.Status.ACCEPTED).order_by("-id").first())
+    if invitation is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "该员工还没有邀请记录，请先创建邀请。")
+    try:
+        new_invitation, raw_token = EmployeeInvitationService.resend(
+            invitation, resent_by=request.user, request=request)
+    except InvitationError as exc:
+        raise ApiError("VALIDATION_ERROR", str(exc))
+    return api_response(request, {
+        "message": "邀请链接已重新生成，请复制并人工发送给本人；原链接已全部失效，"
+                   "新链接仅本次显示",
+        "invitation_id": new_invitation.pk,
+        "invite_url": invite_accept_url(request, raw_token),
+        "expires_at": new_invitation.expires_at.isoformat(),
+        "resend_count": new_invitation.resend_count,
+    })
+
+
 # ---------- 装饰器组装（门禁在 api_view 之外，保证 302/403 语义） ----------
 # staff_required / pms_permission_required 来自 hotelapp.views 与 identity.decorators：
 # 与旧 /staff_accounts/ 系列视图完全一致的门禁组合（§10.1 迁移等价性）。
@@ -266,3 +374,12 @@ staff_action_set_status = staff_required(pms_permission_required("identity.staff
 
 staff_action_reset_password = staff_required(pms_permission_required("identity.staff_manage")(
     api_view(_action_reset_password)))
+
+staff_action_invite = staff_required(pms_permission_required("identity.staff_manage")(
+    api_view(_action_invite)))
+
+staff_action_invite_revoke = staff_required(pms_permission_required("identity.staff_manage")(
+    api_view(_action_invite_revoke)))
+
+staff_action_invite_resend = staff_required(pms_permission_required("identity.staff_manage")(
+    api_view(_action_invite_resend)))

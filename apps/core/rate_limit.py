@@ -28,6 +28,9 @@ DEFAULT_LIMITS = {
     "public.reservation_cancel": [(("ip",), 10, 600), (("booking", "ip"), 5, 600)],
     "public.payment_intent": [(("ip",), 10, 300), (("booking",), 5, 300)],
     "public.invitation_activate": [(("ip",), 5, 900)],
+    # AUTH-17（§5.3 邀请创建/验证/激活必须限流）：员工中心邀请管理面（已认证），
+    # 覆盖创建/重发/撤销；正常批量入职场景远低于该阈值
+    "identity.invitation_manage": [(("ip",), 30, 600)],
 }
 
 

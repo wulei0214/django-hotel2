@@ -35,6 +35,15 @@
     padding: 3px 10px; border-radius: 999px;
     background: rgba(255, 255, 255, .12); font-size: 12px;
 }
+.pf-logout-form { display: inline; margin: 0; }
+.pf-logout-btn {
+    padding: 3px 12px; border-radius: 999px; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, .35);
+    background: transparent; color: rgba(255, 255, 255, .85);
+    font-size: 12px; line-height: 1.5;
+    transition: background .15s, color .15s;
+}
+.pf-logout-btn:hover { background: rgba(255, 255, 255, .15); color: #fff; }
 
 .pf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; margin-top: 18px; }
 .pf-card {

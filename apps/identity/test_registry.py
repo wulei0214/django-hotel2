@@ -170,8 +170,8 @@ class PlannedModuleGrantGuardTests(TestCase):
         self.admin = User.objects.create_superuser(
             "registry_admin", password="admin-pass123456")
         self.client.force_login(self.admin)
-        # 矩阵页属平台会话域（admin_sessionid），与 SplitSession 约定一致
-        self.client.cookies["admin_sessionid"] = self.client.cookies["sessionid"].value
+        # 矩阵页属平台会话域（platform_sessionid @ /platform/），与 SplitSession §B.1 一致
+        self.client.cookies["platform_sessionid"] = self.client.cookies["sessionid"].value
         self.group = Group.objects.get(name="客房服务员")
 
     def _held_hotelapp_codenames(self):

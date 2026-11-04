@@ -28,6 +28,7 @@
             <input type="hidden" name="next" value="{{ next }}">
             <h2 class="login-form-title">员工登录</h2>
             <p class="login-form-sub">请使用员工账号进入工作台</p>
+            {% if activated %}<p class="login-ok" role="status">账号已激活，请使用您设置的密码登录。</p>{% endif %}
             {% if error %}<p class="login-error" role="alert">{{ error }}</p>{% endif %}
             <label class="login-label" for="login-username">员工账号</label>
             <input id="login-username" class="login-input" type="text" name="username" autocomplete="username" placeholder="员工账号" required autofocus>

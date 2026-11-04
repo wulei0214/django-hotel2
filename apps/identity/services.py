@@ -395,6 +395,85 @@ class EmployeeLifecycleService:
         audit.info("密码重置 user=%s 目标账号=%s",
                    getattr(reset_by, "username", "system"), user.username)
 
+    # ---------- 邀请激活（AUTH-16，方案 §5.1 待激活态 / §5.4 密码策略） ----------
+    @classmethod
+    @transaction.atomic
+    def provision_invitation_account(cls, profile, *, username, granted_by=None,
+                                     property_obj=None):
+        """为邀请激活预开通"待激活"账号：unusable password，激活前不可登录。
+
+        方案 §5.1（待激活：不可登录、密码不可用）+ §5.4（邀请待激活账户使用
+        unusable password）。幂等语义：
+          * 档案未绑定账号 → 创建 User(password=None → unusable) 并绑定；
+          * 已绑定且密码不可用（上次邀请未完成）→ 账号名一致直接复用；
+            账号名不同视为管理员更正账号名（从未能登录过的账号可安全改名）；
+          * 已绑定且密码可用 → 拒绝（账号已启用，走密码重置而非邀请）。
+        must_change_password 保持 False：激活时员工自设密码，无需首登强制改密。
+        审计复用 identity.account_provision（reason 标注邀请待激活）。
+        """
+        User = get_user_model()
+        username = (username or "").strip()
+        if not username:
+            raise EmployeeLifecycleError("登录账号不能为空")
+        if profile.user_id:
+            user = profile.user
+            if user.has_usable_password():
+                raise EmployeeLifecycleError("该员工已开通登录账号，无需邀请激活")
+            if user.username != username:
+                if User.objects.filter(username__iexact=username).exclude(
+                        pk=user.pk).exists():
+                    raise EmployeeLifecycleError(f"登录账号 {username} 已被占用")
+                user.username = username
+                user.save(update_fields=("username",))
+        else:
+            if User.objects.filter(username__iexact=username).exists():
+                raise EmployeeLifecycleError(f"登录账号 {username} 已被占用")
+            # password=None → set_unusable_password()：待激活账号没有可用凭据
+            user = User.objects.create_user(username=username, password=None,
+                                            first_name=profile.full_name)
+            profile.user = user
+            profile.save(update_fields=("user", "updated_at"))
+        from apps.core.models import AuditEvent
+        AuditEvent.record(
+            action="identity.account_provision", entity_type="StaffProfile",
+            entity_id=profile.pk, actor=granted_by, property_obj=property_obj,
+            after={"account": user.username, "password": "unusable"},
+            reason="邀请待激活：账号以不可用密码开通，激活前不可登录；不记录 token")
+        audit.info("邀请待激活账号开通 user=%s 员工=%s(profile %s) 账号=%s",
+                   getattr(granted_by, "username", "system"),
+                   profile.full_name, profile.pk, user.username)
+        return user
+
+    @classmethod
+    @transaction.atomic
+    def activate_invitation_account(cls, profile, *, password):
+        """员工经邀请链接首次自行设置密码（§5.4：激活后 must_change_password=False）。
+
+        前置：档案已绑定待激活账号（unusable password）且账号启用。
+        密码策略统一走 _enforce_password_policy（携带 user 上下文做相似性校验），
+        禁止任何自定义"至少 N 位"替代（§5.4）。
+        审计由调用方（EmployeeInvitationService.consume）在同一事务写
+        identity.invitation_accepted——本方法只负责账号与凭据。
+        """
+        User = get_user_model()
+        if not profile.user_id:
+            raise EmployeeLifecycleError("该员工还没有待激活的登录账号")
+        user = User.objects.select_for_update().get(pk=profile.user_id)
+        if not user.is_active:
+            raise EmployeeLifecycleError("该登录账号已停用，请联系管理员重新邀请")
+        if user.has_usable_password():
+            raise EmployeeLifecycleError("该账号已设置密码，邀请链接不能再使用")
+        _enforce_password_policy(password, user=user)
+        user.set_password(password)  # session_auth_hash 变更 → 旧会话自动失效
+        user.save(update_fields=("password",))
+        profile.must_change_password = False
+        profile.last_password_change = timezone.now()
+        profile.save(update_fields=("must_change_password", "last_password_change",
+                                    "updated_at"))
+        audit.info("邀请激活设密 员工=%s(profile %s) 账号=%s",
+                   profile.full_name, profile.pk, user.username)
+        return user
+
 
 def Q_ends_null_or_future():
     """ends_at 为空或晚于当前的 Q 条件（避免循环 import 的小工具）。"""

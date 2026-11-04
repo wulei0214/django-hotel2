@@ -1,0 +1,82 @@
+<!-- 员工邀请激活页（AUTH-18，方案 §5.3）：匿名公开 + 限流 + 一次性 token。
+     风格对齐 /login/（login-split 双栏布局）；token 无效/过期/撤销/重复消费
+     统一显示"邀请链接无效或已过期"，不泄露员工与邀请存在性。 -->
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>员工邀请激活 - 酒店管理系统</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=14">
+    <link rel="stylesheet" href="/static/css/login_page.css?v=4">
+</head>
+<body class="login-body">
+<div class="login-split">
+    <div class="login-brand">
+        <div class="login-brand-logo">酒</div>
+        <h1 class="login-brand-name">酒店管理系统</h1>
+        <p class="login-brand-slogan">PMS · 酒店运营平台</p>
+        <ul class="login-brand-points">
+            <li>预订 · 排房 · 入住 · 退房 全流程</li>
+            <li>客人档案与会员关系统一管理</li>
+            <li>财务账本与夜审日结</li>
+        </ul>
+        <p class="login-brand-foot">员工邀请激活 · 激活链接由店长或管理员线下发送</p>
+    </div>
+    <div class="login-pane">
+        {% if state == "invalid" or state == "rate_limited" %}
+            <h2 class="login-form-title">邀请激活</h2>
+            <p class="login-form-sub">无法完成账号激活</p>
+            <p class="login-error" role="alert">{{ error }}</p>
+            <p class="login-form-foot">邀请链接仅可使用一次且有时效。请联系店长或系统管理员重新获取邀请链接。</p>
+        {% else %}
+            <form class="login-form" action="/invite/accept/" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="token" value="{{ token }}">
+                <h2 class="login-form-title">设置登录密码</h2>
+                <p class="login-form-sub">{{ full_name }} · 登录账号 {{ username }}</p>
+                {% if error %}<p class="login-error" role="alert">{{ error }}</p>{% endif %}
+                <label class="login-label" for="invite-password">设置密码</label>
+                <div class="login-pass-wrap">
+                    <input id="invite-password" class="login-input" type="password"
+                           name="password" autocomplete="new-password"
+                           placeholder="请设置登录密码" required autofocus>
+                    <button type="button" class="login-pass-toggle" aria-label="显示或隐藏密码">显示</button>
+                </div>
+                <label class="login-label" for="invite-password-confirm">确认密码</label>
+                <input id="invite-password-confirm" class="login-input" type="password"
+                       name="password_confirm" autocomplete="new-password"
+                       placeholder="请再次输入密码" required>
+                {% if expires_at %}
+                <p class="login-form-foot">链接有效期至 {{ expires_at|date:"Y-m-d H:i" }}；激活成功后即可使用该账号登录工作台。</p>
+                {% else %}
+                <p class="login-form-foot">激活成功后即可使用该账号登录工作台。</p>
+                {% endif %}
+                <button type="submit" class="login-btn">完成激活</button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+<script>
+(function () {
+    var toggle = document.querySelector(".login-pass-toggle");
+    if (toggle) {
+        toggle.addEventListener("click", function () {
+            var input = document.getElementById("invite-password");
+            if (!input) return;
+            var show = input.type === "password";
+            input.type = show ? "text" : "password";
+            toggle.textContent = show ? "隐藏" : "显示";
+        });
+    }
+    var form = document.querySelector(".login-form");
+    if (form) {
+        form.addEventListener("submit", function () {
+            var btn = form.querySelector(".login-btn");
+            if (btn) { btn.classList.add("is-loading"); btn.disabled = true; }
+        });
+    }
+})();
+</script>
+</body>
+</html>

@@ -383,6 +383,43 @@
     div.setAttribute("aria-live", "polite");
     return div;
   }
+  /* AUTH-17：展示一次性邀请链接（仅本次显示；文案不含"发送成功"） */
+  function showInviteResult(resultEl, data) {
+    resultEl.className = "sc-result is-ok";
+    resultEl.replaceChildren();
+    const msg = document.createElement("div");
+    msg.textContent = data.message || "邀请链接已生成，请复制并人工发送";
+    resultEl.appendChild(msg);
+    if (data.invite_url) {
+      const wrap = document.createElement("div");
+      wrap.className = "sc-inline";
+      const url = document.createElement("input");
+      url.type = "text"; url.readOnly = true; url.value = data.invite_url;
+      url.className = "sc-secret";
+      url.setAttribute("aria-label", "一次性邀请链接（仅本次显示）");
+      url.style.flex = "1"; url.style.minWidth = "260px";
+      url.style.padding = "8px 10px";
+      url.style.border = "1px solid var(--color-border-default,#d9e0e9)";
+      url.style.borderRadius = "var(--radius-md,8px)";
+      url.style.fontSize = "12px";
+      const copy = document.createElement("button");
+      copy.type = "button"; copy.className = "pms-row-btn";
+      copy.textContent = "复制链接";
+      copy.addEventListener("click", function () {
+        url.select();
+        const done = function () { copy.textContent = "已复制"; };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url.value).then(done);
+        } else { document.execCommand("copy"); done(); }
+      });
+      wrap.appendChild(url); wrap.appendChild(copy);
+      resultEl.appendChild(wrap);
+      const note = document.createElement("div");
+      note.className = "sc-hint";
+      note.textContent = "链接仅本次显示，请立即复制并人工发送给本人。";
+      resultEl.appendChild(note);
+    }
+  }
 
   function openPanel(id) {
     drawerTitle.textContent = "员工操作面板";
@@ -429,6 +466,102 @@
     drawerBody.appendChild(notice);
 
     const profileId = item.id;
+
+    /* AUTH-17：邀请激活（§5.3：文案固定"邀请链接已生成，请复制并人工发送"，
+       不得显示"发送成功"；链接与一次性 token 仅本次显示） */
+    const invitation = item.invitation || null;
+    const accountPending = !!(item.account && item.account.password_pending);
+    if (!item.account || accountPending) {
+      drawerBody.appendChild(sectionTitle("邀请激活（员工经链接自行设置密码）"));
+      if (invitation) {
+        const invNote = document.createElement("p");
+        invNote.className = "sc-note";
+        let invText = "当前邀请：" + invitation.status_label;
+        if (invitation.status === "PENDING") {
+          invText += "，有效期至 " + cellText(invitation.expires_at).replace("T", " ").slice(0, 16);
+        }
+        if (invitation.resend_count > 0) invText += "（已重发 " + invitation.resend_count + " 次）";
+        invNote.textContent = invText;
+        drawerBody.appendChild(invNote);
+      }
+      if (!item.account) {
+        /* 未开通账号：创建邀请表单（预开通待激活账号，激活前不可登录） */
+        const inviteForm = document.createElement("form");
+        inviteForm.className = "sc-form";
+        inviteForm.appendChild(Object.assign(document.createElement("input"),
+            {type: "hidden", name: "csrfmiddlewaretoken", value: csrfToken}));
+        inviteForm.appendChild(labeledInput("登录账号（激活时使用，创建后可更正一次）",
+            {name: "username", required: "required", maxlength: "30",
+             placeholder: "3-30 位字母/数字"}));
+        const inviteBtn = document.createElement("button");
+        inviteBtn.type = "submit"; inviteBtn.className = "sc-btn";
+        inviteBtn.textContent = "生成邀请链接";
+        inviteForm.appendChild(inviteBtn);
+        const inviteResult = resultDiv();
+        inviteForm.appendChild(inviteResult);
+        inviteForm.addEventListener("submit", function (e) {
+          e.preventDefault();
+          setResult(inviteResult, "正在生成…", false);
+          apiFetch("/manage/staff/actions/" + profileId + "/invite/",
+                   {method: "POST", body: new FormData(inviteForm)})
+              .then(function (res) {
+                if (!res.ok) { setResult(inviteResult, messageOf(res), true); return; }
+                showInviteResult(inviteResult, res.payload.data || {});
+                inviteForm.reset();
+                loadList(currentPage);
+              })
+              .catch(function () { setResult(inviteResult, "网络错误，请稍后重试。", true); });
+        });
+        drawerBody.appendChild(inviteForm);
+      } else if (invitation && invitation.status !== "ACCEPTED") {
+        /* 待激活账号：撤销（仅 PENDING）/ 重发（旧 token 全部失效） */
+        const invRow = document.createElement("div"); invRow.className = "sc-inline";
+        if (invitation.status === "PENDING") {
+          const revokeForm = document.createElement("form");
+          revokeForm.className = "sc-inline";
+          revokeForm.appendChild(Object.assign(document.createElement("input"),
+              {type: "hidden", name: "csrfmiddlewaretoken", value: csrfToken}));
+          const revokeBtn = document.createElement("button");
+          revokeBtn.type = "submit"; revokeBtn.className = "pms-row-btn";
+          revokeBtn.textContent = "撤销邀请";
+          revokeForm.appendChild(revokeBtn);
+          const revokeResult = resultDiv();
+          revokeForm.appendChild(revokeResult);
+          bindActionForm(revokeForm,
+              "/manage/staff/actions/" + profileId + "/invite/revoke/",
+              function () { openPanel(profileId); });
+          invRow.appendChild(revokeForm);
+        }
+        const resendForm = document.createElement("form");
+        resendForm.className = "sc-inline";
+        resendForm.appendChild(Object.assign(document.createElement("input"),
+            {type: "hidden", name: "csrfmiddlewaretoken", value: csrfToken}));
+        const resendBtn = document.createElement("button");
+        resendBtn.type = "submit"; resendBtn.className = "pms-row-btn";
+        resendBtn.textContent = "重发邀请（换新链接）";
+        resendForm.appendChild(resendBtn);
+        const resendResult = resultDiv();
+        resendForm.appendChild(resendResult);
+        resendForm.addEventListener("submit", function (e) {
+          e.preventDefault();
+          setResult(resendResult, "正在生成…", false);
+          apiFetch("/manage/staff/actions/" + profileId + "/invite/resend/",
+                   {method: "POST", body: new FormData(resendForm)})
+              .then(function (res) {
+                if (!res.ok) { setResult(resendResult, messageOf(res), true); return; }
+                showInviteResult(resendResult, res.payload.data || {});
+                loadList(currentPage);
+              })
+              .catch(function () { setResult(resendResult, "网络错误，请稍后重试。", true); });
+        });
+        invRow.appendChild(resendForm);
+        drawerBody.appendChild(invRow);
+      }
+      const invHint = document.createElement("p");
+      invHint.className = "sc-note";
+      invHint.textContent = "邀请链接需人工复制发送给员工；链接仅可使用一次并限时有效，激活后员工自行设置密码。";
+      drawerBody.appendChild(invHint);
+    }
 
     /* b. 开通账号 / f. 密码重置（每个表单独立携带 CSRF token） */
     drawerBody.appendChild(sectionTitle(item.account ? "重置登录密码" : "开通登录账号"));

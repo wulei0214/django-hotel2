@@ -1742,11 +1742,13 @@ def _safe_login_next(request, candidate):
 
 
 def login_view(request):
-    """统一登录页：登录后进入主界面（或按安全校验后的 next 返回原页面）"""
+    """统一登录页：登录后进入主界面（或按安全校验的 next= 回跳原页面）"""
     # D-04：登录页重定向看"是否 PMS 员工"（有 DEFAULT 任职），不再看 is_staff
     if request.user.is_authenticated and _has_active_employment(request.user):
         return redirect("/home/")
     error = None
+    # AUTH-18：邀请激活成功后重定向 /login/?activated=1 → 展示一次性成功提示
+    activated = request.GET.get("activated", "") == "1"
     raw_next = request.GET.get("next", "") or request.POST.get("next", "")
     next_url = _safe_login_next(request, raw_next) if raw_next else ""
     if request.method == "POST":
@@ -1781,7 +1783,8 @@ def login_view(request):
                 action="auth.login_success", entity_type="User",
                 entity_id=str(user.pk), actor=user, request=request)
             return redirect(_safe_login_next(request, request.POST.get("next")))
-    return render(request, "login.html", {"error": error, "next": next_url})
+    return render(request, "login.html",
+                  {"error": error, "next": next_url, "activated": activated})
 
 
 def register_view(request):

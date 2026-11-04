@@ -316,10 +316,11 @@ PUBLIC_VIEW_NAMES = {
     "register_view",          # 302 → /reserve/（§10.4 退役兼容）
     "booking_page",           # 302 → /reserve/（§10.4 退役兼容）
     "public_booking_page",    # /reserve/ 公开免注册直订
+    "invite_accept",          # /invite/accept/ 员工邀请激活页（AUTH-18：匿名公开 + 限流 + 一次性 token）
     "swagger_ui", "redoc_ui", # /api/docs/ /api/redoc/ API 文档页
     "management_center_page", # /manage/<center>/ 视图内自校验 AuthorizationService
 }
-# 平台管理域（admin_sessionid 会话域 + superuser-only，§6.1，另行门禁）
+# 平台管理域（平台双 Path Cookie 会话域 + superuser-only，§6.1，另行门禁）
 PLATFORM_VIEW_MODULES = (
     "apps.identity.platform",
     "apps.identity.permission_admin",

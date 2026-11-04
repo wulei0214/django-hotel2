@@ -1,23 +1,26 @@
 """平台身份域（方案 §6.1）：/platform/ 平台管理面。
 
 平台身份策略三项不变量：is_active + is_superuser + is_staff 必须同时满足。
-  * 未登录（无平台会话 admin_sessionid）→ 302 去 /admin/login/
+  * 未登录（无平台会话 platform_sessionid/django_admin_sessionid）→ 302 去 /admin/login/
   * 已登录非超管 → 直接 403，不跳登录页（不把员工会话当作可升级凭证）
   * 违反不变量的半状态超管（如 is_staff 被误关）→ 403 + AuditEvent(security.platform_denied)
 
 边界（§6.1 明确禁止）：
   * 平台超管不自动获得任何 PMS 业务权限（不写任职/角色，不改 AuthorizationService）
   * 不动 StaffRoleAssignment 模型
-  * /platform/ 会话域沿用 admin_sessionid（见 session_middleware.is_admin_request）
+  * /platform/ 会话域 Cookie 见 session_middleware.resolve_session_cookie_spec
+    （Cookie 网络隔离专项 §B.1：两份 Path Cookie 同一平台 Session）
 """
 from functools import wraps
 
 import logging
 
 from django.conf import settings
+from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import PermissionDenied
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.views.decorators.http import require_POST
 
 audit = logging.getLogger("hotel.audit")
 
@@ -107,3 +110,19 @@ def platform_system_info(request):
         "csrf_use_sessions": bool(settings.CSRF_USE_SESSIONS),
     }
     return render(request, "platform/system.html", ctx)
+
+
+@require_POST
+@platform_superadmin_required
+def platform_logout(request):
+    """/platform/logout/（POST）：平台门户主动登出（Cookie 隔离专项 §5.4）。
+
+    auth_logout() flush 平台会话 → 服务端平台 Session 失效；响应经
+    SplitSessionMiddleware 平台域删除路径同步删除
+    platform_sessionid（Path=/platform/）、django_admin_sessionid
+    （Path=/admin/）及历史 admin_sessionid 全部 Name×Path 组合。
+    PMS sessionid 不受影响。Django Admin 原生 /admin/logout/ 依赖
+    同一 flush→删除机制自动双清。
+    """
+    auth_logout(request)
+    return redirect(PLATFORM_LOGIN_URL)

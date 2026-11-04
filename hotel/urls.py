@@ -7,9 +7,13 @@
   /index/ /insert/ ...      员工管理（index 即员工模块首页）
   /show_client/ ...         其余 7 个模块：show_/insert_/update_/delete_/search_ 五件套
   /manage/staff/ ...        员工中心（§10.1：生命周期写工作台 + actions 写路由）
+  /invite/accept/           员工邀请激活页（AUTH-18：匿名公开 + 限流 + 一次性 token）
   /staff_accounts/ ...      旧员工工作台：列表/详情保留只读，写路由 302 → /manage/staff/
   /admin/                   Django 后台（simpleui 主题，超管用）
-  /platform/ ...            平台管理面（§6.1：首页/权限矩阵/环境信息；admin_sessionid 会话域）
+  /platform/ ...            平台管理面（§6.1：首页/权限矩阵/环境信息；平台会话域
+                            platform_sessionid @ /platform/ + django_admin_sessionid @ /admin/，
+                            同一平台 Session，见 session_middleware §B.1）
+  /platform/logout/         平台门户登出（POST：flush 平台会话 → 双 Cookie 同步删除）
   /platform/api/permissions/...  权限管理中心读写 API（§8，JSON + 内容 hash 并发保护）
   /permissions/             旧矩阵入口 → 302 兼容跳转 /platform/permissions/
   /system/                  PMS 员工个人页（仅本人信息 + 自助改密）
@@ -35,6 +39,7 @@ from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import RedirectView
 from hotelapp import views
+from apps.identity import invitation_views
 from apps.identity import permission_admin
 from apps.identity import permission_center
 from apps.identity import platform as identity_platform
@@ -56,6 +61,11 @@ urlpatterns = [
     path('manage/staff/actions/<int:pk>/end_assignment/<int:assignment_id>/', staff_center_views.staff_action_end_assignment, name='staff_center_end_assignment'),
     path('manage/staff/actions/<int:pk>/set_status/', staff_center_views.staff_action_set_status, name='staff_center_set_status'),
     path('manage/staff/actions/<int:pk>/reset_password/', staff_center_views.staff_action_reset_password, name='staff_center_reset_password'),
+    # ---- 邀请激活（AUTH-17/18，方案 §5.2/§5.3）：员工中心邀请操作 + 匿名激活页 ----
+    path('manage/staff/actions/<int:pk>/invite/revoke/', staff_center_views.staff_action_invite_revoke, name='staff_center_invite_revoke'),
+    path('manage/staff/actions/<int:pk>/invite/resend/', staff_center_views.staff_action_invite_resend, name='staff_center_invite_resend'),
+    path('manage/staff/actions/<int:pk>/invite/', staff_center_views.staff_action_invite, name='staff_center_invite'),
+    path('invite/accept/', invitation_views.invite_accept, name='invite_accept'),
     path('manage/<str:center>/', api_pages.management_center_page, name='pms_management_center'),
     path('admin/', admin.site.urls),
     path('', views.home),
@@ -95,8 +105,10 @@ urlpatterns = [
     path('staff_accounts/<int:pk>/end_assignment/<int:assignment_id>/', RedirectView.as_view(url='/manage/staff/', permanent=False), name='staff_accounts_end_assignment'),
     path('staff_accounts/<int:pk>/set_status/', RedirectView.as_view(url='/manage/staff/', permanent=False), name='staff_accounts_set_status'),
     path('staff_accounts/<int:pk>/reset_password/', RedirectView.as_view(url='/manage/staff/', permanent=False), name='staff_accounts_reset_password'),
-    # ---- 平台身份域（§6.1）：/platform/ 平台管理面，会话域 admin_sessionid ----
+    # ---- 平台身份域（§6.1）：/platform/ 平台管理面，平台会话域双 Path Cookie ----
     path('platform/', identity_platform.platform_home, name='platform_home'),
+    # 平台门户登出（POST）：flush 平台会话 → 中间件删除两份平台 Cookie + legacy 清理
+    path('platform/logout/', identity_platform.platform_logout, name='platform_logout'),
     path('platform/permissions/', permission_admin.permission_admin_page, name='platform_permissions'),
     path('platform/permissions/save/', permission_admin.permission_admin_save, name='platform_permissions_save'),
     # ---- 权限管理中心 API（§8.1-8.3）：读取/保存/高危确认 token ----

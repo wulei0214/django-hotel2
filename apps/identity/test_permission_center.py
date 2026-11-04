@@ -56,10 +56,11 @@ class PermissionCenterTestBase(TestCase):
 
     @staticmethod
     def _platform_login(client, user):
-        """平台会域登录：force_login 后把会话键复制到 admin_sessionid。"""
+        """平台会域登录：force_login 后把会话键复制到两份平台 Cookie（§B.1）。"""
         client.force_login(user)
         sessionid = client.cookies["sessionid"].value
-        client.cookies["admin_sessionid"] = sessionid
+        client.cookies["platform_sessionid"] = sessionid
+        client.cookies["django_admin_sessionid"] = sessionid
 
     def _read(self, group=None):
         group = group or self.group
@@ -107,7 +108,7 @@ class PermissionCenterReadApiTests(PermissionCenterTestBase):
         self.assertTrue(response["Location"].startswith("/admin/login/"))
 
     def test_read_pms_session_only_redirects(self):
-        """仅 PMS 会话（员工登录，无 admin_sessionid）→ 302，不因员工登录放行。"""
+        """仅 PMS 会话（员工登录，无平台 Cookie）→ 302，不因员工登录放行。"""
         staff = User.objects.create_user("pc_staff", password="staff-pass123")
         client = Client()
         client.force_login(staff)  # 只写 sessionid

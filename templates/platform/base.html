@@ -22,6 +22,11 @@
     <span class="pf-user">
         <span class="pf-chip">平台超管</span>
         <span>{{ user.username }}</span>
+        {# 平台登出（POST）：flush 平台会话，两份平台 Cookie 同步失效；与 PMS /logout/ 相互独立 #}
+        <form method="post" action="/platform/logout/" class="pf-logout-form">
+            {% csrf_token %}
+            <button type="submit" class="pf-logout-btn">平台登出</button>
+        </form>
     </span>
 </header>
 {% if messages %}

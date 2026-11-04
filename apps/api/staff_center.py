@@ -13,7 +13,7 @@ from apps.core import labels as L
 from apps.core.api_contract import ApiError, api_view, api_response, paginate
 from apps.identity.authorization import AuthorizationService
 from apps.identity.models import (
-    PropertyStaffMembership, StaffProfile, StaffRoleAssignment,
+    Invitation, PropertyStaffMembership, StaffProfile, StaffRoleAssignment,
 )
 from apps.guests.models import Guest, GuestMembership, MembershipLevelHistory
 from apps.guests.services import GuestMembershipService, GuestServiceError
@@ -37,6 +37,7 @@ def _staff_dto(profile, property_obj):
     user = profile.user
     now = timezone_now()
     assignments = []
+    invitation = None
     if membership:
         for a in StaffRoleAssignment.objects.filter(
                 membership=membership).select_related("group"):
@@ -47,6 +48,9 @@ def _staff_dto(profile, property_obj):
                 "starts_at": a.starts_at.isoformat(),
                 "ends_at": a.ends_at.isoformat() if a.ends_at else None,
             })
+        # AUTH-17：该员工在本物业最近一条邀请（状态展示用；不含 token 摘要）
+        invitation = (Invitation.objects.filter(
+            staff_profile=profile, membership=membership).order_by("-id").first())
     return {
         "id": profile.pk,
         "full_name": profile.full_name,
@@ -63,8 +67,16 @@ def _staff_dto(profile, property_obj):
             if membership else None),
         "account": ({
             "username": user.username, "is_active": user.is_active,
+            # AUTH-14/§5.4：unusable password = 邀请待激活账号（激活前不可登录）
+            "password_pending": not user.has_usable_password(),
             "last_login": user.last_login.isoformat() if user.last_login else None,
         } if user else None),
+        "invitation": ({
+            "id": invitation.pk, "status": invitation.status,
+            "status_label": invitation.get_status_display(),
+            "expires_at": invitation.expires_at.isoformat(),
+            "resend_count": invitation.resend_count,
+        } if invitation else None),
         "active_roles": [a["role"] for a in assignments if a["active"]],
         "assignments": assignments,
         "source_system": "PMS2",

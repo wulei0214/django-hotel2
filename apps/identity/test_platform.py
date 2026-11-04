@@ -46,10 +46,13 @@ class PlatformAccessTests(TestCase):
             "pf_admin", password="admin-pass123456")
 
     def _platform_login(self, user):
-        """模拟平台登录：force_login 后把会话键复制到 admin_sessionid。"""
+        """模拟平台登录：force_login 后把会话键复制到两份平台 Cookie
+        （platform_sessionid @ /platform/ 与 django_admin_sessionid @ /admin/，
+        同一平台 Session Key，登录完整态 S1）。"""
         self.client.force_login(user)
         sessionid = self.client.cookies["sessionid"].value
-        self.client.cookies["admin_sessionid"] = sessionid
+        self.client.cookies["platform_sessionid"] = sessionid
+        self.client.cookies["django_admin_sessionid"] = sessionid
 
     def test_anonymous_redirects_to_admin_login(self):
         """无平台会话 → /platform/* 全部 302 去 /admin/login/"""
@@ -63,7 +66,7 @@ class PlatformAccessTests(TestCase):
     def test_pms_session_only_is_not_admitted(self):
         """仅 PMS sessionid（员工登录）→ 平台页 302，不因员工登录放行"""
         staff = _pms_staff_user()
-        self.client.force_login(staff)  # 只写 sessionid，无 admin_sessionid
+        self.client.force_login(staff)  # 只写 sessionid，无平台 Cookie
         for url in ("/platform/", "/platform/permissions/", "/platform/system/"):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 302, f"PMS 员工访问 {url} 必须 302")
@@ -87,11 +90,14 @@ class PlatformAccessTests(TestCase):
             self.assertContains(response, label)
         self.assertNotContains(response, "审计记录")
 
-    def test_platform_session_uses_admin_session_cookie(self):
-        """平台页响应使用 admin_sessionid（PMS sessionid 不被平台面读写）"""
+    def test_platform_session_dual_cookie_same_key(self):
+        """两份平台 Cookie 同键：门户/Admin 双入口都保持登录（§5.2）"""
         self._platform_login(self.superadmin)
-        self.client.get("/platform/")
-        self.assertIn("admin_sessionid", self.client.cookies)
+        self.assertEqual(self.client.get("/platform/").status_code, 200)
+        self.assertEqual(self.client.get("/admin/").status_code, 200)
+        self.assertEqual(
+            self.client.cookies["platform_sessionid"].value,
+            self.client.cookies["django_admin_sessionid"].value)
 
     def test_superuser_without_staff_flag_gets_403_and_audit(self):
         """is_staff=False 的 superuser（半状态）→ 403 + security.platform_denied 审计"""
@@ -174,7 +180,8 @@ class PlatformCsrfTests(TestCase):
         client = Client(enforce_csrf_checks=True)
         client.force_login(self.superadmin)
         sessionid = client.cookies["sessionid"].value
-        client.cookies["admin_sessionid"] = sessionid
+        client.cookies["platform_sessionid"] = sessionid
+        client.cookies["django_admin_sessionid"] = sessionid
         return client
 
     def test_platform_post_without_csrf_token_is_403(self):
@@ -218,7 +225,8 @@ class PlatformContextNoiseTests(TestCase):
     def _platform_login(self):
         self.client.force_login(self.superadmin)
         sessionid = self.client.cookies["sessionid"].value
-        self.client.cookies["admin_sessionid"] = sessionid
+        self.client.cookies["platform_sessionid"] = sessionid
+        self.client.cookies["django_admin_sessionid"] = sessionid
 
     def test_platform_requests_write_no_property_context_denied(self):
         """无任职超管访问 /platform/* 与 /admin/* → 不写 property_context_denied"""
@@ -318,7 +326,8 @@ class SystemPageSplitTests(TestCase):
         client = Client()
         client.force_login(self.superadmin)
         sessionid = client.cookies["sessionid"].value
-        client.cookies["admin_sessionid"] = sessionid
+        client.cookies["platform_sessionid"] = sessionid
+        client.cookies["django_admin_sessionid"] = sessionid
         response = client.get("/platform/system/")
         self.assertEqual(response.status_code, 200)
         content = response.content.decode("utf-8")
@@ -352,7 +361,8 @@ class PlatformBoundaryTests(TestCase):
         client = Client()
         client.force_login(admin)
         sessionid = client.cookies["sessionid"].value
-        client.cookies["admin_sessionid"] = sessionid
+        client.cookies["platform_sessionid"] = sessionid
+        client.cookies["django_admin_sessionid"] = sessionid
         client.get("/platform/")
         client.get("/platform/permissions/")
         client.get("/platform/system/")

@@ -169,3 +169,112 @@ class StaffRoleAssignment(models.Model):
 
     def __str__(self):
         return f"{self.membership} -> {self.group.name}"
+
+
+class Invitation(models.Model):
+    """员工邀请激活（AUTH-14，方案 §5.1-§5.3）。
+
+    token 绑定员工档案与任职关系，不可改绑（激活时复核一致）；
+    数据库只存 token 的 SHA-256 摘要，明文仅在创建/重发时返回一次
+    （§5.3），绝不落库、不落审计。状态机（§5.2）：
+      PENDING --员工激活--> ACCEPTED（一次性消费，consumed_at 落定）
+      PENDING --超过 TTL--> EXPIRED；PENDING --管理员撤销--> REVOKED
+      重新邀请 = 关闭旧邀请 + 新建 PENDING（resend_count 在链上递增）
+    待激活期间账号以 unusable password 存在（§5.4），激活前不可登录。
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "待激活"
+        ACCEPTED = "ACCEPTED", "已接受"
+        EXPIRED = "EXPIRED", "已过期"
+        REVOKED = "REVOKED", "已撤销"
+
+    staff_profile = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.PROTECT,
+        related_name="invitations",
+        verbose_name="员工档案",
+    )
+    membership = models.ForeignKey(
+        PropertyStaffMembership,
+        on_delete=models.PROTECT,
+        related_name="invitations",
+        verbose_name="任职关系",
+        help_text="token 绑定的任职关系；必须属于同一员工档案，激活时复核",
+    )
+    token_hash = models.CharField(
+        max_length=64, unique=True, verbose_name="token 摘要",
+        help_text="SHA-256(token) 十六进制；明文 token 不落库不落审计",
+    )
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.PENDING,
+        verbose_name="邀请状态",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    expires_at = models.DateTimeField(verbose_name="失效时间")
+    consumed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="消费时间",
+        help_text="员工激活成功时间；仅 ACCEPTED 状态允许非空",
+    )
+    revoked_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="撤销时间",
+        help_text="管理员撤销时间；仅 REVOKED 状态允许非空",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_invitations",
+        verbose_name="发起人",
+    )
+    revoked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="revoked_invitations",
+        verbose_name="撤销人",
+    )
+    resend_count = models.PositiveIntegerField(
+        default=0, verbose_name="重发次数",
+        help_text="同一员工邀请链上的重发序号；首次创建为 0，重发 +1",
+    )
+    last_sent_at = models.DateTimeField(
+        verbose_name="最近发出时间",
+        help_text="本次 token 的生成时间；人工复制发送同样记录",
+    )
+
+    class Meta:
+        ordering = ("-id",)
+        verbose_name = "员工邀请激活"
+        verbose_name_plural = "员工邀请激活"
+        constraints = [
+            # 业务阅读提示：Meta 内不能引用外层类的 Status 命名空间，此处用字面量，
+            # 与 Invitation.Status.ACCEPTED/REVOKED 取值严格一致。
+            models.CheckConstraint(
+                check=Q(consumed_at__isnull=True) | Q(status="ACCEPTED"),
+                name="ck_invitation_consumed_only_accepted",
+            ),
+            models.CheckConstraint(
+                check=~Q(status="ACCEPTED") | Q(consumed_at__isnull=False),
+                name="ck_invitation_accepted_has_consumed_at",
+            ),
+            models.CheckConstraint(
+                check=Q(revoked_at__isnull=True) | Q(status="REVOKED"),
+                name="ck_invitation_revoked_only_revoked",
+            ),
+            models.CheckConstraint(
+                check=Q(expires_at__gt=F("created_at")),
+                name="ck_invitation_expires_after_created",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("staff_profile", "status"),
+                         name="idx_invitation_profile_status"),
+            models.Index(fields=("status", "expires_at"),
+                         name="idx_invitation_status_expiry"),
+        ]
+
+    def __str__(self):
+        # 业务阅读提示：字符串展示不含 token 摘要（日志/管理界面对齐 §16.2 最小化）。
+        return (f"邀请#{self.pk} 员工档案#{self.staff_profile_id} "
+                f"任职#{self.membership_id} {self.get_status_display()}")
