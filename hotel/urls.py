@@ -8,6 +8,7 @@
   /show_client/ ...         其余 7 个模块：show_/insert_/update_/delete_/search_ 五件套
   /admin/                   Django 后台（simpleui 主题，超管用）
   /platform/ ...            平台管理面（§6.1：首页/权限矩阵/环境信息；admin_sessionid 会话域）
+  /platform/api/permissions/...  权限管理中心读写 API（§8，JSON + 内容 hash 并发保护）
   /permissions/             旧矩阵入口 → 302 兼容跳转 /platform/permissions/
   /system/                  PMS 员工个人页（仅本人信息 + 自助改密）
 
@@ -33,6 +34,7 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 from hotelapp import views
 from apps.identity import permission_admin
+from apps.identity import permission_center
 from apps.identity import platform as identity_platform
 from apps.api import pages as api_pages
 from apps.api import openapi_schema
@@ -84,6 +86,14 @@ urlpatterns = [
     path('platform/', identity_platform.platform_home, name='platform_home'),
     path('platform/permissions/', permission_admin.permission_admin_page, name='platform_permissions'),
     path('platform/permissions/save/', permission_admin.permission_admin_save, name='platform_permissions_save'),
+    # ---- 权限管理中心 API（§8.1-8.3）：读取/保存/高危确认 token ----
+    path('platform/api/permissions/<int:group_id>/',
+         permission_center.permission_read, name='platform_permission_read'),
+    path('platform/api/permissions/<int:group_id>/save/',
+         permission_center.permission_save, name='platform_permission_save'),
+    path('platform/api/permissions/<int:group_id>/confirm-token/',
+         permission_center.permission_confirm_token,
+         name='platform_permission_confirm_token'),
     path('platform/system/', identity_platform.platform_system_info, name='platform_system'),
     # 旧 /permissions/ 入口 302 兼容跳转（矩阵页已迁移至 /platform/permissions/）
     path('permissions/', RedirectView.as_view(url='/platform/permissions/', permanent=False)),
@@ -95,7 +105,6 @@ urlpatterns = [
     path('export/staff/request/', views.request_staff_export),
     path('export/staff/approve/<int:approval_id>/', views.approve_staff_export),
     path('export/<str:module>/', views.export_module),
-    path('permissions/save/', permission_admin.permission_admin_save),
     path('index/', views.index),
     path('insert/', views.insert),
     path('insert_client/', views.insert_client),

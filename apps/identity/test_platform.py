@@ -174,20 +174,28 @@ class PlatformCsrfTests(TestCase):
             "role": str(self.group.id), "perm": ["view_room"]})
         self.assertEqual(response.status_code, 403)
 
-    def test_platform_post_with_csrf_token_succeeds(self):
-        """平台 POST 携带页面渲染的 CSRF 令牌 → 保存成功 302"""
+    def test_platform_post_with_csrf_token_redirects_without_saving(self):
+        """平台 POST 携带页面渲染的 CSRF 令牌 → 旧 form 保存入口 302 跳转且不变更授权。
+
+        Phase 3（§8）起旧 form 保存已废弃为兼容跳转；唯一保存通道是
+        /platform/api/permissions/<id>/save/（JSON API，其 CSRF 成功路径
+        见 test_permission_center.PermissionCenterWriteGuardTests）。
+        """
         client = self._csrf_client()
         page = client.get("/platform/permissions/")
         self.assertEqual(page.status_code, 200)
         content = page.content.decode("utf-8")
         marker = 'name="csrfmiddlewaretoken" value="'
-        self.assertIn(marker, content, "权限矩阵表单必须渲染 CSRF 令牌")
+        self.assertIn(marker, content, "权限矩阵页必须渲染 CSRF 令牌（JS 依赖）")
         token = content.split(marker, 1)[1].split('"', 1)[0]
         response = client.post("/platform/permissions/save/", {
             "role": str(self.group.id), "csrfmiddlewaretoken": token,
-            "perm": ["view_room"]})
+            "perm": ["add_food"]})
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(self.group.permissions.filter(codename="view_room").exists())
+        self.assertEqual(response["Location"], "/platform/permissions/")
+        self.assertFalse(
+            self.group.permissions.filter(codename="add_food").exists(),
+            "旧 form 保存入口不得再变更角色权限")
 
 
 class PlatformContextNoiseTests(TestCase):

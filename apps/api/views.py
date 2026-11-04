@@ -64,8 +64,9 @@ def api_guard(view):
 
 
 def csrf_failure(request, reason=""):
-    """CSRF 失败视图：/api/ 路径返回 JSON（保持 API 错误契约），其余走默认 HTML 页。"""
-    if request.path.startswith("/api/"):
+    """CSRF 失败视图：/api/ 与 /platform/api/ 路径返回 JSON（保持 API 错误契约），其余走默认 HTML 页。"""
+    if (request.path.startswith("/api/")
+            or request.path.startswith("/platform/api/")):
         return JsonResponse(
             {"error": f"CSRF 校验失败：{reason or '缺少 CSRF 令牌，请先获取 csrftoken。'}"},
             status=403,

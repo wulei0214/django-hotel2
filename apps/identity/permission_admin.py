@@ -1,150 +1,42 @@
-"""角色权限矩阵管理（超管专属）。
+"""角色权限矩阵页（超管专属）——Phase 3 已重构为权限管理中心（§8）。
 
-设计要点（对应《PMS_RBAC_权限管理改造方案_评审稿》+ 用户确认的 9 项决策）：
-  * 以「角色」为分配对象：页面编辑的是所选角色的权限模板，超管拥有全部权限且不受此页控制
-  * 权限矩阵两个区块：
-      - 模块区：行 = 业务模块，列 = 查看/新增/修改/删除；「查看」同时决定菜单可见性
-      - 高危动作区：独立权限点（净房放行/执行夜审/反结账/未到处理/财务入口/敏感导出/重开营业日）
-  * 隐藏模块（餐饮/停车，对接第三方）行置灰标「预留」，保存时不授予
-  * 保存时整体覆盖该角色的 hotelapp 权限集合，并以本页注册的权限点为白名单防伪造提权
-  * 角色目录 = 9 个业务角色（含预留空组）+ 2 个占位角色（收益/房价经理、审计只读）
+历史说明（N-1 修复）：
+  * 本模块曾自带 MODULES/ACTION_PERMS/ALL_CODENAMES 手工白名单（41 点，
+    仅 hotelapp 域，且含 PLANNED 模块 food/order/park 12 点）——伪造 POST
+    可借其服务端放行 PLANNED 授权（缺口 N-1）。Phase 3 起该白名单从代码
+    路径上整体移除，授权面唯一权威为 apps/identity/registry.py：
+      - 页面矩阵结构、可授予集合（allowed）均由注册表派生；
+      - 读写走 permission_center.py 的 JSON API（/platform/api/permissions/），
+        PLANNED/RETIRED 模块码一律整体 409 拒绝。
+  * permission_admin_save 旧 form 保存逻辑已废弃，保留函数仅为旧入口
+    /platform/permissions/save/（与 /permissions/save/ 兼容跳转）不 404：
+    一律 302 回矩阵页，不再执行任何授权变更。
 """
-import logging
-
-from django.contrib import messages
-from django.contrib.auth.models import Group, Permission
 from django.shortcuts import redirect, render
 
 from .platform import platform_superadmin_required
-from .roles import BUSINESS_ROLE_NAMES
-
-audit = logging.getLogger("hotel.audit")
-
-# 业务模块注册表：key / 中文名 / Django model 名（用于权限点 codename）
-# reserved=True 表示模块已隐藏（对接第三方），矩阵行置灰、保存时不授予
-MODULES = [
-    {"key": "staff", "label": "员工管理", "model": "staff", "reserved": False},
-    {"key": "client", "label": "顾客管理", "model": "client", "reserved": False},
-    {"key": "food", "label": "餐厅管理", "model": "food", "reserved": True},
-    {"key": "room", "label": "客房管理", "model": "room", "reserved": False},
-    {"key": "park", "label": "停车场管理", "model": "park", "reserved": True},
-    {"key": "vip", "label": "会员信息管理", "model": "vip", "reserved": False},
-    {"key": "order", "label": "餐厅订单管理", "model": "order", "reserved": True},
-    {"key": "accommodation", "label": "客房订单管理", "model": "accommodation", "reserved": False},
-]
-
-# 动作列（全中文）：查看同时决定菜单可见性
-ACTIONS = [("view", "查看"), ("add", "新增"), ("change", "修改"), ("delete", "删除")]
-
-# 高危动作权限点（与 hotelapp/migrations/0014 保持一致；修改需三端同步）
-ACTION_PERMS = [
-    {"code": "room_release_ready", "label": "净房放行（待检查→空闲）",
-     "desc": "由当天管理者（值班经理/店长）确认净房"},
-    {"code": "night_audit_execute", "label": "执行夜审",
-     "desc": "营业日结：未到处理、房费过租、日结记录"},
-    {"code": "business_date_reopen", "label": "重开营业日（预留）",
-     "desc": "夜审后重开营业日；视图实现后启用，必须值班经理/店长"},
-    {"code": "reverse_checkout", "label": "反结账（已退房→已入住）",
-     "desc": "冲销对应收款流水；房间已被新客入住或已过夜审则禁止"},
-    {"code": "no_show_handle", "label": "未到订单处理",
-     "desc": "单个标记 No-Show 并释放房间"},
-    {"code": "finance_access", "label": "财务管理入口",
-     "desc": "流水、收支与报表（财务录入收支；冲账执行见「删除」列）"},
-    {"code": "export_pii", "label": "导出敏感数据",
-     "desc": "含敏感字段的数据导出（默认脱敏；完整值须单独审批）"},
-    {"code": "guest_document_reveal", "label": "揭示客人证件完整值",
-     "desc": "前台办理入住核验及经理例外处理；每次必须填写原因并留审计"},
-    {"code": "guest_phone_reveal", "label": "揭示客人电话完整值",
-     "desc": "前台办理入住核验及经理例外处理；每次必须填写原因并留审计"},
-]
-
-# 全部合法权限点（保存白名单）：模块 CRUD + 高危动作
-ALL_CODENAMES = ({f"{action}_{m['model']}" for m in MODULES for action, _ in ACTIONS}
-                 | {p["code"] for p in ACTION_PERMS})
-
-# 可编辑的业务角色（9 个：5 个现役 + 4 个预留空组；顺序即页面 tab 顺序）
-ROLE_GROUPS = list(BUSINESS_ROLE_NAMES)
-
-# 占位角色（暂不建组，页面灰显提示；后续版本启用时迁移建组即可）
-RESERVED_ROLE_SLOTS = ["收益/房价经理", "审计只读"]
-
-# 隐藏模块保存时允许保留的权限点：无（模块隐藏 → 权限随之回收，重启用时再授予）
-
-
-def _role_groups():
-    groups = {g.name: g for g in Group.objects.filter(name__in=ROLE_GROUPS)}
-    return [(name, groups[name]) for name in ROLE_GROUPS if name in groups]
-
-
-def _group_codenames(group):
-    return set(group.permissions.filter(content_type__app_label="hotelapp")
-               .values_list("codename", flat=True))
+from .permission_center import page_bootstrap
 
 
 @platform_superadmin_required
 def permission_admin_page(request):
-    """权限矩阵主页（§6.1 迁移至 /platform/permissions/）：?role=<组id> 选择要编辑的角色"""
-    roles = _role_groups()
-    if not roles:
-        messages.error(request, "尚未初始化业务角色组，请先执行 migrate 初始化。")
-        return redirect("/platform/")
-    selected = request.GET.get("role")
-    group = next((g for _, g in roles if str(g.id) == selected), roles[0][1])
-    owned = _group_codenames(group)
+    """权限矩阵主页（§8.1 四区重构）：/platform/permissions/。
 
-    modules = []
-    for m in MODULES:
-        modules.append({
-            "key": m["key"],
-            "label": m["label"],
-            "reserved": m["reserved"],
-            "actions": [{"action": a, "label": lbl,
-                         "checked": f"{a}_{m['model']}" in owned}
-                        for a, lbl in ACTIONS],
-        })
-
-    action_perms = []
-    for p in ACTION_PERMS:
-        action_perms.append({
-            "code": p["code"], "label": p["label"], "desc": p["desc"],
-            "checked": p["code"] in owned,
-        })
-
+    页面骨架 + 注册表 bootstrap（json_script 嵌入），角色数据由前端 JS
+    经 GET /platform/api/permissions/<group_id>/ 拉取。
+    """
     return render(request, "platform/permissions.html", {
-        "roles": roles,
-        "reserved_roles": RESERVED_ROLE_SLOTS,
-        "group": group,
-        "actions": ACTIONS,
-        "modules": modules,
-        "action_perms": action_perms,
-        "perm_total": len(owned),
-        "perm_all_count": len(ALL_CODENAMES),
+        "nav_active": "permissions",
+        "bootstrap_json": page_bootstrap(),
     })
 
 
 @platform_superadmin_required
 def permission_admin_save(request):
-    """保存角色权限（§6.1 迁移至 /platform/permissions/save/）：整体覆盖该角色的权限集合"""
-    if request.method != "POST":
-        return redirect("/platform/permissions/")
-    roles = _role_groups()
-    group = next((g for _, g in roles if str(g.id) == request.POST.get("role")), None)
-    if group is None:
-        messages.error(request, "角色不存在或不可编辑")
-        return redirect("/platform/permissions/")
+    """旧 form 保存入口（已废弃）：兼容 302 跳转回矩阵页，不做任何变更。
 
-    # 原生复选框多值提交：getlist 直接得到每个勾选的权限点，无拼接歧义
-    requested = set(request.POST.getlist("perm"))
-    granted = requested & ALL_CODENAMES            # 白名单过滤，防伪造提权
-
-    perms = list(Permission.objects.filter(
-        content_type__app_label="hotelapp", codename__in=granted))
-    # 前后台一致性：本矩阵只管辖 hotelapp 域权限；管理员在 Django admin 单独授予的
-    # 其他 app 权限（如 identity/auth 域）不属于矩阵管辖，必须原样保留，
-    # 否则 set() 整体替换会把后台手工追加的授权静默清空
-    other_perms = list(group.permissions.exclude(content_type__app_label="hotelapp"))
-    group.permissions.set(perms + other_perms)
-    audit.info("权限矩阵保存 role=%s(%s) 授予 %s 项(另保留非矩阵权限 %d 项) 操作人=%s",
-               group.name, group.id, len(granted), len(other_perms), request.user.username)
-    messages.success(request, f"角色「{group.name}」权限已保存（{len(granted)} 项）")
-    return redirect(f"/platform/permissions/?role={group.id}")
+    Phase 3 起保存唯一通道为
+    POST /platform/api/permissions/<group_id>/save/（JSON + 内容 hash
+    并发保护 + 高危二次确认 + 同事务审计）。
+    """
+    return redirect("/platform/permissions/")

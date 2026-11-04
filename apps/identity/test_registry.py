@@ -3,12 +3,14 @@
 覆盖四条验收线：
   1. validate_registry() 无 ERROR——ACTIVE 模块权限码全部解析到真实 Permission，
      并与 Phase 0 审计文档（11-permissions.md / 12-roles.md）交叉核对；
-  2. PLANNED 模块（餐饮/停车）权限经伪造 POST 授权：矩阵页白名单若放行，
-     注册表校验必须能发现（缺口 F-09 的兜底断言）；
+  2. PLANNED 模块（餐饮/停车）权限经伪造 POST 授权：Phase 3 起新保存 API
+     整体 409 拒绝（N-1 白名单已移除），旧 form 入口废弃为兼容跳转；
   3. ROLE_REGISTRY 与数据库九组一一对应（5 现役 + 4 预留空组）；
   4. SPECIAL_PERMISSIONS 每项解析到真实 Permission。
 另含 module_gate 行为回归：food/order/park 仍隐藏（注册表接管后行为不变）。
 """
+import hashlib
+import json
 import os
 import re
 
@@ -16,7 +18,7 @@ from django.contrib.auth.models import Group, Permission, User
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.core.models import Property
+from apps.core.models import AuditEvent, Property
 from .models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from .registry import (
     MODULE_ACTIVE,
@@ -151,14 +153,18 @@ class RegistryConsistencyTests(TestCase):
 
 
 class PlannedModuleGrantGuardTests(TestCase):
-    """伪造 POST 对 PLANNED 模块（餐饮/停车）权限的授权防线（F-09 兜底）。
+    """伪造 POST 对 PLANNED 模块（餐饮/停车）权限的授权防线（F-09/N-1）。
 
-    矩阵页 UI 对 reserved 模块置灰，但服务端白名单 ALL_CODENAMES 仍含其
-    权限码——伪造 POST 可绕过 UI 直接授权。Phase 2 不改矩阵 UI/白名单，
-    因此本测试断言防线二：注册表校验必须能发现这类授权漂移。
+    Phase 3 权限中心重构后的形态：旧 permission_admin.ALL_CODENAMES 白名单
+    （含 PLANNED 模块 food/order/park 12 点）已从代码路径上移除，保存唯一
+    通道为 POST /platform/api/permissions/<id>/save/，其 allowed 面 =
+    注册表 ACTIVE 模块码 ∪ SPECIAL_PERMISSIONS——PLANNED/RETIRED 模块码
+    一律整体 409 拒绝 + security.permission_denied 审计，不再存在
+    "白名单放行 → 靠注册表告警兜底"的分支。
     """
 
-    FORGED_PERMS = ["add_food", "delete_park"]  # fnb / parking（均 PLANNED）
+    # fnb / parking 模块权限码（均 PLANNED，完整 app_label.codename 形态）
+    FORGED_PERMS = ["hotelapp.add_food", "hotelapp.delete_park"]
 
     def setUp(self):
         self.admin = User.objects.create_superuser(
@@ -172,40 +178,78 @@ class PlannedModuleGrantGuardTests(TestCase):
         return set(self.group.permissions.filter(
             content_type__app_label="hotelapp").values_list("codename", flat=True))
 
-    def test_forged_post_is_rejected_or_flagged_by_registry(self):
+    def _current_version(self):
+        held = {f"{app}.{code}" for app, code in self.group.permissions.values_list(
+            "content_type__app_label", "codename")}
+        return hashlib.sha256(
+            "\n".join(sorted(held)).encode("utf-8")).hexdigest()[:16]
+
+    def test_forged_planned_codes_rejected_by_save_api(self):
+        """伪造提交 PLANNED 模块码 → 保存 API 整体 409，授权与注册表零漂移。"""
+        payload = json.dumps({
+            "permissions": self.FORGED_PERMS,
+            "version": self._current_version(),
+            "reason": "伪造授权演练（N-1 防线验证）",
+        })
+        response = self.client.post(
+            f"/platform/api/permissions/{self.group.id}/save/",
+            data=payload, content_type="application/json")
+        self.assertEqual(response.status_code, 409, response.content)
+        data = response.json()
+        self.assertEqual(data["code"], "unknown_permissions")
+        self.assertEqual(set(data["unknown"]), set(self.FORGED_PERMS))
+        held = self._held_hotelapp_codenames()
+        for code in self.FORGED_PERMS:
+            self.assertNotIn(code.split(".", 1)[1], held,
+                             f"PLANNED 权限码 {code} 不得被授予")
+        # 越权码拒绝必须落 security 审计（不静默过滤）
+        self.assertTrue(AuditEvent.objects.filter(
+            action="security.permission_denied",
+            entity_type="Group", entity_id=str(self.group.id)).exists())
+        # 保存动作本身不得制造 ERROR 级不一致
+        self.assertEqual(registry_errors(validate_registry()), [])
+
+    def test_forged_post_with_old_form_save_endpoint_changes_nothing(self):
+        """旧 form 保存入口已废弃为兼容跳转：POST 它不再执行任何授权变更。"""
+        held_before = set(self.group.permissions.values_list(
+            "content_type__app_label", "codename"))
         response = self.client.post("/platform/permissions/save/", {
             "role": str(self.group.id),
-            "perm": self.FORGED_PERMS,
+            "perm": ["add_food", "delete_park"],
         })
         self.assertEqual(response.status_code, 302)
-        held = self._held_hotelapp_codenames()
-        slipped = {code for code in self.FORGED_PERMS if code in held}
-
-        findings = validate_registry()
-        if slipped:
-            # 矩阵白名单放行了 PLANNED 模块权限码 → 注册表必须发现漂移
-            flagged = {w["message"] for w in findings
-                       if w["code"] == "planned_module_granted"}
-            for code in slipped:
-                self.assertTrue(
-                    any(code in message for message in flagged),
-                    f"伪造授权的 PLANNED 权限码 {code} 未被注册表校验发现")
-        else:
-            # 若白名单拒绝（Phase 3 修复后的形态）→ 直接断言拒绝生效
-            self.assertEqual(slipped & set(self.FORGED_PERMS), set())
-        # 无论哪个分支，保存动作本身不得制造 ERROR 级不一致
-        self.assertEqual(registry_errors(findings), [])
-
-    def test_forged_post_with_out_of_whitelist_code_is_still_blocked(self):
-        """白名单外权限码（跨 App 专项码）仍被矩阵保存拒绝。"""
-        self.client.post("/platform/permissions/save/", {
-            "role": str(self.group.id),
-            "perm": ["identity.staff_manage", "billing.refund_approve"],
-        })
-        held_any_app = set(self.group.permissions.values_list(
+        self.assertEqual(response["Location"], "/platform/permissions/")
+        held_after = set(self.group.permissions.values_list(
             "content_type__app_label", "codename"))
-        self.assertNotIn(("identity", "staff_manage"), held_any_app)
-        self.assertNotIn(("billing", "refund_approve"), held_any_app)
+        self.assertEqual(held_before, held_after, "废弃入口不得变更授权")
+        self.assertEqual(registry_errors(validate_registry()), [])
+
+    def test_cross_app_special_codes_now_grantable_via_center(self):
+        """注册表内跨 App 专项码（F-09 收敛）：经高危确认流程可正常授予并留审计。"""
+        proposed = ["identity.staff_manage", "billing.refund_approve"]
+        confirm = self.client.post(
+            f"/platform/api/permissions/{self.group.id}/confirm-token/",
+            data=json.dumps({"permissions": proposed}),
+            content_type="application/json")
+        self.assertEqual(confirm.status_code, 200, confirm.content)
+        token = confirm.json()["token"]
+        payload = json.dumps({
+            "permissions": proposed,
+            "version": self._current_version(),
+            "reason": "F-09 收敛：跨 App 专项权经注册表面授予",
+            "confirm_token": token,
+        })
+        response = self.client.post(
+            f"/platform/api/permissions/{self.group.id}/save/",
+            data=payload, content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(self.group.permissions.filter(
+            content_type__app_label="identity", codename="staff_manage").exists())
+        self.assertTrue(self.group.permissions.filter(
+            content_type__app_label="billing", codename="refund_approve").exists())
+        self.assertTrue(AuditEvent.objects.filter(
+            action="permissions.matrix_saved",
+            entity_type="Group", entity_id=str(self.group.id)).exists())
         self.assertEqual(registry_errors(validate_registry()), [])
 
     def test_planned_module_grant_baseline_is_pinned(self):

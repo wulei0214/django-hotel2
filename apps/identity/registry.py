@@ -10,11 +10,13 @@
 权威性声明：
   * hotelapp/views.py 的 MODULE_REGISTRY 已改为从本注册表派生（module_gate
     行为保持不变：food/order/park 仍隐藏）。
-  * apps/identity/permission_admin.py 的 MODULES/ACTION_PERMS（矩阵页 41 点
-    白名单）**将于 Phase 3 权限中心重构时迁移到本注册表**；Phase 2 期间它是
-    矩阵页的临时事实源，两处如有冲突以本注册表为准（缺口 F-09 的收敛路径）。
+  * Phase 3 权限中心重构（§8）完成后：旧矩阵页白名单
+    （permission_admin.MODULES/ACTION_PERMS/ALL_CODENAMES，41 点，N-1 缺口）
+    已从代码路径上移除，授权面唯一权威为本注册表——读写走
+    apps/identity/permission_center.py，allowed = ACTIVE 模块码 ∪
+    SPECIAL_PERMISSIONS，PLANNED/RETIRED 模块码一律整体拒绝。
   * 本注册表只做"定义 + 校验"，不改 AuthorizationService 运行时逻辑，
-    不新增数据库 migration，不改矩阵 UI。
+    不新增数据库 migration。
 
 数据来源（审计基线 main@ad13c28）：
   * docs/audit/phase0/11-permissions.md  263 权限点逐点清单
@@ -313,9 +315,9 @@ MODULE_REGISTRY_V2 = {
             "special": NOT_APPLICABLE,
         },
         "extra_codes": (),
-        "notes": "/platform/permissions/ 矩阵页 + Django Admin（is_staff+模型权限）；"
-                 "矩阵页 41 点白名单（permission_admin.MODULES/ACTION_PERMS）"
-                 "Phase 3 迁移入本注册表。",
+        "notes": "/platform/permissions/ 四区矩阵页 + Django Admin（is_staff+模型权限）；"
+                 "Phase 3 起矩阵读写走 permission_center JSON API，授权面由本注册表派生"
+                 "（旧 41 点白名单已移除，N-1 修复）。",
     },
 }
 

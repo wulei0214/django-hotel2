@@ -1,115 +1,71 @@
 {% extends "platform/base.html" %}
-{# 角色权限矩阵（超管专属，§6.1 迁移至 /platform/permissions/）：行=模块，列=查看/新增/修改/删除；查看同时决定菜单可见性 #}
-{% block title %}角色权限管理{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="/static/css/perm_admin.css?v=2">{% endblock %}
+{% comment %} 权限管理中心（§8.1 四区重构）：左=角色目录，中=注册表模块×动作矩阵，
+右=影响范围/持有专项/最近保存审计，底部=变更摘要+理由+高危二次确认。
+读写走 /platform/api/permissions/ JSON API（内容 hash 并发保护 + 同事务审计）。{% endcomment %}
+{% load static %}
+{% block title %}权限管理中心{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="/static/css/permission_center.css?v=1">{% endblock %}
 {% block content %}
-<div class="perm-head">
+<div class="pc-head">
     <div>
-        <h2>角色权限管理</h2>
-        <p class="perm-code">正在编辑角色：
-            {% for name, g in roles %}
-            <a class="role-tab {% if g.id == group.id %}role-active{% endif %}" href="?role={{ g.id }}">{{ name }}</a>
-            {% endfor %}
-            {% for name in reserved_roles %}
-            <span class="role-tab role-reserved" title="预留角色，后续版本启用">{{ name }}（预留）</span>
-            {% endfor %}
-        </p>
-        <p class="perm-code perm-note">提示：「查看」同时控制该模块在 PMS 菜单中的可见性；超级管理员拥有全部权限，不受本页控制。灰显模块已对接第三方（预留），保存时权限随之回收。</p>
+        <h2>权限管理中心</h2>
+        <p class="pc-scope-notice">平台超管拥有平台域管理权限；PMS 业务权限仍以员工任职和岗位授权为准</p>
     </div>
     <div class="perm-actions">
         <a class="perm-btn" href="/platform/">← 返回平台首页</a>
     </div>
 </div>
 
-<form action="/platform/permissions/save/" method="post">
-    {% csrf_token %}
-    <input type="hidden" name="role" value="{{ group.id }}">
-    <div class="perm-panel matrix-panel">
-        <table class="matrix-table">
-            <tr>
-                <th class="mx-module">业务模块</th>
-                {% for a in actions %}
-                <th class="mx-action">{{ a.label }}</th>
-                {% endfor %}
-                <th class="mx-rowall">整行全选</th>
-            </tr>
-            {% for m in modules %}
-            <tr {% if m.reserved %}class="mx-reserved" title="已对接第三方系统，模块隐藏中（预留）"{% endif %}>
-                <td class="mx-module">{{ m.label }}{% if m.reserved %}<span class="mx-tag">预留</span>{% endif %}</td>
-                {% for a in m.actions %}
-                <td class="mx-cell">
-                    <input type="checkbox" name="perm" value="{{ a.action }}_{{ m.key }}"
-                           class="mx-check" data-module="{{ m.key }}" data-action="{{ a.action }}"
-                           {% if m.reserved %}disabled{% endif %}
-                           {% if a.checked and not m.reserved %}checked{% endif %}>
-                </td>
-                {% endfor %}
-                <td class="mx-cell"><input type="checkbox" class="mx-rowall" data-module="{{ m.key }}" {% if m.reserved %}disabled{% endif %}></td>
-            </tr>
-            {% endfor %}
-            <tr class="mx-footer">
-                <td>全选所有模块</td>
-                {% for a in actions %}
-                <td class="mx-cell"><input type="checkbox" class="mx-colall" data-action="{{ a.action }}"></td>
-                {% endfor %}
-                <td class="mx-cell"><input type="checkbox" id="mx-all"></td>
-            </tr>
-        </table>
-    </div>
-    <div class="perm-panel matrix-panel">
-        <h3 class="perm-section-title">高危动作（独立权限点，默认仅值班经理/店长）</h3>
-        <table class="matrix-table action-table">
-            {% for p in action_perms %}
-            <tr>
-                <td class="mx-module">{{ p.label }}</td>
-                <td class="mx-cell mx-desc">{{ p.desc }}</td>
-                <td class="mx-cell">
-                    <input type="checkbox" name="perm" value="{{ p.code }}"
-                           class="mx-action-check" {% if p.checked %}checked{% endif %}>
-                </td>
-            </tr>
-            {% empty %}
-            <tr><td colspan="3" class="empty-row">暂无高危操作权限记录</td></tr>
-            {% endfor %}
-        </table>
-    </div>
-    <div class="perm-save-bar">
-        <span>已勾选 <b id="perm-count">{{ perm_total }}</b> / {{ perm_all_count }} 项权限 ·
-            保存后立即生效（无需重启）</span>
-        <button type="submit" class="perm-save-btn">保存权限</button>
-    </div>
-</form>
+{{ bootstrap_json|json_script:"pc-bootstrap" }}
+{# CSRF_USE_SESSIONS=True：令牌在 DOM 隐藏域（无 csrftoken cookie），JS 从此取值放 X-CSRFToken #}
+<form id="pc-csrf" hidden>{% csrf_token %}</form>
 
-<script>
-    // 权限矩阵联动：整行全选 / 整列全选 / 全部全选，以及单元格变化时的统计
-    document.addEventListener('change', function (e) {
-        var t = e.target;
-        if (t.id === 'mx-all') {
-            document.querySelectorAll('.mx-check').forEach(function (i) { i.checked = t.checked; });
-            document.querySelectorAll('.mx-action-check').forEach(function (i) { i.checked = t.checked; });
-            document.querySelectorAll('.mx-rowall, .mx-colall').forEach(function (i) { i.checked = t.checked; });
-        } else if (t.classList.contains('mx-rowall')) {
-            document.querySelectorAll('.mx-check[data-module="' + t.dataset.module + '"]')
-                .forEach(function (i) { i.checked = t.checked; });
-        } else if (t.classList.contains('mx-colall')) {
-            document.querySelectorAll('.mx-check[data-action="' + t.dataset.action + '"]')
-                .forEach(function (i) { i.checked = t.checked; });
-        } else if (t.classList.contains('mx-check')) {
-            var boxes = document.querySelectorAll('.mx-check[data-module="' + t.dataset.module + '"]');
-            var row = document.querySelector('.mx-rowall[data-module="' + t.dataset.module + '"]');
-            if (row) { row.checked = [...boxes].every(function (i) { return i.checked; }); }
-            var col = document.querySelector('.mx-colall[data-action="' + t.dataset.action + '"]');
-            if (col) {
-                var same = document.querySelectorAll('.mx-check[data-action="' + t.dataset.action + '"]');
-                col.checked = [...same].every(function (i) { return i.checked; });
-            }
-        }
-        document.getElementById('perm-count').textContent =
-            document.querySelectorAll('.mx-check:checked').length +
-            document.querySelectorAll('.mx-action-check:checked').length;
-    });
-    document.getElementById('perm-count').textContent =
-        document.querySelectorAll('.mx-check:checked').length +
-        document.querySelectorAll('.mx-action-check:checked').length;
-</script>
+<div class="pc-layout">
+    {# ---- 左区：角色列表 ---- #}
+    <aside class="pc-card pc-roles" aria-label="角色列表">
+        <h3 class="pc-zone-title">角色目录</h3>
+        <ul id="pc-role-list" class="pc-role-list"></ul>
+        <p class="pc-zone-hint">现役角色可直接编辑授权；预留角色随对应模块启用后授权。</p>
+    </aside>
+
+    {# ---- 中区：模块×动作矩阵（registry 驱动） ---- #}
+    <section class="pc-card pc-matrix" aria-label="权限矩阵">
+        <h3 class="pc-zone-title">模块 × 动作矩阵</h3>
+        <p class="pc-zone-hint">矩阵由注册表驱动：「查看」同时决定模块菜单可见性；
+            预留/退役模块置灰只读，其权限码不可授予（保存时服务端整体拒绝）。</p>
+        <div id="pc-matrix-box"></div>
+        <h3 class="pc-zone-title pc-special-title">专项权限（高危/敏感点）</h3>
+        <p class="pc-zone-hint">触及任一专项权限的变更需二次确认（确认令牌 10 分钟内有效）。</p>
+        <div id="pc-special-box"></div>
+    </section>
+
+    {# ---- 右区：影响范围 ---- #}
+    <aside class="pc-card pc-impact" aria-label="影响范围">
+        <h3 class="pc-zone-title">影响范围</h3>
+        <div id="pc-impact-box"><p class="pc-empty">左侧选择角色后展示。</p></div>
+        <h3 class="pc-zone-title">持有专项权限</h3>
+        <div id="pc-held-box"><p class="pc-empty">—</p></div>
+        <h3 class="pc-zone-title">最近矩阵保存审计</h3>
+        <div id="pc-audit-box"><p class="pc-empty">—</p></div>
+    </aside>
+</div>
+
+{# ---- 底部确认区：变更摘要 + 理由 + 高危二次确认 ---- #}
+<section class="pc-card pc-confirm" aria-label="确认保存">
+    <h3 class="pc-zone-title">确认保存</h3>
+    <div id="pc-diff-summary" class="pc-diff-summary"><p class="pc-empty">暂无变更。</p></div>
+    <div class="pc-confirm-row">
+        <label for="pc-reason">变更理由（必填，1-240 字符，写入审计）</label>
+        <input type="text" id="pc-reason" maxlength="240" autocomplete="off"
+               placeholder="例如：餐饮模块启用前回收历史预留授权">
+    </div>
+    <div class="pc-confirm-row pc-actions-row">
+        <button type="button" id="pc-step-btn" class="perm-save-btn" disabled>保存权限</button>
+        <span id="pc-step-hint" class="pc-step-hint"></span>
+        <span id="pc-count" class="pc-count"></span>
+    </div>
+    <div id="pc-result" class="pc-result" hidden></div>
+</section>
+
+<script src="/static/js/permission_center.js?v=1" defer></script>
 {% endblock %}
