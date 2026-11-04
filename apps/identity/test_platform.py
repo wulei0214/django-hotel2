@@ -8,6 +8,7 @@ platform_superadmin_check 体检命令。
 import io
 from contextlib import redirect_stdout
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.management import call_command
@@ -305,8 +306,14 @@ class SystemPageSplitTests(TestCase):
         for marker in ("李测试", "赵同事", "pf_me", "pf_other", "E-pf_me",
                        "AD-", "工号", "姓名", "任职"):
             self.assertNotIn(marker, content, f"平台环境页不得包含 PII：{marker}")
-        for env_marker in ("DEBUG", "运行模式", "时区", "会话", "API 基址"):
+        for env_marker in ("DEBUG", "运行环境", "时区", "会话", "安全", "部署"):
             self.assertIn(env_marker, content)
+        for internal_value in ("API 基址", "admin_sessionid", "sessionid", "DEFAULT"):
+            self.assertNotIn(internal_value, content)
+        if settings.DEBUG:
+            self.assertIn("pf-status-danger", content)
+        else:
+            self.assertIn("pf-status-ok", content)
 
     def test_pms_session_cannot_reach_platform_system_page(self):
         """PMS 员工会话访问 /platform/system/ → 302（域隔离保持）"""
