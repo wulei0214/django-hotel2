@@ -71,3 +71,59 @@
 .pf-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; margin-top: 18px; }
 .dash-card { background: #fff; border: 1px solid #e4e7ed; border-radius: 8px; padding: 18px 20px; }
 .dash-card h4 { margin: 0 0 12px; color: #303133; font-size: 15px; }
+
+
+/* 平台管理门户信息架构与响应式优化 */
+.pf-main { width: min(100%, 1480px); margin: 0 auto !important; padding: 30px 32px 52px !important; }
+.pf-heading { margin-bottom: 22px; }
+.pf-heading h2 { font-size: 24px; font-weight: 650; letter-spacing: -.02em; }
+.pf-heading p { line-height: 1.65; }
+.pf-home-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.pf-card { min-height: 218px; display: flex; flex-direction: column; align-items: flex-start; }
+.pf-card-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: #eef3fb; color: #315f9c; font-weight: 700; margin-bottom: 16px; }
+.pf-card h4 { font-size: 17px; margin-bottom: 8px; }
+.pf-card p { color: #687386; font-size: 14px; line-height: 1.7; flex: 1; }
+.pf-card a.pf-card-link { margin-top: 12px; }
+.pf-boundary { margin-top: 22px; padding: 13px 16px; border: 1px solid #e5eaf1; border-radius: 8px; background: #f8fafc; color: #465368; font-size: 13px; }
+.pf-cross-links { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-top: 18px; color: #7b8494; font-size: 13px; }
+.pf-cross-links a { color: #2867b2; text-decoration: none; }
+.pf-cross-links a:hover { text-decoration: underline; }
+.pf-system-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.pf-system-card { min-width: 0; background: #fff; border: 1px solid #e3e8ef; border-radius: 10px; padding: 22px 24px; box-shadow: 0 2px 8px rgba(24, 39, 60, .035); }
+.pf-system-card h3 { margin: 0 0 16px; padding-left: 11px; border-left: 3px solid #3978c6; color: #253247; font-size: 16px; }
+.pf-info-list { margin: 0; }
+.pf-info-list > div { display: grid; grid-template-columns: minmax(145px, 38%) minmax(0, 1fr); gap: 14px; padding: 9px 0; border-bottom: 1px solid #f0f2f5; font-size: 14px; }
+.pf-info-list > div:last-child { border-bottom: 0; }
+.pf-info-list dt { color: #687386; }
+.pf-info-list dd { margin: 0; color: #293548; overflow-wrap: anywhere; }
+.pf-status { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.pf-status-ok { color: #176b45; background: #e8f5ee; }
+.pf-status-warn { color: #875a12; background: #fff4dc; }
+.pf-status-danger { color: #a52b2b; background: #fdecec; }
+.pf-risk-note { margin: 14px 0 0; padding: 10px 12px; border-radius: 6px; background: #fff1f0; color: #a52b2b; font-size: 13px; line-height: 1.6; }
+.pf-muted-note { margin: 14px 0 0; color: #778296; font-size: 13px; }
+.pf-permissions { min-width: 0; }
+.pf-permissions .matrix-panel { overflow-x: auto; }
+.pf-permissions .matrix-table { min-width: 720px; }
+.pf-permissions .perm-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.pf-permissions .role-tab { display: inline-flex; align-items: center; margin: 4px 6px 4px 0; }
+.pf-permissions .perm-save-bar { position: sticky; bottom: 0; z-index: 2; }
+
+@media (max-width: 1100px) {
+    .pf-home-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pf-topbar { gap: 14px; padding: 0 18px; flex-wrap: wrap; }
+    .pf-nav { flex-wrap: wrap; }
+}
+@media (max-width: 767px) {
+    .main.pf-main { padding: 22px 16px 36px !important; }
+    .pf-topbar { align-items: flex-start; padding: 12px 16px 0; gap: 8px; }
+    .pf-brand { width: 100%; }
+    .pf-nav { order: 3; width: 100%; gap: 2px; overflow-x: auto; }
+    .pf-nav a { white-space: nowrap; padding: 12px 10px; font-size: 13px; }
+    .pf-user { position: absolute; top: 16px; right: 16px; }
+    .pf-home-grid, .pf-system-grid { grid-template-columns: minmax(0, 1fr); }
+    .pf-card { min-height: 0; }
+    .pf-system-card { padding: 18px 16px; }
+    .pf-info-list > div { grid-template-columns: minmax(110px, 42%) minmax(0, 1fr); gap: 10px; }
+    .pf-cross-links { gap: 12px; }
+}
