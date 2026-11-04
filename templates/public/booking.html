@@ -81,6 +81,7 @@
           const cancelButton = byId("cancel-button");
 
           let selectedRoom = null;
+          let autoReselectTypeId = null;
           let activeReservation = null;
           let idempotencyKey = null;
           let lastAvailability = [];
@@ -132,6 +133,21 @@
             byId("summary-room-type").textContent = "尚未选择";
             byId("summary-total").textContent = "—";
             byId("room-count-label").textContent = lastAvailability.length + " 个房型";
+            // 取消预订后自动恢复原房型选中（库存已释放则按钮立即可用）
+            if (autoReselectTypeId) {
+              var restoreId = autoReselectTypeId;
+              autoReselectTypeId = null;
+              lastAvailability.forEach(function (room) {
+                if (room.room_type_id === restoreId &&
+                    room.available_count >= Number(roomsInput.value) &&
+                    room.total_amount !== null) {
+                  selectedRoom = room;
+                  byId("summary-room-type").textContent = room.room_type_name;
+                  byId("summary-total").textContent = "¥" + room.total_amount;
+                  bookButton.disabled = false;
+                }
+              });
+            }
 
             if (!lastAvailability.length) {
               roomList.appendChild(element("div", "empty", "当前日期没有配置可售房型或每日价格，请调整日期或联系酒店。"));
@@ -325,6 +341,19 @@
               paymentButton.hidden = true;
               cancelButton.hidden = true;
               setNotice(byId("payment-message"), "待支付预订已取消，库存 Hold 已释放。", "success");
+              // 体验优化：取消后无需刷新页面——清理订单状态、自动重查库存、
+              // 保留已填写的入住人信息与日期，用户可直接重新提交预订
+              activeReservation = null;
+              bookButton.disabled = false;
+              bookButton.hidden = false;
+              setTimeout(function () {
+                autoReselectTypeId = selectedRoom ? selectedRoom.room_type_id : null;
+                searchAvailability(new Event("submit"));
+                setNotice(bookingMessage,
+                          "已释放库存并刷新可订客房——原房型已自动重新选中，可直接重新提交预订。",
+                          "ok");
+                document.getElementById("booking").scrollIntoView({behavior: "smooth"});
+              }, 400);
             } catch (error) {
               setNotice(byId("payment-message"), error.message, "error");
               cancelButton.disabled = false;
