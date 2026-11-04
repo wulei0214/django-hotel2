@@ -42,6 +42,7 @@ def _staff_dto(profile, property_obj):
                 membership=membership).select_related("group"):
             active = a.starts_at <= now and (a.ends_at is None or a.ends_at > now)
             assignments.append({
+                "id": a.pk,
                 "role": a.group.name, "active": active,
                 "starts_at": a.starts_at.isoformat(),
                 "ends_at": a.ends_at.isoformat() if a.ends_at else None,

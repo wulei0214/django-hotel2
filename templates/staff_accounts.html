@@ -1,16 +1,11 @@
-<!-- 员工与账号管理（店长日常人事唯一入口）：列表/搜索/新增员工 -->
+<!-- 员工与账号管理（只读存档页）：写操作已迁移至员工中心 /manage/staff/（§10.1） -->
 {% load pms_filters %}
-{% if messages %}
-<div class="toast-box">
-    {% for m in messages %}<div class="toast {{ m.tags }}">{{ m }}</div>{% endfor %}
-</div>
-{% endif %}
 <!DOCTYPE html>
 {% load pms_filters %}
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>员工与账号管理 - 酒店管理系统</title>
+    <title>员工与账号管理（只读存档） - 酒店管理系统</title>
     <link rel="stylesheet" href="/static/css/site.css?v=14">
 </head>
 <body>
@@ -18,44 +13,16 @@
 {% include "_sidebar.html" %}
 <div class="main">
     <div class="list-head">
-        <h2>员工与账号管理</h2>
+        <h2>员工与账号管理（只读存档）</h2>
         <div class="toolbar">
             <button class="tb-btn" onclick="location.reload()">⟳ 刷新</button>
-            <button class="tb-btn tb-primary" id="btn-add">＋ 新增员工</button>
+            <a class="tb-btn tb-primary" href="/manage/staff/">前往员工中心（写操作）</a>
         </div>
     </div>
-    <p class="wb-note">本页是员工生命周期的唯一入口：建档 → DEFAULT 任职 → 开通账号 → 分配角色 → 在职管理。
-    薪酬维护请到员工管理（旧业务页）；Django Admin 仅平台维护用途。</p>
-
-    <div class="card card-hidden" id="form-card">
-        <h3 class="perm-section-title">新增员工（建档后可选择性开通账号与分配初始角色）</h3>
-        <form action="/staff_accounts/create/" method="post" class="wb-form">
-            {% csrf_token %}
-            <div class="wb-grid">
-                <label>姓名 *<input type="text" name="full_name" required maxlength="20" class="input"></label>
-                <label>店内工号 *<input type="text" name="employee_no" required maxlength="32" class="input" placeholder="如 F-0012"></label>
-                <label>岗位代码<input type="text" name="position_code" maxlength="32" class="input" placeholder="如 FO / HK / UNASSIGNED"></label>
-                <label>手机号<input type="text" name="phone" maxlength="11" class="input" placeholder="选填"></label>
-                <label>关联旧员工记录<select name="legacy_staff" class="input">
-                    <option value="">（不关联）</option>
-                    {% for s in unmapped_staff %}<option value="{{ s.员工id }}">{{ s.员工id }} - {{ s.姓名 }}</option>{% endfor %}
-                </select></label>
-            </div>
-            <div class="wb-grid">
-                <label class="wb-check"><input type="checkbox" id="wb-open-account"> 同时开通登录账号</label>
-            </div>
-            <div class="wb-grid card-hidden" id="wb-account-fields">
-                <label>登录账号<input type="text" name="username" maxlength="30" class="input" placeholder="3-30 位字母/数字"></label>
-                <label>初始密码<input type="text" name="password" maxlength="30" class="input" placeholder="至少 6 位，请线下告知本人"></label>
-            </div>
-            <div class="wb-roles">
-                <span class="wb-roles-label">初始角色（可多选，可稍后在详情页分配）：</span>
-                {% for r in workbench_roles %}
-                <label class="wb-role"><input type="checkbox" name="roles" value="{{ r }}"> {{ r }}</label>
-                {% endfor %}
-            </div>
-            <button type="submit" class="tb-btn tb-primary">保存</button>
-        </form>
+    <div class="card wb-note" role="status">
+        ⚠ 本页已于 §10.1 迁移：新增员工 / 开通账号 / 角色分配 / 结束授权 / 任职状态 / 密码重置
+        等写操作统一在 <a href="/manage/staff/">员工中心 /manage/staff/</a> 执行；
+        本页仅保留只读查询，旧写入口自动 302 跳转到员工中心。
     </div>
 
     <div class="card list-card">
@@ -100,14 +67,5 @@
 </div>
 <script src="/static/js/jquery-2.1.4.min.js"></script>
 <script src="/static/js/app.js?v=2"></script>
-<script>
-    document.getElementById('btn-add').addEventListener('click', function () {
-        var fc = document.getElementById('form-card');
-        fc.classList.toggle('card-hidden');
-    });
-    document.getElementById('wb-open-account').addEventListener('change', function () {
-        document.getElementById('wb-account-fields').classList.toggle('card-hidden', !this.checked);
-    });
-</script>
 </body>
 </html>

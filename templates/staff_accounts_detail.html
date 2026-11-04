@@ -1,4 +1,4 @@
-<!-- 员工详情：资料/任职/账号/角色授权历史/生命周期操作 -->
+<!-- 员工详情（只读存档页）：资料/任职/账号/角色授权历史；写操作已迁移员工中心（§10.1） -->
 {% if messages %}
 <div class="toast-box">
     {% for m in messages %}<div class="toast {{ m.tags }}">{{ m }}</div>{% endfor %}
@@ -8,7 +8,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>员工详情 - 酒店管理系统</title>
+    <title>员工详情（只读存档） - 酒店管理系统</title>
     <link rel="stylesheet" href="/static/css/site.css?v=14">
 </head>
 <body>
@@ -16,8 +16,16 @@
 {% include "_sidebar.html" %}
 <div class="main">
     <div class="list-head">
-        <h2>员工详情 · {{ profile.full_name }}</h2>
-        <div class="toolbar"><a class="tb-btn" href="/staff_accounts/">← 返回列表</a></div>
+        <h2>员工详情（只读存档） · {{ profile.full_name }}</h2>
+        <div class="toolbar">
+            <a class="tb-btn tb-primary" href="/manage/staff/?emp={{ profile.pk }}">在新工作台中管理此员工</a>
+            <a class="tb-btn" href="/staff_accounts/">← 返回列表</a>
+        </div>
+    </div>
+    <div class="card wb-note" role="status">
+        ⚠ 写操作已于 §10.1 迁移：开通账号 / 密码重置 / 任职状态 / 角色分配 / 结束授权
+        请在 <a href="/manage/staff/?emp={{ profile.pk }}">员工中心</a> 的操作面板中执行；
+        旧写入口自动 302 跳转到员工中心，本页仅保留只读展示。
     </div>
 
     <div class="card">
@@ -35,48 +43,10 @@
         </table>
     </div>
 
-    <div class="card">
-        <h3 class="perm-section-title">账号安全</h3>
-        <form action="/staff_accounts/{{ profile.pk }}/provision/" method="post" class="inline-filter wb-actions">
-            {% csrf_token %}
-            {% if not user %}
-            <input type="text" name="username" class="input input-w160" placeholder="登录账号" required maxlength="30">
-            <input type="text" name="password" class="input input-w220" placeholder="初始密码（≥6位，线下告知本人）" required>
-            <button type="submit" class="tb-btn tb-primary">开通账号</button>
-            {% else %}
-            <input type="text" name="password" class="input input-w220" placeholder="新密码（≥6位）" required>
-            <button type="submit" class="tb-btn">重置密码</button>
-            {% endif %}
-        </form>
-        <form action="/staff_accounts/{{ profile.pk }}/set_status/" method="post" class="inline-filter wb-actions">
-            {% csrf_token %}
-            <input type="text" name="reason" class="input input-w200" placeholder="原因（记入审计）">
-            {% if profile.employment_status == 'ACTIVE' %}
-            <button type="submit" name="status" value="SUSPENDED" class="tb-btn">暂停任职</button>
-            <button type="submit" name="status" value="TERMINATED" class="tb-btn btn-danger-solid">办理离职</button>
-            {% else %}
-            <button type="submit" name="status" value="ACTIVE" class="tb-btn tb-primary">恢复在职</button>
-            {% endif %}
-        </form>
-    </div>
-
-    <div class="card">
-        <h3 class="perm-section-title">分配角色（临时兼岗请设置结束时间，到期自动失效）</h3>
-        <form action="/staff_accounts/{{ profile.pk }}/assign_role/" method="post" class="inline-filter wb-actions">
-            {% csrf_token %}
-            <select name="role" class="input" required>
-                {% for r in workbench_roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
-            </select>
-            <input type="datetime-local" name="ends_at" class="input input-w200" title="结束时间（留空=长期）">
-            <input type="text" name="reason" class="input input-w180" placeholder="授权原因（记入审计）">
-            <button type="submit" class="tb-btn tb-primary">授权</button>
-        </form>
-    </div>
-
     <div class="card list-card">
         <h3 class="perm-section-title">角色授权历史（含已结束记录，不可物理删除）</h3>
         <table class="data-table">
-            <tr><th>角色</th><th>生效时间</th><th>结束时间</th><th>状态</th><th>授权人</th><th>操作</th></tr>
+            <tr><th>角色</th><th>生效时间</th><th>结束时间</th><th>状态</th><th>授权人</th></tr>
             {% for a in assignments %}
             <tr>
                 <td>{{ a.group.name }}</td>
@@ -84,15 +54,9 @@
                 <td>{{ a.ends_at|date:'Y-m-d H:i'|default:'—' }}</td>
                 <td>{% if a.ends_at and a.ends_at <= now %}<span class="badge void-badge">已结束</span>{% else %}<span class="badge ok-badge">生效中</span>{% endif %}</td>
                 <td>{{ a.granted_by.username|default:'—' }}</td>
-                <td>{% if not a.ends_at or a.ends_at > now %}
-                    <form action="/staff_accounts/{{ profile.pk }}/end_assignment/{{ a.pk }}/" method="post" class="form-inline">
-                        {% csrf_token %}
-                        <input type="hidden" name="reason" value="手动结束">
-                        <button type="submit" class="tb-btn">结束授权</button>
-                    </form>{% endif %}</td>
             </tr>
             {% empty %}
-            <tr><td colspan="6" class="empty-row">暂无授权记录</td></tr>
+            <tr><td colspan="5" class="empty-row">暂无授权记录</td></tr>
             {% endfor %}
         </table>
     </div>

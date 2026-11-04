@@ -50,6 +50,9 @@ from django.http import HttpResponseForbidden
 from apps.identity.authorization import AuthorizationService
 
 MANAGEMENT_CENTERS = {
+    # §10.1：staff 中心的通用注册表页已被员工中心专属工作台
+    # （apps/identity/staff_center_views.py + templates/pms/staff_center.html）取代，
+    # /manage/staff/ 路由优先命中专属视图；本条目仅保留读取契约（列/端点）备查。
     "staff": {
         "title": "员工中心", "subtitle": "员工档案、物业任职、角色授权与账号状态",
         "permission": "identity.staff_manage", "endpoint": "/api/v1/staff",

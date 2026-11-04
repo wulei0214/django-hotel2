@@ -71,20 +71,49 @@ def register_document(*, guest, doc_type, doc_no, verified_by=None,
     return doc
 
 
+def _require_reveal_reason(reason):
+    """§10.2：PII 揭示理由强制——空白理由一律拒绝（fail-closed）。"""
+    reason = str(reason or "").strip()
+    if not reason:
+        raise ValueError("揭示必须填写理由")
+    return reason[:240]
+
+
 def reveal_document(document, *, revealed_by, reason="", request=None):
-    """揭示证件完整值：需要 `guests.document.reveal` 权限；每次写 AuditEvent。"""
+    """揭示证件完整值：需要 `guests.document.reveal` 权限；reason 必填；每次写 AuditEvent。"""
     # P1-01（方案 §9.1）：证件揭示唯一正式权限码 hotelapp.guest_document_reveal；
     # 业务授权统一 AuthorizationService（物业范围 + 岗位权限）
     from apps.identity.authorization import AuthorizationService
     if not AuthorizationService.has_permission(
             revealed_by, document.guest.property, "hotelapp.guest_document_reveal"):
         raise PermissionDenied("揭示证件完整值需要独立权限")
+    # Phase 5-B（方案 §10.2）：理由为空/全空白 → 拒绝，且不产生揭示值与审计
+    reason = _require_reveal_reason(reason)
     plain = decrypt_doc_no(document.doc_no_ciphertext)
     AuditEvent.record(
         action="guest.document_reveal", entity_type="GuestDocument",
         entity_id=document.pk, actor=revealed_by, property_obj=document.guest.property,
-        after={"masked": _mask(plain)}, reason=reason[:240], request=request)
+        after={"masked": _mask(plain)}, reason=reason, request=request)
     return plain
+
+
+def reveal_phone(phone, *, revealed_by, reason="", request=None):
+    """揭示电话完整值：需要 `hotelapp.guest_phone_reveal` 权限；reason 必填；每次写 AuditEvent。
+
+    与 reveal_document 同构（§10.2 双权分离）：服务层为唯一正式写入口，
+    API 层（guest_center.guest_reveal_phone）在其上叠加 8-240 字符长度策略。
+    """
+    from apps.identity.authorization import AuthorizationService
+    if not AuthorizationService.has_permission(
+            revealed_by, phone.guest.property, "hotelapp.guest_phone_reveal"):
+        raise PermissionDenied("揭示电话完整值需要独立权限")
+    # Phase 5-B（方案 §10.2）：理由为空/全空白 → 拒绝，且不产生揭示值与审计
+    reason = _require_reveal_reason(reason)
+    AuditEvent.record(
+        action="guest.phone_reveal", entity_type="GuestPhone",
+        entity_id=phone.pk, actor=revealed_by, property_obj=phone.guest.property,
+        after={"masked": _mask(phone.phone)}, reason=reason, request=request)
+    return phone.phone
 
 
 def _mask(value):

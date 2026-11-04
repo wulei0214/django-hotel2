@@ -312,11 +312,12 @@ class UnifiedAuthorizationTests(TestCase):
         unapproved = Group.objects.create(name="Unapproved Global Admin")
 
         self.client.force_login(manager)
+        # §10.1：员工写操作已迁移员工中心 /manage/staff/actions/（旧写路由 302 退役）
         response = self.client.post(
-            f"/staff_accounts/{profile.pk}/assign_role/",
+            f"/manage/staff/actions/{profile.pk}/assign_role/",
             {"role": unapproved.name, "reason": "伪造角色提交"},
         )
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 400)
         self.assertFalse(
             StaffRoleAssignment.objects.filter(
                 membership=membership, group=unapproved
@@ -681,15 +682,16 @@ class StaffWorkbenchGUITests(TestCase):
         self.assertEqual(self.client.get("/staff_accounts/").status_code, 403)
 
     def test_workbench_create_employee_flow(self):
-        """GUI 新增员工：建档+开账号+初始角色 全流程（STAFF-02）"""
+        """员工中心新增员工：建档+开账号+初始角色 全流程（STAFF-02；§10.1 迁移）"""
         self.client.force_login(self.owner)
-        response = self.client.post("/staff_accounts/create/", {
+        # §10.1：写操作走 /manage/staff/actions/create/，成功返回 200 JSON 封套
+        response = self.client.post("/manage/staff/actions/create/", {
             "full_name": "工作台新员工", "employee_no": "F-3001",
             "position_code": "FO", "phone": "",
             "username": "wb3001", "password": "wb3001-pass",
             "roles": ["前台", "客房服务员"],
         })
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 200)
         from apps.identity.models import StaffProfile
         profile = StaffProfile.objects.get(full_name="工作台新员工")
         user = User.objects.get(username="wb3001")
@@ -729,16 +731,16 @@ class SegregationOfDutiesTests(TestCase):
         self.assertEqual(profile.employment_status, "ACTIVE")
 
     def test_workbench_blocks_self_operations(self):
-        """GUI 层同样被拦截：给自己授权/离职返回错误提示"""
+        """员工中心同样被拦截：给自己授权/离职 → 400（§10.1 迁移后错误契约）"""
         self.client.force_login(self.owner)
         profile = StaffProfile.objects.get(user=self.owner)
-        response = self.client.post(f"/staff_accounts/{profile.pk}/assign_role/", {
+        response = self.client.post(f"/manage/staff/actions/{profile.pk}/assign_role/", {
             "role": "财务", "reason": "自我提权尝试"})
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 400)
         self.assertFalse(self.owner.groups.filter(name="财务").exists())
-        response = self.client.post(f"/staff_accounts/{profile.pk}/set_status/", {
+        response = self.client.post(f"/manage/staff/actions/{profile.pk}/set_status/", {
             "status": "TERMINATED", "reason": "自离"})
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 400)
         profile.refresh_from_db()
         self.assertEqual(profile.employment_status, "ACTIVE")
 

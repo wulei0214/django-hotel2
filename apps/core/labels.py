@@ -77,3 +77,12 @@ def member_level_label(code):
 
 def folio_summary_status_label(code):
     return FOLIO_SUMMARY_STATUS_LABELS.get(code, code)
+
+def payment_status_labels():
+    from apps.billing.models import Payment
+    return choice_labels(Payment.Status)
+
+
+def refund_status_labels():
+    from apps.billing.models import Refund
+    return choice_labels(Refund.Status)

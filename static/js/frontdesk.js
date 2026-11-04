@@ -170,7 +170,7 @@
             var badge = badgeFor(room, "rooms");
             card.appendChild(element("span", "fd-status fd-status-" + badge[1], badge[0]));
             card.appendChild(element("span", "", "占用：" + (room.occupancy_label || room.occupancy_status) + " · 清洁：" + (room.housekeeping_label || room.housekeeping_status)));
-            card.appendChild(element("span", "", "维修：" + room.maintenance_status));
+            card.appendChild(element("span", "", "维修：" + (room.maintenance_label || room.maintenance_status)));
             grid.appendChild(card);
         });
         cell.appendChild(grid);
@@ -649,12 +649,12 @@
                 var paymentNode = element("div", "fd-folio-entry");
                 paymentNode.appendChild(element("span", "",
                     (payment.provider === "frontdesk_deposit" ? "押金" : "支付") + " · " +
-                    payment.method + " · " + payment.status));
+                    payment.method + " · " + (payment.status_label || payment.status));
                 paymentNode.appendChild(element("b", "", money(payment.amount, payment.currency)));
                 box.appendChild(paymentNode);
                 (payment.refunds || []).forEach(function (refund) {
                     var refundNode = element("div", "fd-folio-entry");
-                    refundNode.appendChild(element("span", "", "退款 " + refund.status + " · " + refund.reason));
+                    refundNode.appendChild(element("span", "", "退款 " + (refund.status_label || refund.status) + " · " + refund.reason));
                     refundNode.appendChild(element("b", "", money(refund.amount, payment.currency)));
                     box.appendChild(refundNode);
                     if (refund.status === "PENDING" && actions.includes("approve_refund")) {

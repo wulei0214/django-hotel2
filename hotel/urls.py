@@ -6,6 +6,8 @@
   /check_unique/            唯一字段失焦查重接口（JSON）
   /index/ /insert/ ...      员工管理（index 即员工模块首页）
   /show_client/ ...         其余 7 个模块：show_/insert_/update_/delete_/search_ 五件套
+  /manage/staff/ ...        员工中心（§10.1：生命周期写工作台 + actions 写路由）
+  /staff_accounts/ ...      旧员工工作台：列表/详情保留只读，写路由 302 → /manage/staff/
   /admin/                   Django 后台（simpleui 主题，超管用）
   /platform/ ...            平台管理面（§6.1：首页/权限矩阵/环境信息；admin_sessionid 会话域）
   /platform/api/permissions/...  权限管理中心读写 API（§8，JSON + 内容 hash 并发保护）
@@ -36,6 +38,7 @@ from hotelapp import views
 from apps.identity import permission_admin
 from apps.identity import permission_center
 from apps.identity import platform as identity_platform
+from apps.identity import staff_center_views
 from apps.api import pages as api_pages
 from apps.api import openapi_schema
 
@@ -44,6 +47,15 @@ urlpatterns = [
     path('api/docs/', openapi_schema.swagger_ui, name='pms2_swagger_ui'),
     path('api/redoc/', openapi_schema.redoc_ui, name='pms2_redoc_ui'),
     path('reserve/', api_pages.public_booking_page, name='public_booking_page'),
+    # ---- 员工中心（§10.1：员工生命周期写工作台；PMS 会话域） ----
+    # 必须先于 manage/<center>/ 通用注册表路由匹配。
+    path('manage/staff/', staff_center_views.staff_center_page, name='staff_center'),
+    path('manage/staff/actions/create/', staff_center_views.staff_action_create, name='staff_center_create'),
+    path('manage/staff/actions/<int:pk>/provision/', staff_center_views.staff_action_provision, name='staff_center_provision'),
+    path('manage/staff/actions/<int:pk>/assign_role/', staff_center_views.staff_action_assign_role, name='staff_center_assign_role'),
+    path('manage/staff/actions/<int:pk>/end_assignment/<int:assignment_id>/', staff_center_views.staff_action_end_assignment, name='staff_center_end_assignment'),
+    path('manage/staff/actions/<int:pk>/set_status/', staff_center_views.staff_action_set_status, name='staff_center_set_status'),
+    path('manage/staff/actions/<int:pk>/reset_password/', staff_center_views.staff_action_reset_password, name='staff_center_reset_password'),
     path('manage/<str:center>/', api_pages.management_center_page, name='pms_management_center'),
     path('admin/', admin.site.urls),
     path('', views.home),
@@ -75,13 +87,14 @@ urlpatterns = [
     path('client/reveal_id/', views.client_reveal_id),
     path('vip/reveal_tel/', views.vip_reveal_tel),
     path('staff_accounts/', views.staff_accounts, name='staff_accounts'),
-    path('staff_accounts/create/', views.staff_accounts_create, name='staff_accounts_create'),
     path('staff_accounts/<int:pk>/', views.staff_accounts_detail, name='staff_accounts_detail'),
-    path('staff_accounts/<int:pk>/provision/', views.staff_accounts_provision, name='staff_accounts_provision'),
-    path('staff_accounts/<int:pk>/assign_role/', views.staff_accounts_assign_role, name='staff_accounts_assign_role'),
-    path('staff_accounts/<int:pk>/end_assignment/<int:assignment_id>/', views.staff_accounts_end_assignment, name='staff_accounts_end_assignment'),
-    path('staff_accounts/<int:pk>/set_status/', views.staff_accounts_set_status, name='staff_accounts_set_status'),
-    path('staff_accounts/<int:pk>/reset_password/', views.staff_accounts_reset_password, name='staff_accounts_reset_password'),
+    # ---- §10.1 步骤 7：旧写入口退役，只保留 302 兼容跳转 → /manage/staff/ ----
+    path('staff_accounts/create/', RedirectView.as_view(url='/manage/staff/', permanent=False), name='staff_accounts_create'),
+    path('staff_accounts/<int:pk>/provision/', RedirectView.as_view(url='/manage/staff/', permanent=False), name='staff_accounts_provision'),
+    path('staff_accounts/<int:pk>/assign_role/', RedirectView.as_view(url='/manage/staff/', permanent=False), name='staff_accounts_assign_role'),
+    path('staff_accounts/<int:pk>/end_assignment/<int:assignment_id>/', RedirectView.as_view(url='/manage/staff/', permanent=False), name='staff_accounts_end_assignment'),
+    path('staff_accounts/<int:pk>/set_status/', RedirectView.as_view(url='/manage/staff/', permanent=False), name='staff_accounts_set_status'),
+    path('staff_accounts/<int:pk>/reset_password/', RedirectView.as_view(url='/manage/staff/', permanent=False), name='staff_accounts_reset_password'),
     # ---- 平台身份域（§6.1）：/platform/ 平台管理面，会话域 admin_sessionid ----
     path('platform/', identity_platform.platform_home, name='platform_home'),
     path('platform/permissions/', permission_admin.permission_admin_page, name='platform_permissions'),

@@ -135,8 +135,12 @@ class EmployeeLifecycleService:
     # ---------- 开通/关联账号（STAFF-02） ----------
     @classmethod
     @transaction.atomic
-    def provision_account(cls, profile, *, username, password, granted_by=None):
-        """为已有档案开通登录账号（或修复缺失关联）；幂等：已绑定同账号直接返回。"""
+    def provision_account(cls, profile, *, username, password, granted_by=None,
+                          property_obj=None):
+        """为已有档案开通登录账号（或修复缺失关联）；幂等：已绑定同账号直接返回。
+
+        property_obj 仅用于审计事件归属（§10.1 迁移后员工中心统一走本方法）。
+        """
         User = get_user_model()
         username = (username or "").strip()
         if not username:
@@ -159,6 +163,12 @@ class EmployeeLifecycleService:
         profile.user = user
         profile.save(update_fields=("user", "must_change_password",
                                     "last_password_change", "updated_at"))
+        from apps.core.models import AuditEvent
+        AuditEvent.record(
+            action="identity.account_provision", entity_type="StaffProfile",
+            entity_id=profile.pk, actor=granted_by, property_obj=property_obj,
+            after={"account": username},
+            reason="开通登录账号；初始密码不落审计")
         audit.info("账号开通 user=%s 员工=%s(profile %s) 账号=%s",
                    getattr(granted_by, "username", "system"),
                    profile.full_name, profile.pk, username)

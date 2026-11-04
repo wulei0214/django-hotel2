@@ -621,7 +621,10 @@ def folio_detail(request, booking_no):
     charges = sum((item.amount for item in entries if item.amount > 0), Decimal("0.00"))
     credits = sum((-item.amount for item in entries if item.amount < 0), Decimal("0.00"))
     balance = sum((item.amount for item in entries), Decimal("0.00"))
-    summary = {"folio_id": folio.pk, "status": folio.status, "charges": str(charges), "credits": str(credits), "balance": str(balance), "currency": folio.currency}
+    summary = {"folio_id": folio.pk, "status": folio.status,
+               "status_label": L.folio_summary_status_label(folio.status),
+               "charges": str(charges), "credits": str(credits), "balance": str(balance), "currency": folio.currency,
+               "currency_label": L.currency_label(folio.currency)}
     return _response({
         "data": {
             "summary": summary,
@@ -629,10 +632,13 @@ def folio_detail(request, booking_no):
             "payments": [{
                 "id": item.pk, "provider": item.provider, "provider_ref": item.provider_ref,
                 "method": item.method, "amount": str(item.amount), "status": item.status,
+                "status_label": L.payment_status_labels().get(item.status, item.status),
                 "paid_at": item.paid_at.isoformat() if item.paid_at else None,
                 "refunds": [{
                     "id": refund.pk, "amount": str(refund.amount), "reason": refund.reason,
-                    "status": refund.status, "provider_ref": refund.provider_ref,
+                    "status": refund.status,
+                    "status_label": L.refund_status_labels().get(refund.status, refund.status),
+                    "provider_ref": refund.provider_ref,
                 } for refund in item.refunds.order_by("-created_at")],
             } for item in folio.payments.order_by("-created_at")],
             "allowed_actions": (["request_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_request") else [])
