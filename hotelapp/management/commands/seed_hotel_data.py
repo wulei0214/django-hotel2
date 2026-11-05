@@ -51,7 +51,8 @@ class Command(BaseCommand):
         is_test_database = environment == "test" and (
             (is_sqlite and (db_name in {"", ":memory:"} or "mode=memory" in db_name or "memorydb" in db_name)) or "test" in db_name
         )
-        if not (is_local_dev or is_test_database):
+        looks_production = any(marker in db_name for marker in ("prod", "production", "live"))
+        if looks_production or not (is_local_dev or is_test_database):
             raise CommandError(
                 "拒绝执行：酒店演示数据仅允许本机 DEBUG 开发数据库，"
                 "或名称包含 test 的专用测试数据库。"
