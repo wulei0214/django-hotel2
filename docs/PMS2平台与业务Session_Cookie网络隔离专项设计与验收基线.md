@@ -1,8 +1,8 @@
 # PMS2 平台与业务 Session Cookie 网络隔离专项设计与验收基线
 
-> 文档状态：P0 设计评审结论已确认（待实施）  
+> 文档状态：方案 A 已确认；服务端 Cookie 路由阶段 0-4 已实施；浏览器 E2E 与回滚演练待验收  
 > 决策状态：方案 A 已确认；预留未来独立管理子域名迁移  
-> 本轮范围：只形成设计与验收基线，不修改代码、配置、数据库、路由或现有认证行为  
+> 当前范围：本文件同时保留原设计约束和后续实施/验收记录；现状以最新 main 代码和实施记录为准  
 > 评审基线代码：main@909427fc23e1d5cb24ca132a0141615a8490174e  
 > 历史参考基线：8187a429ed4bc11efe2d544a0f5b5d006ee2bdec（仅用于追溯，不作为当前施工依据）  
 > 编制日期：2026-11-05
@@ -17,11 +17,11 @@ PMS2 当前主要入口：
 |---|---|---|
 | 客人预约 | /reserve/ | 公开预约流程及现有订单访问机制 |
 | PMS 员工工作台 | /login/、/home/ 等根路径 | PMS Session，Cookie 名称 sessionid |
-| 平台治理与数据维护 | /platform/*、/admin/* | 平台 Session，当前 Cookie 名称 admin_sessionid |
+| 平台治理与数据维护 | /platform/*、/admin/* | 平台 Session：platform_sessionid（/platform/）与 django_admin_sessionid（/admin/），同一 Session Key |
 
-当前 apps/identity/session_middleware.py 中的 SplitSessionMiddleware 根据请求路径选择读取的 Session Cookie。这是服务端会话读取隔离，不等于浏览器网络层发送隔离。
+> 历史现状（评审基线 main@909427f）：当时平台使用根路径 admin_sessionid，浏览器可能在 PMS 请求中携带平台 Cookie。以下风险描述用于说明专项起因，不再代表当前 main 配置。
 
-当前 SESSION_COOKIE_PATH 沿用 Django 全局配置；未显式配置时为 /。因此浏览器访问 /login/、/reserve/ 等路径时，也可能在 HTTP 请求头中携带 admin_sessionid。PMS 中间件虽然不读取该 Cookie，但凭证已经到达 Web 服务器、反向代理及可能的请求日志链路。
+当前 main 已按方案 A 实施双 Path Cookie：平台门户路径只使用 platform_sessionid（Path=/platform/），Django Admin 路径只使用 django_admin_sessionid（Path=/admin/）；两个 Cookie 对应同一平台 Session Key。历史 admin_sessionid 只发送过期删除指令，不再作为认证凭证读取。PMS sessionid 保持原路径和独立会话。真实浏览器请求/响应头仍须按 §11 的 E2E 矩阵留存证据。
 
 本专项补齐平台凭证的浏览器发送范围控制，同时保持原有身份授权规则。
 
@@ -355,7 +355,7 @@ PMS 登出只清理 PMS Session，不得清理两份平台 Cookie。
 
 # 设计修订：P0 可施工细化与 P1 运维验收补充
 
-> 本节为本次评审后的强制修订，优先级高于本文前文中相对概括的描述。原方案 A 决策不变。本节补齐前，文档状态仍为“设计待完善”，不得进入阶段 1 编码。
+> 历史评审修订说明：本节在原评审时曾标记“设计待完善、不得进入阶段 1 编码”。后续已按该规格完成服务端阶段 0-4 实施，代码和 38 项专项测试记录见 `docs/audit/phase0/35-cookie-isolation-impl.md`。当前剩余工作为阶段 5 浏览器 E2E 与阶段 6 上线/回滚演练；在取得真实浏览器证据前，不得标记整个 Cookie 网络隔离专项全部验收完成。
 
 ## A. P0-1 双 Cookie 状态机
 
