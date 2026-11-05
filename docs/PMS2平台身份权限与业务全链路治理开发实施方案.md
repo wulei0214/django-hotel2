@@ -203,7 +203,7 @@ Phase 0 的审查结果必须附最新 main SHA、检查命令、涉及文件、
 
 - 无平台 Session → /platform/permissions/ 跳 /admin/login/。
 - 仅有 PMS sessionid → 不得访问平台页。
-- 仅有 admin_sessionid 且满足三项不变量 → 平台页 200。
+- `/platform/*` 仅有 `platform_sessionid`，`/admin/*` 仅有 `django_admin_sessionid`，且满足三项不变量 → 对应平台入口允许访问；跨路径 Cookie 不回退认证。两份 Cookie 对应同一平台 Session Key。
 - 已登录但非超管 → 403，不跳登录。
 - is_superuser=True、is_staff=False → 拒绝平台访问并提供可审计修复路径。
 - is_staff=True、is_superuser=False → 不得访问平台管理中心。
