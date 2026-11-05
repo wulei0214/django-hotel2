@@ -61,7 +61,8 @@ class Command(BaseCommand):
             environment == "test"
             and (is_sqlite_memory or "test" in db_name)
         )
-        if not (is_local_dev or is_test_database):
+        looks_production = any(marker in db_name for marker in ("prod", "production", "live"))
+        if looks_production or not (is_local_dev or is_test_database):
             raise CommandError(
                 "拒绝执行：仅允许 DEBUG=True、DJANGO_ENV=dev 且数据库主机为本机，"
                 "或 DJANGO_ENV=test 且数据库名称明确包含 test（SQLite 内存库除外）。"
