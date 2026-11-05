@@ -1,32 +1,28 @@
 # -*- coding: utf-8 -*-
-"""为九个业务角色创建统一密码的测试账号（仅测试阶段使用）。
+"""创建九个业务角色的专用测试账号。
 
-用法：
-    python manage.py seed_role_test_accounts                 # 默认密码 Abc123456
-    python manage.py seed_role_test_accounts --password xxx  # 自定义统一密码
-
-行为：
-  * 九角色各建一个 test_* 账号（幂等，重复执行只重置密码/组）
-  * 同时把既有演示账号（front/manager/finance/owner）密码重置为统一密码，
-    方便测试阶段记忆——测试结束后请立即改密或禁用
-  * 每个账号补齐完整身份链（StaffProfile→Membership(DEFAULT)→RoleAssignment），
-    满足 staff_required 任职门禁
-  * DJANGO_ENV=prod 时拒绝执行（固定密码业务账号不允许出现在生产）
+仅允许 DEBUG=True 且 DJANGO_ENV=dev，或明确 DJANGO_ENV=test。
+密码通过终端 getpass 输入，不提供固定默认密码、不写入命令行参数。
+该命令只管理 test_* 专用账号，不重置历史演示账号。
 """
+import getpass
 import os
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.contrib.auth.password_validation import validate_password
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
 from apps.core.models import Property
-from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
+from apps.identity.models import (
+    PropertyStaffMembership,
+    StaffProfile,
+    StaffRoleAssignment,
+)
 
-DEFAULT_PASSWORD = "Abc123456"
-
-# 角色 → 测试账号
 ROLE_TEST_ACCOUNTS = [
     ("前台", "test_front"),
     ("值班经理", "test_duty"),
@@ -39,78 +35,95 @@ ROLE_TEST_ACCOUNTS = [
     ("停车安保", "test_parking"),
 ]
 
-# 既有演示账号（测试期一并统一密码）
-LEGACY_DEMO_ACCOUNTS = {
-    "front": "前台",
-    "manager": "值班经理",
-    "finance": "财务",
-    "owner": "店长",
-}
-
 
 class Command(BaseCommand):
-    help = "创建九角色统一密码测试账号（仅测试阶段；生产环境拒绝执行）"
-
-    def add_arguments(self, parser):
-        parser.add_argument("--password", default=DEFAULT_PASSWORD,
-                            help="统一测试密码（默认 Abc123456）")
+    help = "创建/更新九角色专用测试账号（禁止生产环境执行）"
 
     def handle(self, *args, **options):
-        # P1-08（方案 §9.4）：测试账号命令禁止在生产环境执行——
-        # 这些账号密码公开且仅靠固定岗位组授权，生产环境创建即成后门
-        from django.conf import settings as _s
-        if not _s.DEBUG and getattr(_s, "DJANGO_ENV", "dev") not in {"dev", "test"}:
-            raise CommandError("seed_role_test_accounts 禁止在生产环境执行（P1-08）。")
-        return self._handle(*args, **options)
+        environment = str(
+            getattr(settings, "DJANGO_ENV", None)
+            or os.environ.get("DJANGO_ENV", "")
+        ).strip().lower()
 
-    def _handle(self, *args, **options):
-        if os.environ.get("DJANGO_ENV", "dev").strip().lower() == "prod":
-            raise CommandError("生产环境禁止创建固定密码测试账号")
-        password = options["password"]
-        if len(password) < 6:
-            raise CommandError("密码至少 6 位")
+        allowed = (
+            (environment == "dev" and settings.DEBUG)
+            or environment == "test"
+        )
+        if not allowed:
+            raise CommandError(
+                "拒绝执行：仅允许 DEBUG=True 且 DJANGO_ENV=dev，"
+                "或明确设置 DJANGO_ENV=test。"
+            )
+
+        password = getpass.getpass("请输入九角色测试账号统一密码（不回显）：")
+        confirmation = getpass.getpass("请再次输入密码确认：")
+        if not password or password != confirmation:
+            raise CommandError("密码为空或两次输入不一致。")
+
         User = get_user_model()
+        probe_user = User(username="pms-role-test-password-validation")
+        try:
+            validate_password(password, user=probe_user)
+        except Exception as exc:
+            raise CommandError("密码未通过 Django 密码强度校验：%s" % exc)
+
         property_obj = Property.objects.filter(status="ACTIVE").order_by("id").first()
         if property_obj is None:
-            raise CommandError("没有可用物业，请先初始化 DEFAULT 物业")
+            raise CommandError("没有可用物业，拒绝创建测试员工任职。")
 
-        created = []
-        for role, username in ROLE_TEST_ACCOUNTS + [
-                (role, username) for username, role in LEGACY_DEMO_ACCOUNTS.items()]:
-            group = Group.objects.filter(name=role).first()
-            if group is None:
-                self.stdout.write(self.style.WARNING(f"跳过 {role}：角色组不存在"))
-                continue
-            user = User.objects.filter(username=username).first()
-            if user is None:
-                user = User.objects.create_user(username=username, password=password)
-                created.append(username)
-            # D-04：测试账号不再持有 is_staff（Admin 仅平台身份）；
-            # PMS 权限由角色组 + 身份链承载
-            user.is_active = True
-            user.set_password(password)
-            user.save()
-            # 员工岗位授权不得写入全局 User.groups；清除历史直授组残留。
-            user.groups.clear()
+        created_count = 0
+        with transaction.atomic():
+            for role, username in ROLE_TEST_ACCOUNTS:
+                group = Group.objects.filter(name=role).first()
+                if group is None:
+                    raise CommandError("角色组不存在，已回滚：%s" % role)
 
-            profile, _ = StaffProfile.objects.get_or_create(
-                user=user, defaults={"full_name": f"测试-{role}",
-                                     "employment_status": "ACTIVE"})
-            if not profile.employment_status:
-                profile.employment_status = "ACTIVE"
-                profile.save(update_fields=("employment_status",))
-            membership, _ = PropertyStaffMembership.objects.get_or_create(
-                property=property_obj, staff_profile=profile,
-                defaults={"employee_no": f"T-{username[-6:].upper()}",
-                          "position_code": role, "status": "ACTIVE"})
-            # 测试账号保持单一岗位：删除该任职上的其他测试授权，再授予目标角色。
-            StaffRoleAssignment.objects.filter(membership=membership).exclude(
-                group=group).delete()
-            StaffRoleAssignment.objects.get_or_create(
-                membership=membership, group=group,
-                defaults={"starts_at": timezone.now(), "granted_by": None})
-            self.stdout.write(f"  ✓ {username:<18} 角色={role}")
+                user, created = User.objects.get_or_create(username=username)
+                if created:
+                    created_count += 1
+                user.is_active = True
+                user.is_staff = False
+                user.set_password(password)
+                user.save()
+
+                # 认证账号不承载员工岗位授权；清除历史遗留直授组。
+                user.groups.clear()
+
+                profile, _ = StaffProfile.objects.get_or_create(
+                    user=user,
+                    defaults={
+                        "full_name": "测试-%s" % role,
+                        "employment_status": StaffProfile.EmploymentStatus.ACTIVE,
+                    },
+                )
+                if profile.employment_status != StaffProfile.EmploymentStatus.ACTIVE:
+                    profile.employment_status = StaffProfile.EmploymentStatus.ACTIVE
+                    profile.save(update_fields=["employment_status", "updated_at"])
+
+                membership, _ = PropertyStaffMembership.objects.get_or_create(
+                    property=property_obj,
+                    staff_profile=profile,
+                    defaults={
+                        "employee_no": "T-%s" % username.upper()[-20:],
+                        "position_code": role,
+                        "status": PropertyStaffMembership.Status.ACTIVE,
+                    },
+                )
+                if membership.status != PropertyStaffMembership.Status.ACTIVE:
+                    membership.status = PropertyStaffMembership.Status.ACTIVE
+                    membership.save(update_fields=["status", "updated_at"])
+
+                # 仅对专用 test_* 测试账号执行单角色收敛。
+                StaffRoleAssignment.objects.filter(
+                    membership=membership
+                ).exclude(group=group).delete()
+                StaffRoleAssignment.objects.get_or_create(
+                    membership=membership,
+                    group=group,
+                    defaults={"starts_at": timezone.now(), "granted_by": None},
+                )
+                self.stdout.write("已准备账号：%s（%s）" % (username, role))
 
         self.stdout.write(self.style.SUCCESS(
-            f"完成：新建 {len(created)} 个九角色测试账号。"
-            "统一密码未回显；请仅在本地/测试环境使用并定期轮换。"))
+            "九角色测试账号处理完成：新建 %s 个；密码未输出。" % created_count
+        ))
