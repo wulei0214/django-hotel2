@@ -14,9 +14,12 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
+from django.utils import timezone
 
 from apps.core.models import AuditEvent
-from apps.identity.models import StaffProfile
+from apps.identity.models import (
+    PropertyStaffMembership, StaffProfile, StaffRoleAssignment,
+)
 
 
 class Command(BaseCommand):
@@ -53,27 +56,55 @@ class Command(BaseCommand):
         db_name = self._check_target()
         User = get_user_model()
         users = list(User.objects.all().order_by("pk"))
-        profiles = set(
-            StaffProfile.objects.exclude(user_id__isnull=True)
-            .values_list("user_id", flat=True)
-        )
+        profiles_by_user = {}
+        for profile in StaffProfile.objects.all():
+            if profile.user_id:
+                profiles_by_user.setdefault(profile.user_id, []).append(profile)
+        memberships_by_profile = {}
+        for membership in PropertyStaffMembership.objects.select_related("property"):
+            memberships_by_profile.setdefault(membership.staff_profile_id, []).append(membership)
+        assignments_by_membership = {}
+        for assignment in StaffRoleAssignment.objects.select_related("group"):
+            assignments_by_membership.setdefault(assignment.membership_id, []).append(assignment)
+
+        now = timezone.now()
         planned = []
+        manual_review = 0
         for user in users:
             if user.is_superuser or user.is_staff:
                 continue
+            user_profiles = profiles_by_user.get(user.pk, [])
+            if not user_profiles:
+                if user.is_active:
+                    planned.append({"user": user, "groups": [], "disable": True})
+                continue
+
+            eligible_memberships = [
+                membership
+                for profile in user_profiles
+                if profile.employment_status == StaffProfile.EmploymentStatus.ACTIVE
+                for membership in memberships_by_profile.get(profile.pk, [])
+                if membership.status == PropertyStaffMembership.Status.ACTIVE
+                and membership.property.status == "ACTIVE"
+            ]
+            has_effective_assignment = any(
+                assignment.starts_at <= now
+                and (assignment.ends_at is None or assignment.ends_at > now)
+                for membership in eligible_memberships
+                for assignment in assignments_by_membership.get(membership.pk, [])
+            )
             group_names = list(user.groups.values_list("name", flat=True))
-            orphan = user.pk not in profiles
-            if group_names or (orphan and user.is_active):
-                planned.append({
-                    "user": user,
-                    "groups": group_names,
-                    "disable": orphan and user.is_active,
-                })
+            if eligible_memberships and has_effective_assignment and group_names:
+                planned.append({"user": user, "groups": group_names, "disable": False})
+            elif group_names:
+                # 无法证明岗位授权已由 StaffRoleAssignment 承接时，不自动删除授权线索。
+                manual_review += 1
 
         self.stdout.write("数据库：%s" % db_name)
         self.stdout.write("扫描账号：%s" % len(users))
-        self.stdout.write("待移除 User.groups 直授：%s 个账号" % sum(bool(x["groups"]) for x in planned))
+        self.stdout.write("待移除 User.groups 直授（已有有效岗位授权承接）：%s 个账号" % sum(bool(x["groups"]) for x in planned))
         self.stdout.write("待停用无员工档案账号：%s 个账号" % sum(x["disable"] for x in planned))
+        self.stdout.write("需人工复核、保持不变的组授权账号：%s 个账号" % manual_review)
         self.stdout.write("保留：超级管理员/平台 staff、StaffProfile、任职、StaffRoleAssignment、业务与审计历史。")
 
         if not options["execute"]:
@@ -98,7 +129,7 @@ class Command(BaseCommand):
                         action="identity.legacy_direct_groups_cleared",
                         entity_type="User",
                         entity_id=user.pk,
-                        reason="F-02 本地/测试数据治理：移除 User.groups 直授，保留 StaffRoleAssignment",
+                        reason="F-02 本地/测试数据治理：有效 StaffRoleAssignment 已承接岗位授权",
                         before={"groups": item["groups"]},
                         after={"groups": []},
                     )
