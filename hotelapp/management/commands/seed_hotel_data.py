@@ -3,15 +3,13 @@ import random
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
+from django.db import connection, transaction
 from django.utils import timezone
 
 from apps.core.models import Property
 from apps.guests.models import Guest, GuestPhone
-from apps.identity.models import (
-    PropertyStaffMembership, StaffProfile, StaffRoleAssignment)
 from apps.inventory.models import (
     DailyRate, RatePlan, Room, RoomType, RoomTypeInventory)
 from apps.reservations.models import Reservation, ReservationRoom
@@ -25,11 +23,6 @@ TYPES = [
     ("DLX","豪华套房",3,"大床",[588,688,788]),
     ("FAM","家庭房",4,"一大两小",[488,538,588]),
     ("BUS","商务套房",2,"特大床",[688,788,888]),
-]
-STAFF = [
-    ("李经理","值班经理","GM-DUTY"),("张前台","前台","FD-01"),
-    ("王前台","前台","FD-02"),("赵财务","财务","FIN-01"),
-    ("刘客房","客房服务员","HK-01"),("陈客房","客房服务员","HK-02"),
 ]
 SOURCES = ["WEBSITE","WALK_IN","PHONE","OTA"]
 STATUSES = ["PENDING","CONFIRMED","CHECKED_IN","CHECKED_OUT","CANCELLED","NO_SHOW"]
@@ -45,7 +38,24 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
-        User = get_user_model()
+        environment = str(getattr(settings, "DJANGO_ENV", "")).strip().lower()
+        db = connection.settings_dict
+        engine = str(db.get("ENGINE", "")).lower()
+        db_name = str(db.get("NAME", "")).lower()
+        db_host = str(db.get("HOST", "")).lower()
+        local_hosts = {"", "localhost", "127.0.0.1", "::1"}
+        is_sqlite = "sqlite" in engine
+        is_local_dev = environment == "dev" and settings.DEBUG and (
+            db_host in local_hosts
+        )
+        is_test_database = environment == "test" and (
+            (is_sqlite and db_name in {"", ":memory:"}) or "test" in db_name
+        )
+        if not (is_local_dev or is_test_database):
+            raise CommandError(
+                "拒绝执行：酒店演示数据仅允许本机 DEBUG 开发数据库，"
+                "或名称包含 test 的专用测试数据库。"
+            )
         random.seed(42)
         prop = Property.objects.filter(code="DEFAULT").first()
         if not prop:
