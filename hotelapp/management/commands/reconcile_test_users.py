@@ -80,8 +80,8 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("当前为只读预览；未修改任何数据库记录。"))
             return
 
-        if options["confirm_database"] != db_name:
-            raise CommandError("--confirm-database 必须与当前数据库名称完全一致。")
+        if not db_name or options["confirm_database"] != db_name:
+            raise CommandError("--confirm-database 必须非空且与当前数据库名称完全一致。")
         backup = Path(options["backup_file"]).expanduser()
         if not options["backup_file"] or not backup.is_file() or backup.stat().st_size <= 0:
             raise CommandError("执行前必须提供存在且非空的数据库备份文件 --backup-file。")
