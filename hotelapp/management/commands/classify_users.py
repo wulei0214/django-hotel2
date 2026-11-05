@@ -13,10 +13,13 @@ PROFILE_ONLY → UNLINKED_USER；DISABLED / PUBLIC_REGISTERED_SUSPECT
   本命令本期仅实现盘点与报告，不提供任何写操作入口。
 """
 import hashlib
+import hmac
 import json
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
+from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from apps.identity.models import (
     PropertyStaffMembership, StaffProfile, StaffRoleAssignment)
@@ -27,7 +30,7 @@ RULES_VERSION = "CLASSIFICATION_RULES_V2"
 def _fp(username):
     key = (getattr(settings, "RATE_LIMIT_HMAC_KEY", None)
            or settings.SECRET_KEY).encode("utf-8")
-    return hashlib.sha256(key + str(username).encode("utf-8")).hexdigest()[:12]
+    return hmac.new(key, str(username).encode("utf-8"), hashlib.sha256).hexdigest()[:12]
 
 
 class Command(BaseCommand):
@@ -42,7 +45,7 @@ class Command(BaseCommand):
                             choices=("json", "csv"))
 
     def handle(self, *args, **options):
-        from django.contrib.auth.models import User
+        User = get_user_model()
         profiles_by_user = {}
         for p in StaffProfile.objects.all():
             profiles_by_user.setdefault(p.user_id, []).append(p)
