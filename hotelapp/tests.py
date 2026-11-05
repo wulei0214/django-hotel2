@@ -1287,7 +1287,7 @@ class ClassifyUsersCommandTests(TestCase):
         ).AuditEvent.objects.count()
         output = StringIO()
         call_command("classify_users", dry_run=True, stdout=output)
-        rows = json.loads(output.getvalue())
+        rows = json.loads(output.getvalue().split("\nAUTH-22", 1)[0])
         user_row = next(row for row in rows["users"] if row["user_id"] == user.pk)
         self.assertEqual(user_row["category"], "STAFF_LINKED")
         self.assertEqual(
@@ -1318,7 +1318,7 @@ class ClassifyUsersCommandTests(TestCase):
         )
         output = StringIO()
         call_command("classify_users", dry_run=True, stdout=output)
-        rows = json.loads(output.getvalue())
+        rows = json.loads(output.getvalue().split("\nAUTH-22", 1)[0])
         user_row = next(row for row in rows["users"] if row["user_id"] == user.pk)
         self.assertEqual(user_row["category"], "PROFILE_ONLY")
 
