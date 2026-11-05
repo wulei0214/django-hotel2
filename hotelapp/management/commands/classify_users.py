@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """AUTH-22（身份方案 2.0 §12）：历史 User 盘点与七分类。
 
-规则版本 CLASSIFICATION_RULES_V1（2026-11-05，依据方案 §12.1）：
+规则版本 CLASSIFICATION_RULES_V2（2026-11-05，依据方案 §12.1）：
 分类优先级：SUPERUSER_OR_TECHNICAL → CONFLICT → STAFF_LINKED →
 PROFILE_ONLY → UNLINKED_USER；DISABLED / PUBLIC_REGISTERED_SUSPECT
 作为异常标记与主分类并存，不覆盖主分类。
@@ -21,7 +21,7 @@ from django.core.management.base import BaseCommand
 from apps.identity.models import (
     PropertyStaffMembership, StaffProfile, StaffRoleAssignment)
 
-RULES_VERSION = "CLASSIFICATION_RULES_V1"
+RULES_VERSION = "CLASSIFICATION_RULES_V2"
 
 
 def _fp(username):
