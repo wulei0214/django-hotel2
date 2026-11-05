@@ -60,14 +60,21 @@ class Command(BaseCommand):
             memberships = []
             for p in profiles:
                 memberships += memberships_by_profile.get(p.pk, [])
-            has_active_membership = any(
-                m.status == PropertyStaffMembership.Status.ACTIVE
-                and m.property.code == getattr(
-                    settings, "DEFAULT_PROPERTY_CODE", "DEFAULT")
-                for m in memberships)
+            now = timezone.now()
+            active_memberships = [
+                m for p in profiles
+                if p.employment_status == StaffProfile.EmploymentStatus.ACTIVE
+                for m in memberships_by_profile.get(p.pk, [])
+                if m.status == PropertyStaffMembership.Status.ACTIVE
+                and m.property.status == "ACTIVE"
+            ]
+            has_active_membership = bool(active_memberships)
             has_assignment = any(
-                assignments_by_membership.get(m.pk)
-                for m in memberships)
+                assignment.starts_at <= now
+                and (assignment.ends_at is None or assignment.ends_at > now)
+                for m in active_memberships
+                for assignment in assignments_by_membership.get(m.pk, [])
+            )
             conflict = len(profiles) > 1
             disabled = not u.is_active
 
