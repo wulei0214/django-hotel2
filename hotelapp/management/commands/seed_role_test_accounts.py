@@ -16,6 +16,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 from django.utils import timezone
 
+from apps.core.models import AuditEvent
+
 from apps.core.models import Property
 from apps.identity.models import (
     PropertyStaffMembership,
@@ -126,15 +128,44 @@ class Command(BaseCommand):
                     membership.status = PropertyStaffMembership.Status.ACTIVE
                     membership.save(update_fields=["status", "updated_at"])
 
-                # 仅对专用 test_* 测试账号执行单角色收敛。
-                StaffRoleAssignment.objects.filter(
-                    membership=membership
-                ).exclude(group=group).delete()
-                StaffRoleAssignment.objects.get_or_create(
-                    membership=membership,
-                    group=group,
-                    defaults={"starts_at": timezone.now(), "granted_by": None},
+                # 仅对专用 test_* 测试账号执行单角色收敛；历史授权只结束，不物理删除。
+                now = timezone.now()
+                assignments = list(
+                    StaffRoleAssignment.objects.filter(
+                        membership=membership
+                    ).select_related("group")
                 )
+                if any(assignment.starts_at > now for assignment in assignments):
+                    raise CommandError(
+                        "测试账号存在未来生效的岗位授权，需人工核对后再初始化：%s" % username
+                    )
+                for assignment in assignments:
+                    if (
+                        assignment.group_id != group.id
+                        and (assignment.ends_at is None or assignment.ends_at > now)
+                    ):
+                        old_end = assignment.ends_at
+                        assignment.ends_at = now
+                        assignment.save(update_fields=["ends_at"])
+                        AuditEvent.record(
+                            action="identity.test_role_assignment_closed",
+                            entity_type="StaffRoleAssignment",
+                            entity_id=assignment.pk,
+                            reason="九角色测试账号初始化：结束非目标岗位授权，保留历史授权记录",
+                            before={"group": assignment.group.name, "ends_at": str(old_end)},
+                            after={"group": assignment.group.name, "ends_at": now.isoformat()},
+                        )
+                target_active = any(
+                    assignment.group_id == group.id
+                    and assignment.starts_at <= now
+                    and (assignment.ends_at is None or assignment.ends_at > now)
+                    for assignment in assignments
+                )
+                if not target_active:
+                    StaffRoleAssignment.objects.create(
+                        membership=membership, group=group,
+                        starts_at=now, granted_by=None,
+                    )
                 self.stdout.write("已准备账号：%s（%s）" % (username, role))
 
         self.stdout.write(self.style.SUCCESS(
