@@ -83,25 +83,10 @@ class Command(BaseCommand):
                         defaults={"total_rooms": room_count})
         self.stdout.write("  OK 房型+房间+价格+30天库存")
 
-        for name, role, emp_no in STAFF:
-            username = "staff_" + emp_no.lower().replace("-", "_")
-            user, created = User.objects.get_or_create(
-                username=username, defaults={"first_name": name})
-            if created:
-                user.set_password("Staff@123456")
-                user.is_active = True
-                user.save()
-            sp, _ = StaffProfile.objects.get_or_create(
-                user=user, defaults={"full_name": name, "employment_status": "ACTIVE"})
-            m, _ = PropertyStaffMembership.objects.get_or_create(
-                property=prop, staff_profile=sp,
-                defaults={"employee_no": emp_no, "position_code": role, "status": "ACTIVE"})
-            from django.contrib.auth.models import Group
-            grp = Group.objects.filter(name=role).first()
-            if grp:
-                StaffRoleAssignment.objects.get_or_create(
-                    membership=m, group=grp, defaults={"starts_at": timezone.now()})
-        self.stdout.write("  OK 员工")
+        # 员工登录账号与岗位授权由 seed_role_test_accounts 专用命令负责。
+        # 酒店业务数据种子不得创建固定密码账号，也不得通过 User.groups 授权。
+        self.stdout.write("  跳过员工登录账号创建（请单独运行九角色测试账号初始化命令）")
+
 
         for i in range(options["guests"]):
             name = FIRST[i % len(FIRST)]
