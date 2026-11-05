@@ -1258,3 +1258,81 @@ class MembershipServiceTests(TestCase):
         from apps.core.models import AuditEvent
         self.assertTrue(AuditEvent.objects.filter(
             action="membership.level_change").exists())
+
+class ClassifyUsersCommandTests(TestCase):
+    """AUTH-22：账号盘点只读，且只把当前有效任职/授权识别为在职员工。"""
+
+    def test_classify_requires_current_membership_and_assignment(self):
+        from django.core.management import call_command
+        import json
+        from io import StringIO
+
+        user = User.objects.create_user(username="inventory_staff", password="unused-pass-123")
+        profile = StaffProfile.objects.create(
+            user=user, full_name="盘点员工",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
+        prop = Property.objects.create(code="AUDIT", name="盘点测试物业")
+        membership = PropertyStaffMembership.objects.create(
+            property=prop, staff_profile=profile, employee_no="AUDIT-001",
+            status=PropertyStaffMembership.Status.ACTIVE,
+        )
+        group = Group.objects.create(name="盘点测试角色")
+        StaffRoleAssignment.objects.create(
+            membership=membership, group=group,
+            starts_at=timezone.now() - timedelta(minutes=1),
+        )
+        before_audit = __import__(
+            "apps.core.models", fromlist=["AuditEvent"]
+        ).AuditEvent.objects.count()
+        output = StringIO()
+        call_command("classify_users", dry_run=True, stdout=output)
+        rows = json.loads(output.getvalue())
+        user_row = next(row for row in rows["users"] if row["user_id"] == user.pk)
+        self.assertEqual(user_row["category"], "STAFF_LINKED")
+        self.assertEqual(
+            __import__("apps.core.models", fromlist=["AuditEvent"]).AuditEvent.objects.count(),
+            before_audit,
+        )
+
+    def test_expired_assignment_does_not_classify_as_staff_linked(self):
+        from django.core.management import call_command
+        import json
+        from io import StringIO
+
+        user = User.objects.create_user(username="expired_staff", password="unused-pass-123")
+        profile = StaffProfile.objects.create(
+            user=user, full_name="过期授权员工",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
+        prop = Property.objects.create(code="EXPIRED", name="过期授权测试物业")
+        membership = PropertyStaffMembership.objects.create(
+            property=prop, staff_profile=profile, employee_no="EXPIRED-001",
+            status=PropertyStaffMembership.Status.ACTIVE,
+        )
+        group = Group.objects.create(name="过期测试角色")
+        StaffRoleAssignment.objects.create(
+            membership=membership, group=group,
+            starts_at=timezone.now() - timedelta(days=2),
+            ends_at=timezone.now() - timedelta(days=1),
+        )
+        output = StringIO()
+        call_command("classify_users", dry_run=True, stdout=output)
+        rows = json.loads(output.getvalue())
+        user_row = next(row for row in rows["users"] if row["user_id"] == user.pk)
+        self.assertEqual(user_row["category"], "PROFILE_ONLY")
+
+    def test_empty_csv_report_has_stable_headers(self):
+        from django.core.management import call_command
+        import tempfile
+        from pathlib import Path
+        from io import StringIO
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "inventory.csv")
+            call_command(
+                "classify_users", dry_run=True, output=path, format="csv",
+                stdout=StringIO(),
+            )
+            content = Path(path).read_text(encoding="utf-8")
+        self.assertIn("user_id,username_fp,category", content)
