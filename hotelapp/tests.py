@@ -1380,7 +1380,8 @@ class ReconcileTestUsersCommandTests(TestCase):
                 )
         user.refresh_from_db()
         self.assertFalse(user.is_active)
-        self.assertFalse(user.groups.exists())
+        # 孤儿账号已停用；其历史组授权线索保留供审计，不自动删除。
+        self.assertTrue(user.groups.filter(pk=group.pk).exists())
 
     def test_staff_profile_is_preserved_and_account_is_not_disabled(self):
         from django.core.management import call_command
@@ -1396,5 +1397,35 @@ class ReconcileTestUsersCommandTests(TestCase):
         call_command("reconcile_test_users", stdout=StringIO())
         user.refresh_from_db()
         self.assertTrue(user.is_active)
-        self.assertFalse(user.groups.exists())
+        # 缺少可验证的任职授权承接时，组授权保留并进入人工复核。
+        self.assertTrue(user.groups.filter(pk=group.pk).exists())
         self.assertTrue(StaffProfile.objects.filter(user=user).exists())
+
+    def test_only_effectively_assigned_staff_has_direct_groups_cleared(self):
+        from django.core.management import call_command
+        from io import StringIO
+
+        user = User.objects.create_user(username="assigned_staff", password="unused-pass-123")
+        profile = StaffProfile.objects.create(
+            user=user, full_name="有效任职员工",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
+        prop = Property.objects.create(code="RECONCILE", name="收敛测试物业")
+        membership = PropertyStaffMembership.objects.create(
+            property=prop, staff_profile=profile, employee_no="RECONCILE-001",
+            status=PropertyStaffMembership.Status.ACTIVE,
+        )
+        role = Group.objects.create(name="有效任职角色")
+        StaffRoleAssignment.objects.create(
+            membership=membership, group=role,
+            starts_at=timezone.now() - timedelta(minutes=1),
+        )
+        legacy = Group.objects.create(name="历史直授组")
+        user.groups.add(legacy)
+        call_command("reconcile_test_users", stdout=StringIO())
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+        self.assertFalse(user.groups.exists())
+        self.assertTrue(StaffRoleAssignment.objects.filter(
+            membership=membership, group=role
+        ).exists())
