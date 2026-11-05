@@ -13,7 +13,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 
 from apps.core.models import Property
@@ -45,14 +45,24 @@ class Command(BaseCommand):
             or os.environ.get("DJANGO_ENV", "")
         ).strip().lower()
 
-        allowed = (
-            (environment == "dev" and settings.DEBUG)
-            or environment == "test"
+        db = connection.settings_dict
+        engine = str(db.get("ENGINE", "")).lower()
+        db_name = str(db.get("NAME", "")).lower()
+        db_host = str(db.get("HOST", "")).lower()
+        local_hosts = {"", "localhost", "127.0.0.1", "::1"}
+        is_sqlite_memory = "sqlite" in engine and db_name in {"", ":memory:"}
+        is_local_dev = (
+            environment == "dev" and settings.DEBUG
+            and db_host in local_hosts
         )
-        if not allowed:
+        is_test_database = (
+            environment == "test"
+            and (is_sqlite_memory or "test" in db_name)
+        )
+        if not (is_local_dev or is_test_database):
             raise CommandError(
-                "拒绝执行：仅允许 DEBUG=True 且 DJANGO_ENV=dev，"
-                "或明确设置 DJANGO_ENV=test。"
+                "拒绝执行：仅允许 DEBUG=True、DJANGO_ENV=dev 且数据库主机为本机，"
+                "或 DJANGO_ENV=test 且数据库名称明确包含 test（SQLite 内存库除外）。"
             )
 
         password = getpass.getpass("请输入九角色测试账号统一密码（不回显）：")
