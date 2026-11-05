@@ -50,7 +50,7 @@ class Command(BaseCommand):
         db_name = str(db.get("NAME", "")).lower()
         db_host = str(db.get("HOST", "")).lower()
         local_hosts = {"", "localhost", "127.0.0.1", "::1"}
-        is_sqlite_memory = "sqlite" in engine and db_name in {"", ":memory:"}
+        is_sqlite_memory = "sqlite" in engine and db_name in {"", ":memory:"} or "mode=memory" in db_name or "memorydb" in db_name
         is_local_dev = (
             environment == "dev" and settings.DEBUG
             and db_host in local_hosts
