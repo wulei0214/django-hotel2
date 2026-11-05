@@ -1485,7 +1485,7 @@ class SeedRoleTestAccountsCommandTests(TestCase):
         for role, _username in roles:
             Group.objects.create(name=role)
 
-        password = "A-Strong-Test-Passphrase!2026"
+        password = "Cedar!Orbit#N7vQ-4mZp"
         output = StringIO()
         with override_settings(DJANGO_ENV="test"):
             with patch("getpass.getpass", side_effect=[password, password]):
