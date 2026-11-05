@@ -90,7 +90,8 @@ class Command(BaseCommand):
             user.is_active = True
             user.set_password(password)
             user.save()
-            user.groups.set([group])  # 测试账号 = 单角色，覆盖式设置保证验证口径纯净
+            # 员工岗位授权不得写入全局 User.groups；清除历史直授组残留。
+            user.groups.clear()
 
             profile, _ = StaffProfile.objects.get_or_create(
                 user=user, defaults={"full_name": f"测试-{role}",
@@ -102,11 +103,14 @@ class Command(BaseCommand):
                 property=property_obj, staff_profile=profile,
                 defaults={"employee_no": f"T-{username[-6:].upper()}",
                           "position_code": role, "status": "ACTIVE"})
+            # 测试账号保持单一岗位：删除该任职上的其他测试授权，再授予目标角色。
+            StaffRoleAssignment.objects.filter(membership=membership).exclude(
+                group=group).delete()
             StaffRoleAssignment.objects.get_or_create(
                 membership=membership, group=group,
                 defaults={"starts_at": timezone.now(), "granted_by": None})
             self.stdout.write(f"  ✓ {username:<18} 角色={role}")
 
         self.stdout.write(self.style.SUCCESS(
-            f"完成：新建 {len(created)} 个，全部账号统一密码 {password}"
-            "（测试结束后请立即改密或禁用）"))
+            f"完成：新建 {len(created)} 个九角色测试账号。"
+            "统一密码未回显；请仅在本地/测试环境使用并定期轮换。"))
