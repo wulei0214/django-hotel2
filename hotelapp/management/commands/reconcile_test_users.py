@@ -146,7 +146,7 @@ class Command(BaseCommand):
                         entity_id=user.pk,
                         reason="F-02 本地/测试数据治理：有效 StaffRoleAssignment 已承接岗位授权",
                         before={"groups": item["groups"]},
-                        after={"groups": []},
+                        after={"groups": list(user.groups.values_list("name", flat=True))},
                     )
                 if item["disable"]:
                     user.is_active = False
