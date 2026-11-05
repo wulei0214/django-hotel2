@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """创建九个业务角色的专用测试账号。
 
-仅允许 DEBUG=True 且 DJANGO_ENV=dev，或明确 DJANGO_ENV=test。
+仅允许本机 DEBUG 开发库或明确的专用测试库；拒绝生产命名数据库。
 密码通过终端 getpass 输入，不提供固定默认密码、不写入命令行参数。
 该命令只管理 test_* 专用账号，不重置历史演示账号。
 """
 import getpass
 import os
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -16,9 +17,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 from django.utils import timezone
 
-from apps.core.models import AuditEvent
-
-from apps.core.models import Property
+from apps.core.models import AuditEvent, Property
 from apps.identity.models import (
     PropertyStaffMembership,
     StaffProfile,
@@ -145,7 +144,9 @@ class Command(BaseCommand):
                         and (assignment.ends_at is None or assignment.ends_at > now)
                     ):
                         old_end = assignment.ends_at
-                        assignment.ends_at = now
+                        assignment.ends_at = max(
+                            now, assignment.starts_at + timedelta(microseconds=1)
+                        )
                         assignment.save(update_fields=["ends_at"])
                         AuditEvent.record(
                             action="identity.test_role_assignment_closed",
@@ -153,7 +154,7 @@ class Command(BaseCommand):
                             entity_id=assignment.pk,
                             reason="九角色测试账号初始化：结束非目标岗位授权，保留历史授权记录",
                             before={"group": assignment.group.name, "ends_at": str(old_end)},
-                            after={"group": assignment.group.name, "ends_at": now.isoformat()},
+                            after={"group": assignment.group.name, "ends_at": assignment.ends_at.isoformat()},
                         )
                 target_active = any(
                     assignment.group_id == group.id
