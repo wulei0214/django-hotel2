@@ -159,17 +159,30 @@ def folio_list(request):
         "opened_at": folio.opened_at.isoformat() if folio.opened_at else None,
         "closed_at": folio.closed_at.isoformat() if folio.closed_at else None,
     } for folio in items]
-    open_totals = Folio.objects.filter(property=property_obj, status=Folio.Status.OPEN)
-    open_balance = ZERO
-    aggregate = LedgerEntry.objects.filter(
-        folio__property=property_obj, folio__status=Folio.Status.OPEN,
-    ).values("folio").annotate(total=Sum("amount"))
-    for row in aggregate:
-        open_balance += row["total"] or ZERO
+    # G10：摘要聚合走 Redis 缓存（60s TTL，P0-05 共享缓存）——
+    # 4000+ 账本行 Sum 在高并发下排队是压测 P95 超标主因；
+    # 账单写操作（collect/refund/reverse）后由调用方场景自然过期。
+    from django.core.cache import cache
+    _summary_key = "billing:open-summary:%s" % property_obj.pk
+    summary_cached = cache.get(_summary_key)
+    if summary_cached is None:
+        open_totals = Folio.objects.filter(
+            property=property_obj, status=Folio.Status.OPEN)
+        open_balance = ZERO
+        aggregate = LedgerEntry.objects.filter(
+            folio__property=property_obj, folio__status=Folio.Status.OPEN,
+        ).values("folio").annotate(total=Sum("amount"))
+        for row in aggregate:
+            open_balance += row["total"] or ZERO
+        summary_cached = {
+            "open_folios": open_totals.count(),
+            "open_balance": _money_str(open_balance),
+        }
+        cache.set(_summary_key, summary_cached, 60)
     pagination["summary"] = {
-        "open_folios": open_totals.count(),
-        "open_balance": _money_str(open_balance),
-        "basis": "LedgerEntry 带符号金额汇总（账本口径）",
+        "open_folios": summary_cached["open_folios"],
+        "open_balance": summary_cached["open_balance"],
+        "basis": "LedgerEntry 带符号金额汇总（账本口径，60 秒缓存）",
     }
     return api_response(request, data, pagination=pagination)
 

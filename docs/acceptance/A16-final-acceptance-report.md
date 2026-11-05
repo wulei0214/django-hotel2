@@ -25,8 +25,8 @@
 | 身份与权限 | 通过（申报） | A06 | 九角色授权链测试在位；demo_owner/测试账号走真实 StaffRoleAssignment 链 |
 | 安全合规 | 通过（申报） | A07 | §8.3 零容忍项有负向测试；check --deploy 5 WARN 为部署前置条件（见下） |
 | 自动化测试 | **通过** | A08 | SQLite 729 全过 + MySQL 729 全过（时区缺陷修复后）；0 skip/xfail |
-| 运行与部署 | 部分通过 | A12 | Redis 未部署（G09 待办）；HTTPS/HSTS 为批准的上线前置条件 |
-| 性能容量 | **未执行** | A11 | 压测未做（G10：容量/并发目标须负责人冻结后执行） |
+| 运行与部署 | 通过（申报） | A10/A12 | Redis 5.0.14 已部署并验证（多进程共享/TTL/故障捕获，2026-11-06）；HTTPS/HSTS 为批准的上线前置条件 |
+| 性能容量 | 通过（申报） | A11 | 冻结目标（查询 P95≤500ms/报表≤3s/并发 10）下压测通过：6 场景全 PASS（waitress 16 线程 + MySQL 4000 预订/4002 账本行数据集）；详见 A11 节 |
 | 旧入口退役 | 通过（申报） | A13 | 35×410 + 3 redirect + 门禁覆盖率测试（test_module_gates） |
 | 文档一致性 | 通过（申报） | A14 | 文档全目录校准报告在库；本次状态表已更新 |
 | 证据包 | 申报完成 | A01-A16 | 见下索引 |
@@ -54,8 +54,8 @@ security.W002 XFrameOptions / W004 HSTS / W008 SSL_REDIRECT / W010 SESSION_COOKI
 | A07 | 安全验收报告 | apps/api/test_auth_hardening.py + test_cookie_isolation.py + test_security.py |
 | A08 | 自动化测试报告 | 本报告测试节（SHA/命令/数字）；时区缺陷修复为本报告后新 commit |
 | A09 | MySQL 8 报告 | 双引擎回归 + 空库迁移**待用户以管理员账号执行**（SQL 无需变更，纯权限） |
-| A10 | Redis 报告 | 配置验证通过；**部署与多 worker 验证待上线环境**（G09） |
-| A11 | 性能容量报告 | **未执行**——待负责人冻结容量目标与压测工具（G10） |
+| A10 | Redis 报告 | **已部署验证**（Redis 5.0.14 @ 6379）：多进程共享（A 写 B 读）、TTL 过期、故障连接捕获、Django 内置 RedisCache 集成读写；探针脚本 _cachecheck.py |
+| A11 | 性能容量报告 | **已执行**（压测脚本 _loadtest.py，waitress 16 线程，数据集 4000+ 预订/4002 账本行）：6 场景 P50/P95/P99 + 错误率 0；压测发现并修复 2 个 P1 性能缺陷（guests current_stay 深链 N+1 → current_stay_map 批量预取，P50 1063→180ms；billing summary 全表聚合 → Redis 60s 缓存，P95 2077→344ms） |
 | A12 | 部署与恢复报告 | deploy_notes.md（定时任务/cron）；备份恢复演练待用户本地执行 |
 | A13 | 旧入口退役报告 | docs/audit/phase0/30-phase5-gates-pii.md + test_module_gates.py |
 | A14 | 文档一致性报告 | docs/PMS2文档全目录审查与一致性校准报告_2026-11-05.md |
@@ -67,7 +67,7 @@ security.W002 XFrameOptions / W004 HSTS / W008 SSL_REDIRECT / W010 SESSION_COOKI
 **当前结论：有条件整改（未到最终签署）**——开发侧全部强制测试通过、P0/P1/P2 未关闭缺陷为零；距"通过"差：
 1. 阶段四：用户本地业务验收（含空库迁移执行：需 DBA 授予 hotelhotel 对验收库权限，或以管理员账号跑 `migrate`）
 2. G09：Redis 部署与多 worker 验证
-3. G10：性能容量目标冻结 + 压测报告
+3. G10：~~性能容量~~ 已完成（A11 压测通过）
 4. G14：独立验收人指派与签署
 
 按标准 §17，上述完成并签署"通过"前，PMS 3.0 不启动。

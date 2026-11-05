@@ -38,11 +38,15 @@ logger = logging.getLogger("hotel.api")
 ZERO = Decimal("0.00")
 
 
-def _guest_dto(guest, user, property_obj, include_detail=False):
+def _guest_dto(guest, user, property_obj, include_detail=False,
+               current_stay_map=None):
     """Guest DTO：按权限脱敏。
 
     P0-07 N+1：guest_list 已 prefetch 电话与当前物业有效会员关系；
     guest_detail 等未 prefetch 的调用方回退为逐条查询，行为不变。
+    G10：current_stay_map 可由列表页传入（本页客人 id → 在住 Stay
+    的预取映射），消除深层反向链逐行查询；None=调用方未预取，回退
+    逐行查询（guest_detail 等单对象调用方，行为不变）。
     """
     cached_phones = getattr(guest, "prefetched_phones", None)
     if cached_phones is None:
@@ -64,10 +68,14 @@ def _guest_dto(guest, user, property_obj, include_detail=False):
         membership = next(
             (m for m in cached_memberships
              if m.status == GuestMembership.Status.ACTIVE), None)
-    current_stay = Stay.objects.filter(
-        property=property_obj, room__property=property_obj,
-        reservation_room__reservation__guest=guest,
-        status=Stay.Status.IN_HOUSE).select_related("room").first()
+    if current_stay_map is not None:
+        # 预取模式：map 中无键 = 该客人确无在住（不是回退信号）
+        current_stay = current_stay_map.get(guest.pk)
+    else:
+        current_stay = Stay.objects.filter(
+            property=property_obj, room__property=property_obj,
+            reservation_room__reservation__guest=guest,
+            status=Stay.Status.IN_HOUSE).select_related("room").first()
     dto = {
         "id": guest.pk,
         "full_name": guest.full_name,
@@ -141,7 +149,19 @@ def guest_list(request):
             Q(phones__phone_normalized__icontains=q.replace(" ", ""))
         ).distinct()
     items, pagination = paginate(qs, request)
-    data = [_guest_dto(g, user, property_obj) for g in items]
+    # G10：本页客人的在住 Stay 一次取回（深层反向链逐行查询是压测
+    # P50 1040ms 的主因；50 行 = 50 次跨 4 表 JOIN 查询）
+    guest_ids = [g.pk for g in items]
+    stay_map = {}
+    if guest_ids:
+        for stay in Stay.objects.filter(
+                property=property_obj, status=Stay.Status.IN_HOUSE,
+                reservation_room__reservation__guest_id__in=guest_ids,
+        ).select_related("room", "reservation_room").order_by("id"):
+            stay_map.setdefault(
+                stay.reservation_room.reservation.guest_id, stay)
+    data = [_guest_dto(g, user, property_obj,
+                       current_stay_map=stay_map) for g in items]
     return api_response(request, data, pagination=pagination)
 
 
