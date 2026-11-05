@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import approval, audit_center, billing_center, front_desk, guest_center, housekeeping_center, night_audit, reservation_center, staff_center, views
+from . import approval, audit_center, billing_center, front_desk, guest_center, housekeeping_center, night_audit, notification_center, report_center, reservation_center, staff_center, views
 
 app_name = "api"
 
@@ -100,4 +100,18 @@ urlpatterns = [
     path("housekeeping/summary", housekeeping_center.housekeeping_summary_api, name="housekeeping_summary"),
     path("housekeeping/rooms/<int:room_id>/status", housekeeping_center.housekeeping_status_change, name="housekeeping_status_change"),
     path("housekeeping/rooms/<int:room_id>/maintenance", housekeeping_center.housekeeping_maintenance_change, name="housekeeping_maintenance_change"),
+    # --- 报表分析中心 (基线 2.0 §4.5；只读聚合。收入/ADR=finance_access，
+    #     入住率/客源/清洁=view_accommodation；期间上限 92 天) ---
+    path("reports/occupancy", report_center.occupancy_report, name="report_occupancy"),
+    path("reports/adr", report_center.adr_report, name="report_adr"),
+    path("reports/revenue", report_center.revenue_report, name="report_revenue"),
+    path("reports/guests", report_center.guests_report, name="report_guests"),
+    path("reports/housekeeping", report_center.housekeeping_report, name="report_housekeeping"),
+    # --- 通知与待办中心 (基线 2.0 §4.6；站内通知，门禁=认证+当前物业有效任职，
+    #     不设专项权限码——全员工作入口；refresh=实时派生，按物业隔离) ---
+    path("notifications", notification_center.notification_list, name="notification_list"),
+    path("notifications/unread-count", notification_center.unread_count, name="notification_unread_count"),
+    path("notifications/read-all", notification_center.read_all, name="notification_read_all"),
+    path("notifications/refresh", notification_center.refresh, name="notification_refresh"),
+    path("notifications/<int:notification_id>/read", notification_center.mark_read, name="notification_mark_read"),
 ]

@@ -222,6 +222,17 @@ body {
     border-radius: var(--radius-lg);
     white-space: nowrap;
 }
+/* §4.6 通知与待办中心：侧边栏未读徽标（danger-strong 白字 4.77:1 对比达标） */
+.side-badge {
+    margin-left: auto;
+    background: var(--color-danger-strong, #d93026);
+    color: #ffffff;
+    font-size: var(--text-xs, 11px);
+    line-height: 1;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-variant-numeric: tabular-nums;
+}
 .logout-form { display: block; margin: 0 !important; }
 .logout-btn {
     width: 100%;

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{{ title }} - PMS2</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=15">
+    <style>
+        .pms-center{padding:24px;max-width:1500px;margin:0 auto}
+        .pms-center-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px}
+        .pms-center-head h1{margin:0 0 6px;font-size:24px;color:var(--color-text-primary,#243247)}
+        .pms-center-sub{color:var(--color-text-muted,#778397);margin:0}
+        .pms-panel{background:var(--color-bg-surface,#fff);border:1px solid var(--color-border-separator,#e7ebf1);border-radius:var(--radius-lg,12px);padding:18px;margin-bottom:18px}
+        .pms-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+        .pms-tools select{min-width:150px;padding:10px 12px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:var(--radius-md,8px)}
+        .pms-tools button{padding:10px 16px;border:0;border-radius:var(--radius-md,8px);background:var(--color-accent-solid,#263a55);color:#fff;cursor:pointer}
+        .pms-tools button:disabled{opacity:.5;cursor:not-allowed}
+        .pms-tools .au-ghost{background:transparent;color:var(--color-text-secondary,#606266);border:1px solid var(--color-border-default,#dcdfe6)}
+        .pms-meta{margin-left:auto;color:var(--color-text-muted,#778397);font-size:13px}
+        .pms-table-wrap{overflow:auto}
+        .pms-table{width:100%;border-collapse:collapse;white-space:nowrap}
+        .pms-table th,.pms-table td{padding:12px 14px;border-bottom:1px solid var(--color-border-separator,#edf0f4);text-align:left;font-size:13px}
+        .pms-table th{background:var(--color-bg-subtle,#f7f9fc);color:var(--color-text-secondary,#637188);font-weight:600}
+        .pms-table tbody tr:hover{background:var(--color-bg-subtle,#f7f9fc)}
+        .pms-table tbody tr.is-unread{background:var(--color-accent-bg,#f4f8ff)}
+        .pms-table tbody tr.is-unread td.nt-title{font-weight:600}
+        .pms-state{padding:24px;text-align:center;color:var(--color-text-muted,#8290a3)}
+        .pms-pager{display:flex;justify-content:space-between;align-items:center;padding-top:14px;color:var(--color-text-muted,#778397);font-size:13px}
+        .pms-row-btn{padding:6px 12px;border:1px solid var(--color-accent-solid,#2b74c9);background:transparent;color:var(--color-accent-solid,#2b74c9);border-radius:var(--radius-md,6px);cursor:pointer;font-size:12px}
+        .pms-row-btn:hover{background:var(--color-accent-bg,#ecf5ff)}
+        .pms-row-btn:focus-visible{outline:2px solid var(--color-accent-solid,#2b74c9);outline-offset:2px}
+        .pms-row-btn:disabled{opacity:.45;cursor:default}
+        .pms-error{padding:12px 14px;background:var(--color-danger-bg,#fef0f0);border:1px solid var(--color-danger-border,#fde2e2);color:var(--color-danger-text,#b34a4a);border-radius:var(--radius-md,6px);font-size:13px;margin-top:10px}
+        /* 类别/级别徽标（沿用 site.css 语义色令牌） */
+        .nt-badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;line-height:1.6}
+        .nt-badge.b-info{background:var(--color-accent-bg,#ecf5ff);color:var(--color-accent-solid,#2b74c9)}
+        .nt-badge.b-warning{background:var(--color-warning-bg,#fdf6ec);color:var(--color-warning-text,#b88230)}
+        .nt-badge.b-critical{background:var(--color-danger-bg,#fef0f0);color:var(--color-danger-text,#b34a4a)}
+        .nt-badge.b-muted{background:var(--color-bg-subtle,#f5f7fa);color:var(--color-text-muted,#909399)}
+        .nt-unread-total{display:inline-block;min-width:28px;text-align:center;padding:3px 10px;border-radius:999px;background:var(--color-danger-strong,#d93026);color:#fff;font-variant-numeric:tabular-nums}
+        .nt-title-cell{max-width:520px;white-space:normal}
+        .nt-title-cell .nt-body{display:block;color:var(--color-text-secondary,#606266);font-weight:400;margin-top:4px;white-space:normal}
+        @media(max-width:720px){.pms-center{padding:14px}.pms-panel{padding:10px}.pms-tools select{min-width:0}}
+    </style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main">
+  <div class="pms-center">
+    <div class="pms-center-head">
+      <div>
+        <h1>{{ title }} <span class="nt-unread-total" id="nt-unread-badge" hidden>0</span></h1>
+        <p class="pms-center-sub">{{ property_name }} · {{ subtitle }}</p>
+      </div>
+      <a href="/home/">返回主界面</a>
+    </div>
+
+    {# ── 通知列表：类别/级别徽标、时间、已读状态；点击标记已读 ── #}
+    <section class="pms-panel" aria-label="我的通知">
+      <div class="pms-tools">
+        <select id="nt-category" aria-label="类别筛选">
+          <option value="">全部类别</option>
+          <option value="reservation">预订</option>
+          <option value="housekeeping">客房清洁</option>
+          <option value="approval">审批</option>
+          <option value="audit">审计合规</option>
+          <option value="system">系统</option>
+        </select>
+        <select id="nt-read" aria-label="已读筛选">
+          <option value="">全部状态</option>
+          <option value="false">未读</option>
+          <option value="true">已读</option>
+        </select>
+        <button id="nt-search-btn" type="button">查询</button>
+        <button id="nt-read-all-btn" type="button" class="au-ghost">全部已读</button>
+        <button id="nt-refresh-btn" type="button" class="au-ghost" title="按当前业务状态重算运营待办">立即刷新待办</button>
+        <span class="pms-meta" id="nt-list-meta"></span>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table" aria-describedby="nt-list-meta">
+          <thead>
+            <tr>
+              <th scope="col">时间</th><th scope="col">类别</th><th scope="col">级别</th>
+              <th scope="col">标题 / 内容</th><th scope="col">接收</th>
+              <th scope="col">状态</th><th scope="col">操作</th>
+            </tr>
+          </thead>
+          <tbody id="nt-rows"><tr><td colspan="7" class="pms-state">读取中…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pms-pager">
+        <button id="nt-prev" type="button" class="au-ghost">上一页</button>
+        <span id="nt-page-info">—</span>
+        <button id="nt-next" type="button" class="au-ghost">下一页</button>
+      </div>
+      <div class="pms-error" id="nt-error" hidden></div>
+      <p class="pms-meta" id="nt-refresh-note" style="margin-left:0;margin-top:10px"></p>
+    </section>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+  var api = "/api/v1/notifications";
+  var state = { page: 1, pageSize: 20, hasNext: false, hasPrev: false };
+
+  function $(id) { return document.getElementById(id); }
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function showError(message) {
+    var el = $("nt-error");
+    el.hidden = false; el.textContent = message;
+  }
+  function hideError() { $("nt-error").hidden = true; $("nt-error").textContent = ""; }
+
+  var csrf = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+  var CSRF = csrf ? decodeURIComponent(csrf[1]) : "";
+
+  function getJSON(url) {
+    return fetch(url, { credentials: "same-origin",
+                        headers: { "Accept": "application/json" } })
+      .then(function (response) {
+        return response.json().then(function (body) {
+          if (!response.ok) {
+            throw new Error((body.error && body.error.message) ||
+                            ("请求失败（" + response.status + "）"));
+          }
+          return body;
+        });
+      });
+  }
+  function postJSON(url) {
+    return fetch(url, {
+      method: "POST", credentials: "same-origin",
+      headers: { "Accept": "application/json", "X-CSRFToken": CSRF }
+    }).then(function (response) {
+      return response.json().then(function (body) {
+        if (!response.ok) {
+          throw new Error((body.error && body.error.message) ||
+                          ("请求失败（" + response.status + "）"));
+        }
+        return body;
+      });
+    });
+  }
+
+  function severityBadge(severity, label) {
+    var cls = severity === "critical" ? "b-critical"
+            : severity === "warning" ? "b-warning" : "b-info";
+    return '<span class="nt-badge ' + cls + '">' + escapeHtml(label || severity) + '</span>';
+  }
+  function categoryBadge(category, label) {
+    return '<span class="nt-badge b-muted">' + escapeHtml(label || category) + '</span>';
+  }
+
+  function loadUnread() {
+    getJSON(api + "/unread-count").then(function (body) {
+      var count = body.data.unread_count || 0;
+      var badge = $("nt-unread-badge");
+      badge.textContent = count;
+      badge.hidden = count === 0;
+    }).catch(function () { /* 徽标失败不阻断列表 */ });
+  }
+
+  function renderRows(rows) {
+    var tbody = $("nt-rows");
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="pms-state">当前筛选下暂无通知</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(function (row) {
+      var audience = row.audience && row.audience.type === "role_group"
+        ? "岗位：" + escapeHtml((row.audience.role_group || "—"))
+        : "定向本人";
+      var link = row.link
+        ? '<a href="' + escapeHtml(row.link) + '" title="前往处理">前往处理</a>'
+        : "—";
+      return "<tr" + (row.is_read ? "" : ' class="is-unread"') + ">" +
+        "<td>" + escapeHtml((row.created_at || "").replace("T", " ").slice(0, 19)) + "</td>" +
+        "<td>" + categoryBadge(row.category, row.category_label) + "</td>" +
+        "<td>" + severityBadge(row.severity, row.severity_label) + "</td>" +
+        '<td class="nt-title-cell">' + escapeHtml(row.title) +
+          (row.body ? '<span class="nt-body">' + escapeHtml(row.body) + '</span>' : "") +
+        "</td>" +
+        "<td>" + audience + "</td>" +
+        "<td>" + (row.is_read
+          ? '<span class="nt-badge b-muted">已读</span>'
+          : '<span class="nt-badge b-info">未读</span>') + "</td>" +
+        '<td><button type="button" class="pms-row-btn" data-notification-id="' + row.id + '"' +
+        (row.is_read ? " disabled" : "") + '>标记已读</button>' +
+        ' <a class="pms-row-btn" style="text-decoration:none" href="' + escapeHtml(row.link || "#") + '">处理</a></td>' +
+        "</tr>";
+    }).join("");
+  }
+
+  function loadList(page) {
+    state.page = page || 1;
+    hideError();
+    $("nt-rows").innerHTML = '<tr><td colspan="7" class="pms-state">读取中…</td></tr>';
+    var params = ["page=" + state.page, "page_size=" + state.pageSize];
+    var category = $("nt-category").value;
+    var read = $("nt-read").value;
+    if (category) params.push("category=" + encodeURIComponent(category));
+    if (read) params.push("is_read=" + encodeURIComponent(read));
+    getJSON(api + "?" + params.join("&")).then(function (body) {
+      var pagination = body.meta.pagination;
+      state.hasNext = pagination.has_next;
+      state.hasPrev = pagination.has_previous;
+      $("nt-prev").disabled = !pagination.has_previous;
+      $("nt-next").disabled = !pagination.has_next;
+      $("nt-page-info").textContent =
+        "第 " + pagination.page + " / " +
+        Math.max(1, Math.ceil(pagination.total / pagination.page_size)) +
+        " 页 · 共 " + pagination.total + " 条";
+      $("nt-list-meta").textContent = "范围：当前物业 · 定向本人 + 我的有效岗位广播";
+      renderRows(body.data);
+    }).catch(function (err) {
+      $("nt-page-info").textContent = "—";
+      $("nt-rows").innerHTML = '<tr><td colspan="7" class="pms-state">读取失败</td></tr>';
+      showError("通知读取失败：" + err.message);
+    });
+  }
+
+  function markRead(id) {
+    return postJSON(api + "/" + id + "/read").then(function () {
+      loadList(state.page); loadUnread();
+    }).catch(function (err) { showError("标记已读失败：" + err.message); });
+  }
+
+  function readAll() {
+    return postJSON(api + "/read-all").then(function (body) {
+      $("nt-list-meta").textContent = "已全部标记已读（" + body.data.marked_read + " 条）";
+      loadList(1); loadUnread();
+    }).catch(function (err) { showError("全部已读失败：" + err.message); });
+  }
+
+  function refreshTodos() {
+    var button = $("nt-refresh-btn");
+    button.disabled = true;
+    return postJSON(api + "/refresh").then(function (body) {
+      var data = body.data || {};
+      $("nt-list-meta").textContent = "待办已重算：新增 " + (data.created || 0) +
+        " 条 / 更新 " + (data.updated || 0) + " 条 / 自动销项 " + (data.resolved || 0) + " 条";
+      loadList(1); loadUnread();
+    }).catch(function (err) {
+      showError("待办刷新失败：" + err.message);
+    }).then(function () { button.disabled = false; });
+  }
+
+  $("nt-search-btn").addEventListener("click", function () { loadList(1); });
+  $("nt-category").addEventListener("change", function () { loadList(1); });
+  $("nt-read").addEventListener("change", function () { loadList(1); });
+  $("nt-read-all-btn").addEventListener("click", readAll);
+  $("nt-refresh-btn").addEventListener("click", refreshTodos);
+  $("nt-prev").addEventListener("click", function () {
+    if (state.hasPrev) loadList(state.page - 1);
+  });
+  $("nt-next").addEventListener("click", function () {
+    if (state.hasNext) loadList(state.page + 1);
+  });
+  $("nt-rows").addEventListener("click", function (event) {
+    var button = event.target.closest("button[data-notification-id]");
+    if (button && !button.disabled) markRead(button.getAttribute("data-notification-id"));
+  });
+
+  loadUnread();
+  loadList(1);
+})();
+</script>
+</body>
+</html>

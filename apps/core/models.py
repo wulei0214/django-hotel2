@@ -1,6 +1,8 @@
 from django.conf import settings
+from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 
 
 class Property(models.Model):
@@ -441,3 +443,90 @@ class RateLimitCounter(models.Model):
 
     def __str__(self):
         return f"{self.action}/{self.key_hash[:12]} x{self.count}"
+
+
+class Notification(models.Model):
+    """站内通知与运营待办提示（基线 2.0 §4.6）。
+
+    定位（§4.6 目标职责）：通知是提示，不是业务状态权威——本表是业务表
+    而非审计表：生成/已读不落 AuditEvent，也不允许反向推导业务状态。
+    首期口径：站内通知即可（短信/邮件/WhatsApp 等第三方渠道暂缓）。
+
+    投递对象二选一（数据库约束兜底）：
+      * recipient 非空：定向发给某员工档案；
+      * role_group 非空（recipient 为空）：岗位广播——由读取方按"当前有效任职"
+        动态匹配（§4.6 规则：调岗/离职后旧广播待办自动不可见，无需迁移数据）。
+
+    运营待办去重：dedupe_key 非空的行由
+    apps.core.services_notifications.refresh_operational_todos 按源业务状态
+    实时派生并 upsert（(property, dedupe_key) 唯一，重复事件不重复生成）；
+    源业务解决后自动置 is_read（"自动消失"）。dedupe_key 为空 = 人工/公告类
+    通知，不参与自动销项。
+    """
+
+    class Category(models.TextChoices):
+        RESERVATION = "reservation", "预订"
+        HOUSEKEEPING = "housekeeping", "客房清洁"
+        APPROVAL = "approval", "审批"
+        AUDIT = "audit", "审计合规"
+        SYSTEM = "system", "系统"
+
+    class Severity(models.TextChoices):
+        INFO = "info", "提示"
+        WARNING = "warning", "警示"
+        CRITICAL = "critical", "紧急"
+
+    property = models.ForeignKey(
+        Property, on_delete=models.PROTECT, related_name="notifications",
+        verbose_name="物业")
+    recipient = models.ForeignKey(
+        "identity.StaffProfile", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="notifications",
+        verbose_name="接收员工",
+        help_text="定向投递的员工档案；空表示岗位广播（此时 role_group 必填）")
+    role_group = models.ForeignKey(
+        Group, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="notifications", verbose_name="广播岗位组",
+        help_text="岗位广播目标组；读取方按当前有效任职动态匹配，不写入 User.groups")
+    category = models.CharField(
+        max_length=16, choices=Category.choices, verbose_name="类别",
+        help_text="reservation/housekeeping/approval/audit/system")
+    title = models.CharField(max_length=120, verbose_name="标题")
+    body = models.CharField(max_length=240, blank=True, verbose_name="内容")
+    link = models.CharField(
+        max_length=200, blank=True, verbose_name="跳转链接",
+        help_text="站内相对路径，如 /manage/reservations/")
+    severity = models.CharField(
+        max_length=8, choices=Severity.choices, default=Severity.INFO,
+        verbose_name="级别")
+    is_read = models.BooleanField(default=False, verbose_name="已读")
+    read_at = models.DateTimeField(null=True, blank=True, verbose_name="已读时间")
+    dedupe_key = models.CharField(
+        max_length=128, null=True, blank=True, verbose_name="待办去重键",
+        help_text="运营待办业务键（来源代码|业务键|目标组）；空=人工/公告类，不参与自动销项")
+    expires_at = models.DateTimeField(null=True, blank=True, verbose_name="失效时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "站内通知"
+        verbose_name_plural = "站内通知"
+        ordering = ("-created_at", "-id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("property", "dedupe_key"),
+                name="uq_notification_prop_dedupe"),
+            models.CheckConstraint(
+                check=Q(recipient__isnull=False) | Q(role_group__isnull=False),
+                name="ck_notification_has_audience"),
+        ]
+        indexes = [
+            models.Index(fields=("recipient", "is_read", "-created_at"),
+                         name="idx_notif_rcpt_read_time"),
+            models.Index(fields=("role_group", "is_read"),
+                         name="idx_notif_group_read"),
+        ]
+
+    def __str__(self):
+        audience = self.recipient_id if self.recipient_id else (
+            f"组:{self.role_group.name}" if self.role_group else "无接收人")
+        return f"[{self.get_category_display()}] {self.title} → {audience}"

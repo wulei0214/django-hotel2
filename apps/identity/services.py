@@ -11,7 +11,7 @@
   * 授权历史不物理删除：调岗/撤销用 ends_at 关闭
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -283,7 +283,14 @@ class EmployeeLifecycleService:
         now = timezone.now()
         if assignment.ends_at and assignment.ends_at <= now:
             return assignment  # 已结束，幂等
-        assignment.ends_at = now
+        ends_at = now
+        # Windows 时钟粒度（Python<3.13 time.time() 约 15.6ms）下，同一 tick 内
+        # "创建授权→立即终止"会得到 ends_at == starts_at，违反
+        # ck_staff_role_assignment_valid_period 的严格大于约束（全量回归偶发
+        # IntegrityError）。这里钳制为 starts_at + 1µs，保证期间合法。
+        if assignment.starts_at and ends_at <= assignment.starts_at:
+            ends_at = assignment.starts_at + timedelta(microseconds=1)
+        assignment.ends_at = ends_at
         assignment.save(update_fields=("ends_at",))
         from apps.core.models import AuditEvent
         AuditEvent.record(

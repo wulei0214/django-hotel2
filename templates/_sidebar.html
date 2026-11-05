@@ -1,6 +1,13 @@
 <aside class="sidebar">
     <div class="side-logo"><span class="logo-icon">酒</span><span class="logo-text">酒店管理系统</span></div>
     <nav class="sidebar-nav-groups" aria-label="业务导航">
+    {# ── 通知与待办中心（基线 2.0 §4.6）：认证+有效任职的全员工作入口，顶部未读徽标 ── #}
+    {% if pms_is_staff %}
+    <div class="side-group-title">工作台</div>
+    <ul class="sidebar-menu">
+        <li{% if request.path == '/manage/notifications/' %} class="active"{% endif %}><a href="/manage/notifications/" title="PMS2 通知与待办中心：待确认预订 / 今日抵离 / 待清洁放行 / 待审批 / 过期未到"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 0H8v-5c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v5z"/></svg>通知与待办{% if pms_unread_notifications %}<span class="side-badge" aria-label="未读通知数">{{ pms_unread_notifications }}</span>{% endif %}</a></li>
+    </ul>
+    {% endif %}
     {# ── 运营 ── #}
     <div class="side-group-title">运营</div>
     <ul class="sidebar-menu">
@@ -44,6 +51,8 @@
     <div class="side-group-title">财务与日结</div>
     <ul class="sidebar-menu">
         {% if pms_perms.hotelapp.finance_access %}<li{% if request.path == '/manage/finance/' %} class="active"{% endif %}><a href="/manage/finance/" title="PMS2 财务与账单中心：账单 / 流水 / 收款 / 退款 / 班次"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>财务管理</a></li>{% endif %}
+        {# 基线 2.0 §4.5：报表分析中心（同 finance_access 门禁，纯只读聚合） #}
+        {% if pms_perms.hotelapp.finance_access %}<li{% if request.path == '/manage/reports/' %} class="active"{% endif %}><a href="/manage/reports/" title="PMS2 报表分析中心：入住率 / ADR / 收入 / 客源 / 清洁效率（只读，含口径说明）"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M5 9.2h3V19H5zM10.6 5h2.8v14h-2.8zm5.6 8H19v6h-2.8z"/></svg>报表分析中心</a></li>{% endif %}
         {% if pms_perms.hotelapp.night_audit_execute %}<li{% if request.path == '/manage/night-audit/' %} class="active"{% endif %}><a href="/manage/night-audit/" title="PMS2 营业日中心：营业日历 / 夜审执行 / 重开审批 / break-glass 复核"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>营业日与夜审中心</a></li>{% endif %}
     </ul>
     {% endif %}

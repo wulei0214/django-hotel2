@@ -286,6 +286,37 @@ MANAGEMENT_CENTERS = {
             {"label": "当前可售", "path": "is_sellable_now"},
         ],
     },
+    # 基线 2.0 §4.5：报表分析中心（专属工作台模板；纯只读聚合，不作为第二账本）。
+    # 页面门禁取报表中心最高敏感档 hotelapp.finance_access（含收入/ADR 报表）；
+    # 各报表 API 按自身敏感度逐请求复核：收入/ADR=finance_access，
+    # 入住率/客源/清洁=view_accommodation（口径见 apps/api/report_center.py 模块注）。
+    # 键名与 URL 段一致（/manage/reports/）。
+    "reports": {
+        "title": "报表分析中心",
+        "subtitle": "入住率、ADR、收入、客源与清洁效率（只读聚合，含统计口径说明）",
+        "permission": "hotelapp.finance_access",
+        "endpoint": "/api/v1/reports/occupancy",
+        "template": "pms/report_center.html",
+        "columns": [],
+    },
+    # 基线 2.0 §4.6：通知与待办中心（专属工作台模板）。
+    # 页面门禁=认证 + 当前物业有效任职（permission 留空 → management_center_page
+    # 按任职判定）：§4.6 口径"所有员工都能收通知"，不设专项权限码。
+    # 键名与 URL 段一致（/manage/notifications/）。
+    "notifications": {
+        "title": "通知与待办中心",
+        "subtitle": "需要我处理的事项：待确认预订 / 今日抵离 / 待清洁放行 / 待审批 / 过期未到",
+        "permission": "",
+        "endpoint": "/api/v1/notifications",
+        "template": "pms/notification_center.html",
+        "columns": [
+            {"label": "时间", "path": "created_at"},
+            {"label": "类别", "path": "category_label"},
+            {"label": "级别", "path": "severity_label"},
+            {"label": "标题", "path": "title"},
+            {"label": "已读", "path": "is_read"},
+        ],
+    },
 }
 
 
@@ -301,8 +332,18 @@ def management_center_page(request, center):
         from django.http import Http404
         raise Http404("管理中心不存在")
     property_obj = getattr(request, "property", None)
-    if property_obj is None or not AuthorizationService.has_permission(
-            request.user, property_obj, config["permission"]):
+    if property_obj is None:
+        return HttpResponseForbidden("当前岗位无权查看此管理中心。")
+    # §4.6 通知与待办中心：permission 留空 → 仅要求认证 + 当前物业有效任职
+    #（§4.6 规则"所有员工都能收通知"，不设专项权限码）；其余中心维持原门禁。
+    required_permission = config.get("permission")
+    if required_permission:
+        allowed = AuthorizationService.has_permission(
+            request.user, property_obj, required_permission)
+    else:
+        allowed = (AuthorizationService.get_active_membership(
+            request.user, property_obj) is not None)
+    if not allowed:
         return HttpResponseForbidden("当前岗位无权查看此管理中心。")
     # 写操作入口可见性（服务端仍逐请求复核专项权限，页面标志仅控制表单渲染）
     user = request.user

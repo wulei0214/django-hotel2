@@ -32,7 +32,7 @@ BASE = "/api/v1"
 
 TAGS = ["公开预订", "支付", "前台接待", "夜审与紧急访问", "住客中心", "敏感数据",
         "房态库存", "房价管理", "清洁与维修", "财务", "审批", "预订管理", "审计",
-        "员工中心", "会员中心", "文档"]
+        "员工中心", "会员中心", "报表分析", "通知与待办", "文档"]
 
 COOKIE_SECURITY = [{"PMS2Session": []}]
 CSRF_PARAM = {"name": "X-CSRFToken", "in": "header", "required": True,
@@ -1748,6 +1748,163 @@ op("/housekeeping/rooms/{room_id}/maintenance", "post", "清洁与维修", "维�
    notes="恢复（→NORMAL）不联动清洁状态：房间仍脏需继续清洁链。"
          "每次实际变更落 AuditEvent maintenance.status_changed。",
    extras={"x-audit-events": ["maintenance.status_changed"]})
+
+# ========== 报表分析（基线 2.0 §4.5；只读聚合，不作为第二账本） ==========
+RPT_FROM_TO = [
+    Q("from", "起始日期 YYYY-MM-DD；缺省最近 7 天（含物业时区今天）。", "string", False,
+      "2026-11-01", fmt="date"),
+    Q("to", "结束日期 YYYY-MM-DD；缺省物业时区今天。", "string", False,
+      "2026-11-06", fmt="date"),
+]
+RPT_RANGE_NOTE = "区间最长 92 天（防全表扫描）；响应 data.metadata 携带统计口径说明" \
+                 "（物业/日期口径/状态范围/币种/生成时间）；空区间返回空序列不报错。" \
+                 "纯只读数据库聚合，不新增模型/快照落库。"
+
+op("/reports/occupancy", "get", "报表分析", "入住率报表（按日）",
+   status="verified", query=RPT_FROM_TO,
+   permission="有效员工 + hotelapp.view_accommodation",
+   ok=(("200", "按日序列（可售房数/已售间夜/入住率%）+ 期间汇总 + 口径 metadata"),),
+   data=s_obj({
+       "series": s_arr(s_obj({
+           "date": s_str("", format="date"),
+           "total_rooms": s_int(), "out_of_service": s_int(), "held": s_int(),
+           "sellable_room_nights": s_int(), "sold_room_nights": s_int(),
+           "occupancy_pct": s_nullable(s_str("两位小数百分比字符串；可售间夜为 0 时 null。")),
+       })),
+       "summary": s_obj({"sellable_room_nights": s_int(), "sold_room_nights": s_int(),
+                          "occupancy_pct": s_nullable(s_str())}),
+       "metadata": s_obj(desc="统计口径（P0-07 模式）。"),
+   }), errors=E_STAFF,
+   notes="OCC = Σsold / Σ(total − out_of_service)：RoomTypeInventory 逐日库存快照口径，"
+         "停用房从分母剔除；held（待支付冻结）计入分母不计入分子。" + RPT_RANGE_NOTE)
+
+op("/reports/adr", "get", "报表分析", "ADR 报表（按日）",
+   status="verified", query=RPT_FROM_TO,
+   permission="有效员工 + hotelapp.finance_access（收入类报表，与财务中心同门禁）",
+   ok=(("200", "按日序列（房费收入/已售间夜/ADR）+ 期间汇总 + 口径 metadata"),),
+   data=s_obj({
+       "series": s_arr(s_obj({
+           "date": s_str("", format="date"),
+           "room_revenue": s_str(), "sold_room_nights": s_int(),
+           "adr": s_nullable(s_str("两位小数字符串；当日无已售间夜时 null。")),
+       })),
+       "summary": s_obj({"currency": s_str(), "room_revenue": s_str(),
+                          "sold_room_nights": s_int(),
+                          "adr": s_nullable(s_str()),
+                          "other_currencies": s_arr(s_obj(desc="其他币种房费合计（不相加）。"))}),
+       "metadata": s_obj(desc="统计口径（P0-07 模式）。"),
+   }), errors=E_STAFF,
+   notes="ADR = 房费收入 / 已售间夜：分子为 LedgerEntry ROOM_CHARGE 及其红字冲销"
+         "（REVERSAL→ROOM_CHARGE）带符号合计（不含押金/收款/调整）；分母为 "
+         "RoomTypeInventory.sold。仅对物业结算币种计算 ADR，其他币种单列不相加。"
+         + RPT_RANGE_NOTE)
+
+op("/reports/revenue", "get", "报表分析", "收入报表（按营业日/凭证类型分组）",
+   status="verified",
+   query=[*RPT_FROM_TO,
+          Q("group_by", "分组维度：day（按营业日，默认）或 type（按凭证类型）。", "string",
+            False, "day")],
+   permission="有效员工 + hotelapp.finance_access（收入类报表，与财务中心同门禁）",
+   ok=(("200", "分组序列（收入/支出/净额/凭证数）+ 期间汇总 + 口径 metadata"),),
+   data=s_obj({
+       "group_by": s_str("day / type。"),
+       "series": s_arr(s_obj(desc="day：{business_date,revenue,expense,net,entries}；"
+                                  "type：另含 entry_type/entry_type_label。")),
+       "summary": s_obj({"currency": s_str(), "total_revenue": s_str(),
+                          "total_expense": s_str(), "net": s_str(),
+                          "entries": s_int(),
+                          "other_currencies": s_arr(s_obj(desc="其他币种合计（不相加）。"))}),
+       "metadata": s_obj(desc="统计口径（P0-07 模式）。"),
+   }), errors=E_STAFF,
+   notes="LedgerEntry 口径：收入=正数凭证合计；支出=负数凭证合计的绝对值"
+         "（收款/押金/退款/红字冲销等负向凭证，账本资金变动口径，非损益口径）；"
+         "净额=全部凭证带符号合计（已体现冲销关系）。主序列仅物业结算币种。"
+         + RPT_RANGE_NOTE)
+
+op("/reports/guests", "get", "报表分析", "客源报表（新客/回头客/来源分布）",
+   status="verified", query=RPT_FROM_TO,
+   permission="有效员工 + hotelapp.view_accommodation（仅聚合计数，不输出客人 PII）",
+   ok=(("200", "新客/回头客/预订计数 + 来源分布 + 口径 metadata"),),
+   data=s_obj({
+       "summary": s_obj({"new_guests": s_int(), "returning_guests": s_int(),
+                          "reservations": s_int(), "unique_guests": s_int()}),
+       "by_source": s_arr(s_obj({"source": s_str(), "source_label": s_str(),
+                                  "reservations": s_int()})),
+       "metadata": s_obj(desc="统计口径（P0-07 模式）。"),
+   }), errors=E_STAFF,
+   notes="新客 = 期间内建档（Guest.created_at 自然日）客人数；回头客 = 期间内有预订"
+         "且本物业历史预订总数 ≥ 2 的去重客人数（含已取消预订）；来源分布按期间内"
+         "创建预订的 Reservation.source 分组。" + RPT_RANGE_NOTE)
+
+op("/reports/housekeeping", "get", "报表分析", "清洁效率报表（事件按日计数）",
+   status="verified", query=RPT_FROM_TO,
+   permission="有效员工 + hotelapp.view_accommodation（运营事件口径，不含金额与 PII）",
+   ok=(("200", "按自然日序列（状态流转次数）+ 期间汇总 + 口径 metadata"),),
+   data=s_obj({
+       "series": s_arr(s_obj({"date": s_str("", format="date"),
+                               "status_changes": s_int()})),
+       "summary": s_obj({"total_changes": s_int(), "rooms_involved": s_int(),
+                          "avg_changes_per_day": s_nullable(s_str())}),
+       "metadata": s_obj(desc="统计口径（P0-07 模式）。"),
+   }), errors=E_STAFF,
+   notes="事件口径：AuditEvent（action=housekeeping.status_changed，含净房放行与"
+         "检查退回）按 created_at 自然日分组计数；为运营趋势参考，非清洁任务完成率。"
+         + RPT_RANGE_NOTE)
+
+# ========== 通知与待办（基线 2.0 §4.6；站内通知，无第三方渠道） ==========
+NT_PERM = ("有效员工 + 当前物业有效任职（无专项权限码，§4.6 全员工作入口；"
+           "读取范围=当前物业 + 定向本人 或 岗位广播组∈当前有效任职组）")
+
+op("/notifications", "get", "通知与待办", "我的通知分页列表",
+   status="verified",
+   query=[Q("category", "类别筛选 reservation/housekeeping/approval/audit/system。"),
+          Q("severity", "级别筛选 info/warning/critical。"),
+          Q("is_read", "已读筛选 true/false。"),
+          *PQ()],
+   permission=NT_PERM,
+   ok=(("200", "我的通知数组（-created_at,-id 稳定排序）+ meta.pagination"),),
+   data=s_arr(s_obj({
+       "id": s_int(), "category": s_str(), "category_label": s_str(),
+       "severity": s_str(), "severity_label": s_str(),
+       "title": s_str(), "body": s_str(), "link": s_nullable(s_str("站内相对路径。")),
+       "is_read": s_bool(), "read_at": s_nullable(s_str("", format="date-time")),
+       "created_at": s_str("", format="date-time"),
+       "expires_at": s_nullable(s_str("", format="date-time")),
+       "audience": s_obj({"type": s_str("staff=定向本人 / role_group=岗位广播。"),
+                          "role_group": s_nullable(s_str())}),
+   }), desc="通知是提示不是业务状态权威；meta.refresh_note 说明实时派生口径"),
+   errors=E_STAFF,
+   notes="§4.6：调岗/离职后旧岗位广播自动不可见（按当前有效任职动态计算）.")
+
+op("/notifications/unread-count", "get", "通知与待办", "我的未读通知计数",
+   status="verified", permission=NT_PERM,
+   ok=(("200", "未读总数 + 按类别分布"),),
+   data=s_obj({"unread_count": s_int(), "by_category": s_obj(desc="类别→未读数。")}),
+   errors=E_STAFF, notes="侧边栏未读徽标数据源（与列表同一读取范围）。")
+
+op("/notifications/{notification_id}/read", "post", "通知与待办", "标记单条通知已读",
+   status="verified", path_params=[("notification_id", "Notification ID。")],
+   no_body=True, permission=NT_PERM,
+   ok=(("200", "标记成功；重复调用幂等（不覆盖首次 read_at）"),),
+   data=s_obj(desc="标记后的通知 DTO。"), errors=E_STAFF,
+   notes="范围外（他物业/非我的定向/非我的岗位广播）一律 404。")
+
+op("/notifications/read-all", "post", "通知与待办", "我的未读通知全部标记已读",
+   status="verified", no_body=True, permission=NT_PERM,
+   ok=(("200", "返回本次标记条数 marked_read"),),
+   data=s_obj({"marked_read": s_int("仅统计我的范围内的未读。")}),
+   errors=E_STAFF)
+
+op("/notifications/refresh", "post", "通知与待办", "触发当前物业运营待办实时重算",
+   status="verified", no_body=True, permission=NT_PERM,
+   ok=(("200", "对账摘要 active/created/updated/resolved/by_code"),),
+   data=s_obj({"active": s_int("当前活跃待办行数。"), "created": s_int(),
+                "updated": s_int(), "resolved": s_int("自动销项（置已读）条数。"),
+                "by_code": s_obj(desc="待办来源代码→本物业行数。")}),
+   errors=E_STAFF,
+   notes="§4.6 首期口径：实时派生 + upsert（无 celery）；按物业隔离；"
+         "员工可触发；重复刷新幂等（dedupe_key 去重）；"
+         "已解决项自动置已读；通知生成不产生 AuditEvent。")
 
 # ========== 文档 ==========
 op("/openapi.json", "get", "文档", "获取 OpenAPI 规范",

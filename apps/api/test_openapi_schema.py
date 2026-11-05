@@ -123,12 +123,17 @@ class PMS2OpenApiDocumentationTests(TestCase):
         spec = response.json()
         self.assertEqual(spec["openapi"], "3.1.0")
         paths = spec["paths"]
-        self.assertEqual(len(paths), 82, "OpenAPI 应覆盖 apps.api.urls 的全部 82 个注册路由")
+        self.assertEqual(len(paths), 92, "OpenAPI 应覆盖 apps.api.urls 的全部 92 个注册路由")
         expected = {
             "/api/v1/availability": {"get"},
             "/api/v1/reservations": {"post"},
             "/api/v1/reservations/{booking_no}": {"get"},
             "/api/v1/reservations/{booking_no}/cancel": {"post"},
+            "/api/v1/reports/occupancy": {"get"},
+            "/api/v1/reports/adr": {"get"},
+            "/api/v1/reports/revenue": {"get"},
+            "/api/v1/reports/guests": {"get"},
+            "/api/v1/reports/housekeeping": {"get"},
             "/api/v1/front-desk/overview": {"get"},
             "/api/v1/front-desk/reservation-rooms/{reservation_room_id}/check-in": {"post"},
             "/api/v1/night-audit/preview": {"get"},
@@ -275,8 +280,9 @@ class PMS2ContractStatusTests(TestCase):
                 f"{method.upper()} {path} 缺少合法 x-contract-status")
             if path != BASE + "/openapi.json":
                 business += 1
-        # §4.3 客房服务中心 +4、§4.4 审计与合规中心 +4 业务 operation
-        self.assertEqual(business, 83, "业务 operation 应为 83 个（排除 openapi.json 自身）")
+        # §4.3 客房服务中心 +4、§4.4 审计与合规中心 +4、§4.5 报表分析中心 +5、
+        # §4.6 通知与待办中心 +5 业务 operation
+        self.assertEqual(business, 93, "业务 operation 应为 93 个（排除 openapi.json 自身）")
 
     def test_no_operation_is_marked_planned(self):
         """全部 60 条路由均已实现，不允许出现 planned 端点（虚构计划外接口）。"""
