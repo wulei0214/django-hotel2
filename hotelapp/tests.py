@@ -1420,12 +1420,14 @@ class ReconcileTestUsersCommandTests(TestCase):
             membership=membership, group=role,
             starts_at=timezone.now() - timedelta(minutes=1),
         )
-        legacy = Group.objects.create(name="历史直授组")
+        user.groups.add(role)
+        legacy = Group.objects.create(name="未映射历史授权组")
         user.groups.add(legacy)
         call_command("reconcile_test_users", stdout=StringIO())
         user.refresh_from_db()
         self.assertTrue(user.is_active)
-        self.assertFalse(user.groups.exists())
+        self.assertFalse(user.groups.filter(pk=role.pk).exists())
+        self.assertTrue(user.groups.filter(pk=legacy.pk).exists())
         self.assertTrue(StaffRoleAssignment.objects.filter(
             membership=membership, group=role
         ).exists())
