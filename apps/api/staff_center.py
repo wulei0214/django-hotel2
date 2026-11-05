@@ -70,8 +70,11 @@ def _staff_dto(profile, property_obj):
     return {
         "id": profile.pk,
         "full_name": profile.full_name,
+        # WB-46-06：短值（<8 位）此前原样返回 = 明文泄漏（同 WB-10 根因）；
+        # 非空短值一律全打码，空值保持 None。
         "phone_masked": (profile.phone[:3] + "****" + profile.phone[-4:]
-                         if len(profile.phone or "") >= 8 else profile.phone or None),
+                         if len(profile.phone or "") >= 8
+                         else ("*" * len(profile.phone) if profile.phone else None)),
         "employee_no": membership.employee_no if membership else None,
         "position_code": membership.position_code if membership else None,
         "employment_status": profile.employment_status,
@@ -237,9 +240,14 @@ def membership_detail(request, membership_id):
 
 def _membership_body(request):
     try:
-        return json.loads(request.body.decode("utf-8") or "{}")
+        payload = json.loads(request.body.decode("utf-8") or "{}")
     except (UnicodeDecodeError, json.JSONDecodeError):
         raise ApiError("VALIDATION_ERROR", "请求体必须是有效 JSON。")
+    if not isinstance(payload, dict):
+        # WB-46-02：非对象 JSON（数组/字符串）此前带出 body.get 的
+        # AttributeError → 500；统一 400。
+        raise ApiError("VALIDATION_ERROR", "请求体必须是 JSON 对象。")
+    return payload
 
 
 @require_POST
@@ -254,8 +262,15 @@ def membership_create(request):
             request.user, property_obj, "hotelapp.add_vip"):
         raise ApiError("PERMISSION_DENIED", "缺少会员新增权限。")
     body = _membership_body(request)
+    # WB-46-05：guest_id 非整数（如 "abc"）此前经 Django 字段转换抛
+    # ValueError → 500；统一参数校验 400。
+    raw_guest_id = body.get("guest_id")
+    try:
+        guest_id = int(str(raw_guest_id))
+    except (TypeError, ValueError):
+        raise ApiError("VALIDATION_ERROR", "guest_id 必须是整数。")
     guest = Guest.objects.filter(
-        pk=body.get("guest_id"), property=property_obj).first()
+        pk=guest_id, property=property_obj).first()
     if guest is None:
         raise ApiError("RESOURCE_NOT_FOUND", "当前物业下不存在该客人档案。")
     joined_at = None

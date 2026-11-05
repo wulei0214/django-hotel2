@@ -1627,7 +1627,8 @@ op("/audit-timeline", "get", "审计", "审计时间线",
    query=[Q("entity_type", "实体类型精确筛选。"), Q("entity_id", "实体 ID 精确筛选。"),
           Q("action", "动作码包含匹配。"),
           *PQ(page_default=30)],
-   permission="有效员工 + identity.staff_manage（P1-07：superuser 不自动获得业务授权）",
+   permission="有效员工 + core.audit_view（P0-04 定版：审计查看专项权，"
+              "与 /audit/events 同门禁；superuser 不自动获得业务授权）",
    ok=(("200", "AuditEvent 数组（倒序）"),),
    data=s_arr(_ref("AuditEventDto")), errors=E_STAFF)
 

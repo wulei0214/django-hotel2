@@ -95,14 +95,18 @@ def _date(value, label):
 def _integer(value, label, default=None):
     if value is None and default is not None:
         return default
+    if isinstance(value, bool):
+        # WB-46-10：bool 会被 int() 静默接受（true→1/false→0），造成类型混淆
+        # （如 {"rooms": true} 被当作 1 间）；与其他类型错误同口径 400。
+        raise ValueError(f"{label}必须是整数。")
     try:
         return int(value)
     except (TypeError, ValueError):
         raise ValueError(f"{label}必须是整数。")
 
 
-@require_GET
 @api_guard
+@require_GET
 def availability(request):
     property_obj = getattr(request, "property", None)
     if property_obj is None:
@@ -149,8 +153,8 @@ def availability(request):
     )
 
 
-@require_POST
 @api_guard
+@require_POST
 def reservations_create(request):
     property_obj = getattr(request, "property", None)
     if property_obj is None:
@@ -231,11 +235,15 @@ def reservations_create(request):
     return JsonResponse(response_body, status=201 if created else 200)
 
 
-@require_GET
 @api_guard
+@require_GET
 def reservation_detail(request, booking_no):
     """P0-08/09/10：订单查询凭 Booking Access Token；字段白名单脱敏。"""
     property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        # WB-46-11：DEFAULT 物业缺失时此前 property_obj.pk 抛 AttributeError → 500；
+        # 与 availability/reservations_create 同口径 503。
+        return JsonResponse({"error": "酒店物业不可用。"}, status=503)
     token = request.headers.get("X-Booking-Token", "") or request.GET.get("token", "")
     from apps.core import rate_limit
     if not rate_limit.check(request, "public.reservation_query", booking_no=booking_no):
@@ -296,10 +304,14 @@ def _throttle_deny(request, action):
     return response
 
 
-@require_POST
 @api_guard
+@require_POST
 def payment_intent_create(request):
     property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        # WB-46-11：DEFAULT 物业缺失时 503，不 500（同 availability 口径）；
+        # 物业上下文是一切支付操作的前置条件，先于环境门禁判定。
+        return JsonResponse({"error": "酒店物业不可用。"}, status=503)
     # AUTH-07（P0-12）：mock 支付门禁——生产环境拒绝创建模拟支付
     if not _is_dev_env():
         return JsonResponse({"error": "模拟支付仅在开发/测试环境开放。"}, status=403)
@@ -356,8 +368,8 @@ def payment_intent_create(request):
 
 
 @csrf_exempt
-@require_POST
 @api_guard
+@require_POST
 def payment_callback(request):
     if not settings.DEBUG or getattr(settings, "DJANGO_ENV", "dev") not in {"dev", "test"}:
         return JsonResponse({"error": "模拟支付回调仅允许在本地开发和测试环境使用。"}, status=404)
@@ -389,8 +401,8 @@ def payment_callback(request):
     return JsonResponse(response)
 
 
-@require_GET
 @api_guard
+@require_GET
 def openapi_document(request):
     """兼容入口：返回完整 PMS2 OpenAPI 3.1 契约。"""
     from .openapi_schema import openapi_json
@@ -398,11 +410,14 @@ def openapi_document(request):
 
 
 
-@require_POST
 @api_guard
+@require_POST
 def reservation_cancel(request, booking_no):
     """P0-08/10：订单取消凭 Booking Access Token；取消规则与幂等不变。"""
     property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        # WB-46-11：DEFAULT 物业缺失时 503，不 500（同 availability 口径）。
+        return JsonResponse({"error": "酒店物业不可用。"}, status=503)
     try:
         body = _body(request)
     except Exception:

@@ -51,9 +51,14 @@ def _context(request, permission):
 
 def _body(request):
     try:
-        return json.loads(request.body.decode("utf-8") or "{}")
+        payload = json.loads(request.body.decode("utf-8") or "{}")
     except (UnicodeDecodeError, json.JSONDecodeError):
         raise ApiError("VALIDATION_ERROR", "请求体必须是有效 JSON。")
+    if not isinstance(payload, dict):
+        # WB-46-01：非对象 JSON（数组/字符串/数字）此前会带出 body.get 的
+        # AttributeError → 500；与其他中心 _body 同口径 400。
+        raise ApiError("VALIDATION_ERROR", "请求体必须是 JSON 对象。")
+    return payload
 
 
 def _parse_date(value):

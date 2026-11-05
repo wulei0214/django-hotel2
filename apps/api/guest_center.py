@@ -58,7 +58,10 @@ def _guest_dto(guest, user, property_obj, include_detail=False,
     phone_masked = None
     if primary_phone:
         raw = primary_phone.phone
-        phone_masked = raw[:3] + "****" + raw[-4:] if len(raw) >= 8 else raw
+        # WB-46-07：短值（<8 位）此前原样返回 = 明文泄漏（同 WB-10 根因）；
+        # 与本文件 phones 列表口径一致：<8 位一律"已隐藏"。
+        phone_masked = (raw[:3] + "****" + raw[-4:]
+                        if len(raw) >= 8 else "已隐藏")
     cached_memberships = getattr(guest, "prefetched_memberships", None)
     if cached_memberships is None:
         membership = GuestMembership.objects.filter(
@@ -560,9 +563,14 @@ def rate_calendar(request):
 
 def _parse_body(request):
     try:
-        return _json.loads(request.body.decode("utf-8") or "{}")
+        payload = _json.loads(request.body.decode("utf-8") or "{}")
     except (UnicodeDecodeError, _json.JSONDecodeError):
         raise ApiError("VALIDATION_ERROR", "请求体必须是有效 JSON。")
+    if not isinstance(payload, dict):
+        # WB-46-03：非对象 JSON（数组/字符串）此前带出 body.get 的
+        # AttributeError → 500；统一 400。
+        raise ApiError("VALIDATION_ERROR", "请求体必须是 JSON 对象。")
+    return payload
 
 
 @require_POST

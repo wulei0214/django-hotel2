@@ -81,7 +81,9 @@ PERMISSION_MATRIX = {
     ("post", "/approvals/{record_id}/reject"): "billing.refund_approve",
     ("get", "/reservations-mgmt"): "hotelapp.view_accommodation",
     ("get", "/reservations-mgmt/{booking_no}"): "hotelapp.view_accommodation",
-    ("get", "/audit-timeline"): "identity.staff_manage",
+    # P0-04 定版：audit-timeline 与 /audit/events 同门禁 core.audit_view
+    # （WB-46-09：契约矩阵/文档此前仍写旧码 identity.staff_manage）
+    ("get", "/audit-timeline"): "core.audit_view",
     ("get", "/staff"): "identity.staff_manage",
     ("get", "/staff/{profile_id}"): "identity.staff_manage",
     ("get", "/memberships"): "hotelapp.view_vip",

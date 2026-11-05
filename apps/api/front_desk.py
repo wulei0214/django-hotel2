@@ -149,7 +149,9 @@ def _paginate(queryset, page, page_size):
 
 def _mask_phone(phone):
     digits = "".join(ch for ch in (phone or "") if ch.isdigit())
-    if len(digits) < 7:
+    # WB-46-08：<8 位数字串用 3+4 掩码会把短号全部还原（伪脱敏=明文）；
+    # 阈值提高到 8，与 staff/guest 中心口径一致。
+    if len(digits) < 8:
         return "已隐藏" if phone else "—"
     return f"{digits[:3]}****{digits[-4:]}"
 
@@ -680,6 +682,8 @@ def folio_detail(request, booking_no):
 def assign_room(request, reservation_room_id):
     try:
         body = _body(request)
+        # WB-46-04：room_id 缺失/为 null 时 int(None) 抛 TypeError 未被捕获
+        # → 500；与 change_stay_room_api 同口径捕获 (ValueError, TypeError) → 400。
         room_id = int(body.get("room_id"))
         line, changed = assign_room_service(
             property_obj=request.front_desk_property,
@@ -687,8 +691,8 @@ def assign_room(request, reservation_room_id):
             room_id=room_id,
             assigned_by=request.user,
         )
-    except ValueError as exc:
-        return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
+    except (ValueError, TypeError):
+        return _response({"error": {"code": "VALIDATION_ERROR", "message": "room_id 必须是整数。"}}, 400)
     except FrontDeskOperationError as exc:
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
     return _response({

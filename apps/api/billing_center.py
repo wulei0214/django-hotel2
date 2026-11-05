@@ -468,8 +468,10 @@ def collect_payment_api(request):
     reference = str(body.get("reference") or "").strip()
     # 服务层同 reference 幂等重放返回原支付；创建/重放由 API 层以
     # “调用前 reference 是否已存在”区分（无 reference 必为新收）。
+    # WB-46-12：预检按当前物业过滤——跨物业同名 reference 不再被误判为
+    # 本物业重放（服务层对跨物业占用仍独立拒绝为 400）。
     replay = bool(reference) and Payment.objects.filter(
-        provider_ref=reference).exists()
+        provider_ref=reference, property=property_obj).exists()
     try:
         payment = BillingService.collect_payment(
             property_obj=property_obj, reservation=reservation,
