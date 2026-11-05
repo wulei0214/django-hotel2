@@ -100,8 +100,18 @@ class Command(BaseCommand):
                 user.set_password(password)
                 user.save()
 
-                # 认证账号不承载员工岗位授权；清除历史遗留直授组。
-                user.groups.clear()
+                # 认证账号不承载员工岗位授权；清除历史遗留直授组并留痕。
+                legacy_groups = list(user.groups.values_list("name", flat=True))
+                if legacy_groups:
+                    user.groups.clear()
+                    AuditEvent.record(
+                        action="identity.test_direct_groups_cleared",
+                        entity_type="User",
+                        entity_id=user.pk,
+                        reason="九角色测试账号初始化：岗位授权统一由 StaffRoleAssignment 承载",
+                        before={"groups": legacy_groups},
+                        after={"groups": []},
+                    )
 
                 profile, _ = StaffProfile.objects.get_or_create(
                     user=user,
