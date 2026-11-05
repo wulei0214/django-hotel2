@@ -1449,3 +1449,60 @@ class ReconcileTestUsersCommandTests(TestCase):
         self.assertTrue(StaffRoleAssignment.objects.filter(
             membership=membership, group=role
         ).exists())
+
+class SeedRoleTestAccountsCommandTests(TestCase):
+    """九角色种子命令必须走正式身份链，密码仅通过隐藏交互输入。"""
+
+    def test_production_environment_is_rejected_before_password_prompt(self):
+        from django.core.management import call_command, CommandError
+        from django.test import override_settings
+        from unittest.mock import patch
+        from io import StringIO
+
+        with override_settings(DJANGO_ENV="prod", DEBUG=False):
+            with patch("getpass.getpass", side_effect=AssertionError("不应提示输入密码")):
+                with self.assertRaises(CommandError):
+                    call_command("seed_role_test_accounts", stdout=StringIO())
+
+    def test_creates_nine_independent_accounts_with_assignment_authority(self):
+        from django.core.management import call_command
+        from django.test import override_settings
+        from unittest.mock import patch
+        from io import StringIO
+
+        roles = [
+            ("前台", "test_front"),
+            ("值班经理", "test_duty"),
+            ("财务", "test_finance"),
+            ("店长", "test_owner"),
+            ("客房服务员", "test_housekeeping"),
+            ("夜审员", "test_nightaudit"),
+            ("餐饮服务员", "test_fnb"),
+            ("餐饮主管", "test_fnbsup"),
+            ("停车安保", "test_parking"),
+        ]
+        prop = Property.objects.create(code="ROLESEED", name="九角色种子测试物业")
+        for role, _username in roles:
+            Group.objects.create(name=role)
+
+        password = "A-Strong-Test-Passphrase!2026"
+        output = StringIO()
+        with override_settings(DJANGO_ENV="test"):
+            with patch("getpass.getpass", side_effect=[password, password]):
+                call_command("seed_role_test_accounts", stdout=output)
+
+        self.assertNotIn(password, output.getvalue())
+        for role, username in roles:
+            user = User.objects.get(username=username)
+            self.assertTrue(user.is_active)
+            self.assertFalse(user.is_staff)
+            self.assertFalse(user.is_superuser)
+            self.assertFalse(user.groups.exists())
+            profile = StaffProfile.objects.get(user=user)
+            membership = PropertyStaffMembership.objects.get(
+                property=prop, staff_profile=profile
+            )
+            self.assertTrue(StaffRoleAssignment.objects.filter(
+                membership=membership, group__name=role,
+                starts_at__lte=timezone.now(),
+            ).exists())
