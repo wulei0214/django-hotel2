@@ -10,7 +10,7 @@
 | 编号 | 缺口 | 证据 | 影响 | 建议处置 |
 |---|---|---|---|---|
 | F-01 | BookingAccessToken 在创建事务提交后才签发 | 14-dataflows G1；apps/api/views.py:195-202 | 签发失败→已扣库存但顾客拿不到 token 的孤儿订单，无法查询/支付/取消 | 移入创建事务内签发（小改动，建议批准紧急修复） |
-| F-02 | User 直授组残留：15 个账号（员工/测试/演示）同时存在 User.groups 直授与 StaffRoleAssignment——运行时判定已不走 groups（AuthorizationService），属历史授权方式待清理数据，无运行时风险 | AUTH-22 盘点命令 `classify_users`（DIRECT_GROUP_GRANTS 维度）；13-identity-sessions §账号分类 | **已盘点（AUTH-22）**：STAFF_LINKED 22 / UNLINKED 3（2 个 PUBLIC_REGISTERED_SUSPECT + 1 DISABLED）；清理需负责人批准后执行，本期不提供写处置入口 |
+| F-02 | User 直授组残留及历史测试/孤儿账号治理 | AUTH-22 `classify_users` 盘点命令；本地数据库实时状态需重新盘点 | **负责人已批准本地/测试环境清理方向（2026-11-05）**：先备份、重新盘点和预览；清除冗余 User.groups，保留正式 StaffRoleAssignment；孤儿账号默认禁用而非物理删除；九角色测试账号必须重建并通过登录/权限验收。尚未执行数据库清理。 |
 | F-03 | 前台核心动作（排房/入住/退房/续住/换房/No-Show）零 DB 审计 | 15-audit-coverage；front_desk_services.py:112/196/340 | 仅 hotel.audit 文件日志，轮转即失去房态/账务变更追溯 | Phase 1 首批：front_desk 全动作补 AuditEvent |
 | F-04 | 权限矩阵保存仅 logger 无 DB 审计 | permission_admin.py:151 | 授权变更不可追溯（与退款/夜审已落库形成反差） | Phase 3 权限中心重构时一并解决（§8.3 流程） |
 
