@@ -38,6 +38,19 @@ from datetime import date, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
+def _property_tz_bounds(property_obj, date_from, date_to):
+    """验收缺陷修复（§6 时间口径）：日期边界按**物业时区**换算为 aware datetime。
+
+    此前 created_at__date 查找按 settings 时区（UTC）切日，上海凌晨时段
+    写入的数据会落到 UTC 的"昨天"，导致 MySQL+USE_TZ 下"今天"过滤漏数据。
+    """
+    from datetime import datetime, time as dtime
+    tz = ZoneInfo(getattr(property_obj, "timezone", None) or "Asia/Shanghai")
+    start = timezone.make_aware(datetime.combine(date_from, dtime.min), tz)
+    end = timezone.make_aware(datetime.combine(date_to, dtime.max), tz)
+    return start, end
+
+
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from django.views.decorators.http import require_GET
@@ -376,12 +389,13 @@ def guests_report(request):
     """
     property_obj = _context(request, "hotelapp.view_accommodation")
     date_from, date_to = _parse_range(request, property_obj)
+    _tz_start, _tz_end = _property_tz_bounds(property_obj, date_from, date_to)
     new_guests = Guest.objects.filter(
-        property=property_obj, created_at__date__gte=date_from,
-        created_at__date__lte=date_to).count()
+        property=property_obj, created_at__gte=_tz_start,
+        created_at__lte=_tz_end).count()
     period_qs = Reservation.objects.filter(
-        property=property_obj, created_at__date__gte=date_from,
-        created_at__date__lte=date_to)
+        property=property_obj, created_at__gte=_tz_start,
+        created_at__lte=_tz_end)
     guest_ids = list(period_qs.values_list("guest_id", flat=True).distinct())
     history_counts = {
         row["guest_id"]: row["total"]
@@ -435,14 +449,18 @@ def housekeeping_report(request):
     """
     property_obj = _context(request, "hotelapp.view_accommodation")
     date_from, date_to = _parse_range(request, property_obj)
+    _tz_start, _tz_end = _property_tz_bounds(property_obj, date_from, date_to)
     qs = AuditEvent.objects.filter(
         property=property_obj, action="housekeeping.status_changed",
-        created_at__date__gte=date_from, created_at__date__lte=date_to)
-    series = [{
-        "date": str(row["created_at__date"]),
-        "status_changes": row["total"],
-    } for row in qs.values("created_at__date").annotate(
-        total=Count("id")).order_by("created_at__date")]
+        created_at__gte=_tz_start, created_at__lte=_tz_end)
+    # 分组按物业时区自然日（Python 侧分组：事件为操作级量级，可接受）
+    buckets = {}
+    for ev in qs.only("created_at"):
+        local_day = timezone.localdate(ev.created_at, ZoneInfo(
+            getattr(property_obj, "timezone", None) or "Asia/Shanghai"))
+        buckets[local_day] = buckets.get(local_day, 0) + 1
+    series = [{"date": str(day), "status_changes": total}
+              for day, total in sorted(buckets.items())]
     total_changes = sum(row["status_changes"] for row in series)
     distinct_rooms = qs.values("entity_id").distinct().count()
     period_days = (date_to - date_from).days + 1

@@ -24,6 +24,15 @@ from datetime import date, timedelta
 
 from django.db.models import Count, Q
 from django.utils import timezone
+from zoneinfo import ZoneInfo
+
+def _property_tz_bounds(property_obj, date_from, date_to):
+    """验收缺陷修复（§6 时间口径）：日期边界按物业时区换算（同 report_center）。"""
+    from datetime import datetime, time as dtime
+    tz = ZoneInfo(getattr(property_obj, "timezone", None) or "Asia/Shanghai")
+    return (timezone.make_aware(datetime.combine(date_from, dtime.min), tz),
+            timezone.make_aware(datetime.combine(date_to, dtime.max), tz))
+
 from django.views.decorators.http import require_GET
 
 from apps.core.api_contract import ApiError, api_view, api_response, paginate
@@ -132,15 +141,22 @@ def audit_events(request):
         qs = qs.filter(actor__username=actor)
 
     raw_from, raw_to = request.GET.get("date_from"), request.GET.get("date_to")
-    if raw_from:
-        day = _parse_day(raw_from, "date_from")
-        qs = qs.filter(created_at__date__gte=day)
-    if raw_to:
-        day = _parse_day(raw_to, "date_to")
-        qs = qs.filter(created_at__date__lte=day)
-    if raw_from and raw_to:
-        if _parse_day(raw_from, "date_from") > _parse_day(raw_to, "date_to"):
-            raise ApiError("VALIDATION_ERROR", "date_from 不能晚于 date_to。")
+    if raw_from and raw_to and _parse_day(raw_from, "date_from") > _parse_day(
+            raw_to, "date_to"):
+        raise ApiError("VALIDATION_ERROR", "date_from 不能晚于 date_to。")
+    # P0 验收缺陷修复：日期边界按物业时区换算（跨日时段不再漏数据）
+    if raw_from or raw_to:
+        from datetime import date as _date
+        _today = timezone.localdate(timezone.now(), ZoneInfo(
+            getattr(property_obj, "timezone", None) or "Asia/Shanghai"))
+        _tz_start, _tz_end = _property_tz_bounds(
+            property_obj,
+            _parse_day(raw_from, "date_from") if raw_from else _today,
+            _parse_day(raw_to, "date_to") if raw_to else _today)
+        if raw_from:
+            qs = qs.filter(created_at__gte=_tz_start)
+        if raw_to:
+            qs = qs.filter(created_at__lte=_tz_end)
 
     items, pagination = paginate(qs, request)
     # 列表摘要：action/entity/actor/时间/reason + 敏感标记；
