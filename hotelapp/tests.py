@@ -1529,3 +1529,17 @@ class SeedRoleTestAccountsCommandTests(TestCase):
                 starts_at__lte=timezone.now(),
                 ends_at__isnull=True,
             ).count(), 1)
+
+class SeedHotelDataEnvironmentGuardTests(TestCase):
+    """业务演示数据种子在生产环境必须在任何写入前拒绝。"""
+
+    def test_production_environment_is_rejected_without_creating_property(self):
+        from django.core.management import call_command, CommandError
+        from django.test import override_settings
+        from io import StringIO
+
+        before = Property.objects.count()
+        with override_settings(DJANGO_ENV="prod", DEBUG=False):
+            with self.assertRaises(CommandError):
+                call_command("seed_hotel_data", stdout=StringIO())
+        self.assertEqual(Property.objects.count(), before)
