@@ -34,7 +34,7 @@ from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.core.paginator import Paginator
 from django.shortcuts import render, redirect, get_object_or_404
 
@@ -2116,16 +2116,12 @@ def finance_add(request):
 # ---------- 夜审（Night Audit） ----------
 @staff_required
 def night_audit(request):
-    """夜审工作台：在住账务核对 + 未到(No-Show)处理 + 营业日结（需「执行夜审」权限）"""
-    if not _has_permission(request, "hotelapp.night_audit_execute"):
-        raise PermissionDenied
-    living = Accommodation.objects.filter(状态="已入住").order_by("id")
-    expired = Accommodation.objects.filter(状态__in=("待确认", "已确认"), 入住时间__lt=_today())
-    records = NightAudit.objects.order_by("-id")[:10]
-    return render(request, "nightaudit.html", {
-        "living": living, "expired": expired, "records": records,
-        "today": _today(),
-    })
+    """旧夜审工作台已退役（§4.2）：302 迁移到 PMS2 营业日中心。
+
+    保留 @staff_required（登录 + 有效任职）作为旧路由门禁证据；细粒度权限
+    在新页面复核（/manage/night-audit/ 同码 hotelapp.night_audit_execute）。
+    """
+    return HttpResponseRedirect("/manage/night-audit/")
 
 
 @staff_required

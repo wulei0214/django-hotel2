@@ -215,12 +215,12 @@ MODULE_REGISTRY_V2 = {
         "name_zh": "夜审",
         "app_label": "core",
         "status": MODULE_ACTIVE,
-        "route_prefix": "/nightaudit",
-        "landing_url": "/nightaudit/",
+        "route_prefix": "/manage/night-audit",
+        "landing_url": "/manage/night-audit/",
         "risk_level": "high",
         "property_scoped": True,
         "actions": {
-            "view": "hotelapp.night_audit_execute",  # /nightaudit/ 页 GET 同码门禁
+            "view": "hotelapp.night_audit_execute",  # 营业日中心页 GET 同码门禁
             "add": NOT_APPLICABLE,
             "change": NOT_APPLICABLE,
             "delete": NOT_APPLICABLE,
@@ -230,8 +230,11 @@ MODULE_REGISTRY_V2 = {
                         "core.breakglass_review"),
         },
         "extra_codes": (),
-        "notes": "夜审 preview/run 与营业日重开/break-glass 共 7 条 API；"
-                 "break-glass 复核独立权限 core.breakglass_review。",
+        "notes": "§4.2 营业日中心 /manage/night-audit/（旧 /nightaudit/ 已 302 迁移）；"
+                 "夜审 preview/run 与营业日重开/break-glass 写 API 共 7 条，"
+                 "营业日/夜审历史/break-glass 只读 API 6 条（同码读取口径 "
+                 "hotelapp.night_audit_execute）；break-glass 复核独立权限 "
+                 "core.breakglass_review。",
     },
     # -- 预留模块（对接第三方，module_gate 隐藏，2 个） ------------------------
     "fnb": {

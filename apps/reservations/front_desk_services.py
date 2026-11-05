@@ -153,6 +153,19 @@ def check_in_stay(*, property_obj, reservation_room_id, checked_in_by=None):
         raise FrontDeskOperationError("尚未到预订入住日期，不能提前办理入住。")
     if line.check_out <= today:
         raise FrontDeskOperationError("预订离店日期已过，不能办理入住。")
+    # §4.2 营业日结后的业务写入限制（P0-C 缺口收口）：当日营业日已完成夜审关账
+    # 后，拒绝再生成新的在住 Stay（新入住的房费过租会归属已关账营业日）。
+    # 仅阻挡入住；排房/换房不产生营业日归属账务，允许为次日到店提前排房。
+    from apps.core.models import BusinessDate
+    if BusinessDate.objects.filter(
+        property=property_obj,
+        business_date=today,
+        status=BusinessDate.Status.CLOSED,
+    ).exists():
+        raise FrontDeskOperationError(
+            f"当前营业日 {today.isoformat()} 已完成夜审关账，不能办理新入住；"
+            "请等待下一营业日开启，或走营业日重开审批/break-glass 流程。"
+        )
     if not line.assigned_room_id:
         raise FrontDeskOperationError("请先为该预订明细分配房间。")
 

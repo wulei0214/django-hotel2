@@ -194,12 +194,67 @@ MANAGEMENT_CENTERS = {
             ],
         },
     },
+    # 基线 2.0 §4.1：财务与账单中心（专属工作台模板；写操作走 BillingService API）
+    "finance": {
+        "title": "财务与账单中心", "subtitle": "账单、流水、收款、退款与班次（PMS2 真实账务口径）",
+        "permission": "hotelapp.finance_access",
+        "endpoint": "/api/v1/billing/folios",
+        "template": "pms/billing_center.html",
+        "enable_collect_payment": True,
+        "columns": [
+            {"label": "预订编号", "path": "booking_no"},
+            {"label": "住客", "path": "guest_name"},
+            {"label": "账单类型", "path": "folio_type_label"},
+            {"label": "状态", "path": "status_label", "badge": "status"},
+            {"label": "币种", "path": "currency"},
+            {"label": "余额", "path": "balance"},
+            {"label": "开账时间", "path": "opened_at"},
+            {"label": "结账时间", "path": "closed_at"},
+        ],
+        "detail": {
+            "id_path": "id", "endpoint": "/api/v1/billing/folios/{id}",
+            "overview": [["booking_no", "预订编号"], ["guest_name", "住客"],
+                         ["status_label", "账单状态"], ["summary.charges", "消费合计"],
+                         ["summary.credits", "已收合计"], ["summary.balance", "账单余额"],
+                         ["currency", "币种"], ["opened_at", "开账时间"], ["closed_at", "结账时间"]],
+        },
+    },
+    # 基线 2.0 §4.2：营业日与夜审中心（专属工作台模板；高危写操作走
+    # NightAuditService API：preview → run 两步确认、重开双人审批、break-glass 复核）。
+    # 键名与 URL 段一致（/manage/night-audit/）。
+    "night-audit": {
+        "title": "营业日与夜审中心",
+        "subtitle": "营业日历、夜审预览与执行、重开审批、紧急重开（break-glass）复核",
+        "permission": "hotelapp.night_audit_execute",
+        "endpoint": "/api/v1/night-audit/business-dates",
+        "template": "pms/night_audit_center.html",
+        "enable_night_audit_actions": True,
+        "columns": [
+            {"label": "营业日期", "path": "business_date"},
+            {"label": "状态", "path": "status_label", "badge": "status"},
+            {"label": "最近夜审", "path": "latest_run.status_label"},
+            {"label": "关账时间", "path": "closed_at"},
+            {"label": "关账人", "path": "closed_by_id"},
+            {"label": "重开原因", "path": "reopen_reason"},
+        ],
+        "detail": {
+            "id_path": "id", "endpoint": "/api/v1/night-audit/business-dates/{id}",
+            "overview": [["business_date", "营业日期"], ["status_label", "状态"],
+                         ["opened_at", "开启时间"], ["closed_at", "关账时间"],
+                         ["no_show_review_candidates", "未到处理候选"],
+                         ["reopen_reason", "重开原因"]],
+        },
+    },
 }
 
 
 @login_required
 def management_center_page(request, center):
-    """真实 PMS2 只读管理页面；数据由物业范围 API 提供，不注入静态假数据。"""
+    """真实 PMS2 只读管理页面；数据由物业范围 API 提供，不注入静态假数据。
+
+    配置可声明 ``template`` 选择专属工作台模板（如 §4.1 财务中心的
+    pms/billing_center.html）；默认仍渲染通用注册表模板。
+    """
     config = MANAGEMENT_CENTERS.get(center)
     if config is None:
         from django.http import Http404
@@ -208,7 +263,19 @@ def management_center_page(request, center):
     if property_obj is None or not AuthorizationService.has_permission(
             request.user, property_obj, config["permission"]):
         return HttpResponseForbidden("当前岗位无权查看此管理中心。")
-    return render(request, "pms/management_center.html", {
+    # 写操作入口可见性（服务端仍逐请求复核专项权限，页面标志仅控制表单渲染）
+    user = request.user
+    can_refund_request = AuthorizationService.has_permission(
+        user, property_obj, "billing.refund_request")
+    can_reverse = AuthorizationService.has_permission(
+        user, property_obj, "billing.reverse_entry")
+    enable_night_audit = config.get("enable_night_audit_actions", False)
+    can_reopen = enable_night_audit and AuthorizationService.has_permission(
+        user, property_obj, "hotelapp.business_date_reopen")
+    can_review_break_glass = (
+        enable_night_audit and AuthorizationService.has_permission(
+            user, property_obj, "core.breakglass_review"))
+    return render(request, config.get("template", "pms/management_center.html"), {
         "center": center,
         "title": config["title"],
         "subtitle": config["subtitle"],
@@ -218,4 +285,10 @@ def management_center_page(request, center):
         "secondary_sections": config.get("secondary_sections", []),
         "detail_config": config.get("detail", {}),
         "property_name": property_obj.name,
+        "can_collect_payment": config.get("enable_collect_payment", False),
+        "can_refund_request": can_refund_request,
+        "can_reverse_entry": can_reverse,
+        "can_run_night_audit": enable_night_audit,  # 页面已过 night_audit_execute 门禁
+        "can_reopen_business_date": can_reopen,
+        "can_review_break_glass": can_review_break_glass,
     })

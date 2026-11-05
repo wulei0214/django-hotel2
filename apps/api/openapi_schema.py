@@ -268,6 +268,93 @@ COMPONENTS = {
         "reviewed_at": s_str("复核时间。", format="date-time"),
     }),
 
+    "NightAuditRunDto": s_obj({
+        "id": s_int(), "business_date_id": s_int(),
+        "business_date": s_str("营业日期。", format="date"),
+        "business_date_status": s_str("营业日状态。"),
+        "status": s_str("RUNNING/SUCCESS/FAILED。"),
+        "status_label": s_str("运行状态中文标签。"),
+        "started_at": s_str("开始时间。", format="date-time"),
+        "finished_at": s_nullable(s_str("完成时间。", format="date-time")),
+        "duration_seconds": s_nullable(s_int("执行耗时秒（未完成为 null）。")),
+        "executed_by_id": s_nullable(s_int("执行人 ID。")),
+        "summary": s_nullable(s_obj(desc="成功运行的结果摘要（在住/过租/未到计数）。")),
+        "error_message": s_str("失败原因（列表截断 300 字符，详情最长 4000）。"),
+    }, desc="夜审运行记录（apps.core.models.NightAuditRun）。"),
+    "BusinessDateDto": s_obj({
+        "id": s_int(), "business_date": s_str("营业日期。", format="date"),
+        "status": s_str("OPEN/CLOSED/REOPENED。"),
+        "status_label": s_str("状态中文标签。"),
+        "opened_at": s_str("开启时间。", format="date-time"),
+        "closed_at": s_nullable(s_str("关账时间。", format="date-time")),
+        "closed_by_id": s_nullable(s_int()),
+        "reopened_at": s_nullable(s_str("重开时间。", format="date-time")),
+        "reopened_by_id": s_nullable(s_int()),
+        "reopen_reason": s_str("重开原因（无则为空串）。"),
+        "latest_run": s_nullable(_ref("NightAuditRunDto")),
+    }, desc="营业日记录（apps.core.models.BusinessDate）。"),
+    "BusinessDateCurrentResult": s_obj({
+        "id": s_nullable(s_int("营业日记录 ID；未建立记录为 null。")),
+        "business_date": s_str("按物业时区解析的当前营业日期。", format="date"),
+        "exists": s_bool("是否已存在营业日记录。"),
+        "status": s_str("状态；无记录时按 OPEN 口径返回。"),
+        "status_label": s_str("状态中文标签。"),
+    }),
+    "BusinessDateDetail": s_obj({
+        "id": s_int(), "business_date": s_str("营业日期。", format="date"),
+        "status": s_str("OPEN/CLOSED/REOPENED。"),
+        "status_label": s_str("状态中文标签。"),
+        "opened_at": s_str("开启时间。", format="date-time"),
+        "closed_at": s_nullable(s_str("关账时间。", format="date-time")),
+        "closed_by_id": s_nullable(s_int()),
+        "reopened_at": s_nullable(s_str("重开时间。", format="date-time")),
+        "reopened_by_id": s_nullable(s_int()),
+        "reopen_reason": s_str("重开原因（无则为空串）。"),
+        "latest_run": s_nullable(_ref("NightAuditRunDto")),
+        "runs": s_arr(_ref("NightAuditRunDto"), "该营业日全部夜审运行（新→旧）。"),
+        "latest_success_summary": s_nullable(s_obj(desc="最近一次成功夜审的摘要。")),
+        "approvals": s_arr(s_obj({
+            "id": s_int(), "action_code": s_str("动作码（night_audit.reopen）。"),
+            "status": s_str("审批状态。"),
+            "requested_by_id": s_int(), "approved_by_id": s_nullable(s_int()),
+            "reason": s_str("申请原因。"),
+            "created_at": s_str("申请时间。", format="date-time"),
+        }), "重开审批记录（最近 20 条）。"),
+        "no_show_review_candidates": s_int("该营业日未到处理候选数（只列示不自动处理）。"),
+        "ledger": s_obj({
+            "business_date": s_str("", format="date"),
+            "currencies": s_obj(desc="按币种分组：entry_count/charge_total/credit_total。"),
+        }, desc="该营业日已入账凭证汇总。"),
+        "room_status_summary": s_obj({
+            "total_rooms": s_int(),
+            "occupancy": s_obj(desc="在住状态计数映射。"),
+            "housekeeping": s_obj(desc="清洁状态计数映射。"),
+            "maintenance": s_obj(desc="维修状态计数映射。"),
+            "abnormal": s_arr(s_obj({
+                "maintenance_status": s_str("非正常维修状态。"),
+                "room_count": s_int("房间数。"),
+            }), "维修停用/停售房间分组。"),
+        }, desc="物业当前异常房态汇总。"),
+    }, desc="营业日详情（§4.2：运行历史 + 重开审批 + 过租/未到/异常房态汇总）。"),
+    "BreakGlassRecordDto": s_obj({
+        "id": s_int(), "business_date_id": s_int(),
+        "business_date": s_str("营业日期。", format="date"),
+        "status": s_str("GRANTED/USED/EXPIRED/REVIEWED。"),
+        "status_label": s_str("状态中文标签。"),
+        "requested_by_id": s_int("紧急操作人 ID。"),
+        "reason": s_str("紧急原因。"),
+        "created_at": s_str("申请时间。", format="date-time"),
+        "expires_at": s_str("授权失效时间。", format="date-time"),
+        "used_at": s_nullable(s_str("执行时间。", format="date-time")),
+        "reviewed_by_id": s_nullable(s_int()),
+        "reviewed_at": s_nullable(s_str("复核时间。", format="date-time")),
+        "review_decision": s_str("CONFIRMED/REJECTED 或空。"),
+        "review_decision_label": s_str("复核结论中文标签。"),
+        "review_reason": s_str("复核说明。"),
+        "review_pending": s_bool("status=USED 即待独立复核。"),
+        "is_expired_grant": s_bool("GRANTED 但已过 expires_at。"),
+    }, desc="紧急重开授权记录（apps.core.models.BreakGlassRecord）。"),
+
     "FolioSummaryDto": s_obj({
         "folio_id": s_nullable(s_int("账单 ID；未开账为 null。")),
         "status": s_str("账单状态；未开账为 NOT_OPENED。"),
@@ -1032,6 +1119,51 @@ op("/night-audit/break-glass/{record_id}/review", "post", "夜审与紧急访问
    ok=(("200", "复核结论已记录"),),
    data=_ref("BreakGlassReviewResult"), errors=E_STAFF_CONFLICT)
 
+# ---- §4.2 营业日中心只读端点（读取口径：hotelapp.night_audit_execute） ----
+op("/night-audit/business-dates", "get", "夜审与紧急访问", "营业日分页列表",
+   status="verified",
+   query=[Q("status", "可选；OPEN/CLOSED/REOPENED，非法值 400。", "string", False, "CLOSED"),
+          *PQ()],
+   permission="有效员工 + hotelapp.night_audit_execute",
+   ok=(("200", "营业日 DTO 数组（含最近一次夜审运行摘要），稳定排序 -business_date,-id"),),
+   data=s_arr(_ref("BusinessDateDto")), errors=E_STAFF)
+
+op("/night-audit/business-dates/current", "get", "夜审与紧急访问", "当前营业日",
+   status="verified",
+   permission="有效员工 + hotelapp.night_audit_execute",
+   ok=(("200", "当前营业日（按物业时区解析；无记录时 exists=false 且按 OPEN 口径返回）"),),
+   data=_ref("BusinessDateCurrentResult"), errors=E_STAFF)
+
+op("/night-audit/business-dates/{business_date_id}", "get", "夜审与紧急访问", "营业日详情",
+   status="verified", path_params=[("business_date_id", "营业日记录 ID。")],
+   permission="有效员工 + hotelapp.night_audit_execute",
+   ok=(("200", "营业日详情：夜审运行历史、重开审批、过租/未到汇总、异常房态"),),
+   data=_ref("BusinessDateDetail"), errors=E_STAFF_CONFLICT)
+
+op("/night-audit/break-glass", "get", "夜审与紧急访问", "紧急访问记录分页列表",
+   status="verified",
+   query=[Q("status", "可选；GRANTED/USED/EXPIRED/REVIEWED。", "string", False, "REVIEWED"),
+          Q("review_decision", "可选；CONFIRMED/REJECTED。", "string", False),
+          *PQ()],
+   permission="有效员工 + hotelapp.night_audit_execute",
+   ok=(("200", "break-glass 记录数组（review_pending 标记待复核），稳定排序 -created_at,-id"),),
+   data=s_arr(_ref("BreakGlassRecordDto")), errors=E_STAFF)
+
+op("/night-audit/runs", "get", "夜审与紧急访问", "夜审历史分页列表",
+   status="verified",
+   query=[Q("status", "可选；RUNNING/SUCCESS/FAILED。", "string", False, "FAILED"),
+          Q("business_date_id", "可选；按营业日记录 ID 过滤。", "integer", False, 1),
+          *PQ()],
+   permission="有效员工 + hotelapp.night_audit_execute",
+   ok=(("200", "夜审运行 DTO 数组（含耗时与截断失败原因），稳定排序 -started_at,-id"),),
+   data=s_arr(_ref("NightAuditRunDto")), errors=E_STAFF)
+
+op("/night-audit/runs/{run_id}", "get", "夜审与紧急访问", "单次夜审运行详情",
+   status="verified", path_params=[("run_id", "夜审运行记录 ID。")],
+   permission="有效员工 + hotelapp.night_audit_execute",
+   ok=(("200", "运行详情（完整摘要 summary 与失败原因）"),),
+   data=_ref("NightAuditRunDto"), errors=E_STAFF_CONFLICT)
+
 # ========== 住客中心（Session + hotelapp.view_client 等） ==========
 op("/guests", "get", "住客中心", "住客列表",
    status="partial",
@@ -1132,6 +1264,218 @@ op("/daily-rates/{rate_id}/adjust", "post", "房价管理", "调整每日房价"
    data=_ref("DailyRateAdjustResult"), errors=E_STAFF_CONFLICT,
    extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
                              "semantics": "api_contract.idempotent：同 key 同 body 重放首次响应；不同 body 409；TTL 24h。"}})
+
+# ========== 财务与账单中心（基线 2.0 §4.1；读=hotelapp.finance_access，写走 BillingService） ==========
+FIN_READ_PERM = ("有效员工（DEFAULT 有效任职）+ hotelapp.finance_access；"
+                 "QuerySet 强制当前物业过滤，金额一律 Decimal→str，账本只读展示")
+
+op("/billing/folios", "get", "财务", "账单列表",
+   status="verified",
+   query=[Q("status", "账单状态筛选 OPEN/CLOSED/VOIDED。"),
+          Q("booking_no", "预订号精确筛选。"),
+          Q("folio_type", "账单类型 MASTER/GUEST/COMPANY/HOUSE/DEPOSIT。"),
+          Q("q", "预订号/住客姓名包含搜索。"), *PQ()],
+   permission=FIN_READ_PERM + "；meta.pagination.summary 汇总未结账单数与账本口径余额",
+   ok=(("200", "当前物业账单数组（含逐单余额）"),),
+   data=s_arr(s_obj({
+       "id": s_int(), "folio_type": s_str(), "folio_type_label": s_str(),
+       "status": s_str(), "status_label": s_str(),
+       "currency": s_str(), "currency_label": s_str(),
+       "balance": s_str("账本口径余额（带符号 LedgerEntry 汇总，Decimal→str）。"),
+       "reservation_id": s_int(), "booking_no": s_str(),
+       "reservation_status": s_str(), "guest_id": s_int(), "guest_name": s_str(),
+       "opened_at": s_str("", format="date-time"),
+       "closed_at": s_nullable(s_str("", format="date-time")),
+   }), desc="账单行数组"), errors=E_STAFF)
+
+op("/billing/folios/{folio_id}", "get", "财务", "账单详情（流水/支付/退款明细）",
+   status="verified", path_params=[("folio_id", "Folio ID。")],
+   permission=FIN_READ_PERM + "；非本物业账单一律 404",
+   ok=(("200", "账单头 + summary + entries + payments（嵌套 refunds）"),),
+   data=s_obj({
+       "id": s_int(), "folio_type": s_str(), "folio_type_label": s_str(),
+       "status": s_str(), "status_label": s_str(), "currency": s_str(),
+       "currency_label": s_str(),
+       "opened_at": s_str("", format="date-time"),
+       "closed_at": s_nullable(s_str("", format="date-time")),
+       "reservation": s_obj({"id": s_int(), "booking_no": s_str(),
+                             "status": s_str(), "status_label": s_str()}),
+       "guest": s_obj({"id": s_int(), "full_name": s_str()}),
+       "summary": s_obj({"charges": s_str(), "credits": s_str(), "balance": s_str()}),
+       "entries": s_arr(s_obj({
+           "id": s_int(), "entry_type": s_str(), "entry_type_label": s_str(),
+           "amount": s_str(), "currency": s_str(),
+           "business_date": s_str("", format="date"),
+           "reference": s_str(), "description": s_str(),
+           "void_of_id": s_nullable(s_int()), "void_reason": s_str(),
+           "posted_by": s_nullable(s_str()),
+           "created_at": s_str("", format="date-time"),
+       }), desc="不可变凭证行（只追加事实展示）"),
+       "payments": s_arr(s_obj({
+           "id": s_int(), "provider": s_str(), "provider_ref": s_str(),
+           "method": s_str(), "amount": s_str(), "currency": s_str(),
+           "status": s_str(), "status_label": s_str(),
+           "paid_at": s_nullable(s_str("", format="date-time")),
+           "created_at": s_str("", format="date-time"),
+           "refunds": s_arr(s_obj({
+               "id": s_int(), "amount": s_str(), "reason": s_str(),
+               "status": s_str(), "status_label": s_str(),
+               "provider_ref": s_str(),
+               "requested_by": s_nullable(s_str()),
+               "approved_by": s_nullable(s_str()),
+               "created_at": s_str("", format="date-time"),
+               "processed_at": s_nullable(s_str("", format="date-time")),
+           })),
+       })),
+   }), errors=E_STAFF)
+
+op("/billing/ledger", "get", "财务", "不可变流水列表",
+   status="verified",
+   query=[Q("entry_type", "凭证类型 ROOM_CHARGE/DEPOSIT/PAYMENT/REFUND/ADJUSTMENT/REVERSAL。"),
+          Q("from", "营业日起 YYYY-MM-DD。", "string", False, "2026-11-01", fmt="date"),
+          Q("to", "营业日止 YYYY-MM-DD。", "string", False, "2026-11-06", fmt="date"),
+          Q("folio_id", "按账单筛选。", "integer"), *PQ()],
+   permission=FIN_READ_PERM + "；LedgerEntry 只追加，不允许编辑/删除",
+   ok=(("200", "凭证行数组（倒序，含冲销关联 void_of_id）"),),
+   data=s_arr(s_obj({
+       "id": s_int(), "folio_id": s_int(), "booking_no": s_str(),
+       "entry_type": s_str(), "entry_type_label": s_str(),
+       "amount": s_str("带符号金额（Decimal→str）。"), "currency": s_str(),
+       "business_date": s_str("", format="date"),
+       "reference": s_str("全局唯一凭证号。"), "description": s_str(),
+       "void_of_id": s_nullable(s_int("红字冲销指向的原凭证。")),
+       "void_reason": s_str(), "posted_by": s_nullable(s_str()),
+       "created_at": s_str("", format="date-time"),
+   })), errors=E_STAFF)
+
+op("/billing/payments", "get", "财务", "支付流水列表",
+   status="verified",
+   query=[Q("status", "支付状态筛选（CREATED/PENDING/SUCCEEDED/...）。"),
+          Q("method", "支付方式筛选（CASH/CARD/TRANSFER）。"),
+          Q("booking_no", "预订号精确筛选。"), *PQ()],
+   permission=FIN_READ_PERM,
+   ok=(("200", "支付行数组"),),
+   data=s_arr(s_obj({
+       "id": s_int(), "folio_id": s_int(), "booking_no": s_str(),
+       "provider": s_str(), "provider_ref": s_str(), "method": s_str(),
+       "amount": s_str(), "currency": s_str(),
+       "status": s_str(), "status_label": s_str(),
+       "paid_at": s_nullable(s_str("", format="date-time")),
+       "created_at": s_str("", format="date-time"),
+   })), errors=E_STAFF)
+
+op("/billing/payments", "post", "财务", "统一收款（前台/财务中心）",
+   status="verified",
+   body=s_obj({
+       "reservation_id": s_int("预订主单 ID（必须属当前物业）。"),
+       "amount": s_str("收款金额（字符串十进制，精确到分，>0）。"),
+       "method": s_str("支付方式 CASH/CARD/TRANSFER。"),
+       "reference": s_str("可选参考号；即服务层 provider_ref 幂等键（≤80 字符）。"),
+   }, required=["reservation_id", "amount", "method"]),
+   permission="有效员工 + hotelapp.finance_access（BillingService.collect_payment 校验"
+              "账单未关闭/金额/方式/应收余额）",
+   ok=(("200", "同 reference 幂等重放（返回原支付）"),
+       ("201", "收款成功：Payment + PAYMENT 贷方凭证 + 审计 billing.collect")),
+   data=s_obj({
+       "id": s_int(), "payment_id": s_int(), "folio_id": s_int(),
+       "reservation_id": s_int(), "provider_ref": s_str(), "method": s_str(),
+       "amount": s_str(), "currency": s_str(), "status": s_str(),
+   }), errors=E_STAFF,
+   notes="审计事件：billing.collect。账本凭证号 payment:{provider_ref}（全局唯一幂等）。",
+   extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
+                             "semantics": "api_contract.idempotent 头幂等 + 服务层 reference 幂等；"
+                                          "同 reference 不同事实 → 400。"}})
+
+op("/billing/refunds", "get", "财务", "退款列表（申请/审批/执行状态）",
+   status="verified",
+   query=[Q("status", "退款状态筛选 PENDING/SUCCEEDED/REJECTED。"), *PQ()],
+   permission=FIN_READ_PERM,
+   ok=(("200", "退款行数组（含审批记录状态）"),),
+   data=s_arr(s_obj({
+       "id": s_int(), "payment_id": s_int(), "folio_id": s_int(),
+       "amount": s_str(), "currency": s_str(), "reason": s_str(),
+       "status": s_str(), "status_label": s_str(), "provider_ref": s_str(),
+       "requested_by": s_nullable(s_str()), "approved_by": s_nullable(s_str()),
+       "approval_status": s_nullable(s_str()),
+       "created_at": s_str("", format="date-time"),
+       "processed_at": s_nullable(s_str("", format="date-time")),
+   })), errors=E_STAFF)
+
+op("/billing/refunds", "post", "财务", "退款申请（双人审批 SoD 第一环）",
+   status="verified",
+   body=s_obj({
+       "payment_id": s_int("原支付流水 ID（必须属当前物业且成功/部分退款）。"),
+       "amount": s_str("退款金额（>0，累计不超过原支付金额）。"),
+       "reason": s_str("退款原因，1-240 字符（服务强校验）。"),
+       "idempotency_key": s_str("幂等键 1-64 字符；缺省取 Idempotency-Key 头。"),
+   }, required=["payment_id", "amount", "reason"]),
+   permission="有效员工 + hotelapp.finance_access + billing.refund_request"
+              "（SoD：申请人≠审批人，审批权 billing.refund_approve 另行持有）",
+   ok=(("200", "同幂等键重放（返回原退款申请）"),
+       ("201", "退款申请创建：Refund(PENDING) + ApprovalRecord(billing.refund)"
+               "+ 审计 billing.refund_request")),
+   data=s_obj({
+       "id": s_int(), "refund_id": s_int(), "payment_id": s_int(),
+       "amount": s_str(), "currency": s_str(), "reason": s_str(),
+       "status": s_str(), "provider_ref": s_str(),
+       "approval_record_id": s_int(),
+   }), errors=E_STAFF,
+   notes="审批执行沿用既有 front-desk 退款审批端点（billing.refund_approve），不在本端点重复实现。",
+   extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
+                             "semantics": "服务层 idempotency_key（body 优先，缺省取头）强校验 1-64 字符；"
+                                          "同 key 不同事实 → 400。"}})
+
+op("/billing/reversals", "post", "财务", "红字冲销（只追加反向凭证）",
+   status="verified",
+   body=s_obj({
+       "entry_id": s_int("被冲销原凭证 ID（不可为红字凭证）。"),
+       "reason": s_str("冲销原因，1-240 字符（服务强校验）。"),
+   }, required=["entry_id", "reason"]),
+   permission="有效员工 + hotelapp.finance_access + billing.reverse_entry"
+              "（F-08：新权限码，不复活已退役的 hotelapp.reverse_checkout）",
+   ok=(("200", "同一原凭证重复冲销幂等重放（返回首次反向凭证）"),
+       ("201", "冲销成功：追加等额反向 REVERSAL 凭证 + 审计 billing.reverse_entry")),
+   data=s_obj({
+       "id": s_int(), "reversal_id": s_int(), "original_entry_id": s_int(),
+       "void_of_id": s_int(), "amount": s_str("反向金额（原凭证等额反向）。"),
+       "currency": s_str(), "reference": s_str("reversal:{原凭证号}。"),
+       "entry_type": s_str("REVERSAL"),
+   }), errors=E_STAFF,
+   notes="原凭证不可变；审计事件：billing.reverse_entry。",
+   extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
+                             "semantics": "api_contract.idempotent 头幂等 + 服务层 reference 幂等；"
+                                          "同一原凭证只能冲销一次，重放返回首次结果。"}})
+
+op("/billing/shifts", "get", "财务", "收银班次列表",
+   status="verified",
+   query=[Q("status", "班次状态筛选 OPEN/CLOSED/RECONCILED。"), *PQ()],
+   permission=FIN_READ_PERM,
+   ok=(("200", "CashierShift 行数组（备用金/应收/实收/差异）"),),
+   data=s_arr(s_obj({
+       "id": s_int(), "cashier_id": s_int(), "cashier": s_str(),
+       "status": s_str(), "status_label": s_str(),
+       "opening_cash": s_str(), "expected_cash": s_nullable(s_str()),
+       "actual_cash": s_nullable(s_str()), "variance": s_nullable(s_str()),
+       "variance_reason": s_str(),
+       "opened_at": s_str("", format="date-time"),
+       "closed_at": s_nullable(s_str("", format="date-time")),
+   })), errors=E_STAFF)
+
+op("/billing/summary", "get", "财务", "可配置期间财务汇总",
+   status="verified",
+   query=[Q("from", "起始营业日 YYYY-MM-DD；缺省当前营业日。", "string", False, "2026-11-06", fmt="date"),
+          Q("to", "结束营业日 YYYY-MM-DD；缺省当前营业日。", "string", False, "2026-11-06", fmt="date")],
+   permission=FIN_READ_PERM + "；期间最长 92 天",
+   ok=(("200", "期间收支/收款/退款汇总（BillingService.financial_summary）"),),
+   data=s_obj({
+       "total_revenue": s_str(), "total_expense": s_str(), "net": s_str(),
+       "payment_count": s_int(), "payment_total": s_str(),
+       "refund_count": s_int(), "refund_total": s_str(),
+       "entry_count": s_int(),
+       "period": s_obj({"start": s_str("", format="date"), "end": s_str("", format="date")}),
+       "basis": s_obj({"ledger_entries": s_str(), "payments_refunds": s_str()}),
+       "property": s_obj({"code": s_str(), "name": s_str()}),
+   }), errors=E_STAFF)
 
 # ========== 审批（ApprovalRecord；SoD 双人审批；P0-01/P0-02 加固） ==========
 AP_LIST_PERM = ("有效员工（DEFAULT 有效任职）+ billing.approval_view；"

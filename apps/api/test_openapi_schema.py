@@ -39,6 +39,12 @@ PERMISSION_MATRIX = {
     ("post", "/front-desk/refunds/{refund_id}/approve"): "billing.refund_approve",
     ("get", "/night-audit/preview"): "hotelapp.night_audit_execute",
     ("post", "/night-audit/run"): "hotelapp.night_audit_execute",
+    ("get", "/night-audit/business-dates"): "hotelapp.night_audit_execute",
+    ("get", "/night-audit/business-dates/current"): "hotelapp.night_audit_execute",
+    ("get", "/night-audit/business-dates/{business_date_id}"): "hotelapp.night_audit_execute",
+    ("get", "/night-audit/break-glass"): "hotelapp.night_audit_execute",
+    ("get", "/night-audit/runs"): "hotelapp.night_audit_execute",
+    ("get", "/night-audit/runs/{run_id}"): "hotelapp.night_audit_execute",
     ("post", "/night-audit/business-dates/{business_date_id}/reopen-request"):
         "hotelapp.business_date_reopen",
     ("post", "/night-audit/break-glass/{record_id}/review"): "core.breakglass_review",
@@ -55,6 +61,16 @@ PERMISSION_MATRIX = {
     ("get", "/rate-calendar"): "hotelapp.view_room",
     ("post", "/daily-rates/{rate_id}/adjust"): "inventory.manage_rates",
     ("get", "/financial-summary"): "hotelapp.finance_access",
+    ("get", "/billing/folios"): "hotelapp.finance_access",
+    ("get", "/billing/folios/{folio_id}"): "hotelapp.finance_access",
+    ("get", "/billing/ledger"): "hotelapp.finance_access",
+    ("get", "/billing/payments"): "hotelapp.finance_access",
+    ("post", "/billing/payments"): "hotelapp.finance_access",
+    ("get", "/billing/refunds"): "hotelapp.finance_access",
+    ("post", "/billing/refunds"): "billing.refund_request",
+    ("post", "/billing/reversals"): "billing.reverse_entry",
+    ("get", "/billing/shifts"): "hotelapp.finance_access",
+    ("get", "/billing/summary"): "hotelapp.finance_access",
     ("get", "/approvals"): "billing.approval_view",  # P0-01：专项只读权限
     ("post", "/approvals/request"): "ApprovalActionRegistry",  # P0-02：动作白名单
     ("post", "/approvals/{record_id}/approve"): "billing.refund_approve",
@@ -103,7 +119,7 @@ class PMS2OpenApiDocumentationTests(TestCase):
         spec = response.json()
         self.assertEqual(spec["openapi"], "3.1.0")
         paths = spec["paths"]
-        self.assertEqual(len(paths), 60, "OpenAPI 应覆盖 apps.api.urls 的全部 60 个注册路由")
+        self.assertEqual(len(paths), 74, "OpenAPI 应覆盖 apps.api.urls 的全部 74 个注册路由")
         expected = {
             "/api/v1/availability": {"get"},
             "/api/v1/reservations": {"post"},
@@ -113,6 +129,12 @@ class PMS2OpenApiDocumentationTests(TestCase):
             "/api/v1/front-desk/reservation-rooms/{reservation_room_id}/check-in": {"post"},
             "/api/v1/night-audit/preview": {"get"},
             "/api/v1/night-audit/run": {"post"},
+            "/api/v1/night-audit/business-dates": {"get"},
+            "/api/v1/night-audit/business-dates/current": {"get"},
+            "/api/v1/night-audit/business-dates/{business_date_id}": {"get"},
+            "/api/v1/night-audit/break-glass": {"get"},
+            "/api/v1/night-audit/runs": {"get"},
+            "/api/v1/night-audit/runs/{run_id}": {"get"},
             "/api/v1/guests": {"get"},
             "/api/v1/guests/create": {"post"},
             "/api/v1/approvals": {"get"},
@@ -245,7 +267,7 @@ class PMS2ContractStatusTests(TestCase):
                 f"{method.upper()} {path} 缺少合法 x-contract-status")
             if path != BASE + "/openapi.json":
                 business += 1
-        self.assertEqual(business, 59, "业务 operation 应为 59 个（排除 openapi.json 自身）")
+        self.assertEqual(business, 75, "业务 operation 应为 75 个（排除 openapi.json 自身）")
 
     def test_no_operation_is_marked_planned(self):
         """全部 60 条路由均已实现，不允许出现 planned 端点（虚构计划外接口）。"""

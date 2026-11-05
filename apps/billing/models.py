@@ -261,6 +261,11 @@ class LedgerEntry(models.Model):
                 name="ck_ledger_reversal_has_reason",
             ),
         ]
+        # F-08（基线 2.0 §4.1）：红字冲销 HTTP 入口启用新权限码，
+        # 不复用已随旧路由退役的 hotelapp.reverse_checkout。
+        permissions = (
+            ("reverse_entry", "可以红字冲销账本凭证（LedgerEntry）"),
+        )
 
     def __str__(self):
         return f"{self.reference}: {self.amount} {self.currency}"

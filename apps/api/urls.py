@@ -1,12 +1,19 @@
 from django.urls import path
 
-from . import approval, front_desk, guest_center, night_audit, reservation_center, staff_center, views
+from . import approval, billing_center, front_desk, guest_center, night_audit, reservation_center, staff_center, views
 
 app_name = "api"
 
 urlpatterns = [
     path("night-audit/preview", night_audit.night_audit_preview, name="night_audit_preview"),
     path("night-audit/run", night_audit.night_audit_run, name="night_audit_run"),
+    # §4.2 营业日中心只读端点：列表/当前/详情 + 夜审历史 + break-glass 列表
+    path("night-audit/business-dates", night_audit.night_audit_business_dates, name="night_audit_business_dates"),
+    path("night-audit/business-dates/current", night_audit.night_audit_business_date_current, name="night_audit_business_date_current"),
+    path("night-audit/business-dates/<int:business_date_id>", night_audit.night_audit_business_date_detail, name="night_audit_business_date_detail"),
+    path("night-audit/break-glass", night_audit.night_audit_break_glass_list, name="night_audit_break_glass_list"),
+    path("night-audit/runs", night_audit.night_audit_runs, name="night_audit_runs"),
+    path("night-audit/runs/<int:run_id>", night_audit.night_audit_run_detail, name="night_audit_run_detail"),
     path("night-audit/business-dates/<int:business_date_id>/reopen-request", night_audit.night_audit_reopen_request, name="night_audit_reopen_request"),
     path("night-audit/business-dates/<int:business_date_id>/approvals/<int:approval_id>/approve", night_audit.night_audit_reopen_approve, name="night_audit_reopen_approve"),
     path("night-audit/business-dates/<int:business_date_id>/break-glass", night_audit.night_audit_break_glass_request, name="night_audit_break_glass_request"),
@@ -72,4 +79,13 @@ urlpatterns = [
     path("memberships/<int:membership_id>", staff_center.membership_detail, name="membership_detail"),
     path("memberships/create", staff_center.membership_create, name="membership_create"),
     path("memberships/<int:membership_id>/level", staff_center.membership_change_level, name="membership_change_level"),
+    # --- 财务与账单中心 (基线 2.0 §4.1；读=finance_access，写走 BillingService) ---
+    path("billing/folios", billing_center.folio_list, name="billing_folio_list"),
+    path("billing/folios/<int:folio_id>", billing_center.folio_detail, name="billing_folio_detail"),
+    path("billing/ledger", billing_center.ledger_entry_list, name="billing_ledger"),
+    path("billing/payments", billing_center.billing_payments, name="billing_payments"),
+    path("billing/refunds", billing_center.billing_refunds, name="billing_refunds"),
+    path("billing/reversals", billing_center.reverse_entry_api, name="billing_reverse_entry"),
+    path("billing/shifts", billing_center.shift_list, name="billing_shift_list"),
+    path("billing/summary", billing_center.billing_summary, name="billing_summary"),
 ]

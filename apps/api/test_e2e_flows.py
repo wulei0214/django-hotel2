@@ -8,7 +8,8 @@
       公开预订 → 排房/入住 → 收款/押金 → 退款申请/审批（SoD P1-02）→ 红字冲账。
   * P0-C（§9.4）NightAuditBusinessDateE2EFlowTests
       夜审预览/执行/幂等 → 营业日重开双人审批 → break-glass 全生命周期 →
-      夜审后新入住的现有行为。
+      夜审后新入住的营业日关账阻挡（§4.2 已收口，详见
+      apps/api/test_night_audit_center.py）。
   * P0-D（§9.5）ExceptionFulfillmentE2EFlowTests
       已入住/已确认数据上的取消冲突、No-Show、续住、换房、
       退房结算（快捷退房退役语义）与反结账缺口（F-08）。
@@ -18,7 +19,8 @@
   * 重开营业日缺理由：409 BUSINESS_CONFLICT，非 400；
   * 续住新离店日期早于原日期：409 BUSINESS_CONFLICT，非 400；
   * 换房同房请求：200 + changed=false（无副作用），非 400；
-  * 夜审后新入住：现有实现无营业日写入门禁，新入住仍可办理（缺口观察）；
+  * 夜审后新入住：原缺口（无营业日写入门禁）已按 §4.2 阻挡规则收口——
+    营业日 CLOSED 后入住 409（排房不受限），见 test_night_audit_center.py；
   * 冲账（BillingService.reverse_entry）：无 HTTP 入口（F-08），服务级调用验证。
 """
 import json
@@ -862,25 +864,34 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
             property_obj=self.property))
 
     # ------------------------------------------------------------------
-    # 5) 夜审后新入住：现有实现无营业日写入门禁（按现有行为断言，缺口观察）
+    # 5) 夜审后新入住：营业日关账后入住被阻挡（§4.2 阻挡规则，P0-C 缺口已收口）
     # ------------------------------------------------------------------
-    def test_new_check_in_after_night_audit_current_behavior(self):
+    def test_new_check_in_after_night_audit_is_blocked(self):
         self.client.force_login(self.dm)
         run = self._run_night_audit()
         self.assertEqual(run.status_code, 201, run.content)
         bd = BusinessDate.objects.get(property=self.property, business_date=self.today)
         self.assertEqual(bd.status, BusinessDate.Status.CLOSED)
 
-        # 夜审关账后办理全新入住：现有实现不阻断（无营业日写入限制检查点）
+        # 夜审关账后办理全新入住：入住服务入口拒绝（409 BUSINESS_CONFLICT）；
+        # 排房不写营业日账务，仍允许为次日到店提前排房。
         booking_no, token = self._create_reservation()
         self._confirm_by_mock_payment(booking_no, token)
         line = self._line(booking_no)
         self.client.force_login(self.fd)
-        stay_id = self._assign_and_check_in(line, self.room2)
-        new_stay = Stay.objects.get(pk=stay_id)
-        self.assertEqual(new_stay.status, Stay.Status.IN_HOUSE)
+        assign = self._post_json(
+            f"/api/v1/front-desk/reservation-rooms/{line.pk}/assign",
+            {"room_id": self.room2.pk})
+        self.assertEqual(assign.status_code, 201, assign.content)
+
+        blocked = self._post_json(
+            f"/api/v1/front-desk/reservation-rooms/{line.pk}/check-in")
+        self.assertEqual(blocked.status_code, 409, blocked.content)
+        self.assertEqual(blocked.json()["error"]["code"], "BUSINESS_CONFLICT")
+        self.assertIn("已完成夜审关账", blocked.json()["error"]["message"])
+        self.assertFalse(Stay.objects.filter(reservation_room=line).exists())
         self.assertEqual(Reservation.objects.get(
-            booking_no=booking_no).status, Reservation.Status.CHECKED_IN)
+            booking_no=booking_no).status, Reservation.Status.CONFIRMED)
         bd.refresh_from_db()
         self.assertEqual(bd.status, BusinessDate.Status.CLOSED)
 

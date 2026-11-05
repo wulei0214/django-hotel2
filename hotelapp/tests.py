@@ -95,10 +95,15 @@ class HighRiskActionPermissionTests(TestCase):
         self.dm = _make_user("dm102", "值班经理")
 
     def test_night_audit_page_requires_permission(self):
+        """§4.2：旧 /nightaudit/ 已 302 迁移营业日中心；权限在新页复核。"""
         self.client.force_login(self.fd)
-        self.assertEqual(self.client.get("/nightaudit/").status_code, 403)
+        response = self.client.get("/nightaudit/")
+        self.assertEqual(response.status_code, 302)
+        self.assertURLEqual(response.url, "/manage/night-audit/")
+        # 新中心对无 hotelapp.night_audit_execute 的前台返回 403
+        self.assertEqual(self.client.get("/manage/night-audit/").status_code, 403)
         self.client.force_login(self.dm)
-        self.assertEqual(self.client.get("/nightaudit/").status_code, 200)
+        self.assertEqual(self.client.get("/manage/night-audit/").status_code, 200)
 
     def test_old_night_audit_run_retired(self):
         """P1-09：旧夜审写入口已退役，返回 410"""
@@ -382,10 +387,12 @@ class NightAuditIdempotencyTests(TestCase):
         self.client.force_login(self.dm)
 
     def test_night_audit_page_accessible_to_manager(self):
-        """值班经理可访问夜审工作台页面"""
+        """值班经理可访问营业日与夜审中心（旧 /nightaudit/ 302 → /manage/night-audit/）"""
         self.client.force_login(self.dm)
         response = self.client.get("/nightaudit/")
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 302)
+        self.assertURLEqual(response.url, "/manage/night-audit/")
+        self.assertEqual(self.client.get("/manage/night-audit/").status_code, 200)
 
 
 class FolioAccessGateTests(TestCase):
