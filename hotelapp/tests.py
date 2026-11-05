@@ -1482,7 +1482,7 @@ class SeedRoleTestAccountsCommandTests(TestCase):
             ("停车安保", "test_parking"),
         ]
         prop = Property.objects.create(code="ROLESEED", name="九角色种子测试物业")
-        role_groups = {role: Group.objects.create(name=role) for role, _username in roles}
+        role_groups = {role: Group.objects.get_or_create(name=role)[0] for role, _username in roles}
         old_group = Group.objects.create(name="旧测试岗位")
         existing_user = User.objects.create_user(
             username="test_front", password="old-passphrase-123"
