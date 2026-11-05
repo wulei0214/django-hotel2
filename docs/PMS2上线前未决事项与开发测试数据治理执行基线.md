@@ -120,3 +120,51 @@
 - 不物理删除有业务历史关联的 User、审批、审计、账务和订单；
 - 不将九个角色测试账号设为平台管理员；
 - 不将任何明文密码提交到 Git。
+
+## 7. 当前已提交的 F-02 工具与本地执行顺序
+
+### 7.1 只读盘点与预览
+
+在项目虚拟环境中，从仓库根目录运行：
+
+```powershell
+python manage.py classify_users --dry-run --output .\reports\账号盘点.json --format json
+python manage.py reconcile_test_users --dry-run
+```
+
+`classify_users` 只输出账号分类、关联档案/任职/授权数量及直授组标记，不写数据库。报告中的用户名使用 HMAC 指纹。报告文件应存放在本地受控目录，不要提交 Git。
+
+`reconcile_test_users` 默认只预览：
+- 只有当 User.groups 中的组名与当前有效任职上的 StaffRoleAssignment 组名一致时，才会移除该镜像组；
+- 没有 StaffProfile 的普通账号停用而不删除，原组授权线索保留；
+- 无法证明组授权已被有效岗位授权承接的账号进入人工复核，不自动删除其组授权；
+- 超级管理员和平台 staff 跳过；
+- 不删除任何 StaffProfile、PropertyStaffMembership、StaffRoleAssignment、订单、账务、审批或 AuditEvent。
+
+### 7.2 执行可逆收敛（必须人工确认）
+
+先由操作者通过 Navicat 或 mysqldump 完成备份并验证备份可读取，再执行：
+
+```powershell
+python manage.py reconcile_test_users --execute --confirm-database hotel --backup-file "F:\\backup\\hotel-before-f02.sql"
+```
+
+将 `hotel` 替换为当前连接的真实数据库名，将备份路径替换为实际存在且非空的备份文件。命令会再次校验环境、数据库主机、数据库名和备份文件；不满足条件即拒绝。该命令只做账号停用和组授权镜像收敛，不执行数据库 flush 或业务数据删除。
+
+### 7.3 九角色测试账号初始化
+
+完成账号收敛并核对角色组后，再运行：
+
+```powershell
+python manage.py seed_role_test_accounts
+```
+
+命令通过终端隐藏输入统一测试密码并二次确认；密码不会写入参数、仓库或命令输出。九个账号分别为 `test_front`、`test_duty`、`test_finance`、`test_owner`、`test_housekeeping`、`test_nightaudit`、`test_fnb`、`test_fnbsup`、`test_parking`。执行后仍需逐账号登录并验证角色权限，不能仅凭命令成功输出视为验收通过。
+
+酒店演示业务数据由独立命令生成：
+
+```powershell
+python manage.py seed_hotel_data
+```
+
+此命令与员工登录账号初始化分离，并有本地/测试数据库环境门禁。不要在真实业务数据环境执行。
