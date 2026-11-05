@@ -18,7 +18,6 @@ import json
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from apps.core.models import AuditEvent
 from apps.identity.models import (
     PropertyStaffMembership, StaffProfile, StaffRoleAssignment)
 
@@ -117,18 +116,18 @@ class Command(BaseCommand):
             "total_users": len(rows),
             "counts": counts,
         }
-        AuditEvent.record(
-            action="identity.user_inventory", entity_type="UserInventory",
-            entity_id=RULES_VERSION, after=summary,
-            reason="AUTH-22 dry-run 盘点（只读）")
-
         self.stdout.write(json.dumps(summary, ensure_ascii=False, indent=2))
         out_path = options["output"]
         if out_path:
             if options["format"] == "csv":
                 import csv
                 with open(out_path, "w", newline="", encoding="utf-8") as fh:
-                    writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+                    writer = csv.DictWriter(fh, fieldnames=[
+                        "user_id", "username_fp", "category", "flags",
+                        "is_active", "is_superuser", "is_staff", "profile_ids",
+                        "membership_ids", "positions", "assignment_count",
+                        "direct_group_grants", "rules_version",
+                    ])
                     writer.writeheader()
                     writer.writerows(rows)
             else:
