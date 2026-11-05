@@ -12,6 +12,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 from django.utils import timezone
@@ -44,9 +45,12 @@ class Command(BaseCommand):
                 name in {"", ":memory:"} or "mode=memory" in name or "memorydb" in name
             )
         )
+        lowered_name = name.lower()
+        production_markers = ("prod", "production", "live")
+        looks_production = any(marker in lowered_name for marker in production_markers)
         local_dev = env == "dev" and settings.DEBUG and host in local_hosts
-        dedicated_test = env == "test" and (sqlite_memory or "test" in name.lower())
-        if not (local_dev or dedicated_test):
+        dedicated_test = env == "test" and (sqlite_memory or "test" in lowered_name)
+        if looks_production or not (local_dev or dedicated_test):
             raise CommandError(
                 "拒绝执行：仅允许本机 DEBUG 开发数据库或明确标识的专用测试数据库。"
             )
@@ -87,12 +91,6 @@ class Command(BaseCommand):
                 if membership.status == PropertyStaffMembership.Status.ACTIVE
                 and membership.property.status == "ACTIVE"
             ]
-            has_effective_assignment = any(
-                assignment.starts_at <= now
-                and (assignment.ends_at is None or assignment.ends_at > now)
-                for membership in eligible_memberships
-                for assignment in assignments_by_membership.get(membership.pk, [])
-            )
             group_names = list(user.groups.values_list("name", flat=True))
             effective_group_names = {
                 assignment.group.name
@@ -136,7 +134,6 @@ class Command(BaseCommand):
             for item in planned:
                 user = item["user"]
                 if item["groups"]:
-                    from django.contrib.auth.models import Group
                     covered = Group.objects.filter(name__in=item["groups"])
                     user.groups.remove(*covered)
                     changed_groups += 1
