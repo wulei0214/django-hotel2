@@ -1285,9 +1285,12 @@ class ClassifyUsersCommandTests(TestCase):
         before_audit = __import__(
             "apps.core.models", fromlist=["AuditEvent"]
         ).AuditEvent.objects.count()
-        output = StringIO()
-        call_command("classify_users", dry_run=True, stdout=output)
-        rows = json.loads(output.getvalue().split("\nAUTH-22", 1)[0])
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as directory:
+            report = str(Path(directory) / "users.json")
+            call_command("classify_users", dry_run=True, output=report, format="json", stdout=StringIO())
+            rows = json.loads(Path(report).read_text(encoding="utf-8"))
         user_row = next(row for row in rows["users"] if row["user_id"] == user.pk)
         self.assertEqual(user_row["category"], "STAFF_LINKED")
         self.assertEqual(
@@ -1316,9 +1319,12 @@ class ClassifyUsersCommandTests(TestCase):
             starts_at=timezone.now() - timedelta(days=2),
             ends_at=timezone.now() - timedelta(days=1),
         )
-        output = StringIO()
-        call_command("classify_users", dry_run=True, stdout=output)
-        rows = json.loads(output.getvalue().split("\nAUTH-22", 1)[0])
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as directory:
+            report = str(Path(directory) / "users.json")
+            call_command("classify_users", dry_run=True, output=report, format="json", stdout=StringIO())
+            rows = json.loads(Path(report).read_text(encoding="utf-8"))
         user_row = next(row for row in rows["users"] if row["user_id"] == user.pk)
         self.assertEqual(user_row["category"], "PROFILE_ONLY")
 
@@ -1423,7 +1429,19 @@ class ReconcileTestUsersCommandTests(TestCase):
         user.groups.add(role)
         legacy = Group.objects.create(name="未映射历史授权组")
         user.groups.add(legacy)
-        call_command("reconcile_test_users", stdout=StringIO())
+        import tempfile
+        from pathlib import Path
+        from django.db import connection
+        from django.test import override_settings
+        with tempfile.TemporaryDirectory() as directory:
+            backup = Path(directory) / "backup.sql"
+            backup.write_text("test-backup", encoding="utf-8")
+            with override_settings(DJANGO_ENV="dev", DEBUG=True):
+                call_command(
+                    "reconcile_test_users", execute=True,
+                    confirm_database=connection.settings_dict["NAME"],
+                    backup_file=str(backup), stdout=StringIO(),
+                )
         user.refresh_from_db()
         self.assertTrue(user.is_active)
         self.assertFalse(user.groups.filter(pk=role.pk).exists())
