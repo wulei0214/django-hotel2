@@ -1448,15 +1448,14 @@ def room_status_change(request):
 
 
 # 通用业务数据导出（图5 导出数据按钮）：模块白名单 + 查看权限校验
+# P0-04（闭环补齐 2.0 §P0-04）：含 PII 明文列的旧导出（client 身份证/vip
+# 联系方式/accommodation 顾客关联）从白名单移除——敏感数据导出必须走
+# 揭示策略与审批链，不接受 CSV 静态遮罩绕过。非 PII 模块保留并补导出审计。
 EXPORT_MODULES = {
-    "client": ("client", Client, ["顾客编号", "姓名", "身份证号"]),
     "food": ("food", Food, ["菜品编号", "菜名", "价格", "厨师编号"]),
     "room": ("room", Room, ["房间号", "客房类型", "价格", "负责人编号", "房间状态"]),
     "park": ("park", Park, ["车位编号", "当前状态", "车辆牌号"]),
-    "vip": ("vip", Vip, ["会员编号", "姓名", "会员等级", "联系方式"]),
     "order": ("order", Order, ["订单编号", "顾客编号", "菜品编号", "服务员编号", "桌号", "状态"]),
-    "accommodation": ("accommodation", Accommodation,
-                      ["订单编号", "顾客编号", "客房编号", "入住时间", "状态", "收款金额"]),
 }
 
 
@@ -1469,12 +1468,25 @@ def export_module(request, module):
     if not MODULE_REGISTRY.get(module, True):
         messages.warning(request, "该模块已对接第三方系统，暂不开放；历史数据已保留。")
         return redirect("/home/")
-    if not _has_role(request.user, "店长", "财务"):
+    # P0-04（闭环补齐 2.0）：导出授权走 AuthorizationService + 专项
+    # hotelapp.export_pii，移除 _has_role 角色名硬编码（矩阵外旁路）
+    from apps.identity.authorization import AuthorizationService
+    from apps.core.models import Property as _Prop
+    _prop = getattr(request, "property", None) or _Prop.objects.filter(
+        code=getattr(settings, "DEFAULT_PROPERTY_CODE", "DEFAULT")).first()
+    if not AuthorizationService.has_permission(
+            request.user, _prop, "hotelapp.export_pii"):
         return HttpResponse("首版常规数据导出仅开放给店长和财务。", status=403)
     model = info[1]
     if not _has_permission(request, f"hotelapp.view_{module}"):
         return HttpResponse("没有导出权限", status=403)
-    # 顾客身份证与会员电话只导出脱敏值；完整值不通过常规 CSV 导出。
+    # 顾客身份证与会员电话只导出脱敏值；完整值不通过常规 CSV 导出。    from apps.core.models import AuditEvent
+    AuditEvent.record(
+        action="export.module_csv", entity_type="ExportModule",
+        entity_id=module, actor=request.user, property_obj=_prop,
+        after={"columns": list(info[2])},
+        reason="旧只读模块 CSV 导出（非 PII 白名单）")
+
     response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
     response["Content-Disposition"] = f'attachment; filename="{module}.csv"'
     writer = csv.writer(response)

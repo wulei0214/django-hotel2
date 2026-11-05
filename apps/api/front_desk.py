@@ -10,16 +10,19 @@ from functools import wraps
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.billing.models import Folio, Payment, Refund
 from apps.core import labels as L
+from apps.core.api_contract import ApiError, parse_page_args
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import Room
-from apps.reservations.models import NoShowRecord, Reservation, ReservationRoom, Stay
+from apps.reservations.models import (
+    NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment,
+)
 from apps.reservations.front_desk_services import (
     FrontDeskOperationError,
     assign_room as assign_room_service,
@@ -124,14 +127,12 @@ def _parse_date(value, label, fallback):
 
 
 def _page_args(request):
-    try:
-        page = max(1, int(request.GET.get("page", "1")))
-        page_size = int(request.GET.get("page_size", str(PAGE_DEFAULT)))
-    except (TypeError, ValueError):
-        raise ValueError("page 和 page_size 必须是整数。")
-    if page_size < 1 or page_size > PAGE_MAX:
-        raise ValueError(f"page_size 必须在 1 至 {PAGE_MAX} 之间。")
-    return page, page_size
+    """P0-03 统一分页契约：唯一解析器为 apps.core.api_contract.parse_page_args。
+
+    非整数/空字符串/0/负数/超上限/超大页码 → ApiError VALIDATION_ERROR（400），
+    视图层统一按 `except (ValueError, ApiError)` 转成 400 响应。
+    """
+    return parse_page_args(request, page_size_default=PAGE_DEFAULT, page_size_max=PAGE_MAX)
 
 
 def _paginate(queryset, page, page_size):
@@ -215,8 +216,14 @@ def _reservation_room_dto(line, folio_map=None, stay_map=None):
     reservation = line.reservation
     room = line.assigned_room
     stay = (stay_map or {}).get(line.pk)
-    no_show = NoShowRecord.objects.filter(reservation_room_id=line.pk).first()
-    room_segments = list(stay.room_segments.select_related("room").order_by("started_at", "id")) if stay else []
+    # N+1 修复：no_show/room_segments 由调用方 prefetch_related 提供（P0-07）；
+    # 未 prefetch 时回退为单条查询，行为不变。
+    try:
+        no_show = line.no_show_record
+    except NoShowRecord.DoesNotExist:
+        no_show = None
+    # StayRoomSegment Meta.ordering = ("started_at", "id")，与原显式排序一致。
+    room_segments = list(stay.room_segments.all()) if stay else []
     return {
         "reservation_room_id": line.pk,
         "booking_no": reservation.booking_no,
@@ -332,9 +339,11 @@ def arrivals(request):
         page, page_size = _page_args(request)
         queryset = ReservationRoom.objects.filter(
             property=property_obj, check_in=day, reservation__status__in=ARRIVAL_STATUSES
-        ).select_related("reservation__guest", "room_type", "assigned_room").order_by("reservation__created_at", "id")
+        ).select_related("reservation__guest", "room_type", "assigned_room").order_by(
+            "reservation__created_at", "id"
+        ).prefetch_related("no_show_record")
         queryset = _apply_search(queryset, request.GET.get("q"))
-    except ValueError as exc:
+    except (ValueError, ApiError) as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
     assigned = request.GET.get("assigned", "all")
     if assigned == "yes":
@@ -358,13 +367,16 @@ def departures(request):
     try:
         day = _parse_date(request.GET.get("date"), "离店日期", _business_date(property_obj))
         page, page_size = _page_args(request)
-    except ValueError as exc:
+    except (ValueError, ApiError) as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
     queryset = Stay.objects.filter(
         property=property_obj, status=Stay.Status.IN_HOUSE, reservation_room__check_out=day
     ).select_related(
         "reservation_room__reservation__guest", "reservation_room__room_type", "room"
-    ).order_by("reservation_room__check_out", "id")
+    ).order_by("reservation_room__check_out", "id").prefetch_related(
+        Prefetch("room_segments", queryset=StayRoomSegment.objects.select_related("room")),
+        "reservation_room__no_show_record",
+    )
     value = (request.GET.get("q") or "").strip()
     if value:
         if len(value) > 80:
@@ -390,13 +402,16 @@ def in_house(request):
     property_obj = request.front_desk_property
     try:
         page, page_size = _page_args(request)
-    except ValueError as exc:
+    except (ValueError, ApiError) as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
     queryset = Stay.objects.filter(
         property=property_obj, status=Stay.Status.IN_HOUSE
     ).select_related(
         "reservation_room__reservation__guest", "reservation_room__room_type", "room"
-    ).order_by("room__number", "id")
+    ).order_by("room__number", "id").prefetch_related(
+        Prefetch("room_segments", queryset=StayRoomSegment.objects.select_related("room")),
+        "reservation_room__no_show_record",
+    )
     value = (request.GET.get("q") or "").strip()
     if value:
         if len(value) > 80:
@@ -431,9 +446,14 @@ def reservations(request):
     property_obj = request.front_desk_property
     try:
         page, page_size = _page_args(request)
-    except ValueError as exc:
+    except (ValueError, ApiError) as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
-    queryset = Reservation.objects.filter(property=property_obj).select_related("guest").order_by("-created_at")
+    queryset = Reservation.objects.filter(
+        property=property_obj
+    ).select_related("guest").order_by("-created_at", "-id").prefetch_related(
+        Prefetch("reservation_rooms",
+                 queryset=ReservationRoom.objects.select_related("room_type", "assigned_room")),
+    )
     value = (request.GET.get("q") or "").strip()
     if value:
         if len(value) > 80:
@@ -458,7 +478,8 @@ def reservations(request):
     folio_map = _folio_summaries(property_obj, {item.pk for item in rows})
     data = []
     for reservation in rows:
-        lines = list(reservation.reservation_rooms.select_related("room_type", "assigned_room"))
+        # N+1 修复：明细经主查询 prefetch_related 一次取回（P0-07）。
+        lines = list(reservation.reservation_rooms.all())
         data.append({
             "booking_no": reservation.booking_no,
             "status": reservation.status,
@@ -491,9 +512,15 @@ def reservation_detail(request, booking_no):
     ).first()
     if reservation is None:
         return _response({"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该预订。"}}, 404)
-    lines = list(reservation.reservation_rooms.select_related("room_type", "assigned_room").order_by("id"))
+    lines = list(reservation.reservation_rooms.select_related(
+        "room_type", "assigned_room").order_by("id").prefetch_related("no_show_record"))
     folio_map = _folio_summaries(property_obj, {reservation.pk})
-    stays = list(Stay.objects.filter(property=property_obj, reservation_room__reservation=reservation).select_related("room"))
+    # 保持既有 Meta("-created_at") 最新在前的展示顺序，仅补主键兜底（P0-07）。
+    stays = list(Stay.objects.filter(
+        property=property_obj, reservation_room__reservation=reservation
+    ).select_related("room").order_by("-created_at", "-id").prefetch_related(
+        Prefetch("room_segments", queryset=StayRoomSegment.objects.select_related("room")),
+    ))
     stay_map = {stay.reservation_room_id: stay for stay in stays}
     folio_summary = folio_map.get(reservation.pk, _empty_folio_summary(reservation.currency))
     return _response({"data": {
@@ -639,8 +666,8 @@ def folio_detail(request, booking_no):
                     "status": refund.status,
                     "status_label": L.refund_status_labels().get(refund.status, refund.status),
                     "provider_ref": refund.provider_ref,
-                } for refund in item.refunds.order_by("-created_at")],
-            } for item in folio.payments.order_by("-created_at")],
+                } for refund in item.refunds.order_by("-created_at", "-id")],
+            } for item in folio.payments.order_by("-created_at", "-id")],
             "allowed_actions": (["request_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_request") else [])
                 + (["approve_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve") else []),
         }
@@ -845,7 +872,7 @@ def legacy_reservations(request):
     """历史 hotelapp 客房订单只读适配器；不把旧记录伪造为 PMS2 Reservation。"""
     try:
         page, page_size = _page_args(request)
-    except ValueError as exc:
+    except (ValueError, ApiError) as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
     queryset = LegacyAccommodation.objects.select_related("顾客id", "客房编号").order_by("-id")
     value = (request.GET.get("q") or "").strip()

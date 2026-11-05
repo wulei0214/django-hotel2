@@ -245,13 +245,18 @@ class SensitiveExportBoundaryTests(TestCase):
         self.assertEqual(response.status_code, 409,
                          "申请人不能审批自己的申请（服务层 SoD 现状）")
 
-    def test_export_module_requires_manager_role_current_behavior(self):
-        """F-06 现状钉住：export_module 用 _has_role('店长','财务') 硬编码。
-        前台即使持 view_client 也不得导出（403）；财务按权限码链继续判定。"""
+    def test_export_module_pii_modules_removed(self):
+        """P0-04：含 PII 明文列的旧导出（client/vip/accommodation）已从
+        EXPORT_MODULES 白名单移除——任何人访问 → 404，敏感导出走揭示
+        策略与审批链，不接受 CSV 静态遮罩绕过。"""
         _grant("前台", "view_client")
         self.client.force_login(self.fd)
-        self.assertEqual(self.client.get("/export/client/").status_code, 403,
-                         "_has_role 硬编码先于权限码判定（F-06 现状）")
+        for module in ("client", "vip", "accommodation"):
+            self.assertEqual(
+                self.client.get(f"/export/{module}/").status_code, 404,
+                f"{module} 含 PII 明文列，旧导出必须 404")
+        # 非 PII 模块保留：权限走 hotelapp.export_pii（AuthorizationService）
+        self.client.force_login(self.owner) if hasattr(self, "owner") else None
 
     def test_export_module_planned_module_redirects_even_for_owner(self):
         """PLANNED 模块导出（food/park/order）→ 302 /home/，店长也不例外。"""

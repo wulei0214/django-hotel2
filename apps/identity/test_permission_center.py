@@ -582,7 +582,8 @@ class PermissionCenterPageTests(PermissionCenterTestBase):
         data = jsonlib.loads(match.group(1))
         self.assertEqual(len(data["modules"]), 11)
         self.assertEqual(len(data["roles"]), 9)
-        self.assertEqual(len(data["special_codenames"]), 15)  # 含 F-06 新增 export_approve
+            # P0-04 清理后：15 - reverse_entry - room_release_ready = 13（含 F-06 export_approve）
+        self.assertEqual(len(data["special_codenames"]), 13)
         module_codes = {m["code"] for m in data["modules"]}
         self.assertEqual(
             module_codes,

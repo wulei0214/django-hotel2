@@ -1133,9 +1133,14 @@ op("/daily-rates/{rate_id}/adjust", "post", "房价管理", "调整每日房价"
    extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
                              "semantics": "api_contract.idempotent：同 key 同 body 重放首次响应；不同 body 409；TTL 24h。"}})
 
-# ========== 审批（ApprovalRecord；SoD 双人审批） ==========
-AP_LIST_PERM = "登录员工（物业上下文）；无专项权限码校验"
-AP_REQUEST_PERM = "登录员工（物业上下文）；无专项权限码校验（动作资格由 ApprovalService 校验）"
+# ========== 审批（ApprovalRecord；SoD 双人审批；P0-01/P0-02 加固） ==========
+AP_LIST_PERM = ("有效员工（DEFAULT 有效任职）+ billing.approval_view；"
+                "持有任一注册动作审批权者见全部，否则仅见本人发起的记录")
+AP_REQUEST_PERM = ("有效员工（DEFAULT 有效任职）+ 动作申请权限，经 "
+                   "ApprovalActionRegistry 白名单校验"
+                   "（billing.refund→billing.refund_request；未知动作 400 零副作用）")
+AP_DECISION_PERM = ("有效员工（DEFAULT 有效任职）+ 注册表按 action_code 绑定的审批权限"
+                    "（billing.refund_approve / hotelapp.business_date_reopen 等）")
 
 op("/approvals", "get", "审批", "审批记录列表",
    status="partial",
@@ -1162,7 +1167,7 @@ op("/approvals/request", "post", "审批", "创建审批申请",
 op("/approvals/{record_id}/approve", "post", "审批", "批准审批申请",
    status="partial", path_params=[("record_id", "审批记录 ID。")],
    no_body=True,
-   permission="有效员工 + billing.refund_approve（申请人≠审批人，SoD）",
+   permission=AP_DECISION_PERM + "（申请人≠审批人，SoD）",
    ok=(("200", "审批通过"),),
    data=s_obj({"id": s_int(), "status": s_str("APPROVED")}),
    errors=E_STAFF_CONFLICT,
@@ -1174,7 +1179,7 @@ op("/approvals/{record_id}/reject", "post", "审批", "驳回审批申请",
    body=s_obj({"reason": s_nullable(s_str("驳回原因；缺省为“驳回”。"))},
               desc="可为空 JSON 对象。"),
    body_required=False,
-   permission="有效员工 + billing.refund_approve（申请人≠审批人，SoD）",
+   permission=AP_DECISION_PERM + "（申请人≠审批人，SoD）",
    ok=(("200", "审批驳回"),),
    data=s_obj({"id": s_int(), "status": s_str("REJECTED")}),
    errors=E_STAFF_CONFLICT,

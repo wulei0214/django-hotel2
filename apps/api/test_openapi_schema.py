@@ -55,8 +55,8 @@ PERMISSION_MATRIX = {
     ("get", "/rate-calendar"): "hotelapp.view_room",
     ("post", "/daily-rates/{rate_id}/adjust"): "inventory.manage_rates",
     ("get", "/financial-summary"): "hotelapp.finance_access",
-    ("get", "/approvals"): "无专项权限码校验",  # 视图只要求登录 + 物业上下文
-    ("post", "/approvals/request"): "无专项权限码校验",
+    ("get", "/approvals"): "billing.approval_view",  # P0-01：专项只读权限
+    ("post", "/approvals/request"): "ApprovalActionRegistry",  # P0-02：动作白名单
     ("post", "/approvals/{record_id}/approve"): "billing.refund_approve",
     ("post", "/approvals/{record_id}/reject"): "billing.refund_approve",
     ("get", "/reservations-mgmt"): "hotelapp.view_accommodation",

@@ -172,12 +172,15 @@ class SensitiveExportPermissionTests(TestCase):
         self.dm = _make_user("dm401", "值班经理")
 
     def test_front_desk_cannot_export_sensitive_csv(self):
+        """P0-04：含 PII 明文列的 client/vip 旧导出已从白名单移除（404）；
+        /export/staff/ 维持 410 退役（审批链迁入权限中心后续专项）。"""
         self.client.force_login(self.fd)
         retired_staff_export = self.client.get("/export/staff/")
         self.assertEqual(retired_staff_export.status_code, 410)
         for url in ("/export/client/", "/export/vip/"):
             response = self.client.get(url)
-            self.assertEqual(response.status_code, 403, f"{url} 需满足当前角色导出策略")
+            self.assertEqual(response.status_code, 404,
+                             f"{url} 含 PII 明文列，旧导出已按 P0-04 移除")
 
     def test_staff_salary_export_requires_reason_and_second_manager_approval(self):
         self.fin = _make_user("fin401", "财务")
@@ -458,18 +461,19 @@ class SensitiveFieldMaskingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["tel"], "13812345678")
 
-    def test_client_export_contains_masked_idcard(self):
-        """CSV 导出身份证列输出遮罩值（完整值导出默认禁止，V2 §7.1）"""
+    def test_client_export_retired_no_pii_csv(self):
+        """P0-04：client CSV 导出（曾含身份证遮罩列）整体退役——敏感数据
+        导出走揭示策略与审批链，任何角色均不得再经 CSV 拿到顾客 PII。"""
         self.client.force_login(self.fd)
         membership = PropertyStaffMembership.objects.get(staff_profile__user=self.fd)
         StaffRoleAssignment.objects.create(
             membership=membership, group=Group.objects.get(name="财务"),
             starts_at=timezone.now())
         response = self.client.get("/export/client/")
-        self.assertEqual(response.status_code, 200)
-        body = response.content.decode("utf-8-sig")
-        self.assertNotIn("110101199001010011", body, "CSV 不得包含完整身份证")
-        self.assertIn("11**************11", body)
+        self.assertEqual(response.status_code, 404,
+                         "含 PII 明文列的 client CSV 导出已按 P0-04 移除")
+        self.assertNotIn("110101199001010011", response.content.decode("utf-8-sig", "ignore"),
+                         "任何情况下 CSV 都不得包含完整身份证")
 
 
 class ExpressCheckoutBalanceTests(TestCase):

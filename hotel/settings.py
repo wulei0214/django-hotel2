@@ -197,12 +197,32 @@ SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "0"))
 if env_bool("DJANGO_TRUST_PROXY_SSL", default=False):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "hotel-cache",
+# P0-05（闭环补齐 2.0）：缓存后端环境化——生产/共享部署必须 Redis
+# （登录限流、幂等保护等共享语义），开发可 LocMem。
+# 限流计数走独立 RateLimitCounter 表（多进程可靠），不依赖本缓存。
+_CACHE_BACKEND = os.environ.get("DJANGO_CACHE_BACKEND", "locmem").strip().lower()
+if _CACHE_BACKEND not in {"locmem", "redis"}:
+    raise ImproperlyConfigured("DJANGO_CACHE_BACKEND 仅支持 locmem 或 redis。")
+if _CACHE_BACKEND == "redis":
+    _REDIS_URL = os.environ.get("DJANGO_REDIS_URL", "")
+    if not _REDIS_URL:
+        raise ImproperlyConfigured("DJANGO_CACHE_BACKEND=redis 需配置 DJANGO_REDIS_URL。")
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": _REDIS_URL,
+        }
     }
-}
+else:
+    if DJANGO_ENV == "prod":
+        raise ImproperlyConfigured(
+            "生产环境禁止 LocMemCache：请配置 DJANGO_CACHE_BACKEND=redis 与 DJANGO_REDIS_URL。")
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "hotel-cache",
+        }
+    }
 
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)

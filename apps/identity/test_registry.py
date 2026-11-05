@@ -385,12 +385,12 @@ class SpecialPermissionRegistryTests(TestCase):
     def test_task_required_special_keys_are_present(self):
         required = {
             "guest_document_reveal", "guest_phone_reveal", "refund_request",
-            "refund_approve", "reverse_entry", "night_audit_execute",
+            "refund_approve", "night_audit_execute",
             "business_date_reopen", "breakglass_review", "export_pii",
-        }
+        }  # P0-04：reverse_entry/room_release_ready 已从授权面移除
         keys = {item["key"] for item in SPECIAL_PERMISSIONS}
         self.assertTrue(required.issubset(keys),
-                        f"缺少任务书要求的专项权限：{required - keys}")
+                        f"缺少专项权限：{required - keys}")
 
     def test_special_permission_flags_are_well_formed(self):
         for item in SPECIAL_PERMISSIONS:
@@ -406,19 +406,25 @@ class SpecialPermissionRegistryTests(TestCase):
                          "business_date_reopen", "breakglass_review"}
                         .issubset(reason_enforced))
 
-    def test_reverse_entry_maps_to_reverse_checkout_documenting_f08(self):
-        """reverse_entry（红字冲销/反结账）唯一落点是 hotelapp.reverse_checkout。
+    def test_reverse_entry_retired_from_authorization_surface(self):
+        """P0-04：reverse_entry/room_release_ready 从授权面移除（F-08 无执行点）。
 
-        F-08：该权限唯一检查点已随 /uncheckout/ 410 退役；注册表登记此处，
-        待 Phase 4 front-desk 补反结账 API 时以此授权。
+        权限点本体与历史组授权保留；Phase 4 front-desk 补 API 时以新权限码
+        重新登记。文档化断言：SPECIAL_PERMISSIONS 不再含这两个 key，
+        模块 special 列亦不含 hotelapp.reverse_checkout / room_release_ready。
         """
-        item = get_special("reverse_entry")
-        self.assertIsNotNone(item)
-        self.assertEqual(item["codename"], "hotelapp.reverse_checkout")
-        self.assertEqual(item["module"], "accommodation")
-        self.assertTrue(Permission.objects.filter(
-            content_type__app_label="hotelapp",
-            codename="reverse_checkout").exists())
+        from apps.identity.registry import SPECIAL_PERMISSIONS
+        keys = {item["key"] for item in SPECIAL_PERMISSIONS}
+        self.assertNotIn("reverse_entry", keys)
+        self.assertNotIn("room_release_ready", keys)
+        for module in MODULE_REGISTRY_V2.values():
+            specials = module.get("actions", {}).get("special") or ()
+            if specials == NOT_APPLICABLE:
+                continue
+            self.assertNotIn(
+                "hotelapp.reverse_checkout", specials,
+                "reverse_checkout 已按 P0-04 从授权面移除")
+            self.assertNotIn("hotelapp.room_release_ready", specials)
 
     def test_cross_app_special_permissions_cover_f09_scope(self):
         """矩阵外跨 App 专项点（F-09）必须全部登记在 SPECIAL_PERMISSIONS。"""

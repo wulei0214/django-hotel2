@@ -88,7 +88,9 @@ MODULE_REGISTRY_V2 = {
             # 物理删除无执行点（11-permissions §3.2），保留授权作为冲账执行权
             "delete": "hotelapp.delete_accommodation",
             "approve": NOT_APPLICABLE,
-            "special": ("hotelapp.no_show_handle", "hotelapp.reverse_checkout"),
+            # P0-04：reverse_checkout 无真实执行点（F-08），从授权面移除；
+            # no_show_handle 保留为专项权限（front-desk no-show 在用）
+            "special": ("hotelapp.no_show_handle",),
         },
         "extra_codes": (),
         "notes": "PMS2 前台工作台 22 条 API 全部门禁在本模块权限码上；"
@@ -132,7 +134,8 @@ MODULE_REGISTRY_V2 = {
             "change": "hotelapp.change_room",
             "delete": "hotelapp.delete_room",
             "approve": NOT_APPLICABLE,
-            "special": ("hotelapp.room_release_ready", "inventory.manage_rates"),
+            # P0-04：room_release_ready 无真实执行点（F-08），从授权面移除
+            "special": ("inventory.manage_rates",),
         },
         "extra_codes": (),
         "notes": "房态图/房型/房价日历 API 门禁 view_room；调价走 "
@@ -427,22 +430,11 @@ SPECIAL_PERMISSIONS = (
         "requires_reason": True, "requires_confirm": False,
         "note": "退款审批（值班经理/店长）；approval 通用门 _check_approver",
     },
-    {
-        "key": "reverse_entry",
-        "codename": "hotelapp.reverse_checkout",
-        "module": "accommodation", "risk": "high",
-        "requires_reason": True, "requires_confirm": True,
-        "note": "反结账/冲销收款流水；F-08：唯一检查点已随 /uncheckout/ 410 退役，"
-                "PMS2 红字冲销暂无独立权限码（审计 action_code=billing.reverse_entry），"
-                "Phase 4 front-desk 补 API 时以本点授权",
-    },
-    {
-        "key": "room_release_ready",
-        "codename": "hotelapp.room_release_ready",
-        "module": "rooms", "risk": "medium",
-        "requires_reason": False, "requires_confirm": False,
-        "note": "净房放行（待检查→空闲）；F-08：唯一检查点已随 /room_status/ 410 退役",
-    },
+    # P0-04 清理（缺口登记册 F-08）：hotelapp.reverse_checkout 与
+    # hotelapp.room_release_ready 唯一检查点均已随旧路由 410 退役，
+    # 属"权限点存在但无执行点"，从 SPECIAL_PERMISSIONS 授权面移除。
+    # 权限点本体保留（历史组授权由下一次矩阵保存显式回收）；
+    # Phase 4 front-desk 补 API 时以新权限码重新登记，不复活旧码。
     {
         "key": "no_show_handle",
         "codename": "hotelapp.no_show_handle",

@@ -94,16 +94,93 @@ def api_view(view):
     return wrapper
 
 
-def paginate(queryset, request, page_size_default=20, page_size_max=100):
-    """统一分页：返回 (items, pagination_meta)。"""
+# ---------------------------------------------------------------------------
+# P0-03 统一分页契约：全仓库唯一分页参数解析器（api_contract 为权威，
+# apps/api/front_desk.py::_page_args 仅作薄适配委托到这里）。
+# ---------------------------------------------------------------------------
+PAGE_SIZE_DEFAULT = 20
+PAGE_SIZE_MAX = 100
+# 页码上限：防御 page=10^20 之类的超大数字造成病态 OFFSET 查询。
+PAGE_NUMBER_MAX = 100000
+
+
+def parse_page_args(request, page_size_default=PAGE_SIZE_DEFAULT,
+                    page_size_max=PAGE_SIZE_MAX):
+    """解析 page/page_size 查询参数，返回 (page, page_size)。
+
+    统一规则（所有接口同一口径，不做静默截断或静默回退）：
+      * page 缺省为 1；page_size 缺省为 page_size_default；
+      * 非整数、空字符串、0、负数、page_size 超过 page_size_max、
+        page 超过 PAGE_NUMBER_MAX → 一律抛 ApiError("VALIDATION_ERROR") → 400；
+      * page 合法范围 [1, PAGE_NUMBER_MAX]；page_size 合法范围 [1, page_size_max]。
+    """
+    raw_page = request.GET.get("page", "1")
+    raw_size = request.GET.get("page_size", str(page_size_default))
     try:
-        page = max(1, int(request.GET.get("page", "1")))
+        page = int(str(raw_page).strip())
     except (TypeError, ValueError):
-        page = 1
+        raise ApiError(
+            "VALIDATION_ERROR",
+            "page 必须是 1 至 %d 之间的整数。" % PAGE_NUMBER_MAX)
     try:
-        size = min(page_size_max, max(1, int(request.GET.get("page_size", str(page_size_default)))))
+        size = int(str(raw_size).strip())
     except (TypeError, ValueError):
-        size = page_size_default
+        raise ApiError(
+            "VALIDATION_ERROR",
+            "page_size 必须是 1 至 %d 之间的整数。" % page_size_max)
+    if not 1 <= page <= PAGE_NUMBER_MAX:
+        raise ApiError(
+            "VALIDATION_ERROR",
+            "page 必须是 1 至 %d 之间的整数。" % PAGE_NUMBER_MAX)
+    if not 1 <= size <= page_size_max:
+        raise ApiError(
+            "VALIDATION_ERROR",
+            "page_size 必须是 1 至 %d 之间的整数。" % page_size_max)
+    return page, size
+
+
+def ensure_stable_ordering(queryset):
+    """保证 QuerySet 稳定排序（P0-03）：排序键未包含主键时追加主键兜底。
+
+    - 无任何排序（显式 order_by 与模型 Meta.ordering 均无）→ order_by("pk")；
+    - 排序仅来自 Meta.ordering 且不含主键 → 用 order_by 显式化 Meta 排序
+      后再追加主键（直接 add_ordering 会触发“显式排序覆盖 Meta 排序”语义，
+      导致原排序丢失）；
+    - 已有显式排序但不含主键 → 克隆 QuerySet 后追加主键；
+    - 已含主键（pk/id 或模型实际主键名）→ 原样返回；
+    - 表达式排序无法静态判断 → 追加主键兜底。
+    """
+    model = queryset.model
+    pk_name = model._meta.pk.name
+    if not queryset.ordered:
+        return queryset.order_by("pk")
+    existing = tuple(queryset.query.order_by)
+    from_meta = not existing
+    if from_meta:
+        existing = tuple(model._meta.ordering or ())
+    if not existing:
+        return queryset.order_by("pk")
+    if all(isinstance(item, str) for item in existing):
+        names = {str(item).lstrip("+-").lower() for item in existing}
+        if pk_name.lower() in names or "pk" in names:
+            return queryset
+        if from_meta:
+            return queryset.order_by(*existing, pk_name)
+    clone = queryset._chain()
+    clone.query.add_ordering(pk_name)
+    return clone
+
+
+def paginate(queryset, request, page_size_default=PAGE_SIZE_DEFAULT,
+             page_size_max=PAGE_SIZE_MAX):
+    """统一分页（P0-03 唯一权威实现）：返回 (items, pagination_meta)。
+
+    - 参数解析走 parse_page_args：非法 page/page_size 统一 400 VALIDATION_ERROR；
+    - 稳定排序走 ensure_stable_ordering：调用方未写主键兜底时自动追加。
+    """
+    page, size = parse_page_args(
+        request, page_size_default=page_size_default, page_size_max=page_size_max)
+    queryset = ensure_stable_ordering(queryset)
     total = queryset.count()
     offset = (page - 1) * size
     items = queryset[offset:offset + size]

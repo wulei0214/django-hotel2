@@ -7,6 +7,7 @@ Membership API：列表/详情（等级/状态/旧 Vip 映射状态）。
 """
 import json
 
+from django.db.models import Prefetch
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.core import labels as L
@@ -32,15 +33,24 @@ def timezone_now():
 
 
 def _staff_dto(profile, property_obj):
-    membership = PropertyStaffMembership.objects.filter(
-        staff_profile=profile, property=property_obj).first()
+    # P0-07 N+1 修复：staff_list 已按物业 prefetch 任职/岗位授权/最近邀请；
+    # staff_detail 等未 prefetch 的调用方回退为逐条查询，行为不变。
+    cached_memberships = getattr(profile, "current_memberships", None)
+    if cached_memberships is not None:
+        membership = cached_memberships[0] if cached_memberships else None
+    else:
+        membership = PropertyStaffMembership.objects.filter(
+            staff_profile=profile, property=property_obj).first()
     user = profile.user
     now = timezone_now()
     assignments = []
     invitation = None
     if membership:
-        for a in StaffRoleAssignment.objects.filter(
-                membership=membership).select_related("group"):
+        prefetched_assignments = getattr(membership, "prefetched_assignments", None)
+        if prefetched_assignments is None:
+            prefetched_assignments = StaffRoleAssignment.objects.filter(
+                membership=membership).select_related("group")
+        for a in prefetched_assignments:
             active = a.starts_at <= now and (a.ends_at is None or a.ends_at > now)
             assignments.append({
                 "id": a.pk,
@@ -49,8 +59,14 @@ def _staff_dto(profile, property_obj):
                 "ends_at": a.ends_at.isoformat() if a.ends_at else None,
             })
         # AUTH-17：该员工在本物业最近一条邀请（状态展示用；不含 token 摘要）
-        invitation = (Invitation.objects.filter(
-            staff_profile=profile, membership=membership).order_by("-id").first())
+        cached_invitations = getattr(profile, "current_invitations", None)
+        if cached_invitations is not None:
+            invitation = next(
+                (inv for inv in cached_invitations
+                 if inv.membership_id == membership.pk), None)
+        else:
+            invitation = (Invitation.objects.filter(
+                staff_profile=profile, membership=membership).order_by("-id").first())
     return {
         "id": profile.pk,
         "full_name": profile.full_name,
@@ -96,7 +112,24 @@ def staff_list(request):
 
     qs = StaffProfile.objects.filter(
         property_memberships__property=property_obj
-    ).select_related("user").distinct().order_by("-created_at")
+    ).select_related("user").distinct().order_by("-created_at", "-id").prefetch_related(
+        # P0-07 N+1：按物业范围一次取回任职、岗位授权与邀请，避免逐行查询。
+        Prefetch(
+            "property_memberships",
+            queryset=PropertyStaffMembership.objects.filter(
+                property=property_obj).prefetch_related(
+                Prefetch("role_assignments",
+                         queryset=StaffRoleAssignment.objects.select_related("group"),
+                         to_attr="prefetched_assignments")),
+            to_attr="current_memberships",
+        ),
+        Prefetch(
+            "invitations",
+            queryset=Invitation.objects.filter(
+                membership__property=property_obj).order_by("-id"),
+            to_attr="current_invitations",
+        ),
+    )
     q = (request.GET.get("q") or "").strip()
     if q:
         from django.db.models import Q
@@ -140,7 +173,7 @@ def membership_list(request):
         raise _api_error("PERMISSION_DENIED", "缺少会员查看权限。")
 
     qs = GuestMembership.objects.filter(
-        property=property_obj).select_related("guest").order_by("-created_at")
+        property=property_obj).select_related("guest").order_by("-created_at", "-id")
     status_filter = request.GET.get("status")
     if status_filter:
         qs = qs.filter(status=status_filter)
@@ -183,7 +216,7 @@ def membership_detail(request, membership_id):
     except GuestMembership.DoesNotExist:
         raise _api_error("RESOURCE_NOT_FOUND", "会员关系不存在。")
     history = MembershipLevelHistory.objects.filter(
-        membership=m).order_by("-created_at")
+        membership=m).order_by("-created_at", "-id")
     data = {
         "id": m.pk, "member_no": m.member_no,
         "guest": {"id": m.guest.pk, "full_name": m.guest.full_name},

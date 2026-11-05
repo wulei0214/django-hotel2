@@ -254,7 +254,7 @@ def reservation_detail(request, booking_no):
     # §6.5 字段白名单：姓名脱敏；不返回完整手机号/证件号/provider_ref/内部流水
     guest_name = reservation.guest.full_name or ""
     masked_name = guest_name[:1] + "*" * max(len(guest_name) - 1, 1)
-    payments = reservation.payments.order_by("-created_at")
+    payments = reservation.payments.order_by("-created_at", "-id")
     return JsonResponse(
         {
             "booking_no": reservation.booking_no,

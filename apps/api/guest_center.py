@@ -8,6 +8,7 @@ import logging
 
 from django.http import JsonResponse
 from django.utils import timezone
+from django.db.models import Prefetch
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.core import labels as L
@@ -32,16 +33,31 @@ logger = logging.getLogger("hotel.api")
 
 
 def _guest_dto(guest, user, property_obj, include_detail=False):
-    """Guest DTO：按权限脱敏。"""
-    phones = GuestPhone.objects.filter(guest=guest)
-    primary_phone = phones.filter(is_primary=True).first() or phones.first()
+    """Guest DTO：按权限脱敏。
+
+    P0-07 N+1：guest_list 已 prefetch 电话与当前物业有效会员关系；
+    guest_detail 等未 prefetch 的调用方回退为逐条查询，行为不变。
+    """
+    cached_phones = getattr(guest, "prefetched_phones", None)
+    if cached_phones is None:
+        cached_phones = list(GuestPhone.objects.filter(guest=guest))
+    primary_phone = next(
+        (p for p in cached_phones if p.is_primary), None)
+    if primary_phone is None and cached_phones:
+        primary_phone = cached_phones[0]
     phone_masked = None
     if primary_phone:
         raw = primary_phone.phone
         phone_masked = raw[:3] + "****" + raw[-4:] if len(raw) >= 8 else raw
-    membership = GuestMembership.objects.filter(
-        guest=guest, property=property_obj,
-        status=GuestMembership.Status.ACTIVE).first()
+    cached_memberships = getattr(guest, "prefetched_memberships", None)
+    if cached_memberships is None:
+        membership = GuestMembership.objects.filter(
+            guest=guest, property=property_obj,
+            status=GuestMembership.Status.ACTIVE).first()
+    else:
+        membership = next(
+            (m for m in cached_memberships
+             if m.status == GuestMembership.Status.ACTIVE), None)
     current_stay = Stay.objects.filter(
         property=property_obj, room__property=property_obj,
         reservation_room__reservation__guest=guest,
@@ -82,7 +98,7 @@ def _guest_dto(guest, user, property_obj, include_detail=False):
             {"phone": (p.phone[:3] + "****" + p.phone[-4:]
                        if len(p.phone) >= 8 else "已隐藏"),
              "type": p.phone_type, "is_primary": p.is_primary}
-            for p in phones
+            for p in cached_phones
         ]
         dto["notes"] = guest.notes or None
     return dto
@@ -100,7 +116,17 @@ def guest_list(request):
             user, property_obj, "hotelapp.view_client"):
         raise ApiError("PERMISSION_DENIED", "缺少客人查看权限。")
 
-    qs = Guest.objects.filter(property=property_obj).order_by("-created_at")
+    qs = Guest.objects.filter(property=property_obj).order_by(
+        "-created_at", "-id").prefetch_related(
+        # P0-07 N+1：电话与当前物业会员关系一次取回，避免逐行查询。
+        Prefetch("phones", queryset=GuestPhone.objects.order_by("id"),
+                 to_attr="prefetched_phones"),
+        Prefetch("memberships",
+                 queryset=GuestMembership.objects.filter(
+                     property=property_obj,
+                     status=GuestMembership.Status.ACTIVE),
+                 to_attr="prefetched_memberships"),
+    )
     q = (request.GET.get("q") or "").strip()
     if q:
         from django.db.models import Q
@@ -131,7 +157,7 @@ def guest_detail(request, guest_id):
         raise ApiError("RESOURCE_NOT_FOUND", "客人不存在。")
 
     reservations = Reservation.objects.filter(
-        property=property_obj, guest=guest).order_by("-created_at")[:10]
+        property=property_obj, guest=guest).order_by("-created_at", "-id")[:10]
     _res_labels = L.reservation_status_labels()
     reservation_list = [{
         "booking_no": r.booking_no, "status": r.status,
@@ -159,7 +185,9 @@ def room_status_list(request):
             user, property_obj, "hotelapp.view_room"):
         raise ApiError("PERMISSION_DENIED", "缺少客房查看权限。")
 
-    qs = Room.objects.filter(property=property_obj, is_active=True).order_by("number")
+    qs = Room.objects.filter(
+        property=property_obj, is_active=True
+    ).select_related("room_type").order_by("number", "id")
     floor = request.GET.get("floor")
     if floor:
         qs = qs.filter(floor=floor)
@@ -237,15 +265,19 @@ def rate_calendar(request):
     end_date = start_date + timedelta(days=days)
     room_type_id = request.GET.get("room_type_id")
 
+    # P0-07：同一 stay_date 会有多个房型/房价计划行，显式追加主键保证稳定排序；
+    # room_type/rate_plan 预连接防 N+1。
     inv_qs = RoomTypeInventory.objects.filter(
         property=property_obj, stay_date__gte=start_date,
-        stay_date__lt=end_date).order_by("stay_date")
+        stay_date__lt=end_date).select_related("room_type").order_by(
+        "stay_date", "room_type_id", "id")
     if room_type_id:
         inv_qs = inv_qs.filter(room_type_id=room_type_id)
 
     rate_qs = DailyRate.objects.filter(
         property=property_obj, stay_date__gte=start_date,
-        stay_date__lt=end_date).order_by("stay_date")
+        stay_date__lt=end_date).select_related("room_type", "rate_plan").order_by(
+        "stay_date", "room_type_id", "rate_plan_id", "id")
     if room_type_id:
         rate_qs = rate_qs.filter(room_type_id=room_type_id)
 
@@ -435,12 +467,33 @@ def financial_summary_api(request):
             user, property_obj, "hotelapp.finance_access"):
         raise ApiError("PERMISSION_DENIED", "缺少财务管理权限。")
     from datetime import date, timedelta
+    from apps.billing.models import LedgerEntry
     from apps.billing.services_v2 import BillingService
     end = date.today()
     start = end - timedelta(days=7)
     summary = BillingService.financial_summary(
         property_obj=property_obj, start_date=start, end_date=end)
     summary["period"] = {"start": str(start), "end": str(end)}
+    # P0-07 统计口径注记：物业、营业日/自然日、状态范围、币种、生成时间。
+    currencies = sorted(set(LedgerEntry.objects.filter(
+        property=property_obj, business_date__gte=start,
+        business_date__lte=end).values_list("currency", flat=True)))
+    summary["metadata"] = {
+        "property": {"code": property_obj.code, "name": property_obj.name},
+        "period": {"start": str(start), "end": str(end)},
+        "date_basis": {
+            "ledger_entries": "营业日（business_date）",
+            "payments_refunds": "自然日（created_at）",
+        },
+        "status_scope": {
+            "ledger_entries": "全部状态",
+            "payments": "全部状态",
+            "refunds": "全部状态",
+        },
+        "currency": currencies or ["CNY"],
+        "generated_at": timezone.now().isoformat(),
+        "source_system": "PMS2",
+    }
     # P1-02（方案 §9.2）：财务明细查看 = hotelapp.finance_access；
     # 明细可见性不使用 refund_approve/staff_manage 替代，superuser 不自动获得业务授权
     summary["detail_available"] = AuthorizationService.has_permission(

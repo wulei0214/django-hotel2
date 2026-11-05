@@ -18,14 +18,20 @@ from apps.core.models import AuditEvent, Property
 from apps.billing.models import ApprovalRecord
 
 class ApprovalService:
-    """审批流程唯一写入口（Q-05/Q-06/Q-14 SoD 强制）。"""
+    """审批流程唯一写入口（Q-05/Q-06/Q-14 SoD 强制；P0-02 白名单双层校验）。"""
 
     @staticmethod
     @transaction.atomic
     def request_approval(*, property_obj, action_code, entity_type, entity_id,
                          requested_by, reason, payload=None, expires_hours=48):
-        """发起审批申请；幂等（同 key 返回已有记录）。"""
+        """发起审批申请；幂等（同 key 返回已有记录）。
+
+        P0-02：action_code 必须已注册、entity_type 必须与登记项一致、
+        payload 必须通过字段白名单/长度/敏感值校验；任一不满足直接拒绝，
+        不写 ApprovalRecord、不写 AuditEvent。
+        """
         import hashlib
+        from apps.billing.approval_registry import ApprovalActionRegistry
         reason = str(reason or "").strip()
         if not reason or len(reason) > 240:
             raise ValueError("高危操作必须填写 1 至 240 个字符的原因。")
@@ -33,6 +39,15 @@ class ApprovalService:
             raise ValueError("审批动作和目标对象不能为空。")
         if expires_hours <= 0 or expires_hours > 168:
             raise ValueError("审批有效期必须在 1 至 168 小时之间。")
+        action_code = str(action_code).strip()
+        entity_type = str(entity_type).strip()
+        spec = ApprovalActionRegistry.get(action_code)
+        if spec is None:
+            raise ValueError(f"未知审批动作代码：{action_code}。")
+        ApprovalActionRegistry.validate_entity_type(spec, entity_type)
+        payload = ApprovalActionRegistry.validate_payload(spec, payload)
+        if len(str(entity_id)) > 64:
+            raise ValueError("目标对象 ID 不能超过 64 个字符。")
         raw_key = f"{property_obj.pk}:{action_code}:{entity_type}:{entity_id}:{requested_by.pk}"
         idem_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
         existing = ApprovalRecord.objects.filter(idempotency_key=idem_key).first()

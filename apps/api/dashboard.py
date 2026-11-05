@@ -189,7 +189,7 @@ def dashboard_warnings(property_obj, today=None):
     overdue = Reservation.objects.filter(
         property=property_obj,
         status__in=(Reservation.Status.PENDING, Reservation.Status.CONFIRMED),
-        check_in__lt=today).select_related("guest").order_by("check_in")[:10]
+        check_in__lt=today).select_related("guest").order_by("check_in", "id")[:10]
     return [{
         "level": "过期未入住",
         "guest": r.guest.full_name,

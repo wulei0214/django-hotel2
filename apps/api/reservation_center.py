@@ -19,7 +19,7 @@ def reservation_list(request):
             user, property_obj, "hotelapp.view_accommodation"):
         raise ApiError("PERMISSION_DENIED", "缺少预订查看权限。")
     qs = Reservation.objects.filter(
-        property=property_obj).select_related("guest").order_by("-created_at")
+        property=property_obj).select_related("guest").order_by("-created_at", "-id")
     status = request.GET.get("status")
     if status:
         qs = qs.filter(status=status)
@@ -83,12 +83,15 @@ def audit_timeline(request):
     """审计时间线：AuditEvent 按实体/动作检索（P1-14）。"""
     user = request.user
     property_obj = getattr(request, "property", None)
-    # P1-07：superuser 不自动获得业务授权（方案 §9.4）
+    # P0-04（闭环补齐 2.0）：审计查看用专项权限 core.audit_view，
+    # 不再借用 identity.staff_manage（员工管理权 ≠ 审计查看权）
     if not AuthorizationService.has_permission(
-            user, property_obj, "identity.staff_manage"):
+            user, property_obj, "core.audit_view"):
         raise ApiError("PERMISSION_DENIED", "缺少审计查看权限。")
     from apps.core.models import AuditEvent
-    qs = AuditEvent.objects.filter(property=property_obj).order_by("-created_at")
+    # P0-07：不依赖模型 Meta，显式稳定排序 `-created_at,-id`；actor 预连接防 N+1。
+    qs = AuditEvent.objects.filter(
+        property=property_obj).select_related("actor").order_by("-created_at", "-id")
     entity_type = request.GET.get("entity_type")
     if entity_type:
         qs = qs.filter(entity_type=entity_type)
