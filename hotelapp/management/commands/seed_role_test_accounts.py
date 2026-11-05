@@ -95,6 +95,11 @@ class Command(BaseCommand):
                 user, created = User.objects.get_or_create(username=username)
                 if created:
                     created_count += 1
+                elif user.is_superuser or user.is_staff:
+                    raise CommandError(
+                        "专用测试账号已具有平台/Django Admin 管理身份，拒绝自动降权或覆盖：%s"
+                        % username
+                    )
                 user.is_active = True
                 user.is_staff = False
                 user.set_password(password)
