@@ -1464,6 +1464,27 @@ class SeedRoleTestAccountsCommandTests(TestCase):
                 with self.assertRaises(CommandError):
                     call_command("seed_role_test_accounts", stdout=StringIO())
 
+    def test_existing_platform_admin_test_username_is_not_demoted(self):
+        from django.core.management import call_command, CommandError
+        from django.test import override_settings
+        from unittest.mock import patch
+        from io import StringIO
+
+        Property.objects.create(code="ROLEADMIN", name="管理员保护测试物业")
+        Group.objects.get_or_create(name="前台")
+        admin_user = User.objects.create_superuser(
+            username="test_front", email="admin@example.invalid",
+            password="Existing-Admin-Pass-123!"
+        )
+        password = "Cedar!Orbit#N7vQ-4mZp"
+        with override_settings(DJANGO_ENV="test"):
+            with patch("getpass.getpass", side_effect=[password, password]):
+                with self.assertRaises(CommandError):
+                    call_command("seed_role_test_accounts", stdout=StringIO())
+        admin_user.refresh_from_db()
+        self.assertTrue(admin_user.is_superuser)
+        self.assertTrue(admin_user.is_staff)
+
     def test_creates_nine_independent_accounts_with_assignment_authority(self):
         from django.core.management import call_command
         from django.test import override_settings
