@@ -307,3 +307,54 @@ def membership_change_level(request, membership_id):
         "id": membership.pk, "level_code": membership.level_code,
         "status": membership.status,
     })
+
+
+@require_POST
+@api_view
+@idempotent
+def membership_change_status(request, membership_id):
+    """基线 2.0 §3.4：POST /api/v1/memberships/{id}/status — 会员暂停/恢复。
+
+    body: {action: "suspend"|"restore", reason: "1-240 字符必填"}。
+    写操作经 GuestMembershipService（状态机唯一写入口）：
+      * suspend：ACTIVE/PENDING → SUSPENDED，原因必填并审计；
+      * restore：SUSPENDED → ACTIVE，恢复前复核同客人无其他有效会员。
+    幂等：同状态重复提交返回 changed=false（不重复审计）。
+    权限口径：hotelapp.change_vip（与等级变更同权；基线建议的独立
+    membership.suspend 专项码随矩阵扩展另行登记）。
+    """
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
+    if not AuthorizationService.has_permission(
+            request.user, property_obj, "hotelapp.change_vip"):
+        raise ApiError("PERMISSION_DENIED", "缺少会员修改权限。")
+    membership = GuestMembership.objects.filter(
+        pk=membership_id, property=property_obj).first()
+    if membership is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "当前物业下不存在该会员关系。")
+    body = _membership_body(request)
+    action = str(body.get("action") or "").strip().lower()
+    reason = body.get("reason")
+    try:
+        if action == "suspend":
+            membership, changed = GuestMembershipService.suspend_membership(
+                membership=membership, reason=reason,
+                suspended_by=request.user, request=request)
+        elif action == "restore":
+            membership, changed = GuestMembershipService.restore_membership(
+                membership=membership, reason=reason,
+                restored_by=request.user, request=request)
+        else:
+            raise ApiError("VALIDATION_ERROR",
+                           "action 只支持 suspend（暂停）或 restore（恢复）。")
+    except GuestServiceError as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    return api_response(request, {
+        "id": membership.pk,
+        "member_no": membership.member_no,
+        "status": membership.status,
+        "status_label": L.gmembership_status_labels().get(
+            membership.status, membership.status),
+        "changed": changed,
+    })

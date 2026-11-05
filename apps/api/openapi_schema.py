@@ -1175,10 +1175,50 @@ op("/guests", "get", "住客中心", "住客列表",
 op("/guests/{guest_id}", "get", "住客中心", "住客详情",
    status="verified", path_params=[("guest_id", "住客档案 ID。")],
    permission="有效员工 + hotelapp.view_client",
-   ok=(("200", "Guest 360：档案 + 证件 + 电话 + 会员 + 入住历史"),),
+   ok=(("200", "Guest 360：档案 + 证件 + 电话 + 会员 + 预订/Stay/Folio/旧映射摘要"),),
    data=s_obj({**COMPONENTS["GuestDto"]["properties"], **COMPONENTS["GuestDetailDto"]["properties"]},
-              desc="GuestDto + documents/phones/notes/reservations。"),
+              desc="GuestDto + documents/phones/notes/reservations/stays/folios"
+                   "/legacy_links（基线 2.0 §3.2：Folio 为账本口径余额摘要；"
+                   "legacy_links 为旧 Client/Vip → Guest 映射核验状态）。"),
    errors=E_STAFF)
+
+op("/guests/{guest_id}/timeline", "get", "住客中心", "住客 360 操作时间线",
+   status="verified", path_params=[("guest_id", "住客档案 ID。")],
+   query=[Q("limit", "返回条数上限，10-200，默认 100。", "integer", False, 100)],
+   permission="有效员工 + hotelapp.view_client",
+   ok=(("200", "预订/入住/账务/支付退款/会员/审计六类事件按时间倒序合并"),),
+   data=s_obj({
+       "guest_id": s_int(),
+       "count": s_int("本次返回条数（≤ limit）。"),
+       "items": s_arr(s_obj({
+           "time": s_str("ISO 8601 时间。", format="date-time"),
+           "kind": s_str("reservation / stay.check_in / stay.check_out / "
+                         "ledger_entry / payment / refund / "
+                         "membership.level_change / audit。"),
+           "summary": s_obj(desc="按 kind 区分的事件摘要；审计事件只含动作/实体/"
+                                 "原因/操作人，不含 before/after 原文。"),
+       }), desc="时间倒序合并（同一时刻按业务事实→审计顺序稳定输出）。"),
+   }),
+   errors=E_STAFF,
+   notes="基线 2.0 §3.2 只读聚合端点：全部实时查询，不落第二份汇总数据。")
+
+op("/guests/{guest_id}/folios", "get", "住客中心", "住客账单摘要",
+   status="verified", path_params=[("guest_id", "住客档案 ID。")],
+   query=[*PQ()],
+   permission="有效员工 + hotelapp.view_client",
+   ok=(("200", "Folio 头 + 账本口径余额（分页）；不展开逐条凭证"),),
+   data=s_arr(s_obj({
+       "id": s_int(), "folio_type": s_str(), "folio_type_label": s_str(),
+       "status": s_str(), "status_label": s_str(),
+       "currency": s_str(), "balance": s_str("带符号 LedgerEntry 汇总，Decimal→str。"),
+       "booking_no": s_nullable(s_str()),
+       "opened_at": s_str("", format="date-time"),
+       "closed_at": s_nullable(s_str("", format="date-time")),
+       "source_system": s_str(),
+   }), desc="账单摘要行数组"),
+   errors=E_STAFF,
+   notes="基线 2.0 §3.2 接口表：账单摘要按角色脱敏——逐条凭证/支付明细需"
+         "hotelapp.finance_access 访问 /api/v1/billing/folios/{id}。")
 
 op("/guests/create", "post", "住客中心", "创建住客档案",
    status="partial",
@@ -1461,6 +1501,44 @@ op("/billing/shifts", "get", "财务", "收银班次列表",
        "closed_at": s_nullable(s_str("", format="date-time")),
    })), errors=E_STAFF)
 
+op("/billing/shifts/open", "post", "财务", "收银开班",
+   status="verified",
+   body=s_obj({"opening_cash": s_str("开班备用金，十进制字符串，默认 0.00。")},
+              desc="body 可空（缺省备用金 0.00）。"),
+   permission=FIN_READ_PERM + "；基线 §1.3 建议的独立 billing.cashier_shift_manage "
+                              "专项码登记待实施（当前与班次读同码）",
+   ok=(("201", "开班成功"), ("200", "同收银员已有 OPEN 班次，幂等返回原班次（created=false）")), 
+   data=s_obj({"id": s_int(), "status": s_str(),
+               "opening_cash": s_str(), 
+               "opened_at": s_str("", format="date-time"),
+               "created": s_bool("true=新建；false=幂等重放已有 OPEN 班次。")}),
+   errors=E_STAFF_CONFLICT,
+   notes="BillingService.open_shift 唯一写入口；审计事件 billing.shift_open。",
+   extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
+                             "semantics": "api_contract.idempotent 头幂等 + 服务层"
+                                          "同收银员单 OPEN 班次幂等。"}})
+
+op("/billing/shifts/{shift_id}/close", "post", "财务", "收银关班（交班）",
+   status="verified", path_params=[("shift_id", "CashierShift ID。")],
+   body=s_obj({"actual_cash": s_str("实收现金盘点额，十进制字符串（必填）。"),
+               "variance_reason": s_str("差异说明：actual-opening 差异非零时必填"
+                                        "（服务强校验），≤240 字符。")},
+              required=["actual_cash"]),
+   permission=FIN_READ_PERM + "；跨物业班次一律 404",
+   ok=(("200", "关班成功；返回 expected/actual/variance 与差异说明"),),
+   data=s_obj({"id": s_int(), "status": s_str(), "status_label": s_str(),
+               "opening_cash": s_str(), "expected_cash": s_str(),
+               "actual_cash": s_str(), "variance": s_str(),
+               "variance_reason": s_str(),
+               "closed_at": s_str("", format="date-time")}),
+   errors=E_STAFF_CONFLICT,
+   notes="BillingService.close_shift 唯一写入口；差异非零必须说明并审计"
+         "（billing.shift_close）；重复关班 400。expected_cash 当前口径为"
+         "开班备用金（班次内现金交易聚合待 ReconciliationRun 一并登记）。",
+   extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
+                             "semantics": "api_contract.idempotent：同 key 同 body 重放首次响应；"
+                                          "班次状态迁移不可重复执行（重复关班 400）。"}})
+
 op("/billing/summary", "get", "财务", "可配置期间财务汇总",
    status="verified",
    query=[Q("from", "起始营业日 YYYY-MM-DD；缺省当前营业日。", "string", False, "2026-11-06", fmt="date"),
@@ -1611,6 +1689,24 @@ op("/memberships/{membership_id}/level", "post", "会员中心", "变更会员�
    notes="写 MembershipLevelHistory 与审计。",
    extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
                              "semantics": "api_contract.idempotent：同 key 同 body 重放首次响应；不同 body 409；TTL 24h。"}})
+
+op("/memberships/{membership_id}/status", "post", "会员中心", "会员暂停/恢复",
+   status="verified", path_params=[("membership_id", "会员关系 ID。")],
+   body=s_obj({"action": s_str("suspend=暂停（ACTIVE/PENDING→SUSPENDED）；"
+                               "restore=恢复（SUSPENDED→ACTIVE）。"),
+               "reason": s_str("原因，1-240 字符（服务强校验）。")},
+              required=["action", "reason"]),
+   permission="有效员工 + hotelapp.change_vip（与等级变更同权；基线建议的独立"
+              "membership 专项码随权限矩阵扩展另行登记）",
+   ok=(("200", "状态变更成功；同状态重复提交 changed=false（幂等）"),),
+   data=s_obj({"id": s_int(), "member_no": s_str(), "status": s_str(),
+               "status_label": s_str(), "changed": s_bool()}),
+   errors=E_STAFF_CONFLICT,
+   notes="基线 2.0 §3.4：写操作经 GuestMembershipService（状态机唯一写入口）；"
+         "暂停释放有效会员唯一键，恢复前复核同客人无其他有效会员（冲突 409）；"
+         "审计事件 membership.suspend / membership.restore。",
+   extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
+                             "semantics": "api_contract.idempotent 头幂等 + 服务层同状态幂等。"}})
 
 # ========== 审计与合规中心（基线 2.0 §4.4；读=core.audit_view 唯一门禁） ==========
 AUDIT_READ_PERM = ("有效员工（DEFAULT 有效任职）+ core.audit_view（P0-04 专项权，"

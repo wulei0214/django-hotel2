@@ -135,6 +135,51 @@ def change_housekeeping_status(*, property_obj, room_id, target_status,
     return room, True
 
 
+def _sync_inventory_out_of_service(room, delta, *, property_obj):
+    """基线 2.0 §3.3：维修停用/恢复 → 未来库存 out_of_service 同步。
+
+    口径：
+      * 仅同步已有 RoomTypeInventory 行中 stay_date >= 物业当前营业日的行
+        （未来日期库存；历史行不回写）；未生成的日期由
+        sync_inventory_calendar 命令按物理房主数据初始化时携带停用数；
+      * delta=+1：房间进入 OUT_OF_ORDER/OUT_OF_SERVICE；delta=-1：恢复 NORMAL；
+      * 行锁逐行更新并复核 CheckConstraint 口径
+        （total_rooms >= held + sold + out_of_service）：停用导致容量不足时
+        整体失败（fail-closed），由操作者先处理 Hold/Sold 再停用；
+      * version 乐观计数 +1，与日历同步命令一致。
+    返回同步的行数。
+    """
+    if delta == 0:
+        return 0
+    today = _property_today(property_obj)
+    synced = 0
+    rows = list(
+        RoomTypeInventory.objects.select_for_update()
+        .filter(
+            property=property_obj,
+            room_type=room.room_type,
+            stay_date__gte=today,
+        )
+        .order_by("stay_date", "id")
+    )
+    for stock in rows:
+        new_value = stock.out_of_service + delta
+        if new_value < 0:
+            # 口径保护：不把停用计数减成负数（如命令先行归零后的人工恢复）
+            new_value = 0
+        if delta > 0 and stock.total_rooms < (
+                stock.held + stock.sold + new_value):
+            raise HousekeepingOperationError(
+                f"{stock.stay_date.isoformat()} 库存不足：总房量 "
+                f"{stock.total_rooms}，已 Hold/Sold {stock.held + stock.sold}，"
+                f"无法再停用 1 间；请先处理该日期的预订或库存。")
+        stock.out_of_service = new_value
+        stock.version = (stock.version or 0) + 1
+        stock.save(update_fields=("out_of_service", "version", "updated_at"))
+        synced += 1
+    return synced
+
+
 @transaction.atomic
 def change_maintenance_status(*, property_obj, room_id, target_status, reason,
                               changed_by=None, request=None):
@@ -146,6 +191,8 @@ def change_maintenance_status(*, property_obj, room_id, target_status, reason,
         选择该口径而非 change_room：维修停用直接影响可售库存，属管理者动作，
         不能开放给客房服务员（change_room 持有者含客房服务员）；
       * 恢复（→NORMAL）不联动清洁状态：房间仍脏则继续清洁链；
+      * 基线 2.0 §3.3：停用/恢复与未来库存 out_of_service 同事务同步，
+        维修停用立即降低未来可售（不再依赖手动日历同步）；
       * 每次实际变更落 AuditEvent maintenance.status_changed。
 
     返回 (room, changed)。
@@ -176,6 +223,24 @@ def change_maintenance_status(*, property_obj, room_id, target_status, reason,
         raise HousekeepingOperationError(
             f"维修状态不允许从 {current} 变更为 {target_status}。")
 
+    entering = target_status in (
+        Room.MaintenanceStatus.OUT_OF_ORDER,
+        Room.MaintenanceStatus.OUT_OF_SERVICE,
+    )
+    leaving = current in (
+        Room.MaintenanceStatus.OUT_OF_ORDER,
+        Room.MaintenanceStatus.OUT_OF_SERVICE,
+    )
+    delta = 0
+    if entering and not leaving:
+        delta = 1
+    elif leaving and not entering:
+        delta = -1
+
+    # 先同步库存（可能因容量不足抛错回滚），再落房间状态，保证原子一致
+    synced_rows = _sync_inventory_out_of_service(
+        room, delta, property_obj=property_obj)
+
     room.maintenance_status = target_status
     room.save(update_fields=("maintenance_status", "updated_at"))
     AuditEvent.record(
@@ -188,7 +253,8 @@ def change_maintenance_status(*, property_obj, room_id, target_status, reason,
         after={"maintenance_status": target_status,
                "occupancy_status": room.occupancy_status,
                "housekeeping_status": room.housekeeping_status,
-               "is_sellable_now": room.is_sellable_now},
+               "is_sellable_now": room.is_sellable_now,
+               "inventory_out_of_service_rows_synced": synced_rows},
         reason=reason, request=request,
     )
     return room, True

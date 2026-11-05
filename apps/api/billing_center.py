@@ -533,6 +533,74 @@ def billing_refunds(request):
     return refund_list(request)
 
 
+# ---------------------------------------------------------------------------
+# 收银班次（基线 2.0 §3.5 闭环 / §4.1 班次开闭；BillingService 唯一写入口）
+# ---------------------------------------------------------------------------
+@require_POST
+@api_view
+@idempotent
+def open_shift_api(request):
+    """POST /api/v1/billing/shifts/open — 开班（BillingService.open_shift）。
+
+    body: {opening_cash?: "0.00"}；同一收银员已有 OPEN 班次时幂等返回原班次
+    （created=false）。权限口径：hotelapp.finance_access（财务/值班经理/店长）；
+    基线 §1.3 建议的独立 billing.cashier_shift_manage 专项码登记待实施。
+    """
+    property_obj = _require_finance_access(request)
+    body = _json_body(request)
+    try:
+        shift, created = BillingService.open_shift(
+            property_obj=property_obj, cashier=request.user,
+            opening_cash=body.get("opening_cash", "0.00"))
+    except ValueError as exc:
+        raise ApiError("VALIDATION_ERROR", str(exc))
+    return api_response(request, {
+        "id": shift.pk,
+        "status": shift.status,
+        "opening_cash": _money_str(shift.opening_cash),
+        "opened_at": shift.opened_at.isoformat() if shift.opened_at else None,
+        "created": created,
+    }, status=201 if created else 200)
+
+
+@require_POST
+@api_view
+@idempotent
+def close_shift_api(request, shift_id):
+    """POST /api/v1/billing/shifts/{id}/close — 关班（BillingService.close_shift）。
+
+    body: {actual_cash: "必填", variance_reason?: "差异非零必填"}。
+    差异（actual - opening_cash）非零时必须说明并落审计
+    （billing.shift_close）；重复关班 400。
+    """
+    property_obj = _require_finance_access(request)
+    if not CashierShift.objects.filter(pk=shift_id, property=property_obj).exists():
+        raise ApiError("RESOURCE_NOT_FOUND", "班次不存在或不属于当前物业。")
+    body = _json_body(request)
+    if body.get("actual_cash") in (None, ""):
+        raise ApiError("VALIDATION_ERROR", "actual_cash（实收现金）必填。")
+    try:
+        shift = BillingService.close_shift(
+            shift_id=shift_id, actual_cash=body.get("actual_cash"),
+            closed_by=request.user,
+            variance_reason=str(body.get("variance_reason") or ""))
+    except CashierShift.DoesNotExist:
+        raise ApiError("RESOURCE_NOT_FOUND", "班次不存在。")
+    except ValueError as exc:
+        raise ApiError("VALIDATION_ERROR", str(exc))
+    return api_response(request, {
+        "id": shift.pk,
+        "status": shift.status,
+        "status_label": shift.get_status_display(),
+        "opening_cash": _money_str(shift.opening_cash),
+        "expected_cash": _money_str(shift.expected_cash),
+        "actual_cash": _money_str(shift.actual_cash),
+        "variance": _money_str(shift.variance),
+        "variance_reason": shift.variance_reason or "",
+        "closed_at": shift.closed_at.isoformat() if shift.closed_at else None,
+    })
+
+
 @require_POST
 @api_view
 @idempotent

@@ -14,8 +14,9 @@ from django.views.decorators.http import require_GET, require_POST
 from apps.core import labels as L
 from apps.core.api_contract import (ApiError, api_view, api_response, paginate, idempotent)
 from apps.core.models import AuditEvent
+from django.db.models import Q
 from apps.guests.models import (
-    Guest, GuestDocument, GuestMembership, GuestPhone,
+    Guest, GuestDocument, GuestMembership, GuestPhone, MembershipLevelHistory,
 )
 import json as _json
 
@@ -28,8 +29,13 @@ from apps.inventory.models import (
     DailyRate, RatePlan, Room, RoomType, RoomTypeInventory,
 )
 from apps.reservations.models import Reservation, ReservationRoom, Stay
+from apps.billing.models import Folio, LedgerEntry, Payment, Refund
+from apps.core.models import LegacyRecordLink
+from decimal import Decimal
 
 logger = logging.getLogger("hotel.api")
+
+ZERO = Decimal("0.00")
 
 
 def _guest_dto(guest, user, property_obj, include_detail=False):
@@ -139,22 +145,67 @@ def guest_list(request):
     return api_response(request, data, pagination=pagination)
 
 
-@require_GET
-@api_view
-def guest_detail(request, guest_id):
-    """Guest 360 详情：档案 + 证件 + 电话 + 会员 + 入住历史。"""
+def _guest_or_404(request, guest_id, permission_code="hotelapp.view_client"):
+    """Guest 360 公共门禁：物业上下文 + view_client 权限 + 当前物业对象。"""
     user = request.user
     property_obj = getattr(request, "property", None)
     if property_obj is None:
         raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
-    if not AuthorizationService.has_permission(
-            user, property_obj, "hotelapp.view_client"):
+    if not AuthorizationService.has_permission(user, property_obj, permission_code):
         raise ApiError("PERMISSION_DENIED", "缺少客人查看权限。")
-
     try:
-        guest = Guest.objects.get(pk=guest_id, property=property_obj)
+        return Guest.objects.get(pk=guest_id, property=property_obj), property_obj
     except Guest.DoesNotExist:
         raise ApiError("RESOURCE_NOT_FOUND", "客人不存在。")
+
+
+def _guest_folio_queryset(guest, property_obj):
+    """客人关联账单（Guest 直挂或经预订关联），账本口径余额在 DTO 层聚合。"""
+    return Folio.objects.filter(
+        property=property_obj).filter(
+        Q(guest=guest) | Q(reservation__guest=guest)).distinct()
+
+
+def _folio_balances_for(folios):
+    """账本口径余额：带符号 LedgerEntry 汇总（与 billing_center 同口径）。"""
+    from django.db.models import Sum
+    aggregated = {
+        row["folio"]: row["total"]
+        for row in LedgerEntry.objects.filter(
+            folio__in=[f.pk for f in folios]).values("folio").annotate(
+            total=Sum("amount"))
+    }
+    return {folio.pk: aggregated.get(folio.pk, ZERO) for folio in folios}
+
+
+def _folio_summary_dto(folio, balance):
+    return {
+        "id": folio.pk,
+        "folio_type": folio.folio_type,
+        "folio_type_label": folio.get_folio_type_display(),
+        "status": folio.status,
+        "status_label": folio.get_status_display(),
+        "currency": folio.currency,
+        "balance": str(Decimal(balance).quantize(Decimal("0.01"))),
+        "booking_no": (folio.reservation.booking_no
+                       if folio.reservation_id else None),
+        "opened_at": folio.opened_at.isoformat() if folio.opened_at else None,
+        "closed_at": folio.closed_at.isoformat() if folio.closed_at else None,
+        "source_system": "PMS2",
+    }
+
+
+@require_GET
+@api_view
+def guest_detail(request, guest_id):
+    """Guest 360 详情：档案 + 证件 + 电话 + 会员 + 预订/入住/账单/旧映射摘要。
+
+    基线 2.0 §3.2 闭环口径：一次详情聚合展示预订历史、Stay、Folio（账本
+    口径余额）、会员与 LegacyRecordLink（旧 Client/Vip → Guest 映射），
+    全部只读聚合，不重复落库。
+    """
+    user = request.user
+    guest, property_obj = _guest_or_404(request, guest_id)
 
     reservations = Reservation.objects.filter(
         property=property_obj, guest=guest).order_by("-created_at", "-id")[:10]
@@ -166,9 +217,190 @@ def guest_detail(request, guest_id):
         "total_amount": str(r.total_amount), "rooms": r.room_count,
     } for r in reservations]
 
+    stays = Stay.objects.filter(
+        property=property_obj,
+        reservation_room__reservation__guest=guest,
+    ).select_related(
+        "room", "reservation_room", "reservation_room__reservation",
+    ).order_by("-created_at", "-id")[:10]
+    stay_list = [{
+        "id": s.pk,
+        "status": s.status,
+        "room_number": s.room.number if s.room_id else None,
+        "booking_no": s.reservation_room.reservation.booking_no,
+        "check_in": str(s.reservation_room.check_in),
+        "check_out": str(s.reservation_room.check_out),
+        "actual_check_in": (s.actual_check_in.isoformat()
+                            if s.actual_check_in else None),
+        "actual_check_out": (s.actual_check_out.isoformat()
+                             if s.actual_check_out else None),
+    } for s in stays]
+
+    folios = _guest_folio_queryset(guest, property_obj).order_by(
+        "-opened_at", "-id")[:10]
+    balances = _folio_balances_for(folios)
+    folio_list = [_folio_summary_dto(f, balances.get(f.pk, ZERO)) for f in folios]
+
+    legacy_links = LegacyRecordLink.objects.filter(
+        property=property_obj, target_model="Guest",
+        target_pk=str(guest.pk)).order_by("id")
+    legacy_list = [{
+        "id": link.pk,
+        "source_system": link.source_system,
+        "source_model": link.source_model,
+        "source_pk": link.source_pk,
+        "mapping_status": link.mapping_status,
+        "match_method": link.match_method or None,
+        "reviewed_at": (link.reviewed_at.isoformat()
+                        if getattr(link, "reviewed_at", None) else None),
+    } for link in legacy_links]
+
     data = _guest_dto(guest, user, property_obj, include_detail=True)
     data["reservations"] = reservation_list
+    data["stays"] = stay_list
+    data["folios"] = folio_list
+    data["legacy_links"] = legacy_list
     return api_response(request, data)
+
+
+@require_GET
+@api_view
+def guest_folios(request, guest_id):
+    """GET /api/v1/guests/{id}/folios — 客人账单摘要（分页；账本口径余额）。
+
+    基线 2.0 §3.2 接口表：账单摘要按角色脱敏——本端点只返回 Folio 头与
+    余额汇总，不展开逐条凭证；明细需另持 hotelapp.finance_access 访问
+    /api/v1/billing/folios/{id}。
+    """
+    guest, property_obj = _guest_or_404(request, guest_id)
+    folios = _guest_folio_queryset(guest, property_obj).select_related(
+        "reservation").order_by("-opened_at", "-id")
+    items, pagination = paginate(folios, request)
+    balances = _folio_balances_for(items)
+    data = [_folio_summary_dto(f, balances.get(f.pk, ZERO)) for f in items]
+    return api_response(request, data, pagination=pagination)
+
+
+@require_GET
+@api_view
+def guest_timeline(request, guest_id):
+    """GET /api/v1/guests/{id}/timeline — 客人 360 操作时间线（基线 2.0 §3.2）。
+
+    只读聚合六类事实并按时间倒序合并（同一时刻按插入序稳定输出）：
+      * 预订（创建/取消等状态以当前状态展示）；
+      * 入住/退房（Stay actual_check_in/out，未发生的入住不产生时间点）；
+      * 账务凭证（LedgerEntry，含冲销关联）；
+      * 支付与退款（Payment/Refund 状态）；
+      * 会员等级历史（MembershipLevelHistory）；
+      * 审计事件（AuditEvent：Guest 实体 + 会员/Pii 动作）。
+    默认 limit=100（10-200），审计事件不返回 before/after 原文，仅摘要。
+    """
+    guest, property_obj = _guest_or_404(request, guest_id)
+    try:
+        limit = int(request.GET.get("limit", "100"))
+    except (TypeError, ValueError):
+        raise ApiError("VALIDATION_ERROR", "limit 必须是 10 至 200 的整数。")
+    limit = max(10, min(200, limit))
+
+    events = []
+
+    for r in Reservation.objects.filter(
+            property=property_obj, guest=guest).order_by("-created_at", "-id")[:limit]:
+        events.append({
+            "time": r.created_at.isoformat(), "kind": "reservation",
+            "summary": {"booking_no": r.booking_no, "status": r.status,
+                        "status_label": L.reservation_status_labels().get(
+                            r.status, r.status),
+                        "total_amount": str(r.total_amount)},
+        })
+
+    stay_rows = Stay.objects.filter(
+        property=property_obj,
+        reservation_room__reservation__guest=guest,
+    ).select_related(
+        "room", "reservation_room", "reservation_room__reservation",
+    ).order_by("-created_at", "-id")[:limit]
+    for s in stay_rows:
+        booking_no = s.reservation_room.reservation.booking_no
+        if s.actual_check_in:
+            events.append({
+                "time": s.actual_check_in.isoformat(), "kind": "stay.check_in",
+                "summary": {"stay_id": s.pk, "booking_no": booking_no,
+                            "room": s.room.number if s.room_id else None},
+            })
+        if s.actual_check_out:
+            events.append({
+                "time": s.actual_check_out.isoformat(), "kind": "stay.check_out",
+                "summary": {"stay_id": s.pk, "booking_no": booking_no,
+                            "room": s.room.number if s.room_id else None},
+            })
+
+    ledger_rows = LedgerEntry.objects.filter(
+        property=property_obj).filter(
+        Q(folio__guest=guest) | Q(folio__reservation__guest=guest),
+    ).select_related("folio").order_by("-created_at", "-id")[:limit]
+    for e in ledger_rows:
+        events.append({
+            "time": e.created_at.isoformat(), "kind": "ledger_entry",
+            "summary": {"entry_id": e.pk, "entry_type": e.entry_type,
+                        "amount": str(e.amount), "currency": e.currency,
+                        "business_date": e.business_date.isoformat(),
+                        "folio_id": e.folio_id,
+                        "void_of_id": e.void_of_id},
+        })
+
+    payment_rows = Payment.objects.filter(
+        property=property_obj).filter(
+        Q(folio__guest=guest) | Q(folio__reservation__guest=guest),
+    ).order_by("-created_at", "-id")[:limit]
+    for p in payment_rows:
+        events.append({
+            "time": p.created_at.isoformat(), "kind": "payment",
+            "summary": {"payment_id": p.pk, "method": p.method,
+                        "amount": str(p.amount), "currency": p.currency,
+                        "status": p.status},
+        })
+
+    refund_rows = Refund.objects.filter(
+        payment__property=property_obj).filter(
+        Q(payment__folio__guest=guest)
+        | Q(payment__folio__reservation__guest=guest),
+    ).select_related("payment").order_by("-created_at", "-id")[:limit]
+    for rf in refund_rows:
+        events.append({
+            "time": rf.created_at.isoformat(), "kind": "refund",
+            "summary": {"refund_id": rf.pk, "amount": str(rf.amount),
+                        "currency": rf.currency, "status": rf.status,
+                        "payment_id": rf.payment_id},
+        })
+
+    for h in MembershipLevelHistory.objects.filter(
+            membership__guest=guest,
+            membership__property=property_obj).order_by("-created_at", "-id")[:limit]:
+        events.append({
+            "time": h.created_at.isoformat(), "kind": "membership.level_change",
+            "summary": {"from_level": h.from_level or None,
+                        "to_level": h.to_level, "reason": h.reason or None},
+        })
+
+    audit_rows = AuditEvent.objects.filter(
+        property=property_obj, entity_type="Guest",
+        entity_id=str(guest.pk)).order_by("-created_at", "-id")[:limit]
+    for ev in audit_rows:
+        events.append({
+            "time": ev.created_at.isoformat(), "kind": "audit",
+            "summary": {"action": ev.action, "entity_type": ev.entity_type,
+                        "reason": ev.reason or None,
+                        "actor": (ev.actor.username if ev.actor_id else None)},
+        })
+
+    # 时间倒序合并；Python 排序稳定——同一时刻保持上列业务顺序（事实先于审计）
+    events.sort(key=lambda item: item["time"], reverse=True)
+    return api_response(request, {
+        "guest_id": guest.pk,
+        "count": len(events[:limit]),
+        "items": events[:limit],
+    })
 
 
 # ---------- Room 中心只读 API ----------

@@ -53,6 +53,9 @@ urlpatterns = [
     path("guests/<int:guest_id>", guest_center.guest_detail, name="guest_detail"),
     path("guests/create", guest_center.guest_create, name="guest_create"),
     path("guests/<int:guest_id>/update", guest_center.guest_update, name="guest_update"),
+    # 基线 2.0 §3.2：Guest 360 时间线与账单摘要（只读聚合）
+    path("guests/<int:guest_id>/timeline", guest_center.guest_timeline, name="guest_timeline"),
+    path("guests/<int:guest_id>/folios", guest_center.guest_folios, name="guest_folios"),
     path("guests/<int:guest_id>/documents/<int:document_id>/reveal", guest_center.guest_reveal_document, name="guest_reveal_document"),
     path("guests/<int:guest_id>/phones/<int:phone_id>/reveal", guest_center.guest_reveal_phone, name="guest_reveal_phone"),
     # --- Room 中心 (V1.1 Phase 1 只读原型) ---
@@ -85,6 +88,8 @@ urlpatterns = [
     path("memberships/<int:membership_id>", staff_center.membership_detail, name="membership_detail"),
     path("memberships/create", staff_center.membership_create, name="membership_create"),
     path("memberships/<int:membership_id>/level", staff_center.membership_change_level, name="membership_change_level"),
+    # 基线 2.0 §3.4：会员暂停/恢复（action=suspend|restore）
+    path("memberships/<int:membership_id>/status", staff_center.membership_change_status, name="membership_change_status"),
     # --- 财务与账单中心 (基线 2.0 §4.1；读=finance_access，写走 BillingService) ---
     path("billing/folios", billing_center.folio_list, name="billing_folio_list"),
     path("billing/folios/<int:folio_id>", billing_center.folio_detail, name="billing_folio_detail"),
@@ -93,6 +98,9 @@ urlpatterns = [
     path("billing/refunds", billing_center.billing_refunds, name="billing_refunds"),
     path("billing/reversals", billing_center.reverse_entry_api, name="billing_reverse_entry"),
     path("billing/shifts", billing_center.shift_list, name="billing_shift_list"),
+    # 基线 2.0 §3.5：收银班次开班/关班（BillingService.open_shift/close_shift）
+    path("billing/shifts/open", billing_center.open_shift_api, name="billing_shift_open"),
+    path("billing/shifts/<int:shift_id>/close", billing_center.close_shift_api, name="billing_shift_close"),
     path("billing/summary", billing_center.billing_summary, name="billing_summary"),
     # --- 清洁与维修工作台 (基线 2.0 §4.3；读=view_room，清洁链=change_room，
     #     净房放行=room_release_ready（F-08 补执行点），维修=no_show_handle) ---

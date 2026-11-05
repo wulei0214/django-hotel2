@@ -303,4 +303,72 @@ class GuestMembershipService:
             request=request)
         return membership
 
+    # ---------- 基线 2.0 §3.4：会员暂停 / 恢复（状态机唯一写入口） ----------
+    @staticmethod
+    @transaction.atomic
+    def suspend_membership(*, membership, reason, suspended_by=None, request=None):
+        """暂停会员（ACTIVE/PENDING → SUSPENDED）：原因必填；写审计。
+
+        暂停释放"有效会员唯一键"（active_guest_key 由模型 save 维护），
+        允许同客人在暂停期间不占用唯一有效约束；历史等级不变。
+        """
+        from .models import GuestMembership
+        reason = str(reason or "").strip()
+        if not reason or len(reason) > 240:
+            raise GuestServiceError("会员暂停必须填写 1 至 240 个字符的原因。")
+        membership = GuestMembership.objects.select_for_update().get(pk=membership.pk)
+        old_status = membership.status
+        if old_status == GuestMembership.Status.SUSPENDED:
+            return membership, False
+        if old_status not in (GuestMembership.Status.ACTIVE,
+                              GuestMembership.Status.PENDING):
+            raise GuestServiceError(
+                f"会员状态为 {old_status}，不允许暂停。")
+        membership.status = GuestMembership.Status.SUSPENDED
+        membership.save(update_fields=("status", "updated_at"))
+        AuditEvent.record(
+            action="membership.suspend", entity_type="GuestMembership",
+            entity_id=membership.pk, actor=suspended_by,
+            property_obj=membership.property,
+            before={"status": old_status},
+            after={"status": GuestMembership.Status.SUSPENDED},
+            reason=reason, request=request)
+        return membership, True
+
+    @staticmethod
+    @transaction.atomic
+    def restore_membership(*, membership, reason, restored_by=None, request=None):
+        """恢复会员（SUSPENDED → ACTIVE）：原因必填；写审计。
+
+        恢复前复核同客人不存在其他有效会员（唯一键约束语义），
+        冲突时报业务错误而不是让数据库约束半途失败。
+        """
+        from .models import GuestMembership
+        reason = str(reason or "").strip()
+        if not reason or len(reason) > 240:
+            raise GuestServiceError("会员恢复必须填写 1 至 240 个字符的原因。")
+        membership = GuestMembership.objects.select_for_update().get(pk=membership.pk)
+        old_status = membership.status
+        if old_status == GuestMembership.Status.ACTIVE:
+            return membership, False
+        if old_status != GuestMembership.Status.SUSPENDED:
+            raise GuestServiceError(
+                f"会员状态为 {old_status}，仅暂停状态允许恢复。")
+        if GuestMembership.objects.filter(
+                property_id=membership.property_id,
+                guest_id=membership.guest_id,
+                status=GuestMembership.Status.ACTIVE,
+        ).exclude(pk=membership.pk).exists():
+            raise GuestServiceError("该客人已有其他有效会员关系，不能恢复本会员。")
+        membership.status = GuestMembership.Status.ACTIVE
+        membership.save(update_fields=("status", "updated_at"))
+        AuditEvent.record(
+            action="membership.restore", entity_type="GuestMembership",
+            entity_id=membership.pk, actor=restored_by,
+            property_obj=membership.property,
+            before={"status": old_status},
+            after={"status": GuestMembership.Status.ACTIVE},
+            reason=reason, request=request)
+        return membership, True
+
 
