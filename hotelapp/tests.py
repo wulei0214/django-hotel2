@@ -1482,14 +1482,34 @@ class SeedRoleTestAccountsCommandTests(TestCase):
             ("停车安保", "test_parking"),
         ]
         prop = Property.objects.create(code="ROLESEED", name="九角色种子测试物业")
-        for role, _username in roles:
-            Group.objects.create(name=role)
+        role_groups = {role: Group.objects.create(name=role) for role, _username in roles}
+        old_group = Group.objects.create(name="旧测试岗位")
+        existing_user = User.objects.create_user(
+            username="test_front", password="old-passphrase-123"
+        )
+        existing_profile = StaffProfile.objects.create(
+            user=existing_user, full_name="旧前台测试账号",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
+        existing_membership = PropertyStaffMembership.objects.create(
+            property=prop, staff_profile=existing_profile,
+            employee_no="ROLESEED-OLD", status=PropertyStaffMembership.Status.ACTIVE,
+        )
+        old_assignment = StaffRoleAssignment.objects.create(
+            membership=existing_membership, group=old_group,
+            starts_at=timezone.now() - timedelta(minutes=5),
+        )
 
         password = "Cedar!Orbit#N7vQ-4mZp"
         output = StringIO()
         with override_settings(DJANGO_ENV="test"):
-            with patch("getpass.getpass", side_effect=[password, password]):
+            with patch("getpass.getpass", side_effect=[password, password, password, password]):
                 call_command("seed_role_test_accounts", stdout=output)
+                call_command("seed_role_test_accounts", stdout=output)
+
+        old_assignment.refresh_from_db()
+        self.assertIsNotNone(old_assignment.ends_at)
+        self.assertTrue(StaffRoleAssignment.objects.filter(pk=old_assignment.pk).exists())
 
         self.assertNotIn(password, output.getvalue())
         for role, username in roles:
@@ -1502,7 +1522,8 @@ class SeedRoleTestAccountsCommandTests(TestCase):
             membership = PropertyStaffMembership.objects.get(
                 property=prop, staff_profile=profile
             )
-            self.assertTrue(StaffRoleAssignment.objects.filter(
-                membership=membership, group__name=role,
+            self.assertEqual(StaffRoleAssignment.objects.filter(
+                membership=membership, group=role_groups[role],
                 starts_at__lte=timezone.now(),
-            ).exists())
+                ends_at__isnull=True,
+            ).count(), 1)
