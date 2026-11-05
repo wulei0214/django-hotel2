@@ -1336,3 +1336,65 @@ class ClassifyUsersCommandTests(TestCase):
             )
             content = Path(path).read_text(encoding="utf-8")
         self.assertIn("user_id,username_fp,category", content)
+
+class ReconcileTestUsersCommandTests(TestCase):
+    """F-02：只在隔离开发/测试库执行可逆账号收敛，不物理删除历史。"""
+
+    def test_default_preview_does_not_change_users_or_groups(self):
+        from django.core.management import call_command
+        from io import StringIO
+
+        user = User.objects.create_user(username="orphan_preview", password="unused-pass-123")
+        group = Group.objects.create(name="legacy-preview-group")
+        user.groups.add(group)
+        call_command("reconcile_test_users", stdout=StringIO())
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+        self.assertTrue(user.groups.filter(pk=group.pk).exists())
+
+    def test_execute_requires_database_confirmation_and_nonempty_backup(self):
+        from django.core.management import call_command, CommandError
+        from django.db import connection
+        from django.test import override_settings
+        import tempfile
+        from pathlib import Path
+        from io import StringIO
+
+        user = User.objects.create_user(username="orphan_execute", password="unused-pass-123")
+        group = Group.objects.create(name="legacy-execute-group")
+        user.groups.add(group)
+        with tempfile.TemporaryDirectory() as directory:
+            backup = Path(directory) / "backup.sql"
+            backup.write_text("test-backup", encoding="utf-8")
+            with override_settings(DJANGO_ENV="dev", DEBUG=True):
+                with self.assertRaises(CommandError):
+                    call_command(
+                        "reconcile_test_users", execute=True,
+                        confirm_database="wrong-db", backup_file=str(backup),
+                        stdout=StringIO(),
+                    )
+                call_command(
+                    "reconcile_test_users", execute=True,
+                    confirm_database=connection.settings_dict["NAME"],
+                    backup_file=str(backup), stdout=StringIO(),
+                )
+        user.refresh_from_db()
+        self.assertFalse(user.is_active)
+        self.assertFalse(user.groups.exists())
+
+    def test_staff_profile_is_preserved_and_account_is_not_disabled(self):
+        from django.core.management import call_command
+        from io import StringIO
+
+        user = User.objects.create_user(username="linked_staff", password="unused-pass-123")
+        StaffProfile.objects.create(
+            user=user, full_name="保留员工",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
+        group = Group.objects.create(name="legacy-linked-group")
+        user.groups.add(group)
+        call_command("reconcile_test_users", stdout=StringIO())
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+        self.assertFalse(user.groups.exists())
+        self.assertTrue(StaffProfile.objects.filter(user=user).exists())
