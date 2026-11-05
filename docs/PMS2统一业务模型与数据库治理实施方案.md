@@ -18,8 +18,8 @@
 
 1. `docs/PMS后台管理体系专项评审_第12节决策审核结论.md`
 2. `docs/五大模块重构需求设计方案.md`
-3. `docs/development/PMS2_PHASE1_BASELINE.md`
-4. `docs/development/PMS2_PHASE2_RESERVATION_INVENTORY.md`
+3. `docs/PMS2第一阶段平台底座开发记录.md`
+4. `docs/PMS2第二阶段预订与库存闭环开发记录.md`
 5. `docs/系统架构说明.md`
 6. `docs/敏感字段权限边界设计.md` 及已正式确认的敏感字段决策
 
