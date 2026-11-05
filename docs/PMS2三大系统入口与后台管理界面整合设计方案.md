@@ -32,7 +32,7 @@
 |---|---|---|---|---|
 | 客人预约 | `/reserve/` | 客人 | 公开访问/现有订单访问机制 | 预约与公开预订流程 |
 | PMS 前台 | `/login/` | 酒店员工 | PMS Session（`sessionid`） | 预订、入住、房态、住客、收银等 |
-| 平台管理 | `/platform/` | 平台超管 | Admin Session（`admin_sessionid`） | 平台治理与管理入口 |
+| 平台管理 | `/platform/` | 平台超管 | 平台 Session（`platform_sessionid` / `django_admin_sessionid`，同一 Session Key） | 平台治理与管理入口 |
 
 ### 2.1 授权不变量
 
@@ -53,11 +53,11 @@
 
 ### 2.3 Cookie 传输边界说明
 
-当前项目通过 `SplitSessionMiddleware` 按路径选择会话 Cookie：平台路径读取 `admin_sessionid`，PMS 路径读取 `sessionid`。这是认证读取隔离，不等同于浏览器网络层 Cookie 传输隔离。
+当前 Session/Cookie 实现已由《PMS2平台与业务Session_Cookie网络隔离专项设计与验收基线》接管，本节原始 `admin_sessionid` 描述属于本方案编制时的历史快照，不再作为当前配置依据。
 
-当前平台路由同时包含 `/platform/*` 与 `/admin/*`，单个 Cookie 的 Path 无法同时精确覆盖这两个互不嵌套的路径前缀。若平台 Cookie Path 仍为 `/`，浏览器访问 PMS 页面时可能仍会发送 `admin_sessionid`，但 PMS 中间件不读取它。
+当前代码通过 `SplitSessionMiddleware` 将平台同一 Session Key 写入两条 Path Cookie：`platform_sessionid`（`/platform/`）和 `django_admin_sessionid`（`/admin/`）；历史 `admin_sessionid` 仅发送过期删除指令，不再作为认证凭证读取。PMS `sessionid` 维持原生路径配置。
 
-本轮不修改认证与 Session 机制，因此不得宣称已经实现“HTTP 请求中完全不携带另一域 Cookie”。该项列为独立安全技术债：后续需在独立域名，或经专项设计验证的双 Path Cookie/会话轮换与登出清理方案中解决。不得通过简单改 Cookie Path 破坏 `/admin/` 或 `/platform/` 登录。
+本文件仅说明三入口的业务身份边界。Cookie 规格、迁移清理、并发登出、浏览器传输与回滚验收，均以 Cookie 专项设计及 `apps/identity/session_middleware.py` 当前实现为准。
 
 ## 3. 信息架构
 
@@ -209,7 +209,7 @@
 - 平台首页的 `/reserve/`、`/login/` 链接仅为普通导航，不复制会话、不触发登录或角色授予。
 - 平台超管无 PMS 任职时访问 PMS 受保护页面，按现有 PMS 门禁拒绝；不得自动创建任职。
 - PMS 员工访问平台管理，按平台门禁跳转平台登录或返回 403；不得以 PMS 角色放行。
-- 浏览器 Cookie 网络层是否向另一路径发送 `admin_sessionid`，与 Django 中间件是否读取是两个不同问题。当前共享主机名和两个不相邻路径前缀时，Cookie Path 无法用单个值同时精确限定两处。该限制必须在验收报告中如实注明，不能声称传输层完全隔离。
+- 平台 Cookie 的网络传输边界以 Cookie 专项设计中的双 Path 规格、历史 Cookie 清理和真实浏览器验收矩阵为准；不得将服务端读取隔离替代浏览器传输验证。
 
 ## 8. 验收标准
 
@@ -306,6 +306,6 @@
 
 ### 12.4 Cookie 网络传输隔离的剩余事项
 
-本轮维持现有 Session 读取隔离，没有实现浏览器网络层 Cookie Path 隔离。当前 `admin_sessionid` 若仍使用 Path=/，浏览器访问 `/reserve/` 或 `/login/` 时可能仍会发送该 Cookie；PMS 中间件不会读取它，但这不等于请求未携带。
+本方案编制时尚未实现 Cookie Path 隔离；后续已由 Cookie 专项方案和 `SplitSessionMiddleware` 实施双 Path Cookie 与历史 Cookie 迁移清理。当前实现仍须以专项方案的真实浏览器验收项为准，不能仅凭服务端单元测试宣称传输层验收完成。
 
 这是已识别的安全边界缺口，不能标记为完成。后续应单独设计并测试平台与 Admin 两条路径的 Cookie 作用域、会话轮换、兼容迁移、登出清理和反向代理行为。推荐优先评估独立管理子域；如继续同域，应验证使用不同 Cookie 名称分别绑定 `/admin/` 与 `/platform/` 的方案，不能只改一个 Path 导致其中一侧登录失效。
