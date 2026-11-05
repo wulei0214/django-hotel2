@@ -94,10 +94,23 @@ class Command(BaseCommand):
                 for assignment in assignments_by_membership.get(membership.pk, [])
             )
             group_names = list(user.groups.values_list("name", flat=True))
-            if eligible_memberships and has_effective_assignment and group_names:
-                planned.append({"user": user, "groups": group_names, "disable": False})
-            elif group_names:
-                # 无法证明岗位授权已由 StaffRoleAssignment 承接时，不自动删除授权线索。
+            effective_group_names = {
+                assignment.group.name
+                for membership in eligible_memberships
+                for assignment in assignments_by_membership.get(membership.pk, [])
+                if assignment.starts_at <= now
+                and (assignment.ends_at is None or assignment.ends_at > now)
+            }
+            covered_groups = [name for name in group_names if name in effective_group_names]
+            uncovered_groups = [name for name in group_names if name not in effective_group_names]
+            if covered_groups:
+                planned.append({
+                    "user": user,
+                    "groups": covered_groups,
+                    "disable": False,
+                })
+            if uncovered_groups:
+                # 未被当前有效 StaffRoleAssignment 承接的组授权保留，交由人工核对。
                 manual_review += 1
 
         self.stdout.write("数据库：%s" % db_name)
@@ -123,7 +136,9 @@ class Command(BaseCommand):
             for item in planned:
                 user = item["user"]
                 if item["groups"]:
-                    user.groups.clear()
+                    from django.contrib.auth.models import Group
+                    covered = Group.objects.filter(name__in=item["groups"])
+                    user.groups.remove(*covered)
                     changed_groups += 1
                     AuditEvent.record(
                         action="identity.legacy_direct_groups_cleared",
