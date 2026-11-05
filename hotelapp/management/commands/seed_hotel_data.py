@@ -49,7 +49,7 @@ class Command(BaseCommand):
             db_host in local_hosts
         )
         is_test_database = environment == "test" and (
-            (is_sqlite and db_name in {"", ":memory:"}) or "test" in db_name
+            (is_sqlite and (db_name in {"", ":memory:"} or "mode=memory" in db_name or "memorydb" in db_name)) or "test" in db_name
         )
         if not (is_local_dev or is_test_database):
             raise CommandError(
