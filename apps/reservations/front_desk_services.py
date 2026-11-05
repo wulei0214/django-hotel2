@@ -41,7 +41,12 @@ def _money(value):
         raise FrontDeskOperationError("金额格式无效。") from exc
     if not amount.is_finite() or amount <= 0:
         raise FrontDeskOperationError("金额必须是大于 0 的有效数字。")
-    if amount != amount.quantize(CENT):
+    try:
+        exact_to_cent = amount == amount.quantize(CENT)
+    except InvalidOperation as exc:
+        # WB-01：超出 Decimal 上下文精度的超大值统一拒绝为业务校验错误。
+        raise FrontDeskOperationError("金额最多保留两位小数。") from exc
+    if not exact_to_cent:
         raise FrontDeskOperationError("金额最多保留两位小数。")
     return amount
 
@@ -294,7 +299,8 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
         pk=line.reservation_id, property=property_obj
     )
     folio = Folio.objects.select_for_update().filter(
-        property=property_obj, reservation=reservation
+        property=property_obj, reservation=reservation,
+        folio_type=Folio.FolioType.MASTER,
     ).first()
     if folio is None or folio.status != Folio.Status.OPEN:
         raise FrontDeskOperationError("账单不存在或已关闭，不能办理退房。")

@@ -36,14 +36,25 @@ def _money(value):
         amount = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError) as exc:
         raise LifecycleOperationError("金额格式无效。") from exc
-    if not amount.is_finite() or amount <= 0 or amount != amount.quantize(CENT):
+    if not amount.is_finite() or amount <= 0:
+        raise LifecycleOperationError("金额必须大于 0 且最多保留两位小数。")
+    try:
+        exact_to_cent = amount == amount.quantize(CENT)
+    except InvalidOperation as exc:
+        # WB-01：超出 Decimal 上下文精度的超大值统一拒绝为业务校验错误。
+        raise LifecycleOperationError(
+            "金额必须大于 0 且最多保留两位小数。") from exc
+    if not exact_to_cent:
         raise LifecycleOperationError("金额必须大于 0 且最多保留两位小数。")
     return amount
 
 
 def _folio_for_update(property_obj, reservation):
+    # WB-07：续住/换房门禁只看主账单；不限定类型时，Meta ordering=-opened_at
+    # 会让更晚开立的非主账单掩盖已关闭的主账单。
     folio = Folio.objects.select_for_update().filter(
-        property=property_obj, reservation=reservation
+        property=property_obj, reservation=reservation,
+        folio_type=Folio.FolioType.MASTER,
     ).first()
     if folio is None or folio.status != Folio.Status.OPEN:
         raise LifecycleOperationError("账单不存在或已关闭，不能执行该操作。")

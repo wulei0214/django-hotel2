@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>前台接待工作台 - 酒店管理系统</title>
     <link rel="stylesheet" href="/static/css/site.css?v=14">
-    <link rel="stylesheet" href="/static/css/frontdesk.css?v=2">
+    <link rel="stylesheet" href="/static/css/frontdesk.css?v=3">
 </head>
 <body class="fd-body">
 {% include "_sidebar.html" %}
@@ -25,6 +25,9 @@
             </p>
         </div>
         <div class="fd-header-actions">
+            <button type="button" class="fd-btn fd-btn-secondary fd-nav-toggle" id="fd-nav-toggle" aria-label="打开业务导航菜单" aria-expanded="false">
+                <span aria-hidden="true">☰</span> 导航
+            </button>
             <button type="button" class="fd-btn fd-btn-secondary" id="fd-refresh">
                 <span aria-hidden="true">↻</span> 刷新数据
             </button>
@@ -253,6 +256,6 @@
 
 <div class="fd-toast" id="fd-toast" role="status" aria-live="polite"></div>
 <form id="fd-csrf-token-container" hidden>{% csrf_token %}</form>
-<script src="/static/js/frontdesk.js?v=3"></script>
+<script src="/static/js/frontdesk.js?v=4"></script>
 </body>
 </html>

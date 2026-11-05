@@ -1,10 +1,11 @@
 {% extends "platform/base.html" %}
 {% comment %} 权限管理中心（§8.1 四区重构）：左=角色目录，中=注册表模块×动作矩阵，
 右=影响范围/持有专项/最近保存审计，底部=变更摘要+理由+高危二次确认。
-读写走 /platform/api/permissions/ JSON API（内容 hash 并发保护 + 同事务审计）。{% endcomment %}
+读写走 /platform/api/permissions/ JSON API（内容 hash 并发保护 + 同事务审计）。
+§8.2 UI 修订：仅样式/响应式/键盘可操作性/反馈呈现，不改 API 契约与注册表。{% endcomment %}
 {% load static %}
 {% block title %}权限管理中心{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="/static/css/permission_center.css?v=1">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="/static/css/permission_center.css?v=3">{% endblock %}
 {% block content %}
 <div class="pc-head">
     <div>
@@ -59,13 +60,16 @@
         <input type="text" id="pc-reason" maxlength="240" autocomplete="off"
                placeholder="例如：餐饮模块启用前回收历史预留授权">
     </div>
+    {# §8.2/PC-UI-07：高危两步确认提示、令牌有效期与变更内容说明就地常驻（JS 按需展开） #}
+    <div id="pc-special-warn" class="pc-special-warn" hidden></div>
     <div class="pc-confirm-row pc-actions-row">
         <button type="button" id="pc-step-btn" class="perm-save-btn" disabled>保存权限</button>
-        <span id="pc-step-hint" class="pc-step-hint"></span>
+        <span id="pc-step-hint" class="pc-step-hint" aria-live="polite"></span>
         <span id="pc-count" class="pc-count"></span>
     </div>
-    <div id="pc-result" class="pc-result" hidden></div>
+    {# §8.2 反馈明确：成功/失败/版本冲突/令牌过期四种结果各自着色并加状态徽记 #}
+    <div id="pc-result" class="pc-result" role="status" aria-live="polite" hidden></div>
 </section>
 
-<script src="/static/js/permission_center.js?v=1" defer></script>
+<script src="/static/js/permission_center.js?v=3" defer></script>
 {% endblock %}

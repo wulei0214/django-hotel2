@@ -284,8 +284,16 @@ def housekeeping_summary(property_obj):
         if mt != Room.MaintenanceStatus.NORMAL:
             bucket["maintenance_abnormal"] += total
 
-    day_start = timezone.make_aware(
-        dt_datetime.combine(_property_today(property_obj), _time.min))
+    # WB-12：“今日流转”窗口必须按物业时区取当日零点；此前 make_aware 缺省
+    # 用 settings.TIME_ZONE 解释物业日历日期，跨时区物业会把昨天/明天的
+    # 流转错记进“今天”。
+    from zoneinfo import ZoneInfo
+    try:
+        tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")
+    except Exception:
+        tz = ZoneInfo("Asia/Shanghai")
+    day_start = dt_datetime.combine(
+        _property_today(property_obj), _time.min, tzinfo=tz)
     from apps.core.models import AuditEvent
     today_events = AuditEvent.objects.filter(
         property=property_obj, created_at__gte=day_start)
@@ -568,8 +576,14 @@ def adjust_daily_rate(*, property_obj, rate_id, price, reason,
         amount = Decimal(str(price))
     except (InvalidOperation, TypeError, ValueError) as exc:
         raise ValueError("价格格式无效。") from exc
-    if (not amount.is_finite() or amount < 0
-            or amount != amount.quantize(Decimal("0.01"))):
+    try:
+        exact_to_cent = (
+            amount.is_finite() and amount >= 0
+            and amount == amount.quantize(Decimal("0.01")))
+    except InvalidOperation as exc:
+        # WB-01：超出 Decimal 上下文精度的超大值统一拒绝为校验错误。
+        raise ValueError("价格必须是非负且精确到分的金额。") from exc
+    if not exact_to_cent:
         raise ValueError("价格必须是非负且精确到分的金额。")
     try:
         tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")

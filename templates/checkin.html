@@ -6,6 +6,7 @@
     <link rel="stylesheet" href="/static/css/site.css?v=14">
 </head>
 <body>
+{% load pms_filters %}
 {% if messages %}
 <div class="toast-box">
     {% for m in messages %}<div class="toast {{ m.tags }}">{{ m }}</div>{% endfor %}
@@ -48,7 +49,7 @@
             <tr data-date="{{ line.入住时间 }}">
                 <td class="oid">{{ line.id }}</td>
                 <td>{{ line.顾客id.姓名 }}</td>
-                <td>{{ line.联系电话 }}</td>
+                <td>{{ line.联系电话|mask_tel }}</td>
                 <td>{{ line.客房编号.客房类型 }} / {{ line.客房编号.房间号 }}</td>
                 <td>{{ line.入住时间 }}</td>
                 <td>
@@ -79,7 +80,7 @@
                 <td class="oid">{{ line.id }}</td>
                 <td>{{ line.顾客id.姓名 }}</td>
                 <td>{{ line.客房编号.房间号 }}（{{ line.客房编号.客房类型 }}）</td>
-                <td>{{ line.联系电话 }}</td>
+                <td>{{ line.联系电话|mask_tel }}</td>
                 <td>{{ line.入住时间 }}</td>
                 <td><input type="text" class="ci-deposit" maxlength="9" placeholder="押金金额" class="w-compact"/><button class="btn btn-primary ci-do" data-id="{{ line.id }}">办理入住</button></td>
                 <td>
@@ -102,7 +103,7 @@
         <table class="data-table">
             <tr><th>订单号</th><th>顾客</th><th>房间</th><th>入住日期</th><th>联系电话</th></tr>
             {% for line in pre_arrival %}
-            <tr><td>{{ line.id }}</td><td>{{ line.顾客id.姓名 }}</td><td>{{ line.客房编号.房间号 }}（{{ line.客房编号.客房类型 }}）</td><td>{{ line.入住时间 }}</td><td>{{ line.联系电话 }}</td></tr>
+            <tr><td>{{ line.id }}</td><td>{{ line.顾客id.姓名 }}</td><td>{{ line.客房编号.房间号 }}（{{ line.客房编号.客房类型 }}）</td><td>{{ line.入住时间 }}</td><td>{{ line.联系电话|mask_tel }}</td></tr>
             {% empty %}
             <tr><td colspan="5" class="empty-row">未来 3 天暂无预抵订单</td></tr>
             {% endfor %}
@@ -118,7 +119,7 @@
                 <td class="oid">{{ line.id }}</td>
                 <td>{{ line.顾客id.姓名 }}</td>
                 <td>{{ line.客房编号.房间号 }}（{{ line.客房编号.客房类型 }}）</td>
-                <td>{{ line.顾客id.身份证号 }}</td>
+                <td>{{ line.顾客id.身份证号|mask_idcard }}</td>
                 <td>{{ line.入住时间 }}</td>
                 <td>{{ line.押金 }}</td>
                 <td><button class="btn btn-primary folio-btn" data-id="{{ line.id }}">查看账单</button></td>

@@ -9,7 +9,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
-from django.db import models, transaction
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
 from apps.core.models import AuditEvent, Property
@@ -53,12 +53,21 @@ class ApprovalService:
         existing = ApprovalRecord.objects.filter(idempotency_key=idem_key).first()
         if existing:
             return existing, False
-        record = ApprovalRecord.objects.create(
-            property=property_obj, action_code=action_code,
-            entity_type=entity_type, entity_id=str(entity_id),
-            requested_by=requested_by, reason=reason,
-            payload_snapshot=payload, idempotency_key=idem_key,
-            expires_at=now_plus(hours=expires_hours))
+        # WB-03：并发重复申请可能同时通过预检查询，由 idempotency_key 唯一约束
+        # 兜底仲裁；撞键方必须幂等返回既有记录而不是抛 IntegrityError。
+        try:
+            with transaction.atomic():
+                record = ApprovalRecord.objects.create(
+                    property=property_obj, action_code=action_code,
+                    entity_type=entity_type, entity_id=str(entity_id),
+                    requested_by=requested_by, reason=reason,
+                    payload_snapshot=payload, idempotency_key=idem_key,
+                    expires_at=now_plus(hours=expires_hours))
+        except IntegrityError:
+            raced = ApprovalRecord.objects.filter(idempotency_key=idem_key).first()
+            if raced is not None:
+                return raced, False
+            raise
         AuditEvent.record(
             action="approval.request", entity_type=entity_type,
             entity_id=str(entity_id), actor=requested_by,
@@ -149,7 +158,15 @@ class BillingService:
             amount = Decimal(str(value))
         except (InvalidOperation, TypeError, ValueError) as exc:
             raise ValueError("金额格式无效。") from exc
-        if not amount.is_finite() or amount != amount.quantize(BillingService.CENT):
+        if not amount.is_finite():
+            raise ValueError("金额必须精确到分。")
+        try:
+            exact_to_cent = amount == amount.quantize(BillingService.CENT)
+        except InvalidOperation as exc:
+            # 超出 Decimal 上下文精度的超大值（如 1e30）quantize 会抛
+            # InvalidOperation；必须统一转成面向调用方的 ValueError（WB-01）。
+            raise ValueError("金额必须精确到分。") from exc
+        if not exact_to_cent:
             raise ValueError("金额必须精确到分。")
         return amount
 
@@ -161,6 +178,23 @@ class BillingService:
         except Exception:
             tz = ZoneInfo("Asia/Shanghai")
         return timezone.localdate(timezone.now(), tz)
+
+    @staticmethod
+    def _entry_facts_match(entry, *, property_obj, folio, stay, entry_type,
+                           amount, currency, business_date, void_of,
+                           void_reason):
+        """判断既有凭证与本请求是否为完全相同的账务事实（幂等重放判定）。"""
+        return (
+            entry.property_id == property_obj.pk
+            and entry.folio_id == folio.pk
+            and entry.stay_id == (stay.pk if stay else None)
+            and entry.entry_type == entry_type
+            and entry.amount == amount
+            and entry.currency == currency
+            and entry.business_date == business_date
+            and entry.void_of_id == (void_of.pk if void_of else None)
+            and entry.void_reason == str(void_reason or "").strip()
+        )
 
     @staticmethod
     @transaction.atomic
@@ -180,21 +214,19 @@ class BillingService:
         if stay is not None and stay.property_id != property_obj.pk:
             raise ValueError("入住记录不属于当前物业。")
         currency = currency or folio.currency
+        # WB-08：账单余额/应收按条目直接求和，混币入账会让不同币种金额相加；
+        # 凭证币种必须与所属账单币种一致。
+        if currency != folio.currency:
+            raise ValueError("凭证币种必须与账单币种一致，不能混币记账。")
         business_date = business_date or BillingService._business_date(property_obj)
+        facts = dict(
+            property_obj=property_obj, folio=folio, stay=stay,
+            entry_type=entry_type, amount=amount, currency=currency,
+            business_date=business_date, void_of=void_of,
+            void_reason=void_reason)
         existing = LedgerEntry.objects.filter(reference=reference).first()
         if existing is not None:
-            same = (
-                existing.property_id == property_obj.pk
-                and existing.folio_id == folio.pk
-                and existing.stay_id == (stay.pk if stay else None)
-                and existing.entry_type == entry_type
-                and existing.amount == amount
-                and existing.currency == currency
-                and existing.business_date == business_date
-                and existing.void_of_id == (void_of.pk if void_of else None)
-                and existing.void_reason == str(void_reason or "").strip()
-            )
-            if not same:
+            if not BillingService._entry_facts_match(existing, **facts):
                 raise ValueError("账本凭证号已用于不同账务事实，拒绝覆盖。")
             return existing, False
         if entry_type == LedgerEntry.EntryType.REVERSAL:
@@ -209,13 +241,22 @@ class BillingService:
                 raise ValueError("原凭证已经冲销，不能重复冲销。")
         elif void_of is not None or str(void_reason or "").strip():
             raise ValueError("只有红字冲销凭证可以关联 void_of 或冲销原因。")
-        entry = LedgerEntry.objects.create(
-            property=property_obj, folio=folio, stay=stay,
-            entry_type=entry_type, amount=amount, currency=currency,
-            business_date=business_date, reference=reference,
-            description=str(description or "")[:240],
-            posted_by=posted_by, void_of=void_of,
-            void_reason=str(void_reason or "").strip())
+        # WB-04：并发同凭证号可能同时通过预检查询，由 reference 唯一约束兜底；
+        # 撞键方按幂等口径返回既有凭证。
+        try:
+            with transaction.atomic():
+                entry = LedgerEntry.objects.create(
+                    property=property_obj, folio=folio, stay=stay,
+                    entry_type=entry_type, amount=amount, currency=currency,
+                    business_date=business_date, reference=reference,
+                    description=str(description or "")[:240],
+                    posted_by=posted_by, void_of=void_of,
+                    void_reason=str(void_reason or "").strip())
+        except IntegrityError:
+            raced = LedgerEntry.objects.filter(reference=reference).first()
+            if raced is not None and BillingService._entry_facts_match(raced, **facts):
+                return raced, False
+            raise
         AuditEvent.record(
             action="billing.ledger_post", entity_type="LedgerEntry",
             entity_id=entry.pk, actor=posted_by, property_obj=property_obj,
@@ -271,12 +312,27 @@ class BillingService:
         if amount > outstanding:
             raise ValueError(f"收款金额超过当前应收余额 {outstanding:.2f}。")
         now = timezone.now()
-        payment = Payment.objects.create(
-            property=property_obj, reservation=reservation, folio=folio,
-            provider="frontdesk_manual", provider_ref=provider_ref,
-            method=method, amount=amount, currency=reservation.currency,
-            status=Payment.Status.SUCCEEDED, paid_at=now,
-        )
+        # WB-14：并发同参考号可能同时通过预检查询，由 provider_ref 唯一约束
+        # 兜底；撞键方幂等返回既有支付，不得重复入账。
+        try:
+            with transaction.atomic():
+                payment = Payment.objects.create(
+                    property=property_obj, reservation=reservation, folio=folio,
+                    provider="frontdesk_manual", provider_ref=provider_ref,
+                    method=method, amount=amount, currency=reservation.currency,
+                    status=Payment.Status.SUCCEEDED, paid_at=now,
+                )
+        except IntegrityError:
+            raced = Payment.objects.filter(provider_ref=provider_ref).first()
+            if raced is not None and (
+                raced.property_id == property_obj.pk
+                and raced.reservation_id == reservation.pk
+                and raced.amount == amount and raced.method == method
+                and raced.provider == "frontdesk_manual"
+                and raced.status == Payment.Status.SUCCEEDED
+            ):
+                return raced
+            raise
         BillingService.post_entry(
             property_obj=property_obj, folio=folio,
             entry_type=LedgerEntry.EntryType.PAYMENT,
@@ -299,6 +355,7 @@ class BillingService:
                        idempotency_key, received_by=None):
         """统一登记实际收到的押金；Payment 与 DEPOSIT 凭证原子提交。"""
         from apps.billing.models import Folio, Payment, LedgerEntry
+        from apps.reservations.models import Reservation
         method = str(method or "").strip().upper()
         if method == "BANK_TRANSFER":
             method = "TRANSFER"
@@ -312,10 +369,15 @@ class BillingService:
         key = str(idempotency_key or "").strip()
         if not key or len(key) > 64:
             raise ValueError("押金登记必须提供 1 至 64 个字符的幂等键。")
+        # WB-05a：押金上限与累计押金都写回预订行；必须在行锁下读取最新值，
+        # 否则并发押金（或脏快照实例）会绕过“累计押金 ≤ 房费总额”上限。
+        reservation = Reservation.objects.select_for_update().get(
+            pk=reservation.pk)
         if reservation.status not in ("CONFIRMED", "CHECKED_IN"):
             raise ValueError("只有已确认或在住预订可以收取押金。")
         folio = Folio.objects.select_for_update().filter(
             property=property_obj, reservation=reservation,
+            folio_type=Folio.FolioType.MASTER,
             status=Folio.Status.OPEN).first()
         if folio is None:
             raise ValueError("有效主账单不存在。")
@@ -386,12 +448,25 @@ class BillingService:
         ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
         if reserved + amount > payment.amount:
             raise ValueError("累计退款申请及已完成退款不能超过原支付金额。")
-        refund = Refund.objects.create(
-            property=property_obj, payment=payment, amount=amount,
-            currency=payment.currency, reason=reason,
-            status=Refund.Status.PENDING, requested_by=requested_by,
-            provider_ref=f"RFD-{uuid.uuid4().hex.upper()[:16]}",
-            idempotency_key=key)
+        # WB-13：并发同幂等键由 (property, idempotency_key) 唯一约束兜底；
+        # 撞键方幂等返回既有申请。
+        try:
+            with transaction.atomic():
+                refund = Refund.objects.create(
+                    property=property_obj, payment=payment, amount=amount,
+                    currency=payment.currency, reason=reason,
+                    status=Refund.Status.PENDING, requested_by=requested_by,
+                    provider_ref=f"RFD-{uuid.uuid4().hex.upper()[:16]}",
+                    idempotency_key=key)
+        except IntegrityError:
+            raced = Refund.objects.filter(
+                property=property_obj, idempotency_key=key).first()
+            if raced is not None:
+                if (raced.payment_id != payment.pk
+                        or raced.amount != amount or raced.reason != reason):
+                    raise ValueError("该幂等键已用于不同退款申请。")
+                return raced, False
+            raise
         approval, _ = ApprovalService.request_approval(
             property_obj=property_obj, action_code="billing.refund",
             entity_type="Refund", entity_id=refund.pk,
@@ -507,7 +582,9 @@ class BillingService:
             stay=original.stay,
             entry_type=LedgerEntry.EntryType.REVERSAL,
             amount=-original.amount, currency=original.currency,
-            business_date=timezone.localdate(),
+            # WB-02：营业日必须与其它账务写入口一致按物业时区取值，
+            # 否则默认时区下跨零点的冲销会记到错误的营业日。
+            business_date=BillingService._business_date(original.property),
             reference=existing_ref,
             description=f"冲销：{original.description}"[:240],
             void_of=original, void_reason=reason[:240],  # F-08 口径统一：与 services.reverse_ledger_entry 一致，硬关联原凭证
@@ -531,9 +608,20 @@ class BillingService:
             status=CashierShift.ShiftStatus.OPEN).first()
         if open_shift:
             return open_shift, False
-        shift = CashierShift.objects.create(
-            property=property_obj, cashier=cashier,
-            opening_cash=BillingService._money(opening_cash))
+        # WB-11：并发开班可能同时通过预检查询，由 open_shift_key 唯一约束
+        # 兜底；撞键方幂等返回既有班次。
+        try:
+            with transaction.atomic():
+                shift = CashierShift.objects.create(
+                    property=property_obj, cashier=cashier,
+                    opening_cash=BillingService._money(opening_cash))
+        except IntegrityError:
+            raced = CashierShift.objects.filter(
+                property=property_obj, cashier=cashier,
+                status=CashierShift.ShiftStatus.OPEN).first()
+            if raced is not None:
+                return raced, False
+            raise
         AuditEvent.record(
             action="billing.shift_open", entity_type="CashierShift",
             entity_id=shift.pk, actor=cashier, property_obj=property_obj,

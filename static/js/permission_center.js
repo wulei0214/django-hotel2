@@ -4,6 +4,11 @@
  *   - CSRF_USE_SESSIONS=True → 令牌在 DOM 隐藏域，经 X-CSRFToken 头提交；
  *   - 保存携带 version（内容 hash）做并发保护，409 时自动刷新；
  *   - 触及专项权限的变更走两步流程：先 confirm-token 取令牌，再携带保存。
+ * §8.2 UI 修订（只改呈现层，不改 API/授权/并发校验/confirm token 逻辑）：
+ *   - PC-UI-05 角色列表 listbox/option 语义 + Tab 聚焦 + Enter/Space 选中；
+ *   - §8.2 专项权限条目呈现 requires_reason/requires_confirm 标注（bootstrap 原值）；
+ *   - 高危确认区视觉升权（常驻提示块 + 危险色第二步按钮）；
+ *   - 保存结果四态（成功/失败/版本冲突 409/令牌过期）各自可辨识。
  */
 (function () {
     'use strict';
@@ -119,6 +124,10 @@
     function renderRoles() {
         var ul = $('pc-role-list');
         ul.replaceChildren();
+        // PC-UI-05/§8.2：listbox/option 语义；每个可选角色 Tab 可聚焦，
+        // Enter/Space 选中（Space 阻止默认滚动）；焦点环用浏览器默认样式。
+        ul.setAttribute('role', 'listbox');
+        ul.setAttribute('aria-label', '角色目录');
         bootstrap.roles.forEach(function (role) {
             var li = document.createElement('li');
             li.className = 'pc-role-item';
@@ -131,9 +140,20 @@
             if (role.group_id == null) {
                 li.classList.add('pc-role-unavailable');
                 li.title = '角色组尚未初始化';
+                li.setAttribute('role', 'option');
+                li.setAttribute('aria-disabled', 'true');
             } else {
-                li.setAttribute('role', 'button');
+                li.setAttribute('role', 'option');
+                li.tabIndex = 0;
+                li.setAttribute('aria-selected', 'false');
                 li.addEventListener('click', function () { selectRole(role.group_id); });
+                li.addEventListener('keydown', function (event) {
+                    if (event.key === 'Enter' || event.key === ' '
+                            || event.key === 'Spacebar') {
+                        event.preventDefault();
+                        selectRole(role.group_id);
+                    }
+                });
             }
             ul.appendChild(li);
         });
@@ -141,7 +161,11 @@
 
     function markSelectedRole(groupId) {
         document.querySelectorAll('.pc-role-item').forEach(function (li) {
-            li.classList.toggle('pc-role-selected', li.dataset.groupId === String(groupId));
+            var selected = li.dataset.groupId === String(groupId);
+            li.classList.toggle('pc-role-selected', selected);
+            if (li.getAttribute('aria-selected') !== null) {
+                li.setAttribute('aria-selected', selected ? 'true' : 'false');
+            }
         });
     }
 
@@ -187,6 +211,8 @@
                     + esc(s.codename) + '"' + (m.status !== 'ACTIVE' ? ' disabled' : '') + '>'
                     + '<span class="pc-special-label">' + esc(s.label) + '</span>'
                     + riskBadge(s.risk)
+                    + (s.requires_reason ? '<span class="pc-req-tag">需理由</span>' : '')
+                    + (s.requires_confirm ? '<span class="pc-req-tag pc-req-tag-confirm">需二次确认</span>' : '')
                     + '<span class="pc-special-note">' + esc(s.note) + '</span></label>';
             }).join('');
             return '<div class="pc-special-group"><h4>' + esc(m.name) + ' '
@@ -283,10 +309,33 @@
         }).join(' ');
     }
 
+    // §8.2/PC-UI-07：高危两步确认提示、令牌有效期与变更内容就地常驻可见，
+    // 不只靠按钮颜色表达风险。仅呈现层变更，高危判定口径不变。
+    function updateSpecialWarn(diff) {
+        var box = $('pc-special-warn');
+        var confirmCard = document.querySelector('.pc-confirm');
+        var touched = diff.added.concat(diff.removed).filter(function (code) {
+            return SPECIAL_CODES.has(code);
+        });
+        var highRisk = touched.length > 0;
+        if (confirmCard) { confirmCard.classList.toggle('pc-highrisk', highRisk); }
+        if (!highRisk) {
+            box.hidden = true;
+            box.innerHTML = '';
+            return;
+        }
+        box.hidden = false;
+        box.innerHTML = '<b>高危变更（触及 ' + touched.length + ' 项专项权限）：</b>'
+            + chipList(touched)
+            + '<br>保存需两步确认：第一步获取确认令牌（获取后 10 分钟内有效），'
+            + '第二步确认保存；变更理由必填并写入平台审计。';
+    }
+
     function updateConfirm() {
         var diff = currentDiff();
         var total = diff.added.length + diff.removed.length + diff.reclaimed.length;
         $('pc-count').textContent = '变更 ' + total + ' 项';
+        updateSpecialWarn(diff);
         var summary = $('pc-diff-summary');
         if (!total) {
             summary.innerHTML = '<p class="pc-empty">暂无变更。</p>';
@@ -313,6 +362,9 @@
         var btn = $('pc-step-btn');
         var hint = $('pc-step-hint');
         btn.disabled = state.busy;
+        // 第二步确认（高危）使用危险色实底按钮；普通保存保持 PMS 蓝主按钮
+        btn.classList.toggle('pc-btn-danger',
+            mode === 'need_token' && !!state.confirmToken);
         if (mode === 'idle') {
             btn.textContent = '保存权限';
             hint.textContent = '无实际变更，无需保存。';
@@ -343,11 +395,44 @@
         box.innerHTML = html;
     }
 
+    // §8.2 反馈明确：成功/失败/版本冲突(409)/令牌过期四种结果各自可辨识——
+    // 颜色 + 状态徽记 + 加粗标题三重区分（CSS pc-result-*）。仅呈现层，
+    // 拒绝码与自动刷新行为不变。
+    function failureResult(err, fallbackTitle) {
+        var code = (err.data && err.data.code) || '';
+        if (code === 'version_conflict') {
+            // 服务端原文以“版本冲突：”开头，标题已带（409）标记，去重避免叠词
+            var message = String(err.message || '');
+            var prefix = '版本冲突：';
+            if (message.indexOf(prefix) === 0) { message = message.slice(prefix.length); }
+            var extra = (err.data && err.data.current_version)
+                ? '<br>服务端当前版本 <code>' + esc(err.data.current_version) + '</code>。'
+                : '';
+            return ['conflict',
+                '<b>版本冲突（409）：</b>' + esc(message) + extra
+                + '<br>页面已自动加载服务端最新授权与版本，请核对变更内容后重试。'];
+        }
+        if (code === 'token_required' || code === 'token_expired'
+                || code === 'token_invalid') {
+            // 服务端原文已区分 过期/无效/缺失（各自自解释），加粗原文即可辨识
+            return ['token',
+                '<b>' + esc(err.message) + '</b>'
+                + '<br>服务端返回 403：请从第一步重新获取确认令牌（10 分钟内有效）'
+                + '后再确认保存。'];
+        }
+        if (code === 'unknown_permissions') {
+            return ['error',
+                '<b>整体拒绝（409，不静默过滤）：</b>' + esc(err.message)
+                + '<br>本次保存未做任何变更，请移除不可授予的权限码后重试。'];
+        }
+        return ['error', '<b>' + fallbackTitle + '</b>' + esc(err.message)];
+    }
+
     function saveFlow() {
         if (state.busy || !state.groupId) { return; }
         var reasonCheck = reasonOrError();
         if (reasonCheck.error) {
-            showResult('error', esc(reasonCheck.error));
+            showResult('error', '<b>变更理由：</b>' + esc(reasonCheck.error));
             return;
         }
         var diff = currentDiff();
@@ -372,7 +457,8 @@
                         + data.removed.length + '。请再次点击确认保存。');
                 })
                 .catch(function (err) {
-                    showResult('error', esc(err.message));
+                    var failure = failureResult(err, '获取确认令牌失败：');
+                    showResult(failure[0], failure[1]);
                 })
                 .finally(function () {
                     state.busy = false;
@@ -405,7 +491,8 @@
                 return loadRoleData(state.groupId);
             })
             .catch(function (err) {
-                showResult('error', esc(err.message));
+                var failure = failureResult(err, '保存失败：');
+                showResult(failure[0], failure[1]);
                 state.confirmToken = null;
                 if (err.status === 409) {
                     // 版本冲突 / 越权码：静默刷新服务端真值

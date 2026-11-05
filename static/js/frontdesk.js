@@ -24,6 +24,7 @@
     var tbody = $("fd-table-body");
     var drawer = $("fd-drawer");
     var toastTimer = null;
+    var lastDrawerTrigger = null;
 
     function escapeText(value) {
         return value === null || value === undefined ? "" : String(value);
@@ -187,8 +188,11 @@
 
     function openDrawer(bookingNo) {
         state.currentBooking = bookingNo;
+        lastDrawerTrigger = (document.activeElement instanceof HTMLElement) ? document.activeElement : null;
         drawer.classList.add("is-open");
         drawer.setAttribute("aria-hidden", "false");
+        var closeBtn = drawer.querySelector(".fd-drawer-close");
+        if (closeBtn) closeBtn.focus();
         $("fd-drawer-title").textContent = "订单详情";
         $("fd-drawer-booking").textContent = bookingNo;
         ["detail-guest-name", "detail-guest-phone", "detail-source", "detail-status",
@@ -206,6 +210,11 @@
     }
 
     function closeDrawer() {
+        if (!drawer.classList.contains("is-open")) return;
+        if (lastDrawerTrigger && document.contains(lastDrawerTrigger)) {
+            lastDrawerTrigger.focus();
+        }
+        lastDrawerTrigger = null;
         drawer.classList.remove("is-open");
         drawer.setAttribute("aria-hidden", "true");
     }
@@ -649,7 +658,7 @@
                 var paymentNode = element("div", "fd-folio-entry");
                 paymentNode.appendChild(element("span", "",
                     (payment.provider === "frontdesk_deposit" ? "押金" : "支付") + " · " +
-                    payment.method + " · " + (payment.status_label || payment.status));
+                    payment.method + " · " + (payment.status_label || payment.status)));
                 paymentNode.appendChild(element("b", "", money(payment.amount, payment.currency)));
                 box.appendChild(paymentNode);
                 (payment.refunds || []).forEach(function (refund) {
@@ -908,8 +917,44 @@
     drawer.querySelectorAll("[data-drawer-close]").forEach(function (node) {
         node.addEventListener("click", closeDrawer);
     });
+    // 抽屉焦点圈闭：Tab/Shift+Tab 在抽屉内循环，避免键盘焦点逃逸到被遮罩的页面
+    drawer.addEventListener("keydown", function (event) {
+        if (event.key !== "Tab" || !drawer.classList.contains("is-open")) return;
+        var focusables = drawer.querySelectorAll(
+            "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])");
+        var visible = [];
+        focusables.forEach(function (node) {
+            if (node.offsetParent !== null) visible.push(node);
+        });
+        if (!visible.length) return;
+        var first = visible[0];
+        var last = visible[visible.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    });
+    // 窄屏导航开关：与桌面布局无关，仅 ≤820px 由样式显示
+    var navToggle = $("fd-nav-toggle");
+    function setNavOpen(open) {
+        document.body.classList.toggle("fd-nav-open", open);
+        if (navToggle) navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    if (navToggle) {
+        navToggle.addEventListener("click", function () {
+            setNavOpen(!document.body.classList.contains("fd-nav-open"));
+        });
+        document.querySelectorAll(".sidebar-menu a").forEach(function (link) {
+            link.addEventListener("click", function () { setNavOpen(false); });
+        });
+    }
     document.addEventListener("keydown", function (event) {
-        if (event.key === "Escape") closeDrawer();
+        if (event.key !== "Escape") return;
+        if (drawer.classList.contains("is-open")) closeDrawer();
+        else if (document.body.classList.contains("fd-nav-open")) setNavOpen(false);
     });
 
     state.date = $("fd-date").value || "";

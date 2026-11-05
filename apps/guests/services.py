@@ -118,8 +118,12 @@ def reveal_phone(phone, *, revealed_by, reason="", request=None):
 
 def _mask(value):
     v = (value or "").strip()
-    if len(v) < 6:
+    if not v:
         return v
+    if len(v) < 6:
+        # WB-10：短值若原样返回会把明文写进审计“masked”字段（脱敏失效）；
+        # 一律全打码。
+        return "*" * len(v)
     return v[:2] + "*" * (len(v) - 4) + v[-2:]
 
 
@@ -139,9 +143,13 @@ class GuestService:
     """Guest/电话/证件唯一写入口（方案 §4.2：前台/Admin/命令统一调此服务）。"""
 
     @staticmethod
+    @transaction.atomic
     def create_guest(*, property_obj, full_name, phone="", email="",
                      notes="", created_by=None, request=None):
-        """创建客人档案；共享电话只标记人工核验，不把不同客人自动合并。"""
+        """创建客人档案；共享电话只标记人工核验，不把不同客人自动合并。
+
+        WB-09：档案与主电话必须同事务落库，电话写失败不得遗留孤儿档案。
+        """
         from .models import Guest, GuestPhone
         full_name = (full_name or "").strip()
         if not full_name:

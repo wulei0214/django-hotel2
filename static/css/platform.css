@@ -83,7 +83,9 @@
 
 
 /* 平台管理门户信息架构与响应式优化 */
-.pf-main { width: min(100%, 1480px); margin: 0 auto !important; padding: 30px 32px 52px !important; }
+/* box-sizing 修复：width:100% 与左右 padding 按 content-box 叠加，使所有平台页
+   固定横向溢出 64px（窄屏 32px），§8.2 窄屏验收不通过；border-box 后含入 padding */
+.pf-main { width: min(100%, 1480px); margin: 0 auto !important; padding: 30px 32px 52px !important; box-sizing: border-box; }
 .pf-heading { margin-bottom: 22px; }
 .pf-heading h2 { font-size: 24px; font-weight: 650; letter-spacing: -.02em; }
 .pf-heading p { line-height: 1.65; }

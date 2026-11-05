@@ -1,0 +1,320 @@
+# -*- coding: utf-8 -*-
+"""白盒服务层单元测试（子智能体 1：billing/services_v2.py）。
+
+覆盖 45-whitebox-services.md 登记缺陷的针对性回归：
+  * WB-01 金额 quantize 对超大有限小数抛未捕获 InvalidOperation；
+  * WB-02 reverse_entry 营业日不按物业时区；
+  * WB-03 request_approval 并发同幂等键 IntegrityError 未转幂等返回；
+  * WB-04 post_entry 并发同凭证号 IntegrityError 未转幂等返回；
+  * WB-05 record_deposit 押金上限读到脏数据/未限定主账单；
+  * WB-08 post_entry 未校验凭证币种与账单币种一致；
+  * WB-11 open_shift 并发开班 IntegrityError 未转幂等返回；
+  * WB-13 request_refund 并发同幂等键 IntegrityError 未转幂等返回；
+  * WB-14 collect_payment 并发同参考号 IntegrityError 未转幂等返回。
+
+并发竞态以“预检查询首查扑空 + 数据库唯一约束兜底”的方式确定性模拟。
+"""
+import hashlib
+from datetime import date, datetime, timedelta, timezone as dt_timezone
+from decimal import Decimal
+from unittest import mock
+
+from django.contrib.auth.models import User
+from django.db import IntegrityError
+from django.test import TestCase
+from django.utils import timezone
+
+from apps.billing.models import ApprovalRecord, CashierShift, Folio, LedgerEntry, Payment, Refund
+from apps.billing.services_v2 import ApprovalService, BillingService
+from apps.core.models import Property
+from apps.guests.models import Guest
+from apps.reservations.models import Reservation, ReservationRoom
+
+
+def _flaky_first_filter(manager, model_none_factory):
+    """让 manager.filter 的第一次调用返回空集（模拟并发下预检扑空）。"""
+    real_filter = manager.filter
+    calls = {"n": 0}
+
+    def _flaky(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return model_none_factory()
+        return real_filter(*args, **kwargs)
+
+    return _flaky
+
+
+class WhiteboxBillingBase(TestCase):
+    """最小可复用数据：物业 + 已确认预订 + 主账单。"""
+
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.property = Property.objects.create(code="WBB", name="白盒账务酒店")
+        from apps.inventory.models import RatePlan, RoomType
+        self.room_type = RoomType.objects.create(
+            property=self.property, code="WBB-STD", name="白盒标准间")
+        self.rate_plan = RatePlan.objects.create(
+            property=self.property, code="WBB-BAR", name="白盒门市价",
+            valid_from=self.today)
+        self.guest = Guest.objects.create(
+            property=self.property, full_name="白盒客人",
+            phone="13800007701", phone_normalized="13800007701")
+        self.operator = User.objects.create_user(username="wbb-operator")
+
+    def _make_reservation(self, booking_no, total="300.00", nights=1):
+        reservation = Reservation.objects.create(
+            property=self.property, booking_no=booking_no,
+            guest=self.guest, status=Reservation.Status.CONFIRMED,
+            check_in=self.today, check_out=self.today + timedelta(days=nights),
+            room_count=1, adult_count=1, total_amount=Decimal(total))
+        ReservationRoom.objects.create(
+            property=self.property, reservation=reservation,
+            room_type=self.room_type, rate_plan=self.rate_plan,
+            check_in=self.today, check_out=self.today + timedelta(days=nights),
+            nightly_rates=[{"date": self.today.isoformat(), "price": total,
+                            "currency": "CNY"}],
+            amount=Decimal(total))
+        self.folio = Folio.objects.create(
+            property=self.property, reservation=reservation, guest=self.guest,
+            currency="CNY")
+        return reservation
+
+
+class PostEntryMoneyGuardTests(WhiteboxBillingBase):
+    """WB-01 / WB-04 / WB-08：post_entry 金额精度、幂等竞态与币种守卫。"""
+
+    def setUp(self):
+        super().setUp()
+        self.reservation = self._make_reservation("WBBPOST0001")
+
+    def test_post_entry_rejects_unquantizable_huge_amount(self):
+        """WB-01：超大有限金额必须得到干净的 ValueError，而不是 InvalidOperation 500。"""
+        with self.assertRaises(ValueError):
+            BillingService.post_entry(
+                property_obj=self.property, folio=self.folio,
+                entry_type=LedgerEntry.EntryType.ADJUSTMENT,
+                amount="1e30", reference="WBB-HUGE-001",
+                posted_by=self.operator)
+
+    def test_post_entry_duplicate_reference_race_is_idempotent(self):
+        """WB-04：预检扑空 + 唯一约束仲裁时，同事实应幂等返回既有凭证。"""
+        kwargs = dict(
+            property_obj=self.property, folio=self.folio,
+            entry_type=LedgerEntry.EntryType.ADJUSTMENT,
+            amount=Decimal("10.00"), reference="WBB-RACE-001",
+            posted_by=self.operator)
+        entry, created = BillingService.post_entry(**kwargs)
+        self.assertTrue(created)
+
+        flaky = _flaky_first_filter(
+            LedgerEntry.objects, LedgerEntry.objects.none)
+        with mock.patch.object(LedgerEntry.objects, "filter", side_effect=flaky):
+            raced, raced_created = BillingService.post_entry(**kwargs)
+        self.assertFalse(raced_created)
+        self.assertEqual(raced.pk, entry.pk)
+        self.assertEqual(
+            LedgerEntry.objects.filter(reference="WBB-RACE-001").count(), 1)
+
+    def test_post_entry_rejects_foreign_currency(self):
+        """WB-08：账本凭证币种必须与账单币种一致，禁止混币入账。"""
+        with self.assertRaises(ValueError):
+            BillingService.post_entry(
+                property_obj=self.property, folio=self.folio,
+                entry_type=LedgerEntry.EntryType.ADJUSTMENT,
+                amount=Decimal("10.00"), currency="USD",
+                reference="WBB-USD-001", posted_by=self.operator)
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference="WBB-USD-001").exists())
+
+
+class ReverseEntryBusinessDateTests(WhiteboxBillingBase):
+    """WB-02：红字冲销凭证的营业日必须按物业时区计算。"""
+
+    def test_reverse_entry_uses_property_business_date(self):
+        self.property.timezone = "Pacific/Kiritimati"  # UTC+14
+        self.property.save(update_fields=("timezone",))
+        reservation = self._make_reservation("WBBREV0001")
+        original, _ = BillingService.post_entry(
+            property_obj=self.property, folio=self.folio,
+            entry_type=LedgerEntry.EntryType.ADJUSTMENT,
+            amount=Decimal("10.00"), reference="WBB-REV-SRC-001",
+            business_date=date(2026, 1, 10), posted_by=self.operator)
+
+        # 固定“现在”：物业当地已是 2026-01-16，而默认时区（Asia/Shanghai）仍是 01-15
+        fixed_now = datetime(2026, 1, 15, 15, 59, 0, tzinfo=dt_timezone.utc)
+        with mock.patch.object(timezone, "now", return_value=fixed_now):
+            reversal, created = BillingService.reverse_entry(
+                entry_id=original.pk, reason="错账冲销白盒测试",
+                reversed_by=self.operator)
+        self.assertTrue(created)
+        self.assertEqual(reversal.business_date, date(2026, 1, 16))
+
+
+class ApprovalRaceTests(WhiteboxBillingBase):
+    """WB-03：request_approval 并发同幂等键必须幂等返回既有记录。"""
+
+    def test_request_approval_race_falls_back_to_existing_record(self):
+        first, created = ApprovalService.request_approval(
+            property_obj=self.property, action_code="billing.refund",
+            entity_type="Refund", entity_id="41001",
+            requested_by=self.operator, reason="白盒审批竞态测试")
+        self.assertTrue(created)
+
+        flaky = _flaky_first_filter(
+            ApprovalRecord.objects, ApprovalRecord.objects.none)
+        with mock.patch.object(ApprovalRecord.objects, "filter", side_effect=flaky):
+            raced, raced_created = ApprovalService.request_approval(
+                property_obj=self.property, action_code="billing.refund",
+                entity_type="Refund", entity_id="41001",
+                requested_by=self.operator, reason="白盒审批竞态测试")
+        self.assertFalse(raced_created)
+        self.assertEqual(raced.pk, first.pk)
+        self.assertEqual(ApprovalRecord.objects.count(), 1)
+
+    def test_request_approval_idempotency_key_is_property_scoped(self):
+        """补充：同参数不同物业不得共享幂等键（授权边界回归）。"""
+        other_property = Property.objects.create(code="WBB2", name="白盒第二物业")
+        first, _ = ApprovalService.request_approval(
+            property_obj=self.property, action_code="billing.refund",
+            entity_type="Refund", entity_id="41002",
+            requested_by=self.operator, reason="白盒审批物业隔离")
+        second, _ = ApprovalService.request_approval(
+            property_obj=other_property, action_code="billing.refund",
+            entity_type="Refund", entity_id="41002",
+            requested_by=self.operator, reason="白盒审批物业隔离")
+        self.assertNotEqual(first.idempotency_key, second.idempotency_key)
+        expected = hashlib.sha256(
+            f"{self.property.pk}:billing.refund:Refund:41002:{self.operator.pk}".encode("utf-8")
+        ).hexdigest()
+        self.assertEqual(first.idempotency_key, expected)
+
+
+class DepositGuardTests(WhiteboxBillingBase):
+    """WB-05：record_deposit 押金上限脏读与主账单归属。"""
+
+    def setUp(self):
+        super().setUp()
+        self.reservation = self._make_reservation("WBBDEP0001", total="100.00")
+
+    def test_record_deposit_rechecks_cap_on_fresh_lock(self):
+        """WB-05a：押金上限校验必须读取数据库最新值，不能信任传入实例的脏快照。"""
+        # 模拟并发窗口：数据库里其他会话已登记 60.00 押金，传入实例仍是旧值 0
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            deposit_amount=Decimal("60.00"))
+        with self.assertRaises(ValueError):
+            BillingService.record_deposit(
+                property_obj=self.property, reservation=self.reservation,
+                amount="50.00", method="CASH", idempotency_key="wbb-dep-001",
+                received_by=self.operator)
+        self.assertFalse(Payment.objects.filter(
+            provider="frontdesk_deposit").exists())
+        self.reservation.refresh_from_db()
+        self.assertEqual(self.reservation.deposit_amount, Decimal("60.00"))
+
+    def test_record_deposit_targets_master_folio(self):
+        """WB-05b：押金必须落在主账单上，即使存在更新的非主账单。"""
+        guest_folio = Folio.objects.create(
+            property=self.property, reservation=self.reservation,
+            guest=self.guest, currency="CNY",
+            folio_type=Folio.FolioType.GUEST)
+        # 保证分账单 opened_at 严格晚于主账单（排除同刻并列导致排序不稳定）
+        Folio.objects.filter(pk=guest_folio.pk).update(
+            opened_at=timezone.now() + timedelta(seconds=10))
+        payment, created = BillingService.record_deposit(
+            property_obj=self.property, reservation=self.reservation,
+            amount="50.00", method="CASH", idempotency_key="wbb-dep-002",
+            received_by=self.operator)
+        self.assertTrue(created)
+        self.assertEqual(payment.folio_id, self.folio.pk)
+        self.assertNotEqual(payment.folio_id, guest_folio.pk)
+        entry = LedgerEntry.objects.get(reference=f"deposit:{payment.provider_ref}")
+        self.assertEqual(entry.folio_id, self.folio.pk)
+
+
+class CollectPaymentRaceTests(WhiteboxBillingBase):
+    """WB-14：collect_payment 并发同参考号必须幂等返回既有支付。"""
+
+    def test_collect_payment_race_returns_existing_payment(self):
+        reservation = self._make_reservation("WBBPAY0001", total="600.00", nights=2)
+        first = BillingService.collect_payment(
+            property_obj=self.property, reservation=reservation,
+            amount="100.00", method="CASH", collected_by=self.operator,
+            reference="FDWBB-RACE-001")
+
+        flaky = _flaky_first_filter(Payment.objects, Payment.objects.none)
+        with mock.patch.object(Payment.objects, "filter", side_effect=flaky):
+            raced = BillingService.collect_payment(
+                property_obj=self.property, reservation=reservation,
+                amount="100.00", method="CASH", collected_by=self.operator,
+                reference="FDWBB-RACE-001")
+        self.assertEqual(raced.pk, first.pk)
+        self.assertEqual(
+            Payment.objects.filter(provider_ref="FDWBB-RACE-001").count(), 1)
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference="payment:FDWBB-RACE-001").count(), 1)
+
+
+class RefundRaceTests(WhiteboxBillingBase):
+    """WB-13：request_refund 并发同幂等键必须幂等返回既有申请。"""
+
+    def _make_successful_payment(self, reservation, amount="300.00"):
+        return Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref="FDWBB-PAY-SRC-001",
+            method="CASH", amount=Decimal(amount), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+
+    def test_request_refund_race_returns_existing_refund(self):
+        reservation = self._make_reservation("WBBRFD0001")
+        payment = self._make_successful_payment(reservation)
+        first, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="100.00", reason="白盒退款竞态测试",
+            requested_by=self.operator, idempotency_key="wbb-rfd-001")
+        self.assertTrue(created)
+
+        flaky = _flaky_first_filter(Refund.objects, Refund.objects.none)
+        with mock.patch.object(Refund.objects, "filter", side_effect=flaky):
+            raced, raced_created = BillingService.request_refund(
+                property_obj=self.property, payment_id=payment.pk,
+                amount="100.00", reason="白盒退款竞态测试",
+                requested_by=self.operator, idempotency_key="wbb-rfd-001")
+        self.assertFalse(raced_created)
+        self.assertEqual(raced.pk, first.pk)
+        self.assertEqual(Refund.objects.count(), 1)
+
+
+class OpenShiftRaceTests(WhiteboxBillingBase):
+    """WB-11：open_shift 并发开班撞唯一键必须幂等返回既有班次。"""
+
+    def test_open_shift_race_returns_existing_shift(self):
+        shift, created = BillingService.open_shift(
+            property_obj=self.property, cashier=self.operator,
+            opening_cash=Decimal("100.00"))
+        self.assertTrue(created)
+
+        flaky = _flaky_first_filter(
+            CashierShift.objects, CashierShift.objects.none)
+        with mock.patch.object(CashierShift.objects, "filter", side_effect=flaky):
+            raced, raced_created = BillingService.open_shift(
+                property_obj=self.property, cashier=self.operator,
+                opening_cash=Decimal("100.00"))
+        self.assertFalse(raced_created)
+        self.assertEqual(raced.pk, shift.pk)
+        self.assertEqual(
+            CashierShift.objects.filter(
+                property=self.property, cashier=self.operator).count(), 1)
+
+
+class MoneyBoundaryTests(WhiteboxBillingBase):
+    """WB-01 补充：_money 对 NaN/Inf/超大值的统一拒绝口径。"""
+
+    def test_money_rejects_non_finite_and_oversized_values(self):
+        for bad in ("NaN", "Infinity", "-Infinity", "1e30", "1" + "0" * 40):
+            with self.assertRaises(ValueError, msg=bad):
+                BillingService._money(bad)
+        with self.assertRaises(ValueError):
+            BillingService._money("12.345")  # 超过两位小数
+        self.assertEqual(BillingService._money("12.34"), Decimal("12.34"))
