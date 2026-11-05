@@ -31,8 +31,8 @@ from django.views.decorators.http import require_GET
 BASE = "/api/v1"
 
 TAGS = ["公开预订", "支付", "前台接待", "夜审与紧急访问", "住客中心", "敏感数据",
-        "房态库存", "房价管理", "财务", "审批", "预订管理", "审计", "员工中心",
-        "会员中心", "文档"]
+        "房态库存", "房价管理", "清洁与维修", "财务", "审批", "预订管理", "审计",
+        "员工中心", "会员中心", "文档"]
 
 COOKIE_SECURITY = [{"PMS2Session": []}]
 CSRF_PARAM = {"name": "X-CSRFToken", "in": "header", "required": True,
@@ -1611,6 +1611,143 @@ op("/memberships/{membership_id}/level", "post", "会员中心", "变更会员�
    notes="写 MembershipLevelHistory 与审计。",
    extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
                              "semantics": "api_contract.idempotent：同 key 同 body 重放首次响应；不同 body 409；TTL 24h。"}})
+
+# ========== 审计与合规中心（基线 2.0 §4.4；读=core.audit_view 唯一门禁） ==========
+AUDIT_READ_PERM = ("有效员工（DEFAULT 有效任职）+ core.audit_view（P0-04 专项权，"
+                   "migration core.0010 授予店长/值班经理）；QuerySet 强制当前物业过滤，"
+                   "跨物业事件一律 404；列表不下发 before/after 载荷")
+
+op("/audit/events", "get", "审计", "审计事件分页检索",
+   status="verified",
+   query=[Q("action", "动作精确筛选（来自 /audit/actions 字典）。"),
+          Q("entity_type", "实体类型精确筛选。"),
+          Q("entity_id", "实体 ID 精确筛选。"),
+          Q("actor", "操作人用户名精确筛选。"),
+          Q("date_from", "created_at 起始自然日 YYYY-MM-DD。", "string", False, "2026-11-01", fmt="date"),
+          Q("date_to", "created_at 截止自然日 YYYY-MM-DD。", "string", False, "2026-11-06", fmt="date"),
+          *PQ()],
+   permission=AUDIT_READ_PERM + "；meta.retention_note 说明留存口径（保留期限待业务确认）",
+   ok=(("200", "当前物业审计事件摘要数组（不含 before/after）"),),
+   data=s_arr(s_obj({
+       "id": s_int(), "action": s_str(), "entity_type": s_str(),
+       "entity_id": s_str(), "actor": s_str("系统操作为 system。"),
+       "reason": s_nullable(s_str()),
+       "is_sensitive": s_bool("SPECIAL_PERMISSIONS 相关敏感动作标记。"),
+       "created_at": s_str("", format="date-time"),
+   }), desc="审计事件摘要（action/entity/actor/时间/reason）"), errors=E_STAFF)
+
+op("/audit/events/{event_id}", "get", "审计", "审计事件详情（before/after 完整载荷）",
+   status="verified", path_params=[("event_id", "AuditEvent ID。")],
+   permission=AUDIT_READ_PERM + "；揭示类事件只存 masked 值（写入侧脱敏纪律）",
+   ok=(("200", "事件全量字段：before/after JSON、reason、request_id、ip、user_agent"),),
+   data=s_obj({
+       "id": s_int(), "action": s_str(), "entity_type": s_str(),
+       "entity_id": s_str(), "actor": s_str(),
+       "reason": s_nullable(s_str()),
+       "before": s_nullable(s_obj(desc="变更前载荷（敏感字段写入前脱敏）。", additional=True)),
+       "after": s_nullable(s_obj(desc="变更后载荷（敏感字段写入前脱敏）。", additional=True)),
+       "request_id": s_nullable(s_str()), "ip": s_nullable(s_str("", format="ipv4")),
+       "user_agent": s_nullable(s_str()),
+       "is_sensitive": s_bool(),
+       "created_at": s_str("", format="date-time"),
+       "property": s_nullable(s_obj({"code": s_str(), "name": s_str()})),
+   }), errors=E_STAFF)
+
+op("/audit/summary", "get", "审计", "审计统计（近 7 天/30 天、Top 操作者、敏感动作）",
+   status="verified",
+   permission=AUDIT_READ_PERM + "；单查询双窗口条件聚合（30 天窗口内拆 7 天计数）",
+   ok=(("200", "按 action 分组计数、Top 操作者（近 30 天前 5）、敏感动作单独计数"),),
+   data=s_obj({
+       "window": s_obj({"now": s_str("", format="date-time"),
+                        "start_7d": s_str("", format="date-time"),
+                        "start_30d": s_str("", format="date-time")}),
+       "total_7d": s_int(), "total_30d": s_int(),
+       "by_action": s_arr(s_obj({"action": s_str(), "count_7d": s_int(),
+                                 "count_30d": s_int()})),
+       "top_actors": s_arr(s_obj({"actor": s_str(), "count_7d": s_int(),
+                                  "count_30d": s_int()})),
+       "sensitive": s_obj({
+           "count_7d": s_int(), "count_30d": s_int(),
+           "by_action": s_arr(s_obj({"action": s_str(), "count_7d": s_int(),
+                                     "count_30d": s_int()})),
+           "catalog_note": s_str("敏感动作清单见 sensitive_actions_catalog"
+                                 "（SPECIAL_PERMISSIONS 相关已落审计动作）。"),
+       }),
+       "sensitive_actions_catalog": s_arr(s_str()),
+       "property": s_obj({"code": s_str(), "name": s_str()}),
+   }), errors=E_STAFF)
+
+op("/audit/actions", "get", "审计", "审计动作字典（去重清单 + 计数，供筛选下拉）",
+   status="verified",
+   permission=AUDIT_READ_PERM,
+   ok=(("200", "当前物业出现过的 action 数组（按计数倒序）"),),
+   data=s_arr(s_obj({"action": s_str(), "count": s_int(),
+                     "is_sensitive": s_bool()})), errors=E_STAFF)
+
+# ========== 清洁与维修工作台（基线 2.0 §4.3） ==========
+HK_ROOM_DTO = s_obj({
+    "id": s_int(), "number": s_str(), "floor": s_str(),
+    "room_type": s_obj({"id": s_int(), "code": s_str(), "name": s_str()}),
+    "occupancy_status": s_str(), "occupancy_label": s_str(),
+    "housekeeping_status": s_str("CLEAN/DIRTY/CLEANING/INSPECTING。"),
+    "housekeeping_label": s_str(), "maintenance_status": s_str(),
+    "maintenance_label": s_str(),
+    "is_sellable_now": s_bool("启用+空闲+净房+无维修（Room.is_sellable_now）。"),
+    "source_system": s_str(),
+})
+
+op("/housekeeping/rooms", "get", "清洁与维修", "清洁/维修工作清单",
+   status="verified",
+   query=[Q("floor", "楼层筛选。"), Q("housekeeping", "清洁状态筛选 CLEAN/DIRTY/CLEANING/INSPECTING。"),
+          Q("maintenance", "维修状态筛选 NORMAL/OUT_OF_ORDER/OUT_OF_SERVICE。"),
+          Q("occupancy", "占用状态筛选 VACANT/OCCUPIED。"), *PQ()],
+   permission="有效员工 + hotelapp.view_room",
+   ok=(("200", "三维房态行数组（floor,number,id 稳定排序）"),),
+   data=s_arr(HK_ROOM_DTO), errors=E_STAFF)
+
+op("/housekeeping/summary", "get", "清洁与维修", "今日清洁统计",
+   status="verified",
+   permission="有效员工 + hotelapp.view_room",
+   ok=(("200", "各清洁/维修状态计数、待放行数、楼层分布与今日审计流转量"),),
+   data=s_obj({
+       "housekeeping": s_obj(desc="清洁状态计数映射。"),
+       "maintenance": s_obj(desc="维修状态计数映射。"),
+       "pending_release": s_int("INSPECTING 待放行数。"),
+       "sellable_now": s_int("当前可售房数（空闲+净房+无维修）。"),
+       "total_rooms": s_int(), "by_floor": s_arr(s_obj(desc="按楼层分组计数。")),
+       "today": s_obj({"housekeeping_changes": s_int("今日清洁流转（AuditEvent 计数）。"),
+                        "released": s_int("今日净房放行数。"),
+                        "reworked": s_int("今日检查退回数。"),
+                        "maintenance_changes": s_int("今日维修登记数。")}),
+       "labels": s_obj(desc="状态中文标签映射。"),
+   }), errors=E_STAFF)
+
+op("/housekeeping/rooms/{room_id}/status", "post", "清洁与维修", "清洁状态流转",
+   status="verified", path_params=[("room_id", "房间 ID。")],
+   body=s_obj({"status": s_str("目标清洁状态 CLEANING/INSPECTING/CLEAN/DIRTY。"),
+                "notes": s_nullable(s_str("备注（≤240 字符，入审计）。"))},
+              required=["status"]),
+   permission="有效员工 + hotelapp.change_room；→CLEAN 净房放行另需专项 hotelapp.room_release_ready（服务层+API 层双重校验）",
+   ok=(("200", "流转成功（changed=false 表示幂等空操作）"),),
+   data=s_obj({**HK_ROOM_DTO["properties"], "changed": s_bool()}),
+   errors=E_STAFF_CONFLICT,
+   notes="链式规则：DIRTY→CLEANING→INSPECTING→CLEAN；INSPECTING→DIRTY 检查退回；"
+         "跳步 409 BUSINESS_CONFLICT。每次实际变更落 AuditEvent "
+         "housekeeping.status_changed。占用/维修维度不在本端点修改。",
+   extras={"x-audit-events": ["housekeeping.status_changed"]})
+
+op("/housekeeping/rooms/{room_id}/maintenance", "post", "清洁与维修", "维修状态登记",
+   status="verified", path_params=[("room_id", "房间 ID。")],
+   body=s_obj({"status": s_str("目标维修状态 OUT_OF_ORDER/OUT_OF_SERVICE/NORMAL。"),
+                "reason": s_str("登记原因，1-240 字符（服务强校验）。")},
+              required=["status", "reason"]),
+   permission="有效员工 + hotelapp.no_show_handle（值班经理/店长口径：维修停用直接影响可售库存）",
+   ok=(("200", "登记成功（changed=false 表示幂等空操作）"),),
+   data=s_obj({**HK_ROOM_DTO["properties"], "changed": s_bool()}),
+   errors=E_STAFF_CONFLICT,
+   notes="恢复（→NORMAL）不联动清洁状态：房间仍脏需继续清洁链。"
+         "每次实际变更落 AuditEvent maintenance.status_changed。",
+   extras={"x-audit-events": ["maintenance.status_changed"]})
 
 # ========== 文档 ==========
 op("/openapi.json", "get", "文档", "获取 OpenAPI 规范",

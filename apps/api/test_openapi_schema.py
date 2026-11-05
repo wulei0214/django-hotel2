@@ -58,6 +58,10 @@ PERMISSION_MATRIX = {
         "hotelapp.guest_phone_reveal",
     ("get", "/rooms/status"): "hotelapp.view_room",
     ("get", "/room-types"): "hotelapp.view_room",
+    ("get", "/housekeeping/rooms"): "hotelapp.view_room",
+    ("get", "/housekeeping/summary"): "hotelapp.view_room",
+    ("post", "/housekeeping/rooms/{room_id}/status"): "hotelapp.change_room",
+    ("post", "/housekeeping/rooms/{room_id}/maintenance"): "hotelapp.no_show_handle",
     ("get", "/rate-calendar"): "hotelapp.view_room",
     ("post", "/daily-rates/{rate_id}/adjust"): "inventory.manage_rates",
     ("get", "/financial-summary"): "hotelapp.finance_access",
@@ -119,7 +123,7 @@ class PMS2OpenApiDocumentationTests(TestCase):
         spec = response.json()
         self.assertEqual(spec["openapi"], "3.1.0")
         paths = spec["paths"]
-        self.assertEqual(len(paths), 74, "OpenAPI 应覆盖 apps.api.urls 的全部 74 个注册路由")
+        self.assertEqual(len(paths), 82, "OpenAPI 应覆盖 apps.api.urls 的全部 82 个注册路由")
         expected = {
             "/api/v1/availability": {"get"},
             "/api/v1/reservations": {"post"},
@@ -139,6 +143,10 @@ class PMS2OpenApiDocumentationTests(TestCase):
             "/api/v1/guests/create": {"post"},
             "/api/v1/approvals": {"get"},
             "/api/v1/audit-timeline": {"get"},
+            "/api/v1/audit/events": {"get"},
+            "/api/v1/audit/events/{event_id}": {"get"},
+            "/api/v1/audit/summary": {"get"},
+            "/api/v1/audit/actions": {"get"},
             "/api/v1/staff": {"get"},
             "/api/v1/memberships": {"get"},
             "/api/v1/openapi.json": {"get"},
@@ -267,7 +275,8 @@ class PMS2ContractStatusTests(TestCase):
                 f"{method.upper()} {path} 缺少合法 x-contract-status")
             if path != BASE + "/openapi.json":
                 business += 1
-        self.assertEqual(business, 75, "业务 operation 应为 75 个（排除 openapi.json 自身）")
+        # §4.3 客房服务中心 +4、§4.4 审计与合规中心 +4 业务 operation
+        self.assertEqual(business, 83, "业务 operation 应为 83 个（排除 openapi.json 自身）")
 
     def test_no_operation_is_marked_planned(self):
         """全部 60 条路由均已实现，不允许出现 planned 端点（虚构计划外接口）。"""

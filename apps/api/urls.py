@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import approval, billing_center, front_desk, guest_center, night_audit, reservation_center, staff_center, views
+from . import approval, audit_center, billing_center, front_desk, guest_center, housekeeping_center, night_audit, reservation_center, staff_center, views
 
 app_name = "api"
 
@@ -70,6 +70,12 @@ urlpatterns = [
     path("reservations-mgmt/<str:booking_no>", reservation_center.reservation_detail_api, name="reservation_mgmt_detail"),
     # --- AuditEvent 时间线 (P1-14) ---
     path("audit-timeline", reservation_center.audit_timeline, name="audit_timeline"),
+    # --- 审计与合规中心（基线 2.0 §4.4；读=core.audit_view 唯一门禁，
+    #     与 audit-timeline 并存同口径；列表不下发 before/after 载荷） ---
+    path("audit/events", audit_center.audit_events, name="audit_events"),
+    path("audit/events/<int:event_id>", audit_center.audit_event_detail, name="audit_event_detail"),
+    path("audit/summary", audit_center.audit_summary, name="audit_summary"),
+    path("audit/actions", audit_center.audit_actions, name="audit_actions"),
     path("daily-rates/<int:rate_id>/adjust", guest_center.adjust_daily_rate_api, name="adjust_daily_rate"),
     # --- Staff 中心 (V1.1 Phase 1) ---
     path("staff", staff_center.staff_list, name="staff_list"),
@@ -88,4 +94,10 @@ urlpatterns = [
     path("billing/reversals", billing_center.reverse_entry_api, name="billing_reverse_entry"),
     path("billing/shifts", billing_center.shift_list, name="billing_shift_list"),
     path("billing/summary", billing_center.billing_summary, name="billing_summary"),
+    # --- 清洁与维修工作台 (基线 2.0 §4.3；读=view_room，清洁链=change_room，
+    #     净房放行=room_release_ready（F-08 补执行点），维修=no_show_handle) ---
+    path("housekeeping/rooms", housekeeping_center.housekeeping_rooms, name="housekeeping_rooms"),
+    path("housekeeping/summary", housekeeping_center.housekeeping_summary_api, name="housekeeping_summary"),
+    path("housekeeping/rooms/<int:room_id>/status", housekeeping_center.housekeeping_status_change, name="housekeeping_status_change"),
+    path("housekeeping/rooms/<int:room_id>/maintenance", housekeeping_center.housekeeping_maintenance_change, name="housekeeping_maintenance_change"),
 ]

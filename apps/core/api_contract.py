@@ -53,10 +53,17 @@ def _meta(request, pagination=None):
     return meta
 
 
-def api_response(request, data, status=200, pagination=None):
-    """统一成功响应封套：{data, meta}。"""
+def api_response(request, data, status=200, pagination=None, extra_meta=None):
+    """统一成功响应封套：{data, meta}。
+
+    extra_meta：可选，合并进 meta 的附加常量（如审计中心的 retention_note），
+    不影响既有调用方。
+    """
+    meta = _meta(request, pagination)
+    if extra_meta:
+        meta.update(extra_meta)
     return JsonResponse(
-        {"data": data, "meta": _meta(request, pagination)},
+        {"data": data, "meta": meta},
         status=status, json_dumps_params={"ensure_ascii": False})
 
 

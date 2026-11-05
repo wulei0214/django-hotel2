@@ -105,6 +105,8 @@ ENVELOPE_ENDPOINTS = (
     "/api/v1/reservations-mgmt",
     "/api/v1/audit-timeline",
     "/api/v1/approvals",
+    # 基线 2.0 §4.4 审计与合规中心（读=core.audit_view，setUp 角色已含 audit_view）
+    "/api/v1/audit/events",
 )
 FRONT_DESK_ENDPOINTS = (
     # front_desk {data, meta} 封套族（page_size 上限同为 100）

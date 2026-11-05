@@ -134,13 +134,20 @@ MODULE_REGISTRY_V2 = {
             "change": "hotelapp.change_room",
             "delete": "hotelapp.delete_room",
             "approve": NOT_APPLICABLE,
-            # P0-04：room_release_ready 无真实执行点（F-08），从授权面移除
-            "special": ("inventory.manage_rates",),
+            # F-08 补执行点（基线 2.0 §4.3 清洁与维修工作台）：
+            # room_release_ready 重新登记（净房放行 /api/v1/housekeeping/rooms/{id}/status）
+            "special": ("inventory.manage_rates", "hotelapp.room_release_ready"),
         },
         "extra_codes": (),
         "notes": "房态图/房型/房价日历 API 门禁 view_room；调价走 "
-                 "inventory.manage_rates（F-05：OpenAPI 误标 change_room）；"
-                 "净房放行 room_release_ready 唯一检查点已随 410 退役（F-08）。",
+                 "inventory.manage_rates（F-05：OpenAPI 误标 change_room）。"
+                 "§4.3 清洁与维修工作台（/manage/housekeeping/，挂本模块权限面，"
+                 "不另立模块避免 view_room/change_room 双记）：读（工作清单/统计）"
+                 "门禁 view_room；清洁链流转（→CLEANING/→INSPECTING、检查退回）"
+                 "门禁 change_room（客房服务员在列）；净房放行（→CLEAN）门禁专项 "
+                 "room_release_ready（值班经理/店长，F-08 执行点恢复）；"
+                 "维修停用/恢复登记复用 accommodation 模块专项 no_show_handle "
+                 "（值班经理/店长口径——直接影响可售库存，不开放给客房服务员）。",
     },
     "memberships": {
         "code": "memberships",
@@ -403,6 +410,9 @@ ROLE_REGISTRY = (
 # hotelapp.reverse_checkout——F-08：其唯一检查点已随 410 退役，PMS2 红字冲销
 # （LedgerEntryService.reverse_entry，审计 action_code=billing.reverse_entry）
 # 暂无独立权限码，待 Phase 4 补 API 时以本点授权。
+# F-08 部分闭环（基线 2.0 §4.3）：hotelapp.room_release_ready 恢复登记——
+# 清洁与维修工作台净房放行（INSPECTING→CLEAN）为其合法执行点
+# （apps/inventory/services.change_housekeeping_status 服务层 + API 层双重校验）。
 
 SPECIAL_PERMISSIONS = (
     {
@@ -433,17 +443,27 @@ SPECIAL_PERMISSIONS = (
         "requires_reason": True, "requires_confirm": False,
         "note": "退款审批（值班经理/店长）；approval 通用门 _check_approver",
     },
-    # P0-04 清理（缺口登记册 F-08）：hotelapp.reverse_checkout 与
-    # hotelapp.room_release_ready 唯一检查点均已随旧路由 410 退役，
-    # 属"权限点存在但无执行点"，从 SPECIAL_PERMISSIONS 授权面移除。
-    # 权限点本体保留（历史组授权由下一次矩阵保存显式回收）；
-    # Phase 4 front-desk 补 API 时以新权限码重新登记，不复活旧码。
+    # P0-04 清理（缺口登记册 F-08）：hotelapp.reverse_checkout 唯一检查点已随
+    # 旧路由 410 退役，属"权限点存在但无执行点"，保持从 SPECIAL_PERMISSIONS
+    # 授权面移除；权限点本体保留（历史组授权由下一次矩阵保存显式回收）；
+    # Phase 4 补 API 时以新权限码重新登记，不复活旧码。
+    # hotelapp.room_release_ready 已于基线 2.0 §4.3 恢复登记（见下方专项条目）。
+    {
+        "key": "room_release_ready",
+        "codename": "hotelapp.room_release_ready",
+        "module": "rooms", "risk": "high",
+        "requires_reason": False, "requires_confirm": True,
+        "note": "净房放行（待检查→净房，重回可售）：§4.3 清洁与维修工作台 "
+                "POST /api/v1/housekeeping/rooms/{id}/status；F-08 补执行点，"
+                "服务层+API 层双重校验（值班经理/店长）",
+    },
     {
         "key": "no_show_handle",
         "codename": "hotelapp.no_show_handle",
         "module": "accommodation", "risk": "medium",
         "requires_reason": False, "requires_confirm": True,
-        "note": "未到订单处理并释放房间（值班经理/店长）",
+        "note": "未到订单处理并释放房间；§4.3 起兼维修停用/恢复登记口径 "
+                "（POST /api/v1/housekeeping/rooms/{id}/maintenance，值班经理/店长）",
     },
     {
         "key": "finance_access",

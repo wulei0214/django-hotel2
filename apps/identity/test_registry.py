@@ -387,7 +387,9 @@ class SpecialPermissionRegistryTests(TestCase):
             "guest_document_reveal", "guest_phone_reveal", "refund_request",
             "refund_approve", "night_audit_execute",
             "business_date_reopen", "breakglass_review", "export_pii",
-        }  # P0-04：reverse_entry/room_release_ready 已从授权面移除
+            # F-08 补执行点（基线 2.0 §4.3）：room_release_ready 恢复登记
+            "room_release_ready",
+        }  # P0-04：reverse_entry（红字冲销）仍保持授权面移除
         keys = {item["key"] for item in SPECIAL_PERMISSIONS}
         self.assertTrue(required.issubset(keys),
                         f"缺少专项权限：{required - keys}")
@@ -407,16 +409,23 @@ class SpecialPermissionRegistryTests(TestCase):
                         .issubset(reason_enforced))
 
     def test_reverse_entry_retired_from_authorization_surface(self):
-        """P0-04：reverse_entry/room_release_ready 从授权面移除（F-08 无执行点）。
+        """P0-04：reverse_entry（hotelapp.reverse_checkout）保持授权面移除。
 
-        权限点本体与历史组授权保留；Phase 4 front-desk 补 API 时以新权限码
-        重新登记。文档化断言：SPECIAL_PERMISSIONS 不再含这两个 key，
-        模块 special 列亦不含 hotelapp.reverse_checkout / room_release_ready。
+        权限点本体与历史组授权保留；Phase 4 补 API 时以新权限码重新登记。
+        F-08 补执行点（基线 2.0 §4.3）：room_release_ready 已恢复登记——
+        清洁与维修工作台净房放行为其合法执行点，归属 rooms 模块。
         """
         from apps.identity.registry import SPECIAL_PERMISSIONS
         keys = {item["key"] for item in SPECIAL_PERMISSIONS}
         self.assertNotIn("reverse_entry", keys)
-        self.assertNotIn("room_release_ready", keys)
+        # room_release_ready 恢复登记：module 指回 rooms 且列入模块 special 元组
+        self.assertIn("room_release_ready", keys)
+        item = next(x for x in SPECIAL_PERMISSIONS
+                    if x["key"] == "room_release_ready")
+        self.assertEqual(item["codename"], "hotelapp.room_release_ready")
+        self.assertEqual(item["module"], "rooms")
+        rooms = MODULE_REGISTRY_V2["rooms"]
+        self.assertIn("hotelapp.room_release_ready", rooms["actions"]["special"])
         for module in MODULE_REGISTRY_V2.values():
             specials = module.get("actions", {}).get("special") or ()
             if specials == NOT_APPLICABLE:
@@ -424,7 +433,6 @@ class SpecialPermissionRegistryTests(TestCase):
             self.assertNotIn(
                 "hotelapp.reverse_checkout", specials,
                 "reverse_checkout 已按 P0-04 从授权面移除")
-            self.assertNotIn("hotelapp.room_release_ready", specials)
 
     def test_cross_app_special_permissions_cover_f09_scope(self):
         """矩阵外跨 App 专项点（F-09）必须全部登记在 SPECIAL_PERMISSIONS。"""

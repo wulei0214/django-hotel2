@@ -245,6 +245,47 @@ MANAGEMENT_CENTERS = {
                          ["reopen_reason", "重开原因"]],
         },
     },
+    # 基线 2.0 §4.4：审计与合规中心（专属工作台模板；只读，唯一读取门禁
+    # core.audit_view——P0-04 定版，migration core.0010 已授予店长/值班经理。
+    # 列表端点不下发 before/after 载荷，明细在详情抽屉按同一权限展示）。
+    # 键名与 URL 段一致（/manage/audit/）。
+    "audit": {
+        "title": "审计与合规中心",
+        "subtitle": "审计事件检索、事件详情（before/after）与高危动作统计（只读）",
+        "permission": "core.audit_view",
+        "endpoint": "/api/v1/audit/events",
+        "template": "pms/audit_center.html",
+        "columns": [
+            {"label": "时间", "path": "created_at"},
+            {"label": "动作", "path": "action"},
+            {"label": "实体", "path": "entity_type"},
+            {"label": "实体ID", "path": "entity_id"},
+            {"label": "操作人", "path": "actor"},
+            {"label": "原因", "path": "reason"},
+            {"label": "敏感", "path": "is_sensitive"},
+        ],
+    },
+    # 基线 2.0 §4.3：清洁与维修工作台（专属工作台模板）。挂在客房运营
+    # （rooms 模块）权限面：读=view_room；清洁链流转=change_room；
+    # 净房放行=room_release_ready（F-08 补执行点）；维修登记=no_show_handle。
+    # 键名与 URL 段一致（/manage/housekeeping/）。
+    "housekeeping": {
+        "title": "清洁与维修工作台",
+        "subtitle": "清洁链流转、净房放行、维修停用登记与今日清洁统计",
+        "permission": "hotelapp.view_room",
+        "endpoint": "/api/v1/housekeeping/rooms",
+        "template": "pms/housekeeping_center.html",
+        "enable_housekeeping_actions": True,
+        "columns": [
+            {"label": "房间号", "path": "number"},
+            {"label": "楼层", "path": "floor"},
+            {"label": "房型", "path": "room_type.name"},
+            {"label": "占用状态", "path": "occupancy_label"},
+            {"label": "清洁状态", "path": "housekeeping_label", "badge": "status"},
+            {"label": "维修状态", "path": "maintenance_label"},
+            {"label": "当前可售", "path": "is_sellable_now"},
+        ],
+    },
 }
 
 
@@ -275,6 +316,17 @@ def management_center_page(request, center):
     can_review_break_glass = (
         enable_night_audit and AuthorizationService.has_permission(
             user, property_obj, "core.breakglass_review"))
+    # §4.3 清洁与维修工作台：按钮显隐标志（服务端仍逐请求复核同一权限码）
+    enable_housekeeping = config.get("enable_housekeeping_actions", False)
+    can_flow_housekeeping = (
+        enable_housekeeping and AuthorizationService.has_permission(
+            user, property_obj, "hotelapp.change_room"))
+    can_release_room = (
+        enable_housekeeping and AuthorizationService.has_permission(
+            user, property_obj, "hotelapp.room_release_ready"))
+    can_register_maintenance = (
+        enable_housekeeping and AuthorizationService.has_permission(
+            user, property_obj, "hotelapp.no_show_handle"))
     return render(request, config.get("template", "pms/management_center.html"), {
         "center": center,
         "title": config["title"],
@@ -291,4 +343,7 @@ def management_center_page(request, center):
         "can_run_night_audit": enable_night_audit,  # 页面已过 night_audit_execute 门禁
         "can_reopen_business_date": can_reopen,
         "can_review_break_glass": can_review_break_glass,
+        "can_flow_housekeeping": can_flow_housekeeping,
+        "can_release_room": can_release_room,
+        "can_register_maintenance": can_register_maintenance,
     })

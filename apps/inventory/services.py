@@ -1,13 +1,256 @@
-from datetime import timedelta
+from datetime import datetime as dt_datetime
+from datetime import time as _time, timedelta
 
 from django.db import transaction
 from django.db.models import Sum
 
-from .models import DailyRate, RoomTypeInventory
+from .models import DailyRate, Room, RoomTypeInventory
 
 
 class InventoryUnavailable(Exception):
     """The requested room type has insufficient inventory for at least one night."""
+
+
+class HousekeepingOperationError(Exception):
+    """清洁/维修状态流转不合法或房间不可操作（基线 2.0 §4.3 清洁与维修工作台）。"""
+
+
+# ---------------------------------------------------------------------------
+# §4.3 清洁与维修工作台：三维房态流转规则与领域服务
+# ---------------------------------------------------------------------------
+# 清洁链正向流转（接单→清洁→待检查→净房放行），INSPECTING→DIRTY 为检查不通过
+# 返工；CLEAN 之后弄脏（退房/住中）由 reservations 退房服务负责，不在本工作台。
+HOUSEKEEPING_TRANSITIONS = {
+    Room.HousekeepingStatus.DIRTY: frozenset({
+        Room.HousekeepingStatus.CLEANING,
+    }),
+    Room.HousekeepingStatus.CLEANING: frozenset({
+        Room.HousekeepingStatus.INSPECTING,
+    }),
+    Room.HousekeepingStatus.INSPECTING: frozenset({
+        Room.HousekeepingStatus.CLEAN,   # 检查通过：净房放行（需 room_release_ready）
+        Room.HousekeepingStatus.DIRTY,   # 检查不通过：返工
+    }),
+    Room.HousekeepingStatus.CLEAN: frozenset(),
+}
+
+# 维修维度：报修停用（NORMAL→OUT_OF_ORDER/OUT_OF_SERVICE）、停用级别互换、
+# 维修完成恢复（→NORMAL）。恢复不联动清洁状态——净房与否由清洁链独立判断。
+MAINTENANCE_TRANSITIONS = {
+    Room.MaintenanceStatus.NORMAL: frozenset({
+        Room.MaintenanceStatus.OUT_OF_ORDER,
+        Room.MaintenanceStatus.OUT_OF_SERVICE,
+    }),
+    Room.MaintenanceStatus.OUT_OF_ORDER: frozenset({
+        Room.MaintenanceStatus.NORMAL,
+        Room.MaintenanceStatus.OUT_OF_SERVICE,
+    }),
+    Room.MaintenanceStatus.OUT_OF_SERVICE: frozenset({
+        Room.MaintenanceStatus.NORMAL,
+        Room.MaintenanceStatus.OUT_OF_ORDER,
+    }),
+}
+
+
+def _release_ready_permitted(user, property_obj):
+    """净房放行权限判定（F-08 补执行点：hotelapp.room_release_ready）。"""
+    from apps.identity.authorization import AuthorizationService
+    return AuthorizationService.has_permission(
+        user, property_obj, "hotelapp.room_release_ready")
+
+
+def _property_today(property_obj):
+    """物业时区当前日期（与夜审 property_date 同口径）。"""
+    from zoneinfo import ZoneInfo
+    from django.utils import timezone
+    try:
+        tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")
+    except Exception:
+        tz = ZoneInfo("Asia/Shanghai")
+    return timezone.localdate(timezone.now(), tz)
+
+
+@transaction.atomic
+def change_housekeeping_status(*, property_obj, room_id, target_status,
+                               changed_by=None, request=None, notes=""):
+    """清洁状态流转唯一写入口（§4.3 链式规则 + 审计）。
+
+    规则：
+      * 合法流转见 HOUSEKEEPING_TRANSITIONS；跳步（如 DIRTY→CLEAN）拒绝；
+      * 同状态重复提交为幂等空操作，返回 changed=False（不落审计）；
+      * →CLEAN（净房放行）在服务层复核 hotelapp.room_release_ready（三层复核
+        中的服务层一道；API 层先行校验同一权限码）；其余流转的
+        hotelapp.change_room 由 API 层门禁（与房态 CRUD 同码，客房服务员在列）；
+      * 占用（occupancy）与维修（maintenance）维度不在本服务修改；
+      * 每次实际变更落 AuditEvent housekeeping.status_changed。
+
+    返回 (room, changed)。
+    """
+    from apps.core.models import AuditEvent
+
+    if target_status not in Room.HousekeepingStatus.values:
+        raise HousekeepingOperationError(
+            "清洁状态必须是 DIRTY/CLEANING/INSPECTING/CLEAN 之一。")
+
+    room = (
+        Room.objects.select_for_update()
+        .select_related("room_type")
+        .filter(pk=room_id, property=property_obj)
+        .first()
+    )
+    if room is None:
+        raise HousekeepingOperationError("房间不存在或不属于当前物业。")
+
+    current = room.housekeeping_status
+    if current == target_status:
+        return room, False
+    allowed = HOUSEKEEPING_TRANSITIONS.get(current, frozenset())
+    if target_status not in allowed:
+        raise HousekeepingOperationError(
+            f"清洁状态不允许从 {current} 流转到 {target_status}"
+            f"（合法链路：DIRTY→CLEANING→INSPECTING→CLEAN，"
+            f"待检查可退回 DIRTY 返工）。")
+
+    if (target_status == Room.HousekeepingStatus.CLEAN
+            and not _release_ready_permitted(changed_by, property_obj)):
+        raise HousekeepingOperationError(
+            "净房放行需要 hotelapp.room_release_ready 权限"
+            "（值班经理/店长）。")
+
+    room.housekeeping_status = target_status
+    room.save(update_fields=("housekeeping_status", "updated_at"))
+    AuditEvent.record(
+        action="housekeeping.status_changed",
+        entity_type="Room", entity_id=str(room.pk),
+        actor=changed_by, property_obj=property_obj,
+        before={"housekeeping_status": current,
+                "occupancy_status": room.occupancy_status,
+                "maintenance_status": room.maintenance_status},
+        after={"housekeeping_status": target_status,
+               "occupancy_status": room.occupancy_status,
+               "maintenance_status": room.maintenance_status,
+               "is_sellable_now": room.is_sellable_now},
+        reason=str(notes or "")[:240], request=request,
+    )
+    return room, True
+
+
+@transaction.atomic
+def change_maintenance_status(*, property_obj, room_id, target_status, reason,
+                              changed_by=None, request=None):
+    """维修状态登记唯一写入口（§4.3 维修停用/恢复 + 审计）。
+
+    规则：
+      * 合法流转见 MAINTENANCE_TRANSITIONS；reason 必填（1-240 字符）；
+      * hotelapp.no_show_handle（值班经理/店长专项权限）由 API 层先行校验；
+        选择该口径而非 change_room：维修停用直接影响可售库存，属管理者动作，
+        不能开放给客房服务员（change_room 持有者含客房服务员）；
+      * 恢复（→NORMAL）不联动清洁状态：房间仍脏则继续清洁链；
+      * 每次实际变更落 AuditEvent maintenance.status_changed。
+
+    返回 (room, changed)。
+    """
+    from apps.core.models import AuditEvent
+
+    reason = str(reason or "").strip()
+    if not reason or len(reason) > 240:
+        raise HousekeepingOperationError("维修登记必须填写 1 至 240 个字符的原因。")
+    if target_status not in Room.MaintenanceStatus.values:
+        raise HousekeepingOperationError(
+            "维修状态必须是 NORMAL/OUT_OF_ORDER/OUT_OF_SERVICE 之一。")
+
+    room = (
+        Room.objects.select_for_update()
+        .select_related("room_type")
+        .filter(pk=room_id, property=property_obj)
+        .first()
+    )
+    if room is None:
+        raise HousekeepingOperationError("房间不存在或不属于当前物业。")
+
+    current = room.maintenance_status
+    if current == target_status:
+        return room, False
+    allowed = MAINTENANCE_TRANSITIONS.get(current, frozenset())
+    if target_status not in allowed:
+        raise HousekeepingOperationError(
+            f"维修状态不允许从 {current} 变更为 {target_status}。")
+
+    room.maintenance_status = target_status
+    room.save(update_fields=("maintenance_status", "updated_at"))
+    AuditEvent.record(
+        action="maintenance.status_changed",
+        entity_type="Room", entity_id=str(room.pk),
+        actor=changed_by, property_obj=property_obj,
+        before={"maintenance_status": current,
+                "occupancy_status": room.occupancy_status,
+                "housekeeping_status": room.housekeeping_status},
+        after={"maintenance_status": target_status,
+               "occupancy_status": room.occupancy_status,
+               "housekeeping_status": room.housekeeping_status,
+               "is_sellable_now": room.is_sellable_now},
+        reason=reason, request=request,
+    )
+    return room, True
+
+
+def housekeeping_summary(property_obj):
+    """今日清洁/维修统计（§4.3 工作台统计卡）：各状态计数 + 待放行 + 今日流转。"""
+    from django.db.models import Count
+    from django.utils import timezone
+
+    rooms = Room.objects.filter(property=property_obj, is_active=True)
+    housekeeping, maintenance = {}, {}
+    by_floor = {}
+    for row in rooms.values(
+            "floor", "housekeeping_status", "maintenance_status"
+    ).annotate(total=Count("id")):
+        hk, mt, total = (row["housekeeping_status"], row["maintenance_status"],
+                         row["total"])
+        housekeeping[hk] = housekeeping.get(hk, 0) + total
+        maintenance[mt] = maintenance.get(mt, 0) + total
+        bucket = by_floor.setdefault(row["floor"] or "", {
+            "floor": row["floor"] or "", "total": 0,
+            "CLEAN": 0, "DIRTY": 0, "CLEANING": 0, "INSPECTING": 0,
+            "maintenance_abnormal": 0})
+        bucket["total"] += total
+        bucket[hk] = bucket.get(hk, 0) + total
+        if mt != Room.MaintenanceStatus.NORMAL:
+            bucket["maintenance_abnormal"] += total
+
+    day_start = timezone.make_aware(
+        dt_datetime.combine(_property_today(property_obj), _time.min))
+    from apps.core.models import AuditEvent
+    today_events = AuditEvent.objects.filter(
+        property=property_obj, created_at__gte=day_start)
+    housekeeping_changes = today_events.filter(
+        action="housekeeping.status_changed").count()
+    released_today = today_events.filter(
+        action="housekeeping.status_changed",
+        after_json__housekeeping_status=Room.HousekeepingStatus.CLEAN).count()
+    reworked_today = today_events.filter(
+        action="housekeeping.status_changed",
+        after_json__housekeeping_status=Room.HousekeepingStatus.DIRTY).count()
+    maintenance_changes = today_events.filter(
+        action="maintenance.status_changed").count()
+
+    return {
+        "housekeeping": housekeeping,
+        "maintenance": maintenance,
+        "pending_release": housekeeping.get(Room.HousekeepingStatus.INSPECTING, 0),
+        "sellable_now": rooms.filter(
+            occupancy_status=Room.OccupancyStatus.VACANT,
+            housekeeping_status=Room.HousekeepingStatus.CLEAN,
+            maintenance_status=Room.MaintenanceStatus.NORMAL).count(),
+        "total_rooms": sum(housekeeping.values()),
+        "by_floor": sorted(by_floor.values(), key=lambda item: item["floor"]),
+        "today": {
+            "housekeeping_changes": housekeeping_changes,
+            "released": released_today,
+            "reworked": reworked_today,
+            "maintenance_changes": maintenance_changes,
+        },
+    }
 
 
 def stay_dates(check_in, check_out):
