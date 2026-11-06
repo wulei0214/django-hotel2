@@ -335,6 +335,10 @@ class BillingServiceManualCollectionTests(TestCase):
             property=self.property, reservation=self.reservation,
             guest=self.guest, currency="CNY")
         self.operator = User.objects.create_user(username="bill-operator")
+        from apps.billing.services_v2 import BillingService
+        BillingService.open_shift(
+            property_obj=self.property, cashier=self.operator,
+            opening_cash=Decimal("0.00"))
 
     def test_manual_collection_posts_successful_payment_and_is_idempotent(self):
         from apps.billing.services_v2 import BillingService
