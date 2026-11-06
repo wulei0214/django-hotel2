@@ -808,6 +808,8 @@ def reverse_entry_api(request):
     original = LedgerEntry.objects.filter(pk=entry_id, property=property_obj).first()
     if original is None:
         raise ApiError("RESOURCE_NOT_FOUND", "账本凭证不存在或不属于当前物业。")
+    if original.entry_type == LedgerEntry.EntryType.REVERSAL:
+        raise ApiError("BUSINESS_CONFLICT", "红字冲销凭证不能再次冲销。")
     try:
         approval_id = int(str(body.get("approval_id") or ""))
     except (TypeError, ValueError):
