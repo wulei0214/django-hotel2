@@ -318,8 +318,10 @@ class ModuleGateRegressionTests(TestCase):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 302, f"{url} 应被 module_gate 隐藏")
             self.assertEqual(response["Location"], "/home/")
-        # 对照组：在营模块同一员工可正常进入（前台持 view_room）
-        self.assertEqual(self.client.get("/show_room/").status_code, 200)
+        # 旧客房入口必须经过原权限校验后跳转 PMS2 房态与库存中心。
+        room_response = self.client.get("/show_room/")
+        self.assertEqual(room_response.status_code, 302)
+        self.assertEqual(room_response["Location"], "/manage/rooms/")
 
     def test_hidden_module_export_stay_redirecting_for_employed_staff(self):
         user = self._make_employed_staff(username="registry-gate-export")
