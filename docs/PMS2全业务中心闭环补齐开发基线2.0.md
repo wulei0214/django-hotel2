@@ -1009,3 +1009,51 @@ P0 权限测试必须覆盖匿名与跨物业。每一个权限拒绝都应验�
 - OWASP Logging Cheat Sheet：安全事件记录、敏感数据排除、日志访问控制、完整性和保留策略。https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html
 - Django Cache Framework 文档：生产缓存后端与共享缓存配置。https://docs.djangoproject.com/en/stable/topics/cache/
 - 项目现有模型/服务/API：`apps/core/`、`apps/identity/`、`apps/guests/`、`apps/inventory/`、`apps/reservations/`、`apps/billing/`、`apps/api/`。
+
+
+---
+
+# 12. 2026-11-06 财务、权限、数据库与业务闭环整改补充
+
+本节是对基线 2.0 的实施状态补充。若本节与前文“待开发/待验收”描述存在状态差异，以本节及《PMS2财务权限数据库与业务闭环整改实施记录.md》的最新代码证据为准；本节不代表最终上线验收已经完成。
+
+## 12.1 已落实的代码整改
+
+1. **退款三方分离**：申请、审批、执行由不同账号完成；非待审批退款必须关联 ApprovalRecord；只有执行成功才产生 REFUND 账本凭证；历史无法证明三方分离的记录只读标记。
+2. **现金班次正确口径**：开班备用金 + 本班现金收入 - 本班现金退款 + 现金补入 - 现金支出；现金支付、现金退款和现金变动分别归属对应班次；现金支出和现金退款不得透支班次。
+3. **权限专项迁移**：`inventory.0006_align_maintenance_manage_role_grants` 撤销 `no_show_handle` 对维修权限的错误继承，维修管理只授予值班经理、店长。
+4. **个人通知已读**：`NotificationRead` 以员工档案 × 通知保存个人回执，岗位广播已读互不影响。
+5. **财务入口统一**：`/finance/` 302 到 `/manage/finance/`；`/finance_add/` 返回 410；财务 API 统一使用 `/api/v1/billing/`。
+6. **CSRF 与财务 DOM**：财务工作台使用 Session CSRF token；表单字段在 DOM 替换前读取；增加真实 Django Client CSRF 拒绝/通过测试。
+7. **数据库约束**：billing 0016–0019 覆盖退款 SoD、状态事实、现金方向、班次非负金额及审批记录关联；billing/core 财务事实模型阻断 ORM 批量更新/删除旁路。
+8. **MySQL 只追加保护**：提供六条 MySQL 8 触发器脚本和安装/检查管理命令；MySQL CI 在测试套件结束后安装并核验触发器定义。
+
+## 12.2 正式权限矩阵
+
+| 权限 | 正式角色 |
+|---|---|
+| `billing.refund_request` | 前台、财务 |
+| `billing.refund_approve` | 值班经理、店长 |
+| `billing.refund_execute` | 财务 |
+| `billing.cashier_shift_manage` | 前台、财务、值班经理、店长 |
+| `billing.cash_movement_manage` | 财务 |
+| `inventory.maintenance_manage` | 值班经理、店长 |
+
+权限迁移必须保留历史授权审计，不得将旧权限码改名后视为完成；必须验证真实角色组授权集合、页面按钮、API 与领域服务一致。
+
+## 12.3 数据库验收要求补充
+
+- MySQL 8 CI：全量迁移 → 完整测试 → 安装六条 append-only 触发器 → 校验触发器表/事件/时机/阻断语句。
+- SQLite 仅用于快速回归，不替代 MySQL 的锁、约束、索引、并发和触发器验收。
+- 迁移遇到历史负数班次现金或无法证明三方分离的退款时，必须明确报错或标记历史只读，不得静默改金额、审批人、执行人或账本凭证。
+- 本地 MySQL 连接错误 `Access denied for user 'wu'lei'@'localhost'` 仍需在目标开发环境修复账号/凭据；CI 使用临时 root 账号成功不能代替本地目标数据库验收。
+- 生产 MySQL 需由 DBA 执行触发器部署，并确认应用运行账号对审计、账本、班次现金只追加表无 UPDATE/DELETE 权限。
+
+## 12.4 冻结状态
+
+**基线 2.0 仍未冻结。** 只有在最新 main 的 SQLite/Django CI 与 MySQL 8 CI 全绿、目标 MySQL 迁移及触发器验收通过、真实浏览器财务和九角色 E2E 通过、备份恢复演练完成后，才可冻结 PMS2 并启动 PMS3.0 排期。
+
+详细实现、迁移、测试名称、MySQL 触发器部署和剩余验收项见：
+
+- 《PMS2财务权限数据库与业务闭环整改实施记录.md》
+- 《PMS2 MySQL财务与审计不可变事实部署说明.md》
