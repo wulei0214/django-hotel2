@@ -362,8 +362,8 @@ class AuditCenterPiiProtectionTests(AuditCenterTestBase):
         body = self.client.get("/api/v1/audit/events").json()
         row = next(r for r in body["data"] if r["id"] == self.payload_event.pk)
         self.assertEqual(set(row), {
-            "id", "action", "entity_type", "entity_id", "actor",
-            "reason", "is_sensitive", "created_at"})
+            "id", "action", "action_label", "entity_type", "entity_type_label",
+            "entity_id", "actor", "actor_label", "reason", "is_sensitive", "created_at"})
 
     def test_plaintext_pii_absent_from_list_and_detail(self):
         """证件/手机明文不得出现在列表或详情响应（详情只回 masked）。"""
