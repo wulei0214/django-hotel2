@@ -209,10 +209,16 @@ class FolioTransfer(models.Model):
 
 class ImmutableLedgerEntryQuerySet(models.QuerySet):
     def delete(self):
-        raise RuntimeError("LedgerEntry 不允许批量物理删除；请创建红字冲销凭证。")
+        raise ValidationError("LedgerEntry 不允许批量物理删除；请创建红字冲销凭证。")
 
     def update(self, **kwargs):
-        raise RuntimeError("LedgerEntry 不允许直接修改；请创建红字冲销凭证。")
+        raise ValidationError("LedgerEntry 不允许直接修改；请创建红字冲销凭证。")
+
+    def bulk_create(self, objs, **kwargs):
+        raise ValidationError("LedgerEntry 必须通过 BillingService 逐笔追加。")
+
+    def bulk_update(self, objs, fields, **kwargs):
+        raise ValidationError("LedgerEntry 不允许批量修改；请创建红字冲销凭证。")
 
 
 class LedgerEntry(models.Model):
