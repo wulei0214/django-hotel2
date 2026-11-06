@@ -710,7 +710,8 @@ class CashierShift(models.Model):
         if self._state.adding:
             if self.status != self.ShiftStatus.OPEN:
                 raise ValidationError("收银班次必须从 OPEN 状态创建。")
-            if any((self.closed_at, self.closed_by_id, self.expected_cash,
+            if any(value is not None for value in (
+                    self.closed_at, self.closed_by_id, self.expected_cash,
                     self.actual_cash, self.variance)):
                 raise ValidationError("新班次不得预先写入关班事实。")
         else:
@@ -726,7 +727,8 @@ class CashierShift(models.Model):
                     if self.status not in (self.ShiftStatus.OPEN, self.ShiftStatus.CLOSED):
                         raise ValidationError("班次只允许从 OPEN 关账为 CLOSED。")
                     if self.status == self.ShiftStatus.OPEN:
-                        if any((self.closed_at, self.closed_by_id, self.expected_cash,
+                        if any(value is not None for value in (
+                                self.closed_at, self.closed_by_id, self.expected_cash,
                                 self.actual_cash, self.variance)):
                             raise ValidationError("OPEN 班次不得提前写入关班事实。")
                     if self.status == self.ShiftStatus.CLOSED:
