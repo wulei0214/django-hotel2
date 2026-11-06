@@ -8,7 +8,8 @@ Django 模型的 `save()/delete()` 和自定义 QuerySet 只能防止正常 ORM 
 
 - `core_auditevent`：审计事件；
 - `billing_ledgerentry`：账本凭证；
-- `billing_cashiershiftmovement`：班次现金补入/支出。
+- `billing_cashiershiftmovement`：班次现金补入/支出；
+- `billing_cashiershiftmovement` 的 BEFORE INSERT 触发器：禁止向已关班班次或非本人班次插入现金变动。
 
 有状态机的表不能一律禁止 UPDATE：
 
@@ -21,7 +22,7 @@ Django 模型的 `save()/delete()` 和自定义 QuerySet 只能防止正常 ORM 
 
 1. 备份数据库并确认当前连接到目标 PMS 数据库。
 2. 使用 DBA/迁移账号执行 `apps/core/sql/audit_immutability.sql`，或在有 `CREATE TRIGGER` 权限的 MySQL 连接下执行 `python manage.py install_mysql_append_only_guards`。
-3. 执行 `python manage.py check_mysql_append_only_guards`；必须确认 6 条触发器的名称、表、事件、时机和 `SIGNAL SQLSTATE '45000'` 阻断语句全部匹配。
+3. 执行 `python manage.py check_mysql_append_only_guards`；必须确认 7 条触发器的名称、表、事件、时机和 `SIGNAL SQLSTATE '45000'` 阻断语句全部匹配。
 4. 应用运行账号不得拥有上述三张表的 UPDATE/DELETE 权限；迁移账号单独保管，不写入应用配置。
 5. 用应用账号分别尝试 UPDATE/DELETE，必须被权限或触发器拒绝；正常 INSERT 必须成功。
 
@@ -58,9 +59,19 @@ SQLite 测试不能代替本项；触发器必须在实际生产 MySQL 实例中
 1. `python manage.py install_mysql_append_only_guards`
 2. `python manage.py check_mysql_append_only_guards`
 
-因此 MySQL CI 不仅验证 Django 迁移和约束，还验证六条触发器可创建且定义正确。生产数据库仍需单独部署；CI 的临时数据库触发器不会自动部署到本地或生产环境。
+因此 MySQL CI 不仅验证 Django 迁移和约束，还验证七条触发器可创建且定义正确。生产数据库仍需单独部署；CI 的临时数据库触发器不会自动部署到本地或生产环境。
 
-## 6. 本地 MySQL 连接排查
+## 6. 退款审批超时任务
+
+退款审批到期后必须把 ApprovalRecord、Refund、Payment 同步关闭，释放原支付可退额度。部署后应通过操作系统任务计划程序定时执行：
+
+```bash
+python manage.py expire_pending_refunds --limit 100
+```
+
+可选 `--property-id <物业ID>` 限定物业。建议每 5 分钟运行一次；命令每笔退款独立事务、锁顺序为 Payment → Refund → ApprovalRecord，重复运行幂等。任务账号应使用应用服务账号，不得把数据库密码写入命令行参数或日志。
+
+## 7. 本地 MySQL 连接排查
 
 若出现 `Access denied for user ... @localhost`：
 
