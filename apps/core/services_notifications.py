@@ -207,7 +207,7 @@ def refresh_operational_todos(property_obj, now=None):
     返回对账摘要：{"active", "created", "updated", "resolved", "by_code"}。
     口径：
       * 活跃项逐条按 (property, dedupe_key) get_or_create；已存在则仅当
-        标题/内容/级别变化时更新（不重置人工已读状态，避免已读项每次刷新
+        标题/内容/级别变化时更新（不重置员工个人已读回执，避免已读项每次刷新
         反复变未读形成提醒风暴）；
       * 库内 dedupe_key 非空且不在活跃集合的未解决通知 → 写 resolved_at（自动消失）；
         dedupe_key 为空（人工/公告类）永不自动销项；
