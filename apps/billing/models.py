@@ -346,29 +346,6 @@ class Payment(models.Model):
                     raise ValidationError("支付流水的原始交易事实及班次归属不可修改。")
         return super().save(*args, **kwargs)
 
-    def save(self, *args, **kwargs):
-        if self.pk:
-            previous = type(self).objects.filter(pk=self.pk).values(
-                "payment_id", "requested_by_id", "amount", "currency", "reason",
-                "idempotency_key", "provider_ref", "approved_by_id", "executed_by_id",
-                "executed_at", "execution_reference", "execution_idempotency_key",
-                "execution_shift_id").first()
-            if previous:
-                immutable_once_set = (
-                    "approved_by_id", "executed_by_id", "executed_at",
-                    "execution_reference", "execution_idempotency_key",
-                    "execution_shift_id")
-                for field in immutable_once_set:
-                    old_value = previous[field]
-                    if old_value not in (None, "") and getattr(self, field) != old_value:
-                        raise ValidationError("退款审批/执行事实不可覆盖或改写。")
-                immutable_request = (
-                    "payment_id", "requested_by_id", "amount", "currency",
-                    "reason", "idempotency_key", "provider_ref")
-                if any(previous[field] != getattr(self, field)
-                       for field in immutable_request):
-                    raise ValidationError("退款申请的原支付、申请人、金额、原因和编号不可修改。")
-        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.provider_ref} / {self.status}"
@@ -444,6 +421,30 @@ class Refund(models.Model):
             ("refund_approve", "可以审批退款申请"),
             ("refund_execute", "可以执行已批准退款"),
         )
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "payment_id", "requested_by_id", "amount", "currency", "reason",
+                "idempotency_key", "provider_ref", "approved_by_id", "executed_by_id",
+                "executed_at", "execution_reference", "execution_idempotency_key",
+                "execution_shift_id").first()
+            if previous:
+                immutable_once_set = (
+                    "approved_by_id", "executed_by_id", "executed_at",
+                    "execution_reference", "execution_idempotency_key",
+                    "execution_shift_id")
+                for field in immutable_once_set:
+                    old_value = previous[field]
+                    if old_value not in (None, "") and getattr(self, field) != old_value:
+                        raise ValidationError("退款审批/执行事实不可覆盖或改写。")
+                immutable_request = (
+                    "payment_id", "requested_by_id", "amount", "currency",
+                    "reason", "idempotency_key", "provider_ref")
+                if any(previous[field] != getattr(self, field)
+                       for field in immutable_request):
+                    raise ValidationError("退款申请的原支付、申请人、金额、原因和编号不可修改。")
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.provider_ref} / {self.status}"
