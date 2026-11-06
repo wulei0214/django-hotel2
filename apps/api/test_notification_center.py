@@ -28,6 +28,7 @@ from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.test import override_settings
 from django.utils import timezone
 
 from apps.api import notification_center
@@ -475,6 +476,26 @@ class NotificationApiTests(NotificationCenterTestBase):
         self.assertEqual(second.status_code, 200)
         self.assertEqual(second.json()["data"]["resolved"], 2)
         self.assertFalse(Notification.objects.filter(is_read=False).exists())
+
+    @override_settings(PUBLIC_RATE_LIMITS={
+        "pms.notification_refresh": [(("ip", "username"), 1, 60)],
+    })
+    def test_refresh_endpoint_is_rate_limited_and_audited(self):
+        first = self.client.post("/api/v1/notifications/refresh")
+        self.assertEqual(first.status_code, 200, first.content)
+        event = AuditEvent.objects.filter(
+            action="notification.refresh", property=self.property,
+            actor=self.fd).first()
+        self.assertIsNotNone(event)
+        self.assertEqual(event.entity_type, "Property")
+        self.assertEqual(str(event.entity_id), str(self.property.pk))
+
+        second = self.client.post("/api/v1/notifications/refresh")
+        self.assertEqual(second.status_code, 429, second.content)
+        self.assertEqual(second.json()["error"]["code"], "RATE_LIMITED")
+        self.assertEqual(AuditEvent.objects.filter(
+            action="notification.refresh", property=self.property,
+            actor=self.fd).count(), 1)
 
     def test_refresh_endpoint_requires_authentication(self):
         self.client.logout()
