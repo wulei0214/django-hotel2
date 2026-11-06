@@ -273,7 +273,7 @@ def audit_event_detail(request, event_id):
     """
     property_obj = _context(request)
     event = (AuditEvent.objects.filter(pk=event_id)
-             .select_related("actor", "property").first())
+             .select_related("actor", "actor__staff_profile", "property").first())
     if event is None or event.property_id != property_obj.pk:
         raise ApiError("RESOURCE_NOT_FOUND", "审计事件不存在。")
     data = {
@@ -283,7 +283,8 @@ def audit_event_detail(request, event_id):
         "entity_type": event.entity_type,
         "entity_type_label": _entity_type_label(event.entity_type),
         "entity_id": event.entity_id,
-        "actor": _actor_label(event.actor),
+        "actor": event.actor.username if event.actor else None,
+        "actor_label": _actor_label(event.actor),
         "reason": event.reason or None,
         "before": event.before_json,
         "after": event.after_json,
