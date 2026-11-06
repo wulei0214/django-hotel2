@@ -1453,6 +1453,7 @@ op("/billing/refunds", "get", "财务", "退款列表（申请/审批/执行状�
        "requested_by": s_nullable(s_str()), "approved_by": s_nullable(s_str()),
        "executed_by": s_nullable(s_str()), "executed_at": s_nullable(s_str("", format="date-time")),
        "execution_reference": s_nullable(s_str()), "execution_shift_id": s_nullable(s_int()),
+       "legacy_workflow": s_bool("历史退款记录，无法证明新流程的申请/审批/执行三方分离。"),
        "approval_status": s_nullable(s_str()),
        "created_at": s_str("", format="date-time"),
        "processed_at": s_nullable(s_str("", format="date-time")),
