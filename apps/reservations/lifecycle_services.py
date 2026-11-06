@@ -207,11 +207,18 @@ def change_stay_room(*, property_obj, stay_id, new_room_id, reason, moved_by=Non
     if int(new_room_id) == stay.room_id:
         return stay, False
 
-    new_room = Room.objects.select_for_update().filter(
-        pk=new_room_id, property=property_obj, is_active=True
-    ).first()
-    if new_room is None:
+    # FD-61-03：源房间与目标房间必须按主键升序一次性行锁；
+    # 分两次加锁时，双向换房并发（A→B 与 B→A）会形成 ABBA 死锁窗口。
+    room_ids = sorted({int(new_room_id), stay.room_id})
+    locked_rooms = Room.objects.select_for_update().filter(
+        pk__in=room_ids, property=property_obj
+    ).in_bulk()
+    new_room = locked_rooms.get(int(new_room_id))
+    if new_room is None or not new_room.is_active:
         raise LifecycleOperationError("目标房间不存在或不属于当前酒店。")
+    old_room = locked_rooms.get(stay.room_id)
+    if old_room is None:
+        raise LifecycleOperationError("当前入住房间不存在或不属于当前酒店。")
     if new_room.room_type_id != line.room_type_id:
         raise LifecycleOperationError("暂只支持同房型换房；跨房型差价需要独立价格审批规则。")
     if not new_room.is_sellable_now:
@@ -234,7 +241,7 @@ def change_stay_room(*, property_obj, stay_id, new_room_id, reason, moved_by=Non
     if conflict:
         raise LifecycleOperationError("目标房间在剩余住宿日期已有其他有效预订。")
 
-    old_room = Room.objects.select_for_update().get(pk=stay.room_id, property=property_obj)
+    old_room = locked_rooms[stay.room_id]
     now = timezone.now()
     current_segment = StayRoomSegment.objects.select_for_update().filter(
         stay=stay, ended_at__isnull=True

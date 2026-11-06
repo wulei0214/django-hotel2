@@ -313,9 +313,14 @@ class NightAuditService:
         if approval is None:
             raise NightAuditError("找不到对应的营业日重开审批记录。")
         from apps.billing.services_v2 import ApprovalService
-        if approval.status == ApprovalRecord.Status.PENDING:
-            approval = ApprovalService.approve(
-                approval.pk, approved_by=approved_by, property_obj=property_obj)
+        # 只允许"待审批 → 本次批准"一条路径：已批准/已驳回/已过期的历史审批
+        # 不得在营业日再次关账后被重放驱动第二次重开（重开必须有新申请事实）。
+        if approval.status != ApprovalRecord.Status.PENDING:
+            raise NightAuditError(
+                f"重开申请已处理（{approval.status}），不能重复执行；"
+                "如需再次重开请重新提交申请。")
+        approval = ApprovalService.approve(
+            approval.pk, approved_by=approved_by, property_obj=property_obj)
         if approval.status != ApprovalRecord.Status.APPROVED or approval.approved_by_id != approved_by.pk:
             raise NightAuditError("必须由当前审批人批准重开申请。")
         reason = approval.reason

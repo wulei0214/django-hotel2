@@ -302,7 +302,17 @@
     tr.appendChild(tdOp);
     return tr;
   }
+  var lastListQuery = null;
+
+  function listQueryChanged() {
+    var params = new URLSearchParams({page: "1", page_size: "20"});
+    if (search.value.trim()) params.set("q", search.value.trim());
+    return params.toString() !== lastListQuery;
+  }
+
   function loadList(page) {
+    /* 查询条件未变化时跳过重新加载（避免无意义刷新与滚动跳动） */
+    if (page === 1 && lastListQuery !== null && !listQueryChanged()) return;
     currentPage = Math.max(1, page || 1);
     meta.textContent = "读取中…";
     prevButton.disabled = true; nextButton.disabled = true;
@@ -310,6 +320,9 @@
     body.appendChild(listStateRow("loading", "正在加载员工数据…", null, false));
     const params = new URLSearchParams({page: String(currentPage), page_size: "20"});
     if (search.value.trim()) params.set("q", search.value.trim());
+    var canonical = new URLSearchParams({page: "1", page_size: "20"});
+    if (search.value.trim()) canonical.set("q", search.value.trim());
+    lastListQuery = canonical.toString();
     apiFetch(LIST_ENDPOINT + "?" + params.toString()).then(function (res) {
       if (!res.ok) throw new Error(messageOf(res));
       const data = Array.isArray(res.payload.data) ? res.payload.data : [];

@@ -276,7 +276,7 @@
             payload.data.changed
                 ? "房间 " + room.number + " 清洁状态已流转为 " + payload.data.housekeeping_label + "。"
                 : "房间 " + room.number + " 已处于 " + payload.data.housekeeping_label + "（幂等空操作）。");
-        await Promise.all([loadRooms(page, true), loadSummary()]);
+        await Promise.all([loadRooms(page, true, true), loadSummary()]);
       } catch (error) {
         alertBox(gridResult(), "pms-drawer-err", error.message);
         btn.disabled = false;
@@ -339,13 +339,25 @@
     card.appendChild(actions);
     return card;
   }
-  async function loadRooms(targetPage, keepPage) {
-    if (!keepPage) page = Math.max(1, targetPage || 1);
+  let lastRoomsQuery = null;
+  async function loadRooms(targetPage, keepPage, force) {
+    var target = keepPage ? page : Math.max(1, targetPage || 1);
+    var probe = new URLSearchParams({page: String(target), page_size: String(pageSize)});
+    var _f = document.getElementById("hk-floor").value.trim();
+    var _hk = document.getElementById("hk-hk").value;
+    var _mt = document.getElementById("hk-mt").value;
+    if (_f) probe.set("floor", _f);
+    if (_hk) probe.set("housekeeping", _hk);
+    if (_mt) probe.set("maintenance", _mt);
+    var query = probe.toString();
+    if (!force && lastRoomsQuery !== null && query === lastRoomsQuery) return;
+    lastRoomsQuery = query;
+    if (!keepPage) page = target;
     const meta = document.getElementById("hk-grid-meta");
     const grid = document.getElementById("hk-grid");
     meta.textContent = "读取中…";
     try {
-      const payload = await api("/api/v1/housekeeping/rooms?" + filters().toString());
+      const payload = await api("/api/v1/housekeeping/rooms?" + query);
       const pageInfo = payload.meta.pagination;
       grid.replaceChildren();
       if (!payload.data.length) {
@@ -481,7 +493,7 @@
             payload.data.changed
                 ? "房间 " + room.number + " 维修状态已登记为 " + payload.data.maintenance_label + "。"
                 : "房间 " + room.number + " 已处于 " + payload.data.maintenance_label + "（幂等空操作）。");
-        await Promise.all([loadRooms(page, true), loadSummary()]);
+        await Promise.all([loadRooms(page, true, true), loadSummary()]);
       } catch (error) {
         alertBox(result, "pms-drawer-err", error.message);
         submit.disabled = false;

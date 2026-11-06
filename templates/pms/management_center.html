@@ -279,12 +279,22 @@
       holder.appendChild(panel);
     });
   }
+  let lastLoadQuery=null;
+  function loadQueryChanged(){
+    const canonical=new URLSearchParams({page:"1",page_size:String(currentPageSize)});
+    if(search.value.trim()) canonical.set("q",search.value.trim());
+    return canonical.toString()!==lastLoadQuery;
+  }
   async function load(page) {
+    if(page===1 && lastLoadQuery!==null && !loadQueryChanged()) return;
     currentPage=Math.max(1,page || 1);meta.textContent="读取中…";
     prevButton.disabled=true;nextButton.disabled=true;
     body.replaceChildren();
     const params=new URLSearchParams({page:String(currentPage),page_size:String(currentPageSize)});
     if(search.value.trim()) params.set("q",search.value.trim());
+    const canonical=new URLSearchParams({page:"1",page_size:String(currentPageSize)});
+    if(search.value.trim()) canonical.set("q",search.value.trim());
+    lastLoadQuery=canonical.toString();
     try {
       const response=await fetch(endpoint+"?"+params.toString(),{
         method:"GET",credentials:"same-origin",headers:{"Accept":"application/json"}

@@ -50,33 +50,63 @@ class ApprovalService:
             raise ValueError("目标对象 ID 不能超过 64 个字符。")
         raw_key = f"{property_obj.pk}:{action_code}:{entity_type}:{entity_id}:{requested_by.pk}"
         idem_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+        scope = dict(
+            property=property_obj, action_code=action_code,
+            entity_type=entity_type, entity_id=str(entity_id),
+            requested_by=requested_by)
         existing = ApprovalRecord.objects.filter(idempotency_key=idem_key).first()
+        prior_count = 0
         if existing:
-            return existing, False
+            if existing.status in (ApprovalRecord.Status.PENDING,
+                                   ApprovalRecord.Status.APPROVED):
+                return existing, False
+            # 终态审批（已驳回/已过期/已撤销）是历史事实，不再阻挡同一申请人
+            # 重新发起；否则营业日重开、红字冲销等高危闭环会被一次驳回永久卡死。
+            # 若此前重试已产出待审批申请，先幂等返回它，避免重复堆叠待审批记录。
+            pending = ApprovalRecord.objects.filter(
+                status=ApprovalRecord.Status.PENDING, **scope).first()
+            if pending is not None:
+                return pending, False
+            # 新申请用“原幂等键 + 重试序号”派生新键；待审批重放契约不受影响。
+            prior_count = ApprovalRecord.objects.filter(**scope).count()
         # WB-03：并发重复申请可能同时通过预检查询，由 idempotency_key 唯一约束
         # 兜底仲裁；撞键方必须幂等返回既有记录而不是抛 IntegrityError。
-        try:
-            with transaction.atomic():
-                record = ApprovalRecord.objects.create(
-                    property=property_obj, action_code=action_code,
-                    entity_type=entity_type, entity_id=str(entity_id),
-                    requested_by=requested_by, reason=reason,
-                    payload_snapshot=payload, idempotency_key=idem_key,
-                    expires_at=now_plus(hours=expires_hours))
-        except IntegrityError:
-            raced = ApprovalRecord.objects.filter(idempotency_key=idem_key).first()
-            if raced is not None:
-                # 审批幂等键由物业、动作、目标对象和申请人共同确定；
-                # 不得在审批服务中读取收银班次字段。唯一约束冲突时返回既有申请。
-                return raced, False
-            raise
-        AuditEvent.record(
-            action="approval.request", entity_type=entity_type,
-            entity_id=str(entity_id), actor=requested_by,
-            property_obj=property_obj,
-            after={"action_code": action_code, "status": "PENDING"},
-            reason=reason[:240], request=getattr(requested_by, "_request", None))
-        return record, True
+        for attempt in range(8):
+            if prior_count == 0 and attempt == 0:
+                candidate_key = idem_key
+            else:
+                candidate_key = hashlib.sha256(
+                    f"{raw_key}:retry:{prior_count + attempt}".encode("utf-8")
+                ).hexdigest()
+            try:
+                with transaction.atomic():
+                    record = ApprovalRecord.objects.create(
+                        property=property_obj, action_code=action_code,
+                        entity_type=entity_type, entity_id=str(entity_id),
+                        requested_by=requested_by, reason=reason,
+                        payload_snapshot=payload, idempotency_key=candidate_key,
+                        expires_at=now_plus(hours=expires_hours))
+            except IntegrityError:
+                raced = ApprovalRecord.objects.filter(
+                    idempotency_key=candidate_key).first()
+                if raced is not None:
+                    # 审批幂等键由物业、动作、目标对象和申请人共同确定；
+                    # 不得在审批服务中读取收银班次字段。唯一约束冲突时：
+                    # 待审批/已批准记录幂等返回；终态撞键则换下一个重试序号。
+                    if raced.status in (ApprovalRecord.Status.PENDING,
+                                        ApprovalRecord.Status.APPROVED):
+                        return raced, False
+                    prior_count += 1
+                    continue
+                raise
+            AuditEvent.record(
+                action="approval.request", entity_type=entity_type,
+                entity_id=str(entity_id), actor=requested_by,
+                property_obj=property_obj,
+                after={"action_code": action_code, "status": "PENDING"},
+                reason=reason[:240], request=getattr(requested_by, "_request", None))
+            return record, True
+        raise ValueError("审批申请并发冲突，请稍后重试。")
 
     @staticmethod
     @transaction.atomic

@@ -314,13 +314,20 @@
       body.appendChild(tr);
     });
   }
-  async function loadFolios(page) {
-    currentPage = Math.max(1, page || 1);
+  let lastFoliosQuery = null;
+  async function loadFolios(page, force) {
+    const target = Math.max(1, page || 1);
+    const probe = new URLSearchParams({page: String(target), page_size: String(currentPageSize)});
+    if (statusSelect.value) probe.set("status", statusSelect.value);
+    if (search.value.trim()) probe.set("q", search.value.trim());
+    const query = probe.toString();
+    /* 查询条件与页码均未变化时跳过（用户报告：空条件点查询不应刷新） */
+    if (!force && lastFoliosQuery !== null && query === lastFoliosQuery) return;
+    lastFoliosQuery = query;
+    currentPage = target;
     meta.textContent = "读取中…";
     prevButton.disabled = true; nextButton.disabled = true;
-    const params = new URLSearchParams({page: String(currentPage), page_size: String(currentPageSize)});
-    if (statusSelect.value) params.set("status", statusSelect.value);
-    if (search.value.trim()) params.set("q", search.value.trim());
+    const params = new URLSearchParams(query);
     try {
       const payload = await fetchJson("/api/v1/billing/folios?" + params.toString());
       renderRows(Array.isArray(payload.data) ? payload.data : []);
@@ -513,7 +520,7 @@
         const d = payload.data || {};
         form.replaceWith(notify("收款成功：" + d.amount + " " + d.currency +
             "（参考号 " + d.provider_ref + "）", true));
-        await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger()]);
+        await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger()]);
       } catch (error) {
         note.textContent = error.message;
         submitButton.disabled = false;
@@ -553,7 +560,7 @@
         }, key);
         const d = payload.data || {};
         form.replaceWith(notify("退款申请已提交（状态 " + d.status + "），等待第二人审批。", true));
-        await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger()]);
+        await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger()]);
       } catch (error) {
         note.textContent = error.message;
         submitButton.disabled = false;
@@ -640,7 +647,7 @@
                 approveButton.disabled = true;
                 try {
                   await postJson("/api/v1/billing/refunds/" + refund.id + "/approve", {}, approveKey);
-                  await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger(), loadShifts()]);
+                  await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadShifts()]);
                   openDetail(item.id);
                 } catch (error) {
                   approveButton.disabled = false;
@@ -667,7 +674,7 @@
                 try {
                   await postJson("/api/v1/billing/refunds/" + refund.id + "/reject",
                       {reason: rejectReason.trim()}, rejectKey);
-                  await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger()]);
+                  await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger()]);
                   openDetail(item.id);
                 } catch (error) {
                   rejectButton.disabled = false;
@@ -705,7 +712,7 @@
                     execution_reference: (executionReference || "").trim(),
                     idempotency_key: executionKey
                   }, executionKey);
-                  await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger(), loadShifts()]);
+                  await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadShifts()]);
                   openDetail(item.id);
                 } catch (error) {
                   executeButton.disabled = false;
@@ -775,7 +782,7 @@
             const d = result.data || {};
             state.textContent = "已追加红字凭证 " + d.reference +
               "（" + d.amount + " " + d.currency + "）";
-            await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger()]);
+            await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger()]);
             await refreshApprovalStatus();
           } catch (error) {
             state.textContent = error.message;

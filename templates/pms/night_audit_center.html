@@ -429,7 +429,7 @@
       alertBox(document.getElementById("na-run-result"), "pms-drawer-ok",
           "夜审" + (data.created ? "执行成功" : "幂等重放（该营业日已夜审）")
           + "：run_id=" + data.run_id + "，状态=" + data.status);
-      await Promise.all([loadSummary(), loadBusinessDates(bdPage), loadRuns(runsPage, runsStatus)]);
+      await Promise.all([loadSummary(), loadBusinessDates(bdPage, true, true), loadRuns(runsPage, runsStatus, true, true)]);
     } catch (error) {
       alertBox(document.getElementById("na-run-result"), "pms-drawer-err", error.message);
       runBtn.disabled = false;
@@ -442,13 +442,18 @@
 
   /* ---------- 营业日历 ---------- */
   let bdPage = 1, bdPageSize = 10, bdTotalPages = 1, bdStatus = "";
-  async function loadBusinessDates(page, keepStatus) {
-    if (!keepStatus) bdPage = Math.max(1, page || 1);
+  let lastBdQuery = null;
+  async function loadBusinessDates(page, keepStatus, forceLoad) {
+    var target = keepStatus ? bdPage : Math.max(1, page || 1);
+    var probe = new URLSearchParams({page: String(target), page_size: String(bdPageSize)});
+    if (bdStatus) probe.set("status", bdStatus);
+    var query = probe.toString();
+    if (!forceLoad && lastBdQuery !== null && query === lastBdQuery) return;
+    lastBdQuery = query;
+    if (!keepStatus) bdPage = target;
     const meta = document.getElementById("na-bd-meta");
     const body = document.getElementById("na-bd-body");
     meta.textContent = "读取中…";
-    const params = new URLSearchParams({page: String(bdPage), page_size: String(bdPageSize)});
-    if (bdStatus) params.set("status", bdStatus);
     try {
       const payload = await api("/api/v1/night-audit/business-dates?" + params.toString());
       const pageInfo = payload.meta.pagination;
@@ -569,20 +574,25 @@
         alertBox(target, "pms-drawer-ok",
             "重开申请已提交（审批 #" + payload.data.approval_id + "，状态 "
             + payload.data.status + "）；请由另一名审批人处理。");
-        await loadBusinessDates(bdPage, true);
+        await loadBusinessDates(bdPage, true, true);
       } catch (error) { alertBox(target, "pms-drawer-err", error.message); }
     });
   }
 
   /* ---------- 夜审历史 ---------- */
   let runsPage = 1, runsPageSize = 10, runsTotalPages = 1, runsStatus = "";
-  async function loadRuns(page, status, keepPage) {
+  let lastRunsQuery = null;
+  async function loadRuns(page, status, keepPage, forceLoad) {
     if (status !== undefined) runsStatus = status;
-    if (!keepPage) runsPage = Math.max(1, page || 1);
+    var target = keepPage ? runsPage : Math.max(1, page || 1);
+    var probe = new URLSearchParams({page: String(runsPage), page_size: String(runsPageSize)});
+    if (runsStatus) probe.set("status", runsStatus);
+    var query = probe.toString();
+    if (!forceLoad && lastRunsQuery !== null && query === lastRunsQuery) return;
+    lastRunsQuery = query;
+    if (!keepPage) runsPage = target;
     const meta = document.getElementById("na-runs-meta");
     const body = document.getElementById("na-runs-body");
-    const params = new URLSearchParams({page: String(runsPage), page_size: String(runsPageSize)});
-    if (runsStatus) params.set("status", runsStatus);
     meta.textContent = "读取中…";
     try {
       const payload = await api("/api/v1/night-audit/runs?" + params.toString());

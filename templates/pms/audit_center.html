@@ -324,8 +324,18 @@
     }).join("");
   }
 
+  var lastEventsQuery = null;
+
+  function eventsQueryChanged() {
+    var query = filterQuery({ page: 1, page_size: state.pageSize });
+    return query !== lastEventsQuery;
+  }
+
   function loadEvents(page) {
+    /* 查询条件未变化时跳过重新加载（避免无意义的列表刷新与滚动跳动） */
+    if (page === 1 && !eventsQueryChanged() && lastEventsQuery !== null) return;
     state.page = page || 1;
+    lastEventsQuery = filterQuery({ page: 1, page_size: state.pageSize });
     hideError($("au-summary-error"));
     $("au-rows").innerHTML = '<tr><td colspan="8" class="pms-state">读取中…</td></tr>';
     getJSON(api + "/events" + filterQuery({
