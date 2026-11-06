@@ -568,6 +568,15 @@ class CashierShiftClosureTests(E2EFlowTestBase):
         with self.assertRaises(ValidationError):
             payment.save()
 
+        # 当前应有现金为 100 + 100 + 5 - 10 = 195，超额支出必须被拒绝。
+        overdraw = _post_json(
+            self.client, f"/api/v1/billing/shifts/{shift_id}/movements",
+            {"direction": "OUT", "amount": "196.00", "reason": "超出抽屉余额",
+             "idempotency_key": "closure-cash-overdraw-001"})
+        self.assertEqual(overdraw.status_code, 400, overdraw.content)
+        self.assertFalse(CashierShiftMovement.objects.filter(
+            shift_id=shift_id, idempotency_key="closure-cash-overdraw-001").exists())
+
         closed = _post_json(
             self.client, f"/api/v1/billing/shifts/{shift_id}/close",
             {"actual_cash": "195.00"})
@@ -577,6 +586,11 @@ class CashierShiftClosureTests(E2EFlowTestBase):
         self.assertEqual(Decimal(data["variance"]), Decimal("0.00"))
         shift = CashierShift.objects.get(pk=shift_id)
         self.assertEqual(shift.closed_by_id, self.fin.pk)
+        shift.opening_cash = Decimal("999.00")
+        with self.assertRaises(ValidationError):
+            shift.save()
+        with self.assertRaises(ValidationError):
+            shift.delete()
 
         # 关班后不能继续登记现金支出或把新收款归入已关闭班次。
         rejected = _post_json(
