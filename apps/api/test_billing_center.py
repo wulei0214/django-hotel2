@@ -1018,6 +1018,43 @@ class BillingRefundThreePartyApiTests(BillingCenterTestBase):
         with self.assertRaises(ValidationError):
             refund.save()
 
+    def test_expired_refund_approval_closes_refund_and_releases_payment_hold(self):
+        reservation, _folio = self._booking_with_outstanding()
+        payment = BillingService.collect_payment(
+            property_obj=self.property, reservation=reservation,
+            amount="60.00", method="CARD", collected_by=self.finance,
+            reference="BC-REFUND-EXPIRED-PAY-001")
+        approver = self._make_staff("fin_refund_expiry_approver", "财务")
+        self._grant(approver, "refund_approve")
+
+        self._login(self.finance)
+        requested = _post_json(
+            self.client, "/api/v1/billing/refunds",
+            {"payment_id": payment.pk, "amount": "20.00",
+             "reason": "退款审批到期回归",
+             "idempotency_key": "bc-refund-expiry-request-001"})
+        self.assertEqual(requested.status_code, 201, requested.content)
+        refund_id = requested.json()["data"]["refund_id"]
+        refund = Refund.objects.get(pk=refund_id)
+        ApprovalRecord._base_manager.filter(
+            pk=refund.approval_record_id
+        ).update(expires_at=timezone.now() - timezone.timedelta(minutes=1))
+
+        self._login(approver)
+        response = _post_json(
+            self.client, f"/api/v1/billing/refunds/{refund_id}/approve", {})
+        self.assertEqual(response.status_code, 200, response.content)
+
+        refund.refresh_from_db()
+        payment.refresh_from_db()
+        approval = ApprovalRecord.objects.get(pk=refund.approval_record_id)
+        self.assertEqual(refund.status, Refund.Status.EXPIRED)
+        self.assertIsNotNone(refund.processed_at)
+        self.assertEqual(approval.status, ApprovalRecord.Status.EXPIRED)
+        self.assertEqual(payment.status, Payment.Status.SUCCEEDED)
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
+
     def test_payment_provider_is_immutable_and_refund_pending_cannot_fail(self):
         from django.core.exceptions import ValidationError
 
