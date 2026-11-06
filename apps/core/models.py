@@ -502,8 +502,8 @@ class Notification(models.Model):
         max_length=8, choices=Severity.choices, default=Severity.INFO,
         verbose_name="级别")
     # 兼容旧数据字段；个人已读状态改由 NotificationRead 按员工档案记录。
-    is_read = models.BooleanField(default=False, verbose_name="旧版全局已读（兼容）")
-    read_at = models.DateTimeField(null=True, blank=True, verbose_name="旧版全局已读时间（兼容）")
+    is_read = models.BooleanField(default=False, verbose_name="已读")
+    read_at = models.DateTimeField(null=True, blank=True, verbose_name="已读时间")
     resolved_at = models.DateTimeField(
         null=True, blank=True, verbose_name="待办解决时间",
         help_text="仅运营待办源业务解决时写入；与员工个人已读状态分离")
