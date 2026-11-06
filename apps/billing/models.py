@@ -413,12 +413,12 @@ class Payment(models.Model):
                 raise ValidationError("支付流水不得以退款完成状态直接创建。")
         else:
             previous = type(self).objects.filter(pk=self.pk).values(
-                "cashier_shift_id", "provider_ref", "method", "amount",
+                "cashier_shift_id", "provider", "provider_ref", "method", "amount",
                 "currency", "property_id", "reservation_id", "folio_id",
                 "paid_at", "status").first()
             if previous:
-                immutable = ("cashier_shift_id", "provider_ref", "method", "amount",
-                             "currency", "property_id", "reservation_id", "folio_id")
+                immutable = ("cashier_shift_id", "provider", "provider_ref", "method",
+                             "amount", "currency", "property_id", "reservation_id", "folio_id")
                 if any(previous[field] != getattr(self, field) for field in immutable):
                     raise ValidationError("支付流水的原始交易事实及班次归属不可修改。")
                 if previous["paid_at"] and self.paid_at != previous["paid_at"]:
@@ -435,8 +435,7 @@ class Payment(models.Model):
                         self.Status.PARTIALLY_REFUNDED, self.Status.REFUNDED},
                     self.Status.REFUND_PENDING: {
                         self.Status.REFUND_PENDING, self.Status.SUCCEEDED,
-                        self.Status.PARTIALLY_REFUNDED, self.Status.REFUNDED,
-                        self.Status.FAILED},
+                        self.Status.PARTIALLY_REFUNDED, self.Status.REFUNDED},
                     self.Status.PARTIALLY_REFUNDED: {
                         self.Status.PARTIALLY_REFUNDED, self.Status.REFUND_PENDING,
                         self.Status.REFUNDED},
@@ -451,6 +450,12 @@ class Payment(models.Model):
                     refunded_total = Refund.objects.filter(
                         payment_id=self.pk, status=Refund.Status.SUCCEEDED
                     ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
+                    has_pending_refund = Refund.objects.filter(
+                        payment_id=self.pk,
+                        status__in=(Refund.Status.PENDING, Refund.Status.APPROVED),
+                    ).exists()
+                    if has_pending_refund:
+                        raise ValidationError("存在待审批/已批准退款时，支付状态必须保持 REFUND_PENDING。")
                     if self.status == self.Status.PARTIALLY_REFUNDED:
                         if not (Decimal("0.00") < refunded_total < self.amount):
                             raise ValidationError("部分退款状态必须与已执行退款累计金额一致。")
@@ -462,6 +467,17 @@ class Payment(models.Model):
                             payment_id=self.pk,
                             status__in=(Refund.Status.PENDING, Refund.Status.APPROVED)).exists()):
                     raise ValidationError("退款处理中状态必须存在待审批或已批准退款申请。")
+                if (self.status != previous["status"]
+                        and previous["status"] == self.Status.REFUND_PENDING
+                        and self.status == self.Status.SUCCEEDED):
+                    if Refund.objects.filter(
+                            payment_id=self.pk,
+                            status=Refund.Status.SUCCEEDED).exists():
+                        raise ValidationError("已有成功退款的支付不得回退为全额未退款状态。")
+                    if Refund.objects.filter(
+                            payment_id=self.pk,
+                            status__in=(Refund.Status.PENDING, Refund.Status.APPROVED)).exists():
+                        raise ValidationError("仍有待处理退款的支付不得回退为 SUCCEEDED。")
         return super().save(*args, **kwargs)
 
 
