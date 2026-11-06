@@ -201,6 +201,9 @@ MANAGEMENT_CENTERS = {
         "endpoint": "/api/v1/billing/folios",
         "template": "pms/billing_center.html",
         "enable_collect_payment": True,
+        "enable_cashier_shift_actions": True,
+        "enable_cash_movement_actions": True,
+        "enable_refund_workflow_actions": True,
         "columns": [
             {"label": "预订编号", "path": "booking_no"},
             {"label": "住客", "path": "guest_name"},
@@ -354,6 +357,15 @@ def management_center_page(request, center):
     user = request.user
     can_refund_request = AuthorizationService.has_permission(
         user, property_obj, "billing.refund_request")
+    enable_refund_workflow = config.get("enable_refund_workflow_actions", False)
+    can_approve_refund = enable_refund_workflow and AuthorizationService.has_permission(
+        user, property_obj, "billing.refund_approve")
+    can_execute_refund = enable_refund_workflow and AuthorizationService.has_permission(
+        user, property_obj, "billing.refund_execute")
+    can_manage_cashier_shift = config.get("enable_cashier_shift_actions", False) and AuthorizationService.has_permission(
+        user, property_obj, "billing.cashier_shift_manage")
+    can_manage_cash_movement = config.get("enable_cash_movement_actions", False) and AuthorizationService.has_permission(
+        user, property_obj, "billing.cash_movement_manage")
     can_reverse = AuthorizationService.has_permission(
         user, property_obj, "billing.reverse_entry")
     enable_night_audit = config.get("enable_night_audit_actions", False)
@@ -386,6 +398,11 @@ def management_center_page(request, center):
         "can_collect_payment": config.get("enable_collect_payment", False),
         "can_refund_request": can_refund_request,
         "can_reverse_entry": can_reverse,
+        "can_approve_refund": can_approve_refund,
+        "can_execute_refund": can_execute_refund,
+        "can_manage_cashier_shift": can_manage_cashier_shift,
+        "can_manage_cash_movement": can_manage_cash_movement,
+        "current_user_id": user.pk,
         "can_run_night_audit": (
             enable_night_audit and AuthorizationService.has_permission(
                 user, property_obj, "hotelapp.night_audit_execute")),
