@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError
 from decimal import Decimal
 from django.conf import settings
 from django.db import models
-from django.db.models import Q
+from django.db.models import F, Q
 
 
 
@@ -402,6 +402,9 @@ class Refund(models.Model):
     execution_shift = models.ForeignKey(
         "CashierShift", null=True, blank=True, on_delete=models.PROTECT,
         related_name="executed_refunds", verbose_name="退款执行班次")
+    legacy_workflow = models.BooleanField(
+        default=False, editable=False, verbose_name="历史退款流程记录",
+        help_text="迁移前无法证明申请/审批/执行三方分离的历史记录；只读保留，不代表新流程验收。")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="申请时间")
     processed_at = models.DateTimeField(null=True, blank=True, verbose_name="处理时间")
 
@@ -415,6 +418,39 @@ class Refund(models.Model):
                 name="uq_refund_property_idempotency",
             ),
             models.CheckConstraint(check=Q(amount__gt=0), name="ck_refund_amount_positive"),
+            models.CheckConstraint(
+                check=(Q(legacy_workflow=True) | Q(approved_by__isnull=True)
+                       | ~Q(requested_by=F("approved_by"))),
+                name="ck_refund_sod_request_approve"),
+            models.CheckConstraint(
+                check=(Q(legacy_workflow=True) | Q(executed_by__isnull=True)
+                       | ~Q(requested_by=F("executed_by"))),
+                name="ck_refund_sod_request_execute"),
+            models.CheckConstraint(
+                check=(Q(legacy_workflow=True) | Q(executed_by__isnull=True)
+                       | Q(approved_by__isnull=True)
+                       | ~Q(approved_by=F("executed_by"))),
+                name="ck_refund_sod_approve_execute"),
+            models.CheckConstraint(
+                check=(
+                    Q(legacy_workflow=True)
+                    | (Q(status="PENDING", approved_by__isnull=True)
+                       | Q(status__in=("APPROVED", "SUCCEEDED", "REJECTED"),
+                           approved_by__isnull=False))
+                ),
+                name="ck_refund_approval_facts"),
+            models.CheckConstraint(
+                check=(
+                    Q(legacy_workflow=True)
+                    | (Q(status="SUCCEEDED", executed_by__isnull=False,
+                         executed_at__isnull=False,
+                         execution_idempotency_key__isnull=False))
+                    | (Q(status__in=("PENDING", "APPROVED", "REJECTED"),
+                         executed_by__isnull=True, executed_at__isnull=True,
+                         execution_idempotency_key__isnull=True,
+                         execution_shift__isnull=True))
+                ),
+                name="ck_refund_execution_facts"),
         ]
         permissions = (
             ("refund_request", "可以登记退款申请"),
@@ -423,13 +459,29 @@ class Refund(models.Model):
         )
 
     def save(self, *args, **kwargs):
-        if self.pk:
+        if self.payment_id and self.property_id != self.payment.property_id:
+            raise ValidationError("退款与原支付必须属于同一物业。")
+        if self.payment_id and self.currency != self.payment.currency:
+            raise ValidationError("退款币种必须与原支付币种一致。")
+        if self._state.adding:
+            if (self.status != self.Status.PENDING or self.approved_by_id
+                    or self.executed_by_id or self.executed_at
+                    or self.execution_idempotency_key or self.execution_shift_id):
+                raise ValidationError("退款必须从待审批申请开始，不能直接创建已审批/已执行记录。")
+        else:
             previous = type(self).objects.filter(pk=self.pk).values(
-                "payment_id", "requested_by_id", "amount", "currency", "reason",
-                "idempotency_key", "provider_ref", "approved_by_id", "executed_by_id",
-                "executed_at", "execution_reference", "execution_idempotency_key",
-                "execution_shift_id").first()
+                "payment_id", "property_id", "requested_by_id", "amount",
+                "currency", "reason", "idempotency_key", "provider_ref",
+                "approved_by_id", "executed_by_id", "executed_at",
+                "execution_reference", "execution_idempotency_key",
+                "execution_shift_id", "status", "legacy_workflow").first()
             if previous:
+                immutable_request = (
+                    "payment_id", "property_id", "requested_by_id", "amount",
+                    "currency", "reason", "idempotency_key", "provider_ref")
+                if any(previous[field] != getattr(self, field)
+                       for field in immutable_request):
+                    raise ValidationError("退款申请的原支付、物业、申请人、金额、原因和编号不可修改。")
                 immutable_once_set = (
                     "approved_by_id", "executed_by_id", "executed_at",
                     "execution_reference", "execution_idempotency_key",
@@ -438,12 +490,39 @@ class Refund(models.Model):
                     old_value = previous[field]
                     if old_value not in (None, "") and getattr(self, field) != old_value:
                         raise ValidationError("退款审批/执行事实不可覆盖或改写。")
-                immutable_request = (
-                    "payment_id", "requested_by_id", "amount", "currency",
-                    "reason", "idempotency_key", "provider_ref")
-                if any(previous[field] != getattr(self, field)
-                       for field in immutable_request):
-                    raise ValidationError("退款申请的原支付、申请人、金额、原因和编号不可修改。")
+                if previous["legacy_workflow"]:
+                    if self.status != previous["status"]:
+                        raise ValidationError("历史退款记录只读，不能改写其历史状态。")
+                else:
+                    allowed = {
+                        self.Status.PENDING: {self.Status.PENDING, self.Status.APPROVED,
+                                              self.Status.REJECTED},
+                        self.Status.APPROVED: {self.Status.APPROVED, self.Status.SUCCEEDED},
+                        self.Status.SUCCEEDED: {self.Status.SUCCEEDED},
+                        self.Status.REJECTED: {self.Status.REJECTED},
+                    }
+                    if self.status not in allowed.get(previous["status"], {previous["status"]}):
+                        raise ValidationError("退款状态不允许该迁移。")
+        if not self.legacy_workflow:
+            if self.approved_by_id and self.approved_by_id == self.requested_by_id:
+                raise ValidationError("退款申请人与审批人必须是不同账号。")
+            if self.executed_by_id and self.executed_by_id == self.requested_by_id:
+                raise ValidationError("退款申请人与执行人必须是不同账号。")
+            if (self.executed_by_id and self.approved_by_id
+                    and self.executed_by_id == self.approved_by_id):
+                raise ValidationError("退款审批人与执行人必须是不同账号。")
+            if self.status == self.Status.PENDING and self.approved_by_id:
+                raise ValidationError("待审批退款不得预先设置审批人。")
+            if self.status in (self.Status.APPROVED, self.Status.REJECTED,
+                               self.Status.SUCCEEDED) and not self.approved_by_id:
+                raise ValidationError("已审批/驳回/执行退款必须记录审批人。")
+            if self.status == self.Status.SUCCEEDED:
+                if (not self.executed_by_id or not self.executed_at
+                        or not self.execution_idempotency_key):
+                    raise ValidationError("退款执行成功必须完整记录执行人、时间和幂等键。")
+            elif (self.executed_by_id or self.executed_at
+                  or self.execution_idempotency_key or self.execution_shift_id):
+                raise ValidationError("退款未执行成功前不得写入执行事实。")
         return super().save(*args, **kwargs)
 
     def __str__(self):
