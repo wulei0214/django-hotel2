@@ -482,6 +482,17 @@ class HousekeepingMaintenanceTests(HousekeepingCenterTestBase):
         self.assertEqual(response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
 
 
+    def test_store_manager_can_register_maintenance(self):
+        """店长岗位必须拥有维修停用/恢复专项权限，不能出现全权员工 403。"""
+        owner = self._make_staff("hk_center_owner", "店长")
+        room = self._make_dirty_room("HK-OWNER-01")
+        response = self._maintain(
+            room, "OUT_OF_ORDER", reason="店长权限回归测试", user=owner)
+        self.assertEqual(response.status_code, 200, response.content)
+        room.refresh_from_db()
+        self.assertEqual(
+            room.maintenance_status, Room.MaintenanceStatus.OUT_OF_ORDER)
+
 class HousekeepingPageAndRegistryTests(HousekeepingCenterTestBase):
     """/manage/housekeeping/ 页面门禁与注册表同步。"""
 
