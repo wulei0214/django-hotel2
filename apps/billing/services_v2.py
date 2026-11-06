@@ -597,14 +597,15 @@ class BillingService:
         refund.approved_by = rejected_by
         refund.processed_at = timezone.now()
         refund.save(update_fields=("status", "approved_by", "processed_at"))
-        # 仅当没有其他待审批/已批准退款时，恢复支付流水的真实结算状态。
-        # 已完成的部分退款继续保留 PARTIALLY_REFUNDED，不因新申请被驳回而丢失。
+        # 与申请/执行统一先锁 Payment，再读取同一支付下的退款状态。
+        # 否则 MySQL REPEATABLE READ 下，驳回事务可能在等待班次/支付锁前建立旧快照，
+        # 将并发执行完成的退款误读为 PENDING，最终把 Payment 留在悬空 REFUND_PENDING。
+        payment = Payment.objects.select_for_update().get(
+            pk=refund.payment_id, property=property_obj)
         if not Refund.objects.filter(
                 payment_id=refund.payment_id,
                 status__in=(Refund.Status.PENDING, Refund.Status.APPROVED),
         ).exists():
-            payment = Payment.objects.select_for_update().get(
-                pk=refund.payment_id, property=property_obj)
             refunded_total = Refund.objects.filter(
                 payment_id=payment.pk, status=Refund.Status.SUCCEEDED
             ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
