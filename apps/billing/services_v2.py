@@ -350,6 +350,7 @@ class BillingService:
                     or existing.provider != "frontdesk_manual"
                     or existing.status not in (
                         Payment.Status.SUCCEEDED,
+                        Payment.Status.REFUND_PENDING,
                         Payment.Status.PARTIALLY_REFUNDED,
                         Payment.Status.REFUNDED)):
                 raise ValueError("该收款参考号已用于不同支付。")
@@ -360,7 +361,11 @@ class BillingService:
         if folio is None:
             raise ValueError("主账单不存在或已关闭。")
         from apps.reservations.models import ReservationRoom
-        entries = list(folio.entries.values_list("amount", flat=True))
+        # 幂等预检的普通读已建立 MySQL RR 快照；锁定账单后汇总账本条目必须用
+        # 当前读，否则会漏掉等待期间其他收款提交的负向凭证，导致超额收款。
+        entries = list(
+            folio.entries.select_for_update().order_by("pk").values_list(
+                "amount", flat=True))
         balance = sum(entries, start=Decimal("0.00"))
         expected = sum(
             ReservationRoom.objects.filter(
@@ -368,8 +373,9 @@ class BillingService:
             ).values_list("amount", flat=True),
             start=Decimal("0.00"))
         posted_room = sum(
-            (entry.amount for entry in folio.entries.filter(
-                entry_type=LedgerEntry.EntryType.ROOM_CHARGE)),
+            folio.entries.select_for_update().filter(
+                entry_type=LedgerEntry.EntryType.ROOM_CHARGE
+            ).order_by("pk").values_list("amount", flat=True),
             start=Decimal("0.00"))
         outstanding = balance + expected - posted_room
         if amount > outstanding:
@@ -924,13 +930,17 @@ class BillingService:
             if key_owner is not None:
                 raise ValueError("该退款执行幂等键已被其他退款使用。")
             raise
-        refunded_total = Refund.objects.filter(
+        # 与申请/驳回一致：状态汇总必须用当前读。probe 在等待 Payment 锁前
+        # 已建立 MySQL RR 快照，普通读会漏掉等待期间提交的退款事实，
+        # 把 REFUND_PENDING/已退款终态误写成 PARTIALLY_REFUNDED。
+        refunded_amounts = Refund.objects.select_for_update().filter(
             payment=payment, status=Refund.Status.SUCCEEDED
-        ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
-        has_pending_refund = Refund.objects.filter(
+        ).order_by("pk").values_list("amount", flat=True)
+        refunded_total = sum(refunded_amounts, Decimal("0.00"))
+        has_pending_refund = Refund.objects.select_for_update().filter(
             payment=payment,
             status__in=(Refund.Status.PENDING, Refund.Status.APPROVED),
-        ).exclude(pk=refund.pk).exists()
+        ).exclude(pk=refund.pk).order_by("pk").exists()
         if has_pending_refund:
             payment.status = Payment.Status.REFUND_PENDING
         elif refunded_total >= payment.amount:
@@ -939,7 +949,11 @@ class BillingService:
             payment.status = Payment.Status.PARTIALLY_REFUNDED
         payment.save(update_fields=("status", "updated_at"))
         if payment.provider == "frontdesk_deposit":
-            reservation = payment.reservation
+            # 押金累计写在预订行上；回减前必须当前读锁定该行，否则与并发的
+            # record_deposit（先锁预订行再累加）互相覆盖，造成押金账实不符。
+            from apps.reservations.models import Reservation
+            reservation = Reservation.objects.select_for_update().get(
+                pk=payment.reservation_id)
             reservation.deposit_amount = max(
                 Decimal("0.00"), reservation.deposit_amount - refund.amount)
             reservation.save(update_fields=("deposit_amount", "updated_at"))

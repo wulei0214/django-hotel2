@@ -1104,3 +1104,182 @@ class CashRefundShiftOwnershipTests(WhiteboxBillingBase):
         self.assertTrue(created)
         self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
         self.assertEqual(executed.execution_shift.cashier_id, executor.pk)
+
+
+class ConcurrencyCurrentReadTests(WhiteboxBillingBase):
+    """并发快照回归（MySQL REPEATABLE READ）。
+
+    SQLite 没有 MVCC 旧快照语义，这里沿用白盒口径做确定性模拟：
+      * 「管理器普通读补丁」把并发已提交的事实从**普通读**中隐藏，
+        锁定读（select_for_update 链）不受补丁影响——等价于
+        “RR 快照落后于行锁等待期间的已提交数据”；
+      * 「QuerySet.select_for_update 侦听」断言金额汇总/余额回减前
+        必须先以当前读锁定事实行。
+
+    契约：持有支付/账单行锁之后的退款事实汇总与账本条目汇总，
+    必须看到等待期间其他事务已提交的数据，否则会写出与事实不符的
+    支付终态、甚至超额收款。
+    """
+
+    def _make_card_payment(self, booking_no, amount):
+        reservation = self._make_reservation(booking_no, total="300.00")
+        return Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref=booking_no + "-PAY",
+            method="CARD", amount=Decimal(amount), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+
+    def test_execute_refund_totals_see_concurrent_refunds(self):
+        """CR-01/CR-02：退款执行后的支付状态汇总必须基于退款事实当前读。"""
+        payment = self._make_card_payment("WBCURR001", "100.00")
+        approver1 = User.objects.create_user(username="wbcurr-approver-1")
+        approver2 = User.objects.create_user(username="wbcurr-approver-2")
+        executor = User.objects.create_user(username="wbcurr-executor")
+        r1, _created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="70.00", reason="当前读回归-本笔",
+            requested_by=self.operator, idempotency_key="wbcurr-r1")
+        r2, _created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="30.00", reason="当前读回归-并发笔",
+            requested_by=self.operator, idempotency_key="wbcurr-r2")
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=r1.pk, approved_by=approver1)
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=r2.pk, approved_by=approver2)
+        BillingService.execute_refund(
+            property_obj=self.property, refund_id=r2.pk,
+            executed_by=executor, confirm_refund_paid=True,
+            execution_reference="BANK-CURR-2",
+            idempotency_key="wbcurr-exec-2")
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
+
+        real_filter = Refund.objects.filter
+
+        def stale_snapshot_filter(*args, **kwargs):
+            # 模拟 RR 快照：执行 r1 等待支付行锁期间，r2 已被并发执行完成，
+            # 但本事务的普通读看不到 r2。
+            return real_filter(*args, **kwargs).exclude(pk=r2.pk)
+
+        with mock.patch.object(Refund.objects, "filter",
+                               side_effect=stale_snapshot_filter):
+            executed, created = BillingService.execute_refund(
+                property_obj=self.property, refund_id=r1.pk,
+                executed_by=executor, confirm_refund_paid=True,
+                execution_reference="BANK-CURR-1",
+                idempotency_key="wbcurr-exec-1")
+        self.assertTrue(created)
+        self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
+        payment.refresh_from_db()
+        # 70 + 30 = 100：当前读必须看到并发已执行的 r2，支付应为“已退款”。
+        self.assertEqual(payment.status, Payment.Status.REFUNDED)
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference=f"refund:{r1.provider_ref}").count(), 1)
+
+    def test_collect_payment_balance_uses_current_reads_after_folio_lock(self):
+        """CR-03：收款应收余额汇总在锁定账单后必须用当前读，防止超额收款。"""
+        reservation = self._make_reservation("WBCURR002", total="300.00")
+        BillingService.collect_payment(
+            property_obj=self.property, reservation=reservation,
+            amount=Decimal("100.00"), method="CARD",
+            collected_by=self.operator, reference="WBCURR-PAY-A")
+        concurrent_entry = LedgerEntry.objects.get(
+            reference="payment:WBCURR-PAY-A")
+        # 并发收款已提交 100：真实应收 = 300 - 100 = 200；旧快照看不到该凭证。
+        entries_manager = type(self.folio.entries)
+        real_values_list = entries_manager.values_list
+        real_filter = entries_manager.filter
+
+        def stale_values_list(mgr, *args, **kwargs):
+            return real_values_list(mgr, *args, **kwargs).exclude(
+                pk=concurrent_entry.pk)
+
+        def stale_filter(mgr, *args, **kwargs):
+            return real_filter(mgr, *args, **kwargs).exclude(
+                pk=concurrent_entry.pk)
+
+        with mock.patch.object(entries_manager, "values_list",
+                               stale_values_list), \
+                mock.patch.object(entries_manager, "filter", stale_filter):
+            with self.assertRaises(ValueError):
+                BillingService.collect_payment(
+                    property_obj=self.property, reservation=reservation,
+                    amount=Decimal("250.00"), method="CARD",
+                    collected_by=self.operator, reference="WBCURR-PAY-B")
+        self.assertFalse(
+            Payment.objects.filter(provider_ref="WBCURR-PAY-B").exists())
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference="payment:WBCURR-PAY-B").exists())
+
+    def test_collect_payment_replay_survives_refund_pending_state(self):
+        """CR-05：收款参考号重放在支付进入退款处理中后仍必须幂等返回原支付。"""
+        reservation = self._make_reservation("WBCURR003", total="300.00")
+        kwargs = dict(
+            property_obj=self.property, reservation=reservation,
+            amount=Decimal("100.00"), method="CARD",
+            collected_by=self.operator, reference="WBCURR-PAY-C")
+        payment = BillingService.collect_payment(**kwargs)
+        refund, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="30.00", reason="重放状态回归",
+            requested_by=self.operator, idempotency_key="wbcurr-refund-c")
+        self.assertTrue(created)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
+        replayed = BillingService.collect_payment(**kwargs)
+        self.assertEqual(replayed.pk, payment.pk)
+        self.assertEqual(Payment.objects.filter(
+            provider_ref="WBCURR-PAY-C").count(), 1)
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference="payment:WBCURR-PAY-C").count(), 1)
+
+    def test_deposit_refund_locks_reservation_before_balance_update(self):
+        """CR-04：押金退款回减预订押金累计前必须锁定预订行（防并发丢失更新）。"""
+        reservation = self._make_reservation("WBCURR004", total="300.00")
+        payment1, created1 = BillingService.record_deposit(
+            property_obj=self.property, reservation=reservation,
+            amount=Decimal("100.00"), method="CARD",
+            idempotency_key="wbcurr-dep-1", received_by=self.operator)
+        self.assertTrue(created1)
+        payment2, created2 = BillingService.record_deposit(
+            property_obj=self.property, reservation=reservation,
+            amount=Decimal("30.00"), method="CARD",
+            idempotency_key="wbcurr-dep-2", received_by=self.operator)
+        self.assertTrue(created2)
+        # 模拟并发事实：另一笔押金登记在本事务快照之后提交，累计押金 160。
+        Reservation.objects.filter(pk=reservation.pk).update(
+            deposit_amount=Decimal("160.00"))
+        approver = User.objects.create_user(username="wbcurr-dep-approver")
+        executor = User.objects.create_user(username="wbcurr-dep-executor")
+        refund, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment1.pk,
+            amount="100.00", reason="押金全退当前读回归",
+            requested_by=self.operator, idempotency_key="wbcurr-dep-ref-1")
+        self.assertTrue(created)
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=refund.pk, approved_by=approver)
+
+        real_select_for_update = QuerySet.select_for_update
+        locked_models = []
+
+        def spy_select_for_update(qs, *args, **kwargs):
+            locked_models.append(qs.model)
+            return real_select_for_update(qs, *args, **kwargs)
+
+        with mock.patch.object(QuerySet, "select_for_update",
+                               autospec=True,
+                               side_effect=spy_select_for_update):
+            executed, created = BillingService.execute_refund(
+                property_obj=self.property, refund_id=refund.pk,
+                executed_by=executor, confirm_refund_paid=True,
+                execution_reference="BANK-DEP-1",
+                idempotency_key="wbcurr-dep-exec-1")
+        self.assertTrue(created)
+        self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
+        # 回减押金前必须以当前读锁定预订行，否则会覆盖并发押金登记。
+        self.assertIn(Reservation, locked_models)
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.deposit_amount, Decimal("60.00"))

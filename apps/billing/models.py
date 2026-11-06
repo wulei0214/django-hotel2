@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError
 from decimal import Decimal
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.db.models import F, Q
 
 
@@ -447,10 +447,10 @@ class Payment(models.Model):
                     raise ValidationError("支付状态不允许该迁移。")
                 if (self.status != previous["status"]
                         and self.status in (self.Status.PARTIALLY_REFUNDED, self.Status.REFUNDED)):
-                    refunded_total = Refund.objects.filter(
+                    refunded_total = _current_refund_facts(
                         payment_id=self.pk, status=Refund.Status.SUCCEEDED
                     ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
-                    has_pending_refund = Refund.objects.filter(
+                    has_pending_refund = _current_refund_facts(
                         payment_id=self.pk,
                         status__in=(Refund.Status.PENDING, Refund.Status.APPROVED),
                     ).exists()
@@ -463,18 +463,18 @@ class Payment(models.Model):
                         raise ValidationError("已退款状态必须有足额成功退款凭证。")
                 if (self.status != previous["status"]
                         and self.status == self.Status.REFUND_PENDING
-                        and not Refund.objects.filter(
+                        and not _current_refund_facts(
                             payment_id=self.pk,
                             status__in=(Refund.Status.PENDING, Refund.Status.APPROVED)).exists()):
                     raise ValidationError("退款处理中状态必须存在待审批或已批准退款申请。")
                 if (self.status != previous["status"]
                         and previous["status"] == self.Status.REFUND_PENDING
                         and self.status == self.Status.SUCCEEDED):
-                    if Refund.objects.filter(
+                    if _current_refund_facts(
                             payment_id=self.pk,
                             status=Refund.Status.SUCCEEDED).exists():
                         raise ValidationError("已有成功退款的支付不得回退为全额未退款状态。")
-                    if Refund.objects.filter(
+                    if _current_refund_facts(
                             payment_id=self.pk,
                             status__in=(Refund.Status.PENDING, Refund.Status.APPROVED)).exists():
                         raise ValidationError("仍有待处理退款的支付不得回退为 SUCCEEDED。")
@@ -724,6 +724,21 @@ class Refund(models.Model):
 
     def __str__(self):
         return f"{self.provider_ref} / {self.status}"
+
+
+def _current_refund_facts(**filters):
+    """支付状态机校验读取退款事实必须基于“当前读”。
+
+    MySQL REPEATABLE READ 下，事务内普通读使用事务首个一致读建立的旧快照；
+    支付行锁等待期间其他事务可能已提交新的退款申请/执行。若用普通读校验
+    支付状态迁移，会依据过期快照放行与事实不符的状态。因此事务内一律用
+    SELECT ... FOR UPDATE 当前读（与 BillingService 的 Payment→Refund 全局
+    锁顺序一致）；autocommit 下每条语句本身即当前读，无需加锁。
+    """
+    qs = Refund.objects.all()
+    if transaction.get_connection().in_atomic_block:
+        qs = qs.select_for_update()
+    return qs.filter(**filters)
 
 
 class CashierShift(models.Model):
