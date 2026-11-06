@@ -153,11 +153,12 @@
   <div class="pms-drawer-body" id="hk-drawer-body"></div>
 </aside>
 
+<form id="pms-csrf-token" hidden>{% csrf_token %}</form>
 <script>
 (function () {
   "use strict";
-  const csrf = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-  const CSRF = csrf ? decodeURIComponent(csrf[1]) : "";
+  const csrfInput = document.querySelector("#pms-csrf-token input[name=\"csrfmiddlewaretoken\"]");
+  const CSRF = csrfInput ? csrfInput.value : "";
   const canFlow = {{ can_flow_housekeeping|yesno:"true,false" }};
   const canRelease = {{ can_release_room|yesno:"true,false" }};
   const canMaintain = {{ can_register_maintenance|yesno:"true,false" }};
