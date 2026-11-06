@@ -1558,8 +1558,8 @@ op("/billing/reversals", "post", "财务", "红字冲销（只追加反向凭证
 op("/billing/shifts", "get", "财务", "收银班次列表",
    status="verified",
    query=[Q("status", "班次状态筛选 OPEN/CLOSED/RECONCILED。"), *PQ()],
-   permission=FIN_READ_PERM,
-   ok=(("200", "CashierShift 行数组（备用金/应收/实收/差异）"),),
+   permission="有效员工 + billing.cashier_shift_manage；有 finance_access 时查看本物业全部班次，否则仅本人班次",
+   ok=(("200", "CashierShift 行数组（备用金/应有/实盘/差异/关班人）"),),
    data=s_arr(s_obj({
        "id": s_int(), "cashier_id": s_int(), "cashier": s_str(),
        "status": s_str(), "status_label": s_str(),
