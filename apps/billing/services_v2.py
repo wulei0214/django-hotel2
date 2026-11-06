@@ -720,8 +720,16 @@ class BillingService:
         refunded_total = Refund.objects.filter(
             payment=payment, status=Refund.Status.SUCCEEDED
         ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
-        payment.status = (Payment.Status.REFUNDED if refunded_total >= payment.amount
-                          else Payment.Status.PARTIALLY_REFUNDED)
+        has_pending_refund = Refund.objects.filter(
+            payment=payment,
+            status__in=(Refund.Status.PENDING, Refund.Status.APPROVED),
+        ).exclude(pk=refund.pk).exists()
+        if has_pending_refund:
+            payment.status = Payment.Status.REFUND_PENDING
+        elif refunded_total >= payment.amount:
+            payment.status = Payment.Status.REFUNDED
+        else:
+            payment.status = Payment.Status.PARTIALLY_REFUNDED
         payment.save(update_fields=("status", "updated_at"))
         if payment.provider == "frontdesk_deposit":
             reservation = payment.reservation
