@@ -577,14 +577,25 @@ class BillingService:
     def reject_refund(*, property_obj, refund_id, rejected_by, reason):
         """审批驳回只改变申请状态，不产生退款账本凭证。"""
         from apps.billing.models import Payment, Refund
+        # 退款写路径统一先锁 Payment，再锁 Refund；申请、驳回和执行同序，
+        # 避免与关班/退款执行形成反向锁等待。
+        probe = Refund.objects.filter(
+            pk=refund_id, property=property_obj
+        ).values("payment_id").first()
+        if probe is None:
+            raise ValueError("退款申请不存在或不属于当前物业。")
+        payment = Payment.objects.select_for_update().filter(
+            pk=probe["payment_id"], property=property_obj).first()
+        if payment is None:
+            raise ValueError("退款对应支付流水不存在或不属于当前物业。")
         refund = Refund.objects.select_for_update().filter(
             pk=refund_id, property=property_obj).first()
-        if refund is None:
-            raise ValueError("退款申请不存在或不属于当前物业。")
+        if refund is None or refund.payment_id != payment.pk:
+            raise ValueError("退款申请不存在或支付归属已变化。")
         if refund.status != Refund.Status.PENDING:
             raise ValueError("只有待审批退款可以驳回。")
         if refund.requested_by_id == rejected_by.pk:
-            raise ValueError("退款申请人不能驳回自己的申请。")
+            raise ValueError("退款申请人不能驳回自己的退款。")
         reason = str(reason or "").strip()
         if not reason or len(reason) > 240:
             raise ValueError("驳回原因必须填写且不能超过 240 个字符。")
@@ -597,11 +608,7 @@ class BillingService:
         refund.approved_by = rejected_by
         refund.processed_at = timezone.now()
         refund.save(update_fields=("status", "approved_by", "processed_at"))
-        # 与申请/执行统一先锁 Payment，再读取同一支付下的退款状态。
-        # 否则 MySQL REPEATABLE READ 下，驳回事务可能在等待班次/支付锁前建立旧快照，
-        # 将并发执行完成的退款误读为 PENDING，最终把 Payment 留在悬空 REFUND_PENDING。
-        payment = Payment.objects.select_for_update().get(
-            pk=refund.payment_id, property=property_obj)
+        # Payment 行锁使同一支付下的申请/驳回/执行串行化。
         if not Refund.objects.filter(
                 payment_id=refund.payment_id,
                 status__in=(Refund.Status.PENDING, Refund.Status.APPROVED),
@@ -672,11 +679,16 @@ class BillingService:
         elif not execution_reference:
             raise ValueError("银行卡/转账退款必须记录渠道退款参考号。")
 
-        # 已取得现金班次锁（如适用）后，再按统一顺序锁退款与支付记录。
+        # 全局锁顺序：现金班次（现金退款）-> Payment -> Refund。
+        # 关班也是 Shift -> Payment -> Refund；退款申请/驳回均先锁 Payment。
+        payment = Payment.objects.select_for_update().filter(
+            pk=probe["payment_id"], property=property_obj).first()
+        if payment is None:
+            raise ValueError("退款对应支付流水不存在或不属于当前物业。")
         refund = Refund.objects.select_for_update().filter(
             pk=refund_id, property=property_obj).first()
-        if refund is None:
-            raise ValueError("退款申请不存在或不属于当前物业。")
+        if refund is None or refund.payment_id != payment.pk:
+            raise ValueError("退款申请不存在或支付归属已变化。")
         key_owner = Refund.objects.filter(
             execution_idempotency_key=key).exclude(pk=refund.pk).first()
         if key_owner is not None:
@@ -693,18 +705,17 @@ class BillingService:
             raise ValueError("退款申请人不能执行自己的退款。")
         if refund.approved_by_id == executed_by.pk:
             raise ValueError("退款审批人与执行人不能是同一账号。")
-        payment = Payment.objects.select_for_update().get(
-            pk=refund.payment_id, property=property_obj)
         if payment.method == "CASH" and execution_shift is None:
             raise ValueError("现金退款执行前必须先开立执行人本人收银班次。")
 
-        # 现金班次锁已取得后才建立一致性读快照；所有现金写入也必须先锁同一班次。
-        reserved = Refund.objects.filter(
+        # Payment 锁串行化同一支付的申请/驳回/执行；select_for_update 是 MySQL
+        # 当前读，确保前面的 probe 建立 RR 快照后也不会漏掉刚提交的退款申请。
+        reserved_amounts = Refund.objects.select_for_update().filter(
             payment=payment,
             status__in=(Refund.Status.PENDING, Refund.Status.APPROVED,
                         Refund.Status.SUCCEEDED),
-        ).exclude(pk=refund.pk).aggregate(
-            total=models.Sum("amount"))["total"] or Decimal("0.00")
+        ).exclude(pk=refund.pk).order_by("pk").values_list("amount", flat=True)
+        reserved = sum(reserved_amounts, Decimal("0.00"))
         if reserved + refund.amount > payment.amount:
             raise ValueError("原支付可退款余额不足。")
         folio = payment.folio
