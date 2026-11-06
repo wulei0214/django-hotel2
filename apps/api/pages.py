@@ -265,9 +265,9 @@ MANAGEMENT_CENTERS = {
             {"label": "敏感", "path": "is_sensitive"},
         ],
     },
-    # 基线 2.0 §4.3：清洁与维修工作台（专属工作台模板）。挂在客房运营
-    # （rooms 模块）权限面：读=view_room；清洁链流转=change_room；
-    # 净房放行=room_release_ready（F-08 补执行点）；维修登记=no_show_handle。
+    # 基线 2.0 §4.3：清洁与维修工作台。读取/清洁流转/维修登记使用
+    # inventory.housekeeping_view / housekeeping_update / maintenance_manage；
+    # 净房放行额外要求 hotelapp.room_release_ready。
     # 键名与 URL 段一致（/manage/housekeeping/）。
     "housekeeping": {
         "title": "清洁与维修工作台",
