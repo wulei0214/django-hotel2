@@ -577,6 +577,41 @@ class CashierShift(models.Model):
         )
 
     def save(self, *args, **kwargs):
+        if self.opening_cash is None or self.opening_cash < 0:
+            raise ValidationError("开班备用金不能为负数。")
+        if self._state.adding:
+            if self.status != self.ShiftStatus.OPEN:
+                raise ValidationError("收银班次必须从 OPEN 状态创建。")
+            if any((self.closed_at, self.closed_by_id, self.expected_cash,
+                    self.actual_cash, self.variance)):
+                raise ValidationError("新班次不得预先写入关班事实。")
+        else:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "property_id", "cashier_id", "opened_at", "opening_cash",
+                "status", "closed_at", "closed_by_id", "expected_cash",
+                "actual_cash", "variance", "variance_reason").first()
+            if previous:
+                immutable = ("property_id", "cashier_id", "opened_at", "opening_cash")
+                if any(previous[field] != getattr(self, field) for field in immutable):
+                    raise ValidationError("班次物业、收银员、开班时间和备用金不可修改。")
+                if previous["status"] == self.ShiftStatus.OPEN:
+                    if self.status not in (self.ShiftStatus.OPEN, self.ShiftStatus.CLOSED):
+                        raise ValidationError("班次只允许从 OPEN 关账为 CLOSED。")
+                    if self.status == self.ShiftStatus.CLOSED:
+                        if (not self.closed_at or not self.closed_by_id
+                                or self.expected_cash is None
+                                or self.actual_cash is None or self.variance is None):
+                            raise ValidationError("关班必须完整记录关班人、时间、应有现金、实盘现金和差异。")
+                        if self.expected_cash < 0 or self.actual_cash < 0:
+                            raise ValidationError("关班应有现金和实盘现金不能为负数。")
+                        if self.variance != 0 and not (self.variance_reason or "").strip():
+                            raise ValidationError("现金差异非零必须填写差异说明。")
+                else:
+                    closure_fields = (
+                        "status", "closed_at", "closed_by_id", "expected_cash",
+                        "actual_cash", "variance", "variance_reason")
+                    if any(previous[field] != getattr(self, field) for field in closure_fields):
+                        raise ValidationError("已关班的财务事实不可修改或重新打开。")
         desired_key = (
             f"{self.property_id}:{self.cashier_id}"
             if self.property_id and self.cashier_id and self.status == self.ShiftStatus.OPEN
@@ -587,6 +622,9 @@ class CashierShift(models.Model):
             if kwargs.get("update_fields") is not None:
                 kwargs["update_fields"] = set(kwargs["update_fields"]) | {"open_shift_key"}
         super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("收银班次是财务事实，禁止物理删除。")
 
     def __str__(self):
         return f"{self.property_id}/{self.cashier_id} {self.status}"
