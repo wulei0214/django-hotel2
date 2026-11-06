@@ -612,7 +612,7 @@
           payment.refunds.forEach(function(refund){
             if (refund.legacy_workflow) {
               drawerBody.appendChild(notify(
-                "历史退款记录：旧流程未能证明申请、审批、执行三方分离；该记录只读，不作为新流程执行凭据。"));
+                "历史退款记录：无法证明申请、审批、执行三方分离；该记录只读，不作为新流程执行凭据。"));
             }
             const actions = document.createElement("div");
             actions.className = "pms-tools";
