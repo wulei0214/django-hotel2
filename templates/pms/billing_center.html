@@ -174,7 +174,7 @@
 <script>
 (function () {
   "use strict";
-  const csrfInput = document.querySelector("#pms-csrf-token input[name=\"csrfmiddlewaretoken\"]");
+  const csrfInput = document.querySelector('#pms-csrf-token input[name="csrfmiddlewaretoken"]');
   const CSRF = csrfInput ? csrfInput.value : "";
   const columns = JSON.parse(document.getElementById("fin-columns").textContent);
   const detail = JSON.parse(document.getElementById("fin-detail").textContent);
