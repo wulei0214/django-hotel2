@@ -614,6 +614,91 @@ class BillingService:
         return refund, True
 
     @staticmethod
+    def expire_due_refunds(*, property_obj=None, limit=100, now=None):
+        """定时关闭审批超时退款；每笔独立事务，锁顺序 Payment -> Refund -> ApprovalRecord。"""
+        from apps.billing.models import ApprovalRecord, Payment, Refund
+        from apps.core.models import AuditEvent
+
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            raise ValueError("过期退款处理条数必须是整数。")
+        if limit < 1 or limit > 500:
+            raise ValueError("单次过期退款处理条数必须在 1 至 500 之间。")
+        now = now or timezone.now()
+        candidates = Refund.objects.filter(
+            status=Refund.Status.PENDING,
+            legacy_workflow=False,
+            approval_record__status=ApprovalRecord.Status.PENDING,
+            approval_record__expires_at__lte=now,
+        )
+        if property_obj is not None:
+            candidates = candidates.filter(property=property_obj)
+        candidate_rows = list(
+            candidates.order_by("approval_record__expires_at", "pk")
+            .values_list("pk", "payment_id")[:limit]
+        )
+        expired_ids = []
+        for refund_id, payment_id in candidate_rows:
+            with transaction.atomic():
+                payment = Payment.objects.select_for_update().filter(
+                    pk=payment_id,
+                    **({"property": property_obj} if property_obj is not None else {}),
+                ).first()
+                if payment is None:
+                    continue
+                refund = Refund.objects.select_for_update().filter(
+                    pk=refund_id, payment=payment,
+                    status=Refund.Status.PENDING, legacy_workflow=False,
+                ).first()
+                if refund is None or not refund.approval_record_id:
+                    continue
+                approval = ApprovalRecord.objects.select_for_update().filter(
+                    pk=refund.approval_record_id,
+                    property=payment.property,
+                    status=ApprovalRecord.Status.PENDING,
+                    expires_at__lte=now,
+                ).first()
+                if approval is None:
+                    continue
+
+                approval.status = ApprovalRecord.Status.EXPIRED
+                approval.approved_at = now
+                approval.save(update_fields=("status", "approved_at"))
+                refund.status = Refund.Status.EXPIRED
+                refund.processed_at = now
+                refund.save(update_fields=("status", "processed_at"))
+
+                pending_refunds = Refund.objects.select_for_update().filter(
+                    payment_id=payment.pk,
+                    status__in=(Refund.Status.PENDING, Refund.Status.APPROVED),
+                ).order_by("pk")
+                if not pending_refunds.exists():
+                    refunded_amounts = Refund.objects.select_for_update().filter(
+                        payment_id=payment.pk,
+                        status=Refund.Status.SUCCEEDED,
+                    ).order_by("pk").values_list("amount", flat=True)
+                    refunded_total = sum(refunded_amounts, Decimal("0.00"))
+                    if refunded_total >= payment.amount:
+                        payment.status = Payment.Status.REFUNDED
+                    elif refunded_total > 0:
+                        payment.status = Payment.Status.PARTIALLY_REFUNDED
+                    else:
+                        payment.status = Payment.Status.SUCCEEDED
+                    payment.save(update_fields=("status", "updated_at"))
+
+                AuditEvent.record(
+                    action="billing.refund_expired",
+                    entity_type="Refund", entity_id=refund.pk,
+                    actor=None, property_obj=payment.property,
+                    after={"status": refund.status,
+                           "approval_record_id": approval.pk,
+                           "processed_at": now.isoformat()},
+                    reason="系统定时任务：退款审批超过有效期，释放原支付可退额度")
+                expired_ids.append(refund.pk)
+        return expired_ids
+
+    @staticmethod
     @transaction.atomic
     def reject_refund(*, property_obj, refund_id, rejected_by, reason):
         """审批驳回只改变申请状态，不产生退款账本凭证。"""
