@@ -569,7 +569,7 @@ class PermissionCenterPageTests(PermissionCenterTestBase):
         self.assertIn("permission_center.js", content)
 
     def test_page_bootstrap_carries_registry_matrix(self):
-        """bootstrap JSON 必须携带注册表矩阵结构（11 模块 + 14 专项 + 9 角色）。"""
+        """bootstrap JSON 必须携带注册表矩阵结构（11 模块 + 17 专项 + 9 角色）。"""
         import json as jsonlib
         import re
 
@@ -582,8 +582,7 @@ class PermissionCenterPageTests(PermissionCenterTestBase):
         data = jsonlib.loads(match.group(1))
         self.assertEqual(len(data["modules"]), 11)
         self.assertEqual(len(data["roles"]), 9)
-            # F-08 补执行点（§4.3）：room_release_ready 恢复登记；
-            # 15 - reverse_entry = 14（含 F-06 export_approve）
+            # 既有 14 个专项权限 + 夜审查看、清洁查看/流转、维修管理 3 个专项权限
         self.assertEqual(len(data["special_codenames"]), 17)
         module_codes = {m["code"] for m in data["modules"]}
         self.assertEqual(
