@@ -693,7 +693,7 @@ def folio_detail(request, booking_no):
             "folio": None, "summary": _empty_folio_summary(reservation.currency),
             "entries": [], "payments": [],
             "allowed_actions": (["request_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_request") else [])
-                + (["approve_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve") else []),
+                + (["approve_refund", "reject_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve") else []),
         }})
     entries = list(folio.entries.order_by("created_at", "id"))
     charges = sum((item.amount for item in entries if item.amount > 0), Decimal("0.00"))
@@ -720,7 +720,7 @@ def folio_detail(request, booking_no):
                 } for refund in item.refunds.order_by("-created_at", "-id")],
             } for item in folio.payments.order_by("-created_at", "-id")],
             "allowed_actions": (["request_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_request") else [])
-                + (["approve_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve") else []),
+                + (["approve_refund", "reject_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve") else []),
         }
     })
 
