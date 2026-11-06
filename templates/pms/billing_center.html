@@ -163,11 +163,12 @@
 {{ can_collect_payment|json_script:"fin-can-collect" }}
 {{ can_refund_request|json_script:"fin-can-refund" }}
 {{ can_reverse_entry|json_script:"fin-can-reverse" }}
+<form id="pms-csrf-token" hidden>{% csrf_token %}</form>
 <script>
 (function () {
   "use strict";
-  const csrfToken = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-  const CSRF = csrfToken ? decodeURIComponent(csrfToken[1]) : "";
+  const csrfInput = document.querySelector("#pms-csrf-token input[name=\"csrfmiddlewaretoken\"]");
+  const CSRF = csrfInput ? csrfInput.value : "";
   const columns = JSON.parse(document.getElementById("fin-columns").textContent);
   const detail = JSON.parse(document.getElementById("fin-detail").textContent);
   const canCollect = JSON.parse(document.getElementById("fin-can-collect").textContent) === true;
@@ -410,14 +411,17 @@
         '<button type="submit">确认收款</button></div>';
     form.addEventListener("submit", async function(event){
       event.preventDefault();
+      const amount = document.getElementById("fin-collect-amount").value.trim();
+      const method = document.getElementById("fin-collect-method").value;
+      const reference = document.getElementById("fin-collect-ref").value.trim();
       const note = notify("提交中…");
       form.replaceWith(note);
       try {
         const payload = await postJson("/api/v1/billing/payments", {
           reservation_id: currentReservationId,
-          amount: document.getElementById("fin-collect-amount").value.trim(),
-          method: document.getElementById("fin-collect-method").value,
-          reference: document.getElementById("fin-collect-ref").value.trim(),
+          amount: amount,
+          method: method,
+          reference: reference,
         });
         const d = payload.data || {};
         note.replaceWith(notify("收款成功：" + d.amount + " " + d.currency +
@@ -441,13 +445,15 @@
         '<button type="submit">提交退款申请</button></div>';
     form.addEventListener("submit", async function(event){
       event.preventDefault();
+      const amount = document.getElementById("fin-refund-amount").value.trim();
+      const reason = document.getElementById("fin-refund-reason").value.trim();
       const note = notify("提交中…");
       form.replaceWith(note);
       try {
         const payload = await postJson("/api/v1/billing/refunds", {
           payment_id: payment.id,
-          amount: document.getElementById("fin-refund-amount").value.trim(),
-          reason: document.getElementById("fin-refund-reason").value.trim(),
+          amount: amount,
+          reason: reason,
         });
         const d = payload.data || {};
         note.replaceWith(notify("退款申请已提交（状态 " + d.status + "），等待第二人审批。", true));
@@ -549,12 +555,13 @@
         '<button type="submit">确认冲销 ' + value(entry.reference) + '</button></div>';
     form.addEventListener("submit", async function(event){
       event.preventDefault();
+      const reason = document.getElementById("fin-reverse-reason").value.trim();
       const note = notify("提交中…");
       form.replaceWith(note);
       try {
         const payload = await postJson("/api/v1/billing/reversals", {
           entry_id: entry.id,
-          reason: document.getElementById("fin-reverse-reason").value.trim(),
+          reason: reason,
         });
         const d = payload.data || {};
         note.replaceWith(notify("已追加反向凭证 " + d.reference + "（" + d.amount + " " + d.currency + "）", true));
