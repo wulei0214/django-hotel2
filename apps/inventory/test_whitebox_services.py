@@ -76,14 +76,13 @@ class HousekeepingSummaryTimezoneTests(TestCase):
             content_type__app_label="inventory",
             codename="housekeeping_update")
         group.permissions.add(permission)
-        self.operator.groups.add(group)
         from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
-        profile = StaffProfile.objects.create(user=self.operator)
+        profile = StaffProfile.objects.create(
+            user=self.operator, full_name="白盒清洁操作员")
         membership = PropertyStaffMembership.objects.create(
             property=self.property, staff_profile=profile,
             employee_no="WBI2-001", status="ACTIVE")
-        StaffRoleAssignment.objects.create(
-            membership=membership, group=group, is_active=True)
+        StaffRoleAssignment.objects.create(membership=membership, group=group)
 
     def test_today_window_uses_property_timezone(self):
         # T1：物业当地 2026-01-15 23:30（就物业日历而言是“昨天”）；
