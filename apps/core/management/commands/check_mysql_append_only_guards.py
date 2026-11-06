@@ -25,18 +25,23 @@ class Command(BaseCommand):
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT TRIGGER_NAME, EVENT_OBJECT_TABLE, EVENT_MANIPULATION, "
-                "ACTION_TIMING FROM information_schema.TRIGGERS "
+                "ACTION_TIMING, ACTION_STATEMENT FROM information_schema.TRIGGERS "
                 "WHERE TRIGGER_SCHEMA = DATABASE()")
             actual = {
-                row[0]: (row[1], row[2], row[3])
+                row[0]: (row[1], row[2], row[3], row[4])
                 for row in cursor.fetchall()
             }
         missing = sorted(set(EXPECTED) - set(actual))
-        incorrect = {
-            name: {"expected": expected, "actual": actual.get(name)}
-            for name, expected in EXPECTED.items()
-            if name in actual and actual[name] != expected
-        }
+        incorrect = {}
+        for name, expected in EXPECTED.items():
+            if name not in actual:
+                continue
+            observed = actual[name]
+            if observed[:3] != expected or "SIGNAL SQLSTATE '45000'" not in observed[3].upper():
+                incorrect[name] = {
+                    "expected": expected + ("SIGNAL SQLSTATE '45000'",),
+                    "actual": observed,
+                }
         if missing or incorrect:
             details = []
             if missing:
