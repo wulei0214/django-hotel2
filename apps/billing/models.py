@@ -680,6 +680,8 @@ class CashierShiftMovement(models.Model):
                 name="uq_shift_movement_idempotency"),
             models.CheckConstraint(check=Q(amount__gt=0),
                                    name="ck_shift_movement_amount_positive"),
+            models.CheckConstraint(check=Q(direction__in=("IN", "OUT")),
+                                   name="ck_shift_movement_direction"),
         ]
 
     def save(self, *args, **kwargs):
