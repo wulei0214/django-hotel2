@@ -116,6 +116,27 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
         self.assertEqual(bad.json()["error"]["code"], "VALIDATION_ERROR")
         return current
 
+    def test_business_dates_list_supports_more_than_one_hundred_closed_dates(self):
+        """重开日期选择器依赖分页读取；101 条时第 2 页必须可访问。"""
+        for offset in range(1, 102):
+            BusinessDate.objects.create(
+                property=self.property,
+                business_date=self.today - timedelta(days=offset),
+                status=BusinessDate.Status.CLOSED,
+            )
+        first = self.client.get(
+            "/api/v1/night-audit/business-dates?status=CLOSED&page=1&page_size=100")
+        self.assertEqual(first.status_code, 200, first.content)
+        first_data = first.json()
+        self.assertEqual(len(first_data["data"]), 100)
+        self.assertTrue(first_data["meta"]["pagination"]["has_next"])
+        second = self.client.get(
+            "/api/v1/night-audit/business-dates?status=CLOSED&page=2&page_size=100")
+        self.assertEqual(second.status_code, 200, second.content)
+        second_data = second.json()
+        self.assertEqual(len(second_data["data"]), 1)
+        self.assertFalse(second_data["meta"]["pagination"]["has_next"])
+
     def test_business_dates_list_status_filter_and_invalid_status(self):
         BusinessDate.objects.create(
             property=self.property, business_date=self.today - timedelta(days=1),
