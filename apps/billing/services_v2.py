@@ -684,7 +684,7 @@ class BillingService:
         if folio.property_id != property_obj.pk or folio.status == "VOIDED":
             raise ValueError("原支付对应账单不存在或已作废。")
         if execution_shift is not None:
-            available_cash = BillingService.cash_shift_expected_cash(execution_shift)
+            available_cash = BillingService.cash_shift_expected_cash(execution_shift, lock_facts=True)
             if refund.amount > available_cash:
                 raise ValueError(
                     f"执行班次现金余额不足：当前应有 {available_cash}，退款金额 {refund.amount}。"
@@ -851,26 +851,48 @@ class BillingService:
         return shift, True
 
     @staticmethod
-    def cash_shift_breakdown(shift):
-        """返回班次现金核算明细；调用方必须先锁定班次行。"""
+    def cash_shift_breakdown(shift, lock_facts=False):
+        """返回班次现金核算明细；写路径先锁班次，再用当前读锁定现金事实。"""
         from apps.billing.models import Payment, Refund, CashierShiftMovement
-        cash_income = Payment.objects.filter(
+        payment_qs = Payment.objects.filter(
             cashier_shift=shift, method="CASH",
             status__in=(Payment.Status.SUCCEEDED,
                         Payment.Status.REFUND_PENDING,
                         Payment.Status.PARTIALLY_REFUNDED,
-                        Payment.Status.REFUNDED)).aggregate(
-                total=models.Sum("amount"))["total"] or Decimal("0.00")
-        cash_refunds = Refund.objects.filter(
+                        Payment.Status.REFUNDED))
+        refund_qs = Refund.objects.filter(
             execution_shift=shift, payment__method="CASH",
-            status=Refund.Status.SUCCEEDED).aggregate(
+            status=Refund.Status.SUCCEEDED)
+        movement_qs = CashierShiftMovement.objects.filter(shift=shift)
+        if lock_facts:
+            # SELECT ... FOR UPDATE 是 MySQL 当前读，避免事务在锁班次前已建立
+            # REPEATABLE READ 快照时，现金支出/退款被旧快照漏算。
+            payment_amounts = payment_qs.select_for_update().order_by("pk").values_list(
+                "amount", flat=True)
+            refund_amounts = refund_qs.select_for_update().order_by("pk").values_list(
+                "amount", flat=True)
+            movement_rows = movement_qs.select_for_update().order_by("pk").values_list(
+                "direction", "amount")
+            cash_income = sum(payment_amounts, Decimal("0.00"))
+            cash_refunds = sum(refund_amounts, Decimal("0.00"))
+            movement_rows = list(movement_rows)
+            cash_in = sum((amount for direction, amount in movement_rows
+                           if direction == CashierShiftMovement.Direction.IN),
+                          Decimal("0.00"))
+            cash_out = sum((amount for direction, amount in movement_rows
+                            if direction == CashierShiftMovement.Direction.OUT),
+                           Decimal("0.00"))
+        else:
+            cash_income = payment_qs.aggregate(
                 total=models.Sum("amount"))["total"] or Decimal("0.00")
-        cash_in = CashierShiftMovement.objects.filter(
-            shift=shift, direction=CashierShiftMovement.Direction.IN).aggregate(
+            cash_refunds = refund_qs.aggregate(
                 total=models.Sum("amount"))["total"] or Decimal("0.00")
-        cash_out = CashierShiftMovement.objects.filter(
-            shift=shift, direction=CashierShiftMovement.Direction.OUT).aggregate(
-                total=models.Sum("amount"))["total"] or Decimal("0.00")
+            cash_in = movement_qs.filter(
+                direction=CashierShiftMovement.Direction.IN).aggregate(
+                    total=models.Sum("amount"))["total"] or Decimal("0.00")
+            cash_out = movement_qs.filter(
+                direction=CashierShiftMovement.Direction.OUT).aggregate(
+                    total=models.Sum("amount"))["total"] or Decimal("0.00")
         expected = shift.opening_cash + cash_income - cash_refunds + cash_in - cash_out
         return {
             "cash_income": cash_income,
@@ -881,9 +903,10 @@ class BillingService:
         }
 
     @staticmethod
-    def cash_shift_expected_cash(shift):
-        """按已锁定班次的现金事实计算抽屉应有现金；调用方必须先锁定班次行。"""
-        return BillingService.cash_shift_breakdown(shift)["expected"]
+    def cash_shift_expected_cash(shift, lock_facts=False):
+        """按班次现金事实计算应有现金；写路径应启用 lock_facts 当前读。"""
+        return BillingService.cash_shift_breakdown(
+            shift, lock_facts=lock_facts)["expected"]
 
     @staticmethod
     @transaction.atomic
@@ -901,7 +924,7 @@ class BillingService:
         variance_reason = str(variance_reason or "").strip()
         if actual < 0:
             raise ValueError("实盘现金不能为负数。")
-        cash_facts = BillingService.cash_shift_breakdown(shift)
+        cash_facts = BillingService.cash_shift_breakdown(shift, lock_facts=True)
         expected = cash_facts["expected"]
         if expected < 0:
             raise ValueError("班次现金事实计算为负数，必须先核对现金退款/支出记录，禁止直接关班。")
@@ -962,7 +985,7 @@ class BillingService:
         # 幂等重放必须先返回原事实，再检查新支出余额；否则重放会被首次支出
         # 已经扣减的余额误拒绝，破坏“同 key 同事实返回既有记录”的契约。
         if direction == CashierShiftMovement.Direction.OUT:
-            available_cash = BillingService.cash_shift_expected_cash(shift)
+            available_cash = BillingService.cash_shift_expected_cash(shift, lock_facts=True)
             if amount > available_cash:
                 raise ValueError(
                     f"班次现金余额不足：当前应有 {available_cash}，本次支出 {amount}。")
