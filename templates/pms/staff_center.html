@@ -460,11 +460,19 @@
   function bindActionForm(form, url, onDone) {
     form.addEventListener("submit", function (e) {
       e.preventDefault();
-      const submitBtn = form.querySelector('button[type="submit"]');
+      /* 黑盒 BUG 修复：多提交按钮表单（如状态操作的 暂停/离职/恢复）
+         依赖 submit 按钮的 name=value 携带动作语义，但 preventDefault +
+         手工 FormData 不会包含被点击的按钮——用 e.submitter 回填。 */
+      const submitter = e.submitter
+          || (document.activeElement && document.activeElement.type === "submit"
+              ? document.activeElement : null);
+      const submitBtn = submitter || form.querySelector('button[type="submit"]');
       if (submitBtn) submitBtn.disabled = true;
       const busy = form.querySelector(".sc-result");
       if (busy) busy.textContent = "正在提交…";
-      apiFetch(url, {method: "POST", body: new FormData(form)}).then(function (res) {
+      const formData = new FormData(form);
+      if (submitter && submitter.name) formData.append(submitter.name, submitter.value);
+      apiFetch(url, {method: "POST", body: formData}).then(function (res) {
         if (submitBtn) submitBtn.disabled = false;
         if (!res.ok) {
           if (busy) { setResult(busy, messageOf(res), true); }
