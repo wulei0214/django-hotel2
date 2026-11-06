@@ -110,6 +110,27 @@ def validate_refund_entity(property_obj, entity_id, requested_by):
     return refund
 
 
+def validate_reversal_entity(property_obj, entity_id, requested_by):
+    """红字冲销审批：原凭证必须存在、属于当前物业且尚未被冲销。"""
+    from apps.billing.models import ApprovalRecord, LedgerEntry
+    entry = LedgerEntry.objects.filter(pk=_int_or_none(entity_id)).first()
+    if entry is None or entry.property_id != property_obj.pk:
+        raise ApiError("RESOURCE_NOT_FOUND", "账本凭证不存在或不属于当前物业。")
+    if entry.entry_type == LedgerEntry.EntryType.REVERSAL:
+        raise ApiError("BUSINESS_CONFLICT", "红字冲销凭证不能再次冲销。")
+    if LedgerEntry.objects.filter(void_of=entry).exists():
+        raise ApiError("BUSINESS_CONFLICT", "该账本凭证已经冲销。")
+    existing = ApprovalRecord.objects.filter(
+        property=property_obj, action_code="billing.reversal",
+        entity_type="LedgerEntry", entity_id=str(entry.pk),
+        status__in=(ApprovalRecord.Status.PENDING,
+                    ApprovalRecord.Status.APPROVED),
+    ).first()
+    if existing is not None and existing.requested_by_id != requested_by.pk:
+        raise ApiError("BUSINESS_CONFLICT", "该凭证已有其他财务人员发起的冲销申请。")
+    return entry
+
+
 def validate_business_date_entity(property_obj, entity_id, requested_by):
     """营业日重开审批：BusinessDate 必须属当前物业且已关账（对齐夜审语义）。"""
     from apps.core.models import BusinessDate
@@ -148,6 +169,18 @@ class ApprovalActionRegistry:
             payload_fields={"payment_id": 20, "amount": 16, "currency": 3},
             validate_entity=validate_refund_entity,
         ),
+        # 红字冲销：财务申请并执行，值班经理/店长单独审批；执行时关联审批事实。
+        "billing.reversal": ApprovalActionSpec(
+            action_code="billing.reversal",
+            entity_type="LedgerEntry",
+            title="账本红字冲销审批",
+            request_permission="billing.reverse_entry",
+            approve_permission="billing.reversal_approve",
+            executor="apps.billing.services_v2.BillingService.reverse_entry",
+            payload_fields={},
+            validate_entity=validate_reversal_entity,
+            sod_rule="财务申请/执行；值班经理或店长审批；审批人≠执行人",
+        ),
         # 营业日重开审批：执行链 NightAuditService.request_reopen → approve_reopen
         "night_audit.reopen": ApprovalActionSpec(
             action_code="night_audit.reopen",
@@ -180,9 +213,6 @@ class ApprovalActionRegistry:
 
     # 待实现动作登记区（P0-02 §1）：不得出现在 _ACTIONS，仅作台账。
     PENDING_ACTIONS = {
-        "billing.reversal":
-            "红字冲销审批未实现：BillingService.reverse_entry 目前凭原因+审计"
-            "直接执行红字凭证，双人审批链路待实现后再注册。",
         "privacy.pii_export_unified":
             "统一审批面的 PII 批量导出审批待实现：旧通道 privacy.export_staff"
             "已按内部专用动作注册（api_requestable=False），P0-04 统一授权迁移"
