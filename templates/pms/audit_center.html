@@ -126,9 +126,18 @@
         </table>
       </div>
       <div class="pms-pager">
-        <button id="au-prev" type="button" class="au-ghost">上一页</button>
-        <span id="au-page-info">—</span>
-        <button id="au-next" type="button" class="au-ghost">下一页</button>
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label for="au-page-size">每页</label>
+          <select id="au-page-size" aria-label="审计事件每页条数">
+            <option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option>
+          </select>
+          <button id="au-prev" type="button" class="au-ghost">上一页</button>
+          <span id="au-page-info">—</span>
+          <label for="au-goto-page">跳至</label>
+          <input id="au-goto-page" type="number" min="1" step="1" value="1" aria-label="审计事件跳转页码" style="width:72px">
+          <button id="au-goto-btn" type="button" class="au-ghost">跳转</button>
+          <button id="au-next" type="button" class="au-ghost">下一页</button>
+        </span>
       </div>
       {# 留存说明：来自 API meta.retention_note（不虚构年限的常量文案） #}
       <p class="au-note" id="au-retention-note">留存说明：读取中…</p>
@@ -165,7 +174,7 @@
 (function () {
   "use strict";
   var api = "/api/v1/audit";
-  var state = { page: 1, pageSize: 20, hasNext: false, hasPrev: false };
+  var state = { page: 1, pageSize: 20, hasNext: false, hasPrev: false, totalPages: 1 };
 
   function $(id) { return document.getElementById(id); }
   function escapeHtml(value) {
@@ -312,14 +321,17 @@
     getJSON(api + "/events" + filterQuery({
       page: state.page, page_size: state.pageSize })).then(function (body) {
       var pagination = body.meta.pagination;
+      state.page = pagination.page;
+      state.totalPages = Math.max(1, Math.ceil(pagination.total / pagination.page_size));
       state.hasNext = pagination.has_next;
       state.hasPrev = pagination.has_previous;
+      $("au-goto-page").max = String(state.totalPages);
+      $("au-goto-page").value = String(pagination.page);
       $("au-prev").disabled = !pagination.has_previous;
       $("au-next").disabled = !pagination.has_next;
       $("au-page-info").textContent =
         "第 " + pagination.page + " / " +
-        Math.max(1, Math.ceil(pagination.total / pagination.page_size)) +
-        " 页 · 共 " + pagination.total + " 条";
+        state.totalPages + " 页 · 共 " + pagination.total + " 条";
       $("au-list-meta").textContent = "稳定排序：时间倒序（-created_at,-id）";
       var note = body.meta.retention_note;
       if (note) $("au-retention-note").textContent = "留存说明：" + note;
@@ -384,6 +396,28 @@
   });
   $("au-next").addEventListener("click", function () {
     if (state.hasNext) loadEvents(state.page + 1);
+  });
+  $("au-page-size").addEventListener("change", function () {
+    var parsed = Number.parseInt(this.value, 10);
+    if ([20, 50, 100].indexOf(parsed) >= 0) {
+      state.pageSize = parsed;
+      loadEvents(1);
+    }
+  });
+  function gotoAuditPage() {
+    var input = $("au-goto-page");
+    var target = Number.parseInt(input.value, 10);
+    if (!Number.isInteger(target) || target < 1 || target > state.totalPages) {
+      input.setCustomValidity("请输入 1 至 " + state.totalPages + " 之间的页码。");
+      input.reportValidity();
+      return;
+    }
+    input.setCustomValidity("");
+    loadEvents(target);
+  }
+  $("au-goto-btn").addEventListener("click", gotoAuditPage);
+  $("au-goto-page").addEventListener("keydown", function (event) {
+    if (event.key === "Enter") gotoAuditPage();
   });
   $("au-drawer-close").addEventListener("click", closeDetail);
   $("au-drawer-mask").addEventListener("click", closeDetail);
