@@ -174,33 +174,71 @@ def _source_label(source):
 
 
 def _folio_summaries(property_obj, reservation_ids):
-    """按预订批量读取账单摘要；不向前台列表泄漏完整账本流水。"""
+    """按预订汇总所有未结账单余额；付款操作权限/状态仍以 MASTER 账单为准。
+
+    Folio 模型允许一个预订有多个账单。不能把每张账单直接写入
+    result[reservation_id]，否则后处理账单会覆盖之前账单的摘要。
+    预订余额口径按账单模型约定：所有 OPEN Folio 的带符号凭证合计；
+    CLOSED/VOIDED Folio 保留历史，不计入当前余额。
+    """
     if not reservation_ids:
         return {}
     result = {}
-    folios = Folio.objects.filter(
-        property=property_obj, reservation_id__in=reservation_ids
-    ).prefetch_related("entries", "payments")
+    folios = (
+        Folio.objects.filter(property=property_obj, reservation_id__in=reservation_ids)
+        .select_related("reservation")
+        .prefetch_related("entries", "payments")
+        .order_by("reservation_id", "folio_type", "id")
+    )
     for folio in folios:
+        summary = result.setdefault(folio.reservation_id, {
+            "folio_id": None,
+            "status": "NOT_OPENED",
+            "status_label": L.folio_summary_status_label("NOT_OPENED"),
+            "charges": Decimal("0.00"),
+            "credits": Decimal("0.00"),
+            "balance": Decimal("0.00"),
+            "pending_payment_count": 0,
+            "currency": folio.reservation.currency,
+            "currency_label": L.currency_label(folio.reservation.currency),
+            "folio_count": 0,
+            "open_folio_count": 0,
+        })
+        summary["folio_count"] += 1
+        # 收款/押金表单只写入主账单，因此状态与 folio_id 明确取 MASTER。
+        if folio.folio_type == Folio.FolioType.MASTER:
+            summary["folio_id"] = folio.pk
+            summary["status"] = folio.status
+            summary["status_label"] = L.folio_summary_status_label(folio.status)
+
+        # 预订当前余额只统计未结账单；已结/作废凭证仍保留在账单详情中。
+        if folio.status != Folio.Status.OPEN:
+            continue
+        if folio.currency != summary["currency"]:
+            # 不允许把不同币种金额直接相加；保留冲突标记，提示必须人工核对。
+            summary["currency_mismatch"] = True
+            continue
         entries = list(folio.entries.all())
-        charges = sum((entry.amount for entry in entries if entry.amount > 0), Decimal("0.00"))
-        credits = sum((-entry.amount for entry in entries if entry.amount < 0), Decimal("0.00"))
-        balance = sum((entry.amount for entry in entries), Decimal("0.00"))
-        pending_payments = sum(
+        summary["charges"] += sum(
+            (entry.amount for entry in entries if entry.amount > 0),
+            Decimal("0.00"))
+        summary["credits"] += sum(
+            (-entry.amount for entry in entries if entry.amount < 0),
+            Decimal("0.00"))
+        summary["balance"] += sum(
+            (entry.amount for entry in entries), Decimal("0.00"))
+        summary["pending_payment_count"] += sum(
             1 for item in folio.payments.all()
-            if item.status in (Payment.Status.CREATED, Payment.Status.PENDING, Payment.Status.REFUND_PENDING)
+            if item.status in (
+                Payment.Status.CREATED, Payment.Status.PENDING,
+                Payment.Status.REFUND_PENDING)
         )
-        result[folio.reservation_id] = {
-            "folio_id": folio.pk,
-            "status": folio.status,
-            "status_label": L.folio_summary_status_label(folio.status),
-            "charges": str(charges.quantize(Decimal("0.01"))),
-            "credits": str(credits.quantize(Decimal("0.01"))),
-            "balance": str(balance.quantize(Decimal("0.01"))),
-            "pending_payment_count": pending_payments,
-            "currency": folio.currency,
-            "currency_label": L.currency_label(folio.currency),
-        }
+        summary["open_folio_count"] += 1
+
+    for summary in result.values():
+        for key in ("charges", "credits", "balance"):
+            summary[key] = str(summary[key].quantize(Decimal("0.01")))
+        summary.setdefault("currency_mismatch", False)
     return result
 
 
