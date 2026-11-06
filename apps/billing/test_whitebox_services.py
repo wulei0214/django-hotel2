@@ -20,6 +20,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
@@ -324,3 +325,114 @@ class MoneyBoundaryTests(WhiteboxBillingBase):
         with self.assertRaises(ValueError):
             BillingService._money("12.345")  # 超过两位小数
         self.assertEqual(BillingService._money("12.34"), Decimal("12.34"))
+
+class PaymentRefundModelSaveRegressionTests(WhiteboxBillingBase):
+    """回归：支付状态可正常更新；退款不可变字段守卫必须挂在 Refund 而非 Payment。"""
+
+    def test_payment_status_update_does_not_query_refund_only_fields(self):
+        reservation = self._make_reservation("WBBMODEL001")
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="mock", provider_ref="WBB-MODEL-PAY-001",
+            method="CARD", amount=Decimal("100.00"), currency="CNY",
+            status=Payment.Status.PENDING)
+        payment.status = Payment.Status.SUCCEEDED
+        payment.paid_at = timezone.now()
+        payment.save(update_fields=("status", "paid_at", "updated_at"))
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.SUCCEEDED)
+
+        payment.amount = Decimal("101.00")
+        with self.assertRaises(ValidationError):
+            payment.save()
+
+    def test_refund_save_allows_status_progression_but_protects_request_facts(self):
+        reservation = self._make_reservation("WBBMODEL002")
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref="WBB-MODEL-PAY-002",
+            method="CARD", amount=Decimal("100.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        refund = Refund.objects.create(
+            property=self.property, payment=payment, amount=Decimal("20.00"),
+            currency="CNY", reason="模型保存回归", idempotency_key="wbb-model-refund",
+            provider_ref="WBB-MODEL-RFD-002", requested_by=self.operator)
+        approver = User.objects.create_user(username="wbb-model-approver")
+        refund.status = Refund.Status.APPROVED
+        refund.approved_by = approver
+        refund.save(update_fields=("status", "approved_by"))
+        refund.refresh_from_db()
+        self.assertEqual(refund.status, Refund.Status.APPROVED)
+        self.assertEqual(refund.approved_by_id, approver.pk)
+
+        refund.amount = Decimal("21.00")
+        with self.assertRaises(ValidationError):
+            refund.save()
+
+
+class RefundThreePartyExecutionTests(WhiteboxBillingBase):
+    """申请、审批、执行必须是三个不同账号，账本仅在执行后落一笔。"""
+
+    def test_refund_three_party_flow_posts_once_and_is_idempotent(self):
+        reservation = self._make_reservation("WBBRFD3P001")
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref="WBB-3P-PAY-001",
+            method="CARD", amount=Decimal("120.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        approver = User.objects.create_user(username="wbb-refund-approver")
+        executor = User.objects.create_user(username="wbb-refund-executor")
+
+        refund, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="45.00", reason="三方退款闭环测试",
+            requested_by=self.operator, idempotency_key="wbb-refund-3p-001")
+        self.assertTrue(created)
+        self.assertEqual(refund.status, Refund.Status.PENDING)
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
+
+        approved, changed = BillingService.approve_refund(
+            property_obj=self.property, refund_id=refund.pk, approved_by=approver)
+        self.assertTrue(changed)
+        self.assertEqual(approved.status, Refund.Status.APPROVED)
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
+
+        with self.assertRaises(ValueError):
+            BillingService.execute_refund(
+                property_obj=self.property, refund_id=refund.pk,
+                executed_by=self.operator, confirm_refund_paid=True,
+                idempotency_key="wbb-refund-exec-bad-1")
+        with self.assertRaises(ValueError):
+            BillingService.execute_refund(
+                property_obj=self.property, refund_id=refund.pk,
+                executed_by=approver, confirm_refund_paid=True,
+                idempotency_key="wbb-refund-exec-bad-2")
+
+        executed, created = BillingService.execute_refund(
+            property_obj=self.property, refund_id=refund.pk,
+            executed_by=executor, confirm_refund_paid=True,
+            execution_reference="BANK-REF-3P-001",
+            idempotency_key="wbb-refund-exec-3p-001")
+        self.assertTrue(created)
+        self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
+        self.assertEqual(executed.requested_by_id, self.operator.pk)
+        self.assertEqual(executed.approved_by_id, approver.pk)
+        self.assertEqual(executed.executed_by_id, executor.pk)
+        self.assertEqual(executed.execution_reference, "BANK-REF-3P-001")
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference=f"refund:{refund.provider_ref}").count(), 1)
+
+        replay, replay_created = BillingService.execute_refund(
+            property_obj=self.property, refund_id=refund.pk,
+            executed_by=executor, confirm_refund_paid=True,
+            execution_reference="BANK-REF-3P-001",
+            idempotency_key="wbb-refund-exec-3p-001")
+        self.assertFalse(replay_created)
+        self.assertEqual(replay.pk, executed.pk)
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference=f"refund:{refund.provider_ref}").count(), 1)
+
