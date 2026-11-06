@@ -517,6 +517,17 @@ class HousekeepingPageAndRegistryTests(HousekeepingCenterTestBase):
         self.assertIn("const canRelease = true", content)
         self.assertIn("const canMaintain = true", content)
 
+    def test_page_api_parser_handles_html_error_responses(self):
+        """403/500 HTML 响应应保留 HTTP 状态，不应直接触发 JSON 解析异常。"""
+        self.client.force_login(self.dm)
+        response = self.client.get("/manage/housekeeping/")
+        self.assertEqual(response.status_code, 200, response.content)
+        content = response.content.decode("utf-8")
+        self.assertIn("const raw = await response.text()", content)
+        self.assertIn("JSON.parse(raw)", content)
+        self.assertIn("服务器返回非 JSON 响应（HTTP ", content)
+        self.assertNotIn("const payload = await response.json()", content)
+
     def test_filter_controls_refresh_room_grid_without_query_click(self):
         self.client.force_login(self.dm)
         response = self.client.get("/manage/housekeeping/")
