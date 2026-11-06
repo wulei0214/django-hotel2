@@ -325,7 +325,7 @@ class SessionCsrfTemplateTokenTests(E2EFlowTestBase):
 
     @override_settings(CSRF_USE_SESSIONS=True)
     def test_notification_page_token_is_accepted_and_wrong_token_is_rejected(self):
-        staff = self._make_staff("session_csrf_frontdesk", "前台")
+        staff = self._make_staff("session_csrf_owner", "店长")
         client = Client(enforce_csrf_checks=True)
         client.force_login(staff)
 
