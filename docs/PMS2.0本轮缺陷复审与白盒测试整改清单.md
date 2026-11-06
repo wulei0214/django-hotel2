@@ -469,3 +469,38 @@
 | P2-07 夜审重开后影响清单/对账 | 未关闭 | 依赖 DEC-13 的影响范围、重算、失败恢复规则 |
 
 > 注意：原始用户补充报告基于 `cec50ab)，上一轮全目录复审基于 `514bd80a`；当前 main 已前进至 `61612b15`。历史缺陷必须按本表和最新代码重新定级，不能把旧基线的缺陷照搬成当前缺陷。
+
+
+---
+
+## 11. 2026-11-06 第六批：夜审与清洁维修权限语义拆分
+
+### 已提交代码
+
+1. **夜审只读与执行分离**
+   - 新增 `core.night_audit_view`，挂载于 `core.BusinessDate`。
+   - `/manage/night-audit/`、夜审预览、营业日/夜审历史/break-glass 只读接口使用 `core.night_audit_view`。
+   - 正式夜审执行仍要求 `hotelapp.night_audit_execute`；营业日重开、break-glass 执行和事后复核保持原专项权限。
+   - 新迁移 `apps/core/migrations/0012_night_audit_view_permission.py` 只复制原执行权限的组授权，保持现有可见角色集合，不扩大权限；新增只读角色不能由此自动获得执行权。
+   - 增加“仅有查看权不能执行夜审”的回归测试。
+
+2. **清洁与维修专项权限分离**
+   - 新增 `inventory.housekeeping_view`、`inventory.housekeeping_update`、`inventory.maintenance_manage`。
+   - 清洁/维修 API、页面按钮和领域服务统一使用专项权限；维修登记不再复用 `hotelapp.no_show_handle`，清洁流转不再复用 `hotelapp.change_room`。
+   - 新迁移 `apps/inventory/migrations/0005_housekeeping_permission_codes.py` 复制原有权限组映射，不扩大既有角色授权范围。
+   - 服务层增加独立权限复核，防止绕过 API 直接调用写服务。
+   - 更新白盒服务测试夹具，确保服务层测试使用真实任职和岗位授权。
+
+### 当前验证边界
+
+- 以上代码已提交 main；GitHub Actions 对当前最新 SHA 的 `tests` 与 `Django CI` 仍在运行。
+- 本轮出现过的早期 Django CI 失败包括迁移选项漂移（已修正权限选项 tuple/list 差异）以及模型权限变更尚未提交迁移的中间提交；这些旧 SHA 的失败不能当成最终修复提交的结果。
+- 只有最终最新 SHA 的工作流完成成功，才可标记 CI 通过；MySQL 迁移和九角色本地登录仍待用户本地验收。
+
+### 仍未关闭
+
+- 报表页面/API 权限矩阵仍需逐报表统一，避免页面卡片和 API 授权口径不同。
+- 通知岗位广播已读仍是通知记录级全局布尔值，需要用户级已读关系模型。
+- 班次现金对账仍缺 Payment/Refund 班次关联和现金支出事实。
+- 退款审批与执行三分离依赖 DEC-10 硬冻结。
+- 夜审完整阻断项和重开后的对账影响摘要仍需补齐。
