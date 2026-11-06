@@ -371,10 +371,23 @@
         tr.appendChild(el("td", "", row.reference));
         body.appendChild(tr);
       });
-      meta.textContent = "预览完成：在住 " + data.stay_count + " · 待过账 "
-          + data.charge_count + " 笔合计 " + data.charge_total + " " + data.currency;
-      previewReady = true;
-      runBtn.disabled = false;
+      const blockers = Array.isArray(data.blockers) ? data.blockers : [];
+      blockers.forEach(function (item) {
+        const tr = el("tr", "na-fail");
+        const td = el("td", "pms-state");
+        td.colSpan = 6;
+        td.textContent = "[" + (item.severity || "warning") + "] " +
+            (item.message || item.code || "存在未解决阻断") +
+            (item.suggested_action ? " 处理建议：" + item.suggested_action : "");
+        tr.appendChild(td);
+        body.appendChild(tr);
+      });
+      meta.textContent = blockers.length
+          ? "预览完成但存在 " + blockers.length + " 项阻断，夜审不可执行。"
+          : "预览完成：在住 " + data.stay_count + " · 待过账 "
+              + data.charge_count + " 笔合计 " + data.charge_total + " " + data.currency;
+      previewReady = blockers.length === 0 && data.can_run !== false;
+      runBtn.disabled = !previewReady;
       runBtn.dataset.date = data.business_date;
       runBtn.dataset.total = data.charge_total + " " + data.currency;
       runBtn.dataset.count = data.charge_count;
