@@ -26,6 +26,8 @@ class ImmutableFinancialFactQuerySet(models.QuerySet):
 class ApprovalRecord(models.Model):
     """不可变高危审批事实；退款、冲销、夜审重开等通过此记录执行双人控制。"""
 
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
+
     class Status(models.TextChoices):
         PENDING = "PENDING", "待审批"
         APPROVED = "APPROVED", "已批准"
@@ -70,13 +72,34 @@ class ApprovalRecord(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        if self.pk:
-            previous = type(self).objects.filter(pk=self.pk).values_list(
-                "status", flat=True).first()
-            if previous != self.Status.PENDING:
-                raise ValidationError("已决策审批记录不可修改")
-            if self.status == self.Status.PENDING:
-                raise ValidationError("审批记录只允许从待审批转为最终状态")
+        if self._state.adding:
+            if self.status != self.Status.PENDING or self.approved_by_id or self.approved_at:
+                raise ValidationError("审批记录必须从待审批状态创建。")
+        else:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "property_id", "action_code", "entity_type", "entity_id",
+                "requested_by_id", "reason", "payload_snapshot",
+                "idempotency_key", "expires_at", "status").first()
+            if previous:
+                immutable = (
+                    "property_id", "action_code", "entity_type", "entity_id",
+                    "requested_by_id", "reason", "payload_snapshot",
+                    "idempotency_key", "expires_at")
+                if any(previous[field] != getattr(self, field) for field in immutable):
+                    raise ValidationError("审批申请事实不可修改。")
+                if previous["status"] != self.Status.PENDING:
+                    raise ValidationError("已决策审批记录不可修改。")
+                if self.status not in (
+                        self.Status.APPROVED, self.Status.REJECTED,
+                        self.Status.EXPIRED, self.Status.CANCELLED):
+                    raise ValidationError("审批记录只允许从待审批转为最终状态。")
+                if self.status in (self.Status.APPROVED, self.Status.REJECTED):
+                    if not self.approved_by_id or not self.approved_at:
+                        raise ValidationError("审批通过/驳回必须记录审批人和时间。")
+                    if self.approved_by_id == self.requested_by_id:
+                        raise ValidationError("申请人不能审批自己的申请。")
+                elif self.approved_by_id:
+                    raise ValidationError("过期/撤销审批不得伪造审批人。")
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
