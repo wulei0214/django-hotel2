@@ -500,8 +500,12 @@ class Notification(models.Model):
     severity = models.CharField(
         max_length=8, choices=Severity.choices, default=Severity.INFO,
         verbose_name="级别")
-    is_read = models.BooleanField(default=False, verbose_name="已读")
-    read_at = models.DateTimeField(null=True, blank=True, verbose_name="已读时间")
+    # 兼容旧数据字段；个人已读状态改由 NotificationRead 按员工档案记录。
+    is_read = models.BooleanField(default=False, verbose_name="旧版全局已读（兼容）")
+    read_at = models.DateTimeField(null=True, blank=True, verbose_name="旧版全局已读时间（兼容）")
+    resolved_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="待办解决时间",
+        help_text="仅运营待办源业务解决时写入；与员工个人已读状态分离")
     dedupe_key = models.CharField(
         max_length=128, null=True, blank=True, verbose_name="待办去重键",
         help_text="运营待办业务键（来源代码|业务键|目标组）；空=人工/公告类，不参与自动销项")
@@ -525,9 +529,39 @@ class Notification(models.Model):
                          name="idx_notif_rcpt_read_time"),
             models.Index(fields=("role_group", "is_read"),
                          name="idx_notif_group_read"),
+            models.Index(fields=("property", "resolved_at", "-created_at"),
+                         name="idx_notif_prop_resolved"),
         ]
 
     def __str__(self):
         audience = self.recipient_id if self.recipient_id else (
             f"组:{self.role_group.name}" if self.role_group else "无接收人")
         return f"[{self.get_category_display()}] {self.title} → {audience}"
+
+
+class NotificationRead(models.Model):
+    """员工个人通知已读回执；岗位广播的每位接收员工独立记录。"""
+
+    notification = models.ForeignKey(
+        Notification, on_delete=models.CASCADE, related_name="read_receipts",
+        verbose_name="通知")
+    staff_profile = models.ForeignKey(
+        "identity.StaffProfile", on_delete=models.PROTECT,
+        related_name="notification_reads", verbose_name="员工档案")
+    read_at = models.DateTimeField(default=timezone.now, verbose_name="个人已读时间")
+
+    class Meta:
+        verbose_name = "通知个人已读回执"
+        verbose_name_plural = "通知个人已读回执"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("notification", "staff_profile"),
+                name="uq_notification_read_staff"),
+        ]
+        indexes = [
+            models.Index(fields=("staff_profile", "-read_at"),
+                         name="idx_notifread_staff_time"),
+        ]
+
+    def __str__(self):
+        return f"通知#{self.notification_id} 已由员工档案#{self.staff_profile_id}读取"
