@@ -393,3 +393,15 @@ def approve_refund(*, property_obj, refund_id, approved_by):
             approved_by=approved_by)
     except ValueError as exc:
         raise LifecycleOperationError(str(exc)) from exc
+
+
+@transaction.atomic
+def reject_refund(*, property_obj, refund_id, rejected_by, reason):
+    """退款驳回统一委托 BillingService，保持支付状态、审批与审计同事务。"""
+    from apps.billing.services_v2 import BillingService
+    try:
+        return BillingService.reject_refund(
+            property_obj=property_obj, refund_id=refund_id,
+            rejected_by=rejected_by, reason=reason)
+    except ValueError as exc:
+        raise LifecycleOperationError(str(exc)) from exc
