@@ -291,7 +291,7 @@ class AuditCenterDetailTests(AuditCenterTestBase):
             entity_id="77", reason="调价",
             before={"price": "300.00"}, after={"price": "388.00"},
         )
-        AuditEvent.objects.filter(pk=event.pk).update(
+        AuditEvent._base_manager.filter(pk=event.pk).update(
             request_id="req-detail-001", ip="10.0.0.9",
             user_agent="AuditCenterTest/1.0")
         body = self.client.get(f"/api/v1/audit/events/{event.pk}").json()
