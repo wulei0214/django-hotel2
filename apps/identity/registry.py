@@ -214,7 +214,8 @@ MODULE_REGISTRY_V2 = {
             "approve": "billing.refund_approve",
             "special": ("hotelapp.finance_access",
                         "billing.refund_request", "billing.refund_approve",
-                        "billing.refund_execute", "billing.cashier_shift_manage",
+                        "billing.refund_execute", "billing.reverse_entry",
+                        "billing.reversal_approve", "billing.cashier_shift_manage",
                         "billing.cash_movement_manage"),
         },
         "extra_codes": (),
@@ -411,10 +412,9 @@ ROLE_REGISTRY = (
 # ---------------------------------------------------------------------------
 # 口径：矩阵页 ACTION_PERMS 9 点 + 矩阵外 5 点（F-09：billing.refund_*、
 # core.breakglass_review、identity.staff_manage、inventory.manage_rates）。
-# key "reverse_entry"（红字冲销/反结账）解析到现实存在的唯一权限码
-# hotelapp.reverse_checkout——F-08：其唯一检查点已随 410 退役，PMS2 红字冲销
-# （LedgerEntryService.reverse_entry，审计 action_code=billing.reverse_entry）
-# 暂无独立权限码，待 Phase 4 补 API 时以本点授权。
+# 旧 hotelapp.reverse_checkout 已随旧路由 410 退役，不再复活。
+# PMS2 红字冲销现使用 billing.reverse_entry（财务申请/执行）与
+# billing.reversal_approve（值班经理/店长审批）两项独立权限。
 # F-08 部分闭环（基线 2.0 §4.3）：hotelapp.room_release_ready 恢复登记——
 # 清洁与维修工作台净房放行（INSPECTING→CLEAN）为其合法执行点
 # （apps/inventory/services.change_housekeeping_status 服务层 + API 层双重校验）。
@@ -454,6 +454,20 @@ SPECIAL_PERMISSIONS = (
         "module": "finance", "risk": "high",
         "requires_reason": True, "requires_confirm": True,
         "note": "已批准退款的独立执行权；执行人必须区别于申请人和审批人",
+    },
+    {
+        "key": "reversal_request_execute",
+        "codename": "billing.reverse_entry",
+        "module": "finance", "risk": "high",
+        "requires_reason": True, "requires_confirm": True,
+        "note": "财务申请并执行红字冲销；必须关联值班经理/店长已批准的审批记录",
+    },
+    {
+        "key": "reversal_approve",
+        "codename": "billing.reversal_approve",
+        "module": "finance", "risk": "high",
+        "requires_reason": True, "requires_confirm": False,
+        "note": "值班经理/店长审批红字冲销；审批人与执行人必须不同",
     },
     {
         "key": "cashier_shift_manage",
