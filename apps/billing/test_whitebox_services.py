@@ -578,6 +578,55 @@ class RefundDatabaseInvariantTests(WhiteboxBillingBase):
             refund.save()
 
 
+
+
+    def test_cash_refund_cannot_overdraw_execution_shift(self):
+        reservation = self._make_reservation("WBBCASHSHIFT003")
+        applicant_shift, _ = BillingService.open_shift(
+            property_obj=self.property, cashier=self.operator,
+            opening_cash="0.00")
+        payment = BillingService.collect_payment(
+            property_obj=self.property, reservation=reservation,
+            amount="100.00", method="CASH", collected_by=self.operator,
+            reference="WBB-CASH-PAY-002")
+        self.assertEqual(payment.cashier_shift_id, applicant_shift.pk)
+
+        approver = User.objects.create_user(username="wbb-cash-approver-2")
+        executor = User.objects.create_user(username="wbb-cash-executor-2")
+        execution_shift, _ = BillingService.open_shift(
+            property_obj=self.property, cashier=executor,
+            opening_cash="0.00")
+        refund, _ = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="20.00", reason="现金退款余额不足测试",
+            requested_by=self.operator, idempotency_key="wbb-cash-refund-002")
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=refund.pk,
+            approved_by=approver)
+
+        with self.assertRaises(ValueError):
+            BillingService.execute_refund(
+                property_obj=self.property, refund_id=refund.pk,
+                executed_by=executor, confirm_refund_paid=True,
+                idempotency_key="wbb-cash-refund-exec-002")
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
+
+        BillingService.record_shift_movement(
+            shift_id=execution_shift.pk, direction="IN", amount="20.00",
+            reason="实际领取现金备用金", created_by=executor,
+            idempotency_key="wbb-cash-fund-002")
+        executed, created = BillingService.execute_refund(
+            property_obj=self.property, refund_id=refund.pk,
+            executed_by=executor, confirm_refund_paid=True,
+            idempotency_key="wbb-cash-refund-exec-002")
+        self.assertTrue(created)
+        self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
+        self.assertEqual(executed.execution_shift_id, execution_shift.pk)
+        self.assertEqual(
+            BillingService.cash_shift_expected_cash(execution_shift),
+            Decimal("0.00"))
+
 class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
     """防止 ORM bulk update/delete 绕过财务模型的实例级不可变保护。"""
 
