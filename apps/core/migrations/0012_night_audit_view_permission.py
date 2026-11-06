@@ -55,10 +55,10 @@ class Migration(migrations.Migration):
             options={
                 "verbose_name": "营业日",
                 "verbose_name_plural": "营业日",
-                "permissions": [
+                "permissions": (
                     ("breakglass_review", "可以复核紧急营业日重开"),
                     ("night_audit_view", "可以查看营业日与夜审记录"),
-                ],
+                ),
             },
         ),
         migrations.RunPython(grant_night_audit_view, keep_grants_on_reverse),
