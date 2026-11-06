@@ -909,6 +909,22 @@ class BillingRefundThreePartyApiTests(BillingCenterTestBase):
         self.assertFalse(LedgerEntry.objects.filter(
             reference=f"refund:{refund.provider_ref}").exists())
 
+        # 通用 ApprovalRecord 入口不得单独审批/驳回退款，否则只改变审批记录、
+        # 不同步 Refund.status 和 Payment.status，会制造“已批但仍待审批”的悬空流程。
+        generic_approve = _post_json(
+            self.client,
+            f"/api/v1/approvals/{refund.approval_record_id}/approve", {})
+        self.assertEqual(generic_approve.status_code, 409, generic_approve.content)
+        generic_reject = _post_json(
+            self.client,
+            f"/api/v1/approvals/{refund.approval_record_id}/reject",
+            {"reason": "必须走退款专用流程"})
+        self.assertEqual(generic_reject.status_code, 409, generic_reject.content)
+        refund.refresh_from_db()
+        approval = ApprovalRecord.objects.get(pk=refund.approval_record_id)
+        self.assertEqual(refund.status, Refund.Status.PENDING)
+        self.assertEqual(approval.status, ApprovalRecord.Status.PENDING)
+
         # 申请人即使拥有审批权限，也不能审批自己的退款。
         self._grant(self.finance, "refund_approve")
         self._login(self.finance)
