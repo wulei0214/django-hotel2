@@ -219,7 +219,7 @@ MODULE_REGISTRY_V2 = {
                         "billing.cash_movement_manage"),
         },
         "extra_codes": (),
-        "notes": "跨 App 模块：入口码 hotelapp.finance_access，退款双权 "
+        "notes": "跨 App 模块：入口码 hotelapp.finance_access；退款三方分离；红字冲销由财务申请/执行、管理岗位审批；"
                  "billing.refund_request/refund_approve/refund_execute 三方分离（SoD），"
                  "夜审复核 core.breakglass_review 归 night_audit 模块。",
     },
@@ -356,14 +356,14 @@ ROLE_REGISTRY = (
         "key": "duty_manager", "name": "值班经理", "group_name": "值班经理",
         "status": ROLE_ACTIVE, "editable": True, "builtin": True,
         "risk_level": "high",
-        "description": "当日管理者：夜审执行/净房放行/未到处理/退款审批/"
+        "description": "当日管理者：夜审执行/净房放行/未到处理/退款与冲销审批/"
                        "break-glass；持 31 项授权",
     },
     {
         "key": "finance", "name": "财务", "group_name": "财务",
         "status": ROLE_ACTIVE, "editable": True, "builtin": True,
         "risk_level": "high",
-        "description": "财务页/敏感导出申请/退款申请/冲账执行权（delete 列）；"
+        "description": "财务页/敏感导出申请/退款申请/冲账申请与执行权（delete 列）；"
                        "持 13 项授权",
     },
     {
