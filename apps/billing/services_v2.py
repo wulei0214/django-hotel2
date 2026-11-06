@@ -824,6 +824,7 @@ class BillingService:
         if shift.cashier_id != closed_by.pk and not allow_other_cashier:
             raise ValueError("只能关闭本人班次；代关其他员工班次需要财务/管理权限。")
         actual = BillingService._money(actual_cash)
+        variance_reason = str(variance_reason or "").strip()
         if actual < 0:
             raise ValueError("实盘现金不能为负数。")
         cash_facts = BillingService.cash_shift_breakdown(shift)
