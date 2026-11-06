@@ -727,3 +727,29 @@ class BillingCenterPageTests(BillingCenterTestBase):
         self.assertIn("/api/v1/billing/folios", content)
         self.assertIn("/api/v1/billing/payments", content)
         self.assertIn("/api/v1/billing/refunds", content)
+
+
+
+class BillingSummaryCacheInvalidationTests(BillingCenterTestBase):
+    """账本写入后，未结余额摘要缓存必须在事务提交时失效。"""
+
+    def test_post_entry_invalidates_open_summary_cache_after_commit(self):
+        from django.core.cache import cache
+
+        _reservation, folio = self._booking_with_outstanding()
+        key = "billing:open-summary:%s" % self.property.pk
+        cache.set(key, {"open_folios": 1, "open_balance": "300.00"}, 60)
+        self.assertIsNotNone(cache.get(key))
+
+        with self.captureOnCommitCallbacks(execute=True):
+            BillingService.post_entry(
+                property_obj=self.property,
+                folio=folio,
+                entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+                amount=Decimal("1.00"),
+                reference="bc-cache-invalidation-%s" % uuid.uuid4().hex,
+                description="缓存失效回归测试",
+                posted_by=self.finance,
+            )
+
+        self.assertIsNone(cache.get(key))
