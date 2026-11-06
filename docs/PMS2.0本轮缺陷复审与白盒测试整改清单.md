@@ -561,3 +561,14 @@
 - 最新代码提交：`645e9aa`（退款超时任务回归）及之前 `4b7a27a`、`a8301e5`、`f4f3da7`（班次 MySQL 触发器）。
 - 当前 main 文档提交：`697f840`。最新 SHA 对应的 MySQL tests 与 Django CI 必须重新跑完；本地 MySQL 账号授权、生产触发器和 OS 定时任务仍待部署验收。
 
+
+
+### 12.5 第九批自动化验收结果
+
+代码 SHA `9b982b0355afa7fc9154f02ce9dda75bf5aa19b6` 已取得完整自动化成功样本：
+
+- [Django CI · 9b982b0](https://github.com/wulei0214/django-hotel2/actions/runs/42231517693)：系统检查、迁移漂移检查、852 项测试全部通过。
+- [MySQL 8 tests · 9b982b0](https://github.com/wulei0214/django-hotel2/actions/runs/42231517610)：MySQL 迁移成功、852 项测试通过（148.570 秒）、安装和检查 7 条数据库触发器成功。
+- 最新 main SHA `c7f12247b527c3c1f41446f7c51ddad3defbc24d` 仅进一步加强触发器定义检查，Django CI 和 MySQL tests 正在重跑，最终仍以该 SHA 的完成结果为准。
+- 用户本地 MySQL 账号/Host 授权错误、生产库触发器部署、操作系统定时任务部署、浏览器 E2E、DEC-16 财务指标签署仍未关闭。
+
