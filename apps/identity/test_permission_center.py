@@ -596,7 +596,10 @@ class PermissionCenterPageTests(PermissionCenterTestBase):
         # 矩阵列与专项码均来自注册表 ACTIVE 面 + 专项清单
         cell_codes = {col["code"] for m in data["modules"]
                       for col in m["columns"] if col["code"]}
-        self.assertIn("hotelapp.night_audit_execute", cell_codes)
+        # 夜审只读入口使用 core.night_audit_view；高危执行权仍单独列在专项权限，
+        # 不得把“查看夜审”与“执行夜审”合并成同一个矩阵单元格权限。
+        self.assertIn("core.night_audit_view", cell_codes)
+        self.assertIn("hotelapp.night_audit_execute", data["special_codenames"])
         self.assertIn("billing.refund_approve", data["special_codenames"])
 
     def test_legacy_form_save_endpoint_redirects_without_saving(self):
