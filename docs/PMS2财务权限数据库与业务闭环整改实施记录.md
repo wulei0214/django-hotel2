@@ -281,7 +281,7 @@ SQLite CI 仍负责 Django system check、migration drift 和完整测试，但�
   - 物业必须一致；
   - `action_code=billing.refund`；
   - `entity_type=Refund` 且 `entity_id` 指向当前退款；
-  - 申请人、申请原因必须与退款事实一致；
+  - 申请人必须与退款申请人一致；审批申请原因作为独立审批事实保存，不强制等于退款原始原因（兼容通用审批入口）；
   - 审批参数快照中的 payment_id、amount、currency 必须与当前退款一致；
   - 审批状态必须符合当前阶段；执行阶段的审批人必须与 Refund.approved_by 一致。
 - 退款审批、驳回、执行和自动到期任务均在改变业务状态/账务事实前调用上述校验；错链或畸形快照 fail closed，不审批、不驳回、不执行、不释放可退额度。
@@ -291,3 +291,8 @@ SQLite CI 仍负责 Django system check、migration drift 和完整测试，但�
 ### 10.3 自动化验收
 
 本节代码修复后，必须以包含本节文档的最新 main SHA 重新确认 Django CI 与 MySQL 8 tests；旧 SHA 的成功不能外推到后续提交。真实浏览器退款流程、目标 MySQL 凭据/触发器、生产定时任务、备份恢复和九角色实账号验收仍是独立上线门禁。
+
+
+### 10.4 合法通用审批兼容边界
+
+Django CI 的既有回归测试发现，通用审批入口允许员工为本人待处理退款补建审批记录，审批原因可与原退款原因不同（它是独立审批说明）。已调整关联校验：保留物业、动作、实体、申请人和 payment_id/amount/currency 快照校验；不再要求两种原因文本相等。错链到夜审/冲销等其他动作仍然 fail closed。修复提交：`fe89cf0`。
