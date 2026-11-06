@@ -19,6 +19,7 @@ P0-02（审批动作白名单）：
 """
 import json as _json
 
+from django.db import transaction
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.billing.approval_registry import ApprovalActionRegistry
@@ -139,15 +140,33 @@ def approval_request(request):
     entity_id = str(entity_id).strip()
     if not entity_id or len(entity_id) > 64:
         raise ApiError("VALIDATION_ERROR", "entity_id 必须为 1 至 64 个字符。")
-    # 目标对象存在 + 属当前物业 + 状态允许申请（注册表校验器，404/403/409）
-    if spec.validate_entity is not None:
-        spec.validate_entity(property_obj, entity_id, request.user)
     try:
-        record, created = ApprovalService.request_approval(
-            property_obj=property_obj, action_code=action_code,
-            entity_type=entity_type, entity_id=entity_id,
-            requested_by=request.user, reason=reason,
-            payload=body.get("payload"), expires_hours=spec.expires_hours)
+        # 目标对象校验、审批记录创建与业务对象关联必须在同一事务内完成。
+        with transaction.atomic():
+            entity = None
+            if spec.validate_entity is not None:
+                entity = spec.validate_entity(property_obj, entity_id, request.user)
+            record, created = ApprovalService.request_approval(
+                property_obj=property_obj, action_code=action_code,
+                entity_type=entity_type, entity_id=entity_id,
+                requested_by=request.user, reason=reason,
+                payload=body.get("payload"), expires_hours=spec.expires_hours)
+            if action_code == "billing.refund":
+                # 通用审批入口允许为历史/待处理退款补建审批，但不能留下孤立记录。
+                from apps.billing.models import Refund
+                refund = Refund.objects.select_for_update().filter(
+                    pk=entity_id, property=property_obj,
+                    requested_by=request.user,
+                    status=Refund.Status.PENDING).first()
+                if refund is None:
+                    raise ApiError(
+                        "BUSINESS_CONFLICT", "退款状态已变化，不能关联审批记录。")
+                if refund.approval_record_id not in (None, record.pk):
+                    raise ApiError(
+                        "BUSINESS_CONFLICT", "退款已关联其他审批记录，拒绝覆盖。")
+                if refund.approval_record_id is None:
+                    refund.approval_record = record
+                    refund.save(update_fields=("approval_record",))
     except ValueError as exc:
         # 白名单第二层（Service）复核失败 / 业务校验失败 → 400，零副作用
         raise ApiError("VALIDATION_ERROR", str(exc))
