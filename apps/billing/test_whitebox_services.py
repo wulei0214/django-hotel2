@@ -576,6 +576,25 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
             LedgerEntry.objects.filter(
                 reference=f"refund:{refund.provider_ref}").count(), 1)
 
+        # 同一执行幂等键不得被第二笔退款占用；冲突必须是业务错误而非 500。
+        second_refund, second_created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="20.00", reason="执行幂等键冲突回归",
+            requested_by=self.operator, idempotency_key="wbb-refund-3p-002")
+        self.assertTrue(second_created)
+        second_approver = User.objects.create_user(username="wbb-refund-approver-2")
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=second_refund.pk,
+            approved_by=second_approver)
+        with self.assertRaises(ValueError):
+            BillingService.execute_refund(
+                property_obj=self.property, refund_id=second_refund.pk,
+                executed_by=executor, confirm_refund_paid=True,
+                execution_reference="BANK-REF-3P-002",
+                idempotency_key="wbb-refund-exec-3p-001")
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{second_refund.provider_ref}").exists())
+
 
 class CashShiftReconciliationTests(WhiteboxBillingBase):
     """现金班次对账：现金支付、现金退款和现金变动按事实归属到执行班次。"""
@@ -644,6 +663,26 @@ class CashShiftReconciliationTests(WhiteboxBillingBase):
             idempotency_key="wbb-cash-out-001")
         self.assertFalse(replay_created)
         self.assertEqual(replay_after_close.pk, out_movement.pk)
+
+    def test_cash_movement_duplicate_race_returns_existing_fact(self):
+        shift, _ = BillingService.open_shift(
+            property_obj=self.property, cashier=self.operator,
+            opening_cash="10.00")
+        existing = CashierShiftMovement.objects.create(
+            shift=shift, direction=CashierShiftMovement.Direction.IN,
+            amount=Decimal("5.00"), reason="并发补入",
+            idempotency_key="wbb-cash-race-001", created_by=self.operator)
+        flaky = _flaky_first_filter(
+            CashierShiftMovement.objects, CashierShiftMovement.objects.none)
+        with mock.patch.object(
+                CashierShiftMovement.objects, "filter", side_effect=flaky):
+            replay, created = BillingService.record_shift_movement(
+                shift_id=shift.pk, direction="IN", amount="5.00",
+                reason="并发补入", created_by=self.operator,
+                idempotency_key="wbb-cash-race-001")
+        self.assertFalse(created)
+        self.assertEqual(replay.pk, existing.pk)
+        self.assertEqual(CashierShiftMovement.objects.filter(shift=shift).count(), 1)
 
     def test_close_shift_accepts_null_reason_when_cash_balances(self):
         shift, _ = BillingService.open_shift(
