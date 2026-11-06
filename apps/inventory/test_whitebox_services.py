@@ -82,7 +82,9 @@ class HousekeepingSummaryTimezoneTests(TestCase):
         membership = PropertyStaffMembership.objects.create(
             property=self.property, staff_profile=profile,
             employee_no="WBI2-001", status="ACTIVE")
-        StaffRoleAssignment.objects.create(membership=membership, group=group)
+        StaffRoleAssignment.objects.create(
+            membership=membership, group=group,
+            starts_at=datetime(2020, 1, 1, tzinfo=dt_timezone.utc))
 
     def test_today_window_uses_property_timezone(self):
         # T1：物业当地 2026-01-15 23:30（就物业日历而言是“昨天”）；
