@@ -407,6 +407,20 @@ class BillingService:
         # 否则并发押金（或脏快照实例）会绕过“累计押金 ≤ 房费总额”上限。
         reservation = Reservation.objects.select_for_update().get(
             pk=reservation.pk)
+        provider_ref = f"FDDEP-{property_obj.pk}-{key}"
+        existing = Payment.objects.filter(provider_ref=provider_ref).first()
+        if existing is not None:
+            if (existing.property_id != property_obj.pk
+                    or existing.reservation_id != reservation.pk
+                    or existing.amount != amount or existing.method != method
+                    or existing.currency != reservation.currency
+                    or existing.provider != "frontdesk_deposit"
+                    or existing.status not in (
+                        Payment.Status.SUCCEEDED,
+                        Payment.Status.PARTIALLY_REFUNDED,
+                        Payment.Status.REFUNDED)):
+                raise ValueError("该幂等键已用于其他押金登记。")
+            return existing, False
         if reservation.status not in ("CONFIRMED", "CHECKED_IN"):
             raise ValueError("只有已确认或在住预订可以收取押金。")
         folio = Folio.objects.select_for_update().filter(
@@ -415,16 +429,6 @@ class BillingService:
             status=Folio.Status.OPEN).first()
         if folio is None:
             raise ValueError("有效主账单不存在。")
-        provider_ref = f"FDDEP-{property_obj.pk}-{key}"
-        existing = Payment.objects.filter(provider_ref=provider_ref).first()
-        if existing is not None:
-            if (existing.property_id != property_obj.pk
-                    or existing.reservation_id != reservation.pk
-                    or existing.amount != amount or existing.method != method
-                    or existing.provider != "frontdesk_deposit"
-                    or existing.status != Payment.Status.SUCCEEDED):
-                raise ValueError("该幂等键已用于其他押金登记。")
-            return existing, False
         if reservation.deposit_amount + amount > reservation.total_amount:
             raise ValueError("累计押金不能超过当前预订房费总额。")
         cashier_shift = None
