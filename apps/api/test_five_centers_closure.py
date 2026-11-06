@@ -526,13 +526,19 @@ class CashierShiftClosureTests(E2EFlowTestBase):
             {"actual_cash": "80.00", "variance_reason": "重复关班"})
         self.assertEqual(again.status_code, 400)
 
-    def test_shift_endpoints_require_finance_access_and_property_scope(self):
+    def test_shift_endpoints_use_cashier_permission_and_property_scope(self):
+        # 前台没有 finance_access，但拥有本人班次开闭专项权。
         self.client.force_login(self.nofin)
         response = _post_json(self.client, "/api/v1/billing/shifts/open",
                               {"opening_cash": "0.00"})
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
-        # 跨物业班次 → 404
+        self.assertEqual(response.status_code, 201, response.content)
+        shift_id = response.json()["data"]["id"]
+        closed = _post_json(
+            self.client, f"/api/v1/billing/shifts/{shift_id}/close",
+            {"actual_cash": "0.00"})
+        self.assertEqual(closed.status_code, 200, closed.content)
+
+        # 跨物业班次仍然默认拒绝 → 404
         self.client.force_login(self.fin)
         other_property = Property.objects.create(code="CLOSURE-SHIFT-OTHER",
                                                  name="班次隔离测试他店")
