@@ -498,6 +498,10 @@ class Refund(models.Model):
                          execution_shift__isnull=True))
                 ),
                 name="ck_refund_execution_facts"),
+            models.CheckConstraint(
+                check=(Q(legacy_workflow=True) | Q(status="PENDING")
+                       | Q(approval_record__isnull=False)),
+                name="ck_refund_nonpending_approval_record"),
         ]
         permissions = (
             ("refund_request", "可以登记退款申请"),
@@ -572,6 +576,9 @@ class Refund(models.Model):
             if self.status in (self.Status.APPROVED, self.Status.REJECTED,
                                self.Status.SUCCEEDED) and not self.approved_by_id:
                 raise ValidationError("已审批/驳回/执行退款必须记录审批人。")
+            if self.status in (self.Status.APPROVED, self.Status.REJECTED,
+                               self.Status.SUCCEEDED) and not self.approval_record_id:
+                raise ValidationError("已审批/驳回/执行退款必须关联审批记录。")
             if self.status == self.Status.SUCCEEDED:
                 if (not self.executed_by_id or not self.executed_at
                         or not self.execution_idempotency_key):
