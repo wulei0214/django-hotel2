@@ -37,6 +37,8 @@ jobs:
             echo "OpenAPI snapshot is already current."
           else
             git commit -m "docs(api): refresh generated OpenAPI snapshot"
+            git fetch origin main
+            git rebase origin/main
             git push origin HEAD:main
           fi
       - name: Upload generated OpenAPI snapshot
