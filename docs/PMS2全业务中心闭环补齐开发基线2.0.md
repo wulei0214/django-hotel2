@@ -77,12 +77,19 @@
 
 ### G. 当前代码与验收状态（持续更新）
 
-- 已提交：冲销 API 缓存失效函数缺失修复（`a222283f`）；该提交的 MySQL 与 Django CI 均通过。
-- 已提交：维修权限纠正迁移（`inventory.0006`），撤销从 `no_show_handle` 复制授权的历史结果，按值班经理/店长授权。
-- 已提交：旧 `/finance/` 跳转至 `/manage/finance/`，并新增路由回归测试。
-- 待验收：以上最新变更的 CI、MySQL 迁移和权限测试。
-- 待开发：退款三方分离、班次现金事实关联与对账。
-- 待验收：通知个人已读迁移的 MySQL 并发与岗位广播测试。
+- 已提交：维修权限纠正迁移 `inventory.0006`，清除从 `no_show_handle` 继承的维修管理授权，仅按正式角色矩阵授权值班经理/店长。
+- 已提交：旧 `/finance/` 302 到 `/manage/finance/`，旧写入口 `/finance_add/` 返回 410。
+- 已提交：退款三方分离模型与服务（申请/审批/执行）、现金退款执行班次、现金变动事实及班次应有现金聚合。
+- 已提交：`billing.0016_refund_sod_state_constraints`，增加 Refund SoD、审批事实和执行事实数据库 CHECK 约束；无法证明新流程的历史记录标记 `legacy_workflow`，不回写历史账务。
+- 已提交：修复 Payment.save 与 Refund.save 保护逻辑错位；增加状态迁移、幂等、三方分离和数据库约束旁路测试。
+- 已提交：现金退款可用余额校验、现金 OUT 余额校验、班次事实不可变、本人班次关账与主管代关规则。
+- 已提交：红字冲销服务强制物业过滤；维修/清洁 API 与 OpenAPI 权限码校准。
+- 已提交：审计/审批/财务事实 ORM QuerySet 批量写入保护；增加 MySQL 只追加触发器 SQL、检查命令和部署说明。
+- 已提交：财务退款 DTO 暴露申请/审批/执行人、执行时间、参考号、执行班次及历史流程标记；非现金退款页面要求渠道参考号。
+- 待验收：最新 main 对应的 MySQL 8 Django CI 与测试 workflow 必须全部完成并通过。
+- 待验收：目标 MySQL 实例执行 `billing.0016`、部署 6 条 append-only triggers，并运行 `python manage.py check_mysql_append_only_guards`。
+- 待验收：真实浏览器 Playwright E2E；当前 Django HTTP/模板回归不能代替真实浏览器。
+- 待处理：`docs/接口文档/openapi.json` 由当前 `build_openapi()` 重新生成，确保静态快照与运行时路径集合一致。
 - **本基线仍为修订中，不得标记冻结。**
 
 ---
