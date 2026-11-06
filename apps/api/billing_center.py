@@ -804,9 +804,19 @@ def reverse_entry_api(request):
     if original is None:
         raise ApiError("RESOURCE_NOT_FOUND", "账本凭证不存在或不属于当前物业。")
     try:
+        approval_id = int(str(body.get("approval_id") or ""))
+    except (TypeError, ValueError):
+        raise ApiError("VALIDATION_ERROR", "approval_id 必须是已批准的冲销审批编号。")
+    try:
+        approval = __import__("apps.billing.models", fromlist=["ApprovalRecord"]).ApprovalRecord.objects.filter(
+            pk=approval_id, property=property_obj, action_code="billing.reversal",
+            entity_type="LedgerEntry", entity_id=str(original.pk)).first()
+        if approval is None:
+            raise ApiError("RESOURCE_NOT_FOUND", "冲销审批不存在或不属于当前账本凭证。")
         reversal, created = BillingService.reverse_entry(
             property_obj=property_obj, entry_id=original.pk,
-            reason=body.get("reason"), reversed_by=request.user, request=request)
+            approval_id=approval_id, reason=approval.reason,
+            reversed_by=request.user, request=request)
     except LedgerEntry.DoesNotExist:
         raise ApiError("RESOURCE_NOT_FOUND", "账本凭证不存在。")
     except ValueError as exc:
@@ -821,4 +831,5 @@ def reverse_entry_api(request):
         "currency": reversal.currency,
         "reference": reversal.reference,
         "entry_type": reversal.entry_type,
+        "approval_id": reversal.approval_record_id,
     }, status=201 if created else 200)
