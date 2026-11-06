@@ -1,0 +1,48 @@
+"""Verify MySQL append-only triggers required by PMS2 production operations."""
+from django.core.management.base import BaseCommand, CommandError
+from django.db import connection
+
+
+EXPECTED = {
+    "trg_core_auditevent_no_update": ("core_auditevent", "UPDATE", "BEFORE"),
+    "trg_core_auditevent_no_delete": ("core_auditevent", "DELETE", "BEFORE"),
+    "trg_billing_ledgerentry_no_update": ("billing_ledgerentry", "UPDATE", "BEFORE"),
+    "trg_billing_ledgerentry_no_delete": ("billing_ledgerentry", "DELETE", "BEFORE"),
+    "trg_billing_shiftmovement_no_update": (
+        "billing_cashiershiftmovement", "UPDATE", "BEFORE"),
+    "trg_billing_shiftmovement_no_delete": (
+        "billing_cashiershiftmovement", "DELETE", "BEFORE"),
+}
+
+
+class Command(BaseCommand):
+    help = "Verify the six MySQL append-only triggers for PMS2 audit/ledger/cash facts."
+
+    def handle(self, *args, **options):
+        if connection.vendor != "mysql":
+            raise CommandError(
+                "此检查必须连接真实 MySQL；SQLite 结果不能作为生产数据库验收。")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT TRIGGER_NAME, EVENT_OBJECT_TABLE, EVENT_MANIPULATION, "
+                "ACTION_TIMING FROM information_schema.TRIGGERS "
+                "WHERE TRIGGER_SCHEMA = DATABASE()")
+            actual = {
+                row[0]: (row[1], row[2], row[3])
+                for row in cursor.fetchall()
+            }
+        missing = sorted(set(EXPECTED) - set(actual))
+        incorrect = {
+            name: {"expected": expected, "actual": actual.get(name)}
+            for name, expected in EXPECTED.items()
+            if name in actual and actual[name] != expected
+        }
+        if missing or incorrect:
+            details = []
+            if missing:
+                details.append("缺失触发器：" + ", ".join(missing))
+            if incorrect:
+                details.append("定义不匹配：" + repr(incorrect))
+            raise CommandError("MySQL 只追加事实保护未通过；" + "；".join(details))
+        self.stdout.write(self.style.SUCCESS(
+            "MySQL append-only guard 通过：6 条 BEFORE UPDATE/DELETE 触发器全部存在。"))
