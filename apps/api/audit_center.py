@@ -304,7 +304,7 @@ def audit_summary(request):
     ).order_by("-total", "action")]
     top_actors = [{
         # actor 为空（系统操作）统一标 system（同 audit_timeline 口径）
-        "actor": row["actor__username"] or "system",
+        "actor": row["actor__username"] or "系统",
         "count_7d": row["recent"],
         "count_30d": row["total"],
     } for row in base.values("actor__username").annotate(
@@ -354,6 +354,7 @@ def audit_actions(request):
             .order_by("-total", "action"))
     data = [{
         "action": row["action"],
+        "action_label": _action_label(row["action"]),
         "count": row["total"],
         "is_sensitive": _sensitive_flag(row["action"]),
     } for row in rows]
