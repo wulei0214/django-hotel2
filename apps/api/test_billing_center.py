@@ -321,7 +321,7 @@ class BillingCenterReadPermissionTests(BillingCenterTestBase):
         self.assertEqual(refund.status_code, 201, refund.content)
 
         data = self.client.get(
-            "/api/v1/billing/payments?status=SUCCEEDED").json()["data"]
+            "/api/v1/billing/payments?status=REFUND_PENDING").json()["data"]
         self.assertTrue(any(row["id"] == payment_id for row in data))
         self.assertEqual(data[0]["amount"], "100.00")
         self.assertIsInstance(data[0]["amount"], str)
@@ -454,7 +454,7 @@ class BillingCenterFolioDetailTests(BillingCenterTestBase):
         self.assertEqual(len(data["payments"]), 1)
         payment_row = data["payments"][0]
         self.assertEqual(payment_row["method"], "CARD")
-        self.assertEqual(payment_row["status_label"], "成功")
+        self.assertEqual(payment_row["status_label"], "退款处理中")
         self.assertEqual(len(payment_row["refunds"]), 1)
         refund_row = payment_row["refunds"][0]
         self.assertEqual(refund_row["amount"], "50.00")
