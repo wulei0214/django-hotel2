@@ -484,21 +484,41 @@
   async function fillClosedBusinessDates() {
     if (!canReopen) return;
     try {
-      const payload = await api("/api/v1/night-audit/business-dates?status=CLOSED&page_size=100");
+      const allDates = [];
+      let page = 1;
+      let hasNext = true;
+      const maxRows = 5000;
+      while (hasNext) {
+        const payload = await api("/api/v1/night-audit/business-dates?status=CLOSED&page=" +
+            page + "&page_size=100");
+        if (!payload.meta || !payload.meta.pagination || !Array.isArray(payload.data)) {
+          throw new Error("营业日列表分页响应不完整。");
+        }
+        allDates.push.apply(allDates, payload.data);
+        hasNext = Boolean(payload.meta.pagination.has_next);
+        if (allDates.length > maxRows) {
+          throw new Error("已关账营业日超过 5000 条，请联系管理员按日期范围查询。");
+        }
+        page += 1;
+      }
       for (const selectId of ["na-reopen-bd", "na-bg-bd"]) {
         const select = document.getElementById(selectId);
         if (!select) continue;
+        const previousValue = select.value;
         select.replaceChildren();
-        if (!payload.data.length) {
+        if (!allDates.length) {
           select.appendChild(el("option", "", "（暂无已关账营业日）"));
           select.value = "";
           continue;
         }
-        payload.data.forEach(function (bd) {
+        allDates.forEach(function (bd) {
           const option = el("option", "", bd.business_date + "（#" + bd.id + "）");
           option.value = bd.id;
           select.appendChild(option);
         });
+        if (allDates.some(function (bd) { return String(bd.id) === previousValue; })) {
+          select.value = previousValue;
+        }
       }
     } catch (error) {
       for (const selectId of ["na-reopen-bd", "na-bg-bd"]) {
