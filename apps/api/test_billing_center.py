@@ -727,6 +727,9 @@ class BillingCenterPageTests(BillingCenterTestBase):
         self.assertIn("/api/v1/billing/folios", content)
         self.assertIn("/api/v1/billing/payments", content)
         self.assertIn("/api/v1/billing/refunds", content)
+        self.assertIn('id="fin-page-size"', content)
+        self.assertIn('id="fin-goto-page"', content)
+        self.assertIn('id="fin-goto-btn"', content)
 
 
 
