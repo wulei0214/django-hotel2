@@ -424,11 +424,14 @@
         '<button type="submit">确认收款</button></div>';
     form.addEventListener("submit", async function(event){
       event.preventDefault();
-      const amount = document.getElementById("fin-collect-amount").value.trim();
-      const method = document.getElementById("fin-collect-method").value;
-      const reference = document.getElementById("fin-collect-ref").value.trim();
+      // 必须在表单仍连接 DOM 时读取字段；不能先 replaceWith 再访问 document.getElementById。
+      const amount = form.querySelector('[name="amount"]').value.trim();
+      const method = form.querySelector('[name="method"]').value;
+      const reference = form.querySelector('[name="reference"]').value.trim();
+      const submitButton = form.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
       const note = notify("提交中…");
-      form.replaceWith(note);
+      form.appendChild(note);
       try {
         const payload = await postJson("/api/v1/billing/payments", {
           reservation_id: currentReservationId,
@@ -437,11 +440,12 @@
           reference: reference,
         });
         const d = payload.data || {};
-        note.replaceWith(notify("收款成功：" + d.amount + " " + d.currency +
+        form.replaceWith(notify("收款成功：" + d.amount + " " + d.currency +
             "（参考号 " + d.provider_ref + "）", true));
         await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger()]);
       } catch (error) {
-        note.replaceWith(notify(error.message));
+        note.textContent = error.message;
+        submitButton.disabled = false;
       }
     });
     return form;
@@ -458,10 +462,13 @@
         '<button type="submit">提交退款申请</button></div>';
     form.addEventListener("submit", async function(event){
       event.preventDefault();
-      const amount = document.getElementById("fin-refund-amount").value.trim();
-      const reason = document.getElementById("fin-refund-reason").value.trim();
+      // 从当前表单读取，避免同一抽屉中存在多个表单时 ID 冲突。
+      const amount = form.querySelector('[name="amount"]').value.trim();
+      const reason = form.querySelector('[name="reason"]').value.trim();
+      const submitButton = form.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
       const note = notify("提交中…");
-      form.replaceWith(note);
+      form.appendChild(note);
       try {
         const payload = await postJson("/api/v1/billing/refunds", {
           payment_id: payment.id,
@@ -469,10 +476,11 @@
           reason: reason,
         });
         const d = payload.data || {};
-        note.replaceWith(notify("退款申请已提交（状态 " + d.status + "），等待第二人审批。", true));
+        form.replaceWith(notify("退款申请已提交（状态 " + d.status + "），等待第二人审批。", true));
         await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger()]);
       } catch (error) {
-        note.replaceWith(notify(error.message));
+        note.textContent = error.message;
+        submitButton.disabled = false;
       }
     });
     return form;
@@ -568,19 +576,22 @@
         '<button type="submit">确认冲销 ' + value(entry.reference) + '</button></div>';
     form.addEventListener("submit", async function(event){
       event.preventDefault();
-      const reason = document.getElementById("fin-reverse-reason").value.trim();
+      const reason = form.querySelector('[name="reason"]').value.trim();
+      const submitButton = form.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
       const note = notify("提交中…");
-      form.replaceWith(note);
+      form.appendChild(note);
       try {
         const payload = await postJson("/api/v1/billing/reversals", {
           entry_id: entry.id,
           reason: reason,
         });
         const d = payload.data || {};
-        note.replaceWith(notify("已追加反向凭证 " + d.reference + "（" + d.amount + " " + d.currency + "）", true));
+        form.replaceWith(notify("已追加反向凭证 " + d.reference + "（" + d.amount + " " + d.currency + "）", true));
         await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger()]);
       } catch (error) {
-        note.replaceWith(notify(error.message));
+        note.textContent = error.message;
+        submitButton.disabled = false;
       }
     });
     drawerBody.appendChild(form);
