@@ -511,6 +511,17 @@ class ReportPageTests(ReportCenterTestBase):
         self.assertContains(operational, '"finance_access": false')
         self.assertContains(operational, "visibleReports")
 
+        from django.contrib.auth.models import Permission
+        from apps.identity.models import PropertyStaffMembership
+        membership = PropertyStaffMembership.objects.get(
+            property=self.property, staff_profile__user=self.finance)
+        finance_group = membership.role_assignments.get(
+            group__name="财务").group
+        operational_permission = Permission.objects.get(
+            content_type__app_label="hotelapp",
+            codename="view_accommodation")
+        finance_group.permissions.remove(operational_permission)
+
         self.client.force_login(self.finance)
         financial = self.client.get("/manage/reports/")
         self.assertEqual(financial.status_code, 200, financial.content)
