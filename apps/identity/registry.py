@@ -486,8 +486,8 @@ SPECIAL_PERMISSIONS = (
         "codename": "hotelapp.no_show_handle",
         "module": "accommodation", "risk": "medium",
         "requires_reason": False, "requires_confirm": True,
-        "note": "未到订单处理并释放房间；§4.3 起兼维修停用/恢复登记口径 "
-                "（POST /api/v1/housekeeping/rooms/{id}/maintenance，值班经理/店长）",
+        "note": "未到订单处理并释放预订库存；维修停用/恢复已独立使用 "
+                "inventory.maintenance_manage，不复用此权限",
     },
     {
         "key": "finance_access",
