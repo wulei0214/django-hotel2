@@ -657,6 +657,12 @@ class BillingCenterWriteTests(BillingCenterTestBase):
              "entity_id": str(original.pk), "reason": reason, "payload": {}})
         self.assertEqual(request.status_code, 201, request.content)
         approval_id = request.json()["data"]["id"]
+        self._grant(self.finance, "approval_view")
+        listing = self.client.get(
+            "/api/v1/approvals?action_code=billing.reversal"
+            f"&entity_type=LedgerEntry&entity_id={original.pk}")
+        self.assertEqual(listing.status_code, 200, listing.content)
+        self.assertEqual([row["id"] for row in listing.json()["data"]], [approval_id])
 
         # 财务不能审批自己的冲销申请；店长单独批准。
         denied = _post_json(
