@@ -701,41 +701,57 @@ class BillingService:
 
     @staticmethod
     @transaction.atomic
-    def reverse_entry(*, property_obj, entry_id, reason, reversed_by, request=None):
-        """红字冲销（V1.1 P1-08/Q-05）：追加反向凭证，不修改原凭证。
-
-        规则：不可冲销红字凭证；同 reference 幂等；须填写原因。
-        """
-        from apps.billing.models import LedgerEntry
-        reason = (reason or "").strip()
+    def reverse_entry(*, property_obj, entry_id, approval_id, reason,
+                      reversed_by, request=None):
+        """红字冲销：财务执行前必须存在值班经理/店长批准的审批事实。"""
+        from apps.billing.models import ApprovalRecord, LedgerEntry
+        reason = str(reason or "").strip()
         if not reason:
             raise ValueError("冲销必须填写原因。")
         original = LedgerEntry.objects.select_for_update().get(
             pk=entry_id, property=property_obj)
+        if original.entry_type == LedgerEntry.EntryType.REVERSAL:
+            raise ValueError("不能冲销一条红字凭证。")
+        approval = ApprovalRecord.objects.select_for_update().filter(
+            pk=approval_id, property=property_obj,
+            action_code="billing.reversal", entity_type="LedgerEntry",
+            entity_id=str(original.pk),
+            status=ApprovalRecord.Status.APPROVED,
+        ).first()
+        if approval is None:
+            raise ValueError("冲销必须先取得当前物业对该原凭证的有效审批。")
+        if approval.approved_by_id == reversed_by.pk:
+            raise ValueError("冲销审批人与实际执行人必须是不同账号。")
+        if approval.reason != reason:
+            raise ValueError("冲销执行原因必须与已批准的申请原因完全一致。")
         existing_ref = f"reversal:{original.reference}"
         dup = LedgerEntry.objects.filter(reference=existing_ref).first()
         if dup:
-            return dup, False
-        if original.entry_type == LedgerEntry.EntryType.REVERSAL:
-            raise ValueError("不能冲销一条红字凭证。")
+            if dup.approval_record_id == approval.pk:
+                return dup, False
+            if dup.approval_record_id is None:
+                raise ValueError("该凭证已由历史流程冲销，不能通过新流程重复执行。")
+            raise ValueError("该凭证已关联其他冲销审批，不得重复执行。")
         reversal = LedgerEntry.objects.create(
             property=original.property, folio=original.folio,
             stay=original.stay,
             entry_type=LedgerEntry.EntryType.REVERSAL,
             amount=-original.amount, currency=original.currency,
-            # WB-02：营业日必须与其它账务写入口一致按物业时区取值，
-            # 否则默认时区下跨零点的冲销会记到错误的营业日。
             business_date=BillingService._business_date(original.property),
             reference=existing_ref,
             description=f"冲销：{original.description}"[:240],
-            void_of=original, void_reason=reason[:240],  # F-08 口径统一：与 services.reverse_ledger_entry 一致，硬关联原凭证
-            posted_by=reversed_by)
+            void_of=original, void_reason=reason[:240],
+            approval_record=approval, posted_by=reversed_by)
         AuditEvent.record(
             action="billing.reverse_entry", entity_type="LedgerEntry",
             entity_id=original.pk, actor=reversed_by,
             property_obj=original.property, reason=reason[:240],
             before={"amount": str(original.amount), "reference": original.reference},
-            after={"reversal_id": reversal.pk, "amount": str(reversal.amount)},
+            after={"reversal_id": reversal.pk, "amount": str(reversal.amount),
+                   "approval_id": approval.pk,
+                   "requested_by_id": approval.requested_by_id,
+                   "approved_by_id": approval.approved_by_id,
+                   "executed_by_id": reversed_by.pk},
             request=request)
         return reversal, True
 
