@@ -144,8 +144,31 @@ class ReverseEntryBusinessDateTests(WhiteboxBillingBase):
             amount=Decimal("10.00"), reference="WBB-REV-SRC-001",
             business_date=date(2026, 1, 10), posted_by=self.operator)
 
+        from django.contrib.auth.models import Group, Permission
+        from apps.identity.models import (
+            PropertyStaffMembership, StaffProfile, StaffRoleAssignment,
+        )
+
+        def assign_permission(user, group_name, codename):
+            group = Group.objects.create(name=group_name)
+            permission = Permission.objects.get(
+                content_type__app_label="billing", codename=codename)
+            group.permissions.add(permission)
+            profile = StaffProfile.objects.create(
+                user=user, full_name=user.username,
+                employment_status=StaffProfile.EmploymentStatus.ACTIVE)
+            membership = PropertyStaffMembership.objects.create(
+                staff_profile=profile, property=self.property,
+                employee_no=f"WBB-{user.username}",
+                status=PropertyStaffMembership.Status.ACTIVE)
+            StaffRoleAssignment.objects.create(
+                membership=membership, group=group,
+                starts_at=timezone.now() - timedelta(minutes=1))
+
+        assign_permission(self.operator, "WBB-REV-FIN", "reverse_entry")
         reason = "错账冲销白盒测试"
         approver = User.objects.create_user(username="wbb-reversal-approver")
+        assign_permission(approver, "WBB-REV-MGR", "reversal_approve")
         approval, approval_created = ApprovalService.request_approval(
             property_obj=self.property, action_code="billing.reversal",
             entity_type="LedgerEntry", entity_id=str(original.pk),
