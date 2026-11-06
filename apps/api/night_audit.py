@@ -5,10 +5,9 @@
 本模块同时提供营业日/夜审运行/break-glass 的只读查询端点，
 统一 {data, meta} 封套与统一分页契约（apps.core.api_contract.paginate）。
 
-读取口径：全部读端点以 hotelapp.night_audit_execute 为门禁——夜审数据
-（收入/过租/未到/运行失败原因）属于日结运营敏感面，与 /nightaudit/ 旧页
-GET 同码（apps/identity/registry.py night_audit.view）；营业日重开审批
-属于写审批权限，不作为读取基线。
+读取口径：所有只读端点统一使用 core.night_audit_view；
+执行夜审使用 hotelapp.night_audit_execute；重开营业日/Break-glass 使用
+独立高危审批权限。查看权不得隐含执行权。
 """
 import json
 from datetime import date, timedelta
