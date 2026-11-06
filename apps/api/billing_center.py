@@ -69,6 +69,24 @@ def _require_finance_access(request, extra_permission=None):
     raise ApiError("PERMISSION_DENIED", "员工任职或财务权限验证失败，无法访问财务中心。")
 
 
+
+def _require_cashier_shift_manage(request):
+    """收银班次由前台、财务及管理岗位按专项权限开闭，不要求财务中心浏览权。"""
+    user = request.user
+    if not getattr(user, "is_authenticated", False):
+        raise ApiError("AUTHENTICATION_REQUIRED", "请先登录员工账号。")
+    if not getattr(user, "is_active", False):
+        raise ApiError("PERMISSION_DENIED", "账号已停用。")
+    property_obj = getattr(request, "property", None)
+    if property_obj is None or AuthorizationService.get_active_membership(
+            user, property_obj) is None:
+        raise ApiError("PERMISSION_DENIED", "当前账号没有有效物业任职。")
+    if not AuthorizationService.has_permission(
+            user, property_obj, "billing.cashier_shift_manage"):
+        raise ApiError("PERMISSION_DENIED", "当前岗位没有收银班次管理权限。")
+    return property_obj
+
+
 def _json_body(request):
     try:
         payload = json.loads(request.body.decode("utf-8") or "{}")
@@ -679,7 +697,7 @@ def open_shift_api(request):
     （created=false）。权限口径：hotelapp.finance_access（财务/值班经理/店长）；
     基线 §1.3 建议的独立 billing.cashier_shift_manage 专项码登记待实施。
     """
-    property_obj = _require_finance_access(request)
+    property_obj = _require_cashier_shift_manage(request)
     body = _json_body(request)
     try:
         shift, created = BillingService.open_shift(
