@@ -214,11 +214,12 @@
 - 注册表处置：`hotelapp.export_pii` 登记（staff 模块，requires_reason=是），note 明确标注 F-06；导出路由在注册表的 route_prefix=/export 归属 staff 模块。
 - 建议：Phase 2/3 权限执行点迁移时把审批/下载侧改为 `AuthorizationService.has_permission(user, prop, "hotelapp.export_pii")`（或新增独立 export_approve 专项码并登记入本注册表）；迁移前矩阵页不得回收 export_pii（否则申请/审批两侧门禁错位）。
 
-### F-08 reverse_checkout / room_release_ready 权限悬空
+### F-08 reverse_checkout / room_release_ready 权限悬空（2026-11-06 更新）
 
-- 现状：两码已授予值班经理/店长，但唯一检查点在 410 死代码内（/uncheckout/、/room_status/），PMS2 无对应 API——"有权无处使"。
-- 注册表处置：**登记为专项权限并显式标注悬空状态**（reverse_entry→hotelapp.reverse_checkout，accommodation 模块，requires_reason/requires_confirm=是；room_release_ready→rooms 模块），而不是当作垃圾码剔除——两码的业务语义（反结账冲销、净房放行）在 PMS2 路线图中都有落点，且授权组与职责设计一致。
-- 建议：Phase 4 front-desk 补 API 时直接以注册表登记的 key 授权（语义、SoD、审计要求都已定义）；若路线图放弃对应能力，则先在矩阵页回收两码、再将注册表项改 RETIRED——两步都须经注册表评审，避免重蹈"授予了却什么都不发生"（P-C-2/P-C-5）。
+- 旧 `hotelapp.reverse_checkout` 的唯一检查点随旧路由 410 退役，旧码不再作为 PMS2 冲销执行授权。
+- PMS2 红字冲销现有独立执行点：`billing.reverse_entry`（财务申请/执行）与 `billing.reversal_approve`（值班经理/店长审批）；`ApprovalActionRegistry` 注册 `billing.reversal`，财务执行必须关联经理已批准的 ApprovalRecord。
+- `LedgerEntry.approval_record` 与 `ck_ledger_reversal_approval_link` 将审批事实落到数据库；历史旧冲销只标记 `legacy_workflow`，不伪造审批记录。
+- `hotelapp.room_release_ready` 仍按 §4.3 的真实执行点核验，不与冲销权限混用。
 
 ### F-07 / F-09 状态备注
 
@@ -229,7 +230,7 @@
 
 | 文件 | 变更 |
 |---|---|
-| `apps/identity/registry.py` | 新建：11 模块 + 9 角色 + 14 专项权限 + 8 个查询/校验函数 |
+| `apps/identity/registry.py` | 新建：11 模块 + 9 角色 + 22 专项权限 + 8 个查询/校验函数 |
 | `hotelapp/views.py` | MODULE_REGISTRY 改为注册表派生（module_gate/export_module 行为不变） |
 | `apps/identity/test_registry.py` | 新建：25 项测试（5 个测试类） |
 | `docs/audit/phase0/25-rbac-registry.md` | 本文档 |
@@ -241,3 +242,12 @@
 - 环境备注（非代码问题）：本次实施期间工作区有并行的 §6.1 平台身份域改动合入
   （/platform/ 迁移、模板调整），合入过程中运行的测试出现个别瞬时失败
   （模板/文件枚举竞态）；工作区稳定后连续 3 次全量 234 项全绿确认。
+
+
+### 2026-11-06 冲销权限矩阵补充
+
+| 权限码 | 授权角色 | 执行边界 |
+|---|---|---|
+| `billing.reverse_entry` | 财务 | 发起冲销审批申请；仅在审批通过后执行红字凭证 |
+| `billing.reversal_approve` | 值班经理、店长 | 审批冲销申请；无财务冲销执行权 |
+
