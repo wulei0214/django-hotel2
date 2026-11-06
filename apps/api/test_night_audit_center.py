@@ -479,7 +479,10 @@ class NightAuditCenterPageTests(E2EFlowTestBase):
         """只读权限可进入页面/读取预览，但不能执行夜审写操作。"""
         from django.contrib.auth.models import Permission
 
-        group = self.dm.groups.get(name="值班经理")
+        from apps.identity.models import PropertyStaffMembership
+        membership = PropertyStaffMembership.objects.get(
+            property=self.property, staff_profile__user=self.dm)
+        group = membership.role_assignments.get(group__name="值班经理").group
         execute_permission = Permission.objects.get(
             content_type__app_label="hotelapp",
             codename="night_audit_execute")
