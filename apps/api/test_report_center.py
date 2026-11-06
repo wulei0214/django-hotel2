@@ -125,7 +125,7 @@ class ReportCenterTestBase(E2EFlowTestBase):
             property_obj=self.property if property_obj == "default" else property_obj,
             after={"housekeeping": "CLEAN"})
         if days_ago:
-            AuditEvent.objects.filter(pk=event.pk).update(
+            AuditEvent._base_manager.filter(pk=event.pk).update(
                 created_at=timezone.now() - timedelta(days=days_ago))
         return event
 
