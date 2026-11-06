@@ -278,7 +278,7 @@
 <script>
 (function () {
   "use strict";
-  const csrfInput = document.querySelector("#pms-csrf-token input[name=\"csrfmiddlewaretoken\"]");
+  const csrfInput = document.querySelector('#pms-csrf-token input[name="csrfmiddlewaretoken"]');
   const CSRF = csrfInput ? csrfInput.value : "";
   const canReopen = {{ can_reopen_business_date|yesno:"true,false" }};
   const canReview = {{ can_review_break_glass|yesno:"true,false" }};
