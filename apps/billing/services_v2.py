@@ -766,6 +766,8 @@ class BillingService:
                 property=property_obj, cashier=cashier,
                 status=CashierShift.ShiftStatus.OPEN).first()
             if raced is not None:
+                if raced.opening_cash != opening_cash:
+                    raise ValueError("并发开班已使用不同备用金金额创建班次，请核对原班次。")
                 return raced, False
             raise
         AuditEvent.record(
