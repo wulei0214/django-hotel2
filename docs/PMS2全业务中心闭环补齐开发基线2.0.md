@@ -1036,6 +1036,8 @@ P0 权限测试必须覆盖匿名与跨物业。每一个权限拒绝都应验�
 | `billing.refund_approve` | 值班经理、店长 |
 | `billing.refund_execute` | 财务 |
 | `billing.cashier_shift_manage` | 前台、财务、值班经理、店长 |
+| `billing.reverse_entry` | 财务 | 红字冲销申请与已批准冲销执行 |
+| `billing.reversal_approve` | 值班经理、店长 | 红字冲销审批；审批人与执行人分离 |
 | `billing.cash_movement_manage` | 财务 |
 | `inventory.maintenance_manage` | 值班经理、店长 |
 
@@ -1057,3 +1059,18 @@ P0 权限测试必须覆盖匿名与跨物业。每一个权限拒绝都应验�
 
 - 《PMS2财务权限数据库与业务闭环整改实施记录.md》
 - 《PMS2 MySQL财务与审计不可变事实部署说明.md》
+
+
+## 12.5 2026-11-06 红字冲销审批闭环补充
+
+此前 `billing.reversal` 仍列在 `ApprovalActionRegistry.PENDING_ACTIONS`，账务服务允许财务仅凭原因直接冲销，与既定“财务执行 + 管理者审批”职责分离不一致。本次按既有决策补齐，不新增业务页面：
+
+1. `billing.reverse_entry`：仅财务可发起冲销申请并执行已批准冲销。
+2. `billing.reversal_approve`：仅值班经理、店长持有审批权；管理岗位不因此获得财务执行权。
+3. `ApprovalActionRegistry` 注册 `billing.reversal`，目标为 `LedgerEntry`；审批申请、审批列表按 action/entity 过滤，财务可刷新本人申请状态。
+4. `POST /api/v1/billing/reversals` 必须携带已批准的 `approval_id`；执行服务再次校验申请人权限、审批人权限、执行人权限及审批人与执行人不相同。
+5. 新 `LedgerEntry` 通过 `approval_record` 外键关联审批事实；`legacy_workflow` 显式标记迁移前的旧流程红字凭证。
+6. `ck_ledger_reversal_approval_link` 数据库约束禁止新红字凭证缺少审批关联；历史记录只标记旧流程，不伪造审批记录。
+7. 财务工作台改为“提交审批 → 管理者审批 → 财务刷新状态 → 执行冲销”两阶段操作。
+
+本项代码已提交到 main；最终验收仍须等待最新 Django CI、MySQL 8 测试与触发器检查全部通过，并完成人工浏览器角色验收。
