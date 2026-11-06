@@ -1078,7 +1078,7 @@ for path, summary, status, pp, body, data, note, perm, ok in fd_write:
        body_required=bool(body), no_body=body is None, permission=perm,
        ok=ok, data=data, envelope="fd", errors=E_STAFF_CONFLICT, notes=note)
 
-# 服务层强校验 Idempotency-Key（1-64 字符必填）的三个收款/押金/退款端点。
+# 服务层强校验 Idempotency-Key（1-64 字符必填）的收款、押金、退款申请/驳回端点。
 for _path in ("/front-desk/reservations/{booking_no}/payments",
               "/front-desk/reservations/{booking_no}/deposits",
               "/front-desk/payments/{payment_id}/refunds",
