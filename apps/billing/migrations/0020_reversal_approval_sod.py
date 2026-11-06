@@ -29,6 +29,9 @@ def grant_reversal_sod_permissions(apps, schema_editor):
         codename="reverse_entry",
         defaults={"name": "可以申请并执行已批准的账本红字冲销（LedgerEntry）"},
     )
+    if execute_permission.name != "可以申请并执行已批准的账本红字冲销（LedgerEntry）":
+        execute_permission.name = "可以申请并执行已批准的账本红字冲销（LedgerEntry）"
+        execute_permission.save(update_fields=["name"])
     approve_permission, _ = Permission.objects.get_or_create(
         content_type=content_type,
         codename="reversal_approve",
@@ -64,6 +67,8 @@ def reverse_reversal_sod_permissions(apps, schema_editor):
         if approve_permission:
             group.permissions.remove(approve_permission)
         if execute_permission:
+            execute_permission.name = "可以红字冲销账本凭证（LedgerEntry）"
+            execute_permission.save(update_fields=["name"])
             if group.name in ("财务", "值班经理", "店长"):
                 group.permissions.add(execute_permission)
             else:
