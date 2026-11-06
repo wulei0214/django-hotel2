@@ -5,6 +5,17 @@ from django.db import models
 from django.db.models import F, Q
 
 
+class ImmutableFinancialFactQuerySet(models.QuerySet):
+    """支付、退款和现金变动禁止绕过领域服务进行批量修改或删除。"""
+
+    def update(self, **kwargs):
+        raise ValidationError("财务事实禁止 QuerySet.update；请调用 BillingService。")
+
+    def delete(self):
+        raise ValidationError("财务事实禁止批量删除；请保留账务审计轨迹。")
+
+
+
 
 class ApprovalRecord(models.Model):
     """不可变高危审批事实；退款、冲销、夜审重开等通过此记录执行双人控制。"""
@@ -275,6 +286,7 @@ class LedgerEntry(models.Model):
 
 
 class Payment(models.Model):
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
     """支付流水：一笔支付意图及其结果，与预订关联、入账后落到账本凭证。"""
 
     class Status(models.TextChoices):
@@ -347,12 +359,16 @@ class Payment(models.Model):
         return super().save(*args, **kwargs)
 
 
+    def delete(self, *args, **kwargs):
+        raise ValidationError("支付流水不可物理删除；请按业务规则退款或冲销。")
+
     def __str__(self):
         return f"{self.provider_ref} / {self.status}"
 
 
 
 class Refund(models.Model):
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
     """退款申请、审批和执行三段独立事实；只有执行成功才追加 REFUND 凭证。"""
 
     class Status(models.TextChoices):
@@ -478,7 +494,8 @@ class Refund(models.Model):
             if previous:
                 immutable_request = (
                     "payment_id", "property_id", "requested_by_id", "amount",
-                    "currency", "reason", "idempotency_key", "provider_ref")
+                    "currency", "reason", "idempotency_key", "provider_ref",
+                    "legacy_workflow")
                 if any(previous[field] != getattr(self, field)
                        for field in immutable_request):
                     raise ValidationError("退款申请的原支付、物业、申请人、金额、原因和编号不可修改。")
@@ -524,6 +541,9 @@ class Refund(models.Model):
                   or self.execution_idempotency_key or self.execution_shift_id):
                 raise ValidationError("退款未执行成功前不得写入执行事实。")
         return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("退款事实不可物理删除；必须保留申请、审批与执行轨迹。")
 
     def __str__(self):
         return f"{self.provider_ref} / {self.status}"
@@ -631,6 +651,7 @@ class CashierShift(models.Model):
 
 
 class CashierShiftMovement(models.Model):
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
     """班次现金增减事实；只追加，作为备用金调整/现金支出的审计来源。"""
 
     class Direction(models.TextChoices):
