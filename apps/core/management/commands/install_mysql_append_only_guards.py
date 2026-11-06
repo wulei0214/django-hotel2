@@ -66,7 +66,7 @@ TRIGGERS = (
 
 
 class Command(BaseCommand):
-    help = "Install six MySQL append-only triggers for PMS2 audit and financial facts."
+    help = "Install six MySQL append-only triggers plus one open-cashier-shift insert guard."
 
     def handle(self, *args, **options):
         if connection.vendor != "mysql":
