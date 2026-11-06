@@ -61,11 +61,11 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
             self.assertEqual(response.json()["error"]["code"],
                              "AUTHENTICATION_REQUIRED", url)
 
-    def test_read_endpoints_require_night_audit_execute_permission(self):
-        """读取口径决策：hotelapp.night_audit_execute 为读门禁（前台 403）。"""
+    def test_read_endpoints_require_night_audit_view_permission(self):
+        """只读接口独立使用 core.night_audit_view；前台无查看权应 403。"""
         self.client.force_login(self.fd)
         self.assertFalse(AuthorizationService.has_permission(
-            self.fd, self.property, "hotelapp.night_audit_execute"))
+            self.fd, self.property, "core.night_audit_view"))
         for url in self.READ_ENDPOINTS:
             response = self.client.get(url)
             self.assertEqual(response.status_code, 403, url)
