@@ -89,9 +89,18 @@
         </table>
       </div>
       <div class="pms-pager">
-        <button id="nt-prev" type="button" class="au-ghost">上一页</button>
-        <span id="nt-page-info">—</span>
-        <button id="nt-next" type="button" class="au-ghost">下一页</button>
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label for="nt-page-size">每页</label>
+          <select id="nt-page-size" aria-label="通知每页条数">
+            <option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option>
+          </select>
+          <button id="nt-prev" type="button" class="au-ghost">上一页</button>
+          <span id="nt-page-info">—</span>
+          <label for="nt-goto-page">跳至</label>
+          <input id="nt-goto-page" type="number" min="1" step="1" value="1" aria-label="通知跳转页码" style="width:72px">
+          <button id="nt-goto-btn" type="button" class="au-ghost">跳转</button>
+          <button id="nt-next" type="button" class="au-ghost">下一页</button>
+        </span>
       </div>
       <div class="pms-error" id="nt-error" hidden></div>
       <p class="pms-meta" id="nt-refresh-note" style="margin-left:0;margin-top:10px"></p>
@@ -103,7 +112,7 @@
 (function () {
   "use strict";
   var api = "/api/v1/notifications";
-  var state = { page: 1, pageSize: 20, hasNext: false, hasPrev: false };
+  var state = { page: 1, pageSize: 20, hasNext: false, hasPrev: false, totalPages: 1 };
 
   function $(id) { return document.getElementById(id); }
   function escapeHtml(value) {
@@ -217,14 +226,17 @@
     if (read) params.push("is_read=" + encodeURIComponent(read));
     getJSON(api + "?" + params.join("&")).then(function (body) {
       var pagination = body.meta.pagination;
+      state.page = pagination.page;
+      state.totalPages = Math.max(1, Math.ceil(pagination.total / pagination.page_size));
       state.hasNext = pagination.has_next;
       state.hasPrev = pagination.has_previous;
+      $("nt-goto-page").max = String(state.totalPages);
+      $("nt-goto-page").value = String(pagination.page);
       $("nt-prev").disabled = !pagination.has_previous;
       $("nt-next").disabled = !pagination.has_next;
       $("nt-page-info").textContent =
         "第 " + pagination.page + " / " +
-        Math.max(1, Math.ceil(pagination.total / pagination.page_size)) +
-        " 页 · 共 " + pagination.total + " 条";
+        state.totalPages + " 页 · 共 " + pagination.total + " 条";
       $("nt-list-meta").textContent = "范围：当前物业 · 定向本人 + 我的有效岗位广播";
       renderRows(body.data);
     }).catch(function (err) {
@@ -270,6 +282,28 @@
   });
   $("nt-next").addEventListener("click", function () {
     if (state.hasNext) loadList(state.page + 1);
+  });
+  $("nt-page-size").addEventListener("change", function () {
+    var parsed = Number.parseInt(this.value, 10);
+    if ([20, 50, 100].indexOf(parsed) >= 0) {
+      state.pageSize = parsed;
+      loadList(1);
+    }
+  });
+  function gotoNotificationPage() {
+    var input = $("nt-goto-page");
+    var target = Number.parseInt(input.value, 10);
+    if (!Number.isInteger(target) || target < 1 || target > state.totalPages) {
+      input.setCustomValidity("请输入 1 至 " + state.totalPages + " 之间的页码。");
+      input.reportValidity();
+      return;
+    }
+    input.setCustomValidity("");
+    loadList(target);
+  }
+  $("nt-goto-btn").addEventListener("click", gotoNotificationPage);
+  $("nt-goto-page").addEventListener("keydown", function (event) {
+    if (event.key === "Enter") gotoNotificationPage();
   });
   $("nt-rows").addEventListener("click", function (event) {
     var button = event.target.closest("button[data-notification-id]");
