@@ -37,14 +37,14 @@ PERMISSION_MATRIX = {
         "hotelapp.no_show_handle",
     ("post", "/front-desk/payments/{payment_id}/refunds"): "billing.refund_request",
     ("post", "/front-desk/refunds/{refund_id}/approve"): "billing.refund_approve",
-    ("get", "/night-audit/preview"): "hotelapp.night_audit_execute",
+    ("get", "/night-audit/preview"): "core.night_audit_view",
     ("post", "/night-audit/run"): "hotelapp.night_audit_execute",
-    ("get", "/night-audit/business-dates"): "hotelapp.night_audit_execute",
-    ("get", "/night-audit/business-dates/current"): "hotelapp.night_audit_execute",
-    ("get", "/night-audit/business-dates/{business_date_id}"): "hotelapp.night_audit_execute",
-    ("get", "/night-audit/break-glass"): "hotelapp.night_audit_execute",
-    ("get", "/night-audit/runs"): "hotelapp.night_audit_execute",
-    ("get", "/night-audit/runs/{run_id}"): "hotelapp.night_audit_execute",
+    ("get", "/night-audit/business-dates"): "core.night_audit_view",
+    ("get", "/night-audit/business-dates/current"): "core.night_audit_view",
+    ("get", "/night-audit/business-dates/{business_date_id}"): "core.night_audit_view",
+    ("get", "/night-audit/break-glass"): "core.night_audit_view",
+    ("get", "/night-audit/runs"): "core.night_audit_view",
+    ("get", "/night-audit/runs/{run_id}"): "core.night_audit_view",
     ("post", "/night-audit/business-dates/{business_date_id}/reopen-request"):
         "hotelapp.business_date_reopen",
     ("post", "/night-audit/break-glass/{record_id}/review"): "core.breakglass_review",
@@ -58,10 +58,10 @@ PERMISSION_MATRIX = {
         "hotelapp.guest_phone_reveal",
     ("get", "/rooms/status"): "hotelapp.view_room",
     ("get", "/room-types"): "hotelapp.view_room",
-    ("get", "/housekeeping/rooms"): "hotelapp.view_room",
-    ("get", "/housekeeping/summary"): "hotelapp.view_room",
-    ("post", "/housekeeping/rooms/{room_id}/status"): "hotelapp.change_room",
-    ("post", "/housekeeping/rooms/{room_id}/maintenance"): "hotelapp.no_show_handle",
+    ("get", "/housekeeping/rooms"): "inventory.housekeeping_view",
+    ("get", "/housekeeping/summary"): "inventory.housekeeping_view",
+    ("post", "/housekeeping/rooms/{room_id}/status"): "inventory.housekeeping_update",
+    ("post", "/housekeeping/rooms/{room_id}/maintenance"): "inventory.maintenance_manage",
     ("get", "/rate-calendar"): "hotelapp.view_room",
     ("post", "/daily-rates/{rate_id}/adjust"): "inventory.manage_rates",
     ("get", "/financial-summary"): "hotelapp.finance_access",
@@ -72,8 +72,14 @@ PERMISSION_MATRIX = {
     ("post", "/billing/payments"): "hotelapp.finance_access",
     ("get", "/billing/refunds"): "hotelapp.finance_access",
     ("post", "/billing/refunds"): "billing.refund_request",
+    ("post", "/billing/refunds/{refund_id}/approve"): "billing.refund_approve",
+    ("post", "/billing/refunds/{refund_id}/reject"): "billing.refund_approve",
+    ("post", "/billing/refunds/{refund_id}/execute"): "billing.refund_execute",
+    ("post", "/billing/shifts/open"): "billing.cashier_shift_manage",
+    ("post", "/billing/shifts/{shift_id}/close"): "billing.cashier_shift_manage",
+    ("post", "/billing/shifts/{shift_id}/movements"): "billing.cash_movement_manage",
     ("post", "/billing/reversals"): "billing.reverse_entry",
-    ("get", "/billing/shifts"): "hotelapp.finance_access",
+    ("get", "/billing/shifts"): "billing.cashier_shift_manage",
     ("get", "/billing/summary"): "hotelapp.finance_access",
     ("get", "/approvals"): "billing.approval_view",  # P0-01：专项只读权限
     ("post", "/approvals/request"): "ApprovalActionRegistry",  # P0-02：动作白名单
@@ -125,7 +131,7 @@ class PMS2OpenApiDocumentationTests(TestCase):
         spec = response.json()
         self.assertEqual(spec["openapi"], "3.1.0")
         paths = spec["paths"]
-        self.assertEqual(len(paths), 97, "OpenAPI 应覆盖 apps.api.urls 的全部 97 个注册路由")
+        self.assertEqual(set(paths), _route_paths(), "OpenAPI paths 必须与 apps.api.urls 注册路由集合完全一致")
         expected = {
             "/api/v1/availability": {"get"},
             "/api/v1/reservations": {"post"},
@@ -504,6 +510,11 @@ class PMS2PermissionAnnotationTests(TestCase):
                 self.assertIn(
                     permission, declared,
                     f"{method.upper()} {path} 权限声明应包含 {permission}（视图实际校验值）")
+
+    def test_shift_list_declares_both_personal_and_property_wide_access_paths(self):
+        permission = self.spec["paths"][BASE + "/billing/shifts"]["get"]["x-required-permission"]
+        self.assertIn("billing.cashier_shift_manage", permission)
+        self.assertIn("hotelapp.finance_access", permission)
 
     def test_session_post_operations_require_csrf_header(self):
         for path, method, operation in _iter_operations(self.spec):
