@@ -548,3 +548,16 @@
 6. **生产备份恢复/性能**：未完成独立 MySQL 备份恢复、并发压力和恢复演练。
 
 **结论：** 已提交多项实质修复，但 PMS2 财务、权限、数据库与业务闭环尚未达到“全部完成/可上线”状态。以最新 SHA CI、MySQL 本地/生产验证、九角色 E2E 和 DEC-16 签署作为关闭门禁。
+
+
+### 12.4 第九批补充：退款超时任务与班次原生写保护
+
+- 新增 `BillingService.expire_due_refunds()` 与 `expire_pending_refunds` 管理命令；到期退款同步 ApprovalRecord/Refund/Payment，释放额度，不生成退款凭证；每笔独立事务并幂等。
+- 生产环境必须配置操作系统任务计划程序，每 5 分钟执行一次：
+  `python manage.py expire_pending_refunds --limit 100`
+  该命令不会自动安装定时器；未部署计划任务不能标记“审批超时自动闭环已上线”。
+- 班次现金变动新增模型层检查：班次必须 OPEN，登记人必须是该班次收银员。
+- MySQL guard 扩展为 7 条：原 6 条审计/账本/班次现金事实 UPDATE/DELETE 保护 + 1 条班次现金变动 BEFORE INSERT 保护。SQL 脚本、安装命令、检查命令和部署说明同步更新。
+- 最新代码提交：`645e9aa`（退款超时任务回归）及之前 `4b7a27a`、`a8301e5`、`f4f3da7`（班次 MySQL 触发器）。
+- 当前 main 文档提交：`697f840`。最新 SHA 对应的 MySQL tests 与 Django CI 必须重新跑完；本地 MySQL 账号授权、生产触发器和 OS 定时任务仍待部署验收。
+
