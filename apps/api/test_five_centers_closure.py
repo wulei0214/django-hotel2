@@ -471,8 +471,9 @@ class CashierShiftClosureTests(E2EFlowTestBase):
     def setUp(self):
         super().setUp()
         self.fin = self._make_staff("closure_cs_finance", "财务")
-        # 前台无 hotelapp.finance_access（财务/值班经理/店长持有）
+        # 前台无 hotelapp.finance_access，但可操作本人收银班次。
         self.nofin = self._make_staff("closure_cs_front", "前台")
+        self.fd = self.nofin
 
     def test_open_shift_creates_and_replay_is_idempotent(self):
         self.client.force_login(self.fin)
