@@ -147,6 +147,10 @@ class BillingCenterTestBase(TestCase):
             property=self.property, reservation=reservation,
             folio_type=Folio.FolioType.MASTER, guest=guest,
             status=Folio.Status.OPEN, currency="CNY")
+        # 测试中的现金收款必须属于已显式开立的收银班次。
+        BillingService.open_shift(
+            property_obj=self.property, cashier=self.finance,
+            opening_cash=Decimal("0.00"))
         BillingService.post_entry(
             property_obj=self.property, folio=folio,
             entry_type=LedgerEntry.EntryType.ROOM_CHARGE, amount=amount,
