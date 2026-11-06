@@ -1,0 +1,37 @@
+name: OpenAPI snapshot
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/openapi_schema.py"
+      - "apps/api/urls.py"
+      - "apps/api/management/commands/export_openapi_schema.py"
+      - ".github/workflows/openapi-snapshot.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Export current runtime schema
+        run: python manage.py export_openapi_schema
+      - name: Upload generated OpenAPI snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: pms2-openapi-snapshot
+          path: docs/接口文档/openapi.json
+          if-no-files-found: error
+          retention-days: 7
