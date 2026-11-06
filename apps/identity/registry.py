@@ -136,18 +136,21 @@ MODULE_REGISTRY_V2 = {
             "approve": NOT_APPLICABLE,
             # F-08 补执行点（基线 2.0 §4.3 清洁与维修工作台）：
             # room_release_ready 重新登记（净房放行 /api/v1/housekeeping/rooms/{id}/status）
-            "special": ("inventory.manage_rates", "hotelapp.room_release_ready"),
+            "special": (
+                "inventory.manage_rates", "hotelapp.room_release_ready",
+                "inventory.housekeeping_view", "inventory.housekeeping_update",
+                "inventory.maintenance_manage",
+            ),
         },
         "extra_codes": (),
         "notes": "房态图/房型/房价日历 API 门禁 view_room；调价走 "
                  "inventory.manage_rates（F-05：OpenAPI 误标 change_room）。"
                  "§4.3 清洁与维修工作台（/manage/housekeeping/，挂本模块权限面，"
                  "不另立模块避免 view_room/change_room 双记）：读（工作清单/统计）"
-                 "门禁 view_room；清洁链流转（→CLEANING/→INSPECTING、检查退回）"
-                 "门禁 change_room（客房服务员在列）；净房放行（→CLEAN）门禁专项 "
-                 "room_release_ready（值班经理/店长，F-08 执行点恢复）；"
-                 "维修停用/恢复登记复用 accommodation 模块专项 no_show_handle "
-                 "（值班经理/店长口径——直接影响可售库存，不开放给客房服务员）。",
+                 "门禁 view_room；清洁维修工作台读取使用 housekeeping_view；"
+                 "清洁链流转使用 housekeeping_update（客房服务员及管理者）；"
+                 "净房放行（→CLEAN）使用 room_release_ready；维修停用/恢复使用 "
+                 "maintenance_manage（值班经理/店长），不再复用未到处理权限。",
     },
     "memberships": {
         "code": "memberships",
@@ -456,6 +459,27 @@ SPECIAL_PERMISSIONS = (
         "note": "净房放行（待检查→净房，重回可售）：§4.3 清洁与维修工作台 "
                 "POST /api/v1/housekeeping/rooms/{id}/status；F-08 补执行点，"
                 "服务层+API 层双重校验（值班经理/店长）",
+    },
+    {
+        "key": "housekeeping_view",
+        "codename": "inventory.housekeeping_view",
+        "module": "rooms", "risk": "low",
+        "requires_reason": False, "requires_confirm": False,
+        "note": "清洁与维修工作台只读查看；与房型/库存主数据权限分离",
+    },
+    {
+        "key": "housekeeping_update",
+        "codename": "inventory.housekeeping_update",
+        "module": "rooms", "risk": "medium",
+        "requires_reason": False, "requires_confirm": True,
+        "note": "清洁链流转（脏房→清洁中→待检查/退回）；净房放行仍需 room_release_ready",
+    },
+    {
+        "key": "maintenance_manage",
+        "codename": "inventory.maintenance_manage",
+        "module": "rooms", "risk": "high",
+        "requires_reason": True, "requires_confirm": True,
+        "note": "维修停用/停售/恢复登记；独立于未到订单处理 no_show_handle",
     },
     {
         "key": "no_show_handle",
