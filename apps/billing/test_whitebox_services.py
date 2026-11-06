@@ -481,12 +481,12 @@ class CashShiftReconciliationTests(WhiteboxBillingBase):
             reason="补充备用金", created_by=executor,
             idempotency_key="wbb-cash-in-001")
         out_movement, out_created = BillingService.record_shift_movement(
-            shift_id=execution_shift.pk, direction="OUT", amount="5.00",
+            shift_id=execution_shift.pk, direction="OUT", amount="35.00",
             reason="经批准现金支出", created_by=executor,
             idempotency_key="wbb-cash-out-001")
         self.assertTrue(out_created)
         replay, replay_created = BillingService.record_shift_movement(
-            shift_id=execution_shift.pk, direction="OUT", amount="5.00",
+            shift_id=execution_shift.pk, direction="OUT", amount="35.00",
             reason="经批准现金支出", created_by=executor,
             idempotency_key="wbb-cash-out-001")
         self.assertFalse(replay_created)
@@ -494,8 +494,8 @@ class CashShiftReconciliationTests(WhiteboxBillingBase):
 
         closed = BillingService.close_shift(
             property_obj=self.property, shift_id=execution_shift.pk,
-            actual_cash="35.00", closed_by=executor)
-        self.assertEqual(closed.expected_cash, Decimal("35.00"))
+            actual_cash="5.00", closed_by=executor)
+        self.assertEqual(closed.expected_cash, Decimal("5.00"))
         self.assertEqual(closed.variance, Decimal("0.00"))
         self.assertEqual(closed.status, CashierShift.ShiftStatus.CLOSED)
 
