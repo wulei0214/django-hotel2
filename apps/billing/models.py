@@ -312,8 +312,8 @@ class LedgerEntry(models.Model):
                 name="ck_ledger_reversal_has_reason",
             ),
         ]
-        # F-08（基线 2.0 §4.1）：红字冲销 HTTP 入口启用新权限码，
-        # 不复用已随旧路由退役的 hotelapp.reverse_checkout。
+        # 红字冲销使用 billing.reverse_entry（财务申请/执行）与
+        # billing.reversal_approve（值班经理/店长审批），不复用旧权限码。
         permissions = (
             ("reverse_entry", "可以申请并执行已批准的账本红字冲销（LedgerEntry）"),
             ("reversal_approve", "可以审批账本红字冲销申请（LedgerEntry）"),
