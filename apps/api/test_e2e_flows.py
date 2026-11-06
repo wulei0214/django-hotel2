@@ -638,13 +638,6 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.assertIn(executor_shift_response.status_code, (200, 201),
                       executor_shift_response.content)
         executor_shift_id = executor_shift_response.json()["data"]["id"]
-        # 退款现金先从财务备用金领取，再从该执行班次实际支付给住客。
-        cash_float = self._post_json(
-            f"/api/v1/billing/shifts/{executor_shift_id}/movements",
-            {"direction": "IN", "amount": "100.00",
-             "reason": "从保险柜领取退款现金",
-             "idempotency_key": "e2e-refund-cash-float-001"})
-        self.assertEqual(cash_float.status_code, 201, cash_float.content)
         execute_payload = {
             "confirm_refund_paid": True,
             "execution_reference": "E2E-MANUAL-REFUND-001",
@@ -661,6 +654,13 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(refund.status, Refund.Status.APPROVED)
         self.assertFalse(LedgerEntry.objects.filter(
             reference=f"refund:{refund.provider_ref}").exists())
+        # 现金退款先从保险柜领取备用金，记录到执行班次后才允许实际退款。
+        cash_float = self._post_json(
+            f"/api/v1/billing/shifts/{executor_shift_id}/movements",
+            {"direction": "IN", "amount": "100.00",
+             "reason": "从保险柜领取退款现金",
+             "idempotency_key": "e2e-refund-cash-float-001"})
+        self.assertEqual(cash_float.status_code, 201, cash_float.content)
         execute = self._post_json(
             f"/api/v1/billing/refunds/{refund_id}/execute", execute_payload)
         self.assertEqual(execute.status_code, 201, execute.content)
