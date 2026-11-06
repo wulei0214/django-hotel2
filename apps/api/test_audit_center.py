@@ -307,6 +307,7 @@ class AuditCenterDetailTests(AuditCenterTestBase):
         self.assertTrue(data["is_sensitive"])
         self.assertEqual(data["property"]["code"], self.property.code)
         self.assertEqual(data["actor"], self.dm.username)
+        self.assertEqual(data["actor_label"], "%s（%s）" % (self.dm.username, self.dm.username))
         self.assertIn("retention_note", body["meta"])
 
     def test_detail_null_payloads_returned_as_null(self):
@@ -314,6 +315,7 @@ class AuditCenterDetailTests(AuditCenterTestBase):
         data = self.client.get(f"/api/v1/audit/events/{event.pk}").json()["data"]
         self.assertIsNone(data["before"])
         self.assertIsNone(data["after"])
+        self.assertEqual(data["actor_label"], "系统")
 
 
 class AuditCenterPiiProtectionTests(AuditCenterTestBase):
