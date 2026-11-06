@@ -562,6 +562,9 @@ class NotificationCenterPageTests(NotificationCenterTestBase):
         self.assertIn('var api = "/api/v1/notifications"', content)
         self.assertIn("全部已读", content)
         self.assertIn("立即刷新待办", content)
+        self.assertIn('id="nt-page-size"', content)
+        self.assertIn('id="nt-goto-page"', content)
+        self.assertIn('id="nt-goto-btn"', content)
 
     def test_sidebar_badge_injection(self):
         self._reservation(status=Reservation.Status.PENDING)
