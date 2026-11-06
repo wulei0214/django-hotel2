@@ -601,8 +601,11 @@ COMPONENTS = {
         "status": s_str("PENDING/APPROVED/REJECTED 等。"),
         "requested_by": s_nullable(s_str("申请人用户名。")),
         "approved_by": s_nullable(s_str("审批人用户名。")),
+        "execution_status": s_str("审批状态或 EXECUTED；红字冲销执行后为 EXECUTED。"),
+        "executed_by": s_nullable(s_str("红字冲销执行人用户名。")),
         "reason": s_str(), "created_at": s_str("", format="date-time"),
         "approved_at": s_nullable(s_str("", format="date-time")),
+        "executed_at": s_nullable(s_str("", format="date-time")),
     }),
     "MgmtReservationListItem": s_obj({
         "id": s_int(), "booking_no": s_str(),
