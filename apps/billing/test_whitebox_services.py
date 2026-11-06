@@ -199,6 +199,40 @@ class ReverseEntryBusinessDateTests(WhiteboxBillingBase):
                 approval_id=approval.pk, reason=reason, reversed_by=self.operator)
 
 
+class LedgerReversalApprovalConstraintTests(WhiteboxBillingBase):
+    """数据库层强制新冲销关联审批；历史旧流程必须显式标记。"""
+
+    def test_new_reversal_requires_approval_record_but_legacy_marker_is_allowed(self):
+        self._make_reservation("WBBREVDB0001")
+        original = LedgerEntry.objects.create(
+            property=self.property, folio=self.folio,
+            entry_type=LedgerEntry.EntryType.ADJUSTMENT,
+            amount=Decimal("10.00"), currency="CNY",
+            reference="WBB-REV-DB-SOURCE",
+            business_date=self.today, posted_by=self.operator)
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                LedgerEntry.objects.create(
+                    property=self.property, folio=self.folio,
+                    entry_type=LedgerEntry.EntryType.REVERSAL,
+                    amount=Decimal("-10.00"), currency="CNY",
+                    reference="WBB-REV-DB-NEW",
+                    business_date=self.today, void_of=original,
+                    void_reason="数据库约束回归", posted_by=self.operator)
+
+        legacy = LedgerEntry.objects.create(
+            property=self.property, folio=self.folio,
+            entry_type=LedgerEntry.EntryType.REVERSAL,
+            amount=Decimal("-10.00"), currency="CNY",
+            reference="WBB-REV-DB-LEGACY",
+            business_date=self.today, void_of=original,
+            void_reason="历史旧流程记录", legacy_workflow=True,
+            posted_by=self.operator)
+        self.assertTrue(legacy.legacy_workflow)
+        self.assertIsNone(legacy.approval_record_id)
+
+
 class ApprovalRaceTests(WhiteboxBillingBase):
     """WB-03：request_approval 并发同幂等键必须幂等返回既有记录。"""
 
