@@ -1124,3 +1124,36 @@ P0 权限测试必须覆盖匿名与跨物业。每一个权限拒绝都应验�
 | 生产备份恢复 | 待处理 | 在独立 MySQL 环境完成备份、恢复和数据核对演练 |
 
 **当前结论：** 财务三分离、现金班次、维修专项权限和通知个人已读已具备对应代码/迁移；本轮继续修复了退款事实不可变和 MySQL 锁顺序问题。仍不得宣称 PMS2 财务/数据库全部验收完成，也不得冻结基线 2.0 或启动 PMS3.0 功能排期。
+
+
+### 12.5 第八批补充：退款审批到期、通用审批分流与支付状态机
+
+本次继续白盒复核发现：退款申请创建时会自动生成 ApprovalRecord，但通用 `/api/v1/approvals/<id>/approve|reject` 也能单独推进 ApprovalRecord，而不更新 Refund/Payment。这样会产生“审批记录已通过/驳回，退款仍待审批”的悬空状态。另一个闭环缺口是 ApprovalRecord 到期后，`approve_refund` 原先抛错回滚，退款一直保持 PENDING 并持续占用原支付可退余额。
+
+已提交修复：
+
+1. **退款审批唯一写路径**
+   - 通用 ApprovalRecord 列表仍可展示退款审批。
+   - 通用审批通过/驳回接口遇到 `action_code=billing.refund` 时返回 409，必须走 `/api/v1/billing/refunds/{id}/approve|reject` 专用接口。
+   - 专用服务同事务更新 ApprovalRecord、Refund、Payment 和 AuditEvent，避免只更新审批记录。
+
+2. **退款审批到期闭环**
+   - Refund 新增 `EXPIRED` 终态；审批到期时同步记录 `processed_at`，不生成 REFUND LedgerEntry。
+   - 若同一 Payment 没有其他待审批/已批准退款，按已执行退款事实恢复 Payment 状态（SUCCEEDED / PARTIALLY_REFUNDED / REFUNDED），释放到期申请占用的可退额度。
+   - 新迁移 `billing.0022_refund_approval_expiry` 识别历史上“ApprovalRecord 已 EXPIRED、Refund 仍 PENDING”的记录；只有存在真实 `ApprovalRecord.approved_at` 时才同步终态。缺失时间戳的记录标记为 legacy，不伪造处理时间。
+   - 增加审批过期回归测试，验证退款过期、支付状态释放且不产生退款凭证。
+
+3. **支付事实和状态机**
+   - `Payment.provider` 加入不可变原始交易字段，禁止支付渠道标识被 ORM 覆盖。
+   - 移除 `REFUND_PENDING → FAILED` 非法状态迁移；已有待审批/已批准退款时，不允许支付回退为 FAILED、SUCCEEDED、PARTIALLY_REFUNDED 或 REFUNDED。
+   - 增加支付渠道不可变和退款处理中不得失败的回归测试。
+
+4. **班次现金事实**
+   - `CashierShiftMovement.save()` 增加 ORM 层保护：班次必须存在且仍为 OPEN，登记人必须是该班次收银员。
+   - 已增加直接 ORM 写入关闭班次的拒绝测试；服务层仍以班次行锁防止并发关班/现金变动。
+
+5. **MySQL 一致性**
+   - 退款/关班统一锁顺序：现金班次（现金退款）→ Payment → Refund。
+   - 同一 Payment 下退款额度、驳回后 Payment 状态汇总使用锁定当前读，避免 MySQL REPEATABLE READ 旧快照漏算并发退款。
+
+**本批最新代码 SHA：** `52a182e8b6f61693bdeaa34e8e31bd3637b0536c`。该 SHA 的 Django CI 与 MySQL tests 当时仍在运行；最终结论必须以更新后最新 SHA 的完整工作流为准。
