@@ -393,3 +393,54 @@ class StaffCenterSecurityTests(TestCase):
                 "password": "cross-prop-pass1"})
         self.assertEqual(response.status_code, 404,
                          "当前物业之外的员工档案不得通过员工中心重置")
+
+
+class TerminatedEmployeeResetGuardTests(TestCase):
+    """离职/停用员工不能重置密码（用户报告优化：按钮置灰 + 服务端守卫）。"""
+
+    def setUp(self):
+        self.prop = Property.objects.get(code="DEFAULT")
+        self.manager = _make_user("term-mgr", "店长")
+
+    def _make_terminated(self, username):
+        user = User.objects.create_user(username=username, password="OldPass-2026!")
+        user.is_active = False
+        user.save(update_fields=("is_active",))
+        profile = StaffProfile.objects.create(
+            user=user, full_name="离职员工", employment_status="TERMINATED")
+        PropertyStaffMembership.objects.create(
+            property=self.prop, staff_profile=profile,
+            employee_no="E-" + username, status="TERMINATED")
+        return profile, user
+
+    def test_service_rejects_terminated_employee(self):
+        from apps.identity.services import (
+            EmployeeLifecycleError, EmployeeLifecycleService)
+        profile, user = self._make_terminated("term-reset-1")
+        with self.assertRaises(EmployeeLifecycleError):
+            EmployeeLifecycleService.reset_password(
+                profile, property_obj=self.prop,
+                new_password="Str0ng!New2026", reset_by=self.manager)
+        user.refresh_from_db()
+        self.assertTrue(user.check_password("OldPass-2026!"),
+                        "被拒绝的重置不得改变旧密码")
+
+    def test_service_rejects_deactivated_account(self):
+        from apps.identity.services import (
+            EmployeeLifecycleError, EmployeeLifecycleService)
+        profile, user = self._make_terminated("term-reset-2")
+        profile.employment_status = "ACTIVE"
+        profile.save(update_fields=("employment_status",))
+        with self.assertRaises(EmployeeLifecycleError):
+            EmployeeLifecycleService.reset_password(
+                profile, property_obj=self.prop,
+                new_password="Str0ng!New2026", reset_by=self.manager)
+
+    def test_view_returns_400_for_terminated_employee(self):
+        self.client.force_login(self.manager)
+        profile, user = self._make_terminated("term-reset-3")
+        response = self.client.post(
+            "/manage/staff/actions/%d/reset_password/" % profile.pk,
+            {"password": "Str0ng!New2026"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("已离职", response.json()["error"]["message"])

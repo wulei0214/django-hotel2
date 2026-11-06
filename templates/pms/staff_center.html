@@ -739,12 +739,19 @@
         invRow.appendChild(resendForm);
         secAccount.appendChild(invRow);
       }
-      /* 重置登录密码（§10.1 f） */
+      /* 重置登录密码（§10.1 f）——离职/停用员工置灰不可用（用户报告优化） */
+      const employeeTerminated = item.employment_status === "TERMINATED";
+      const accountDeactivated = account && account.is_active === false;
       const resetHead = document.createElement("p");
       resetHead.className = "sc-zone-hint";
       if (invitation && invitation.status !== "ACCEPTED") resetHead.style.marginTop = "12px";
-      resetHead.textContent = "重置登录密码——新密码留空则由系统生成；重置后该账号下次登录将强制修改密码。";
-      secAccount.appendChild(resetHead);
+      if (employeeTerminated || accountDeactivated) {
+        resetHead.textContent = "该员工已离职（账号已停用），不能重置密码；如需重新入职请先在分区⑤恢复在职状态。";
+        resetHead.style.color = "var(--color-text-muted, #909399)";
+        secAccount.appendChild(resetHead);
+      } else {
+        resetHead.textContent = "重置登录密码——新密码留空则由系统生成；重置后该账号下次登录将强制修改密码。";
+        secAccount.appendChild(resetHead);
       const accountForm = document.createElement("form");
       accountForm.className = "sc-form";
       accountForm.appendChild(csrfHidden());
@@ -758,8 +765,9 @@
       accountForm.appendChild(accResult);
       bindActionForm(accountForm,
           "/manage/staff/actions/" + profileId + "/reset_password/",
-          function () { openPanel(profileId); });
+          function () { loadList(currentPage); });
       secAccount.appendChild(accountForm);
+      }
     }
     drawerBody.appendChild(secAccount);
 

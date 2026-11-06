@@ -383,6 +383,15 @@ class EmployeeLifecycleService:
             raise EmployeeLifecycleError("员工不属于当前物业，不能重置账号密码。")
         if not profile.user_id:
             raise EmployeeLifecycleError("该员工尚未开通登录账号")
+        # 离职守卫（用户报告：离职员工不应可重置密码）——
+        # 离职 = 雇用状态 TERMINATED 且账号已停用；重置无意义并破坏生命周期语义
+        if profile.employment_status == StaffProfile.EmploymentStatus.TERMINATED:
+            raise EmployeeLifecycleError(
+                "该员工已离职，不能重置密码；如需重新入职请先恢复其在职状态。")
+        _account = User.objects.filter(pk=profile.user_id).first()
+        if _account is not None and not _account.is_active:
+            raise EmployeeLifecycleError(
+                "该账号已停用，不能重置密码；请先恢复员工在职状态。")
         if not new_password or len(new_password) < 6:
             raise EmployeeLifecycleError("密码至少 6 位")
         user = User.objects.get(pk=profile.user_id)
