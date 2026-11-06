@@ -655,7 +655,6 @@ def execute_refund_api(request, refund_id):
             idempotency_key=key)
     except ValueError as exc:
         raise ApiError("VALIDATION_ERROR", str(exc))
-    _invalidate_billing_summary(property_obj)
     return api_response(request, {
         "refund_id": refund.pk, "payment_id": refund.payment_id,
         "status": refund.status, "amount": _money_str(refund.amount),
