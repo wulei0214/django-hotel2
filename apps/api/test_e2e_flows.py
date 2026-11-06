@@ -24,12 +24,13 @@
   * 冲账（BillingService.reverse_entry）：无 HTTP 入口（F-08），服务级调用验证。
 """
 import json
+import re
 import uuid
 from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import Group, Permission, User
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from apps.billing.models import (
@@ -317,6 +318,36 @@ class E2EFlowTestBase(TestCase):
         if property_obj is not None:
             condition["property_id"] = property_obj.pk
         return AuditEvent.objects.filter(**condition).exists()
+
+
+class SessionCsrfTemplateTokenTests(E2EFlowTestBase):
+    """Session CSRF 模式下，PMS2 页面内令牌必须能完成 POST。"""
+
+    @override_settings(CSRF_USE_SESSIONS=True)
+    def test_notification_page_token_is_accepted_and_wrong_token_is_rejected(self):
+        staff = self._make_staff("session_csrf_frontdesk", "前台")
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(staff)
+
+        page = client.get("/manage/notifications/")
+        self.assertEqual(page.status_code, 200, page.content)
+        match = re.search(
+            rb'name="csrfmiddlewaretoken" value="([^"]+)"',
+            page.content)
+        self.assertIsNotNone(match, "通知页面必须渲染 Session CSRF 隐藏字段")
+        token = match.group(1).decode("ascii")
+
+        accepted = client.post(
+            "/api/v1/notifications/read-all",
+            data="{}", content_type="application/json",
+            HTTP_X_CSRFTOKEN=token)
+        self.assertEqual(accepted.status_code, 200, accepted.content)
+
+        rejected = client.post(
+            "/api/v1/notifications/refresh",
+            data="{}", content_type="application/json",
+            HTTP_X_CSRFTOKEN="invalid-csrf-token")
+        self.assertEqual(rejected.status_code, 403)
 
 
 class FrontDeskDrawerStatusDtoTests(E2EFlowTestBase):
