@@ -751,6 +751,28 @@ class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
         with self.assertRaises(ValidationError):
             CashierShift.objects.filter(pk=shift.pk).delete()
 
+    def test_legacy_refund_rows_cannot_be_completed_by_application_code(self):
+        reservation = self._make_reservation("WBBLEGACYRFD001")
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref="WBB-LEGACY-PAY-001",
+            method="CARD", amount=Decimal("100.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        refund = Refund.objects.create(
+            property=self.property, payment=payment, amount=Decimal("20.00"),
+            currency="CNY", reason="历史退款只读测试",
+            idempotency_key="wbb-legacy-readonly-001",
+            provider_ref="WBB-LEGACY-RFD-001", requested_by=self.operator)
+        # 模拟 0016 数据迁移标记；绕过应用 manager 仅用于构造历史数据库状态。
+        QuerySet.update(
+            Refund.objects.filter(pk=refund.pk), legacy_workflow=True)
+        refund.refresh_from_db()
+        refund.approved_by = User.objects.create_user(
+            username="wbb-legacy-approver")
+        refund.status = Refund.Status.APPROVED
+        with self.assertRaises(ValidationError):
+            refund.save()
+
     def test_cash_movement_direction_is_database_constrained(self):
         shift, _ = BillingService.open_shift(
             property_obj=self.property, cashier=self.operator,
