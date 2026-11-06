@@ -217,6 +217,8 @@ class BillingService:
             raise ValueError("退款审批记录与当前退款申请不匹配，禁止继续。")
 
         payload = approval.payload_snapshot or {}
+        if not isinstance(payload, dict):
+            raise ValueError("退款审批参数快照格式无效，禁止继续。")
         try:
             payload_amount = Decimal(str(payload.get("amount")))
         except (InvalidOperation, TypeError, ValueError):
