@@ -728,6 +728,11 @@
       state.textContent = "审批单 #" + record.id + "：" + record.status +
         (record.approved_by ? "（审批人 " + record.approved_by + "）" : "");
       form.querySelectorAll("[data-reversal-execute]").forEach(function(el){el.remove();});
+      if (record.execution_status === "EXECUTED") {
+        state.textContent = "审批单 #" + record.id + "：已批准并执行" +
+          (record.executed_by ? "（执行人 " + record.executed_by + "）" : "");
+        return;
+      }
       if (record.status === "APPROVED") {
         const execute = document.createElement("button");
         execute.type = "button";
@@ -743,6 +748,7 @@
             state.textContent = "已追加红字凭证 " + d.reference +
               "（" + d.amount + " " + d.currency + "）";
             await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger()]);
+            await refreshApprovalStatus();
           } catch (error) {
             state.textContent = error.message;
             execute.disabled = false;
