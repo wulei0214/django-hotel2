@@ -171,6 +171,10 @@ python manage.py runserver 0.0.0.0:8000 --noreload
 
 按 2.0 方案 §14 Phase 0 顺序完成 AUTH-01~13 全部任务：RateLimitCounter 独立限流（原子计数/TTL/HMAC 指纹/空值不建桶/fail-closed/429+Retry-After）；BookingAccessToken 订单访问令牌（创建一次性返回、查询/取消/支付意图全凭 token、字段白名单脱敏）；公开预订防刷（IP+phone 双维、PENDING 上限 2 笔、hold TTL 释放命令）；api_guard 修复；登录持久审计+限流+disabled 分支修正；权限语义修正（证件揭示统一 hotelapp.guest_document_reveal、财务查看与退款审批分离、superuser 直通清除）；33 个旧写路由 410 冻结；单店边界（非 DEFAULT 任职明确拒绝+审计）；seed 生产门禁。新增测试至 181 项，SQLite+MySQL 双引擎全过；端到端浏览器验证审计链完整。逐项状态见方案文档 §21。
 
+### 5.6 公开预订页「续付 + 令牌展示」修复（2026-11-07，用户报告：模拟支付按钮点不了）
+
+用户反馈"订单已创建但本地模拟支付按钮不能点击"。浏览器端到端复现结论：下单→支付主流程本身正常（真实浏览器实测 直达 CONFIRMED）；真实缺口是**页面刷新/关闭后订单无法找回**——① 访问令牌从未渲染给用户（提示"请妥善保存"但值未展示），刷新后既无按钮也无令牌；② `simulatePayment` 缺少 `mock_callback_example` 的早期 return 分支不恢复按钮禁用态（隐患）。修复：预订确认区新增**访问令牌展示行**（等宽字体可复制）；新增「04 / RESUME PAYMENT 继续支付」面板，凭预订编号+令牌找回待支付订单（P0-08 口径：token 为唯一凭据，phone 不参与鉴权，复用既有 `GET /api/v1/reservations/<no>?token=` 契约）；两处缺陷补注释。回归（真实浏览器）：新订→令牌展示→**刷新页面**→续付表单找回→支付 CONFIRMED 全链路通过。遗留：用户卡单 `R6D5F259EF3521662905D`（修复前创建、令牌未展示、已过保留期）已通过领域服务清理为 EXPIRED。
+
 ## 6. 文档索引
 
 | 文档 | 内容 |
