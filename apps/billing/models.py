@@ -334,13 +334,42 @@ class Payment(models.Model):
         verbose_name = "支付流水"
         verbose_name_plural = "支付流水"
 
+    def save(self, *args, **kwargs):
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "cashier_shift_id").first()
+            if previous and previous["cashier_shift_id"] != self.cashier_shift_id:
+                raise ValidationError("支付流水的收银班次归属不可修改。")
+        return super().save(*args, **kwargs)
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "payment_id", "requested_by_id", "amount", "approved_by_id",
+                "executed_by_id", "executed_at", "execution_reference",
+                "execution_idempotency_key", "execution_shift_id").first()
+            if previous:
+                immutable_once_set = (
+                    "approved_by_id", "executed_by_id", "executed_at",
+                    "execution_reference", "execution_idempotency_key",
+                    "execution_shift_id")
+                for field in immutable_once_set:
+                    old_value = previous[field]
+                    if old_value not in (None, "") and getattr(self, field) != old_value:
+                        raise ValidationError("退款审批/执行事实不可覆盖或改写。")
+                if (previous["payment_id"] != self.payment_id
+                        or previous["requested_by_id"] != self.requested_by_id
+                        or previous["amount"] != self.amount):
+                    raise ValidationError("退款申请的原支付、申请人和金额不可修改。")
+        return super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.provider_ref} / {self.status}"
 
 
 
 class Refund(models.Model):
-    """退款申请与审批记录；审批仅登记人工退款已实际完成，不调用支付渠道。"""
+    """退款申请、审批和执行三段独立事实；只有执行成功才追加 REFUND 凭证。"""
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "待审批"
@@ -504,6 +533,14 @@ class CashierShiftMovement(models.Model):
             models.CheckConstraint(check=Q(amount__gt=0),
                                    name="ck_shift_movement_amount_positive"),
         ]
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("班次现金变动是不可变财务事实，禁止修改。")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("班次现金变动是不可变财务事实，禁止删除。")
 
 
 class ChargeLine(models.Model):
