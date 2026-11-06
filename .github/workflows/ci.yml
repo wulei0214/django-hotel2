@@ -8,7 +8,7 @@ on:
 
 jobs:
   django-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     services:
       mysql:
@@ -57,7 +57,7 @@ jobs:
         run: python manage.py test --noinput -v 2
 
       # Test database is destroyed after the suite; install production-style guards
-      # on the migrated MySQL CI database and verify the six trigger definitions.
+      # on the migrated MySQL CI database and verify all seven trigger definitions (six append-only guards plus one open-shift insert guard).
       - name: Install MySQL append-only guards
         run: python manage.py install_mysql_append_only_guards
 
