@@ -398,6 +398,15 @@ class PaymentRefundModelSaveRegressionTests(WhiteboxBillingBase):
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.SUCCEEDED)
 
+        payment.status = Payment.Status.REFUNDED
+        with self.assertRaises(ValidationError):
+            payment.save()
+        payment.status = Payment.Status.FAILED
+        with self.assertRaises(ValidationError):
+            payment.save()
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.SUCCEEDED)
+
         payment.amount = Decimal("101.00")
         with self.assertRaises(ValidationError):
             payment.save()
