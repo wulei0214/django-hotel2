@@ -488,7 +488,8 @@
       const reference = form.querySelector('[name="reference"]').value.trim();
       const submitButton = form.querySelector('button[type="submit"]');
       if (method === "CASH" && !activeShiftId) {
-        notify("请先在收银班次区域开班，再登记现金收款。").textContent;
+        const shiftState = document.getElementById("fin-current-shift-state");
+        if (shiftState) shiftState.textContent = "请先在收银班次区域开班，再登记现金收款。";
         return;
       }
       submitButton.disabled = true;
@@ -605,7 +606,76 @@
         if (payment.refunds && payment.refunds.length) {
           drawerBody.appendChild(miniTable([
             ["amount","金额"],["status_label","状态"],["reason","原因"],
-            ["requested_by","申请人"],["approved_by","审批人"],["created_at","申请时间"]], payment.refunds));
+            ["requested_by","申请人"],["approved_by","审批人"],
+            ["executed_by","执行人"],["executed_at","执行时间"],
+            ["execution_reference","执行凭据"],["created_at","申请时间"]], payment.refunds));
+          payment.refunds.forEach(function(refund){
+            const actions = document.createElement("div");
+            actions.className = "pms-tools";
+            actions.style.margin = "6px 0 12px";
+            if (canApproveRefund && refund.status === "PENDING") {
+              const approveButton = document.createElement("button");
+              approveButton.type = "button"; approveButton.className = "pms-row-btn";
+              approveButton.textContent = "审批通过";
+              approveButton.addEventListener("click", async function(){
+                approveButton.disabled = true;
+                try {
+                  await postJson("/api/v1/billing/refunds/" + refund.id + "/approve", {});
+                  await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger(), loadShifts()]);
+                  openDetail(item.id);
+                } catch (error) {
+                  approveButton.disabled = false;
+                  actions.appendChild(notify(error.message));
+                }
+              });
+              actions.appendChild(approveButton);
+              const rejectButton = document.createElement("button");
+              rejectButton.type = "button"; rejectButton.className = "pms-row-btn";
+              rejectButton.textContent = "驳回申请";
+              rejectButton.addEventListener("click", async function(){
+                const reason = window.prompt("请输入驳回原因");
+                if (!reason) return;
+                rejectButton.disabled = true;
+                try {
+                  await postJson("/api/v1/billing/refunds/" + refund.id + "/reject", {reason: reason});
+                  await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger()]);
+                  openDetail(item.id);
+                } catch (error) {
+                  rejectButton.disabled = false;
+                  actions.appendChild(notify(error.message));
+                }
+              });
+              actions.appendChild(rejectButton);
+            }
+            if (canExecuteRefund && refund.status === "APPROVED") {
+              const executeButton = document.createElement("button");
+              executeButton.type = "button"; executeButton.className = "pms-row-btn";
+              executeButton.textContent = "执行退款";
+              executeButton.addEventListener("click", async function(){
+                if (payment.method === "CASH" && !activeShiftId) {
+                  actions.appendChild(notify("现金退款执行前，请先开立本人收银班次。"));
+                  return;
+                }
+                if (!window.confirm("请确认退款已经实际支付给住客；确认后系统将追加退款凭证。")) return;
+                executeButton.disabled = true;
+                const key = "refund-exec-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,10);
+                try {
+                  await postJson("/api/v1/billing/refunds/" + refund.id + "/execute", {
+                    confirm_refund_paid: true,
+                    execution_reference: "",
+                    idempotency_key: key
+                  });
+                  await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger(), loadShifts()]);
+                  openDetail(item.id);
+                } catch (error) {
+                  executeButton.disabled = false;
+                  actions.appendChild(notify(error.message));
+                }
+              });
+              actions.appendChild(executeButton);
+            }
+            if (actions.childNodes.length) drawerBody.appendChild(actions);
+          });
         }
         if (canRefund && currentReservationId &&
             (payment.status === "SUCCEEDED" || payment.status === "PARTIALLY_REFUNDED")) {
