@@ -236,9 +236,12 @@ def _folio_summaries(property_obj, reservation_ids):
         summary["open_folio_count"] += 1
 
     for summary in result.values():
-        for key in ("charges", "credits", "balance"):
-            summary[key] = str(summary[key].quantize(Decimal("0.01")))
         summary.setdefault("currency_mismatch", False)
+        for key in ("charges", "credits", "balance"):
+            summary[key] = (
+                None if summary["currency_mismatch"] else
+                str(summary[key].quantize(Decimal("0.01")))
+            )
     return result
 
 
