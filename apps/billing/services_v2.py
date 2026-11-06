@@ -616,6 +616,10 @@ class BillingService:
             pk=refund_id, property=property_obj).first()
         if refund is None:
             raise ValueError("退款申请不存在或不属于当前物业。")
+        key_owner = Refund.objects.filter(
+            execution_idempotency_key=key).exclude(pk=refund.pk).first()
+        if key_owner is not None:
+            raise ValueError("该退款执行幂等键已被其他退款使用。")
         if refund.status == Refund.Status.SUCCEEDED:
             if refund.execution_idempotency_key == key:
                 return refund, False
@@ -675,9 +679,20 @@ class BillingService:
         refund.execution_idempotency_key = key
         refund.execution_shift = execution_shift
         refund.processed_at = refund.executed_at
-        refund.save(update_fields=(
-            "status", "executed_by", "executed_at", "execution_reference",
-            "execution_idempotency_key", "execution_shift", "processed_at"))
+        try:
+            # execution_idempotency_key 是全局唯一键；不同退款并发复用同一 key
+            # 时由数据库仲裁。嵌套 atomic 提供 savepoint，冲突后可安全读取占用方，
+            # 并让外层事务回滚本次尚未提交的账本凭证。
+            with transaction.atomic():
+                refund.save(update_fields=(
+                    "status", "executed_by", "executed_at", "execution_reference",
+                    "execution_idempotency_key", "execution_shift", "processed_at"))
+        except IntegrityError:
+            key_owner = Refund.objects.filter(
+                execution_idempotency_key=key).exclude(pk=refund.pk).first()
+            if key_owner is not None:
+                raise ValueError("该退款执行幂等键已被其他退款使用。")
+            raise
         refunded_total = Refund.objects.filter(
             payment=payment, status=Refund.Status.SUCCEEDED
         ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
@@ -918,9 +933,20 @@ class BillingService:
             if amount > available_cash:
                 raise ValueError(
                     f"班次现金余额不足：当前应有 {available_cash}，本次支出 {amount}。")
-        movement = CashierShiftMovement.objects.create(
-            shift=shift, direction=direction, amount=amount,
-            reason=reason, idempotency_key=key, created_by=created_by)
+        try:
+            with transaction.atomic():
+                movement = CashierShiftMovement.objects.create(
+                    shift=shift, direction=direction, amount=amount,
+                    reason=reason, idempotency_key=key, created_by=created_by)
+        except IntegrityError:
+            raced = CashierShiftMovement.objects.filter(
+                shift=shift, idempotency_key=key).first()
+            if raced is not None:
+                if (raced.direction == direction and raced.amount == amount
+                        and raced.reason == reason):
+                    return raced, False
+                raise ValueError("该幂等键已用于不同现金变动。")
+            raise
         AuditEvent.record(
             action="billing.shift_cash_movement", entity_type="CashierShiftMovement",
             entity_id=movement.pk, actor=created_by, property_obj=shift.property,
