@@ -55,3 +55,11 @@ jobs:
 
       - name: Run test suite
         run: python manage.py test --noinput -v 2
+
+      # Test database is destroyed after the suite; install production-style guards
+      # on the migrated MySQL CI database and verify the six trigger definitions.
+      - name: Install MySQL append-only guards
+        run: python manage.py install_mysql_append_only_guards
+
+      - name: Verify MySQL append-only guards
+        run: python manage.py check_mysql_append_only_guards
