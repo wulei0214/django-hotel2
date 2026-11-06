@@ -322,6 +322,47 @@ class E2EFlowTestBase(TestCase):
 class FrontDeskDrawerStatusDtoTests(E2EFlowTestBase):
     """前台详情抽屉：预订确认状态与实际入住状态必须分别表达。"""
 
+    def test_frontdesk_summary_aggregates_open_folios_and_excludes_closed_folios(self):
+        booking_no, _, _, _ = self._booking_checked_in()
+        reservation = Reservation.objects.get(booking_no=booking_no)
+        master = Folio.objects.get(
+            reservation=reservation, folio_type=Folio.FolioType.MASTER)
+
+        guest_folio = Folio.objects.create(
+            property=self.property, reservation=reservation,
+            folio_type=Folio.FolioType.GUEST, guest=reservation.guest,
+            status=Folio.Status.OPEN, currency=reservation.currency)
+        LedgerEntry.objects.create(
+            property=self.property, folio=guest_folio,
+            entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+            amount=Decimal("100.00"), currency=reservation.currency,
+            business_date=self.today, reference="e2e-extra-open-folio-charge")
+
+        closed_folio = Folio.objects.create(
+            property=self.property, reservation=reservation,
+            folio_type=Folio.FolioType.COMPANY, guest=reservation.guest,
+            status=Folio.Status.CLOSED, currency=reservation.currency)
+        LedgerEntry.objects.create(
+            property=self.property, folio=closed_folio,
+            entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+            amount=Decimal("999.00"), currency=reservation.currency,
+            business_date=self.today, reference="e2e-closed-folio-charge")
+
+        frontdesk = self._make_staff("drawer_multi_folio_frontdesk", "前台")
+        self.client.force_login(frontdesk)
+        response = self.client.get(
+            f"/api/v1/front-desk/reservations/{booking_no}")
+        self.assertEqual(response.status_code, 200, response.content)
+        summary = response.json()["data"]["folio_summary"]
+        self.assertEqual(summary["folio_id"], master.pk)
+        self.assertEqual(summary["folio_count"], 3)
+        self.assertEqual(summary["open_folio_count"], 2)
+        self.assertEqual(Decimal(summary["charges"]), Decimal("100.00"))
+        self.assertEqual(Decimal(summary["credits"]), reservation.total_amount)
+        self.assertEqual(
+            Decimal(summary["balance"]),
+            Decimal("100.00") - reservation.total_amount)
+
     def test_confirmed_reservation_shows_pending_stay_until_check_in(self):
         booking_no, token = self._create_reservation()
         self._confirm_by_mock_payment(booking_no, token)
