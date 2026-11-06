@@ -43,6 +43,25 @@
         return (currency || "CNY") + " " + amount.toFixed(2);
     }
 
+    function renderFolioBalance(value, currency) {
+        var amount = Number(value || 0);
+        if (!Number.isFinite(amount)) amount = 0;
+        var balanceNode = $("detail-balance");
+        var labelNode = balanceNode.parentElement.querySelector("span");
+        var summaryNode = balanceNode.parentElement;
+        summaryNode.classList.toggle("is-credit", amount < 0);
+        if (amount < 0) {
+            labelNode.textContent = "客人预存款";
+            balanceNode.textContent = money(Math.abs(amount), currency);
+        } else if (amount > 0) {
+            labelNode.textContent = "待收余额";
+            balanceNode.textContent = money(amount, currency);
+        } else {
+            labelNode.textContent = "已结清";
+            balanceNode.textContent = money(0, currency);
+        }
+    }
+
     function showToast(message, isError) {
         var node = $("fd-toast");
         node.textContent = message;
@@ -606,7 +625,7 @@
             var summary = item.folio_summary || {};
             $("detail-charges").textContent = money(summary.charges, summary.currency);
             $("detail-credits").textContent = money(summary.credits, summary.currency);
-            $("detail-balance").textContent = money(summary.balance, summary.currency);
+            renderFolioBalance(summary.balance, summary.currency);
             $("detail-created").textContent = item.timeline && item.timeline.created_at ? new Date(item.timeline.created_at).toLocaleString() : "—";
             $("detail-updated").textContent = item.timeline && item.timeline.updated_at ? new Date(item.timeline.updated_at).toLocaleString() : "—";
 
