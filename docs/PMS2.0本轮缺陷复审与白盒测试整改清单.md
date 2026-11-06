@@ -1,7 +1,7 @@
 # PMS2.0 本轮缺陷复审与白盒测试整改清单
 
 > 文档类型：现有系统缺陷专项复审 / 白盒测试整改台账  
-> 复审基线：main@af4a52fe09c52c4f40c6b8095e8b1732edf8db1f  
+> 复审基线：main@a8ecbddaffe95b9ba8a883e0fbd4fead48ac93c7  
 > 复审日期：2026-11-06  
 > 范围：只处理 PMS2.0 已有页面、接口、数据流、业务规则和测试缺口；不新增无关业务功能。  
 > 状态原则：代码提交不等于运行态验收通过；CI、浏览器、MySQL 对账和九角色验收必须分别留证。
@@ -45,7 +45,8 @@
 | PMS2-FIX-07 | 员工抽屉红框标签右对齐 | staff_center.css 的 .pms-kv th 使用 text-align:right | 已改为左对齐 | 桌面/窄屏视觉回归 |
 | PMS2-FIX-08 | 财务确认收款/冲销出现 null.value | 表单提交时先移除 form，再从 document 查询已移除的输入框 | 已修复收款、退款、冲销三类表单 | 真实财务权限下执行成功/失败/重复提交/取消回归 |
 | PMS2-FIX-09 | 夜审页面显示异常、接口错误提示混乱 | DOM helper 将 DOM 元素转字符串；JSON 解析异常未区分 HTML 错误页 | 已修复 DOM 子节点追加；CSRF 令牌来源已修复 | 夜审预览、执行、重开、break-glass、无数据和服务端错误场景需运行态验证 |
-| PMS2-FIX-10 | 审计操作类型、实体、操作人中英文混杂；before/after 难读 | API 原来只返回英文代码；前端原样显示 JSON 键 | 已增加中文标签及变更前后字段中文映射 | 补全真实动作/实体字典，并检查敏感字段脱敏和历史数据展示 |
+| PMS2-FIX-10 | 审计操作类型、实体、操作人中英文混杂；before/after 难读 | API 原来只返回英文代码；前端原样显示 JSON 键 | 已增加中文标签、员工姓名（登录账号）、双语原始代码及变更前后字段中文映射 | 补全真实动作/实体字典，并检查敏感字段脱敏和历史数据展示 |
+| PMS2-FIX-11 | OpenAPI 文档与真实 API 不一致 | docs/接口文档/openapi.json 目前只有 74 个路径，当前 build_openapi 测试基线要求 97 个路径，且文档快照缺少 /audit/events | 已更新 apps/api/openapi_schema.py 中审计字段和前台账单/入住状态 DTO | 必须通过正式 build_openapi 生成流程重新导出 JSON 快照，并增加快照漂移 CI 检查；不能手工只补几个路径 |
 
 ## 3. 已提交修复明细
 
@@ -238,18 +239,20 @@
 - f11ea84：增加 Session CSRF 正确令牌成功、错误令牌拒绝测试。
 - 860b56f：夜审 API 对非 JSON/HTML 错误页显示明确 HTTP 状态和排查信息，重开日期下拉显示加载失败原因。
 - bcc9f8e、3ecc7bd、64fe30c、af4a52f：补齐实际业务动作中文映射，审计操作人显示员工姓名与账号，统一列表/详情 actor 与 actor_label 字段并增加断言。
+- 864701d、31f14b3：补齐权限拒绝/客房实体中文标签，审计列表和筛选器显示中文名称与原始动作/实体代码。
+- 46efd3d、0f1c026、a8ecbdd：同步审计和前台多账单/入住状态 DTO 的 OpenAPI 源 schema；检测发现 docs/接口文档/openapi.json 仍为 74 路径旧快照，必须正式重新生成。
 - c1f616a：requirements.txt 补充 WhiteNoise 依赖，修复 CI 测试环境加载中间件时报 ModuleNotFoundError。
 - f11ea84：增加 Session CSRF 模式页面令牌正确/错误验证测试。
 - 6fe2fb2、305280c、abfbd45、2307a02：区分预订状态与每间房实际入住状态，并增加 API 端到端回归测试。
 - 8c3e3e3、62854f1、29cdee7、889814e、66190b1：PMS2 各详情抽屉键值表标签统一左对齐。
 
-最新复审基线：af4a52fe09c52c4f40c6b8095e8b1732edf8db1f。
+最新复审基线：a8ecbddaffe95b9ba8a883e0fbd4fead48ac93c7。
 
 ## 7. 验证状态与限制
 
 - 已完成：当前 main 静态白盒检查、代码路径定位、上述代码修复和审计中文展示回归断言的补充。
-- CI：最新基线 3cba700b8ac5529f15ed4b54668b475687fa8612 的 test 与 django-tests 两个 GitHub Actions 检查已启动，复审记录编写时仍为 in_progress；必须等结果完成后再登记通过/失败。
-- 未完成：本地 MySQL 实际账单对账、九角色浏览器验收、Apifox 全接口执行、浏览器控制台检查、真实部署环境 CSRF、Redis 多进程行为、性能压测。
+- CI：WhiteNoise 缺失导致的首轮环境故障已通过补充 requirements.txt 修复；其后测试暴露的测试夹具/断言和旧入口权限回归已修正。最新基线检查仍在运行，必须等 GitHub Actions 最终结果后再登记通过/失败。
+- 未完成：OpenAPI JSON 快照正式重新生成（当前 74 路径，运行态 schema 测试基线 97 路径）；本地 MySQL 实际账单对账、九角色浏览器验收、Apifox 全接口执行、浏览器控制台检查、真实部署环境 CSRF、Redis 多进程行为、性能压测。
 - 用户截图中的金额和数据库记录尚未由本轮读取；不得据截图臆造账务根因。
 - 代码提交不等于本地 Windows 工作区自动同步；本地部署需按最新 main 拉取后再验证。
 
