@@ -21,7 +21,7 @@ from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
 
@@ -527,3 +527,53 @@ class CashShiftReconciliationTests(WhiteboxBillingBase):
                 shift_id=shift.pk, direction="OUT", amount="1.00",
                 reason="关班后不得补录", created_by=self.operator,
                 idempotency_key="wbb-cash-closed-001")
+
+class RefundDatabaseInvariantTests(WhiteboxBillingBase):
+    """退款 SoD 与执行状态不只依赖 service；数据库约束必须阻止 QuerySet.update 绕过。"""
+
+    def _pending_refund(self):
+        reservation = self._make_reservation("WBBDBREFUND01")
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref="WBB-DB-PAY-001",
+            method="CARD", amount=Decimal("100.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        refund, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="25.00", reason="数据库 SoD 约束测试",
+            requested_by=self.operator, idempotency_key="wbb-db-refund-001")
+        self.assertTrue(created)
+        self.assertFalse(refund.legacy_workflow)
+        return refund
+
+    def test_database_rejects_requester_as_approver_even_when_model_save_is_bypassed(self):
+        refund = self._pending_refund()
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Refund.objects.filter(pk=refund.pk).update(
+                    status=Refund.Status.APPROVED,
+                    approved_by_id=self.operator.pk)
+
+    def test_database_rejects_approver_as_executor_even_when_model_save_is_bypassed(self):
+        refund = self._pending_refund()
+        approver = User.objects.create_user(username="wbb-db-approver")
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=refund.pk,
+            approved_by=approver)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Refund.objects.filter(pk=refund.pk).update(
+                    status=Refund.Status.SUCCEEDED,
+                    executed_by_id=approver.pk,
+                    executed_at=timezone.now(),
+                    execution_idempotency_key="wbb-db-bypass-exec-001")
+
+    def test_model_rejects_skipping_approval_and_execution_steps(self):
+        refund = self._pending_refund()
+        refund.status = Refund.Status.SUCCEEDED
+        refund.executed_by = User.objects.create_user(username="wbb-db-executor")
+        refund.executed_at = timezone.now()
+        refund.execution_idempotency_key = "wbb-db-skip-exec-001"
+        with self.assertRaises(ValidationError):
+            refund.save()
+
