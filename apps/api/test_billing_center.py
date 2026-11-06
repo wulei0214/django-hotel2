@@ -17,6 +17,7 @@
 import json
 import re
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import Group, Permission, User
@@ -93,7 +94,7 @@ class BillingCenterTestBase(TestCase):
             status=PropertyStaffMembership.Status.ACTIVE)
         StaffRoleAssignment.objects.create(
             membership=membership, group=group,
-            starts_at=timezone.now() - timezone.timedelta(minutes=1))
+            starts_at=timezone.now() - timedelta(minutes=1))
         return user
 
     def _grant(self, user, codename, app_label="billing"):
