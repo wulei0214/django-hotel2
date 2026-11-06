@@ -330,6 +330,14 @@ class BillingService:
         outstanding = balance + expected - posted_room
         if amount > outstanding:
             raise ValueError(f"收款金额超过当前应收余额 {outstanding:.2f}。")
+        cashier_shift = None
+        if method == "CASH":
+            from apps.billing.models import CashierShift
+            cashier_shift = CashierShift.objects.select_for_update().filter(
+                property=property_obj, cashier=collected_by,
+                status=CashierShift.ShiftStatus.OPEN).first()
+            if cashier_shift is None:
+                raise ValueError("现金收款前必须先开立本人收银班次。")
         now = timezone.now()
         # WB-14：并发同参考号可能同时通过预检查询，由 provider_ref 唯一约束
         # 兜底；撞键方幂等返回既有支付，不得重复入账。
@@ -339,6 +347,7 @@ class BillingService:
                     property=property_obj, reservation=reservation, folio=folio,
                     provider="frontdesk_manual", provider_ref=provider_ref,
                     method=method, amount=amount, currency=reservation.currency,
+                    cashier_shift=cashier_shift,
                     status=Payment.Status.SUCCEEDED, paid_at=now,
                 )
         except IntegrityError:
@@ -503,62 +512,137 @@ class BillingService:
 
     @staticmethod
     @transaction.atomic
-    def complete_refund(*, property_obj, refund_id, approved_by,
-                        confirm_refund_paid=False):
-        """第二人确认线下退款已实际支付后，追加 REFUND 凭证并更新支付状态。"""
-        from apps.billing.models import Payment, Refund, LedgerEntry
+    def approve_refund(*, property_obj, refund_id, approved_by):
+        """仅审批退款申请，不执行退款、不产生账本凭证。"""
+        from apps.billing.models import Refund
+        refund = Refund.objects.select_for_update().filter(
+            pk=refund_id, property=property_obj).first()
+        if refund is None:
+            raise ValueError("退款申请不存在或不属于当前物业。")
+        if refund.status == Refund.Status.APPROVED:
+            if refund.approved_by_id == approved_by.pk:
+                return refund, False
+            raise ValueError("该退款已由其他人员审批。")
+        if refund.status != Refund.Status.PENDING:
+            raise ValueError("只有待审批退款可以审批。")
+        if refund.requested_by_id == approved_by.pk:
+            raise ValueError("退款申请人与审批人不能是同一账号。")
+        approval = refund.approval_record
+        if approval is None:
+            raise ValueError("退款申请缺少审批记录，禁止绕过审批。")
+        approval = ApprovalService.approve(
+            approval.pk, approved_by=approved_by, property_obj=property_obj)
+        if approval.status != ApprovalRecord.Status.APPROVED:
+            raise ValueError("退款审批未成功。")
+        refund.status = Refund.Status.APPROVED
+        refund.approved_by = approved_by
+        refund.save(update_fields=("status", "approved_by"))
+        AuditEvent.record(
+            action="billing.refund_approved", entity_type="Refund",
+            entity_id=refund.pk, actor=approved_by, property_obj=property_obj,
+            after={"status": refund.status, "approval_record_id": approval.pk},
+            reason=refund.reason)
+        return refund, True
+
+    @staticmethod
+    @transaction.atomic
+    def reject_refund(*, property_obj, refund_id, rejected_by, reason):
+        """审批驳回只改变申请状态，不产生退款账本凭证。"""
+        from apps.billing.models import Refund
+        refund = Refund.objects.select_for_update().filter(
+            pk=refund_id, property=property_obj).first()
+        if refund is None:
+            raise ValueError("退款申请不存在或不属于当前物业。")
+        if refund.status != Refund.Status.PENDING:
+            raise ValueError("只有待审批退款可以驳回。")
+        if refund.requested_by_id == rejected_by.pk:
+            raise ValueError("退款申请人不能驳回自己的申请。")
+        reason = str(reason or "").strip()
+        if not reason or len(reason) > 240:
+            raise ValueError("驳回原因必须填写且不能超过 240 个字符。")
+        if refund.approval_record_id:
+            ApprovalService.reject(
+                refund.approval_record_id, approved_by=rejected_by,
+                property_obj=property_obj, reason=reason)
+        refund.status = Refund.Status.REJECTED
+        refund.approved_by = rejected_by
+        refund.processed_at = timezone.now()
+        refund.save(update_fields=("status", "approved_by", "processed_at"))
+        AuditEvent.record(
+            action="billing.refund_rejected", entity_type="Refund",
+            entity_id=refund.pk, actor=rejected_by, property_obj=property_obj,
+            after={"status": refund.status}, reason=reason)
+        return refund, True
+
+    @staticmethod
+    @transaction.atomic
+    def execute_refund(*, property_obj, refund_id, executed_by,
+                       confirm_refund_paid=False, execution_reference="",
+                       idempotency_key=""):
+        """执行已批准退款；申请、审批、执行必须由三个不同账号完成。"""
+        from apps.billing.models import CashierShift, Payment, Refund, LedgerEntry
         if confirm_refund_paid is not True:
             raise ValueError("必须确认退款已经实际支付给客人。")
+        key = str(idempotency_key or "").strip()
+        if not key or len(key) > 96:
+            raise ValueError("退款执行必须提供 1 至 96 个字符的幂等键。")
+        execution_reference = str(execution_reference or "").strip()
+        if len(execution_reference) > 80:
+            raise ValueError("退款执行参考号不能超过 80 个字符。")
         refund = Refund.objects.select_for_update().filter(
             pk=refund_id, property=property_obj).first()
         if refund is None:
             raise ValueError("退款申请不存在或不属于当前物业。")
         if refund.status == Refund.Status.SUCCEEDED:
-            return refund, False
-        if refund.status != Refund.Status.PENDING:
-            raise ValueError("只有待审批退款申请可以执行。")
-        if refund.requested_by_id == approved_by.pk:
-            raise ValueError("退款申请人与审批人不能是同一账号。")
-        approval = refund.approval_record
-        if approval is None:
-            approval, _ = ApprovalService.request_approval(
-                property_obj=property_obj, action_code="billing.refund",
-                entity_type="Refund", entity_id=refund.pk,
-                requested_by=refund.requested_by, reason=refund.reason,
-                payload={"payment_id": refund.payment_id,
-                         "amount": str(refund.amount),
-                         "currency": refund.currency})
-            refund.approval_record = approval
-            refund.save(update_fields=("approval_record",))
-        if approval.status == ApprovalRecord.Status.PENDING:
-            approval = ApprovalService.approve(
-                approval.pk, approved_by=approved_by, property_obj=property_obj)
-        if (approval.status != ApprovalRecord.Status.APPROVED
-                or approval.approved_by_id != approved_by.pk):
-            raise ValueError("退款申请没有由当前账号完成有效审批。")
+            if refund.execution_idempotency_key == key:
+                return refund, False
+            raise ValueError("该退款已经执行，不能使用其他幂等键重复执行。")
+        if refund.status != Refund.Status.APPROVED:
+            raise ValueError("只有已审批退款可以执行。")
+        if not refund.approved_by_id:
+            raise ValueError("退款缺少审批人，禁止执行。")
+        if refund.requested_by_id == executed_by.pk:
+            raise ValueError("退款申请人不能执行自己的退款。")
+        if refund.approved_by_id == executed_by.pk:
+            raise ValueError("退款审批人与执行人不能是同一账号。")
         payment = Payment.objects.select_for_update().get(
             pk=refund.payment_id, property=property_obj)
-        successful_total = Refund.objects.filter(
-            payment=payment, status=Refund.Status.SUCCEEDED
+        reserved = Refund.objects.filter(
+            payment=payment,
+            status__in=(Refund.Status.PENDING, Refund.Status.APPROVED,
+                        Refund.Status.SUCCEEDED),
         ).exclude(pk=refund.pk).aggregate(
             total=models.Sum("amount"))["total"] or Decimal("0.00")
-        if successful_total + refund.amount > payment.amount:
+        if reserved + refund.amount > payment.amount:
             raise ValueError("原支付可退款余额不足。")
-        folio = refund.payment.folio
+        folio = payment.folio
         if folio.property_id != property_obj.pk or folio.status == "VOIDED":
             raise ValueError("原支付对应账单不存在或已作废。")
+        execution_shift = None
+        if payment.method == "CASH":
+            execution_shift = CashierShift.objects.select_for_update().filter(
+                property=property_obj, cashier=executed_by,
+                status=CashierShift.ShiftStatus.OPEN).first()
+            if execution_shift is None:
+                raise ValueError("现金退款执行前必须先开立执行人本人收银班次。")
         BillingService.post_entry(
             property_obj=property_obj, folio=folio,
             entry_type=LedgerEntry.EntryType.REFUND,
             amount=refund.amount, currency=refund.currency,
             business_date=BillingService._business_date(property_obj),
             reference=f"refund:{refund.provider_ref}",
-            description=f"人工退款完成：{refund.reason}",
-            posted_by=approved_by)
+            description=f"退款执行完成：{refund.reason}",
+            posted_by=executed_by)
         refund.status = Refund.Status.SUCCEEDED
-        refund.approved_by = approved_by
-        refund.processed_at = timezone.now()
-        refund.save(update_fields=("status", "approved_by", "processed_at"))
+        refund.executed_by = executed_by
+        refund.executed_at = timezone.now()
+        refund.execution_reference = execution_reference
+        refund.execution_idempotency_key = key
+        refund.execution_shift = execution_shift
+        refund.processed_at = refund.executed_at
+        refund.save(update_fields=(
+            "status", "executed_by", "executed_at", "execution_reference",
+            "execution_idempotency_key", "execution_shift", "processed_at"))
         refunded_total = Refund.objects.filter(
             payment=payment, status=Refund.Status.SUCCEEDED
         ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
@@ -571,12 +655,14 @@ class BillingService:
                 Decimal("0.00"), reservation.deposit_amount - refund.amount)
             reservation.save(update_fields=("deposit_amount", "updated_at"))
         AuditEvent.record(
-            action="billing.refund_completed", entity_type="Refund",
-            entity_id=refund.pk, actor=approved_by, property_obj=property_obj,
-            after={"amount": str(refund.amount), "status": refund.status},
+            action="billing.refund_executed", entity_type="Refund",
+            entity_id=refund.pk, actor=executed_by, property_obj=property_obj,
+            after={"amount": str(refund.amount), "status": refund.status,
+                   "approved_by_id": refund.approved_by_id,
+                   "executed_by_id": executed_by.pk,
+                   "execution_shift_id": refund.execution_shift_id},
             reason=refund.reason)
         return refund, True
-
 
     @staticmethod
     @transaction.atomic
