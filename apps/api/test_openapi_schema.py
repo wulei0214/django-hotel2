@@ -86,8 +86,8 @@ PERMISSION_MATRIX = {
     ("get", "/billing/summary"): "hotelapp.finance_access",
     ("get", "/approvals"): "billing.approval_view",  # P0-01：专项只读权限
     ("post", "/approvals/request"): "ApprovalActionRegistry",  # P0-02：动作白名单
-    ("post", "/approvals/{record_id}/approve"): "billing.refund_approve",
-    ("post", "/approvals/{record_id}/reject"): "billing.refund_approve",
+    ("post", "/approvals/{record_id}/approve"): "ApprovalActionRegistry.approve_permission",
+    ("post", "/approvals/{record_id}/reject"): "ApprovalActionRegistry.approve_permission",
     ("get", "/reservations-mgmt"): "hotelapp.view_accommodation",
     ("get", "/reservations-mgmt/{booking_no}"): "hotelapp.view_accommodation",
     # P0-04 定版：audit-timeline 与 /audit/events 同门禁 core.audit_view
