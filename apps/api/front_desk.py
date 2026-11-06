@@ -247,6 +247,13 @@ def _reservation_room_dto(line, folio_map=None, stay_map=None):
         "children": reservation.child_count,
         "amount": str(line.amount),
         "folio_summary": (folio_map or {}).get(reservation.pk, _empty_folio_summary(reservation.currency)),
+        "stay_status_label": (
+            L.stay_status_labels().get(stay.status, stay.status) if stay else
+            ("待办理入住" if reservation.status in (
+                Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN
+            ) else ("待确认" if reservation.status == Reservation.Status.PENDING
+                   else "无实际入住记录"))
+        ),
         "stay": ({
             "id": stay.pk,
             "status": stay.status,
