@@ -135,6 +135,24 @@ class ApprovalService:
         return record
 
 
+def _invalidate_open_summary_cache(property_id):
+    """账本/账单状态提交后失效物业未结余额摘要，避免 60 秒旧余额窗口。"""
+    from django.core.cache import cache
+    import logging
+
+    key = "billing:open-summary:%s" % property_id
+
+    def invalidate():
+        try:
+            cache.delete(key)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Failed to invalidate billing summary cache for property %s",
+                property_id)
+
+    transaction.on_commit(invalidate)
+
+
 def now_plus(**kwargs):
     from datetime import timedelta
     return timezone.now() + timedelta(**kwargs)
@@ -263,6 +281,7 @@ class BillingService:
             after={"reference": reference, "entry_type": entry_type,
                    "amount": str(amount), "folio_id": folio.pk},
             reason=void_reason or "")
+        _invalidate_open_summary_cache(property_obj.pk)
         return entry, True
 
     @staticmethod
