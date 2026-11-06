@@ -299,6 +299,33 @@ class MaintenancePermissionGrantTests(TestCase):
         )
 
 
+class ReversalPermissionGrantTests(TestCase):
+    """冲销执行权与审批权必须分离到财务和管理岗位。"""
+
+    def test_finance_executes_and_managers_only_approve_reversal(self):
+        execute_permission = Permission.objects.get(
+            content_type__app_label="billing",
+            content_type__model="ledgerentry",
+            codename="reverse_entry",
+        )
+        approve_permission = Permission.objects.get(
+            content_type__app_label="billing",
+            content_type__model="ledgerentry",
+            codename="reversal_approve",
+        )
+        execute_holders = set(Group.objects.filter(
+            permissions=execute_permission).values_list("name", flat=True))
+        approve_holders = set(Group.objects.filter(
+            permissions=approve_permission).values_list("name", flat=True))
+        self.assertEqual(execute_holders, {"财务"})
+        self.assertEqual(approve_holders, {"值班经理", "店长"})
+        self.assertFalse(Group.objects.filter(
+            name__in=("值班经理", "店长"),
+            permissions=execute_permission).exists())
+        self.assertFalse(Group.objects.filter(
+            name="财务", permissions=approve_permission).exists())
+
+
 class ModuleGateRegressionTests(TestCase):
     """注册表接管后 module_gate 行为不变：food/order/park 仍隐藏。"""
 
