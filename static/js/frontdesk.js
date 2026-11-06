@@ -218,6 +218,8 @@
          "detail-checkin", "detail-checkout", "detail-room-count", "detail-guests",
          "detail-charges", "detail-credits", "detail-balance", "detail-created", "detail-updated"
         ].forEach(function (id) { $(id).textContent = "加载中…"; });
+        $("detail-balance").parentElement.classList.remove("is-credit");
+        $("detail-balance").parentElement.querySelector("span").textContent = "当前余额";
         $("detail-rooms").replaceChildren();
         $("detail-operations").replaceChildren();
         $("fd-operations-section").hidden = true;
