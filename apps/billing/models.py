@@ -423,7 +423,8 @@ class Payment(models.Model):
                 }
                 if self.status not in allowed.get(previous["status"], {previous["status"]}):
                     raise ValidationError("支付状态不允许该迁移。")
-                if self.status in (self.Status.PARTIALLY_REFUNDED, self.Status.REFUNDED):
+                if (self.status != previous["status"]
+                        and self.status in (self.Status.PARTIALLY_REFUNDED, self.Status.REFUNDED)):
                     refunded_total = Refund.objects.filter(
                         payment_id=self.pk, status=Refund.Status.SUCCEEDED
                     ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
@@ -432,9 +433,11 @@ class Payment(models.Model):
                             raise ValidationError("部分退款状态必须与已执行退款累计金额一致。")
                     elif refunded_total < self.amount:
                         raise ValidationError("已退款状态必须有足额成功退款凭证。")
-                if self.status == self.Status.REFUND_PENDING and not Refund.objects.filter(
-                        payment_id=self.pk,
-                        status__in=(Refund.Status.PENDING, Refund.Status.APPROVED)).exists():
+                if (self.status != previous["status"]
+                        and self.status == self.Status.REFUND_PENDING
+                        and not Refund.objects.filter(
+                            payment_id=self.pk,
+                            status__in=(Refund.Status.PENDING, Refund.Status.APPROVED)).exists()):
                     raise ValidationError("退款处理中状态必须存在待审批或已批准退款申请。")
         return super().save(*args, **kwargs)
 
