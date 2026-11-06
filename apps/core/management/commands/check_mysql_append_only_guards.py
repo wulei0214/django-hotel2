@@ -12,11 +12,13 @@ EXPECTED = {
         "billing_cashiershiftmovement", "UPDATE", "BEFORE"),
     "trg_billing_shiftmovement_no_delete": (
         "billing_cashiershiftmovement", "DELETE", "BEFORE"),
+    "trg_billing_shiftmovement_open_shift_insert": (
+        "billing_cashiershiftmovement", "INSERT", "BEFORE"),
 }
 
 
 class Command(BaseCommand):
-    help = "Verify the six MySQL append-only triggers for PMS2 audit/ledger/cash facts."
+    help = "Verify the seven MySQL financial integrity triggers for PMS2 audit/ledger/cash facts."
 
     def handle(self, *args, **options):
         if connection.vendor != "mysql":
@@ -50,4 +52,4 @@ class Command(BaseCommand):
                 details.append("定义不匹配：" + repr(incorrect))
             raise CommandError("MySQL 只追加事实保护未通过；" + "；".join(details))
         self.stdout.write(self.style.SUCCESS(
-            "MySQL append-only guard 通过：6 条 BEFORE UPDATE/DELETE 触发器全部存在。"))
+            "MySQL financial guard 通过：6 条只追加触发器和 1 条现金变动班次保护触发器全部存在。"))
