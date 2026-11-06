@@ -337,17 +337,22 @@ class Payment(models.Model):
     def save(self, *args, **kwargs):
         if self.pk:
             previous = type(self).objects.filter(pk=self.pk).values(
-                "cashier_shift_id").first()
-            if previous and previous["cashier_shift_id"] != self.cashier_shift_id:
-                raise ValidationError("支付流水的收银班次归属不可修改。")
+                "cashier_shift_id", "provider_ref", "method", "amount",
+                "currency", "property_id", "reservation_id", "folio_id").first()
+            if previous:
+                immutable = ("cashier_shift_id", "provider_ref", "method", "amount",
+                             "currency", "property_id", "reservation_id", "folio_id")
+                if any(previous[field] != getattr(self, field) for field in immutable):
+                    raise ValidationError("支付流水的原始交易事实及班次归属不可修改。")
         return super().save(*args, **kwargs)
 
     def save(self, *args, **kwargs):
         if self.pk:
             previous = type(self).objects.filter(pk=self.pk).values(
-                "payment_id", "requested_by_id", "amount", "approved_by_id",
-                "executed_by_id", "executed_at", "execution_reference",
-                "execution_idempotency_key", "execution_shift_id").first()
+                "payment_id", "requested_by_id", "amount", "currency", "reason",
+                "idempotency_key", "provider_ref", "approved_by_id", "executed_by_id",
+                "executed_at", "execution_reference", "execution_idempotency_key",
+                "execution_shift_id").first()
             if previous:
                 immutable_once_set = (
                     "approved_by_id", "executed_by_id", "executed_at",
@@ -357,10 +362,12 @@ class Payment(models.Model):
                     old_value = previous[field]
                     if old_value not in (None, "") and getattr(self, field) != old_value:
                         raise ValidationError("退款审批/执行事实不可覆盖或改写。")
-                if (previous["payment_id"] != self.payment_id
-                        or previous["requested_by_id"] != self.requested_by_id
-                        or previous["amount"] != self.amount):
-                    raise ValidationError("退款申请的原支付、申请人和金额不可修改。")
+                immutable_request = (
+                    "payment_id", "requested_by_id", "amount", "currency",
+                    "reason", "idempotency_key", "provider_ref")
+                if any(previous[field] != getattr(self, field)
+                       for field in immutable_request):
+                    raise ValidationError("退款申请的原支付、申请人、金额、原因和编号不可修改。")
         return super().save(*args, **kwargs)
 
     def __str__(self):
