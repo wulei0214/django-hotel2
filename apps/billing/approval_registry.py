@@ -158,14 +158,14 @@ class ApprovalActionRegistry:
     """action_code → 登记项的唯一代码注册表（P0-02 §1/§2/§3）。"""
 
     _ACTIONS = {
-        # 退款审批：执行链 BillingService.request_refund → complete_refund
+        # 退款审批：执行链 BillingService.request_refund → approve_refund → execute_refund
         "billing.refund": ApprovalActionSpec(
             action_code="billing.refund",
             entity_type="Refund",
             title="退款审批",
             request_permission="billing.refund_request",
             approve_permission="billing.refund_approve",
-            executor="apps.billing.services_v2.BillingService.complete_refund",
+            executor="apps.billing.services_v2.BillingService.execute_refund",
             payload_fields={"payment_id": 20, "amount": 16, "currency": 3},
             validate_entity=validate_refund_entity,
         ),
