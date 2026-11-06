@@ -14,6 +14,12 @@ class ImmutableFinancialFactQuerySet(models.QuerySet):
     def delete(self):
         raise ValidationError("财务事实禁止批量删除；请保留账务审计轨迹。")
 
+    def bulk_create(self, objs, **kwargs):
+        raise ValidationError("财务事实禁止 bulk_create；请逐笔调用领域服务。")
+
+    def bulk_update(self, objs, fields, **kwargs):
+        raise ValidationError("财务事实禁止 bulk_update；请调用 BillingService。")
+
 
 
 
