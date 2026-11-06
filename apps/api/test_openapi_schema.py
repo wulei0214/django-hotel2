@@ -304,7 +304,7 @@ class PMS2ContractStatusTests(TestCase):
         # §4.3 客房服务中心 +4、§4.4 审计与合规中心 +4、§4.5 报表分析中心 +5、
         # §4.6 通知与待办中心 +5、基线 2.0 §3.1-§3.5 五大中心闭环补齐 +5
         # （guests timeline/folios、memberships status、billing shifts open/close）
-        self.assertEqual(business, 102, "业务 operation 应为 102 个（排除 openapi.json 自身）")
+        self.assertEqual(business, 103, "业务 operation 应为 103 个（排除 openapi.json 自身）")
 
     def test_no_operation_is_marked_planned(self):
         """全部 60 条路由均已实现，不允许出现 planned 端点（虚构计划外接口）。"""
