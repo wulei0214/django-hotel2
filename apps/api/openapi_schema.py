@@ -1535,26 +1535,28 @@ op("/billing/shifts/{shift_id}/movements", "post", "财务", "登记班次现金
    notes="已关班不可追加；班次应有现金 = 备用金 + 现金收款 - 现金退款 + IN - OUT。")
 
 
-op("/billing/reversals", "post", "财务", "红字冲销（只追加反向凭证）",
+op("/billing/reversals", "post", "财务", "执行已获管理者批准的红字冲销",
    status="verified",
    body=s_obj({
        "entry_id": s_int("被冲销原凭证 ID（不可为红字凭证）。"),
-       "reason": s_str("冲销原因，1-240 字符（服务强校验）。"),
-   }, required=["entry_id", "reason"]),
-   permission="有效员工 + hotelapp.finance_access + billing.reverse_entry"
-              "（F-08：新权限码，不复活已退役的 hotelapp.reverse_checkout）",
-   ok=(("200", "同一原凭证重复冲销幂等重放（返回首次反向凭证）"),
-       ("201", "冲销成功：追加等额反向 REVERSAL 凭证 + 审计 billing.reverse_entry")),
+       "approval_id": s_int("billing.reversal 已批准的 ApprovalRecord ID。"),
+   }, required=["entry_id", "approval_id"]),
+   permission="有效财务员工 + hotelapp.finance_access + billing.reverse_entry；"
+              "关联的 billing.reversal 必须由值班经理/店长批准，且审批人与执行人不同",
+   ok=(("200", "同一审批单与原凭证重复冲销幂等重放（返回首次反向凭证）"),
+       ("201", "追加等额反向 REVERSAL 凭证，关联 approval_id 并写入审计")),
    data=s_obj({
        "id": s_int(), "reversal_id": s_int(), "original_entry_id": s_int(),
-       "void_of_id": s_int(), "amount": s_str("反向金额（原凭证等额反向）。"),
+       "void_of_id": s_int(), "approval_id": s_int("关联的冲销审批记录 ID。"),
+       "amount": s_str("反向金额（原凭证等额反向）。"),
        "currency": s_str(), "reference": s_str("reversal:{原凭证号}。"),
        "entry_type": s_str("REVERSAL"),
    }), errors=E_STAFF,
-   notes="原凭证不可变；审计事件：billing.reverse_entry。",
+   notes="申请走 POST /approvals/request（action_code=billing.reversal）；"
+         "审批由值班经理/店长完成；财务仅执行已批准申请。原凭证不可变。",
    extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
-                             "semantics": "api_contract.idempotent 头幂等 + 服务层 reference 幂等；"
-                                          "同一原凭证只能冲销一次，重放返回首次结果。"}})
+                             "semantics": "api_contract.idempotent + approval_id + 服务层 reference 幂等；"
+                                          "同一原凭证只允许一个红字凭证。"}})
 
 op("/billing/shifts", "get", "财务", "收银班次列表",
    status="verified",
@@ -1636,7 +1638,10 @@ AP_DECISION_PERM = ("有效员工（DEFAULT 有效任职）+ 注册表按 action
 
 op("/approvals", "get", "审批", "审批记录列表",
    status="partial",
-   query=[Q("status", "审批状态筛选。"), *PQ()],
+   query=[Q("status", "审批状态筛选。"),
+          Q("action_code", "按审批动作代码筛选。"),
+          Q("entity_type", "按目标实体类型筛选。"),
+          Q("entity_id", "按目标实体 ID 筛选。"), *PQ()],
    permission=AP_LIST_PERM,
    ok=(("200", "当前物业审批记录数组"),),
    data=s_arr(_ref("ApprovalRecordDto")), errors=E_STAFF)
