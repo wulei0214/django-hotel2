@@ -98,6 +98,7 @@
     </section>
   </div>
 </div>
+<form id="pms-csrf-token" hidden>{% csrf_token %}</form>
 <script>
 (function () {
   "use strict";
@@ -116,8 +117,9 @@
   }
   function hideError() { $("nt-error").hidden = true; $("nt-error").textContent = ""; }
 
-  var csrf = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-  var CSRF = csrf ? decodeURIComponent(csrf[1]) : "";
+  var csrfInput = document.querySelector("#pms-csrf-token input[name=\"csrfmiddlewaretoken\"]");
+  var CSRF = csrfInput ? csrfInput.value : "";
+  if (!CSRF) { showError("页面安全令牌未生成，请刷新页面后重试。"); }
 
   function getJSON(url) {
     return fetch(url, { credentials: "same-origin",
