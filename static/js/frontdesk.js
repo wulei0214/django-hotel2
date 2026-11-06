@@ -17,7 +17,8 @@
         paymentKey: null,
         depositKey: null,
         refundKey: null,
-        total: 0
+        total: 0,
+        cashierShift: null
     };
 
     var $ = function (id) { return document.getElementById(id); };
@@ -99,7 +100,7 @@
         }
         var response;
         try {
-            response = await fetch(apiRoot + path, requestOptions);
+            response = await fetch(path.charAt(0) === "/" ? path : apiRoot + path, requestOptions);
         } catch (error) {
             throw new Error("网络连接失败，请检查服务器后重试。");
         }
@@ -132,6 +133,68 @@
             method: "POST",
             payload: payload || {},
             idempotencyKey: idempotencyKey || null
+        });
+    }
+
+    async function loadCashierShift() {
+        var status = $("fd-cashier-shift-status");
+        var openButton = $("fd-shift-open");
+        var closeButton = $("fd-shift-close");
+        if (!status || !openButton || !closeButton) return;
+        try {
+            var payload = await api("/api/v1/billing/shifts?status=OPEN&mine=1&page=1&page_size=10");
+            var rows = payload.data || [];
+            state.cashierShift = rows.length ? rows[0] : null;
+            if (state.cashierShift) {
+                status.textContent = "当前班次 #" + state.cashierShift.id +
+                    " · 备用金 " + state.cashierShift.opening_cash;
+                openButton.hidden = true;
+                closeButton.hidden = false;
+            } else {
+                status.textContent = "未开班；现金收款/押金登记前必须先开班。";
+                openButton.hidden = false;
+                closeButton.hidden = true;
+            }
+        } catch (error) {
+            state.cashierShift = null;
+            status.textContent = "班次读取失败：" + error.message;
+            openButton.disabled = true;
+            closeButton.disabled = true;
+        }
+    }
+
+    function bindCashierShiftControls() {
+        var openButton = $("fd-shift-open");
+        var closeButton = $("fd-shift-close");
+        if (openButton) openButton.addEventListener("click", async function () {
+            var openingCash = window.prompt("请输入开班备用金金额", "0.00");
+            if (openingCash === null) return;
+            openButton.disabled = true;
+            try {
+                await postApi("/api/v1/billing/shifts/open",
+                    {opening_cash: openingCash.trim()}, makeIdempotencyKey("fd-shift-open"));
+                await loadCashierShift();
+                showToast("收银班次已开立。", false);
+            } catch (error) {
+                showToast(error.message, true);
+            } finally { openButton.disabled = false; }
+        });
+        if (closeButton) closeButton.addEventListener("click", async function () {
+            if (!state.cashierShift) return;
+            var actualCash = window.prompt("请输入实盘现金金额");
+            if (actualCash === null) return;
+            var varianceReason = window.prompt("如有差异，请填写原因；无差异可留空", "");
+            if (varianceReason === null) return;
+            closeButton.disabled = true;
+            try {
+                await postApi("/api/v1/billing/shifts/" + state.cashierShift.id + "/close",
+                    {actual_cash: actualCash.trim(), variance_reason: varianceReason.trim()},
+                    makeIdempotencyKey("fd-shift-close"));
+                await loadCashierShift();
+                showToast("收银班次已关班并完成现金核对。", false);
+            } catch (error) {
+                showToast(error.message, true);
+            } finally { closeButton.disabled = false; }
         });
     }
 
@@ -259,6 +322,7 @@
         await loadDetail(bookingNo);
         await loadOverview();
         await loadList();
+        await loadCashierShift();
     }
 
     async function showAssignableRooms(roomLine, roomNode, trigger) {
@@ -353,6 +417,10 @@
                 showToast("请输入大于 0 的实收金额。", true);
                 return;
             }
+            if (method.value === "CASH" && !state.cashierShift) {
+                showToast("请先开立本人收银班次，再登记现金收款。", true);
+                return;
+            }
             if (!window.confirm("请确认这笔款项已经实际收到。系统只登记收款，不会代替 POS、刷卡终端或银行完成收款。")) return;
             if (!state.paymentKey) {
                 var nonce = (window.crypto && window.crypto.randomUUID)
@@ -412,6 +480,10 @@
             event.preventDefault();
             if (!amount.value || !Number.isFinite(Number(amount.value)) || Number(amount.value) <= 0) {
                 showToast("请输入大于 0 的押金金额。", true); return;
+            }
+            if (method.value === "CASH" && !state.cashierShift) {
+                showToast("请先开立本人收银班次，再登记现金押金。", true);
+                return;
             }
             if (!window.confirm("请确认押金已经实际收到。系统只登记账务，不调用支付渠道。")) return;
             state.depositKey = state.depositKey || makeIdempotencyKey("fd-deposit");
@@ -884,8 +956,7 @@
     }
 
     async function loadAll() {
-        await loadOverview();
-        await loadList();
+        await Promise.all([loadOverview(), loadList(), loadCashierShift()]);
     }
 
     function switchTab(tab, filter) {
@@ -986,5 +1057,6 @@
     });
 
     state.date = $("fd-date").value || "";
+    bindCashierShiftControls();
     loadAll();
 })();
