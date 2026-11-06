@@ -463,6 +463,14 @@ class FrontDeskWriteApiTests(TestCase):
         self.assertEqual(checked_in.status_code, 201, checked_in.content)
         stay_id = checked_in.json()["data"]["stay_id"]
 
+        opened_shift = self.client.post(
+            "/api/v1/billing/shifts/open",
+            data=json.dumps({"opening_cash": "0.00"}),
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="front-desk-write-shift-001",
+        )
+        self.assertEqual(opened_shift.status_code, 201, opened_shift.content)
+
         payment = self.client.post(
             f"/api/v1/front-desk/reservations/{self.reservation.booking_no}/payments",
             data=json.dumps({"amount": "500.00", "method": "CASH"}),
