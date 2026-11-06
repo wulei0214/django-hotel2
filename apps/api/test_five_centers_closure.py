@@ -689,3 +689,20 @@ class ReconciliationConsistencyTests(E2EFlowTestBase):
         self.assertEqual(over.status_code, 409, over.content)
         folio.refresh_from_db()
         self.assertEqual(self._ledger_sum(folio), before_sum)
+
+
+
+class ManagementCenterPaginationPageTests(E2EFlowTestBase):
+    """共用管理中心分页控件：页码跳转和每页数量选择。"""
+
+    def test_generic_management_center_exposes_page_size_and_page_jump(self):
+        owner = self._make_staff("pms_pager_owner", "店长")
+        self.client.force_login(owner)
+        response = self.client.get("/manage/rooms/")
+        self.assertEqual(response.status_code, 200, response.content)
+        content = response.content.decode("utf-8")
+        self.assertIn('id="pms-page-size"', content)
+        self.assertIn('id="pms-goto-page"', content)
+        self.assertIn('id="pms-goto-btn"', content)
+        self.assertIn('page_size:String(currentPageSize)', content)
+        self.assertIn("gotoPageInput.setCustomValidity", content)
