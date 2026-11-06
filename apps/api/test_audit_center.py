@@ -299,6 +299,8 @@ class AuditCenterDetailTests(AuditCenterTestBase):
         self.assertEqual(data["before"], {"price": "300.00"})
         self.assertEqual(data["after"], {"price": "388.00"})
         self.assertEqual(data["reason"], "调价")
+        self.assertEqual(data["action_label"], "调整每日房价")
+        self.assertEqual(data["entity_type_label"], "每日房价")
         self.assertEqual(data["request_id"], "req-detail-001")
         self.assertEqual(data["ip"], "10.0.0.9")
         self.assertEqual(data["user_agent"], "AuditCenterTest/1.0")
