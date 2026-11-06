@@ -834,11 +834,6 @@ class BillingService:
             status=CashierShift.ShiftStatus.OPEN).first()
         if shift is None:
             raise ValueError("班次不存在、已关闭或不属于当前操作人。")
-        if direction == CashierShiftMovement.Direction.OUT:
-            available_cash = BillingService.cash_shift_expected_cash(shift)
-            if amount > available_cash:
-                raise ValueError(
-                    f"班次现金余额不足：当前应有 {available_cash}，本次支出 {amount}。")
         existing = CashierShiftMovement.objects.filter(
             shift=shift, idempotency_key=key).first()
         if existing:
@@ -846,6 +841,13 @@ class BillingService:
                     or existing.reason != reason):
                 raise ValueError("该幂等键已用于不同现金变动。")
             return existing, False
+        # 幂等重放必须先返回原事实，再检查新支出余额；否则重放会被首次支出
+        # 已经扣减的余额误拒绝，破坏“同 key 同事实返回既有记录”的契约。
+        if direction == CashierShiftMovement.Direction.OUT:
+            available_cash = BillingService.cash_shift_expected_cash(shift)
+            if amount > available_cash:
+                raise ValueError(
+                    f"班次现金余额不足：当前应有 {available_cash}，本次支出 {amount}。")
         movement = CashierShiftMovement.objects.create(
             shift=shift, direction=direction, amount=amount,
             reason=reason, idempotency_key=key, created_by=created_by)
