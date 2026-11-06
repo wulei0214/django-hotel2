@@ -641,6 +641,13 @@ class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
             Payment.objects.filter(pk=payment.pk).update(amount=Decimal("99.00"))
         with self.assertRaises(ValidationError):
             Payment.objects.filter(pk=payment.pk).delete()
+        with self.assertRaises(ValidationError):
+            Payment.objects.bulk_update([payment], ["status"])
+        with self.assertRaises(ValidationError):
+            Payment.objects.bulk_create([Payment(
+                property=self.property, reservation=reservation, folio=self.folio,
+                provider="frontdesk_manual", provider_ref="WBB-IMM-PAY-002",
+                method="CARD", amount=Decimal("10.00"), currency="CNY")])
 
         refund = Refund.objects.create(
             property=self.property, payment=payment, amount=Decimal("20.00"),
