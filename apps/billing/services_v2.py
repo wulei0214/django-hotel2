@@ -745,10 +745,11 @@ class BillingService:
 
     @staticmethod
     @transaction.atomic
-    def close_shift(*, shift_id, actual_cash, closed_by, variance_reason=""):
-        """关班（CashierShift）：计算差异；差异必须说明。"""
+    def close_shift(*, property_obj, shift_id, actual_cash, closed_by, variance_reason=""):
+        """关班（CashierShift）：物业范围内锁定班次，按现金事实计算差异。"""
         from apps.billing.models import CashierShift
-        shift = CashierShift.objects.select_for_update().get(pk=shift_id)
+        shift = CashierShift.objects.select_for_update().get(
+            pk=shift_id, property=property_obj)
         if shift.status != CashierShift.ShiftStatus.OPEN:
             raise ValueError("班次已关闭。")
         actual = BillingService._money(actual_cash)
