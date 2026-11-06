@@ -699,6 +699,14 @@ class BillingCenterWriteTests(BillingCenterTestBase):
         self.assertEqual(reversal.void_reason, reason)
         self.assertEqual(reversal.approval_record_id, approval_id)
         self.assertEqual(reversal.reference, f"reversal:{original.reference}")
+        executed_listing = self.client.get(
+            "/api/v1/approvals?action_code=billing.reversal"
+            f"&entity_type=LedgerEntry&entity_id={original.pk}")
+        self.assertEqual(executed_listing.status_code, 200, executed_listing.content)
+        executed_record = executed_listing.json()["data"][0]
+        self.assertEqual(executed_record["execution_status"], "EXECUTED")
+        self.assertEqual(executed_record["executed_by"], self.finance.username)
+        self.assertIsNotNone(executed_record["executed_at"])
         balance = sum((e.amount for e in folio.entries.all()), Decimal("0.00"))
         self.assertEqual(balance, Decimal("0.00"))
         self.assertTrue(self._audit_exists(
