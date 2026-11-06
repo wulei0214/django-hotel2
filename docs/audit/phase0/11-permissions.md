@@ -159,3 +159,16 @@
 | `inventory.maintenance_manage` | 复制现有 `hotelapp.no_show_handle` 的组授权 | 维修停用/停售/恢复；与未到订单处理权限分离，原因必填 |
 
 迁移采用权限组映射复制，保持原有角色可操作集合不扩大；不自动给其他角色增加维修或清洁授权。
+
+
+## PMS2 财务闭环后续新增专项权限（2026-11-06 修订）
+
+以下权限在 Phase 0 快照之后由 PMS2 财务三方分离与班次现金对账整改引入，纳入统一权限注册表及权限中心，不回写旧历史迁移：
+
+| 权限码 | 迁移 | 授权角色 | 真实执行点 | 语义 |
+|---|---|---|---|---|
+| `billing.refund_execute` | billing.0013 | 财务 | `apps/api/billing_center.py:execute_refund_api`；`apps/billing/services_v2.py:execute_refund` | 执行已批准退款；执行人必须区别申请人与审批人 |
+| `billing.cashier_shift_manage` | billing.0014 | 前台、财务、值班经理、店长 | `apps/api/billing_center.py:open_shift_api/close_shift_api` | 开立与关闭收银班次；前台不因此获得财务明细查看权 |
+| `billing.cash_movement_manage` | billing.0013 | 财务 | `apps/api/billing_center.py:shift_cash_movement_api`；`apps/billing/services_v2.py:record_shift_movement` | 登记班次现金补入/支出；按班次幂等、留原因和审计 |
+
+退款权限语义现在为三方分离：`billing.refund_request`（申请）、`billing.refund_approve`（审批）、`billing.refund_execute`（执行）。班次权限与 `hotelapp.finance_access` 分离：前台可以开闭本人班次，但不能因此读取财务中心敏感明细。
