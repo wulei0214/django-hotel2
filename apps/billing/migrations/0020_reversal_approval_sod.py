@@ -6,14 +6,14 @@ import django.db.models.deletion
 
 def mark_legacy_reversals(apps, schema_editor):
     LedgerEntry = apps.get_model("billing", "LedgerEntry")
-    LedgerEntry.objects.filter(
+    LedgerEntry._base_manager.filter(
         entry_type="REVERSAL", approval_record__isnull=True
     ).update(legacy_workflow=True)
 
 
 def unmark_legacy_reversals(apps, schema_editor):
     LedgerEntry = apps.get_model("billing", "LedgerEntry")
-    LedgerEntry.objects.filter(
+    LedgerEntry._base_manager.filter(
         entry_type="REVERSAL", legacy_workflow=True
     ).update(legacy_workflow=False)
 
