@@ -46,6 +46,7 @@ class CenterTemplateRegressionTests(SimpleTestCase):
 
     def test_night_audit_dom_helper_appends_node_children(self):
         source = self.read_template("night_audit_center.html")
-        self.assertIn("text instanceof Node", source)
-        self.assertIn("node.appendChild(text)", source)
-        self.assertNotIn("String(text)", source)
+        helper = source.split("function el(", 1)[1].split("\\n  function value", 1)[0]
+        self.assertIn("text instanceof Node", helper)
+        self.assertIn("node.appendChild(text)", helper)
+        self.assertIn("node.textContent = String(text)", helper)
