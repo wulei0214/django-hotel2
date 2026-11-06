@@ -430,9 +430,19 @@ def refund_list(request):
 @require_GET
 @api_view
 def shift_list(request):
-    """GET /api/v1/billing/shifts — 收银班次列表（CashierShift）。"""
-    property_obj = _require_finance_access(request)
+    """GET /api/v1/billing/shifts — 财务可看本物业全部；前台仅看本人班次。"""
+    property_obj = getattr(request, "property", None)
+    can_view_all = bool(
+        property_obj is not None and getattr(request.user, "is_authenticated", False)
+        and AuthorizationService.has_permission(
+            request.user, property_obj, "hotelapp.finance_access"))
+    if can_view_all:
+        property_obj = _require_finance_access(request)
+    else:
+        property_obj = _require_cashier_shift_manage(request)
     qs = CashierShift.objects.filter(property=property_obj).select_related("cashier", "closed_by")
+    if not can_view_all:
+        qs = qs.filter(cashier=request.user)
     status_filter = request.GET.get("status", "").strip().upper()
     if status_filter:
         if status_filter not in CashierShift.ShiftStatus.values:
