@@ -39,7 +39,12 @@ class Command(BaseCommand):
             if name not in actual:
                 continue
             observed = actual[name]
-            if observed[:3] != expected or "SIGNAL SQLSTATE '45000'" not in observed[3].upper():
+            sql = observed[3].upper()
+            valid = observed[:3] == expected and "SIGNAL SQLSTATE '45000'" in sql
+            if name == "trg_billing_shiftmovement_open_shift_insert":
+                valid = valid and all(fragment in sql for fragment in (
+                    "FOR UPDATE", "NEW.SHIFT_ID", "NEW.CREATED_BY_ID", "'OPEN'"))
+            if not valid:
                 incorrect[name] = {
                     "expected": expected + ("SIGNAL SQLSTATE '45000'",),
                     "actual": observed,
