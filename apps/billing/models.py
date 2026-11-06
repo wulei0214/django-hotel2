@@ -625,6 +625,13 @@ class Refund(models.Model):
                     if any(previous[field] != getattr(self, field)
                            for field in historical_fields):
                         raise ValidationError("历史退款记录只读，不能补写或改写审批/执行事实。")
+                elif previous["status"] in (self.Status.SUCCEEDED, self.Status.REJECTED):
+                    # 终态后所有审批/执行字段（包括空参考号、空班次）都冻结；
+                    # 否则现金退款的空 execution_reference 可在事后被补写篡改。
+                    terminal_fields = immutable_once_set + ("status",)
+                    if any(previous[field] != getattr(self, field)
+                           for field in terminal_fields):
+                        raise ValidationError("已完成/已驳回退款的审批与执行事实不可修改。")
                 else:
                     for field in immutable_once_set:
                         old_value = previous[field]
@@ -657,11 +664,15 @@ class Refund(models.Model):
                 raise ValidationError("已审批/驳回/执行退款必须关联审批记录。")
             if self.status == self.Status.SUCCEEDED:
                 if (not self.executed_by_id or not self.executed_at
-                        or not self.execution_idempotency_key):
-                    raise ValidationError("退款执行成功必须完整记录执行人、时间和幂等键。")
-            elif (self.executed_by_id or self.executed_at
+                        or not self.execution_idempotency_key or not self.processed_at):
+                    raise ValidationError("退款执行成功必须完整记录执行人、时间、处理时间和幂等键。")
+            elif (self.executed_by_id or self.executed_at or self.execution_reference
                   or self.execution_idempotency_key or self.execution_shift_id):
                 raise ValidationError("退款未执行成功前不得写入执行事实。")
+            if self.status in (self.Status.PENDING, self.Status.APPROVED) and self.processed_at:
+                raise ValidationError("待审批/已批准待执行退款不得预先写入处理完成时间。")
+            if self.status == self.Status.REJECTED and not self.processed_at:
+                raise ValidationError("已驳回退款必须记录处理时间。")
         return super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
