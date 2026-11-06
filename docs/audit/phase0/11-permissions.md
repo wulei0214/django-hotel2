@@ -138,3 +138,13 @@
 - 真实执行的自定义点 12/15；`guests.document_reveal` 仅定义未执行；`reverse_checkout`、`room_release_ready` 检查点已随 410 退役悬空。
 - 旧 CRUD 门禁面：44 个 hotelapp CRUD 点中 14 个有活跃执行点、16 个死代码（6 个叠加无组持有）、14 个仅被不可达页面（module_gate 关闭的 food/order/park 读侧）引用。
 - 最需 Phase 1 优先处理：P-C-3（契约漂移）、P-C-4（角色名硬编码绕开矩阵）、P-C-1（孤儿权限点清理）。
+
+
+### 2026-11-06 追加：夜审查看与执行权限分离
+
+| 权限码 | 归属 | 授权口径 | 执行点 |
+|---|---|---|---|
+| `core.night_audit_view` | `core.BusinessDate` 自定义权限 | 迁移时复制原 `hotelapp.night_audit_execute` 的现有角色组授权，不扩大原可见人群 | 夜审预览、营业日列表/详情、运行历史、break-glass 只读 API 和中心页面 |
+| `hotelapp.night_audit_execute` | 历史高危专项权限 | 保持原值班经理/店长授权 | 夜审正式执行；页面执行按钮；不再用于只读 API |
+
+本次变更只将查看与执行分开，既有可查看角色集合由数据迁移从原执行权限组复制；不会自动给夜审员预留组增加权限。若未来启用夜审员角色，应另行审核授权矩阵。
