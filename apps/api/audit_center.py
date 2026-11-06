@@ -82,6 +82,64 @@ SENSITIVE_ACTIONS = frozenset({
 # summary Top 操作者条数（§4.4 高危事件视图的运营口径，固定小窗口）
 TOP_ACTORS_LIMIT = 5
 
+# 面向中文一线运营人员的审计展示字典；原始代码字段仍保留用于检索与追溯。
+ACTION_LABELS = {
+    "billing.payment_collected": "登记收款",
+    "billing.refund_request": "提交退款申请",
+    "billing.refund_completed": "退款完成",
+    "billing.refund_approved": "退款审批通过",
+    "billing.reverse_entry": "账务冲销",
+    "frontdesk.reservation_created": "创建预订",
+    "frontdesk.reservation_cancelled": "取消预订",
+    "frontdesk.check_in": "办理入住",
+    "frontdesk.check_out": "办理退房",
+    "frontdesk.no_show_processed": "登记未到",
+    "frontdesk.room_assigned": "分配房间",
+    "frontdesk.room_changed": "办理换房",
+    "guest.pii_reveal": "查看客人敏感信息",
+    "guest.pii_reveal.document": "查看客人证件信息",
+    "guest.pii_reveal.phone": "查看客人完整手机号",
+    "guest.document_reveal": "查看客人证件信息",
+    "guest.phone_reveal": "查看客人完整手机号",
+    "identity.role_assign": "授予员工角色",
+    "identity.role_end": "结束员工角色授权",
+    "identity.password_reset": "重置员工密码",
+    "identity.account_provision": "开通员工账号",
+    "permissions.matrix_saved": "保存角色权限矩阵",
+    "night_audit.run": "执行夜审",
+    "night_audit.reopen": "重新开启营业日",
+    "night_audit.break_glass_requested": "申请紧急重开",
+    "night_audit.break_glass_executed": "执行紧急重开",
+    "night_audit.break_glass_reviewed": "复核紧急重开",
+    "night_audit.break_glass_expired": "紧急重开授权过期",
+    "inventory.daily_rate_adjust": "调整每日房价",
+    "privacy.export_staff": "导出员工敏感数据",
+}
+ENTITY_TYPE_LABELS = {
+    "Guest": "客人档案", "GuestDocument": "客人证件",
+    "GuestPhone": "客人联系方式", "Reservation": "预订订单",
+    "ReservationRoom": "预订房间", "Stay": "入住记录",
+    "StayRoomSegment": "房间住宿段", "Folio": "账单",
+    "LedgerEntry": "账务凭证", "Payment": "收款记录",
+    "Refund": "退款记录", "Room": "客房",
+    "RoomType": "房型", "DailyRate": "每日房价",
+    "RoomTypeInventory": "房型库存", "Property": "物业",
+    "StaffProfile": "员工档案",
+    "PropertyStaffMembership": "员工物业任职",
+    "StaffRoleAssignment": "员工岗位授权",
+    "BusinessDate": "营业日", "NightAuditRun": "夜审运行记录",
+    "AuditEvent": "审计事件", "ApprovalRecord": "审批记录",
+    "Notification": "通知待办",
+}
+
+
+def _action_label(action):
+    return ACTION_LABELS.get(action, "其他操作（%s）" % action)
+
+
+def _entity_type_label(entity_type):
+    return ENTITY_TYPE_LABELS.get(entity_type, "其他实体（%s）" % entity_type)
+
 
 def _context(request):
     """统一门禁：登录 → DEFAULT 物业上下文 → core.audit_view（唯一读取门禁）。"""
@@ -105,7 +163,7 @@ def _parse_day(value, field):
 
 def _actor_label(actor):
     """操作人展示名：系统操作（actor 为空）统一标 system（同 audit_timeline）。"""
-    return actor.username if actor else "system"
+    return actor.username if actor else "系统"
 
 
 def _sensitive_flag(action):
@@ -164,7 +222,9 @@ def audit_events(request):
     data = [{
         "id": event.pk,
         "action": event.action,
+        "action_label": _action_label(event.action),
         "entity_type": event.entity_type,
+        "entity_type_label": _entity_type_label(event.entity_type),
         "entity_id": event.entity_id,
         "actor": _actor_label(event.actor),
         "reason": event.reason or None,
@@ -195,7 +255,9 @@ def audit_event_detail(request, event_id):
     data = {
         "id": event.pk,
         "action": event.action,
+        "action_label": _action_label(event.action),
         "entity_type": event.entity_type,
+        "entity_type_label": _entity_type_label(event.entity_type),
         "entity_id": event.entity_id,
         "actor": _actor_label(event.actor),
         "reason": event.reason or None,
