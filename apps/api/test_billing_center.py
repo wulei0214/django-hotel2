@@ -15,11 +15,12 @@
 所有写操作全部走 BillingService（本测试不直接构造账务写入路径之外的模型状态）。
 """
 import json
+import re
 import uuid
 from decimal import Decimal
 
 from django.contrib.auth.models import Group, Permission, User
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.utils import timezone
 
 from apps.billing.models import (
@@ -895,3 +896,34 @@ class BillingPermissionMigrationMatrixTests(TestCase):
             permissions=no_show).values_list("pk", flat=True))
         self.assertTrue(maintenance_groups.isdisjoint(
             no_show_groups & {Group.objects.get(name="前台").pk}))
+
+
+class BillingCsrfEnforcementTests(BillingCenterTestBase):
+    """真实 Django Client 验证财务写 API 的 Session CSRF，而非只检查模板字符串。"""
+
+    def test_billing_write_api_rejects_missing_and_invalid_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.finance)
+        page = client.get("/manage/finance/")
+        self.assertEqual(page.status_code, 200)
+        match = re.search(
+            rb'name="csrfmiddlewaretoken" value="([^"]+)"', page.content)
+        self.assertIsNotNone(match, "财务工作台必须渲染 Session CSRF token")
+        token = match.group(1).decode("ascii")
+        url = "/api/v1/billing/refunds"
+        payload = json.dumps({"payment_id": 99999999, "amount": "1.00",
+                              "reason": "CSRF 验证", "idempotency_key": "csrf-test"})
+
+        missing = client.post(url, data=payload, content_type="application/json")
+        self.assertEqual(missing.status_code, 403)
+
+        invalid = client.post(
+            url, data=payload, content_type="application/json",
+            HTTP_X_CSRFTOKEN="invalid-csrf-token")
+        self.assertEqual(invalid.status_code, 403)
+
+        valid = client.post(
+            url, data=payload, content_type="application/json",
+            HTTP_X_CSRFTOKEN=token)
+        self.assertEqual(valid.status_code, 404, valid.content)
+        self.assertEqual(valid.json()["error"]["code"], "RESOURCE_NOT_FOUND")
