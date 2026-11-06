@@ -66,6 +66,8 @@ class ApprovalService:
         except IntegrityError:
             raced = ApprovalRecord.objects.filter(idempotency_key=idem_key).first()
             if raced is not None:
+                if raced.opening_cash != opening_cash:
+                    raise ValueError("并发开班已使用不同备用金金额创建班次，请核对原班次。")
                 return raced, False
             raise
         AuditEvent.record(
@@ -749,6 +751,8 @@ class BillingService:
             property=property_obj, cashier=cashier,
             status=CashierShift.ShiftStatus.OPEN).first()
         if open_shift:
+            if open_shift.opening_cash != opening_cash:
+                raise ValueError("当前已有 OPEN 班次，重复开班的备用金金额与原记录不一致。")
             return open_shift, False
         # WB-11：并发开班可能同时通过预检查询，由 open_shift_key 唯一约束
         # 兜底；撞键方幂等返回既有班次。
