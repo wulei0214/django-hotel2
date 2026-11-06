@@ -576,7 +576,7 @@ class BillingService:
     @transaction.atomic
     def reject_refund(*, property_obj, refund_id, rejected_by, reason):
         """审批驳回只改变申请状态，不产生退款账本凭证。"""
-        from apps.billing.models import Refund
+        from apps.billing.models import Payment, Refund
         refund = Refund.objects.select_for_update().filter(
             pk=refund_id, property=property_obj).first()
         if refund is None:
