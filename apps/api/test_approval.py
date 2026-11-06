@@ -350,10 +350,11 @@ class ApprovalRequestWhitelistTests(ApprovalApiTestBase):
     def test_refund_in_final_status_returns_409(self):
         done = self._make_refund(
             self.property, self.frontdesk, status=Refund.Status.SUCCEEDED)
+        audit_before = self._audit_count()
         self.client.force_login(self.frontdesk)
         response = self._approval_request(entity_id=str(done.pk))
         self.assertEqual(response.status_code, 409, response.content)
-        self.assertEqual(self._audit_count(), 0)
+        self.assertEqual(self._audit_count(), audit_before)
 
     def test_payload_outside_whitelist_returns_400(self):
         self.client.force_login(self.frontdesk)
