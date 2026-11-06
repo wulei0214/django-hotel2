@@ -27,6 +27,7 @@ from django.utils import timezone
 
 from apps.billing.models import (
     CashierShift,
+    CashierShiftMovement,
     Folio,
     LedgerEntry,
     Payment,
@@ -556,6 +557,15 @@ class CashierShiftClosureTests(E2EFlowTestBase):
             {"direction": "OUT", "amount": "10.00", "reason": "现金支出",
              "idempotency_key": "closure-cash-out-001"})
         self.assertEqual(cash_out.status_code, 201, cash_out.content)
+        movement = CashierShiftMovement.objects.get(pk=cash_out.json()["data"]["id"])
+        movement.reason = "篡改后的原因"
+        with self.assertRaises(ValidationError):
+            movement.save()
+        with self.assertRaises(ValidationError):
+            movement.delete()
+        payment.cashier_shift = None
+        with self.assertRaises(ValidationError):
+            payment.save()
 
         closed = _post_json(
             self.client, f"/api/v1/billing/shifts/{shift_id}/close",
