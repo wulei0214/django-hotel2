@@ -795,7 +795,7 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.client.logout()
 
         reversal, created = BillingService.reverse_entry(
-            entry_id=original.pk,
+            property_obj=self.property, entry_id=original.pk,
             reason="收款金额录入错误，红字冲销重收",
             reversed_by=self.fin)
         self.assertTrue(created)
@@ -824,7 +824,7 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         # 红字凭证本身不可再冲销
         with self.assertRaises(ValueError):
             BillingService.reverse_entry(
-                entry_id=reversal.pk, reason="试图冲销红字", reversed_by=self.fin)
+                property_obj=self.property, entry_id=reversal.pk, reason="试图冲销红字", reversed_by=self.fin)
 
 
 class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
