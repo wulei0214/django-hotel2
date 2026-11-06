@@ -212,8 +212,7 @@ class BillingService:
                 or approval.action_code != "billing.refund"
                 or approval.entity_type != "Refund"
                 or approval.entity_id != str(refund.pk)
-                or approval.requested_by_id != refund.requested_by_id
-                or approval.reason != refund.reason):
+                or approval.requested_by_id != refund.requested_by_id):
             raise ValueError("退款审批记录与当前退款申请不匹配，禁止继续。")
 
         payload = approval.payload_snapshot or {}
