@@ -667,6 +667,13 @@ class BillingCenterWriteTests(BillingCenterTestBase):
             self.client, f"/api/v1/approvals/{approval_id}/approve", {})
         self.assertEqual(approved.status_code, 200, approved.content)
 
+        # 管理者只有审批权，没有财务执行权。
+        manager_execute = _post_json(
+            self.client, "/api/v1/billing/reversals",
+            {"entry_id": original.pk, "approval_id": approval_id})
+        self.assertEqual(manager_execute.status_code, 403, manager_execute.content)
+        self.assertFalse(LedgerEntry.objects.filter(void_of=original).exists())
+
         self._login(self.finance)
         response = _post_json(
             self.client, "/api/v1/billing/reversals",
