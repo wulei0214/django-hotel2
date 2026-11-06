@@ -199,6 +199,11 @@ def approval_approve(request, record_id):
     """POST /api/v1/approvals/<id>/approve — 审批通过（Q-05 SoD）。"""
     property_obj = _require_membership(request)
     record = _get_property_record(record_id, property_obj)
+    if record.action_code == "billing.refund":
+        raise ApiError(
+            "BUSINESS_CONFLICT",
+            "退款审批必须通过 /api/v1/billing/refunds/{id}/approve，"
+            "以便同步 Refund 状态、审批事实和支付状态。")
     if not AuthorizationService.has_permission(
             request.user, property_obj, _approve_permission_for(record)):
         raise ApiError("PERMISSION_DENIED", "当前岗位没有该项审批权限。")
@@ -217,6 +222,11 @@ def approval_reject(request, record_id):
     """POST /api/v1/approvals/<id>/reject — 审批驳回。"""
     property_obj = _require_membership(request)
     record = _get_property_record(record_id, property_obj)
+    if record.action_code == "billing.refund":
+        raise ApiError(
+            "BUSINESS_CONFLICT",
+            "退款驳回必须通过 /api/v1/billing/refunds/{id}/reject，"
+            "以便同步 Refund 状态、审批事实和支付状态。")
     if not AuthorizationService.has_permission(
             request.user, property_obj, _approve_permission_for(record)):
         raise ApiError("PERMISSION_DENIED", "当前岗位没有该项审批权限。")
