@@ -24,15 +24,19 @@ class ApprovalRegistryCatalogTests(TestCase):
 
     def test_registered_actions_cover_implemented_flows_only(self):
         self.assertIn("billing.refund", ApprovalActionRegistry.registered_codes())
+        self.assertIn("billing.reversal", ApprovalActionRegistry.registered_codes())
         self.assertIn("night_audit.reopen", ApprovalActionRegistry.registered_codes())
         self.assertIn("privacy.export_staff", ApprovalActionRegistry.registered_codes())
 
-    def test_unimplemented_actions_are_not_registered(self):
-        # 冲销审批未实现：reverse_entry 直接执行红字凭证，无审批链
-        self.assertNotIn("billing.reversal", ApprovalActionRegistry.registered_codes())
-        self.assertIsNone(ApprovalActionRegistry.get("billing.reversal"))
-        self.assertIn("billing.reversal", ApprovalActionRegistry.PENDING_ACTIONS)
-        # 通用审批面的 PII 批量导出审批未实现：登记为待实现项
+    def test_reversal_is_registered_and_other_unimplemented_actions_stay_pending(self):
+        reversal = ApprovalActionRegistry.get("billing.reversal")
+        self.assertIsNotNone(reversal)
+        self.assertEqual(reversal.entity_type, "LedgerEntry")
+        self.assertEqual(reversal.request_permission, "billing.reverse_entry")
+        self.assertEqual(reversal.approve_permission, "billing.reversal_approve")
+        self.assertIn("BillingService.reverse_entry", reversal.executor)
+        self.assertNotIn("billing.reversal", ApprovalActionRegistry.PENDING_ACTIONS)
+        # 通用审批面的 PII 批量导出审批仍未实现：继续登记为待实现项
         self.assertIn(
             "privacy.pii_export_unified", ApprovalActionRegistry.PENDING_ACTIONS)
 
@@ -48,7 +52,7 @@ class ApprovalRegistryCatalogTests(TestCase):
         self.assertEqual(refund.entity_type, "Refund")
         self.assertEqual(refund.request_permission, "billing.refund_request")
         self.assertEqual(refund.approve_permission, "billing.refund_approve")
-        self.assertIn("complete_refund", refund.executor)
+        self.assertIn("execute_refund", refund.executor)
         self.assertTrue(refund.sod_rule)
         reopen = ApprovalActionRegistry.get("night_audit.reopen")
         self.assertEqual(reopen.entity_type, "BusinessDate")
