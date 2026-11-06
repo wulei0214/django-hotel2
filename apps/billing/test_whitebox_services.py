@@ -744,3 +744,23 @@ class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 DjangoModel.save(invalid)
+
+class ApprovalRecordImmutabilityTests(WhiteboxBillingBase):
+    """审批申请参数固定；审批状态只能经 ApprovalService 单向推进。"""
+
+    def test_approval_request_facts_cannot_be_changed_through_save_or_queryset(self):
+        record, created = ApprovalService.request_approval(
+            property_obj=self.property, action_code="billing.refund",
+            entity_type="Refund", entity_id="approval-immutable-001",
+            requested_by=self.operator, reason="不可变审批申请测试")
+        self.assertTrue(created)
+        record.reason = "篡改申请原因"
+        with self.assertRaises(ValidationError):
+            record.save()
+        with self.assertRaises(ValidationError):
+            ApprovalRecord.objects.filter(pk=record.pk).update(
+                reason="QuerySet 绕过尝试")
+        record.refresh_from_db()
+        self.assertEqual(record.reason, "不可变审批申请测试")
+        self.assertEqual(record.status, ApprovalRecord.Status.PENDING)
+
