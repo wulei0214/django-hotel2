@@ -5,11 +5,11 @@
   * 读 API 权限四态（匿名 401 / 无权限 403 / 有权限 200 / 跨物业 404）；
   * 工作清单分页契约、稳定排序（floor,number,id）与筛选（楼层/清洁/维修/占用）；
   * 今日统计（各状态计数、待放行数、可售口径、按楼层分布、今日审计流转量）；
-  * 清洁链式流转：DIRTY→CLEANING→INSPECTING→CLEAN 合法链 +
+  * 清洁链式流转：inventory.housekeeping_update 控制 DIRTY→CLEANING→INSPECTING→CLEAN 合法链 +
     跳步拒绝（DIRTY→CLEAN/DIRTY→INSPECTING 409）+ 非法状态值 400；
   * 净房放行权限（F-08 补执行点）：客房服务员（housekeeping_update 无 room_release_ready）
     →CLEAN 403（API 层 + 服务层双重校验）；值班经理放行成功且可售口径翻转；
-  * 维修登记：reason 必填、maintenance_manage 独立权限口径、登记/恢复/升级链、审计；
+  * 维修登记：reason 必填、inventory.maintenance_manage 独立权限口径、登记/恢复/升级链、审计；
   * 占用维度不变量（本工作台不改占用状态）；
   * /manage/housekeeping/ 页面门禁与按钮显隐标志；
   * 注册表同步：room_release_ready 恢复登记且 validate_registry 无 ERROR。
