@@ -291,6 +291,7 @@ def folio_detail(request, folio_id):
             "status": payment.status,
             "status_label": L.payment_status_labels().get(payment.status),
             "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+        "cashier_shift_id": payment.cashier_shift_id,
             "created_at": payment.created_at.isoformat(),
             "refunds": [{
                 "id": refund.pk,
@@ -301,6 +302,10 @@ def folio_detail(request, folio_id):
                 "provider_ref": refund.provider_ref,
                 "requested_by": _user_name(refund.requested_by),
                 "approved_by": _user_name(refund.approved_by),
+        "executed_by": _user_name(refund.executed_by),
+        "executed_at": refund.executed_at.isoformat() if refund.executed_at else None,
+        "execution_reference": refund.execution_reference or None,
+        "execution_shift_id": refund.execution_shift_id,
                 "created_at": refund.created_at.isoformat(),
                 "processed_at": (refund.processed_at.isoformat()
                                  if refund.processed_at else None),
@@ -394,7 +399,7 @@ def refund_list(request):
     """GET /api/v1/billing/refunds — 退款列表（申请/审批/执行状态）。"""
     property_obj = _require_finance_access(request)
     qs = Refund.objects.filter(property=property_obj).select_related(
-        "payment", "requested_by", "approved_by", "approval_record")
+        "payment", "requested_by", "approved_by", "executed_by", "approval_record")
     status_filter = request.GET.get("status", "").strip().upper()
     if status_filter:
         if status_filter not in Refund.Status.values:
@@ -427,7 +432,7 @@ def refund_list(request):
 def shift_list(request):
     """GET /api/v1/billing/shifts — 收银班次列表（CashierShift）。"""
     property_obj = _require_finance_access(request)
-    qs = CashierShift.objects.filter(property=property_obj).select_related("cashier")
+    qs = CashierShift.objects.filter(property=property_obj).select_related("cashier", "closed_by")
     status_filter = request.GET.get("status", "").strip().upper()
     if status_filter:
         if status_filter not in CashierShift.ShiftStatus.values:
@@ -438,6 +443,7 @@ def shift_list(request):
         "id": shift.pk,
         "cashier_id": shift.cashier_id,
         "cashier": _user_name(shift.cashier),
+        "closed_by": _user_name(shift.closed_by),
         "status": shift.status,
         "status_label": shift.get_status_display(),
         "opening_cash": _money_str(shift.opening_cash),
