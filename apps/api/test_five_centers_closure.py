@@ -599,6 +599,29 @@ class CashierShiftClosureTests(E2EFlowTestBase):
              "idempotency_key": "closure-cash-out-after-close"})
         self.assertEqual(rejected.status_code, 400)
 
+    def test_open_shift_idempotency_rejects_different_opening_float(self):
+        self.client.force_login(self.fin)
+        first = _post_json(
+            self.client, "/api/v1/billing/shifts/open",
+            {"opening_cash": "50.00"})
+        self.assertEqual(first.status_code, 201, first.content)
+        shift_id = first.json()["data"]["id"]
+
+        replay = _post_json(
+            self.client, "/api/v1/billing/shifts/open",
+            {"opening_cash": "50.00"})
+        self.assertEqual(replay.status_code, 200, replay.content)
+        self.assertEqual(replay.json()["data"]["id"], shift_id)
+        self.assertFalse(replay.json()["data"]["created"])
+
+        mismatch = _post_json(
+            self.client, "/api/v1/billing/shifts/open",
+            {"opening_cash": "55.00"})
+        self.assertEqual(mismatch.status_code, 400, mismatch.content)
+        self.assertEqual(
+            CashierShift.objects.get(pk=shift_id).opening_cash,
+            Decimal("50.00"))
+
     def test_frontdesk_cannot_close_another_cashiers_shift(self):
         self.client.force_login(self.fin)
         opened = _post_json(
