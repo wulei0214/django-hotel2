@@ -762,7 +762,7 @@
           entity_id: String(entry.id),
           page_size: "20"
         });
-        const payload = await getJson("/api/v1/approvals?" + query.toString());
+        const payload = await fetchJson("/api/v1/approvals?" + query.toString());
         const rows = payload.data || [];
         if (!rows.length) {
           state.textContent = "尚无冲销审批申请。";
