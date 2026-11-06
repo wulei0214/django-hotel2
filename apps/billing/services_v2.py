@@ -608,14 +608,17 @@ class BillingService:
         refund.approved_by = rejected_by
         refund.processed_at = timezone.now()
         refund.save(update_fields=("status", "approved_by", "processed_at"))
-        # Payment 行锁使同一支付下的申请/驳回/执行串行化。
-        if not Refund.objects.filter(
-                payment_id=refund.payment_id,
-                status__in=(Refund.Status.PENDING, Refund.Status.APPROVED),
-        ).exists():
-            refunded_total = Refund.objects.filter(
+        # probe 在等待 Payment 锁前可能已建立 MySQL RR 快照；状态汇总必须用当前读，
+        # 避免漏掉等待期间刚提交的退款申请/执行，错误地把 Payment 回退为 SUCCEEDED。
+        pending_refunds = Refund.objects.select_for_update().filter(
+            payment_id=refund.payment_id,
+            status__in=(Refund.Status.PENDING, Refund.Status.APPROVED),
+        ).order_by("pk")
+        if not pending_refunds.exists():
+            refunded_amounts = Refund.objects.select_for_update().filter(
                 payment_id=payment.pk, status=Refund.Status.SUCCEEDED
-            ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
+            ).order_by("pk").values_list("amount", flat=True)
+            refunded_total = sum(refunded_amounts, Decimal("0.00"))
             if refunded_total >= payment.amount:
                 payment.status = Payment.Status.REFUNDED
             elif refunded_total > 0:
@@ -644,9 +647,8 @@ class BillingService:
         execution_reference = str(execution_reference or "").strip()
         if len(execution_reference) > 80:
             raise ValueError("退款执行参考号不能超过 80 个字符。")
-        # 先用非锁定读取确定支付方式；现金退款必须先锁班次，再锁 Refund/Payment。
-        # close_shift 的顺序是 Shift -> Payment/Refund。若这里先锁 Refund/Payment
-        # 再等待 Shift，会与关班形成反向锁顺序并在 MySQL 产生死锁。
+        # 先用非锁定读取确定支付方式；现金退款与关班统一按 Shift -> Payment -> Refund
+        # 加锁，避免 MySQL InnoDB 因反向锁顺序产生死锁。
         probe = Refund.objects.filter(
             pk=refund_id, property=property_obj
         ).values("payment_id", "status", "execution_idempotency_key",
