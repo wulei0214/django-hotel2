@@ -418,14 +418,15 @@ class PaymentRefundModelSaveRegressionTests(WhiteboxBillingBase):
             provider="frontdesk_manual", provider_ref="WBB-MODEL-PAY-002",
             method="CARD", amount=Decimal("100.00"), currency="CNY",
             status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
-        refund = Refund.objects.create(
-            property=self.property, payment=payment, amount=Decimal("20.00"),
-            currency="CNY", reason="模型保存回归", idempotency_key="wbb-model-refund",
-            provider_ref="WBB-MODEL-RFD-002", requested_by=self.operator)
+        refund, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="20.00", reason="模型保存回归",
+            idempotency_key="wbb-model-refund", requested_by=self.operator)
+        self.assertTrue(created)
         approver = User.objects.create_user(username="wbb-model-approver")
-        refund.status = Refund.Status.APPROVED
-        refund.approved_by = approver
-        refund.save(update_fields=("status", "approved_by"))
+        refund, changed = BillingService.approve_refund(
+            property_obj=self.property, refund_id=refund.pk, approved_by=approver)
+        self.assertTrue(changed)
         refund.refresh_from_db()
         self.assertEqual(refund.status, Refund.Status.APPROVED)
         self.assertEqual(refund.approved_by_id, approver.pk)
