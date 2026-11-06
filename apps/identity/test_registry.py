@@ -272,6 +272,33 @@ class PlannedModuleGrantGuardTests(TestCase):
             "PLANNED 授权基线出现注册表未登记的权限码")
 
 
+class MaintenancePermissionGrantTests(TestCase):
+    """维修权限不得继承未到处理权限；只允许值班经理与店长持有。"""
+
+    def test_maintenance_manage_grants_are_independent_and_minimal(self):
+        permission = Permission.objects.get(
+            content_type__app_label="inventory",
+            content_type__model="room",
+            codename="maintenance_manage",
+        )
+        holders = set(Group.objects.filter(
+            permissions=permission).values_list("name", flat=True))
+        self.assertEqual(holders, {"值班经理", "店长"})
+
+        # 维修权限与未到处理是两个独立动作；维修授权不能被复制给其他岗位。
+        no_show = Permission.objects.filter(
+            content_type__app_label="hotelapp",
+            codename="no_show_handle",
+        ).first()
+        self.assertIsNotNone(no_show)
+        self.assertTrue(Group.objects.filter(permissions=no_show).exists())
+        self.assertEqual(
+            set(Group.objects.filter(permissions=permission)
+                .values_list("name", flat=True)),
+            {"值班经理", "店长"},
+        )
+
+
 class ModuleGateRegressionTests(TestCase):
     """注册表接管后 module_gate 行为不变：food/order/park 仍隐藏。"""
 
