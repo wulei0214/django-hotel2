@@ -71,7 +71,7 @@ def _parse_date(value):
 @require_GET
 @api_view
 def night_audit_preview(request):
-    property_obj = _context(request, "hotelapp.night_audit_execute")
+    property_obj = _context(request, "core.night_audit_view")
     day = _parse_date(request.GET.get("date")) if request.GET.get("date") else None
     try:
         data = NightAuditService.preview(property_obj=property_obj, business_date=day)
@@ -325,7 +325,7 @@ def _room_status_summary(property_obj):
 @api_view
 def night_audit_business_dates(request):
     """营业日分页列表；status 筛选；稳定排序 -business_date,-id。"""
-    property_obj = _context(request, "hotelapp.night_audit_execute")
+    property_obj = _context(request, "core.night_audit_view")
     queryset = BusinessDate.objects.filter(property=property_obj).order_by(
         "-business_date", "-id")
     status = request.GET.get("status", "")
@@ -344,7 +344,7 @@ def night_audit_business_dates(request):
 @api_view
 def night_audit_business_date_current(request):
     """当前营业日：无记录时按 OPEN 口径返回（与 NightAuditService.preview 一致）。"""
-    property_obj = _context(request, "hotelapp.night_audit_execute")
+    property_obj = _context(request, "core.night_audit_view")
     day = property_date(property_obj)
     bd = BusinessDate.objects.filter(
         property=property_obj, business_date=day).first()
@@ -363,7 +363,7 @@ def night_audit_business_date_current(request):
 @api_view
 def night_audit_business_date_detail(request, business_date_id):
     """营业日详情：运行历史 + 重开审批 + 过租/未到汇总 + 异常房态。"""
-    property_obj = _context(request, "hotelapp.night_audit_execute")
+    property_obj = _context(request, "core.night_audit_view")
     bd = BusinessDate.objects.filter(
         pk=business_date_id, property=property_obj).first()
     if bd is None:
@@ -399,7 +399,7 @@ def night_audit_business_date_detail(request, business_date_id):
 def night_audit_break_glass_list(request):
     """break-glass 记录分页列表；status/review_decision 筛选（复核状态即
     REVIEWED 已复核、USED 待复核等生命周期态）。"""
-    property_obj = _context(request, "hotelapp.night_audit_execute")
+    property_obj = _context(request, "core.night_audit_view")
     queryset = BreakGlassRecord.objects.filter(
         property=property_obj).order_by("-created_at", "-id")
     status = request.GET.get("status", "")
@@ -446,7 +446,7 @@ def night_audit_break_glass_list(request):
 @api_view
 def night_audit_runs(request):
     """夜审历史分页列表；business_date_id/status 筛选；稳定排序 -started_at,-id。"""
-    property_obj = _context(request, "hotelapp.night_audit_execute")
+    property_obj = _context(request, "core.night_audit_view")
     queryset = NightAuditRun.objects.filter(
         business_date__property=property_obj
     ).select_related("business_date").order_by("-started_at", "-id")
@@ -472,7 +472,7 @@ def night_audit_runs(request):
 @api_view
 def night_audit_run_detail(request, run_id):
     """单次夜审运行详情（含完整摘要与失败原因）。"""
-    property_obj = _context(request, "hotelapp.night_audit_execute")
+    property_obj = _context(request, "core.night_audit_view")
     run = NightAuditRun.objects.filter(
         pk=run_id, business_date__property=property_obj
     ).select_related("business_date").first()
