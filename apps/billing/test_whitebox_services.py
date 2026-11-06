@@ -252,7 +252,7 @@ class DepositGuardTests(WhiteboxBillingBase):
         self.reservation.status = "CHECKED_OUT"
         self.reservation.save(update_fields=("status", "updated_at"))
         self.folio.status = Folio.Status.CLOSED
-        self.folio.save(update_fields=("status", "updated_at"))
+        self.folio.save(update_fields=("status",))
 
         replay, replay_created = BillingService.record_deposit(
             property_obj=self.property, reservation=self.reservation,
@@ -813,7 +813,7 @@ class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 CashierShiftMovement.objects.create(
-                    shift=shift, direction="SIDEWAYS", amount=Decimal("1.00"),
+                    shift=shift, direction="XX", amount=Decimal("1.00"),
                     reason="非法方向", idempotency_key="wbb-invalid-direction",
                     created_by=self.operator)
 
