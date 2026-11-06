@@ -1043,3 +1043,64 @@ class ApprovalRecordImmutabilityTests(WhiteboxBillingBase):
         self.assertEqual(record.reason, "不可变审批申请测试")
         self.assertEqual(record.status, ApprovalRecord.Status.PENDING)
 
+
+
+class CashRefundShiftOwnershipTests(WhiteboxBillingBase):
+    """G-02（四域核查）：现金退款班次归属负向测试。
+
+    契约：CASH 退款执行必须使用**执行人本人**的 OPEN 班次；
+    存在他人 OPEN 班次时不得借班执行，应拒绝并保留退款 APPROVED 终态。
+    """
+
+    def test_cash_refund_cannot_execute_on_another_persons_shift(self):
+        reservation = self._make_reservation("WBSHIFT001")
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref="WBSHIFT-PAY-001",
+            method="CASH", amount=Decimal("100.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        approver = User.objects.create_user(username="wbb-shift-approver")
+        executor = User.objects.create_user(username="wbb-shift-executor")
+        other_cashier = User.objects.create_user(username="wbb-shift-other")
+
+        refund, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="30.00", reason="班次归属负向测试",
+            requested_by=self.operator, idempotency_key="wbb-shift-001")
+        self.assertTrue(created)
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=refund.pk,
+            approved_by=approver)
+
+        # 他人（非执行人）开立 OPEN 班次并存入现金
+        other_shift, _other_created = BillingService.open_shift(
+            property_obj=self.property, cashier=other_cashier,
+            opening_cash=Decimal("500.00"))
+        self.assertEqual(other_shift.cashier_id, other_cashier.pk)
+
+        ledger_before = LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").count()
+        with self.assertRaises(ValueError):
+            BillingService.execute_refund(
+                property_obj=self.property, refund_id=refund.pk,
+                executed_by=executor, confirm_refund_paid=True,
+                idempotency_key="wbb-shift-exec-1")
+        refund.refresh_from_db()
+        self.assertEqual(refund.status, Refund.Status.APPROVED,
+                         "借班失败后退款停留 APPROVED，不得部分执行")
+        self.assertIsNone(refund.execution_shift_id)
+        ledger_after = LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").count()
+        self.assertEqual(ledger_before, ledger_after, "零账本副作用")
+
+        # 执行人开立本人班次后即可正常执行（归属语义正向验证）
+        BillingService.open_shift(
+            property_obj=self.property, cashier=executor,
+            opening_cash=Decimal("500.00"))
+        executed, created = BillingService.execute_refund(
+            property_obj=self.property, refund_id=refund.pk,
+            executed_by=executor, confirm_refund_paid=True,
+            idempotency_key="wbb-shift-exec-2")
+        self.assertTrue(created)
+        self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
+        self.assertEqual(executed.execution_shift.cashier_id, executor.pk)

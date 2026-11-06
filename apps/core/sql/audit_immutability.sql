@@ -60,7 +60,7 @@ FOR EACH ROW
 BEGIN
     SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT = 'PMS2 cashier shift movements cannot be deleted';
-END$
+END$$
 
 CREATE TRIGGER trg_billing_shiftmovement_open_shift_insert
 BEFORE INSERT ON billing_cashiershiftmovement
@@ -79,7 +79,7 @@ BEGIN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'PMS2 cash movement requires its own open cashier shift';
     END IF;
-END$
+END$$
 
 DELIMITER ;
 

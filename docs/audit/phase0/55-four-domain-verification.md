@@ -91,3 +91,17 @@
 - 本地（本次核查执行，sqlite）：`DJANGO_ENV=test DJANGO_DB_ENGINE=sqlite manage.py test --noinput` → **Ran 853 tests in 244.898s，OK**，与验收基线 853 项一致，无回归。
 - GitHub Actions（公共 API 核实，2026-11-06）：HEAD `00791aa` → Django CI **success**（run 42235432445）、tests/MySQL 8 **success**；补充报告引用的 `9b982b0` MySQL8 成功样本（852 tests / 7 条触发器安装检查通过）属实；`fe89cf0` 起 CI 恢复双绿。
 - 本报告为验收 §15 证据包的核查依据之一；G-01 修复前，生产 MySQL 验收不得依赖 `apps/core/sql/audit_immutability.sql` 手工执行路径。
+
+---
+
+## 复核（2026-11-06，主线程）
+
+| 缺口 | 处置 | 状态 |
+|---|---|---|
+| G-01 | audit_immutability.sql 63/82 行 `END$` → `END$$`（2 处），手工部署路径恢复完整 7 触发器 | 已修复 |
+| G-02 | 新增 `CashRefundShiftOwnershipTests`（apps/billing/test_whitebox_services.py）：他人 OPEN 班次借班执行 → 拒绝且退款停留 APPROVED、零账本副作用；执行人本人班次 → 正常执行（归属语义正反双验证） | 已修复 |
+| G-03 | 整改实施记录迁移清单补 billing.0021/0022 | 已修复 |
+| G-04 | CI 双绿已由 fe89cf0 起恢复（GitHub API 核实）；HEAD CI 双绿 | 已确认（文档回写由并行流跟进） |
+| G-05 | 退款到期/通用审批兼容路径纳入 e2e——登记 Phase 4 契约批次 | 登记待排期 |
+
+全量回归：854 项测试通过（SQLite；含本批复核新增 1 项）。

@@ -250,6 +250,7 @@ SQLite CI 仍负责 Django system check、migration drift 和完整测试，但�
 
 - 注册 `billing.reversal`，权限分为 `billing.reverse_entry`（财务申请/执行）和 `billing.reversal_approve`（值班经理/店长审批）。
 - billing.0020 迁移回收管理岗位的冲销执行权限，只保留财务；向值班经理、店长授予独立审批权限。
+- `billing.0021/0022`（并行后续）：退款审批链路校验配套迁移与班次归属授权（4bbe16e/600d0b9 系列），内容以迁移文件为准。
 - `LedgerEntry.approval_record` 外键记录审批事实；`legacy_workflow` 标记迁移前无法证明审批关联的历史冲销。
 - 数据库约束 `ck_ledger_reversal_approval_link` 强制新红字凭证关联审批记录；旧流程数据不补造审批事实。
 - 服务层复核申请人、审批人、执行人的专项权限及审批人与执行人的 SoD；执行原因必须与已批准申请原因完全一致。
