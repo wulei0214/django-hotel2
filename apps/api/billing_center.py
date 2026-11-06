@@ -738,7 +738,8 @@ def close_shift_api(request, shift_id):
         raise ApiError("VALIDATION_ERROR", "actual_cash（实收现金）必填。")
     try:
         shift = BillingService.close_shift(
-            shift_id=shift_id, actual_cash=body.get("actual_cash"),
+            property_obj=property_obj, shift_id=shift_id,
+            actual_cash=body.get("actual_cash"),
             closed_by=request.user,
             variance_reason=str(body.get("variance_reason") or ""))
     except CashierShift.DoesNotExist:
