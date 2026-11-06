@@ -299,6 +299,11 @@ class Payment(models.Model):
         Folio, on_delete=models.PROTECT, related_name="payments",
         verbose_name="住客账单",
     )
+    cashier_shift = models.ForeignKey(
+        "CashierShift", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="payments", verbose_name="收银班次",
+        help_text="人工现金收款必须关联当班；线上/非现金支付可为空",
+    )
     provider = models.CharField(
         max_length=24, default="mock", verbose_name="支付渠道",
         help_text="如 mock（本地模拟）/ wechat / alipay",
@@ -339,7 +344,8 @@ class Refund(models.Model):
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "待审批"
-        SUCCEEDED = "SUCCEEDED", "已确认完成"
+        APPROVED = "APPROVED", "已批准待执行"
+        SUCCEEDED = "SUCCEEDED", "已执行完成"
         REJECTED = "REJECTED", "已驳回"
 
     property = models.ForeignKey(
@@ -370,6 +376,19 @@ class Refund(models.Model):
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
         related_name="approved_refunds", verbose_name="审批人",
     )
+    executed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="executed_refunds", verbose_name="执行人",
+    )
+    executed_at = models.DateTimeField(null=True, blank=True, verbose_name="执行时间")
+    execution_reference = models.CharField(
+        max_length=80, blank=True, verbose_name="退款渠道/凭据参考号")
+    execution_idempotency_key = models.CharField(
+        max_length=96, null=True, blank=True, unique=True,
+        verbose_name="退款执行幂等键")
+    execution_shift = models.ForeignKey(
+        "CashierShift", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="executed_refunds", verbose_name="退款执行班次")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="申请时间")
     processed_at = models.DateTimeField(null=True, blank=True, verbose_name="处理时间")
 
@@ -387,6 +406,7 @@ class Refund(models.Model):
         permissions = (
             ("refund_request", "可以登记退款申请"),
             ("refund_approve", "可以审批退款申请"),
+            ("refund_execute", "可以执行已批准退款"),
         )
 
     def __str__(self):
@@ -409,6 +429,9 @@ class CashierShift(models.Model):
         related_name="cashier_shifts", verbose_name="收银员")
     opened_at = models.DateTimeField(auto_now_add=True, verbose_name="开班时间")
     closed_at = models.DateTimeField(null=True, blank=True, verbose_name="关班时间")
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="closed_cashier_shifts", verbose_name="关班人")
     opening_cash = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal("0.00"), verbose_name="开班备用金")
     expected_cash = models.DecimalField(
@@ -432,6 +455,9 @@ class CashierShift(models.Model):
         verbose_name = "现金班次"
         verbose_name_plural = "现金班次"
         ordering = ("-opened_at",)
+        permissions = (
+            ("cash_movement_manage", "可以登记班次现金收入与支出"),
+        )
 
     def save(self, *args, **kwargs):
         desired_key = (
@@ -447,6 +473,36 @@ class CashierShift(models.Model):
 
     def __str__(self):
         return f"{self.property_id}/{self.cashier_id} {self.status}"
+
+
+class CashierShiftMovement(models.Model):
+    """班次现金增减事实；只追加，作为备用金调整/现金支出的审计来源。"""
+
+    class Direction(models.TextChoices):
+        IN = "IN", "现金收入/补入"
+        OUT = "OUT", "现金支出/取出"
+
+    shift = models.ForeignKey(
+        CashierShift, on_delete=models.PROTECT, related_name="cash_movements",
+        verbose_name="收银班次")
+    direction = models.CharField(max_length=3, choices=Direction.choices)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.CharField(max_length=240)
+    idempotency_key = models.CharField(max_length=64)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="cashier_shift_movements", verbose_name="登记人")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("created_at", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("shift", "idempotency_key"),
+                name="uq_shift_movement_idempotency"),
+            models.CheckConstraint(check=Q(amount__gt=0),
+                                   name="ck_shift_movement_amount_positive"),
+        ]
 
 
 class ChargeLine(models.Model):
