@@ -164,3 +164,10 @@
 
 /* 账单负数余额表示客人预存款，不作为欠款红色警示 */
 .fd-folio-summary .is-balance.is-credit b { color:#24794e; }
+
+
+/* 收银班次状态与开闭班入口 */
+.fd-shift-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--color-border-separator,#e7ebf1);border-radius:10px;background:var(--color-bg-surface,#fff)}
+.fd-shift-controls span{font-size:12px;color:var(--color-text-secondary,#637188);font-weight:600}
+.fd-shift-controls [hidden]{display:none!important}
+@media(max-width:820px){.fd-shift-controls{width:100%;justify-content:space-between}.fd-header-actions{align-items:stretch}}
