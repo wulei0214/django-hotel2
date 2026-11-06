@@ -383,9 +383,8 @@ class HousekeepingMaintenanceTests(HousekeepingCenterTestBase):
             content_type="application/json")
         self.assertEqual(response.status_code, 401)
 
-    def test_maintenance_requires_no_show_handle_permission(self):
-        """口径决策：维修停用直接影响可售库存，复用 no_show_handle
-        （值班经理/店长）；客房服务员（change_room）403。"""
+    def test_maintenance_requires_maintenance_manage_permission(self):
+        """维修权限独立于 no_show_handle；客房服务员不得执行维修停用。"""
         room = self._make_dirty_room("HK-8502")
         response = self._maintain(room, "OUT_OF_ORDER", user=self.hk)
         self.assertEqual(response.status_code, 403, response.content)
