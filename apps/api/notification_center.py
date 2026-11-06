@@ -33,7 +33,7 @@ FILTERABLE_SEVERITIES = frozenset(Notification.Severity.values)
 # refresh 触发上限说明常量：实时派生（无 celery），随 meta 下发
 REFRESH_NOTE = (
     "运营待办为实时派生（无后台队列）：每次刷新按当前物业重算"
-    "待处理集合并 upsert，已解决项自动标记已读；不产生审计事件。"
+    "待处理集合并 upsert，已解决项自动标记已读；手动刷新动作记录审计事件。"
 )
 
 
