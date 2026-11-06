@@ -270,7 +270,7 @@
       var current = select.value;
       select.innerHTML = '<option value="">全部动作</option>' +
         (body.data || []).map(function (row) {
-          var label = (row.action_label || row.action) + "（" + row.count + "）" +
+          var label = (row.action_label || row.action) + "（" + row.action + "）" + "（" + row.count + "）" +
                       (row.is_sensitive ? " · 敏感" : "");
           return '<option value="' + escapeHtml(row.action) + '">' +
                  escapeHtml(label) + "</option>";
