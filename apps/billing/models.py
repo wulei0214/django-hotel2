@@ -315,8 +315,9 @@ class LedgerEntry(models.Model):
 
 
 class Payment(models.Model):
-    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
     """支付流水：一笔支付意图及其结果，与预订关联、入账后落到账本凭证。"""
+
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
 
     class Status(models.TextChoices):
         CREATED = "CREATED", "已创建"
@@ -397,8 +398,9 @@ class Payment(models.Model):
 
 
 class Refund(models.Model):
-    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
     """退款申请、审批和执行三段独立事实；只有执行成功才追加 REFUND 凭证。"""
+
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "待审批"
@@ -585,8 +587,9 @@ class Refund(models.Model):
 
 
 class CashierShift(models.Model):
-    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
     """现金班次对账（V1.1 M-10 P1）：前台现金收支按班次闭合，差异必须说明。"""
+
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
 
     class ShiftStatus(models.TextChoices):
         OPEN = "OPEN", "开班中"
@@ -697,8 +700,9 @@ class CashierShift(models.Model):
 
 
 class CashierShiftMovement(models.Model):
-    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
     """班次现金增减事实；只追加，作为备用金调整/现金支出的审计来源。"""
+
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
 
     class Direction(models.TextChoices):
         IN = "IN", "现金收入/补入"
