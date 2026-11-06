@@ -38,17 +38,24 @@
     }
 
     function money(value, currency) {
+        if (value === null || typeof value === "undefined") return "需核对币种";
         var amount = Number(value || 0);
         if (!Number.isFinite(amount)) amount = 0;
         return (currency || "CNY") + " " + amount.toFixed(2);
     }
 
     function renderFolioBalance(value, currency) {
-        var amount = Number(value || 0);
-        if (!Number.isFinite(amount)) amount = 0;
         var balanceNode = $("detail-balance");
         var labelNode = balanceNode.parentElement.querySelector("span");
         var summaryNode = balanceNode.parentElement;
+        if (value === null || typeof value === "undefined") {
+            summaryNode.classList.remove("is-credit");
+            labelNode.textContent = "币种不一致";
+            balanceNode.textContent = "请核对各账单币种";
+            return;
+        }
+        var amount = Number(value || 0);
+        if (!Number.isFinite(amount)) amount = 0;
         summaryNode.classList.toggle("is-credit", amount < 0);
         if (amount < 0) {
             labelNode.textContent = "客人预存款";
