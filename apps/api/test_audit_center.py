@@ -311,7 +311,7 @@ class AuditCenterDetailTests(AuditCenterTestBase):
         self.assertIn("retention_note", body["meta"])
 
     def test_detail_null_payloads_returned_as_null(self):
-        event = self._event(reason="无载荷事件")
+        event = self._event(reason="无载荷事件", actor=None)
         data = self.client.get(f"/api/v1/audit/events/{event.pk}").json()["data"]
         self.assertIsNone(data["before"])
         self.assertIsNone(data["after"])
