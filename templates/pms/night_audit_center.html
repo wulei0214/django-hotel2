@@ -262,11 +262,12 @@
   <div class="pms-drawer-body" id="na-drawer-body"></div>
 </aside>
 
+<form id="pms-csrf-token" hidden>{% csrf_token %}</form>
 <script>
 (function () {
   "use strict";
-  const csrf = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-  const CSRF = csrf ? decodeURIComponent(csrf[1]) : "";
+  const csrfInput = document.querySelector("#pms-csrf-token input[name=\"csrfmiddlewaretoken\"]");
+  const CSRF = csrfInput ? csrfInput.value : "";
   const canReopen = {{ can_reopen_business_date|yesno:"true,false" }};
   const canReview = {{ can_review_break_glass|yesno:"true,false" }};
 
@@ -277,7 +278,10 @@
   function el(tag, cls, text) {
     const node = document.createElement(tag);
     if (cls) node.className = cls;
-    if (text !== undefined && text !== null) node.textContent = String(text);
+    if (text !== undefined && text !== null) {
+      if (text instanceof Node) node.appendChild(text);
+      else node.textContent = String(text);
+    }
     return node;
   }
   function value(v) {
