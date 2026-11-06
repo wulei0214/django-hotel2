@@ -383,15 +383,59 @@ class Payment(models.Model):
         verbose_name_plural = "支付流水"
 
     def save(self, *args, **kwargs):
-        if self.pk:
+        if self._state.adding:
+            if self.status not in (
+                    self.Status.CREATED, self.Status.PENDING, self.Status.SUCCEEDED,
+                    self.Status.FAILED, self.Status.CANCELLED):
+                raise ValidationError("支付流水不得以退款完成状态直接创建。")
+        else:
             previous = type(self).objects.filter(pk=self.pk).values(
                 "cashier_shift_id", "provider_ref", "method", "amount",
-                "currency", "property_id", "reservation_id", "folio_id").first()
+                "currency", "property_id", "reservation_id", "folio_id",
+                "paid_at", "status").first()
             if previous:
                 immutable = ("cashier_shift_id", "provider_ref", "method", "amount",
                              "currency", "property_id", "reservation_id", "folio_id")
                 if any(previous[field] != getattr(self, field) for field in immutable):
                     raise ValidationError("支付流水的原始交易事实及班次归属不可修改。")
+                if previous["paid_at"] and self.paid_at != previous["paid_at"]:
+                    raise ValidationError("支付成功时间不可回写。")
+                allowed = {
+                    self.Status.CREATED: {
+                        self.Status.CREATED, self.Status.PENDING,
+                        self.Status.FAILED, self.Status.CANCELLED},
+                    self.Status.PENDING: {
+                        self.Status.PENDING, self.Status.SUCCEEDED,
+                        self.Status.FAILED, self.Status.CANCELLED},
+                    self.Status.SUCCEEDED: {
+                        self.Status.SUCCEEDED, self.Status.REFUND_PENDING,
+                        self.Status.PARTIALLY_REFUNDED, self.Status.REFUNDED},
+                    self.Status.REFUND_PENDING: {
+                        self.Status.REFUND_PENDING, self.Status.SUCCEEDED,
+                        self.Status.PARTIALLY_REFUNDED, self.Status.REFUNDED,
+                        self.Status.FAILED},
+                    self.Status.PARTIALLY_REFUNDED: {
+                        self.Status.PARTIALLY_REFUNDED, self.Status.REFUND_PENDING,
+                        self.Status.REFUNDED},
+                    self.Status.FAILED: {self.Status.FAILED},
+                    self.Status.CANCELLED: {self.Status.CANCELLED},
+                    self.Status.REFUNDED: {self.Status.REFUNDED},
+                }
+                if self.status not in allowed.get(previous["status"], {previous["status"]}):
+                    raise ValidationError("支付状态不允许该迁移。")
+                if self.status in (self.Status.PARTIALLY_REFUNDED, self.Status.REFUNDED):
+                    refunded_total = Refund.objects.filter(
+                        payment_id=self.pk, status=Refund.Status.SUCCEEDED
+                    ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
+                    if self.status == self.Status.PARTIALLY_REFUNDED:
+                        if not (Decimal("0.00") < refunded_total < self.amount):
+                            raise ValidationError("部分退款状态必须与已执行退款累计金额一致。")
+                    elif refunded_total < self.amount:
+                        raise ValidationError("已退款状态必须有足额成功退款凭证。")
+                if self.status == self.Status.REFUND_PENDING and not Refund.objects.filter(
+                        payment_id=self.pk,
+                        status__in=(Refund.Status.PENDING, Refund.Status.APPROVED)).exists():
+                    raise ValidationError("退款处理中状态必须存在待审批或已批准退款申请。")
         return super().save(*args, **kwargs)
 
 
