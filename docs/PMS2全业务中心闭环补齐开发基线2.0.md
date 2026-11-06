@@ -1,10 +1,89 @@
 # PMS2 全业务中心闭环补齐开发基线 2.0
 
 > 基线日期：2026-11-05  
-> 代码基线：`main@ec01d93bfd4ab73bb25bfc2f62587ea77f827a72`  
+> 代码基线：修订期间持续变更；最终冻结 SHA 以 MySQL + E2E 验收提交为准。当前状态：**修订中，不得冻结**。  
 > 文档性质：正式开发需求与技术约束基线；供后续排期、开发、代码审查和验收使用。  
 > 范围：五大业务中心 + 六个缺失运营中心 + 跨模块 P0/P1 基础治理。  
 > 当前部署定位：单物业优先、Django 模块化单体、MySQL 为目标数据库；不拆微服务，不以新增页面代替业务闭环。
+
+---
+
+## 修订记录：2026-11-06（2.0 修订中）
+
+本节优先于本文早期章节中与当前代码不一致的路径和实现描述。未经下列门禁验收，不得宣布 PMS2 完成，也不得启动 PMS3.0 功能排期。
+
+### A. 财务中心正式入口与 API 命名
+
+- 唯一正式页面：`/manage/finance/`。
+- 唯一正式财务 API 命名空间：`/api/v1/billing/`。
+- 旧 `/finance/` 只允许 302 跳转到 `/manage/finance/`，不得继续渲染旧 FinanceRecord 页面。
+- 旧写入口 `/finance_add/` 保持 410 Gone。
+- FinanceRecord 仅作为历史数据读取/迁移来源；不得与 Folio、Payment、Refund、LedgerEntry 双写。
+- 文档中所有 `/api/v1/finance/*` 示例统一按 `/api/v1/billing/*` 执行；若接口尚未实现，标记为待开发，不得把文档路径当作已存在接口。
+
+### B. 维修权限污染专项纠正
+
+- `inventory.maintenance_manage` 与 `hotelapp.no_show_handle` 是不同业务权限，不允许通过 codename 复制授权关系。
+- 历史 `inventory.0005` 只作为已发布迁移保留，不得改写。
+- 新增纠正迁移 `inventory.0006_align_maintenance_manage_role_grants`：清除错误继承的组授权，再按当前角色决策只授予「值班经理」「店长」。
+- 「客房服务员」只保留 `inventory.housekeeping_view`、`inventory.housekeeping_update`，不授予维修管理。
+- 前台、未到处理人员不得因拥有 `no_show_handle` 而获得维修权限。
+- 验收必须同时检查 Group 权限集合、AuthorizationService、API 403/200 和页面按钮显隐；不能只检查 Permission 行是否存在。
+
+### C. 退款三方分离（申请 / 审批 / 执行）
+
+退款必须是三个独立事实和三个不同账号：
+1. 申请人创建 Refund 申请，不能审批或执行自己的申请。
+2. 审批人单独审批或驳回；审批只产生 ApprovalRecord，不得写退款 LedgerEntry，也不得把 Payment 改为已退款。
+3. 执行人仅能执行已批准退款；执行动作必须记录 `executed_by`、`executed_at`、执行渠道/参考号和幂等键。
+4. 申请人、审批人、执行人三者必须互不相同；拒绝、失败、待重试均不得重复入账。
+5. 只有执行成功后，才追加唯一 REFUND LedgerEntry 并更新 Payment 退款状态。
+6. 部分退款累计金额不得超过原支付可退余额；并发申请和并发执行必须锁定 Payment/Refund，并由唯一约束兜底。
+
+**DEC-10 未完成前不得启用旧的“审批即执行”行为。** 迁移须保留历史 Refund、ApprovalRecord 和 LedgerEntry，不得回写或删除已发生财务事实。
+
+### D. 班次现金口径
+
+班次现金应有金额不得再等于 opening_cash。目标公式：
+
+`expected_cash = opening_cash + cash_payments - cash_refunds + cash_in - cash_out`
+
+- Payment 必须记录所属收银班次（非现金支付可以关联班次，但不得计入现金）。
+- Refund 必须记录实际执行班次；只有现金渠道退款才冲减该班次现金。
+- 现金支出/备用金调整必须有独立、可审计、不可静默修改的事实记录（金额、原因、操作人、班次、时间、幂等键）。
+- 关班事务锁定班次并冻结交易归属；已关闭班次不得新增、改绑或删除现金事实。
+- 对账输出必须同时列出现金收入、现金退款、现金支出、开班备用金、应有现金、实盘现金和差异；差异非零必须填写原因并审计。
+- 银行卡、转账、线上支付不得计入现金应有金额。
+
+### E. MySQL 验收口径
+
+- `.github/workflows/ci.yml` 使用 MySQL 8 服务，必须先执行完整迁移，再执行完整 Django 测试。
+- SQLite CI 仅作快速回归，不可代替 MySQL。
+- 本地 MySQL 的连接失败（例如 Access denied）必须先核对本地数据库用户名、密码、授权 Host 和数据库名；不得把失败配置写入仓库或提交真实凭据。
+- MySQL 验收必须额外覆盖 select_for_update 并发、唯一约束冲突、幂等重放、迁移前后授权差异和失败事务回滚。
+- 任何 MySQL CI 绿灯仅证明 CI 所用 MySQL 版本/配置的迁移与测试通过，不等于生产实例备份恢复、参数和权限配置已验收。
+
+### F. DEC 门禁
+
+| DEC 状态 | 开发规则 |
+|---|---|
+| 未决 | 只允许不依赖该决策的独立缺陷修复 |
+| 已提交方案 | 可评审，不得按个人理解实施 |
+| 已批准 | 严格按批准内容开发 |
+| 已实施 | 必须完成迁移、测试和文档 |
+| 已验收 | 提交证据后才可关闭 |
+
+涉及退款状态机、现金班次事实、审批权限、财务报表口径的 DEC 必须在对应开发开始前批准。实现人员不得自行补充金额阈值、职责分工或权限范围。
+
+### G. 当前代码与验收状态（持续更新）
+
+- 已提交：冲销 API 缓存失效函数缺失修复（`a222283f`）；该提交的 MySQL 与 Django CI 均通过。
+- 已提交：维修权限纠正迁移（`inventory.0006`），撤销从 `no_show_handle` 复制授权的历史结果，按值班经理/店长授权。
+- 已提交：旧 `/finance/` 跳转至 `/manage/finance/`，并新增路由回归测试。
+- 待验收：以上最新变更的 CI、MySQL 迁移和权限测试。
+- 待开发：退款三方分离、班次现金事实关联与对账。
+- 待验收：通知个人已读迁移的 MySQL 并发与岗位广播测试。
+- **本基线仍为修订中，不得标记冻结。**
 
 ---
 
@@ -475,19 +554,19 @@ Stay 至少明确：`property_id`、`reservation_room_id`、`guest_id`、`room_i
 
 | 方法/路径 | 用途 |
 |---|---|
-| GET `/api/v1/finance/summary?from=&to=&business_date=` | 可配置期间汇总，明确营业日口径 |
-| GET `/api/v1/finance/folios`、`/folios/{id}` | 账单列表/详情 |
-| GET `/api/v1/finance/ledger-entries`、`/ledger-entries/{id}` | 不可变流水列表/详情 |
-| GET `/api/v1/finance/payments`、`/payments/{id}` | 支付列表/详情 |
-| GET `/api/v1/finance/refunds`、`/refunds/{id}` | 退款列表/详情 |
-| POST `/api/v1/finance/refunds/{id}/execute` | 审批通过后执行退款，独立权限和幂等 |
-| GET `/api/v1/finance/cashier-shifts` | 班次列表 |
-| POST `/api/v1/finance/cashier-shifts/open` | 开班 |
-| POST `/api/v1/finance/cashier-shifts/{id}/close` | 关班/交班 |
-| GET `/api/v1/finance/reconciliation` | 对账差异列表 |
-| POST `/api/v1/finance/reconciliation/run` | 发起对账 |
-| GET `/api/v1/finance/export` | 审计导出，不直接流出任意字段 |
-| GET/POST `/api/v1/finance/invoices` | 开票资料登记（仅在本期确认后实施） |
+| GET `/api/v1/billing/summary?from=&to=&business_date=` | 可配置期间汇总，明确营业日口径 |
+| GET `/api/v1/billing/folios`、`/folios/{id}` | 账单列表/详情 |
+| GET `/api/v1/billing/ledger-entries`、`/ledger-entries/{id}` | 不可变流水列表/详情 |
+| GET `/api/v1/billing/payments`、`/payments/{id}` | 支付列表/详情 |
+| GET `/api/v1/billing/refunds`、`/refunds/{id}` | 退款列表/详情 |
+| POST `/api/v1/billing/refunds/{id}/execute` | 审批通过后执行退款，独立权限和幂等 |
+| GET `/api/v1/billing/cashier-shifts` | 班次列表 |
+| POST `/api/v1/billing/cashier-shifts/open` | 开班 |
+| POST `/api/v1/billing/cashier-shifts/{id}/close` | 关班/交班 |
+| GET `/api/v1/billing/reconciliation` | 对账差异列表 |
+| POST `/api/v1/billing/reconciliation/run` | 发起对账 |
+| GET `/api/v1/billing/export` | 审计导出，不直接流出任意字段 |
+| GET/POST `/api/v1/billing/invoices` | 开票资料登记（仅在本期确认后实施） |
 
 ### 账务规则
 
