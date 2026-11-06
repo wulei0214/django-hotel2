@@ -971,6 +971,63 @@ class BillingRefundThreePartyApiTests(BillingCenterTestBase):
                 reference=f"refund:{refund.provider_ref}").count(), 1)
 
 
+    def test_refund_approval_link_must_match_on_approve_reject_execute(self):
+        """错链审批不得批准、驳回或执行另一笔退款。"""
+        reservation, _folio = self._booking_with_outstanding()
+        payment = BillingService.collect_payment(
+            property_obj=self.property, reservation=reservation,
+            amount="60.00", method="CARD", collected_by=self.finance,
+            reference="BC-REFUND-APPROVAL-LINK-PAY-001")
+        approver = self._make_staff("fin_refund_link_approver", "财务")
+        executor = self._make_staff("fin_refund_link_executor", "财务")
+
+        refund, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="15.00", reason="审批关联错链回归",
+            requested_by=self.finance,
+            idempotency_key="bc-refund-approval-link-request")
+        self.assertTrue(created)
+
+        wrong_approval = ApprovalRecord.objects.create(
+            property=self.property,
+            action_code="night_audit.reopen",
+            entity_type="BusinessDate",
+            entity_id="999999",
+            requested_by=self.finance,
+            reason=refund.reason,
+            payload_snapshot={"payment_id": payment.pk,
+                              "amount": "15.00", "currency": payment.currency},
+            idempotency_key="bc-refund-approval-link-wrong",
+            expires_at=timezone.now() + timedelta(hours=24))
+        # 模拟历史脏数据/绕过服务的错误外键写入；普通 Refund.save 会冻结该关联。
+        Refund._base_manager.filter(pk=refund.pk).update(
+            approval_record_id=wrong_approval.pk)
+
+        with self.assertRaisesRegex(ValueError, "审批记录与当前退款申请不匹配"):
+            BillingService.approve_refund(
+                property_obj=self.property, refund_id=refund.pk,
+                approved_by=approver)
+        with self.assertRaisesRegex(ValueError, "审批记录与当前退款申请不匹配"):
+            BillingService.reject_refund(
+                property_obj=self.property, refund_id=refund.pk,
+                rejected_by=approver, reason="不允许错链驳回")
+
+        # 再模拟一条错误审批已被其他流程批准、退款状态被非标准写入改为 APPROVED。
+        ApprovalRecord._base_manager.filter(pk=wrong_approval.pk).update(
+            status=ApprovalRecord.Status.APPROVED,
+            approved_by_id=approver.pk,
+            approved_at=timezone.now())
+        Refund._base_manager.filter(pk=refund.pk).update(
+            status=Refund.Status.APPROVED, approved_by_id=approver.pk)
+        with self.assertRaisesRegex(ValueError, "审批记录与当前退款申请不匹配"):
+            BillingService.execute_refund(
+                property_obj=self.property, refund_id=refund.pk,
+                executed_by=executor, confirm_refund_paid=True,
+                execution_reference="BANK-INVALID-LINK",
+                idempotency_key="bc-refund-approval-link-execute")
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
+
     def test_cash_refund_terminal_execution_facts_cannot_be_backfilled(self):
         from django.core.exceptions import ValidationError
 
