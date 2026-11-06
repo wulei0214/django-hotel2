@@ -358,6 +358,35 @@ class SessionCsrfTemplateTokenTests(E2EFlowTestBase):
             HTTP_X_CSRFTOKEN="invalid-csrf-token")
         self.assertEqual(rejected.status_code, 403)
 
+    @override_settings(CSRF_USE_SESSIONS=True)
+    def test_billing_page_session_csrf_token_allows_shift_write_and_rejects_bad_token(self):
+        finance = self._make_staff("session_csrf_finance", "财务")
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(finance)
+
+        page = client.get("/manage/finance/")
+        self.assertEqual(page.status_code, 200, page.content)
+        match = re.search(
+            rb'name="csrfmiddlewaretoken" value="([^"]+)"',
+            page.content)
+        self.assertIsNotNone(match, "财务页面必须渲染 Session CSRF 隐藏字段")
+        token = match.group(1).decode("ascii")
+
+        rejected = client.post(
+            "/api/v1/billing/shifts/open",
+            data=json.dumps({"opening_cash": "0.00"}),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN="invalid-csrf-token")
+        self.assertEqual(rejected.status_code, 403)
+
+        accepted = client.post(
+            "/api/v1/billing/shifts/open",
+            data=json.dumps({"opening_cash": "0.00"}),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+            HTTP_IDEMPOTENCY_KEY="session-csrf-billing-shift-001")
+        self.assertEqual(accepted.status_code, 201, accepted.content)
+
 
 class FrontDeskDrawerStatusDtoTests(E2EFlowTestBase):
     """前台详情抽屉：预订确认状态与实际入住状态必须分别表达。"""
