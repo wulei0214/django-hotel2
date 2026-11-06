@@ -1174,3 +1174,20 @@ P0 权限测试必须覆盖匿名与跨物业。每一个权限拒绝都应验�
 **代码提交：** `1bc9aa6`（到期批处理服务）、`8950d8e`（管理命令）、`645e9aa`（批处理回归测试）、`4b7a27a` / `a8301e5` / `f4f3da7`（MySQL 班次插入保护）。
 
 **验收边界：** 命令代码与测试提交不等于服务器已配置定时器；上线前需在实际部署主机安装计划任务，并检查任务运行日志、到期退款状态、Payment 余额释放和 AuditEvent。MySQL 触发器必须在实际目标库安装并通过检查命令。
+
+
+### 12.7 第九批验收结果：MySQL 8 与 Django CI 已有完整成功样本
+
+截至 2026-11-06，本轮代码 SHA `9b982b0355afa7fc9154f02ce9dda75bf5aa19b6` 的自动化结果：
+
+| 工作流 | 结果 | 证据 |
+|---|---|---|
+| Django CI | <badge label="通过" color="green"/> | <Link url="https://github.com/wulei0214/django-hotel2/actions/runs/42231517693" title="Django CI · 9b982b0"/> |
+| MySQL 8 tests | <badge label="通过" color="green"/> | <Link url="https://github.com/wulei0214/django-hotel2/actions/runs/42231517610" title="MySQL tests · 9b982b0"/> |
+| MySQL migrations | <badge label="通过" color="green"/> | billing.0021、billing.0022 及其余迁移全部成功 |
+| 全量测试 | <badge label="通过" color="green"/> | 852 tests，148.570s，OK |
+| MySQL 触发器 | <badge label="通过" color="green"/> | 安装 7 条触发器并通过 `check_mysql_append_only_guards` |
+
+之后仅对 MySQL 触发器检查器增加了定义内容断言（必须包含 `FOR UPDATE`、`NEW.shift_id`、`NEW.created_by_id` 和 OPEN 状态），当前 `main` SHA `c7f12247b527c3c1f41446f7c51ddad3defbc24d` 的两条工作流正在重新执行，需等待该 SHA 最终结论。
+
+**范围说明：** 以上是 GitHub MySQL 8 CI 环境，不等于用户本地或生产 MySQL 已部署。此前用户本地 MySQL 账号授权错误仍需在本地修复；生产数据库还要由 DBA 安装 7 条触发器，主机还需配置 `expire_pending_refunds` 定时任务。
