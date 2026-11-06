@@ -6,6 +6,7 @@
 Notification.resolved_at 单独表示运营待办源业务已解决。
 """
 from django.db import migrations, models
+from django.db.models import Q
 import django.db.models.deletion
 import django.utils.timezone
 
@@ -24,7 +25,7 @@ def migrate_legacy_reads(apps, schema_editor):
     # 定向通知可以确定唯一接收员工，安全迁移其个人已读状态。
     direct_reads = Notification.objects.filter(
         is_read=True, recipient__isnull=False
-    ).exclude(dedupe_key__isnull=False)
+    ).filter(Q(dedupe_key__isnull=True) | Q(dedupe_key=""))
     for row in direct_reads.only(
             "id", "recipient_id", "read_at", "created_at").iterator():
         NotificationRead.objects.get_or_create(
