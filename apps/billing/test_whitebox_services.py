@@ -505,6 +505,12 @@ class CashShiftReconciliationTests(WhiteboxBillingBase):
         self.assertEqual(closed.expected_cash, Decimal("5.00"))
         self.assertEqual(closed.variance, Decimal("0.00"))
         self.assertEqual(closed.status, CashierShift.ShiftStatus.CLOSED)
+        replay_after_close, replay_created = BillingService.record_shift_movement(
+            shift_id=execution_shift.pk, direction="OUT", amount="35.00",
+            reason="经批准现金支出", created_by=executor,
+            idempotency_key="wbb-cash-out-001")
+        self.assertFalse(replay_created)
+        self.assertEqual(replay_after_close.pk, out_movement.pk)
 
     def test_non_cash_payment_is_not_counted_in_cash_shift(self):
         reservation = self._make_reservation("WBBCASHSHIFT002")
