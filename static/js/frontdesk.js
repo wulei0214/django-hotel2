@@ -635,7 +635,7 @@
                 var number = room.assigned_room ? room.assigned_room.number : "待分配";
                 node.textContent = (room.room_type ? room.room_type.name : "房型") + " · " + number +
                     " · " + room.check_in + " 至 " + room.check_out +
-                    (room.no_show ? " · 未到店" : (room.stay ? " · " + room.stay.status : ""));
+                    (room.no_show ? " · 未到店" : " · 实际入住：" + (room.stay_status_label || (room.stay ? room.stay.status : "未生成入住记录")));
                 if (room.stay && room.stay.room_segments && room.stay.room_segments.length > 1) {
                     room.stay.room_segments.forEach(function (segment) {
                         roomList.appendChild(element("div", "fd-detail-room",
