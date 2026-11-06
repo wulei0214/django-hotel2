@@ -25,7 +25,7 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.billing.models import ApprovalRecord, CashierShift, Folio, LedgerEntry, Payment, Refund
+from apps.billing.models import (ApprovalRecord, CashierShift, CashierShiftMovement, Folio, LedgerEntry, Payment, Refund)
 from apps.billing.services_v2 import ApprovalService, BillingService
 from apps.core.models import Property
 from apps.guests.models import Guest
