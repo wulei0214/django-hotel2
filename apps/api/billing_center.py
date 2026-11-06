@@ -306,6 +306,7 @@ def folio_detail(request, folio_id):
         "executed_at": refund.executed_at.isoformat() if refund.executed_at else None,
         "execution_reference": refund.execution_reference or None,
         "execution_shift_id": refund.execution_shift_id,
+        "legacy_workflow": refund.legacy_workflow,
                 "created_at": refund.created_at.isoformat(),
                 "processed_at": (refund.processed_at.isoformat()
                                  if refund.processed_at else None),
@@ -418,6 +419,11 @@ def refund_list(request):
         "provider_ref": refund.provider_ref,
         "requested_by": _user_name(refund.requested_by),
         "approved_by": _user_name(refund.approved_by),
+        "executed_by": _user_name(refund.executed_by),
+        "executed_at": refund.executed_at.isoformat() if refund.executed_at else None,
+        "execution_reference": refund.execution_reference or None,
+        "execution_shift_id": refund.execution_shift_id,
+        "legacy_workflow": refund.legacy_workflow,
         "approval_status": (refund.approval_record.status
                             if refund.approval_record_id else None),
         "created_at": refund.created_at.isoformat(),
@@ -712,8 +718,7 @@ def open_shift_api(request):
     """POST /api/v1/billing/shifts/open — 开班（BillingService.open_shift）。
 
     body: {opening_cash?: "0.00"}；同一收银员已有 OPEN 班次时幂等返回原班次
-    （created=false）。权限口径：hotelapp.finance_access（财务/值班经理/店长）；
-    基线 §1.3 建议的独立 billing.cashier_shift_manage 专项码登记待实施。
+    （created=false）。权限口径：billing.cashier_shift_manage（前台/财务/管理岗位）。
     """
     property_obj = _require_cashier_shift_manage(request)
     body = _json_body(request)
@@ -739,8 +744,9 @@ def close_shift_api(request, shift_id):
     """POST /api/v1/billing/shifts/{id}/close — 关班（BillingService.close_shift）。
 
     body: {actual_cash: "必填", variance_reason?: "差异非零必填"}。
-    差异（actual - opening_cash）非零时必须说明并落审计
-    （billing.shift_close）；重复关班 400。
+    差异（actual - expected_cash）非零时必须说明并落审计
+    （billing.shift_close）；expected_cash 按班次现金收款、退款、补入和支出聚合。
+    重复关班 400。
     """
     property_obj = _require_cashier_shift_manage(request)
     if not CashierShift.objects.filter(pk=shift_id, property=property_obj).exists():
