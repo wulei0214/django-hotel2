@@ -832,3 +832,22 @@ class BillingRefundThreePartyApiTests(BillingCenterTestBase):
         self.assertEqual(
             LedgerEntry.objects.filter(
                 reference=f"refund:{refund.provider_ref}").count(), 1)
+
+
+class FinanceLegacyRouteRetirementTests(BillingCenterTestBase):
+    """旧 /finance 页面只迁移到 PMS2；旧财务写入口永久退役。"""
+
+    def test_legacy_finance_page_redirects_to_single_pms2_entry(self):
+        self._login(self.finance)
+        response = self.client.get("/finance/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/manage/finance/")
+
+    def test_legacy_finance_write_endpoint_is_gone(self):
+        self._login(self.finance)
+        response = self.client.post("/finance_add/", {
+            "type": "收入", "amount": "10.00",
+            "reason": "不得进入旧账本", "date": self.today.isoformat()})
+        self.assertEqual(response.status_code, 410)
+        self.assertFalse(
+            LedgerEntry.objects.filter(description="不得进入旧账本").exists())
