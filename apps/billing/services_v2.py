@@ -542,11 +542,21 @@ class BillingService:
     @transaction.atomic
     def approve_refund(*, property_obj, refund_id, approved_by):
         """仅审批退款申请，不执行退款、不产生账本凭证。"""
-        from apps.billing.models import Refund
+        from apps.billing.models import Payment, Refund
+        probe = Refund.objects.filter(
+            pk=refund_id, property=property_obj
+        ).values("payment_id").first()
+        if probe is None:
+            raise ValueError("退款申请不存在或不属于当前物业。")
+        # 与申请/驳回/执行保持 Payment -> Refund 的锁顺序。
+        payment = Payment.objects.select_for_update().filter(
+            pk=probe["payment_id"], property=property_obj).first()
+        if payment is None:
+            raise ValueError("退款对应支付流水不存在或不属于当前物业。")
         refund = Refund.objects.select_for_update().filter(
             pk=refund_id, property=property_obj).first()
-        if refund is None:
-            raise ValueError("退款申请不存在或不属于当前物业。")
+        if refund is None or refund.payment_id != payment.pk:
+            raise ValueError("退款申请不存在或支付归属已变化。")
         if refund.status == Refund.Status.APPROVED:
             if refund.approved_by_id == approved_by.pk:
                 return refund, False
@@ -560,6 +570,37 @@ class BillingService:
             raise ValueError("退款申请缺少审批记录，禁止绕过审批。")
         approval = ApprovalService.approve(
             approval.pk, approved_by=approved_by, property_obj=property_obj)
+        if approval.status == ApprovalRecord.Status.EXPIRED:
+            # 审批超时是明确终态，不得回滚成永远占用原支付余额的 PENDING。
+            refund.status = Refund.Status.EXPIRED
+            refund.processed_at = approval.approved_at
+            refund.save(update_fields=("status", "processed_at"))
+            pending_refunds = Refund.objects.select_for_update().filter(
+                payment_id=payment.pk,
+                status__in=(Refund.Status.PENDING, Refund.Status.APPROVED),
+            ).order_by("pk")
+            if not pending_refunds.exists():
+                refunded_amounts = Refund.objects.select_for_update().filter(
+                    payment_id=payment.pk,
+                    status=Refund.Status.SUCCEEDED,
+                ).order_by("pk").values_list("amount", flat=True)
+                refunded_total = sum(refunded_amounts, Decimal("0.00"))
+                if refunded_total >= payment.amount:
+                    payment.status = Payment.Status.REFUNDED
+                elif refunded_total > 0:
+                    payment.status = Payment.Status.PARTIALLY_REFUNDED
+                else:
+                    payment.status = Payment.Status.SUCCEEDED
+                payment.save(update_fields=("status", "updated_at"))
+            AuditEvent.record(
+                action="billing.refund_expired", entity_type="Refund",
+                entity_id=refund.pk, actor=approved_by,
+                property_obj=property_obj,
+                after={"status": refund.status,
+                       "approval_record_id": approval.pk,
+                       "processed_at": refund.processed_at.isoformat()},
+                reason="退款审批超过有效期，释放未执行退款占用")
+            return refund, True
         if approval.status != ApprovalRecord.Status.APPROVED:
             raise ValueError("退款审批未成功。")
         refund.status = Refund.Status.APPROVED
