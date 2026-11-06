@@ -749,8 +749,14 @@ def close_shift_api(request, shift_id):
     重复关班 400。
     """
     property_obj = _require_cashier_shift_manage(request)
-    if not CashierShift.objects.filter(pk=shift_id, property=property_obj).exists():
+    shift = CashierShift.objects.filter(
+        pk=shift_id, property=property_obj).only("pk", "cashier_id").first()
+    if shift is None:
         raise ApiError("RESOURCE_NOT_FOUND", "班次不存在或不属于当前物业。")
+    allow_other_cashier = AuthorizationService.has_permission(
+        request.user, property_obj, "hotelapp.finance_access")
+    if shift.cashier_id != request.user.pk and not allow_other_cashier:
+        raise ApiError("PERMISSION_DENIED", "只能关闭本人收银班次。")
     body = _json_body(request)
     if body.get("actual_cash") in (None, ""):
         raise ApiError("VALIDATION_ERROR", "actual_cash（实收现金）必填。")
@@ -759,7 +765,8 @@ def close_shift_api(request, shift_id):
             property_obj=property_obj, shift_id=shift_id,
             actual_cash=body.get("actual_cash"),
             closed_by=request.user,
-            variance_reason=str(body.get("variance_reason") or ""))
+            variance_reason=str(body.get("variance_reason") or ""),
+            allow_other_cashier=allow_other_cashier)
     except CashierShift.DoesNotExist:
         raise ApiError("RESOURCE_NOT_FOUND", "班次不存在。")
     except ValueError as exc:
@@ -799,8 +806,8 @@ def reverse_entry_api(request):
         raise ApiError("RESOURCE_NOT_FOUND", "账本凭证不存在或不属于当前物业。")
     try:
         reversal, created = BillingService.reverse_entry(
-            entry_id=original.pk, reason=body.get("reason"),
-            reversed_by=request.user, request=request)
+            property_obj=property_obj, entry_id=original.pk,
+            reason=body.get("reason"), reversed_by=request.user, request=request)
     except LedgerEntry.DoesNotExist:
         raise ApiError("RESOURCE_NOT_FOUND", "账本凭证不存在。")
     except ValueError as exc:
