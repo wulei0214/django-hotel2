@@ -163,7 +163,7 @@ MySQL 部署文件：
 - `python manage.py install_mysql_append_only_guards`
 - `python manage.py check_mysql_append_only_guards`
 
-检查命令会核对六条触发器的名称、表、事件、时机及 `SIGNAL SQLSTATE '45000'` 阻断语句。
+检查命令会核对七条触发器的名称、表、事件、时机及 `SIGNAL SQLSTATE '45000'` 阻断语句（六条 UPDATE/DELETE 只追加保护 + 一条现金变动 OPEN 班次插入保护）。
 
 ### 4.3 MySQL 验收边界
 
@@ -171,7 +171,7 @@ MySQL 8 CI 使用独立服务数据库，执行顺序为：
 
 1. 全量 `migrate`。
 2. 完整 Django 测试套件。
-3. 安装六条 append-only 触发器。
+3. 安装六条 append-only 触发器及一条现金变动 OPEN 班次插入保护触发器。
 4. 执行触发器定义检查。
 
 SQLite CI 仍负责 Django system check、migration drift 和完整测试，但不替代 MySQL。
@@ -221,7 +221,7 @@ SQLite CI 仍负责 Django system check、migration drift 和完整测试，但�
 - [ ] 最新 main 的 Django CI 全绿。
 - [ ] 最新 main 的 MySQL 8 全量迁移、测试、六条触发器安装与检查全绿。
 - [ ] 目标 MySQL 数据库凭据可用，迁移前备份完成，迁移后 `showmigrations` 无未应用项。
-- [ ] 生产 MySQL 触发器存在，运行账号无三张只追加事实表的 UPDATE/DELETE 权限。
+- [ ] 生产 MySQL 七条触发器存在，运行账号无三张只追加事实表的 UPDATE/DELETE 权限。
 - [ ] 备份恢复演练通过。
 - [ ] 真实浏览器完成财务收款、退款申请、审批、执行、现金交班、差异说明、审计查询。
 - [ ] 真实浏览器完成九角色越权验证。
@@ -260,10 +260,34 @@ SQLite CI 仍负责 Django system check、migration drift 和完整测试，但�
 本节记录的是已提交代码和测试修订，不等于最终上线验收完成。仍需完成：
 
 - [ ] 最新 main 的 Django CI 全绿。
-- [ ] 最新 main 的 MySQL 8 全量迁移、测试、六条 append-only 触发器安装与检查全绿。
+- [ ] 最新 main 的 MySQL 8 全量迁移、测试、六条 append-only 触发器及一条班次插入保护触发器安装与检查全绿。
 - [ ] 本地目标 MySQL 用户凭据修复；不在聊天中传输数据库密码。
 - [ ] 财务页面在真实浏览器完成“退款三方分离”和“冲销经理审批后财务执行”两条流程。
 - [ ] 九角色权限矩阵完成实际登录越权验收。
 - [ ] 备份恢复演练和迁移前后数据对账完成。
 
 在上述门槛完成前，PMS2 基线 2.0 不冻结，不启动 PMS3.0 排期。
+
+
+## 十、2026-11-06 退款审批关联完整性修复
+
+### 10.1 发现的问题
+
+退款三方分离已经存在，但复审发现 `Refund.approval_record` 只通过外键关联，服务层此前没有在审批、驳回、执行和到期任务中完整核对关联审批记录的业务语义。若历史脏数据或非标准写入把退款关联到另一业务的审批记录，可能造成退款状态与审批事实不一致，甚至复用夜审/冲销等其他业务审批事实。
+
+### 10.2 已提交修复
+
+- 新增 `BillingService._validate_refund_approval_link()` 统一校验：
+  - 物业必须一致；
+  - `action_code=billing.refund`；
+  - `entity_type=Refund` 且 `entity_id` 指向当前退款；
+  - 申请人、申请原因必须与退款事实一致；
+  - 审批参数快照中的 payment_id、amount、currency 必须与当前退款一致；
+  - 审批状态必须符合当前阶段；执行阶段的审批人必须与 Refund.approved_by 一致。
+- 退款审批、驳回、执行和自动到期任务均在改变业务状态/账务事实前调用上述校验；错链或畸形快照 fail closed，不审批、不驳回、不执行、不释放可退额度。
+- 新增回归测试 `BillingRefundThreePartyApiTests.test_refund_approval_link_must_match_on_approve_reject_execute`，通过模拟错误外键和非标准状态写入，验证四条路径均拒绝错链，并确认不会生成 REFUND LedgerEntry。
+- 本次提交：`600d0b9`、`c5e3791`、`506b804`、`79cc359`（服务校验、错链测试及畸形快照/到期任务覆盖）。
+
+### 10.3 自动化验收
+
+本节代码修复后，必须以包含本节文档的最新 main SHA 重新确认 Django CI 与 MySQL 8 tests；旧 SHA 的成功不能外推到后续提交。真实浏览器退款流程、目标 MySQL 凭据/触发器、生产定时任务、备份恢复和九角色实账号验收仍是独立上线门禁。
