@@ -7,9 +7,9 @@
   * 今日统计（各状态计数、待放行数、可售口径、按楼层分布、今日审计流转量）；
   * 清洁链式流转：DIRTY→CLEANING→INSPECTING→CLEAN 合法链 +
     跳步拒绝（DIRTY→CLEAN/DIRTY→INSPECTING 409）+ 非法状态值 400；
-  * 净房放行权限（F-08 补执行点）：客房服务员（change_room 无 room_release_ready）
+  * 净房放行权限（F-08 补执行点）：客房服务员（housekeeping_update 无 room_release_ready）
     →CLEAN 403（API 层 + 服务层双重校验）；值班经理放行成功且可售口径翻转；
-  * 维修登记：reason 必填、no_show_handle 口径、登记/恢复/升级链、审计；
+  * 维修登记：reason 必填、maintenance_manage 独立权限口径、登记/恢复/升级链、审计；
   * 占用维度不变量（本工作台不改占用状态）；
   * /manage/housekeeping/ 页面门禁与按钮显隐标志；
   * 注册表同步：room_release_ready 恢复登记且 validate_registry 无 ERROR。
@@ -81,11 +81,11 @@ class HousekeepingReadApiTests(HousekeepingCenterTestBase):
             self.assertEqual(response.json()["error"]["code"],
                              "AUTHENTICATION_REQUIRED", url)
 
-    def test_read_endpoints_require_view_room_permission(self):
-        """读取口径：hotelapp.view_room（与房态中心同码）；财务只读账号 403。"""
+    def test_read_endpoints_require_housekeeping_view_permission(self):
+        """读取清洁维修工作台使用独立 inventory.housekeeping_view；财务只读账号 403。"""
         self.client.force_login(self.no_perm)
         self.assertFalse(AuthorizationService.has_permission(
-            self.no_perm, self.property, "hotelapp.view_room"))
+            self.no_perm, self.property, "inventory.housekeeping_view"))
         for url in ("/api/v1/housekeeping/rooms",
                     "/api/v1/housekeeping/summary"):
             response = self.client.get(url)
@@ -287,7 +287,7 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
         room.housekeeping_status = Room.HousekeepingStatus.INSPECTING
         room.save(update_fields=("housekeeping_status",))
         self.assertTrue(AuthorizationService.has_permission(
-            self.hk, self.property, "hotelapp.change_room"))
+            self.hk, self.property, "inventory.housekeeping_update"))
         self.assertFalse(AuthorizationService.has_permission(
             self.hk, self.property, "hotelapp.room_release_ready"))
         response = self._flow(room, "CLEAN", user=self.hk)
@@ -500,7 +500,7 @@ class HousekeepingPageAndRegistryTests(HousekeepingCenterTestBase):
         response = self.client.get("/manage/housekeeping/")
         self.assertEqual(response.status_code, 302)
 
-    def test_page_requires_view_room_permission(self):
+    def test_page_requires_housekeeping_view_permission(self):
         self.client.force_login(self.no_perm)
         response = self.client.get("/manage/housekeeping/")
         self.assertEqual(response.status_code, 403)
