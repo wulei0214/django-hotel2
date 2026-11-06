@@ -295,8 +295,17 @@ class E2EFlowTestBase(TestCase):
         self.assertEqual(extended.status_code, 200, extended.content)
         return booking_no, token, line, stay_id
 
+    def _open_cashier_shift(self, key):
+        """现金交易前显式开班；班次归属当前登录收银员。"""
+        return self._post_json(
+            "/api/v1/billing/shifts/open", {"opening_cash": "0.00"},
+            idempotency_key=key)
+
     def _collect_payment(self, booking_no, amount, key):
         """前台人工收款（当前登录账号须为前台写权限账号）。"""
+        opened = self._open_cashier_shift(f"shift-{key}")
+        if opened.status_code not in (200, 201):
+            return opened
         return self._post_json(
             f"/api/v1/front-desk/reservations/{booking_no}/payments",
             {"amount": amount, "method": "CASH"},
@@ -487,6 +496,8 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.client.force_login(self.fd)
         reservation = Reservation.objects.get(booking_no=booking_no)
         self.assertEqual(reservation.deposit_amount, Decimal("0.00"))
+        self.assertIn(self._open_cashier_shift("e2e-shift-deposit-001").status_code,
+                      (200, 201))
 
         response = self._post_json(
             f"/api/v1/front-desk/reservations/{booking_no}/deposits",
@@ -577,21 +588,39 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         refund.refresh_from_db()
         self.assertEqual(refund.status, Refund.Status.PENDING)
 
-        # 店长（billing.refund_approve）确认实际退款后审批入账
+        # 店长仅审批，不得写退款凭证；财务作为独立执行人完成退款。
         self.client.force_login(self.owner)
         approve = self._post_json(
-            f"/api/v1/front-desk/refunds/{refund_id}/approve",
-            {"confirm_refund_paid": True})
+            f"/api/v1/front-desk/refunds/{refund_id}/approve", {})
         self.assertEqual(approve.status_code, 200, approve.content)
         self.assertTrue(approve.json()["changed"])
-
         refund.refresh_from_db()
         approval.refresh_from_db()
-        self.assertEqual(refund.status, Refund.Status.SUCCEEDED)
+        self.assertEqual(refund.status, Refund.Status.APPROVED)
         self.assertEqual(refund.approved_by_id, self.owner.pk)
-        self.assertIsNotNone(refund.processed_at)
+        self.assertIsNone(refund.executed_by_id)
         self.assertEqual(approval.status, ApprovalRecord.Status.APPROVED)
         self.assertEqual(approval.approved_by_id, self.owner.pk)
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
+
+        self.client.force_login(self.fin)
+        self.assertIn(self._open_cashier_shift("e2e-shift-refund-exec-001").status_code,
+                      (200, 201))
+        execute_payload = {
+            "confirm_refund_paid": True,
+            "execution_reference": "E2E-MANUAL-REFUND-001",
+            "idempotency_key": "e2e-refund-exec-001",
+        }
+        execute = self._post_json(
+            f"/api/v1/billing/refunds/{refund_id}/execute", execute_payload)
+        self.assertEqual(execute.status_code, 201, execute.content)
+        refund.refresh_from_db()
+        self.assertEqual(refund.status, Refund.Status.SUCCEEDED)
+        self.assertEqual(refund.approved_by_id, self.owner.pk)
+        self.assertEqual(refund.executed_by_id, self.fin.pk)
+        self.assertIsNotNone(refund.executed_at)
+        self.assertIsNotNone(refund.execution_shift_id)
 
         refund_entry = LedgerEntry.objects.get(
             reference=f"refund:{refund.provider_ref}")
@@ -604,15 +633,13 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.assertTrue(self._audit_exists(
             "approval.approve", entity_id=refund_id, property_obj=self.property))
         self.assertTrue(self._audit_exists(
-            "billing.refund_completed", entity_id=refund_id,
+            "billing.refund_executed", entity_id=refund_id,
             property_obj=self.property))
 
-        # 已完成退款重复审批幂等：200 + changed=false，不再追加凭证
+        # 同一执行幂等键重放：不得重复追加退款凭证。
         repeat = self._post_json(
-            f"/api/v1/front-desk/refunds/{refund_id}/approve",
-            {"confirm_refund_paid": True})
-        self.assertEqual(repeat.status_code, 200)
-        self.assertFalse(repeat.json()["changed"])
+            f"/api/v1/billing/refunds/{refund_id}/execute", execute_payload)
+        self.assertEqual(repeat.status_code, 200, repeat.content)
         self.assertEqual(LedgerEntry.objects.filter(
             entry_type=LedgerEntry.EntryType.REFUND, folio=folio).count(), 1)
 
