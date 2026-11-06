@@ -458,17 +458,20 @@
     el.textContent = message;
     return el;
   }
-  async function postJson(url, payload) {
+  async function postJson(url, payload, idempotencyKey) {
+    const headers = {"Content-Type": "application/json", "X-CSRFToken": CSRF,
+                     "Accept": "application/json"};
+    if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
     return fetchJson(url, {
       method: "POST",
-      headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF,
-                "Accept": "application/json"},
+      headers: headers,
       body: JSON.stringify(payload),
     });
   }
   function collectForm() {
     const form = document.createElement("form");
     form.className = "fin-form";
+    let generatedReference = "";
     form.innerHTML =
         '<div><label for="fin-collect-amount">收款金额</label>' +
         '<input id="fin-collect-amount" name="amount" inputmode="decimal" placeholder="0.00" required></div>' +
@@ -480,12 +483,17 @@
         '<input id="fin-collect-ref" name="reference" placeholder="留空自动生成"></div>' +
         '<div class="fin-form-actions"><button type="button" class="fin-cancel">取消</button>' +
         '<button type="submit">确认收款</button></div>';
+    form.querySelector('[name="amount"]').addEventListener("input", function(){ generatedReference = ""; });
+    form.querySelector('[name="method"]').addEventListener("change", function(){ generatedReference = ""; });
     form.addEventListener("submit", async function(event){
       event.preventDefault();
-      // 必须在表单仍连接 DOM 时读取字段；不能先 replaceWith 再访问 document.getElementById。
+      // 必须在表单仍连接 DOM 时读取字段；自动参考号在网络重试期间保持不变。
       const amount = form.querySelector('[name="amount"]').value.trim();
       const method = form.querySelector('[name="method"]').value;
-      const reference = form.querySelector('[name="reference"]').value.trim();
+      const enteredReference = form.querySelector('[name="reference"]').value.trim();
+      const reference = enteredReference || generatedReference ||
+          (generatedReference = "PMS2-COLLECT-" + Date.now().toString(36) + "-" +
+            Math.random().toString(36).slice(2,10));
       const submitButton = form.querySelector('button[type="submit"]');
       if (method === "CASH" && !activeShiftId) {
         const shiftState = document.getElementById("fin-current-shift-state");
@@ -501,7 +509,7 @@
           amount: amount,
           method: method,
           reference: reference,
-        });
+        }, reference);
         const d = payload.data || {};
         form.replaceWith(notify("收款成功：" + d.amount + " " + d.currency +
             "（参考号 " + d.provider_ref + "）", true));
@@ -516,6 +524,7 @@
   function refundForm(payment) {
     const form = document.createElement("form");
     form.className = "fin-form";
+    let requestKey = "";
     form.innerHTML =
         '<div><label for="fin-refund-amount">退款金额（原支付 ' + value(payment.amount) + '）</label>' +
         '<input id="fin-refund-amount" name="amount" inputmode="decimal" placeholder="0.00" required></div>' +
@@ -523,11 +532,14 @@
         '<input id="fin-refund-reason" name="reason" maxlength="240" required></div>' +
         '<div class="fin-form-actions"><button type="button" class="fin-cancel">取消</button>' +
         '<button type="submit">提交退款申请</button></div>';
+    form.addEventListener("input", function(){ if (requestKey) requestKey = ""; });
     form.addEventListener("submit", async function(event){
       event.preventDefault();
-      // 从当前表单读取，避免同一抽屉中存在多个表单时 ID 冲突。
+      // 同一表单的网络重试复用幂等键；修改输入后才生成新键。
       const amount = form.querySelector('[name="amount"]').value.trim();
       const reason = form.querySelector('[name="reason"]').value.trim();
+      const key = requestKey || (requestKey = "PMS2-REFUND-" + Date.now().toString(36) +
+          "-" + Math.random().toString(36).slice(2,10));
       const submitButton = form.querySelector('button[type="submit"]');
       submitButton.disabled = true;
       const note = notify("提交中…");
@@ -537,7 +549,8 @@
           payment_id: payment.id,
           amount: amount,
           reason: reason,
-        });
+          idempotency_key: key,
+        }, key);
         const d = payload.data || {};
         form.replaceWith(notify("退款申请已提交（状态 " + d.status + "），等待第二人审批。", true));
         await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger()]);
@@ -655,28 +668,31 @@
               const executeButton = document.createElement("button");
               executeButton.type = "button"; executeButton.className = "pms-row-btn";
               executeButton.textContent = "执行退款";
+              let executionReference = null;
+              let executionKey = "";
               executeButton.addEventListener("click", async function(){
                 if (payment.method === "CASH" && !activeShiftId) {
                   actions.appendChild(notify("现金退款执行前，请先开立本人收银班次。"));
                   return;
                 }
-                let executionReference = "";
-                if (payment.method !== "CASH") {
+                if (payment.method !== "CASH" && executionReference === null) {
                   executionReference = window.prompt("请输入银行卡/转账渠道退款参考号（必填）") || "";
                   if (!executionReference.trim()) {
+                    executionReference = null;
                     actions.appendChild(notify("非现金退款必须填写渠道退款参考号。"));
                     return;
                   }
                 }
                 if (!window.confirm("请确认退款已经实际支付给住客；确认后系统将追加退款凭证。")) return;
                 executeButton.disabled = true;
-                const key = "refund-exec-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,10);
+                executionKey = executionKey || ("PMS2-REFUND-EXEC-" + Date.now().toString(36) +
+                    "-" + Math.random().toString(36).slice(2,10));
                 try {
                   await postJson("/api/v1/billing/refunds/" + refund.id + "/execute", {
                     confirm_refund_paid: true,
-                    execution_reference: executionReference.trim(),
-                    idempotency_key: key
-                  });
+                    execution_reference: (executionReference || "").trim(),
+                    idempotency_key: executionKey
+                  }, executionKey);
                   await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger(), loadShifts()]);
                   openDetail(item.id);
                 } catch (error) {
@@ -847,6 +863,8 @@
   }
   if (canManageCashMovement) {
     const movementForm = document.getElementById("fin-shift-movement-form");
+    let movementKey = "";
+    movementForm.addEventListener("input", function(){ if (movementKey) movementKey = ""; });
     movementForm.addEventListener("submit", async function(event){
       event.preventDefault();
       if (!activeShiftId) return;
@@ -856,10 +874,12 @@
       const button = movementForm.querySelector('button[type="submit"]');
       button.disabled = true;
       try {
-        const key = "cash-move-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,10);
+        const key = movementKey || (movementKey = "PMS2-CASH-MOVE-" + Date.now().toString(36) +
+            "-" + Math.random().toString(36).slice(2,10));
         await postJson("/api/v1/billing/shifts/" + activeShiftId + "/movements", {
           direction: direction, amount: amount, reason: reason, idempotency_key: key
-        });
+        }, key);
+        movementKey = "";
         movementForm.reset();
         await loadShifts();
       } catch (error) {
