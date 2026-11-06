@@ -714,31 +714,100 @@
     const form = document.createElement("form");
     form.className = "fin-form";
     form.innerHTML =
-        '<div style="grid-column:1/-1"><label for="fin-reverse-reason">冲销原因（必填；将追加等额反向凭证）</label>' +
+        '<div style="grid-column:1/-1"><label for="fin-reverse-reason">冲销原因（必填；需先由值班经理/店长审批）</label>' +
         '<input id="fin-reverse-reason" name="reason" maxlength="240" required></div>' +
         '<div class="fin-form-actions"><button type="button" class="fin-cancel">取消</button>' +
-        '<button type="submit">确认冲销 ' + value(entry.reference) + '</button></div>';
+        '<button type="submit">提交冲销审批申请</button></div>' +
+        '<div class="fin-form-actions" style="grid-column:1/-1"><span class="fin-state" data-reversal-state>正在检查审批状态…</span></div>';
+    const state = form.querySelector("[data-reversal-state]");
+    let approvalId = null;
+    let approvedReason = "";
+    function renderExecutionButton(record) {
+      approvalId = record.id;
+      approvedReason = record.reason || "";
+      state.textContent = "审批单 #" + record.id + "：" + record.status +
+        (record.approved_by ? "（审批人 " + record.approved_by + "）" : "");
+      form.querySelectorAll("[data-reversal-execute]").forEach(function(el){el.remove();});
+      if (record.status === "APPROVED") {
+        const execute = document.createElement("button");
+        execute.type = "button";
+        execute.dataset.reversalExecute = "1";
+        execute.textContent = "执行已批准冲销";
+        execute.addEventListener("click", async function(){
+          execute.disabled = true;
+          try {
+            const result = await postJson("/api/v1/billing/reversals", {
+              entry_id: entry.id, approval_id: approvalId
+            });
+            const d = result.data || {};
+            state.textContent = "已追加红字凭证 " + d.reference +
+              "（" + d.amount + " " + d.currency + "）";
+            await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger()]);
+          } catch (error) {
+            state.textContent = error.message;
+            execute.disabled = false;
+          }
+        });
+        form.querySelector(".fin-form-actions:last-of-type").appendChild(execute);
+      } else if (record.status === "PENDING") {
+        state.textContent = "审批单 #" + record.id + "：等待值班经理/店长审批；审批完成后点击刷新。";
+      }
+    }
+    async function refreshApprovalStatus() {
+      state.textContent = "正在检查审批状态…";
+      try {
+        const query = new URLSearchParams({
+          action_code: "billing.reversal",
+          entity_type: "LedgerEntry",
+          entity_id: String(entry.id),
+          page_size: "20"
+        });
+        const payload = await getJson("/api/v1/approvals?" + query.toString());
+        const rows = payload.data || [];
+        if (!rows.length) {
+          state.textContent = "尚无冲销审批申请。";
+          return;
+        }
+        renderExecutionButton(rows[0]);
+      } catch (error) {
+        state.textContent = error.message;
+      }
+    }
+    const refreshButton = document.createElement("button");
+    refreshButton.type = "button";
+    refreshButton.textContent = "刷新审批状态";
+    refreshButton.addEventListener("click", refreshApprovalStatus);
+    form.querySelector(".fin-form-actions:last-of-type").appendChild(refreshButton);
     form.addEventListener("submit", async function(event){
       event.preventDefault();
       const reason = form.querySelector('[name="reason"]').value.trim();
+      if (!reason) return;
       const submitButton = form.querySelector('button[type="submit"]');
       submitButton.disabled = true;
-      const note = notify("提交中…");
-      form.appendChild(note);
       try {
-        const payload = await postJson("/api/v1/billing/reversals", {
-          entry_id: entry.id,
+        const result = await postJson("/api/v1/approvals/request", {
+          action_code: "billing.reversal",
+          entity_type: "LedgerEntry",
+          entity_id: String(entry.id),
           reason: reason,
+          payload: {}
         });
-        const d = payload.data || {};
-        form.replaceWith(notify("已追加反向凭证 " + d.reference + "（" + d.amount + " " + d.currency + "）", true));
-        await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger()]);
+        const record = result.data || {};
+        renderExecutionButton({
+          id: record.id, status: record.status,
+          requested_by: record.requested_by, reason: reason
+        });
+        state.textContent = "冲销审批申请已提交（审批单 #" + record.id +
+          "）。请值班经理/店长审批，批准后由财务刷新状态并执行。";
+        form.querySelector('[name="reason"]').disabled = true;
+        submitButton.disabled = true;
       } catch (error) {
-        note.textContent = error.message;
+        state.textContent = error.message;
         submitButton.disabled = false;
       }
     });
     drawerBody.appendChild(form);
+    refreshApprovalStatus();
   }
 
   buildHead();
