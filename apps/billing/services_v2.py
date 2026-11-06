@@ -580,10 +580,11 @@ class BillingService:
         reason = str(reason or "").strip()
         if not reason or len(reason) > 240:
             raise ValueError("驳回原因必须填写且不能超过 240 个字符。")
-        if refund.approval_record_id:
-            ApprovalService.reject(
-                refund.approval_record_id, approved_by=rejected_by,
-                property_obj=property_obj, reason=reason)
+        if not refund.approval_record_id:
+            raise ValueError("退款申请缺少审批记录，禁止绕过审批。")
+        ApprovalService.reject(
+            refund.approval_record_id, approved_by=rejected_by,
+            property_obj=property_obj, reason=reason)
         refund.status = Refund.Status.REJECTED
         refund.approved_by = rejected_by
         refund.processed_at = timezone.now()
