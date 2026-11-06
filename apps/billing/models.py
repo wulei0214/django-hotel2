@@ -562,6 +562,7 @@ class Refund(models.Model):
 
 
 class CashierShift(models.Model):
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
     """现金班次对账（V1.1 M-10 P1）：前台现金收支按班次闭合，差异必须说明。"""
 
     class ShiftStatus(models.TextChoices):
@@ -603,6 +604,16 @@ class CashierShift(models.Model):
         verbose_name = "现金班次"
         verbose_name_plural = "现金班次"
         ordering = ("-opened_at",)
+        constraints = [
+            models.CheckConstraint(check=Q(opening_cash__gte=0),
+                                   name="ck_cashier_shift_opening_cash_nonnegative"),
+            models.CheckConstraint(
+                check=Q(expected_cash__isnull=True) | Q(expected_cash__gte=0),
+                name="ck_cashier_shift_expected_cash_nonnegative"),
+            models.CheckConstraint(
+                check=Q(actual_cash__isnull=True) | Q(actual_cash__gte=0),
+                name="ck_cashier_shift_actual_cash_nonnegative"),
+        ]
         permissions = (
             ("cashier_shift_manage", "可以开立和关闭收银班次"),
             ("cash_movement_manage", "可以登记班次现金收入与支出"),
