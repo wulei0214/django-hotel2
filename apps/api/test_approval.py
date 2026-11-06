@@ -94,12 +94,25 @@ class ApprovalApiTestBase(TestCase):
             provider="frontdesk_manual", provider_ref=f"APIT-PAY-{seq:06d}",
             method="CASH", amount=Decimal("300.00"), currency="CNY",
             status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
-        refund = Refund.objects.create(
-            property=property_obj, payment=payment, amount=Decimal("100.00"),
-            currency="CNY", reason="审批API退款原因",
-            idempotency_key=f"apit-rf-{seq:06d}",
-            provider_ref=f"APIT-RFD-{seq:06d}", status=status,
-            requested_by=requester)
+        from apps.billing.services_v2 import BillingService
+        refund, _ = BillingService.request_refund(
+            property_obj=property_obj, payment_id=payment.pk,
+            amount="100.00", reason="审批API退款原因",
+            idempotency_key=f"apit-rf-{seq:06d}", requested_by=requester)
+        if status != Refund.Status.PENDING:
+            approver = User.objects.create_user(username=f"apit-approver-{seq}")
+            BillingService.approve_refund(
+                property_obj=property_obj, refund_id=refund.pk,
+                approved_by=approver)
+        if status == Refund.Status.SUCCEEDED:
+            executor = User.objects.create_user(username=f"apit-executor-{seq}")
+            BillingService.open_shift(
+                property_obj=property_obj, cashier=executor,
+                opening_cash=Decimal("100.00"))
+            BillingService.execute_refund(
+                property_obj=property_obj, refund_id=refund.pk,
+                executed_by=executor, confirm_refund_paid=True,
+                idempotency_key=f"apit-exec-{seq:06d}")
         return refund
 
     def _make_business_date(self, property_obj, *, status=BusinessDate.Status.CLOSED):
