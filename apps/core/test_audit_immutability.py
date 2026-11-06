@@ -8,8 +8,7 @@ DB 层（运维部署项，apps/core/sql/audit_immutability.sql）：
 应用账号对 core_auditevent 的 UPDATE/DELETE 由 MySQL 触发器拒绝；
 迁移/运维账号单独保管，不在应用 settings 中。
 """
-from django.db import connection
-from django.db.models import F
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from apps.core.models import AuditEvent, Property
@@ -32,19 +31,17 @@ class AuditEventImmutabilityTests(TestCase):
         with self.assertRaises(ValueError):
             self.event.delete()
 
-    def test_queryset_update_can_not_be_cleaned_by_orm_policy(self):
-        """记录 queryset.update 绕过模型层的现状——DB 触发器是最终防线
-        （见 apps/core/sql/audit_immutability.sql 部署说明）。
-        本测试固化行为基线：update() 在 ORM 层不被模型拦截，
-        因此生产必须部署触发器（P0-06 验收项）。"""
-        updated = AuditEvent.objects.filter(pk=self.event.pk).update(
-            reason="orm-bypass")
-        self.assertEqual(updated, 1)
-        # 触发器部署后该断言应改为：触发器抛错，update 计数为 0 且值不变
+    def test_queryset_update_is_blocked_before_database_write(self):
+        """ORM 批量更新必须被拦截；生产 MySQL 另部署数据库触发器防原生 SQL 旁路。"""
+        with self.assertRaises(ValidationError):
+            AuditEvent.objects.filter(pk=self.event.pk).update(reason="orm-bypass")
         self.event.refresh_from_db()
-        self.assertEqual(
-            connection.settings_dict["ENGINE"].endswith("sqlite3") or True,
-            True, "占位：保持引擎无关")
+        self.assertEqual(self.event.reason, "不可变性测试")
+
+    def test_queryset_delete_is_blocked(self):
+        with self.assertRaises(ValidationError):
+            AuditEvent.objects.filter(pk=self.event.pk).delete()
+        self.assertTrue(AuditEvent.objects.filter(pk=self.event.pk).exists())
 
     def test_record_is_append_only_utility(self):
         """record() 只创建新行；同 action 重复记录不合并（审计事实链）"""
