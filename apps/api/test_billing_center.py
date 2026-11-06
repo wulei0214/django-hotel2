@@ -89,7 +89,7 @@ class BillingCenterTestBase(TestCase):
             employment_status=StaffProfile.EmploymentStatus.ACTIVE)
         membership = PropertyStaffMembership.objects.create(
             staff_profile=profile, property=self.property,
-            employee_no=f"BC-{username}",
+            employee_no=f"BC-{user.pk:06d}",
             status=PropertyStaffMembership.Status.ACTIVE)
         StaffRoleAssignment.objects.create(
             membership=membership, group=group,
