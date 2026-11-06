@@ -22,6 +22,7 @@ from unittest import mock
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import QuerySet
 from django.db.models import Model as DjangoModel, transaction
 from django.test import TestCase
 from django.utils import timezone
@@ -556,7 +557,8 @@ class RefundDatabaseInvariantTests(WhiteboxBillingBase):
         refund = self._pending_refund()
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
-                Refund.objects.filter(pk=refund.pk).update(
+                QuerySet.update(
+                    Refund.objects.filter(pk=refund.pk),
                     status=Refund.Status.APPROVED,
                     approved_by_id=self.operator.pk)
 
@@ -568,7 +570,8 @@ class RefundDatabaseInvariantTests(WhiteboxBillingBase):
             approved_by=approver)
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
-                Refund.objects.filter(pk=refund.pk).update(
+                QuerySet.update(
+                    Refund.objects.filter(pk=refund.pk),
                     status=Refund.Status.SUCCEEDED,
                     executed_by_id=approver.pk,
                     executed_at=timezone.now(),
