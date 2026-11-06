@@ -102,7 +102,7 @@ def approval_list(request):
             if len(value) > 64:
                 raise ApiError("VALIDATION_ERROR", f"{field} 不能超过 64 个字符。")
             qs = qs.filter(**{field: value})
-    items, pagination = paginate(qs, request)
+    items, pagination = paginate(qs.order_by("-created_at", "-id"), request)
     data = [{
         "id": a.pk, "action_code": a.action_code,
         "entity_type": a.entity_type, "entity_id": a.entity_id,
