@@ -108,7 +108,9 @@ MANAGEMENT_CENTERS = {
         "permission": "hotelapp.view_room", "endpoint": "/api/v1/rooms/status",
         "secondary_endpoint": "/api/v1/rate-calendar",
         "secondary_sections": [
-            {"title": "每日房价", "data_key": "rates", "columns": [
+            {"title": "每日房价", "data_key": "rates", "searchable": True,
+             "page_param": "rate_page", "size_param": "rate_page_size",
+             "columns": [
                 {"label": "住宿日期", "path": "stay_date"},
                 {"label": "房型", "path": "room_type.name"},
                 {"label": "房价计划", "path": "rate_plan.name"},
@@ -116,7 +118,9 @@ MANAGEMENT_CENTERS = {
                 {"label": "币种", "path": "currency_label"},
                 {"label": "是否关房", "path": "closed"},
             ]},
-            {"title": "房型每日库存", "data_key": "inventory", "columns": [
+            {"title": "房型每日库存", "data_key": "inventory", "searchable": True,
+             "page_param": "inventory_page", "size_param": "inventory_page_size",
+             "columns": [
                 {"label": "住宿日期", "path": "stay_date"},
                 {"label": "房型", "path": "room_type.name"},
                 {"label": "总房量", "path": "total_rooms"},

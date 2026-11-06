@@ -495,10 +495,41 @@ def room_type_list(request):
     return api_response(request, data)
 
 
+def _subcollection_page(queryset, request, prefix, default_size=20):
+    """P0-03 统一分页契约在双集合响应内的推广（rate_calendar 专用）。
+
+    参数名带前缀（rate_page / inventory_page 等），规则与 parse_page_args
+    完全一致：非法/0/负数/超上限一律 400。返回 (页行, pagination meta)。"""
+    from apps.core.api_contract import ApiError, PAGE_NUMBER_MAX, PAGE_SIZE_MAX
+    try:
+        page = int(str(request.GET.get(prefix + "_page", "1")).strip())
+        size = int(str(request.GET.get(prefix + "_page_size",
+                                       str(default_size))).strip())
+    except (TypeError, ValueError):
+        raise ApiError("VALIDATION_ERROR",
+                       "%s_page / %s_page_size 必须是整数。" % (prefix, prefix))
+    if not 1 <= page <= PAGE_NUMBER_MAX:
+        raise ApiError("VALIDATION_ERROR",
+                       "%s_page 必须是 1 至 %d 之间的整数。"
+                       % (prefix, PAGE_NUMBER_MAX))
+    if not 1 <= size <= PAGE_SIZE_MAX:
+        raise ApiError("VALIDATION_ERROR",
+                       "%s_page_size 必须是 1 至 %d 之间的整数。"
+                       % (prefix, PAGE_SIZE_MAX))
+    total = queryset.count()
+    rows = list(queryset[(page - 1) * size: page * size])
+    return rows, {
+        "page": page, "page_size": size, "total": total,
+        "has_next": page * size < total, "has_previous": page > 1,
+    }
+
+
+@require_GET
+@api_view
 @require_GET
 @api_view
 def rate_calendar(request):
-    """房价日历：按日期展示房型每日价格与库存。"""
+    """房价日历：按日期展示房型每日价格与库存（双集合服务端分页 + 搜索）。"""
     user = request.user
     property_obj = getattr(request, "property", None)
     if property_obj is None:
@@ -535,6 +566,19 @@ def rate_calendar(request):
         "stay_date", "room_type_id", "rate_plan_id", "id")
     if room_type_id:
         rate_qs = rate_qs.filter(room_type_id=room_type_id)
+    # 搜索（用户报告：次级列表缺搜索）——按房型代码/名称模糊匹配
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        from django.db.models import Q
+        inv_qs = inv_qs.filter(
+            Q(room_type__code__icontains=q) | Q(room_type__name__icontains=q))
+        rate_qs = rate_qs.filter(
+            Q(room_type__code__icontains=q) | Q(room_type__name__icontains=q))
+    # P0-03 统一分页（用户报告：次级列表缺分页）——双集合独立页参数
+    inv_page_rows, inv_pagination = _subcollection_page(
+        inv_qs, request, "inventory", default_size=20)
+    rate_page_rows, rate_pagination = _subcollection_page(
+        rate_qs, request, "rate", default_size=20)
 
     inventory_data = [{
         "room_type": {"id": inv.room_type.pk, "code": inv.room_type.code,
@@ -544,7 +588,7 @@ def rate_calendar(request):
         "sold": inv.sold, "out_of_service": inv.out_of_service,
         "available_count": inv.available_count,
         "stop_sell": inv.stop_sell,
-    } for inv in inv_qs]
+    } for inv in inv_page_rows]
     rate_data = [{
         "room_type": {"id": dr.room_type.pk, "code": dr.room_type.code,
                       "name": dr.room_type.name},
@@ -554,8 +598,12 @@ def rate_calendar(request):
         "price": str(dr.price), "currency": dr.currency,
         "currency_label": L.currency_label(dr.currency),
         "closed": dr.closed,
-    } for dr in rate_qs]
-    return api_response(request, {"inventory": inventory_data, "rates": rate_data})
+    } for dr in rate_page_rows]
+    return api_response(request, {
+        "inventory": inventory_data, "rates": rate_data,
+        "inventory_pagination": inv_pagination,
+        "rates_pagination": rate_pagination,
+    })
 
 
 # ---------- Phase 2：Guest 写操作（走 GuestService，不直接写模型） ----------

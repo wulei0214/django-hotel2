@@ -234,48 +234,80 @@
     });
   }
   /* ---------- 列表加载 ---------- */
-  async function loadSecondary() {
+  /* 次级列表：服务端分页（P0-03 统一契约）+ 每节独立页状态与搜索 */
+  const secondaryState = {};
+  let lastSecondaryQuery = null;
+
+  function secondaryQuery() {
+    const sp = new URLSearchParams();
+    sections.forEach(function (section) {
+      var st = secondaryState[section.data_key];
+      if (!st) { st = secondaryState[section.data_key] = {page: 1, q: ""}; }
+      if (section.page_param) sp.set(section.page_param, String(st.page));
+      if (section.size_param) sp.set(section.size_param, "20");
+      if (section.searchable && st.q) sp.set("q", st.q);
+    });
+    return sp.toString();
+  }
+
+  async function loadSecondary(force) {
     if (!secondaryEndpoint || !sections.length) return;
+    var query = secondaryQuery();
+    /* 查询条件与页码均未变化时跳过（避免无意义刷新） */
+    if (!force && lastSecondaryQuery !== null && query === lastSecondaryQuery) return;
+    lastSecondaryQuery = query;
     const holder=document.getElementById("pms-secondary");holder.replaceChildren();
-    const response=await fetch(secondaryEndpoint,{credentials:"same-origin",headers:{"Accept":"application/json"}});
+    const response=await fetch(secondaryEndpoint+"?"+query,{credentials:"same-origin",headers:{"Accept":"application/json"}});
     const payload=await response.json();
     if(!response.ok) throw new Error(payload.error && payload.error.message || "房价/库存日历读取失败");
     sections.forEach(function(section){
+      const st = secondaryState[section.data_key];
       const data=payload.data[section.data_key] || [];
+      const pg=payload.data[section.data_key+"_pagination"] || null;
       const panel=document.createElement("section");panel.className="pms-panel";
-      const title=document.createElement("h2");title.textContent=section.title+"（共 "+data.length+" 行）";
+      const title=document.createElement("h2");
+      title.textContent=section.title+"（共 "+(pg?pg.total:data.length)+" 行）";
+      panel.appendChild(title);
+      /* 每节搜索框（房型代码 / 名称模糊匹配） */
+      if (section.searchable) {
+        const tools=document.createElement("div");tools.className="pms-tools";
+        const input=document.createElement("input");
+        input.type="search";input.placeholder="按房型代码 / 名称搜索";
+        input.value=st.q;
+        const sBtn=document.createElement("button");sBtn.type="button";sBtn.textContent="搜索";
+        sBtn.addEventListener("click",function(){
+          var q=input.value.trim();
+          if (q === st.q) return;  /* 未变化不刷新 */
+          st.q=q; st.page=1; loadSecondary();
+        });
+        input.addEventListener("keydown",function(e){if(e.key==="Enter")sBtn.click();});
+        tools.appendChild(input);tools.appendChild(sBtn);
+        panel.appendChild(tools);
+      }
       const wrap=document.createElement("div");wrap.className="pms-table-wrap";
       const table=document.createElement("table");table.className="pms-table";
       const thead=document.createElement("thead"),tr=document.createElement("tr");
       header(tr,section.columns,false);thead.appendChild(tr);
       const tbody=document.createElement("tbody");
+      data.forEach(function(item){
+        const rowItem=document.createElement("tr");
+        section.columns.forEach(function(c){const td=document.createElement("td");td.textContent=value(at(item,c.path));rowItem.appendChild(td);});
+        tbody.appendChild(rowItem);
+      });
       table.appendChild(thead);table.appendChild(tbody);wrap.appendChild(table);
-      panel.appendChild(title);panel.appendChild(wrap);
-      // 客户端分页（图1 同款：上一页/第 N 页/共 M 页/下一页），长表每页 8 行
-      const PAGE=8, pages=Math.max(1, Math.ceil(data.length/PAGE));
-      let current=1;
-      const pager=document.createElement("div");pager.className="pms-pager";
-      const prev=document.createElement("button");prev.type="button";prev.textContent="上一页";prev.disabled=true;
-      const label=document.createElement("span");
-      const next=document.createElement("button");next.type="button";next.textContent="下一页";
-      pager.appendChild(prev);
-      pager.appendChild(label);
-      pager.appendChild(next);
-      panel.appendChild(pager);
-      function renderPage(){
-        tbody.replaceChildren();
-        const start=(current-1)*PAGE;
-        data.slice(start,start+PAGE).forEach(function(item){
-          const rowItem=document.createElement("tr");
-          section.columns.forEach(function(c){const td=document.createElement("td");td.textContent=value(at(item,c.path));rowItem.appendChild(td);});
-          tbody.appendChild(rowItem);
-        });
-        label.textContent="第 "+current+" 页 / 共 "+pages+" 页";
-        prev.disabled=current<=1;next.disabled=current>=pages;
+      panel.appendChild(wrap);
+      /* 服务端分页 pager（上一页/页码/下一页，跟随 pagination meta） */
+      if (pg) {
+        const pager=document.createElement("div");pager.className="pms-pager";
+        const prev=document.createElement("button");prev.type="button";prev.textContent="上一页";prev.disabled=!pg.has_previous;
+        const label=document.createElement("span");
+        label.textContent="第 "+pg.page+" 页 / 共 "+Math.max(1,Math.ceil(pg.total/pg.page_size))+" 页";
+        const next=document.createElement("button");next.type="button";next.textContent="下一页";next.disabled=!pg.has_next;
+        prev.addEventListener("click",function(){ if(pg.has_previous){ st.page=pg.page-1; loadSecondary(); }});
+        next.addEventListener("click",function(){ if(pg.has_next){ st.page=pg.page+1; loadSecondary(); }});
+        pager.appendChild(prev);pager.appendChild(label);pager.appendChild(next);
+        panel.appendChild(pager);
       }
-      prev.addEventListener("click",function(){if(current>1){current--;renderPage();}});
-      next.addEventListener("click",function(){if(current<pages){current++;renderPage();}});
-      renderPage();
       holder.appendChild(panel);
     });
   }
