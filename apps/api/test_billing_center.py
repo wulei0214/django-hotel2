@@ -643,25 +643,48 @@ class BillingCenterWriteTests(BillingCenterTestBase):
         self.assertEqual(ok.status_code, 201, ok.content)
         self.assertEqual(Refund.objects.filter(payment_id=payment_id).count(), 1)
 
-    def test_reverse_entry_posts_paired_reversal_with_audit_and_idempotent(self):
+    def test_reverse_entry_posts_paired_reversal_with_manager_approval_and_idempotent(self):
         reservation, folio = self._booking_with_outstanding(Decimal("300.00"))
         original = folio.entries.get(entry_type=LedgerEntry.EntryType.ROOM_CHARGE)
+        reason = "录错房价，红字冲销重入"
+        manager = self._make_staff("fin_center_reversal_manager", "店长")
+        self._grant(manager, "reversal_approve")
+
+        self._login(self.finance)
+        request = _post_json(
+            self.client, "/api/v1/approvals/request",
+            {"action_code": "billing.reversal", "entity_type": "LedgerEntry",
+             "entity_id": str(original.pk), "reason": reason, "payload": {}})
+        self.assertEqual(request.status_code, 201, request.content)
+        approval_id = request.json()["data"]["id"]
+
+        # 财务不能审批自己的冲销申请；店长单独批准。
+        denied = _post_json(
+            self.client, f"/api/v1/approvals/{approval_id}/approve", {})
+        self.assertEqual(denied.status_code, 403, denied.content)
+        self._login(manager)
+        approved = _post_json(
+            self.client, f"/api/v1/approvals/{approval_id}/approve", {})
+        self.assertEqual(approved.status_code, 200, approved.content)
+
         self._login(self.finance)
         response = _post_json(
             self.client, "/api/v1/billing/reversals",
-            {"entry_id": original.pk, "reason": "录错房价，红字冲销重入"})
+            {"entry_id": original.pk, "approval_id": approval_id})
         self.assertEqual(response.status_code, 201, response.content)
         data = response.json()["data"]
         self.assertEqual(data["entry_type"], "REVERSAL")
         self.assertEqual(data["amount"], "-300.00")
         self.assertEqual(data["void_of_id"], original.pk)
+        self.assertEqual(data["approval_id"], approval_id)
 
         original.refresh_from_db()
         self.assertEqual(original.amount, Decimal("300.00"))
         self.assertIsNone(original.void_of_id)  # 原凭证不可变
         reversal = LedgerEntry.objects.get(pk=data["reversal_id"])
         self.assertEqual(reversal.void_of_id, original.pk)
-        self.assertEqual(reversal.void_reason, "录错房价，红字冲销重入")
+        self.assertEqual(reversal.void_reason, reason)
+        self.assertEqual(reversal.approval_record_id, approval_id)
         self.assertEqual(reversal.reference, f"reversal:{original.reference}")
         balance = sum((e.amount for e in folio.entries.all()), Decimal("0.00"))
         self.assertEqual(balance, Decimal("0.00"))
@@ -669,10 +692,10 @@ class BillingCenterWriteTests(BillingCenterTestBase):
             "billing.reverse_entry", entity_id=original.pk,
             property_obj=self.property))
 
-        # 幂等重放：同一原凭证只冲一次，返回首次反向凭证
+        # 幂等重放：同一审批单和原凭证只冲一次。
         replay = _post_json(
             self.client, "/api/v1/billing/reversals",
-            {"entry_id": original.pk, "reason": "录错房价，红字冲销重入"})
+            {"entry_id": original.pk, "approval_id": approval_id})
         self.assertEqual(replay.status_code, 200, replay.content)
         self.assertEqual(replay.json()["data"]["reversal_id"], reversal.pk)
         self.assertEqual(
@@ -681,8 +704,31 @@ class BillingCenterWriteTests(BillingCenterTestBase):
         # 红字凭证不可再冲销 → 400
         again = _post_json(
             self.client, "/api/v1/billing/reversals",
-            {"entry_id": reversal.pk, "reason": "试图冲销红字凭证"})
+            {"entry_id": reversal.pk, "approval_id": approval_id})
         self.assertEqual(again.status_code, 400, again.content)
+
+    def test_reverse_entry_requires_approved_manager_record(self):
+        reservation, folio = self._booking_with_outstanding(Decimal("300.00"))
+        original = folio.entries.get(entry_type=LedgerEntry.EntryType.ROOM_CHARGE)
+        self._login(self.finance)
+        response = _post_json(
+            self.client, "/api/v1/billing/reversals",
+            {"entry_id": original.pk})
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertFalse(LedgerEntry.objects.filter(void_of=original).exists())
+
+        request = _post_json(
+            self.client, "/api/v1/approvals/request",
+            {"action_code": "billing.reversal", "entity_type": "LedgerEntry",
+             "entity_id": str(original.pk), "reason": "等待经理批准",
+             "payload": {}})
+        self.assertEqual(request.status_code, 201, request.content)
+        pending_id = request.json()["data"]["id"]
+        unapproved = _post_json(
+            self.client, "/api/v1/billing/reversals",
+            {"entry_id": original.pk, "approval_id": pending_id})
+        self.assertEqual(unapproved.status_code, 400, unapproved.content)
+        self.assertFalse(LedgerEntry.objects.filter(void_of=original).exists())
 
     def test_reverse_entry_requires_reverse_permission(self):
         """reverse_entry 专项权：仅 finance_access 无专项权 → 403，零副作用。"""
@@ -704,10 +750,13 @@ class BillingCenterWriteTests(BillingCenterTestBase):
         original = folio.entries.get(entry_type=LedgerEntry.EntryType.ROOM_CHARGE)
         self._login(self.finance)
         response = _post_json(
-            self.client, "/api/v1/billing/reversals",
-            {"entry_id": original.pk, "reason": "   "})
+            self.client, "/api/v1/approvals/request",
+            {"action_code": "billing.reversal", "entity_type": "LedgerEntry",
+             "entity_id": str(original.pk), "reason": "   ", "payload": {}})
         self.assertEqual(response.status_code, 400, response.content)
         self.assertFalse(LedgerEntry.objects.filter(void_of=original).exists())
+        self.assertFalse(ApprovalRecord.objects.filter(
+            action_code="billing.reversal", entity_id=str(original.pk)).exists())
 
 
 class BillingCenterPageTests(BillingCenterTestBase):
