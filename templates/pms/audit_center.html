@@ -176,19 +176,23 @@
   function showError(el, message) { el.hidden = false; el.textContent = message; }
   function hideError(el) { el.hidden = true; el.textContent = ""; }
 
-  function getJSON(url) {
-    return fetch(url, { credentials: "same-origin",
-                        headers: { "Accept": "application/json" } })
-      .then(function (response) {
-        return response.json().then(function (body) {
-          if (!response.ok) {
-            var message = (body.error && body.error.message) ||
-                          ("请求失败（" + response.status + "）");
-            throw new Error(message);
-          }
-          return body;
-        });
-      });
+  async function getJSON(url) {
+    var response = await fetch(url, { credentials: "same-origin",
+      headers: { "Accept": "application/json" } });
+    var raw = await response.text();
+    var body = null;
+    if (raw) {
+      try { body = JSON.parse(raw); } catch (error) { body = null; }
+    }
+    if (!response.ok) {
+      throw new Error((body && body.error && body.error.message) ||
+                      ("请求失败（HTTP " + response.status + "）"));
+    }
+    if (!body || typeof body !== "object") {
+      throw new Error("服务器返回非 JSON 响应（HTTP " + response.status +
+                      "），请检查登录状态和服务端日志。");
+    }
+    return body;
   }
 
   var AUDIT_FIELD_LABELS = {
