@@ -118,6 +118,7 @@ ACTION_LABELS = {
     "identity.password_reset": "重置员工密码",
     "identity.account_provision": "开通员工账号",
     "permissions.matrix_saved": "保存角色权限矩阵",
+    "security.permission_denied": "权限校验拒绝操作",
     "approval.request": "提交审批申请",
     "approval.approve": "审批通过",
     "approval.reject": "审批驳回",
@@ -147,6 +148,8 @@ ENTITY_TYPE_LABELS = {
     "PropertyStaffMembership": "员工物业任职",
     "StaffRoleAssignment": "员工岗位授权",
     "BusinessDate": "营业日", "NightAuditRun": "夜审运行记录",
+    "BreakGlassRecord": "紧急重开记录", "HousekeepingTask": "清洁任务",
+    "MaintenanceTicket": "维修工单", "RoomInspection": "客房检查记录",
     "AuditEvent": "审计事件", "ApprovalRecord": "审批记录",
     "Notification": "通知待办",
 }
