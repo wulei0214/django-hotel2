@@ -44,6 +44,19 @@ class CenterTemplateRegressionTests(SimpleTestCase):
         self.assertNotIn('document.getElementById("fin-refund-amount")', source)
         self.assertNotIn('document.getElementById("fin-reverse-reason")', source)
 
+    def test_billing_center_exposes_shift_controls_and_separate_refund_actions(self):
+        source = self.read_template("billing_center.html")
+        self.assertNotIn('href="/finance/"', source)
+        self.assertIn('id="fin-shift-open"', source)
+        self.assertIn('id="fin-shift-close"', source)
+        self.assertIn('id="fin-shift-movement-form"', source)
+        self.assertIn('/api/v1/billing/shifts/open', source)
+        self.assertIn('/api/v1/billing/shifts/" + activeShiftId + "/movements', source)
+        self.assertIn('/api/v1/billing/refunds/" + refund.id + "/approve', source)
+        self.assertIn('/api/v1/billing/refunds/" + refund.id + "/execute', source)
+        self.assertIn("canApproveRefund", source)
+        self.assertIn("canExecuteRefund", source)
+
     def test_night_audit_dom_helper_appends_node_children(self):
         source = self.read_template("night_audit_center.html")
         helper = source.split("function el(", 1)[1].split("\n  function value", 1)[0]
