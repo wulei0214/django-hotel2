@@ -43,7 +43,7 @@ FROM 'pms_runtime'@'%';
 
 ## 4. 验收
 
-- [ ] 6 条触发器全部存在，且关联正确表/事件/时机。
+- [ ] 6 条 BEFORE UPDATE/DELETE 只追加触发器 + 1 条 BEFORE INSERT 班次保护触发器全部存在，且关联正确表/事件/时机。
 - [ ] 应用账号无法 UPDATE/DELETE 三张只追加事实表。
 - [ ] 应用账号可以正常 INSERT 新审计、账本、班次现金事实。
 - [ ] Django ORM 的 QuerySet.update/delete/bulk_create/bulk_update 同样被模型管理器拒绝。
