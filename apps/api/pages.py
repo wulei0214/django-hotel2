@@ -225,7 +225,7 @@ MANAGEMENT_CENTERS = {
     "night-audit": {
         "title": "营业日与夜审中心",
         "subtitle": "营业日历、夜审预览与执行、重开审批、紧急重开（break-glass）复核",
-        "permission": "hotelapp.night_audit_execute",
+        "permission": "core.night_audit_view",
         "endpoint": "/api/v1/night-audit/business-dates",
         "template": "pms/night_audit_center.html",
         "enable_night_audit_actions": True,
@@ -381,7 +381,10 @@ def management_center_page(request, center):
         "can_collect_payment": config.get("enable_collect_payment", False),
         "can_refund_request": can_refund_request,
         "can_reverse_entry": can_reverse,
-        "can_run_night_audit": enable_night_audit,  # 页面已过 night_audit_execute 门禁
+        "can_run_night_audit": (
+            enable_night_audit and AuthorizationService.has_permission(
+                user, property_obj, "hotelapp.night_audit_execute")),
+        # 页面读取权限与夜审执行权限分离；按钮仅对执行授权者展示。
         "can_reopen_business_date": can_reopen,
         "can_review_break_glass": can_review_break_glass,
         "can_flow_housekeeping": can_flow_housekeeping,
