@@ -492,6 +492,31 @@ class HousekeepingMaintenanceTests(HousekeepingCenterTestBase):
         self.assertEqual(
             room.maintenance_status, Room.MaintenanceStatus.OUT_OF_ORDER)
 
+
+    def test_maintenance_grants_are_role_aligned_and_not_copied_from_no_show(self):
+        """维修权限按维修职责授予，不再从未到处理权限复制授权。"""
+        from django.contrib.auth.models import Group
+        from apps.identity.authorization import AuthorizationService
+
+        front_desk = self._make_staff("hk_center_frontdesk", "前台")
+        owner = self._make_staff("hk_center_owner_alignment", "店长")
+        self.assertFalse(AuthorizationService.has_permission(
+            front_desk, self.property, "inventory.maintenance_manage"))
+        self.assertFalse(AuthorizationService.has_permission(
+            self.hk, self.property, "inventory.maintenance_manage"))
+        self.assertTrue(AuthorizationService.has_permission(
+            self.dm, self.property, "inventory.maintenance_manage"))
+        self.assertTrue(AuthorizationService.has_permission(
+            owner, self.property, "inventory.maintenance_manage"))
+
+        # 权限点与旧 no_show_handle 不再存在授权复制关系；
+        # 验证维修权限实际仅出现在正式管理角色组。
+        maintenance_groups = set(Group.objects.filter(
+            permissions__content_type__app_label="inventory",
+            permissions__codename="maintenance_manage"
+        ).values_list("name", flat=True))
+        self.assertEqual(maintenance_groups, {"值班经理", "店长"})
+
 class HousekeepingPageAndRegistryTests(HousekeepingCenterTestBase):
     """/manage/housekeeping/ 页面门禁与注册表同步。"""
 
