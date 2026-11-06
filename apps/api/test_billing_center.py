@@ -911,6 +911,7 @@ class BillingRefundThreePartyApiTests(BillingCenterTestBase):
 
         # 通用 ApprovalRecord 入口不得单独审批/驳回退款，否则只改变审批记录、
         # 不同步 Refund.status 和 Payment.status，会制造“已批但仍待审批”的悬空流程。
+        self._login(approver)
         generic_approve = _post_json(
             self.client,
             f"/api/v1/approvals/{refund.approval_record_id}/approve", {})
