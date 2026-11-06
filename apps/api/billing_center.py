@@ -30,7 +30,7 @@ from django.db.models import Prefetch, Q, Sum
 from django.db.models.functions import Coalesce
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.billing.models import CashierShift, Folio, LedgerEntry, Payment, Refund
+from apps.billing.models import CashierShift, CashierShiftMovement, Folio, LedgerEntry, Payment, Refund
 from apps.billing.services_v2 import BillingService
 from apps.core import labels as L
 from apps.core.api_contract import (
@@ -549,6 +549,106 @@ def request_refund_api(request):
         "status": refund.status,
         "provider_ref": refund.provider_ref,
         "approval_record_id": refund.approval_record_id,
+    }, status=201 if created else 200)
+
+
+
+@require_POST
+@api_view
+@idempotent
+def approve_refund_api(request, refund_id):
+    """审批退款：仅更新审批事实，不执行退款、不产生 REFUND 凭证。"""
+    property_obj = _require_finance_access(
+        request, extra_permission="billing.refund_approve")
+    try:
+        refund, changed = BillingService.approve_refund(
+            property_obj=property_obj, refund_id=refund_id,
+            approved_by=request.user)
+    except ValueError as exc:
+        raise ApiError("VALIDATION_ERROR", str(exc))
+    return api_response(request, {
+        "refund_id": refund.pk, "status": refund.status,
+        "approved_by_id": refund.approved_by_id,
+        "approval_record_id": refund.approval_record_id,
+        "changed": changed,
+    })
+
+
+@require_POST
+@api_view
+@idempotent
+def reject_refund_api(request, refund_id):
+    """驳回退款：仅登记审批结果，不写退款凭证。"""
+    property_obj = _require_finance_access(
+        request, extra_permission="billing.refund_approve")
+    body = _json_body(request)
+    try:
+        refund, changed = BillingService.reject_refund(
+            property_obj=property_obj, refund_id=refund_id,
+            rejected_by=request.user, reason=body.get("reason"))
+    except ValueError as exc:
+        raise ApiError("VALIDATION_ERROR", str(exc))
+    return api_response(request, {
+        "refund_id": refund.pk, "status": refund.status,
+        "approved_by_id": refund.approved_by_id, "changed": changed,
+    })
+
+
+@require_POST
+@api_view
+@idempotent
+def execute_refund_api(request, refund_id):
+    """执行退款：申请人、审批人、执行人三者必须不同。"""
+    property_obj = _require_finance_access(
+        request, extra_permission="billing.refund_execute")
+    body = _json_body(request)
+    key = str(body.get("idempotency_key")
+              or request.headers.get("Idempotency-Key", "")).strip()
+    try:
+        refund, created = BillingService.execute_refund(
+            property_obj=property_obj, refund_id=refund_id,
+            executed_by=request.user,
+            confirm_refund_paid=body.get("confirm_refund_paid") is True,
+            execution_reference=body.get("execution_reference", ""),
+            idempotency_key=key)
+    except ValueError as exc:
+        raise ApiError("VALIDATION_ERROR", str(exc))
+    _invalidate_billing_summary(property_obj)
+    return api_response(request, {
+        "refund_id": refund.pk, "payment_id": refund.payment_id,
+        "status": refund.status, "amount": _money_str(refund.amount),
+        "approved_by_id": refund.approved_by_id,
+        "executed_by_id": refund.executed_by_id,
+        "executed_at": refund.executed_at.isoformat() if refund.executed_at else None,
+        "execution_shift_id": refund.execution_shift_id,
+        "execution_reference": refund.execution_reference,
+    }, status=201 if created else 200)
+
+
+@require_POST
+@api_view
+@idempotent
+def shift_cash_movement_api(request, shift_id):
+    """登记班次现金补入/支出；已关班班次不可追加。"""
+    property_obj = _require_finance_access(
+        request, extra_permission="billing.cash_movement_manage")
+    if not CashierShift.objects.filter(
+            pk=shift_id, property=property_obj).exists():
+        raise ApiError("RESOURCE_NOT_FOUND", "班次不存在或不属于当前物业。")
+    body = _json_body(request)
+    key = str(body.get("idempotency_key")
+              or request.headers.get("Idempotency-Key", "")).strip()
+    try:
+        movement, created = BillingService.record_shift_movement(
+            shift_id=shift_id, direction=body.get("direction"),
+            amount=body.get("amount"), reason=body.get("reason"),
+            created_by=request.user, idempotency_key=key)
+    except ValueError as exc:
+        raise ApiError("VALIDATION_ERROR", str(exc))
+    return api_response(request, {
+        "id": movement.pk, "shift_id": movement.shift_id,
+        "direction": movement.direction, "amount": _money_str(movement.amount),
+        "reason": movement.reason, "created_at": movement.created_at.isoformat(),
     }, status=201 if created else 200)
 
 
