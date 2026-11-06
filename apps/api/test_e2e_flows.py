@@ -650,6 +650,17 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
             "execution_reference": "E2E-MANUAL-REFUND-001",
             "idempotency_key": "e2e-refund-exec-001",
         }
+        # 执行班次无现金时不得先付后补，失败必须零账本副作用。
+        insufficient_cash = self._post_json(
+            f"/api/v1/billing/refunds/{refund_id}/execute",
+            {"confirm_refund_paid": True,
+             "execution_reference": "E2E-MANUAL-REFUND-INSUFFICIENT",
+             "idempotency_key": "e2e-refund-exec-no-cash-001"})
+        self.assertEqual(insufficient_cash.status_code, 400, insufficient_cash.content)
+        refund.refresh_from_db()
+        self.assertEqual(refund.status, Refund.Status.APPROVED)
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
         execute = self._post_json(
             f"/api/v1/billing/refunds/{refund_id}/execute", execute_payload)
         self.assertEqual(execute.status_code, 201, execute.content)
