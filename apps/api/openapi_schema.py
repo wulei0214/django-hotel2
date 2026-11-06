@@ -423,7 +423,7 @@ COMPONENTS = {
             "id": s_int("明细 ID"), "room_type": s_str("房型名"),
             "assigned_room": s_nullable(s_str("已分配房号；未排房为 null。")),
         })),
-        "folio_summary": _ref("FolioSummaryDto"),
+        "folio_summary": _ref("FrontDeskFolioSummaryDto"),
         "source_system": s_str(),
     }),
     "FrontDeskReservationDetail": s_obj({
