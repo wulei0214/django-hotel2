@@ -279,8 +279,7 @@ def folio_detail(request, folio_id):
             "void_of_id": entry.void_of_id,
             "void_reason": entry.void_reason or "",
             "approval_id": entry.approval_record_id,
-            "legacy_workflow": entry.entry_type == LedgerEntry.EntryType.REVERSAL
-                               and entry.approval_record_id is None,
+            "legacy_workflow": entry.legacy_workflow,
             "posted_by": _user_name(entry.posted_by),
             "created_at": entry.created_at.isoformat(),
         } for entry in entries],
@@ -356,8 +355,7 @@ def ledger_entry_list(request):
         "void_of_id": entry.void_of_id,
         "void_reason": entry.void_reason or "",
         "approval_id": entry.approval_record_id,
-        "legacy_workflow": entry.entry_type == LedgerEntry.EntryType.REVERSAL
-                           and entry.approval_record_id is None,
+        "legacy_workflow": entry.legacy_workflow,
         "posted_by": _user_name(entry.posted_by),
         "created_at": entry.created_at.isoformat(),
     } for entry in items]
