@@ -151,9 +151,13 @@
       </div>
       <div class="pms-pager">
         <span>点击「详情」查看运行历史 / 重开审批 / 过租与异常房态汇总。</span>
-        <span style="display:flex;gap:8px;align-items:center">
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label for="na-bd-page-size">每页</label>
+          <select id="na-bd-page-size" aria-label="营业日每页条数"><option value="10" selected>10 条</option><option value="20">20 条</option><option value="50">50 条</option></select>
           <button id="na-bd-prev" type="button" disabled>上一页</button>
           <span id="na-bd-page"></span>
+          <label for="na-bd-goto">跳至</label><input id="na-bd-goto" type="number" min="1" value="1" style="width:72px" aria-label="营业日跳转页码">
+          <button id="na-bd-goto-btn" type="button">跳转</button>
           <button id="na-bd-next" type="button" disabled>下一页</button>
         </span>
       </div>
@@ -199,9 +203,13 @@
       </div>
       <div class="pms-pager">
         <span>失败告警：FAILED 行以红色标注失败原因；重跑前请先解决阻挡项。</span>
-        <span style="display:flex;gap:8px;align-items:center">
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label for="na-runs-page-size">每页</label>
+          <select id="na-runs-page-size" aria-label="夜审历史每页条数"><option value="10" selected>10 条</option><option value="20">20 条</option><option value="50">50 条</option></select>
           <button id="na-runs-prev" type="button" disabled>上一页</button>
           <span id="na-runs-page"></span>
+          <label for="na-runs-goto">跳至</label><input id="na-runs-goto" type="number" min="1" value="1" style="width:72px" aria-label="夜审历史跳转页码">
+          <button id="na-runs-goto-btn" type="button">跳转</button>
           <button id="na-runs-next" type="button" disabled>下一页</button>
         </span>
       </div>
@@ -231,9 +239,13 @@
       </div>
       <div class="pms-pager">
         <span> USED（已执行待复核）行须由另一名授权经理完成事后复核。</span>
-        <span style="display:flex;gap:8px;align-items:center">
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label for="na-bg-page-size">每页</label>
+          <select id="na-bg-page-size" aria-label="紧急授权每页条数"><option value="10" selected>10 条</option><option value="20">20 条</option><option value="50">50 条</option></select>
           <button id="na-bg-prev" type="button" disabled>上一页</button>
           <span id="na-bg-page"></span>
+          <label for="na-bg-goto">跳至</label><input id="na-bg-goto" type="number" min="1" value="1" style="width:72px" aria-label="紧急授权跳转页码">
+          <button id="na-bg-goto-btn" type="button">跳转</button>
           <button id="na-bg-next" type="button" disabled>下一页</button>
         </span>
       </div>
@@ -429,13 +441,13 @@
   });
 
   /* ---------- 营业日历 ---------- */
-  let bdPage = 1, bdStatus = "";
+  let bdPage = 1, bdPageSize = 10, bdTotalPages = 1, bdStatus = "";
   async function loadBusinessDates(page, keepStatus) {
     if (!keepStatus) bdPage = Math.max(1, page || 1);
     const meta = document.getElementById("na-bd-meta");
     const body = document.getElementById("na-bd-body");
     meta.textContent = "读取中…";
-    const params = new URLSearchParams({page: String(bdPage), page_size: "10"});
+    const params = new URLSearchParams({page: String(bdPage), page_size: String(bdPageSize)});
     if (bdStatus) params.set("status", bdStatus);
     try {
       const payload = await api("/api/v1/night-audit/business-dates?" + params.toString());
@@ -462,8 +474,11 @@
         tr.appendChild(actionTd);
         body.appendChild(tr);
       });
+      bdTotalPages = Math.max(1, Math.ceil(pageInfo.total / pageInfo.page_size));
       document.getElementById("na-bd-page").textContent =
-          "第 " + pageInfo.page + " 页 / 共 " + Math.max(1, Math.ceil(pageInfo.total / pageInfo.page_size)) + " 页";
+          "第 " + pageInfo.page + " 页 / 共 " + bdTotalPages + " 页";
+      document.getElementById("na-bd-goto").max = String(bdTotalPages);
+      document.getElementById("na-bd-goto").value = String(pageInfo.page);
       document.getElementById("na-bd-prev").disabled = !pageInfo.has_previous;
       document.getElementById("na-bd-next").disabled = !pageInfo.has_next;
       meta.textContent = "共 " + pageInfo.total + " 个营业日";
@@ -479,6 +494,16 @@
   document.getElementById("na-bd-reload").addEventListener("click", function () { loadBusinessDates(1); });
   document.getElementById("na-bd-prev").addEventListener("click", function () { loadBusinessDates(bdPage - 1); });
   document.getElementById("na-bd-next").addEventListener("click", function () { loadBusinessDates(bdPage + 1); });
+  document.getElementById("na-bd-page-size").addEventListener("change", function () {
+    const n = Number.parseInt(this.value, 10); if ([10,20,50].includes(n)) { bdPageSize = n; loadBusinessDates(1); }
+  });
+  function gotoBusinessDatePage() {
+    const input = document.getElementById("na-bd-goto"), n = Number.parseInt(input.value, 10);
+    if (!Number.isInteger(n) || n < 1 || n > bdTotalPages) { input.setCustomValidity("请输入 1 至 " + bdTotalPages + " 之间的页码。"); input.reportValidity(); return; }
+    input.setCustomValidity(""); loadBusinessDates(n);
+  }
+  document.getElementById("na-bd-goto-btn").addEventListener("click", gotoBusinessDatePage);
+  document.getElementById("na-bd-goto").addEventListener("keydown", function(e){if(e.key==="Enter")gotoBusinessDatePage();});
 
   /* ---------- 重开申请 + 紧急授权：已关账营业日下拉 ---------- */
   async function fillClosedBusinessDates() {
@@ -550,13 +575,13 @@
   }
 
   /* ---------- 夜审历史 ---------- */
-  let runsPage = 1, runsStatus = "";
+  let runsPage = 1, runsPageSize = 10, runsTotalPages = 1, runsStatus = "";
   async function loadRuns(page, status, keepPage) {
     if (status !== undefined) runsStatus = status;
     if (!keepPage) runsPage = Math.max(1, page || 1);
     const meta = document.getElementById("na-runs-meta");
     const body = document.getElementById("na-runs-body");
-    const params = new URLSearchParams({page: String(runsPage), page_size: "10"});
+    const params = new URLSearchParams({page: String(runsPage), page_size: String(runsPageSize)});
     if (runsStatus) params.set("status", runsStatus);
     meta.textContent = "读取中…";
     try {
@@ -589,8 +614,11 @@
         tr.appendChild(actionTd);
         body.appendChild(tr);
       });
+      runsTotalPages = Math.max(1, Math.ceil(pageInfo.total / pageInfo.page_size));
       document.getElementById("na-runs-page").textContent =
-          "第 " + pageInfo.page + " 页 / 共 " + Math.max(1, Math.ceil(pageInfo.total / pageInfo.page_size)) + " 页";
+          "第 " + pageInfo.page + " 页 / 共 " + runsTotalPages + " 页";
+      document.getElementById("na-runs-goto").max = String(runsTotalPages);
+      document.getElementById("na-runs-goto").value = String(pageInfo.page);
       document.getElementById("na-runs-prev").disabled = !pageInfo.has_previous;
       document.getElementById("na-runs-next").disabled = !pageInfo.has_next;
       meta.textContent = "共 " + pageInfo.total + " 次运行";
@@ -606,15 +634,25 @@
   document.getElementById("na-run-reload").addEventListener("click", function () { loadRuns(1, runsStatus); });
   document.getElementById("na-runs-prev").addEventListener("click", function () { loadRuns(runsPage - 1, undefined, true); });
   document.getElementById("na-runs-next").addEventListener("click", function () { loadRuns(runsPage + 1, undefined, true); });
+  document.getElementById("na-runs-page-size").addEventListener("change", function () {
+    const n = Number.parseInt(this.value, 10); if ([10,20,50].includes(n)) { runsPageSize = n; loadRuns(1); }
+  });
+  function gotoRunsPage() {
+    const input = document.getElementById("na-runs-goto"), n = Number.parseInt(input.value, 10);
+    if (!Number.isInteger(n) || n < 1 || n > runsTotalPages) { input.setCustomValidity("请输入 1 至 " + runsTotalPages + " 之间的页码。"); input.reportValidity(); return; }
+    input.setCustomValidity(""); loadRuns(n);
+  }
+  document.getElementById("na-runs-goto-btn").addEventListener("click", gotoRunsPage);
+  document.getElementById("na-runs-goto").addEventListener("keydown", function(e){if(e.key==="Enter")gotoRunsPage();});
 
   /* ---------- break-glass 记录 ---------- */
-  let bgPage = 1, bgStatus = "";
+  let bgPage = 1, bgPageSize = 10, bgTotalPages = 1, bgStatus = "";
   async function loadBreakGlass(page, status, keepPage) {
     if (status !== undefined) bgStatus = status;
     if (!keepPage) bgPage = Math.max(1, page || 1);
     const meta = document.getElementById("na-bg-meta");
     const body = document.getElementById("na-bg-body");
-    const params = new URLSearchParams({page: String(bgPage), page_size: "10"});
+    const params = new URLSearchParams({page: String(bgPage), page_size: String(bgPageSize)});
     if (bgStatus) params.set("status", bgStatus);
     meta.textContent = "读取中…";
     try {
@@ -648,8 +686,11 @@
         tr.appendChild(actionTd);
         body.appendChild(tr);
       });
+      bgTotalPages = Math.max(1, Math.ceil(pageInfo.total / pageInfo.page_size));
       document.getElementById("na-bg-page").textContent =
-          "第 " + pageInfo.page + " 页 / 共 " + Math.max(1, Math.ceil(pageInfo.total / pageInfo.page_size)) + " 页";
+          "第 " + pageInfo.page + " 页 / 共 " + bgTotalPages + " 页";
+      document.getElementById("na-bg-goto").max = String(bgTotalPages);
+      document.getElementById("na-bg-goto").value = String(pageInfo.page);
       document.getElementById("na-bg-prev").disabled = !pageInfo.has_previous;
       document.getElementById("na-bg-next").disabled = !pageInfo.has_next;
       meta.textContent = "共 " + pageInfo.total + " 条记录";
@@ -665,6 +706,16 @@
   document.getElementById("na-bg-reload").addEventListener("click", function () { loadBreakGlass(1, bgStatus); });
   document.getElementById("na-bg-prev").addEventListener("click", function () { loadBreakGlass(bgPage - 1, undefined, true); });
   document.getElementById("na-bg-next").addEventListener("click", function () { loadBreakGlass(bgPage + 1, undefined, true); });
+  document.getElementById("na-bg-page-size").addEventListener("change", function () {
+    const n = Number.parseInt(this.value, 10); if ([10,20,50].includes(n)) { bgPageSize = n; loadBreakGlass(1); }
+  });
+  function gotoBreakGlassPage() {
+    const input = document.getElementById("na-bg-goto"), n = Number.parseInt(input.value, 10);
+    if (!Number.isInteger(n) || n < 1 || n > bgTotalPages) { input.setCustomValidity("请输入 1 至 " + bgTotalPages + " 之间的页码。"); input.reportValidity(); return; }
+    input.setCustomValidity(""); loadBreakGlass(n);
+  }
+  document.getElementById("na-bg-goto-btn").addEventListener("click", gotoBreakGlassPage);
+  document.getElementById("na-bg-goto").addEventListener("keydown", function(e){if(e.key==="Enter")gotoBreakGlassPage();});
 
   const bgForm = document.getElementById("na-bg-form");
   if (bgForm) {
