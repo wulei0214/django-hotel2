@@ -635,6 +635,13 @@ class BillingService:
                 status=CashierShift.ShiftStatus.OPEN).first()
             if execution_shift is None:
                 raise ValueError("现金退款执行前必须先开立执行人本人收银班次。")
+            available_cash = BillingService.cash_shift_expected_cash(execution_shift)
+            if refund.amount > available_cash:
+                raise ValueError(
+                    f"执行班次现金余额不足：当前应有 {available_cash}，退款金额 {refund.amount}。"
+                    "请先通过现金补入记录实际领取备用金。")
+        elif not execution_reference:
+            raise ValueError("银行卡/转账退款必须记录渠道退款参考号。")
         BillingService.post_entry(
             property_obj=property_obj, folio=folio,
             entry_type=LedgerEntry.EntryType.REFUND,
@@ -718,6 +725,9 @@ class BillingService:
     def open_shift(*, property_obj, cashier, opening_cash=Decimal("0.00")):
         """开班（CashierShift）。"""
         from apps.billing.models import CashierShift
+        opening_cash = BillingService._money(opening_cash)
+        if opening_cash < 0:
+            raise ValueError("开班备用金不能为负数。")
         open_shift = CashierShift.objects.filter(
             property=property_obj, cashier=cashier,
             status=CashierShift.ShiftStatus.OPEN).first()
@@ -729,7 +739,7 @@ class BillingService:
             with transaction.atomic():
                 shift = CashierShift.objects.create(
                     property=property_obj, cashier=cashier,
-                    opening_cash=BillingService._money(opening_cash))
+                    opening_cash=opening_cash)
         except IntegrityError:
             raced = CashierShift.objects.filter(
                 property=property_obj, cashier=cashier,
@@ -744,15 +754,8 @@ class BillingService:
         return shift, True
 
     @staticmethod
-    @transaction.atomic
-    def close_shift(*, property_obj, shift_id, actual_cash, closed_by, variance_reason=""):
-        """关班（CashierShift）：物业范围内锁定班次，按现金事实计算差异。"""
-        from apps.billing.models import CashierShift
-        shift = CashierShift.objects.select_for_update().get(
-            pk=shift_id, property=property_obj)
-        if shift.status != CashierShift.ShiftStatus.OPEN:
-            raise ValueError("班次已关闭。")
-        actual = BillingService._money(actual_cash)
+    def cash_shift_expected_cash(shift):
+        """按已锁定班次的现金事实计算抽屉应有现金；调用方必须先锁定班次行。"""
         from apps.billing.models import Payment, Refund, CashierShiftMovement
         cash_income = Payment.objects.filter(
             cashier_shift=shift, method="CASH",
@@ -770,7 +773,23 @@ class BillingService:
         cash_out = CashierShiftMovement.objects.filter(
             shift=shift, direction=CashierShiftMovement.Direction.OUT).aggregate(
                 total=models.Sum("amount"))["total"] or Decimal("0.00")
-        expected = shift.opening_cash + cash_income - cash_refunds + cash_in - cash_out
+        return shift.opening_cash + cash_income - cash_refunds + cash_in - cash_out
+
+    @staticmethod
+    @transaction.atomic
+    def close_shift(*, property_obj, shift_id, actual_cash, closed_by, variance_reason=""):
+        """关班（CashierShift）：物业范围内锁定班次，按现金事实计算差异。"""
+        from apps.billing.models import CashierShift
+        shift = CashierShift.objects.select_for_update().get(
+            pk=shift_id, property=property_obj)
+        if shift.status != CashierShift.ShiftStatus.OPEN:
+            raise ValueError("班次已关闭。")
+        actual = BillingService._money(actual_cash)
+        if actual < 0:
+            raise ValueError("实盘现金不能为负数。")
+        expected = BillingService.cash_shift_expected_cash(shift)
+        if expected < 0:
+            raise ValueError("班次现金事实计算为负数，必须先核对现金退款/支出记录，禁止直接关班。")
         shift.expected_cash = expected
         shift.actual_cash = actual
         variance = actual - expected
@@ -815,6 +834,11 @@ class BillingService:
             status=CashierShift.ShiftStatus.OPEN).first()
         if shift is None:
             raise ValueError("班次不存在、已关闭或不属于当前操作人。")
+        if direction == CashierShiftMovement.Direction.OUT:
+            available_cash = BillingService.cash_shift_expected_cash(shift)
+            if amount > available_cash:
+                raise ValueError(
+                    f"班次现金余额不足：当前应有 {available_cash}，本次支出 {amount}。")
         existing = CashierShiftMovement.objects.filter(
             shift=shift, idempotency_key=key).first()
         if existing:
