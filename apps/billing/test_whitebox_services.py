@@ -308,7 +308,7 @@ class CollectPaymentClosedFolioReplayTests(WhiteboxBillingBase):
             reference="WBB-PAY-CLOSED-001")
         folio = payment.folio
         folio.status = Folio.Status.CLOSED
-        folio.save(update_fields=("status", "updated_at"))
+        folio.save(update_fields=("status",))
 
         replay = BillingService.collect_payment(
             property_obj=self.property, reservation=reservation,
