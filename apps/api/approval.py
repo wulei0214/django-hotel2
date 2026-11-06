@@ -89,7 +89,8 @@ def approval_list(request):
             request.user, property_obj, "billing.approval_view"):
         raise ApiError("PERMISSION_DENIED", "查看审批记录需要专项只读权限。")
     qs = ApprovalRecord.objects.filter(
-        property=property_obj).select_related("requested_by", "approved_by")
+        property=property_obj).select_related(
+            "requested_by", "approved_by").prefetch_related("reversal_entries__posted_by")
     if not _has_any_approver_permission(request.user, property_obj):
         # 保守口径：无审批权者只看自己发起的审批
         qs = qs.filter(requested_by=request.user)
@@ -103,15 +104,21 @@ def approval_list(request):
                 raise ApiError("VALIDATION_ERROR", f"{field} 不能超过 64 个字符。")
             qs = qs.filter(**{field: value})
     items, pagination = paginate(qs.order_by("-created_at", "-id"), request)
-    data = [{
-        "id": a.pk, "action_code": a.action_code,
-        "entity_type": a.entity_type, "entity_id": a.entity_id,
-        "status": a.status,
-        "requested_by": a.requested_by.username if a.requested_by else None,
-        "approved_by": a.approved_by.username if a.approved_by else None,
-        "reason": a.reason, "created_at": a.created_at.isoformat(),
-        "approved_at": a.approved_at.isoformat() if a.approved_at else None,
-    } for a in items]
+    data = []
+    for a in items:
+        reversal = next(iter(a.reversal_entries.all()), None) if a.action_code == "billing.reversal" else None
+        data.append({
+            "id": a.pk, "action_code": a.action_code,
+            "entity_type": a.entity_type, "entity_id": a.entity_id,
+            "status": a.status,
+            "execution_status": "EXECUTED" if reversal else a.status,
+            "requested_by": a.requested_by.username if a.requested_by else None,
+            "approved_by": a.approved_by.username if a.approved_by else None,
+            "executed_by": reversal.posted_by.username if reversal and reversal.posted_by else None,
+            "reason": a.reason, "created_at": a.created_at.isoformat(),
+            "approved_at": a.approved_at.isoformat() if a.approved_at else None,
+            "executed_at": reversal.created_at.isoformat() if reversal else None,
+        })
     return api_response(request, data, pagination=pagination)
 
 
