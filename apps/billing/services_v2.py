@@ -200,6 +200,41 @@ class BillingService:
         return timezone.localdate(timezone.now(), tz)
 
     @staticmethod
+    def _validate_refund_approval_link(refund, property_obj, expected_status=None):
+        """校验审批事实与退款申请一一对应，防止错链审批被复用。"""
+        from apps.billing.models import ApprovalRecord
+
+        approval = refund.approval_record
+        if approval is None:
+            raise ValueError("退款申请缺少审批记录，禁止继续。")
+        if (
+                approval.property_id != property_obj.pk
+                or approval.action_code != "billing.refund"
+                or approval.entity_type != "Refund"
+                or approval.entity_id != str(refund.pk)
+                or approval.requested_by_id != refund.requested_by_id
+                or approval.reason != refund.reason):
+            raise ValueError("退款审批记录与当前退款申请不匹配，禁止继续。")
+
+        payload = approval.payload_snapshot or {}
+        try:
+            payload_amount = Decimal(str(payload.get("amount")))
+        except (InvalidOperation, TypeError, ValueError):
+            payload_amount = None
+        if (
+                str(payload.get("payment_id")) != str(refund.payment_id)
+                or payload_amount != refund.amount
+                or payload.get("currency") != refund.currency):
+            raise ValueError("退款审批参数快照与当前退款金额/支付流水不一致，禁止继续。")
+
+        if expected_status is not None and approval.status != expected_status:
+            raise ValueError("退款关联审批状态与当前退款流程不一致，禁止继续。")
+        if approval.status == ApprovalRecord.Status.APPROVED:
+            if not approval.approved_by_id or approval.approved_by_id != refund.approved_by_id:
+                raise ValueError("退款审批人与关联审批事实不一致，禁止执行。")
+        return approval
+
+    @staticmethod
     def _entry_facts_match(entry, *, property_obj, folio, stay, entry_type,
                            amount, currency, business_date, void_of,
                            void_reason):
@@ -565,9 +600,8 @@ class BillingService:
             raise ValueError("只有待审批退款可以审批。")
         if refund.requested_by_id == approved_by.pk:
             raise ValueError("退款申请人与审批人不能是同一账号。")
-        approval = refund.approval_record
-        if approval is None:
-            raise ValueError("退款申请缺少审批记录，禁止绕过审批。")
+        approval = BillingService._validate_refund_approval_link(
+            refund, property_obj, expected_status=ApprovalRecord.Status.PENDING)
         approval = ApprovalService.approve(
             approval.pk, approved_by=approved_by, property_obj=property_obj)
         if approval.status == ApprovalRecord.Status.EXPIRED:
@@ -661,6 +695,9 @@ class BillingService:
                 ).first()
                 if approval is None:
                     continue
+                BillingService._validate_refund_approval_link(
+                    refund, payment.property,
+                    expected_status=ApprovalRecord.Status.PENDING)
 
                 approval.status = ApprovalRecord.Status.EXPIRED
                 approval.approved_at = now
@@ -725,8 +762,8 @@ class BillingService:
         reason = str(reason or "").strip()
         if not reason or len(reason) > 240:
             raise ValueError("驳回原因必须填写且不能超过 240 个字符。")
-        if not refund.approval_record_id:
-            raise ValueError("退款申请缺少审批记录，禁止绕过审批。")
+        BillingService._validate_refund_approval_link(
+            refund, property_obj, expected_status=ApprovalRecord.Status.PENDING)
         ApprovalService.reject(
             refund.approval_record_id, approved_by=rejected_by,
             property_obj=property_obj, reason=reason)
@@ -829,6 +866,8 @@ class BillingService:
             raise ValueError("只有已审批退款可以执行。")
         if not refund.approved_by_id:
             raise ValueError("退款缺少审批人，禁止执行。")
+        BillingService._validate_refund_approval_link(
+            refund, property_obj, expected_status=ApprovalRecord.Status.APPROVED)
         if refund.requested_by_id == executed_by.pk:
             raise ValueError("退款申请人不能执行自己的退款。")
         if refund.approved_by_id == executed_by.pk:
