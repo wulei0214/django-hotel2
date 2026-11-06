@@ -121,32 +121,39 @@
   var CSRF = csrfInput ? csrfInput.value : "";
   if (!CSRF) { showError("页面安全令牌未生成，请刷新页面后重试。"); }
 
+  async function parseResponse(response) {
+    var raw = await response.text();
+    var body = null;
+    if (raw) {
+      try { body = JSON.parse(raw); } catch (error) { body = null; }
+    }
+    if (!response.ok) {
+      throw new Error((body && body.error && body.error.message) ||
+                      ("请求失败（HTTP " + response.status + "）"));
+    }
+    if (!body || typeof body !== "object") {
+      throw new Error("服务器返回非 JSON 响应（HTTP " + response.status +
+                      "），请检查登录状态、CSRF 令牌和服务端日志。");
+    }
+    return body;
+  }
   function getJSON(url) {
     return fetch(url, { credentials: "same-origin",
                         headers: { "Accept": "application/json" } })
-      .then(function (response) {
-        return response.json().then(function (body) {
-          if (!response.ok) {
-            throw new Error((body.error && body.error.message) ||
-                            ("请求失败（" + response.status + "）"));
-          }
-          return body;
-        });
-      });
+      .then(parseResponse);
   }
   function postJSON(url) {
     return fetch(url, {
       method: "POST", credentials: "same-origin",
       headers: { "Accept": "application/json", "X-CSRFToken": CSRF }
-    }).then(function (response) {
-      return response.json().then(function (body) {
-        if (!response.ok) {
-          throw new Error((body.error && body.error.message) ||
-                          ("请求失败（" + response.status + "）"));
-        }
-        return body;
-      });
-    });
+    }).then(parseResponse);
+  }
+  function safeNotificationLink(value) {
+    var raw = String(value == null ? "" : value).trim();
+    if (!raw || /[\\\\\\r\\n]/.test(raw)) return "";
+    if (/^https?:\\/\\//i.test(raw)) return raw;
+    if (raw.charAt(0) === "/" && raw.charAt(1) !== "/") return raw;
+    return "";
   }
 
   function severityBadge(severity, label) {
@@ -177,8 +184,9 @@
       var audience = row.audience && row.audience.type === "role_group"
         ? "岗位：" + escapeHtml((row.audience.role_group || "—"))
         : "定向本人";
-      var link = row.link
-        ? '<a href="' + escapeHtml(row.link) + '" title="前往处理">前往处理</a>'
+      var safeLink = safeNotificationLink(row.link);
+      var link = safeLink
+        ? '<a href="' + escapeHtml(safeLink) + '" title="前往处理">前往处理</a>'
         : "—";
       return "<tr" + (row.is_read ? "" : ' class="is-unread"') + ">" +
         "<td>" + escapeHtml((row.created_at || "").replace("T", " ").slice(0, 19)) + "</td>" +
@@ -193,7 +201,7 @@
           : '<span class="nt-badge b-info">未读</span>') + "</td>" +
         '<td><button type="button" class="pms-row-btn" data-notification-id="' + row.id + '"' +
         (row.is_read ? " disabled" : "") + '>标记已读</button>' +
-        ' <a class="pms-row-btn" style="text-decoration:none" href="' + escapeHtml(row.link || "#") + '">处理</a></td>' +
+        ' ' + (safeLink ? '<a class="pms-row-btn" style="text-decoration:none" href="' + escapeHtml(safeLink) + '">处理</a>' : "") + '</td>' +
         "</tr>";
     }).join("");
   }
