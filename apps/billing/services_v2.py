@@ -66,8 +66,8 @@ class ApprovalService:
         except IntegrityError:
             raced = ApprovalRecord.objects.filter(idempotency_key=idem_key).first()
             if raced is not None:
-                if raced.opening_cash != opening_cash:
-                    raise ValueError("并发开班已使用不同备用金金额创建班次，请核对原班次。")
+                # 审批幂等键由物业、动作、目标对象和申请人共同确定；
+                # 不得在审批服务中读取收银班次字段。唯一约束冲突时返回既有申请。
                 return raced, False
             raise
         AuditEvent.record(
@@ -775,8 +775,8 @@ class BillingService:
         return shift, True
 
     @staticmethod
-    def cash_shift_expected_cash(shift):
-        """按已锁定班次的现金事实计算抽屉应有现金；调用方必须先锁定班次行。"""
+    def cash_shift_breakdown(shift):
+        """返回班次现金核算明细；调用方必须先锁定班次行。"""
         from apps.billing.models import Payment, Refund, CashierShiftMovement
         cash_income = Payment.objects.filter(
             cashier_shift=shift, method="CASH",
@@ -795,7 +795,19 @@ class BillingService:
         cash_out = CashierShiftMovement.objects.filter(
             shift=shift, direction=CashierShiftMovement.Direction.OUT).aggregate(
                 total=models.Sum("amount"))["total"] or Decimal("0.00")
-        return shift.opening_cash + cash_income - cash_refunds + cash_in - cash_out
+        expected = shift.opening_cash + cash_income - cash_refunds + cash_in - cash_out
+        return {
+            "cash_income": cash_income,
+            "cash_refunds": cash_refunds,
+            "cash_in": cash_in,
+            "cash_out": cash_out,
+            "expected": expected,
+        }
+
+    @staticmethod
+    def cash_shift_expected_cash(shift):
+        """按已锁定班次的现金事实计算抽屉应有现金；调用方必须先锁定班次行。"""
+        return BillingService.cash_shift_breakdown(shift)["expected"]
 
     @staticmethod
     @transaction.atomic
@@ -812,7 +824,8 @@ class BillingService:
         actual = BillingService._money(actual_cash)
         if actual < 0:
             raise ValueError("实盘现金不能为负数。")
-        expected = BillingService.cash_shift_expected_cash(shift)
+        cash_facts = BillingService.cash_shift_breakdown(shift)
+        expected = cash_facts["expected"]
         if expected < 0:
             raise ValueError("班次现金事实计算为负数，必须先核对现金退款/支出记录，禁止直接关班。")
         shift.expected_cash = expected
@@ -830,8 +843,10 @@ class BillingService:
             action="billing.shift_close", entity_type="CashierShift",
             entity_id=shift.pk, actor=closed_by, property_obj=shift.property,
             after={"opening_cash": str(shift.opening_cash),
-                   "cash_income": str(cash_income), "cash_refunds": str(cash_refunds),
-                   "cash_in": str(cash_in), "cash_out": str(cash_out),
+                   "cash_income": str(cash_facts["cash_income"]),
+                   "cash_refunds": str(cash_facts["cash_refunds"]),
+                   "cash_in": str(cash_facts["cash_in"]),
+                   "cash_out": str(cash_facts["cash_out"]),
                    "expected": str(expected), "actual": str(actual),
                    "variance": str(variance), "reason": variance_reason})
         return shift
