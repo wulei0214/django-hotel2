@@ -35,6 +35,7 @@ from django.utils import timezone
 
 from apps.billing.models import (
     ApprovalRecord,
+    CashierShift,
     Folio,
     LedgerEntry,
     Payment,
@@ -815,7 +816,7 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
 
         # 同一原凭证重复冲销幂等：返回既有红字凭证
         again, created_again = BillingService.reverse_entry(
-            entry_id=original.pk,
+            property_obj=self.property, entry_id=original.pk,
             reason="收款金额录入错误，红字冲销重收",
             reversed_by=self.fin)
         self.assertFalse(created_again)
