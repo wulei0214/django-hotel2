@@ -703,3 +703,49 @@ OpenAPI operation 扩展字段 `x-contract-status=implemented-route-field-contra
 5. 由测试人员在实际测试环境导入 Apifox 并验证 Cookie/CSRF、幂等、限流和错误响应。
 
 本次先完成在线文档入口、当前 API 路由/方法覆盖和基础自动化测试；字段级契约的剩余工作继续按模块验收，不宣称已全部完成。
+
+
+## 2026-11-06 财务冲销审批接口补充
+
+### 1. 发起冲销审批
+
+财务人员调用 `POST /api/v1/approvals/request`：
+
+```json
+{
+  "action_code": "billing.reversal",
+  "entity_type": "LedgerEntry",
+  "entity_id": "原账本凭证ID",
+  "reason": "冲销原因",
+  "payload": {}
+}
+```
+
+仅财务角色持有 `billing.reverse_entry`，原凭证必须属于当前物业且未被冲销。一个原凭证不允许由不同财务人员同时发起多个待审批/已批准申请。
+
+### 2. 管理岗位审批
+
+值班经理或店长在审批中心批准/拒绝该审批记录。权限码为 `billing.reversal_approve`；管理岗位不因此获得财务冲销执行权。申请人与审批人不能为同一账号。
+
+审批列表支持以下过滤参数，财务可以查询本人冲销审批状态：
+
+- `action_code=billing.reversal`
+- `entity_type=LedgerEntry`
+- `entity_id=原账本凭证ID`
+
+### 3. 财务执行已批准冲销
+
+只有审批状态为 `APPROVED` 时，财务人员才可调用 `POST /api/v1/billing/reversals`：
+
+```json
+{
+  "entry_id": 123,
+  "approval_id": 456
+}
+```
+
+执行服务重新验证申请人权限、审批人权限、执行人权限和审批人与执行人分离；执行原因必须与已批准申请原因完全一致。成功后追加等额反向 `REVERSAL` 凭证，原凭证保持不可变，返回数据包含 `approval_id`。
+
+### 4. 历史记录与数据库约束
+
+新冲销凭证必须关联 `LedgerEntry.approval_record`，数据库约束 `ck_ledger_reversal_approval_link` 强制执行。迁移前无法证明审批关联的历史冲销以 `legacy_workflow=true` 标记，只读保留，不伪造审批记录。
