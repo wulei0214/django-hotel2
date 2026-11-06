@@ -434,7 +434,7 @@ class MultiEndpointPaginationSamplingTests(PaginationContractTestBase):
                 requested_by=self.user,
                 reason="契约测试", idempotency_key=f"p0-contract-{index}",
             )
-        ApprovalRecord.objects.update(created_at=timezone.now())
+        ApprovalRecord._base_manager.all().update(created_at=timezone.now())
         first = self.client.get("/api/v1/approvals", {"page_size": "100"}).json()
         second = self.client.get("/api/v1/approvals", {"page_size": "100"}).json()
         ids_first = [row["id"] for row in first["data"]]
@@ -457,7 +457,7 @@ class AuditTimelineOrderingTests(PaginationContractTestBase):
                 entity_type="ContractProbe",
                 entity_id=str(index),
             )
-        AuditEvent.objects.update(created_at=timezone.now())
+        AuditEvent._base_manager.all().update(created_at=timezone.now())
         first = self.client.get(
             "/api/v1/audit-timeline", {"page_size": "100"}).json()
         second = self.client.get(
