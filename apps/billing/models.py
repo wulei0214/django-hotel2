@@ -295,6 +295,10 @@ class LedgerEntry(models.Model):
         related_name="reversal_entries", verbose_name="冲销审批记录",
         help_text="PMS2 新冲销必须关联值班经理/店长已批准的审批记录；历史冲销可为空",
     )
+    legacy_workflow = models.BooleanField(
+        default=False, verbose_name="历史旧流程冲销",
+        help_text="仅迁移前无法证明审批关联的历史红字凭证为 True；新冲销必须为 False",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="入账时间")
 
     class Meta:
@@ -310,6 +314,19 @@ class LedgerEntry(models.Model):
             models.CheckConstraint(
                 check=Q(void_of__isnull=True) | Q(void_reason__gt=""),
                 name="ck_ledger_reversal_has_reason",
+            ),
+            models.CheckConstraint(
+                check=(
+                    Q(entry_type="REVERSAL", legacy_workflow=True,
+                      approval_record__isnull=True)
+                    | Q(entry_type="REVERSAL", legacy_workflow=False,
+                        approval_record__isnull=False, void_of__isnull=False,
+                        void_reason__gt="")
+                    | (~Q(entry_type="REVERSAL") & Q(
+                        legacy_workflow=False, approval_record__isnull=True,
+                        void_of__isnull=True))
+                ),
+                name="ck_ledger_reversal_approval_link",
             ),
         ]
         # 红字冲销使用 billing.reverse_entry（财务申请/执行）与
