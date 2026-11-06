@@ -10,9 +10,9 @@
     排房不受限、REOPENED 后恢复可入住；
   * 旧 /nightaudit/ 页 302 迁移与新中心页面权限门禁。
 
-读取口径决策：全部只读端点以 hotelapp.night_audit_execute 为门禁（与旧
-/nightaudit/ 页 GET 同码）；营业日重开审批（hotelapp.business_date_reopen）
-是写审批权限，不作为读取基线。
+读取口径：只读端点与页面使用 core.night_audit_view；夜审执行仍使用
+hotelapp.night_audit_execute；营业日重开审批（hotelapp.business_date_reopen）
+是独立写审批权限，不作为读取基线。
 """
 from datetime import timedelta
 
@@ -47,6 +47,7 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
     # 1) 权限四态：匿名 401 / 无权限 403 / 有权限 200 / 跨物业 404
     # ------------------------------------------------------------------
     READ_ENDPOINTS = (
+        "/api/v1/night-audit/preview",
         "/api/v1/night-audit/business-dates",
         "/api/v1/night-audit/business-dates/current",
         "/api/v1/night-audit/break-glass",
@@ -474,6 +475,31 @@ class NightAuditCenterPageTests(E2EFlowTestBase):
         self.assertIn("营业日与夜审中心", content)
         self.assertIn("/api/v1/night-audit/business-dates", content)
 
+    def test_view_only_role_can_read_but_cannot_execute_night_audit(self):
+        """只读权限可进入页面/读取预览，但不能执行夜审写操作。"""
+        from django.contrib.auth.models import Permission
+
+        group = self.dm.groups.get(name="值班经理")
+        execute_permission = Permission.objects.get(
+            content_type__app_label="hotelapp",
+            codename="night_audit_execute")
+        group.permissions.remove(execute_permission)
+        self.client.force_login(self.dm)
+
+        page = self.client.get("/manage/night-audit/")
+        self.assertEqual(page.status_code, 200, page.content)
+        content = page.content.decode("utf-8")
+        self.assertNotIn('id="na-preview-btn"', content)
+
+        read_response = self.client.get("/api/v1/night-audit/business-dates")
+        self.assertEqual(read_response.status_code, 200, read_response.content)
+        preview_response = self.client.get("/api/v1/night-audit/preview")
+        self.assertEqual(preview_response.status_code, 200, preview_response.content)
+
+        run_response = self.client.post(
+            "/api/v1/night-audit/run", data="{}", content_type="application/json")
+        self.assertEqual(run_response.status_code, 403, run_response.content)
+
     def test_reopen_select_loads_all_pages_of_closed_business_dates(self):
         self.client.force_login(self.dm)
         response = self.client.get("/manage/night-audit/")
@@ -489,6 +515,6 @@ class NightAuditCenterPageTests(E2EFlowTestBase):
     def test_center_page_registered_in_management_centers(self):
         from apps.api.pages import MANAGEMENT_CENTERS
         config = MANAGEMENT_CENTERS["night-audit"]
-        self.assertEqual(config["permission"], "hotelapp.night_audit_execute")
+        self.assertEqual(config["permission"], "core.night_audit_view")
         self.assertEqual(config["template"], "pms/night_audit_center.html")
         self.assertEqual(config["endpoint"], "/api/v1/night-audit/business-dates")
