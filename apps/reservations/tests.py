@@ -698,9 +698,10 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         executor = User.objects.create_user(
             username="stay-refund-executor", password="refund-exec-password")
         from apps.billing.services_v2 import BillingService
+        # 现金退款必须来自真实可用现金；本测试为执行班次准备 100 元备用现金。
         BillingService.open_shift(
             property_obj=self.property, cashier=executor,
-            opening_cash=Decimal("0.00"))
+            opening_cash=Decimal("100.00"))
         executed, did_execute = BillingService.execute_refund(
             property_obj=self.property, refund_id=refund.pk,
             executed_by=executor, confirm_refund_paid=True,
