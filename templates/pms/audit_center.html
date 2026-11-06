@@ -288,8 +288,8 @@
     rows.innerHTML = data.map(function (row) {
       return "<tr>" +
         "<td>" + escapeHtml((row.created_at || "").replace("T", " ").slice(0, 19)) + "</td>" +
-        "<td>" + escapeHtml(row.action_label || row.action) + "</td>" +
-        "<td>" + escapeHtml(row.entity_type_label || row.entity_type) + "</td>" +
+        "<td>" + escapeHtml((row.action_label || row.action) + "（" + row.action + "）") + "</td>" +
+        "<td>" + escapeHtml((row.entity_type_label || row.entity_type) + "（" + row.entity_type + "）") + "</td>" +
         "<td>" + escapeHtml(row.entity_id) + "</td>" +
         "<td>" + escapeHtml(row.actor_label || row.actor || "系统") + "</td>" +
         "<td>" + escapeHtml(row.reason || "—") + "</td>" +
@@ -338,7 +338,7 @@
     getJSON(api + "/events/" + eventId).then(function (body) {
       var row = body.data;
       var kv = [
-        ["操作类型", (row.action_label || row.action) + "（" + row.action + "）"], ["业务实体", (row.entity_type_label || row.entity_type) + " #" + row.entity_id],
+        ["操作类型", (row.action_label || row.action) + "（" + row.action + "）"], ["业务实体", (row.entity_type_label || row.entity_type) + "（" + row.entity_type + "） #" + row.entity_id],
         ["操作人", row.actor_label || row.actor || "系统"], ["原因", row.reason || "—"],
         ["敏感", row.is_sensitive ? "是（SPECIAL_PERMISSIONS 相关动作）" : "否"],
         ["请求链路 ID", row.request_id || "—"], ["来源 IP", row.ip || "—"],
