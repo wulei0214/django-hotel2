@@ -213,6 +213,10 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         self.operator = User.objects.create_user(
             username="stay-operator", password="stay-test-password"
         )
+        from apps.billing.services_v2 import BillingService
+        BillingService.open_shift(
+            property_obj=self.property, cashier=self.operator,
+            opening_cash=Decimal("0.00"))
 
     def test_assign_room_is_property_and_room_type_scoped(self):
         line, changed = assign_room(
@@ -684,11 +688,28 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         )
         approved, changed = approve_refund(
             property_obj=self.property, refund_id=refund.pk,
-            approved_by=supervisor, confirm_refund_paid=True,
+            approved_by=supervisor,
         )
         self.assertTrue(changed)
-        self.assertEqual(approved.status, Refund.Status.SUCCEEDED)
-        self.assertEqual(deposit.status, Payment.Status.SUCCEEDED)
+        self.assertEqual(approved.status, Refund.Status.APPROVED)
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
+
+        executor = User.objects.create_user(
+            username="stay-refund-executor", password="refund-exec-password")
+        from apps.billing.services_v2 import BillingService
+        BillingService.open_shift(
+            property_obj=self.property, cashier=executor,
+            opening_cash=Decimal("0.00"))
+        executed, did_execute = BillingService.execute_refund(
+            property_obj=self.property, refund_id=refund.pk,
+            executed_by=executor, confirm_refund_paid=True,
+            execution_reference="STAY-MANUAL-REFUND-001",
+            idempotency_key="stay-refund-exec-001")
+        self.assertTrue(did_execute)
+        self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
+        self.assertEqual(executed.approved_by_id, supervisor.pk)
+        self.assertEqual(executed.executed_by_id, executor.pk)
         deposit.refresh_from_db()
         self.reservation.refresh_from_db()
         self.assertEqual(deposit.status, Payment.Status.PARTIALLY_REFUNDED)
