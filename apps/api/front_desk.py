@@ -1114,14 +1114,12 @@ def request_refund_api(request, payment_id):
 @require_POST
 @_front_desk_action_required("billing.refund_approve")
 def approve_refund_api(request, refund_id):
+    """审批只改变审批状态；实际退款必须由独立执行人走 billing execute API。"""
     try:
-        body = _body(request)
-        if body.get("confirm_refund_paid") is not True:
-            raise ValueError("请确认人工退款已经实际完成后再审批入账。")
+        _body(request)  # 校验请求体格式；不再接受“审批即确认付款”的语义
         refund, changed = approve_refund_service(
             property_obj=request.front_desk_property, refund_id=refund_id,
             approved_by=request.user,
-            confirm_refund_paid=True,
         )
     except ValueError as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
@@ -1130,4 +1128,5 @@ def approve_refund_api(request, refund_id):
     return _response({"data": {
         "refund_id": refund.pk, "status": refund.status,
         "approved_by": refund.approved_by_id,
+        "execution_required": refund.status == Refund.Status.APPROVED,
     }, "changed": changed})
