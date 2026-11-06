@@ -5,15 +5,11 @@
 全部写操作走 apps.inventory.services 领域服务（状态流转合法性、物业校验、
 AuditEvent 均在服务层强制），本模块只做认证/权限/参数边界。
 
-权限口径（registry.py rooms 模块 notes 同步登记）：
-  * 读（工作清单 /housekeeping/rooms、统计 /housekeeping/summary）：
-    hotelapp.view_room（与房态中心 /api/v1/rooms/status 同码）；
-  * 清洁链流转（→CLEANING/→INSPECTING、检查退回→DIRTY）：
-    hotelapp.change_room（客房服务员在列）；
-  * 净房放行（→CLEAN）：hotelapp.room_release_ready（专项权限，F-08 补执行点，
-    服务层 + API 层双重校验；值班经理/店长）；
-  * 维修停用/恢复登记：hotelapp.no_show_handle（专项权限，值班经理/店长口径——
-    维修停用直接影响可售库存，复用该口径而非 change_room）。
+权限口径（与 registry.py、页面按钮显隐及测试一致）：
+  * 读（工作清单/统计）：inventory.housekeeping_view；
+  * 清洁链流转（清洁中/待检查/检查退回）：inventory.housekeeping_update；
+  * 净房放行（待检查→净房）：额外要求 hotelapp.room_release_ready；
+  * 维修停用/恢复登记：inventory.maintenance_manage，独立于未到订单处理权限。
 
 响应封套：统一 {data, meta}（apps.core.api_contract），列表端点统一分页契约。
 """
