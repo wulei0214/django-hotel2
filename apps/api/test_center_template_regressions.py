@@ -57,6 +57,13 @@ class CenterTemplateRegressionTests(SimpleTestCase):
         self.assertIn("canApproveRefund", source)
         self.assertIn("canExecuteRefund", source)
 
+    def test_billing_refund_ui_requires_non_cash_reference_and_marks_legacy(self):
+        source = self.read_template("billing_center.html")
+        self.assertIn('payment.method !== "CASH"', source)
+        self.assertIn("executionReference.trim()", source)
+        self.assertIn("refund.legacy_workflow", source)
+        self.assertIn("无法证明申请、审批、执行三方分离", source)
+
     def test_night_audit_dom_helper_appends_node_children(self):
         source = self.read_template("night_audit_center.html")
         helper = source.split("function el(", 1)[1].split("\n  function value", 1)[0]
