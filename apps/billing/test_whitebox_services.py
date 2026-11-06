@@ -193,7 +193,8 @@ class ReverseEntryBusinessDateTests(WhiteboxBillingBase):
         self.assertTrue(created)
         self.assertEqual(reversal.business_date, date(2026, 1, 16))
         other_property = Property.objects.create(code="WBBREVOTHER", name="冲销跨物业测试")
-        with self.assertRaises(LedgerEntry.DoesNotExist):
+        # 服务层先执行物业权限门禁，不向无权物业账号泄露原凭证是否存在。
+        with self.assertRaises(ValueError):
             BillingService.reverse_entry(
                 property_obj=other_property, entry_id=original.pk,
                 approval_id=approval.pk, reason=reason, reversed_by=self.operator)
@@ -602,9 +603,13 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
                 idempotency_key="wbb-refund-exec-3p-001")
         self.assertFalse(LedgerEntry.objects.filter(
             reference=f"refund:{second_refund.provider_ref}").exists())
-        BillingService.reject_refund(
+        second_executed, second_executed_created = BillingService.execute_refund(
             property_obj=self.property, refund_id=second_refund.pk,
-            rejected_by=second_approver, reason="幂等键冲突后驳回")
+            executed_by=executor, confirm_refund_paid=True,
+            execution_reference="BANK-REF-3P-002",
+            idempotency_key="wbb-refund-exec-3p-002")
+        self.assertTrue(second_executed_created)
+        self.assertEqual(second_executed.status, Refund.Status.SUCCEEDED)
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.PARTIALLY_REFUNDED)
 
@@ -636,8 +641,7 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
         executor = User.objects.create_user(username="wbb-multi-executor")
         BillingService.approve_refund(
             property_obj=self.property, refund_id=first.pk, approved_by=approver1)
-        BillingService.approve_refund(
-            property_obj=self.property, refund_id=second.pk, approved_by=approver2)
+        # 第二笔保持 PENDING，第一笔执行后支付仍须保持 REFUND_PENDING。
         executed, created = BillingService.execute_refund(
             property_obj=self.property, refund_id=first.pk,
             executed_by=executor, confirm_refund_paid=True,
