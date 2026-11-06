@@ -300,10 +300,17 @@
       credentials: "same-origin", headers: Object.assign(
           {"Accept": "application/json"}, options.headers || {}),
     }, options));
-    const payload = await response.json();
+    let payload = null;
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.toLowerCase().includes("json")) {
+      try { payload = await response.json(); } catch (parseError) { payload = null; }
+    }
+    if (!payload) {
+      throw new Error("服务器返回非 JSON 响应（HTTP " + response.status + "），请检查登录状态、CSRF 令牌和服务端日志。");
+    }
     if (!response.ok) {
       throw new Error(payload && payload.error && payload.error.message
-          || ("读取失败（HTTP " + response.status + "）"));
+          || ("请求失败（HTTP " + response.status + "）"));
     }
     return payload;
   }
@@ -480,7 +487,14 @@
           select.appendChild(option);
         });
       }
-    } catch (error) { /* 下拉保持占位，不阻塞页面 */ }
+    } catch (error) {
+      for (const selectId of ["na-reopen-bd", "na-bg-bd"]) {
+        const select = document.getElementById(selectId);
+        if (!select) continue;
+        select.replaceChildren(el("option", "", "加载失败：" + error.message));
+        select.value = "";
+      }
+    }
   }
   const reopenForm = document.getElementById("na-reopen-form");
   if (reopenForm) {
