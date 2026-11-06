@@ -490,8 +490,9 @@ class BillingService:
                 raise ValueError("该幂等键已用于不同退款申请。")
             return existing, False
         if payment.status not in (
-                Payment.Status.SUCCEEDED, Payment.Status.PARTIALLY_REFUNDED):
-            raise ValueError("只有成功或部分退款的支付可申请退款。")
+                Payment.Status.SUCCEEDED, Payment.Status.PARTIALLY_REFUNDED,
+                Payment.Status.REFUND_PENDING):
+            raise ValueError("只有成功、部分退款或退款处理中的支付可申请退款。")
         reserved = Refund.objects.filter(
             payment=payment, status__in=(Refund.Status.PENDING, Refund.Status.APPROVED,
                         Refund.Status.SUCCEEDED)
@@ -525,6 +526,11 @@ class BillingService:
                      "currency": payment.currency})
         refund.approval_record = approval
         refund.save(update_fields=("approval_record",))
+        # 支付流水状态反映存在待处理退款；多笔部分退款可并行排队申请，
+        # 其可退余额由 payment 行锁 + pending/approved/succeeded 累计金额控制。
+        if payment.status != Payment.Status.REFUND_PENDING:
+            payment.status = Payment.Status.REFUND_PENDING
+            payment.save(update_fields=("status", "updated_at"))
         AuditEvent.record(
             action="billing.refund_request", entity_type="Refund",
             entity_id=refund.pk, actor=requested_by, property_obj=property_obj,
@@ -591,6 +597,24 @@ class BillingService:
         refund.approved_by = rejected_by
         refund.processed_at = timezone.now()
         refund.save(update_fields=("status", "approved_by", "processed_at"))
+        # 仅当没有其他待审批/已批准退款时，恢复支付流水的真实结算状态。
+        # 已完成的部分退款继续保留 PARTIALLY_REFUNDED，不因新申请被驳回而丢失。
+        if not Refund.objects.filter(
+                payment_id=refund.payment_id,
+                status__in=(Refund.Status.PENDING, Refund.Status.APPROVED),
+        ).exists():
+            payment = Payment.objects.select_for_update().get(
+                pk=refund.payment_id, property=property_obj)
+            refunded_total = Refund.objects.filter(
+                payment_id=payment.pk, status=Refund.Status.SUCCEEDED
+            ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
+            if refunded_total >= payment.amount:
+                payment.status = Payment.Status.REFUNDED
+            elif refunded_total > 0:
+                payment.status = Payment.Status.PARTIALLY_REFUNDED
+            else:
+                payment.status = Payment.Status.SUCCEEDED
+            payment.save(update_fields=("status", "updated_at"))
         AuditEvent.record(
             action="billing.refund_rejected", entity_type="Refund",
             entity_id=refund.pk, actor=rejected_by, property_obj=property_obj,
