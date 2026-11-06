@@ -4755,11 +4755,11 @@
           "前台接待"
         ],
         "summary": "审批退款",
-        "description": "独立权限 billing.refund_approve；confirm_refund_paid 非 true 直接 400。\n\n权限要求：有效员工任职（DEFAULT 物业）+ billing.refund_approve。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "description": "仅改变审批状态；不确认付款、不执行退款、不追加 REFUND 凭证。\n\n权限要求：有效员工任职（DEFAULT 物业）+ billing.refund_approve。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_front_desk_refunds_refund_id_approve",
         "responses": {
           "200": {
-            "description": "退款审批入账完成",
+            "description": "退款审批通过，等待独立执行",
             "content": {
               "application/json": {
                 "schema": {
@@ -4776,7 +4776,7 @@
                         },
                         "status": {
                           "type": "string",
-                          "description": "REFUNDED"
+                          "description": "APPROVED"
                         },
                         "approved_by": {
                           "anyOf": [
@@ -4788,6 +4788,10 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "execution_required": {
+                          "type": "boolean",
+                          "description": "审批后仍须由独立财务执行人实际退款。"
                         }
                       },
                       "additionalProperties": true
@@ -4895,6 +4899,181 @@
             }
           }
         ],
+        "x-no-request-body": true,
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/front-desk/refunds/{refund_id}/reject": {
+      "post": {
+        "tags": [
+          "前台接待"
+        ],
+        "summary": "驳回退款",
+        "description": "仅驳回待审批申请，不执行退款、不追加 REFUND 凭证；必须提供 Idempotency-Key。\n\n权限要求：有效员工任职（DEFAULT 物业）+ billing.refund_approve。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "post_front_desk_refunds_refund_id_reject",
+        "responses": {
+          "200": {
+            "description": "退款申请已驳回",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, ...} 前台封套；列表附 meta 分页，写操作附 created/changed 标志。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "refund_id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": "REJECTED"
+                        },
+                        "approved_by": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "description": "驳回人 ID。"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "changed": {
+                          "type": "boolean",
+                          "description": ""
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工任职（DEFAULT 物业）+ billing.refund_approve",
+        "x-idempotency": {
+          "header": "Idempotency-Key",
+          "required": true,
+          "max_length": 64,
+          "semantics": "服务强校验必填；同 key 同 body 重放首次响应（服务侧幂等）。",
+          "source": "apps.reservations.front_desk_services / lifecycle_services / BillingService"
+        },
+        "parameters": [
+          {
+            "name": "refund_id",
+            "in": "path",
+            "required": true,
+            "description": "退款申请 ID。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "幂等键（必填，1-64 字符）。",
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "X-CSRFToken",
+            "in": "header",
+            "required": true,
+            "description": "Django CSRF 令牌（CSRF_USE_SESSIONS=True）；所有 Session/公开写操作必须携带。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -4903,14 +5082,14 @@
                 "type": "object",
                 "description": "",
                 "properties": {
-                  "confirm_refund_paid": {
-                    "type": "boolean",
-                    "description": "必须显式传 true：确认人工退款已实际完成。"
+                  "reason": {
+                    "type": "string",
+                    "description": "驳回原因，必填。"
                   }
                 },
                 "additionalProperties": true,
                 "required": [
-                  "confirm_refund_paid"
+                  "reason"
                 ]
               }
             }
@@ -21031,7 +21210,7 @@
           },
           "allowed_actions": {
             "type": "array",
-            "description": "当前用户可用操作：view_detail/operate/mark_no_show/request_refund/approve_refund。",
+            "description": "当前用户可用操作：view_detail/operate/mark_no_show/request_refund/approve_refund/reject_refund。",
             "items": {
               "type": "string",
               "description": ""
@@ -21363,7 +21542,7 @@
           },
           "allowed_actions": {
             "type": "array",
-            "description": "request_refund / approve_refund（按权限）。",
+            "description": "request_refund / approve_refund / reject_refund（按权限）。",
             "items": {
               "type": "string",
               "description": ""
