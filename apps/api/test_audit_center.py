@@ -499,6 +499,9 @@ class AuditCenterPageTests(AuditCenterTestBase):
         # 页面 JS 以 /api/v1/audit 为根拼接 events/summary/actions 端点
         self.assertIn('var api = "/api/v1/audit"', content)
         self.assertIn("留存说明", content)
+        self.assertIn('id="au-page-size"', content)
+        self.assertIn('id="au-goto-page"', content)
+        self.assertIn('id="au-goto-btn"', content)
 
     def test_management_centers_registration(self):
         from apps.api.pages import MANAGEMENT_CENTERS
