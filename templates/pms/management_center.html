@@ -75,9 +75,19 @@
       </div>
       <div class="pms-pager">
         <span id="pms-state-note">数据来自 PMS2 API；列表点击「查看」打开详情抽屉。</span>
-        <span style="display:flex;gap:8px;align-items:center">
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label for="pms-page-size">每页</label>
+          <select id="pms-page-size" aria-label="每页显示条数">
+            <option value="20" selected>20 条</option>
+            <option value="50">50 条</option>
+            <option value="100">100 条</option>
+          </select>
           <button id="pms-prev" type="button" disabled>上一页</button>
           <span id="pms-page"></span>
+          <label for="pms-goto-page">跳至</label>
+          <input id="pms-goto-page" type="number" min="1" step="1" value="1"
+                 aria-label="跳转到页码" style="width:72px">
+          <button id="pms-goto-btn" type="button">跳转</button>
           <button id="pms-next" type="button" disabled>下一页</button>
         </span>
       </div>
@@ -114,11 +124,15 @@
   const pageLabel = document.getElementById("pms-page");
   const prevButton = document.getElementById("pms-prev");
   const nextButton = document.getElementById("pms-next");
+  const pageSizeSelect = document.getElementById("pms-page-size");
+  const gotoPageInput = document.getElementById("pms-goto-page");
   const drawer = document.getElementById("pms-drawer");
   const drawerMask = document.getElementById("pms-drawer-mask");
   const drawerTitle = document.getElementById("pms-drawer-title");
   const drawerBody = document.getElementById("pms-drawer-body");
   let currentPage = 1;
+  let currentPageSize = 20;
+  let totalPages = 1;
   function at(item, path) {
     return path.split(".").reduce(function(v,k){return v == null ? null : v[k];},item);
   }
@@ -269,7 +283,7 @@
     currentPage=Math.max(1,page || 1);meta.textContent="读取中…";
     prevButton.disabled=true;nextButton.disabled=true;
     body.replaceChildren();
-    const params=new URLSearchParams({page:String(currentPage),page_size:"50"});
+    const params=new URLSearchParams({page:String(currentPage),page_size:String(currentPageSize)});
     if(search.value.trim()) params.set("q",search.value.trim());
     try {
       const response=await fetch(endpoint+"?"+params.toString(),{
@@ -281,7 +295,10 @@
       const pageInfo=payload.meta && payload.meta.pagination;
       if(pageInfo) {
         currentPage=pageInfo.page;
-        pageLabel.textContent="第 "+pageInfo.page+" 页 / 共 "+Math.max(1,Math.ceil(pageInfo.total/pageInfo.page_size))+" 页";
+        totalPages=Math.max(1,Math.ceil(pageInfo.total/pageInfo.page_size));
+        pageLabel.textContent="第 "+pageInfo.page+" 页 / 共 "+totalPages+" 页";
+        gotoPageInput.max=String(totalPages);
+        gotoPageInput.value=String(pageInfo.page);
         prevButton.disabled=!pageInfo.has_previous;nextButton.disabled=!pageInfo.has_next;
         meta.textContent="共 "+pageInfo.total+" 条";
       } else {pageLabel.textContent="";meta.textContent="已载入";}
@@ -296,6 +313,22 @@
   document.getElementById("pms-reload").addEventListener("click",function(){load(1);});
   prevButton.addEventListener("click",function(){load(currentPage-1);});
   nextButton.addEventListener("click",function(){load(currentPage+1);});
+  pageSizeSelect.addEventListener("change",function(){
+    const parsed=Number.parseInt(pageSizeSelect.value,10);
+    if([20,50,100].includes(parsed)){currentPageSize=parsed;load(1);}
+  });
+  function gotoPage(){
+    const target=Number.parseInt(gotoPageInput.value,10);
+    if(!Number.isInteger(target)||target<1||target>totalPages){
+      gotoPageInput.setCustomValidity("请输入 1 至 "+totalPages+" 之间的页码。");
+      gotoPageInput.reportValidity();
+      return;
+    }
+    gotoPageInput.setCustomValidity("");
+    load(target);
+  }
+  document.getElementById("pms-goto-btn").addEventListener("click",gotoPage);
+  gotoPageInput.addEventListener("keydown",function(e){if(e.key==="Enter")gotoPage();});
   search.addEventListener("keydown",function(e){if(e.key==="Enter")load(1);});
   load(1);
 })();
