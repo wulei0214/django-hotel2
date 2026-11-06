@@ -213,11 +213,13 @@ MODULE_REGISTRY_V2 = {
             "delete": NOT_APPLICABLE,  # 冲账语义归 accommodation/order 的 delete 列
             "approve": "billing.refund_approve",
             "special": ("hotelapp.finance_access",
-                        "billing.refund_request", "billing.refund_approve"),
+                        "billing.refund_request", "billing.refund_approve",
+                        "billing.refund_execute", "billing.cashier_shift_manage",
+                        "billing.cash_movement_manage"),
         },
         "extra_codes": (),
         "notes": "跨 App 模块：入口码 hotelapp.finance_access，退款双权 "
-                 "billing.refund_request/refund_approve 分离（SoD），"
+                 "billing.refund_request/refund_approve/refund_execute 三方分离（SoD），"
                  "夜审复核 core.breakglass_review 归 night_audit 模块。",
     },
     "night_audit": {
