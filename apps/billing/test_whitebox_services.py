@@ -23,7 +23,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import QuerySet
-from django.db.models import Model as DjangoModel, transaction
+from django.db.models import Model as DjangoModel
 from django.test import TestCase
 from django.utils import timezone
 
@@ -241,6 +241,31 @@ class DepositGuardTests(WhiteboxBillingBase):
         self.assertNotEqual(payment.folio_id, guest_folio.pk)
         entry = LedgerEntry.objects.get(reference=f"deposit:{payment.provider_ref}")
         self.assertEqual(entry.folio_id, self.folio.pk)
+
+    def test_deposit_replay_survives_checkout_and_folio_close(self):
+        payment, created = BillingService.record_deposit(
+            property_obj=self.property, reservation=self.reservation,
+            amount="30.00", method="CARD",
+            idempotency_key="wbb-deposit-replay-001",
+            received_by=self.operator)
+        self.assertTrue(created)
+        self.reservation.status = "CHECKED_OUT"
+        self.reservation.save(update_fields=("status", "updated_at"))
+        self.folio.status = Folio.Status.CLOSED
+        self.folio.save(update_fields=("status", "updated_at"))
+
+        replay, replay_created = BillingService.record_deposit(
+            property_obj=self.property, reservation=self.reservation,
+            amount="30.00", method="CARD",
+            idempotency_key="wbb-deposit-replay-001",
+            received_by=self.operator)
+        self.assertFalse(replay_created)
+        self.assertEqual(replay.pk, payment.pk)
+        self.reservation.refresh_from_db()
+        self.assertEqual(self.reservation.deposit_amount, Decimal("30.00"))
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference=f"deposit:{payment.provider_ref}").count(), 1)
 
 
 class CollectPaymentRaceTests(WhiteboxBillingBase):
