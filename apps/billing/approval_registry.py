@@ -113,7 +113,9 @@ def validate_refund_entity(property_obj, entity_id, requested_by):
 def validate_reversal_entity(property_obj, entity_id, requested_by):
     """红字冲销审批：原凭证必须存在、属于当前物业且尚未被冲销。"""
     from apps.billing.models import ApprovalRecord, LedgerEntry
-    entry = LedgerEntry.objects.filter(pk=_int_or_none(entity_id)).first()
+    # approval_request 在 atomic 事务中调用；锁定原凭证，串行化不同财务人员的并发申请。
+    entry = LedgerEntry.objects.select_for_update().filter(
+        pk=_int_or_none(entity_id)).first()
     if entry is None or entry.property_id != property_obj.pk:
         raise ApiError("RESOURCE_NOT_FOUND", "账本凭证不存在或不属于当前物业。")
     if entry.entry_type == LedgerEntry.EntryType.REVERSAL:
