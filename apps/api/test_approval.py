@@ -522,10 +522,16 @@ class ApprovalDecisionTests(ApprovalApiTestBase):
         self.assertEqual(second.status_code, 409, second.content)
 
     def test_expired_approval_is_marked_expired_on_approve(self):
-        type(self.record)._base_manager.filter(pk=self.record.pk).update(
+        expired_business_date = self._make_business_date(self.property)
+        expired_record, _ = ApprovalService.request_approval(
+            property_obj=self.property, action_code="night_audit.reopen",
+            entity_type="BusinessDate", entity_id=str(expired_business_date.pk),
+            requested_by=self.duty, reason="审批到期状态回归",
+            payload={"business_date": expired_business_date.business_date.isoformat()})
+        type(expired_record)._base_manager.filter(pk=expired_record.pk).update(
             expires_at=timezone.now() - timedelta(minutes=1))
         self.client.force_login(self.owner)
-        response = self._approve(self.record.pk)
+        response = self._approve(expired_record.pk)
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(
             response.json()["data"]["status"], ApprovalRecord.Status.EXPIRED)
