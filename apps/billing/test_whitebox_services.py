@@ -144,19 +144,30 @@ class ReverseEntryBusinessDateTests(WhiteboxBillingBase):
             amount=Decimal("10.00"), reference="WBB-REV-SRC-001",
             business_date=date(2026, 1, 10), posted_by=self.operator)
 
+        reason = "错账冲销白盒测试"
+        approver = User.objects.create_user(username="wbb-reversal-approver")
+        approval, approval_created = ApprovalService.request_approval(
+            property_obj=self.property, action_code="billing.reversal",
+            entity_type="LedgerEntry", entity_id=str(original.pk),
+            requested_by=self.operator, reason=reason, payload={})
+        self.assertTrue(approval_created)
+        approval = ApprovalService.approve(
+            approval.pk, approved_by=approver, property_obj=self.property)
+
         # 固定“现在”：物业当地已是 2026-01-16，而默认时区（Asia/Shanghai）仍是 01-15
         fixed_now = datetime(2026, 1, 15, 15, 59, 0, tzinfo=dt_timezone.utc)
         with mock.patch.object(timezone, "now", return_value=fixed_now):
             reversal, created = BillingService.reverse_entry(
                 property_obj=self.property, entry_id=original.pk,
-                reason="错账冲销白盒测试", reversed_by=self.operator)
+                approval_id=approval.pk, reason=reason,
+                reversed_by=self.operator)
         self.assertTrue(created)
         self.assertEqual(reversal.business_date, date(2026, 1, 16))
         other_property = Property.objects.create(code="WBBREVOTHER", name="冲销跨物业测试")
         with self.assertRaises(LedgerEntry.DoesNotExist):
             BillingService.reverse_entry(
                 property_obj=other_property, entry_id=original.pk,
-                reason="跨物业冲销必须拒绝", reversed_by=self.operator)
+                approval_id=approval.pk, reason=reason, reversed_by=self.operator)
 
 
 class ApprovalRaceTests(WhiteboxBillingBase):
