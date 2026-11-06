@@ -1157,3 +1157,20 @@ P0 权限测试必须覆盖匿名与跨物业。每一个权限拒绝都应验�
    - 同一 Payment 下退款额度、驳回后 Payment 状态汇总使用锁定当前读，避免 MySQL REPEATABLE READ 旧快照漏算并发退款。
 
 **本批最新代码 SHA：** `52a182e8b6f61693bdeaa34e8e31bd3637b0536c`。该 SHA 的 Django CI 与 MySQL tests 当时仍在运行；最终结论必须以更新后最新 SHA 的完整工作流为准。
+
+
+### 12.6 第九批补充：退款审批超时自动闭环与 MySQL 班次插入保护
+
+1. 新增 `BillingService.expire_due_refunds()` 和管理命令 `python manage.py expire_pending_refunds --limit 100`：
+   - 每笔退款独立事务，锁顺序 Payment → Refund → ApprovalRecord；
+   - 到期后同步 ApprovalRecord.EXPIRED、Refund.EXPIRED、Payment 状态；
+   - 没有其他待处理退款时，按已成功退款累计金额恢复 Payment 的 SUCCEEDED / PARTIALLY_REFUNDED / REFUNDED；
+   - 只写系统审计事件，不写 REFUND 账本凭证；
+   - 重复执行幂等，单次 limit 1–500，可选 `--property-id`。
+2. 生产部署建议通过操作系统任务计划程序每 5 分钟运行一次；本命令不会自行安装定时器。详细命令和权限边界见《PMS2 MySQL财务与审计不可变事实部署说明.md》。
+3. `CashierShiftMovement.save()` 已拒绝向 CLOSED 班次或非班次本人写入现金变动；MySQL 部署命令增加第 7 条 BEFORE INSERT 触发器，直接 SQL 也必须验证班次 OPEN 且登记人等于班次收银员。
+4. MySQL guard 从原 6 条扩展为 7 条；安装与检查命令、SQL 脚本和部署说明同步更新。
+
+**代码提交：** `1bc9aa6`（到期批处理服务）、`8950d8e`（管理命令）、`645e9aa`（批处理回归测试）、`4b7a27a` / `a8301e5` / `f4f3da7`（MySQL 班次插入保护）。
+
+**验收边界：** 命令代码与测试提交不等于服务器已配置定时器；上线前需在实际部署主机安装计划任务，并检查任务运行日志、到期退款状态、Payment 余额释放和 AuditEvent。MySQL 触发器必须在实际目标库安装并通过检查命令。
