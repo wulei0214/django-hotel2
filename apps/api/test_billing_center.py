@@ -1011,6 +1011,10 @@ class BillingRefundThreePartyApiTests(BillingCenterTestBase):
             BillingService.reject_refund(
                 property_obj=self.property, refund_id=refund.pk,
                 rejected_by=approver, reason="不允许错链驳回")
+        with self.assertRaisesRegex(ValueError, "审批记录与当前退款申请不匹配"):
+            BillingService.expire_due_refunds(
+                property_obj=self.property, limit=10,
+                now=timezone.now() + timedelta(days=2))
 
         # 再模拟一条错误审批已被其他流程批准、退款状态被非标准写入改为 APPROVED。
         ApprovalRecord._base_manager.filter(pk=wrong_approval.pk).update(
