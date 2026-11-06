@@ -298,23 +298,29 @@ class BillingService:
             raise ValueError("收款金额必须大于 0。")
         if reservation.property_id != property_obj.pk:
             raise ValueError("预订不属于当前物业。")
-        folio = Folio.objects.select_for_update().filter(
-            property=property_obj, reservation=reservation,
-            folio_type="MASTER", status="OPEN").first()
-        if folio is None:
-            raise ValueError("主账单不存在或已关闭。")
         provider_ref = str(reference or "").strip() or f"FD-{uuid.uuid4().hex.upper()}"
         if len(provider_ref) > 80:
             raise ValueError("收款参考号不能超过 80 个字符。")
+        # 先处理幂等重放，再检查账单是否仍开放；成功收款后账单可能已结账，
+        # 但同一参考号重试仍必须返回原支付，不能因后续状态变化制造“失败”假象。
         existing = Payment.objects.filter(provider_ref=provider_ref).first()
         if existing:
             if (existing.property_id != property_obj.pk
                     or existing.reservation_id != reservation.pk
                     or existing.amount != amount or existing.method != method
+                    or existing.currency != reservation.currency
                     or existing.provider != "frontdesk_manual"
-                    or existing.status != Payment.Status.SUCCEEDED):
+                    or existing.status not in (
+                        Payment.Status.SUCCEEDED,
+                        Payment.Status.PARTIALLY_REFUNDED,
+                        Payment.Status.REFUNDED)):
                 raise ValueError("该收款参考号已用于不同支付。")
             return existing
+        folio = Folio.objects.select_for_update().filter(
+            property=property_obj, reservation=reservation,
+            folio_type="MASTER", status="OPEN").first()
+        if folio is None:
+            raise ValueError("主账单不存在或已关闭。")
         from apps.reservations.models import ReservationRoom
         entries = list(folio.entries.values_list("amount", flat=True))
         balance = sum(entries, start=Decimal("0.00"))
