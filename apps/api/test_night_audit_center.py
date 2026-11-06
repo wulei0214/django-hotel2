@@ -175,6 +175,38 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
         self.client.force_login(self.dm)
         return self._run_audit(), booking_no, stay_id
 
+    def test_preview_collects_all_blockers_and_run_refuses_to_execute(self):
+        """夜审预览完整收集房价快照缺失；存在阻断时不得写入账本。"""
+        booking_no, token = self._create_reservation()
+        self._confirm_by_mock_payment(booking_no, token)
+        line = self._line(booking_no)
+        self.client.force_login(self.fd)
+        self._assign_and_check_in(line, self.room1)
+        line.nightly_rates = []
+        line.save(update_fields=("nightly_rates",))
+        self.client.force_login(self.dm)
+
+        preview = self.client.get("/api/v1/night-audit/preview")
+        self.assertEqual(preview.status_code, 200, preview.content)
+        data = preview.json()["data"]
+        self.assertFalse(data["can_run"])
+        self.assertEqual(data["blocker_count"], 1)
+        self.assertEqual(data["blockers"][0]["code"], "NIGHTLY_RATE_MISSING")
+        self.assertEqual(data["blockers"][0]["severity"], "critical")
+        self.assertIn(booking_no, data["blockers"][0]["message"])
+
+        before = __import__(
+            "apps.billing.models", fromlist=["LedgerEntry"]).LedgerEntry.objects.count()
+        run_response = self._post_json("/api/v1/night-audit/run")
+        self.assertEqual(run_response.status_code, 409, run_response.content)
+        after = __import__(
+            "apps.billing.models", fromlist=["LedgerEntry"]).LedgerEntry.objects.count()
+        self.assertEqual(after, before)
+        failed = NightAuditRun.objects.filter(
+            business_date__property=self.property,
+            status=NightAuditRun.RunStatus.FAILED).count()
+        self.assertEqual(failed, 1)
+
     def test_business_date_detail_after_run(self):
         run_data, booking_no, _ = self._run_audit_with_stay()
         bd = BusinessDate.objects.get(property=self.property,
