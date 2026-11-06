@@ -634,8 +634,17 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
             reference=f"refund:{refund.provider_ref}").exists())
 
         self.client.force_login(self.fin)
-        self.assertIn(self._open_cashier_shift("e2e-shift-refund-exec-001").status_code,
-                      (200, 201))
+        executor_shift_response = self._open_cashier_shift("e2e-shift-refund-exec-001")
+        self.assertIn(executor_shift_response.status_code, (200, 201),
+                      executor_shift_response.content)
+        executor_shift_id = executor_shift_response.json()["data"]["id"]
+        # 退款现金先从财务备用金领取，再从该执行班次实际支付给住客。
+        cash_float = self._post_json(
+            f"/api/v1/billing/shifts/{executor_shift_id}/movements",
+            {"direction": "IN", "amount": "100.00",
+             "reason": "从保险柜领取退款现金",
+             "idempotency_key": "e2e-refund-cash-float-001"})
+        self.assertEqual(cash_float.status_code, 201, cash_float.content)
         execute_payload = {
             "confirm_refund_paid": True,
             "execution_reference": "E2E-MANUAL-REFUND-001",
@@ -671,6 +680,29 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(repeat.status_code, 200, repeat.content)
         self.assertEqual(LedgerEntry.objects.filter(
             entry_type=LedgerEntry.EntryType.REFUND, folio=folio).count(), 1)
+
+        # 现金退款必须计入实际执行班次；备用金补入 100 - 现金退款 100 = 应有 0。
+        executor_close = self._post_json(
+            f"/api/v1/billing/shifts/{executor_shift_id}/close",
+            {"actual_cash": "0.00"})
+        self.assertEqual(executor_close.status_code, 200, executor_close.content)
+        self.assertEqual(
+            Decimal(executor_close.json()["data"]["expected_cash"]),
+            Decimal("0.00"))
+        self.assertEqual(
+            Decimal(executor_close.json()["data"]["variance"]), Decimal("0.00"))
+
+        # 原现金收款仍归属前台收款班次，不得转移到退款执行班次。
+        payment_obj.refresh_from_db()
+        frontdesk_shift = CashierShift.objects.get(pk=payment_obj.cashier_shift_id)
+        self.assertEqual(frontdesk_shift.cashier_id, self.fd.pk)
+        frontdesk_close = self._post_json(
+            f"/api/v1/billing/shifts/{frontdesk_shift.pk}/close",
+            {"actual_cash": "300.00"})
+        self.assertEqual(frontdesk_close.status_code, 200, frontdesk_close.content)
+        self.assertEqual(
+            Decimal(frontdesk_close.json()["data"]["expected_cash"]),
+            Decimal("300.00"))
 
     # ------------------------------------------------------------------
     # 4) 退款申请超额 → 409 且无副作用
