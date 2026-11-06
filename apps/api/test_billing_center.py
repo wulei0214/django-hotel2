@@ -760,3 +760,75 @@ class BillingSummaryCacheInvalidationTests(BillingCenterTestBase):
             )
 
         self.assertIsNone(cache.get(key))
+
+
+class BillingRefundThreePartyApiTests(BillingCenterTestBase):
+    """API 层验证申请、审批、执行独立账号及仅执行时落账。"""
+
+    def test_refund_api_requires_three_distinct_people_and_posts_once(self):
+        reservation, _folio = self._booking_with_outstanding()
+        payment = BillingService.collect_payment(
+            property_obj=self.property, reservation=reservation,
+            amount="60.00", method="CARD", collected_by=self.finance,
+            reference="BC-REFUND-3P-PAY-001")
+
+        approver = self._make_staff("fin_refund_approver", "财务")
+        executor = self._make_staff("fin_refund_executor", "财务")
+        self._grant(approver, "refund_approve")
+        self._grant(executor, "refund_execute")
+
+        self._login(self.finance)
+        requested = _post_json(
+            self.client, "/api/v1/billing/refunds",
+            {"payment_id": payment.pk, "amount": "25.00",
+             "reason": "三方退款 API 验收",
+             "idempotency_key": "bc-refund-3p-request-001"})
+        self.assertEqual(requested.status_code, 201, requested.content)
+        refund_id = requested.json()["data"]["refund_id"]
+        refund = Refund.objects.get(pk=refund_id)
+        self.assertEqual(refund.status, Refund.Status.PENDING)
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
+
+        # 申请人即使拥有审批权限，也不能审批自己的退款。
+        self._grant(self.finance, "refund_approve")
+        self._login(self.finance)
+        self_approval = _post_json(
+            self.client, f"/api/v1/billing/refunds/{refund_id}/approve", {})
+        self.assertEqual(self_approval.status_code, 400, self_approval.content)
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
+
+        self._login(approver)
+        approved = _post_json(
+            self.client, f"/api/v1/billing/refunds/{refund_id}/approve", {})
+        self.assertEqual(approved.status_code, 200, approved.content)
+        refund.refresh_from_db()
+        self.assertEqual(refund.approved_by_id, approver.pk)
+        self.assertEqual(refund.status, Refund.Status.APPROVED)
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
+
+        self._login(executor)
+        executed = _post_json(
+            self.client, f"/api/v1/billing/refunds/{refund_id}/execute",
+            {"confirm_refund_paid": True,
+             "execution_reference": "BANK-BC-REFUND-001",
+             "idempotency_key": "bc-refund-3p-exec-001"})
+        self.assertEqual(executed.status_code, 201, executed.content)
+        refund.refresh_from_db()
+        self.assertEqual(refund.executed_by_id, executor.pk)
+        self.assertEqual(refund.status, Refund.Status.SUCCEEDED)
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference=f"refund:{refund.provider_ref}").count(), 1)
+
+        replay = _post_json(
+            self.client, f"/api/v1/billing/refunds/{refund_id}/execute",
+            {"confirm_refund_paid": True,
+             "execution_reference": "BANK-BC-REFUND-001",
+             "idempotency_key": "bc-refund-3p-exec-001"})
+        self.assertEqual(replay.status_code, 200, replay.content)
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference=f"refund:{refund.provider_ref}").count(), 1)
