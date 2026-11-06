@@ -63,12 +63,13 @@ def reverse_reversal_sod_permissions(apps, schema_editor):
         content_type=content_type, codename="reverse_entry").first()
     approve_permission = Permission.objects.filter(
         content_type=content_type, codename="reversal_approve").first()
+    if execute_permission:
+        execute_permission.name = "可以红字冲销账本凭证（LedgerEntry）"
+        execute_permission.save(update_fields=["name"])
     for group in Group.objects.all():
         if approve_permission:
             group.permissions.remove(approve_permission)
         if execute_permission:
-            execute_permission.name = "可以红字冲销账本凭证（LedgerEntry）"
-            execute_permission.save(update_fields=["name"])
             if group.name in ("财务", "值班经理", "店长"):
                 group.permissions.add(execute_permission)
             else:
