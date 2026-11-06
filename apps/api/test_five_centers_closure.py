@@ -599,6 +599,33 @@ class CashierShiftClosureTests(E2EFlowTestBase):
              "idempotency_key": "closure-cash-out-after-close"})
         self.assertEqual(rejected.status_code, 400)
 
+    def test_frontdesk_cannot_close_another_cashiers_shift(self):
+        self.client.force_login(self.fin)
+        opened = _post_json(
+            self.client, "/api/v1/billing/shifts/open",
+            {"opening_cash": "50.00"})
+        self.assertEqual(opened.status_code, 201, opened.content)
+        shift_id = opened.json()["data"]["id"]
+
+        self.client.force_login(self.nofin)
+        denied = _post_json(
+            self.client, f"/api/v1/billing/shifts/{shift_id}/close",
+            {"actual_cash": "50.00"})
+        self.assertEqual(denied.status_code, 403, denied.content)
+        self.assertEqual(denied.json()["error"]["code"], "PERMISSION_DENIED")
+        self.assertEqual(
+            CashierShift.objects.get(pk=shift_id).status,
+            CashierShift.ShiftStatus.OPEN)
+
+        # 有财务查看/管理权限的主管可代关，但关班审计仍记录实际操作人。
+        self.client.force_login(self.fin)
+        closed = _post_json(
+            self.client, f"/api/v1/billing/shifts/{shift_id}/close",
+            {"actual_cash": "50.00"})
+        self.assertEqual(closed.status_code, 200, closed.content)
+        self.assertEqual(
+            CashierShift.objects.get(pk=shift_id).closed_by_id, self.fin.pk)
+
     def test_shift_endpoints_use_cashier_permission_and_property_scope(self):
         # 前台没有 finance_access，但拥有本人班次开闭专项权。
         self.client.force_login(self.nofin)
