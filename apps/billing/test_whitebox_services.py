@@ -163,7 +163,7 @@ class ReverseEntryBusinessDateTests(WhiteboxBillingBase):
                 status=PropertyStaffMembership.Status.ACTIVE)
             StaffRoleAssignment.objects.create(
                 membership=membership, group=group,
-                starts_at=timezone.now() - timedelta(minutes=1))
+                starts_at=timezone.now() - timedelta(days=400))
 
         assign_permission(self.operator, "WBB-REV-FIN", "reverse_entry")
         reason = "错账冲销白盒测试"
