@@ -557,15 +557,15 @@ class NotificationApiTests(NotificationCenterTestBase):
             .json()["data"]["unread_count"], 0)
         # 本物业 refresh 不销项他物业的待办（按 property 隔离）
         before = Notification.objects.filter(
-            property=other_property, is_read=False).count()
+            property=other_property, resolved_at__isnull=True).count()
         self.client.post("/api/v1/notifications/refresh")
         self.assertEqual(
             Notification.objects.filter(
-                property=other_property, is_read=False).count(), before)
+                property=other_property, resolved_at__isnull=True).count(), before)
         # 他物业的待办行仍存在且未读
         self.assertTrue(Notification.objects.filter(
             property=other_property, role_group__name="客房服务员",
-            is_read=False).exists())
+            resolved_at__isnull=True).exists())
 
 
 class NotificationCenterPageTests(NotificationCenterTestBase):
