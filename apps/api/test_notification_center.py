@@ -35,7 +35,7 @@ from apps.api import notification_center
 from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.billing.models import ApprovalRecord
 from apps.core.models import (
-    AuditEvent, BreakGlassRecord, BusinessDate, Notification, Property,
+    AuditEvent, BreakGlassRecord, BusinessDate, Notification, NotificationRead, Property,
 )
 from apps.guests.models import Guest
 from apps.identity.models import PropertyStaffMembership, StaffProfile
@@ -257,15 +257,17 @@ class RefreshIdempotencyAndResolveTests(NotificationCenterTestBase):
         reservation = self._reservation(status=Reservation.Status.PENDING,
                                         check_in_offset=5)
         refresh_operational_todos(self.property)
-        self.assertEqual(len(self._rows(is_read=False)), 2)
+        self.assertEqual(len(self._rows(resolved_at__isnull=True)), 2)
         # 源业务解决：预订确认（状态权威仍是 Reservation，通知只是投影）
         Reservation.objects.filter(pk=reservation.pk).update(
             status=Reservation.Status.CONFIRMED)
         summary = refresh_operational_todos(self.property)
         self.assertEqual(summary["resolved"], 2)
-        self.assertFalse(Notification.objects.filter(is_read=False).exists())
-        read_at_values = [row.read_at for row in self._rows()]
-        self.assertTrue(all(read_at_values))
+        self.assertFalse(Notification.objects.filter(
+            dedupe_key__isnull=False, resolved_at__isnull=True
+        ).exclude(dedupe_key="").exists())
+        resolved_at_values = [row.resolved_at for row in self._rows()]
+        self.assertTrue(all(resolved_at_values))
 
     def test_count_change_updates_body_without_new_rows(self):
         self._set_room(self.room1, Room.HousekeepingStatus.DIRTY)
@@ -438,6 +440,33 @@ class NotificationApiTests(NotificationCenterTestBase):
         second = self.client.post(f"/api/v1/notifications/{notification.pk}/read")
         self.assertEqual(second.status_code, 200)
         self.assertEqual(second.json()["data"]["read_at"], first_read_at)
+        notification.refresh_from_db()
+        self.assertFalse(notification.is_read)
+        self.assertEqual(NotificationRead.objects.filter(
+            notification=notification,
+            staff_profile__user=self.fd).count(), 1)
+
+    def test_broadcast_read_receipt_is_personal_per_employee(self):
+        """同岗位广播由一名员工读过，不得影响同岗位其他员工的未读状态。"""
+        profile = self.housekeeper.staff_profile
+        group = profile.property_memberships.get(
+            property=self.property).role_assignments.get(
+                group__name="客房服务员").group
+        broadcast = Notification.objects.create(
+            property=self.property, role_group=group,
+            category=Notification.Category.SYSTEM, title="岗位广播")
+        self.client.force_login(self.housekeeper)
+        first = self.client.post(
+            f"/api/v1/notifications/{broadcast.pk}/read")
+        self.assertEqual(first.status_code, 200, first.content)
+        self.assertEqual(first.json()["data"]["is_read"], True)
+
+        second_housekeeper = self._make_staff(
+            "nt_housekeeper_second", "客房服务员")
+        self.client.force_login(second_housekeeper)
+        unread = self.client.get(
+            "/api/v1/notifications?is_read=false").json()["data"]
+        self.assertIn(broadcast.pk, {item["id"] for item in unread})
 
     def test_mark_read_out_of_scope_is_404(self):
         self._set_room(self.room1, Room.HousekeepingStatus.DIRTY)
@@ -456,10 +485,15 @@ class NotificationApiTests(NotificationCenterTestBase):
         response = self.client.post("/api/v1/notifications/read-all")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["marked_read"], 1)
+        self.assertTrue(NotificationRead.objects.filter(
+            notification=mine, staff_profile__user=self.fd).exists())
+        self.assertFalse(NotificationRead.objects.filter(
+            notification=other, staff_profile__user=self.fd).exists())
+        self.assertFalse(NotificationRead.objects.filter(
+            notification=other).exists())
+        # 旧全局字段不再被 API 修改，避免一个员工改变广播通知的全员状态。
         mine.refresh_from_db()
-        other.refresh_from_db()
-        self.assertTrue(mine.is_read)
-        self.assertFalse(other.is_read)
+        self.assertFalse(mine.is_read)
 
     # -- refresh 端点 ---------------------------------------------------
     def test_refresh_endpoint_creates_and_resolves(self):
@@ -475,7 +509,9 @@ class NotificationApiTests(NotificationCenterTestBase):
         second = self.client.post("/api/v1/notifications/refresh")
         self.assertEqual(second.status_code, 200)
         self.assertEqual(second.json()["data"]["resolved"], 2)
-        self.assertFalse(Notification.objects.filter(is_read=False).exists())
+        self.assertFalse(Notification.objects.filter(
+            dedupe_key__isnull=False, resolved_at__isnull=True
+        ).exclude(dedupe_key="").exists())
 
     @override_settings(PUBLIC_RATE_LIMITS={
         "pms.notification_refresh": [(("ip", "username"), 1, 60)],
