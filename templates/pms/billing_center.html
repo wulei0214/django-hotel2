@@ -79,7 +79,7 @@
         <h1>{{ title }}</h1>
         <p class="pms-center-sub">{{ property_name }} · {{ subtitle }}</p>
       </div>
-      <a href="/finance/" title="旧只读流水页（过渡期保留）">旧财务页</a>
+
     </div>
 
     <section class="pms-panel" aria-label="今日汇总">
@@ -146,6 +146,34 @@
     <section class="pms-panel" aria-label="收银班次">
       <div class="pms-tools"><strong>收银班次</strong>
         <span class="pms-meta" id="fin-shift-meta"></span></div>
+      {% if can_manage_cashier_shift %}
+      <div id="fin-current-shift-state" class="pms-state" style="padding:10px 0">正在读取本人班次…</div>
+      <div class="fin-form" id="fin-shift-open-wrap">
+        <div><label for="fin-shift-opening-cash">开班备用金</label>
+          <input id="fin-shift-opening-cash" inputmode="decimal" value="0.00" required></div>
+        <div class="fin-form-actions"><button type="button" id="fin-shift-open">开班</button></div>
+      </div>
+      <div class="fin-form" id="fin-shift-close-wrap" hidden>
+        <div><label for="fin-shift-actual-cash">实盘现金</label>
+          <input id="fin-shift-actual-cash" inputmode="decimal" placeholder="0.00" required></div>
+        <div><label for="fin-shift-variance-reason">差异说明（差异非零必填）</label>
+          <input id="fin-shift-variance-reason" maxlength="240" placeholder="如无差异可留空"></div>
+        <div class="fin-form-actions"><button type="button" id="fin-shift-close">关班并对账</button></div>
+      </div>
+      {% if can_manage_cash_movement %}
+      <form class="fin-form" id="fin-shift-movement-form" hidden>
+        <div><label for="fin-shift-movement-direction">现金变动</label>
+          <select id="fin-shift-movement-direction" name="direction">
+            <option value="IN">现金补入</option><option value="OUT">现金支出/取出</option>
+          </select></div>
+        <div><label for="fin-shift-movement-amount">金额</label>
+          <input id="fin-shift-movement-amount" name="amount" inputmode="decimal" required></div>
+        <div style="grid-column:1/-1"><label for="fin-shift-movement-reason">原因</label>
+          <input id="fin-shift-movement-reason" name="reason" maxlength="240" required></div>
+        <div class="fin-form-actions"><button type="submit">登记现金变动</button></div>
+      </form>
+      {% endif %}
+      {% endif %}
       <div class="pms-table-wrap">
         <table class="pms-table">
           <thead><tr id="fin-shift-head"></tr></thead>
@@ -170,6 +198,11 @@
 {{ can_collect_payment|json_script:"fin-can-collect" }}
 {{ can_refund_request|json_script:"fin-can-refund" }}
 {{ can_reverse_entry|json_script:"fin-can-reverse" }}
+{{ can_approve_refund|json_script:"fin-can-approve-refund" }}
+{{ can_execute_refund|json_script:"fin-can-execute-refund" }}
+{{ can_manage_cashier_shift|json_script:"fin-can-manage-shift" }}
+{{ can_manage_cash_movement|json_script:"fin-can-manage-cash-movement" }}
+{{ current_user_id|json_script:"fin-current-user-id" }}
 <form id="pms-csrf-token" hidden>{% csrf_token %}</form>
 <script>
 (function () {
@@ -181,6 +214,12 @@
   const canCollect = JSON.parse(document.getElementById("fin-can-collect").textContent) === true;
   const canRefund = JSON.parse(document.getElementById("fin-can-refund").textContent) === true;
   const canReverse = JSON.parse(document.getElementById("fin-can-reverse").textContent) === true;
+  const canApproveRefund = JSON.parse(document.getElementById("fin-can-approve-refund").textContent) === true;
+  const canExecuteRefund = JSON.parse(document.getElementById("fin-can-execute-refund").textContent) === true;
+  const canManageShift = JSON.parse(document.getElementById("fin-can-manage-shift").textContent) === true;
+  const canManageCashMovement = JSON.parse(document.getElementById("fin-can-manage-cash-movement").textContent) === true;
+  const currentUserId = Number(JSON.parse(document.getElementById("fin-current-user-id").textContent));
+  let activeShiftId = null;
   const head = document.getElementById("fin-head");
   const body = document.getElementById("fin-body");
   const meta = document.getElementById("fin-folio-meta");
@@ -346,16 +385,35 @@
   async function loadShifts() {
     try {
       const payload = await fetchJson("/api/v1/billing/shifts?page=1&page_size=5");
+      const rows = Array.isArray(payload.data) ? payload.data : [];
       simpleTable("fin-shift-head","fin-shift-body",[
-        {label:"收银员",path:"cashier"},{label:"状态",path:"status_label"},
-        {label:"开班时间",path:"opened_at"},{label:"关班时间",path:"closed_at"},
-        {label:"备用金",path:"opening_cash"},{label:"应收现金",path:"expected_cash"},
-        {label:"实收现金",path:"actual_cash"},{label:"差异",path:"variance"}],
-        Array.isArray(payload.data) ? payload.data : []);
+        {label:"收银员",path:"cashier"},{label:"关班人",path:"closed_by"},
+        {label:"状态",path:"status_label"},{label:"开班时间",path:"opened_at"},
+        {label:"关班时间",path:"closed_at"},{label:"备用金",path:"opening_cash"},
+        {label:"应有现金",path:"expected_cash"},{label:"实盘现金",path:"actual_cash"},
+        {label:"差异",path:"variance"}], rows);
       const info = payload.meta && payload.meta.pagination;
       document.getElementById("fin-shift-meta").textContent = info ? ("共 " + info.total + " 个班次") : "";
+      if (canManageShift) {
+        const openPayload = await fetchJson("/api/v1/billing/shifts?status=OPEN&page=1&page_size=100");
+        const openRows = Array.isArray(openPayload.data) ? openPayload.data : [];
+        const mine = openRows.find(function(row){return Number(row.cashier_id) === currentUserId;});
+        activeShiftId = mine ? mine.id : null;
+        const state = document.getElementById("fin-current-shift-state");
+        const openWrap = document.getElementById("fin-shift-open-wrap");
+        const closeWrap = document.getElementById("fin-shift-close-wrap");
+        if (state) state.textContent = mine
+          ? ("当前班次 #" + mine.id + " · 开班备用金 " + mine.opening_cash + " · 已开班，可登记现金收款")
+          : "当前没有开放的本人班次；现金收款前必须先开班。";
+        if (openWrap) openWrap.hidden = !!mine;
+        if (closeWrap) closeWrap.hidden = !mine;
+        const movement = document.getElementById("fin-shift-movement-form");
+        if (movement) movement.hidden = !mine;
+      }
     } catch (error) {
       document.getElementById("fin-shift-meta").textContent = error.message;
+      const state = document.getElementById("fin-current-shift-state");
+      if (state) state.textContent = "班次读取失败：" + error.message;
     }
   }
 
@@ -429,6 +487,10 @@
       const method = form.querySelector('[name="method"]').value;
       const reference = form.querySelector('[name="reference"]').value.trim();
       const submitButton = form.querySelector('button[type="submit"]');
+      if (method === "CASH" && !activeShiftId) {
+        notify("请先在收银班次区域开班，再登记现金收款。").textContent;
+        return;
+      }
       submitButton.disabled = true;
       const note = notify("提交中…");
       form.appendChild(note);
@@ -598,6 +660,56 @@
   }
 
   buildHead();
+  if (canManageShift) {
+    document.getElementById("fin-shift-open").addEventListener("click", async function(){
+      const button = this;
+      button.disabled = true;
+      try {
+        await postJson("/api/v1/billing/shifts/open", {
+          opening_cash: document.getElementById("fin-shift-opening-cash").value.trim()
+        });
+        await loadShifts();
+      } catch (error) {
+        document.getElementById("fin-current-shift-state").textContent = error.message;
+      } finally { button.disabled = false; }
+    });
+    document.getElementById("fin-shift-close").addEventListener("click", async function(){
+      if (!activeShiftId) return;
+      const button = this;
+      button.disabled = true;
+      try {
+        await postJson("/api/v1/billing/shifts/" + activeShiftId + "/close", {
+          actual_cash: document.getElementById("fin-shift-actual-cash").value.trim(),
+          variance_reason: document.getElementById("fin-shift-variance-reason").value.trim()
+        });
+        await loadShifts();
+      } catch (error) {
+        document.getElementById("fin-current-shift-state").textContent = error.message;
+      } finally { button.disabled = false; }
+    });
+  }
+  if (canManageCashMovement) {
+    const movementForm = document.getElementById("fin-shift-movement-form");
+    movementForm.addEventListener("submit", async function(event){
+      event.preventDefault();
+      if (!activeShiftId) return;
+      const direction = movementForm.querySelector('[name="direction"]').value;
+      const amount = movementForm.querySelector('[name="amount"]').value.trim();
+      const reason = movementForm.querySelector('[name="reason"]').value.trim();
+      const button = movementForm.querySelector('button[type="submit"]');
+      button.disabled = true;
+      try {
+        const key = "cash-move-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,10);
+        await postJson("/api/v1/billing/shifts/" + activeShiftId + "/movements", {
+          direction: direction, amount: amount, reason: reason, idempotency_key: key
+        });
+        movementForm.reset();
+        await loadShifts();
+      } catch (error) {
+        document.getElementById("fin-current-shift-state").textContent = error.message;
+      } finally { button.disabled = false; }
+    });
+  }
   document.getElementById("fin-reload").addEventListener("click", function(){loadFolios(1);});
   prevButton.addEventListener("click", function(){loadFolios(currentPage-1);});
   nextButton.addEventListener("click", function(){loadFolios(currentPage+1);});
