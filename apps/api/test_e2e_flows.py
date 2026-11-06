@@ -353,6 +353,10 @@ class SessionCsrfTemplateTokenTests(E2EFlowTestBase):
 class FrontDeskDrawerStatusDtoTests(E2EFlowTestBase):
     """前台详情抽屉：预订确认状态与实际入住状态必须分别表达。"""
 
+    def setUp(self):
+        super().setUp()
+        self.fd = self._make_staff("drawer_status_frontdesk", "前台")
+
     def test_frontdesk_summary_aggregates_open_folios_and_excludes_closed_folios(self):
         booking_no, _, _, _ = self._booking_checked_in()
         reservation = Reservation.objects.get(booking_no=booking_no)
@@ -379,8 +383,7 @@ class FrontDeskDrawerStatusDtoTests(E2EFlowTestBase):
             amount=Decimal("999.00"), currency=reservation.currency,
             business_date=self.today, reference="e2e-closed-folio-charge")
 
-        frontdesk = self._make_staff("drawer_multi_folio_frontdesk", "前台")
-        self.client.force_login(frontdesk)
+        self.client.force_login(self.fd)
         response = self.client.get(
             f"/api/v1/front-desk/reservations/{booking_no}")
         self.assertEqual(response.status_code, 200, response.content)
@@ -398,8 +401,7 @@ class FrontDeskDrawerStatusDtoTests(E2EFlowTestBase):
         booking_no, token = self._create_reservation()
         self._confirm_by_mock_payment(booking_no, token)
         line = self._line(booking_no)
-        frontdesk = self._make_staff("drawer_status_frontdesk", "前台")
-        self.client.force_login(frontdesk)
+        self.client.force_login(self.fd)
 
         url = f"/api/v1/front-desk/reservations/{booking_no}"
         before = self.client.get(url)
