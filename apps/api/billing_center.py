@@ -730,7 +730,7 @@ def close_shift_api(request, shift_id):
     差异（actual - opening_cash）非零时必须说明并落审计
     （billing.shift_close）；重复关班 400。
     """
-    property_obj = _require_finance_access(request)
+    property_obj = _require_cashier_shift_manage(request)
     if not CashierShift.objects.filter(pk=shift_id, property=property_obj).exists():
         raise ApiError("RESOURCE_NOT_FOUND", "班次不存在或不属于当前物业。")
     body = _json_body(request)
