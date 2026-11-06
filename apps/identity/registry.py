@@ -227,7 +227,7 @@ MODULE_REGISTRY_V2 = {
         "risk_level": "high",
         "property_scoped": True,
         "actions": {
-            "view": "hotelapp.night_audit_execute",  # 营业日中心页 GET 同码门禁
+            "view": "core.night_audit_view",  # 只读查看；执行仍使用专项高危权限
             "add": NOT_APPLICABLE,
             "change": NOT_APPLICABLE,
             "delete": NOT_APPLICABLE,
@@ -239,8 +239,8 @@ MODULE_REGISTRY_V2 = {
         "extra_codes": (),
         "notes": "§4.2 营业日中心 /manage/night-audit/（旧 /nightaudit/ 已 302 迁移）；"
                  "夜审 preview/run 与营业日重开/break-glass 写 API 共 7 条，"
-                 "营业日/夜审历史/break-glass 只读 API 6 条（同码读取口径 "
-                 "hotelapp.night_audit_execute）；break-glass 复核独立权限 "
+                 "营业日/夜审历史/break-glass 只读 API 6 条（core.night_audit_view）；"
+                 "夜审执行仍要求 hotelapp.night_audit_execute；break-glass 复核独立权限 "
                  "core.breakglass_review。",
     },
     # -- 预留模块（对接第三方，module_gate 隐藏，2 个） ------------------------
