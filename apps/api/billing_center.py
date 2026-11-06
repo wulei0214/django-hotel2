@@ -106,6 +106,24 @@ def _folio_balances(folios):
     return {folio.pk: aggregated.get(folio.pk, ZERO) for folio in folios}
 
 
+
+def _invalidate_billing_summary(property_obj):
+    """账务写入后失效当前物业未结余额摘要缓存。
+
+    账本写入已经提交后，缓存失效失败不得把成功的财务操作伪装成 500；
+    记录异常并依赖 60 秒 TTL 兜底。
+    """
+    from django.core.cache import cache
+    import logging
+
+    try:
+        cache.delete("billing:open-summary:%s" % property_obj.pk)
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Failed to invalidate billing summary cache for property %s",
+            property_obj.pk)
+
+
 def _user_name(user):
     if user is None:
         return None
