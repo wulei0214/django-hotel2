@@ -1182,11 +1182,11 @@ P0 权限测试必须覆盖匿名与跨物业。每一个权限拒绝都应验�
 
 | 工作流 | 结果 | 证据 |
 |---|---|---|
-| Django CI | <badge label="通过" color="green"/> | <Link url="https://github.com/wulei0214/django-hotel2/actions/runs/42231517693" title="Django CI · 9b982b0"/> |
-| MySQL 8 tests | <badge label="通过" color="green"/> | <Link url="https://github.com/wulei0214/django-hotel2/actions/runs/42231517610" title="MySQL tests · 9b982b0"/> |
-| MySQL migrations | <badge label="通过" color="green"/> | billing.0021、billing.0022 及其余迁移全部成功 |
-| 全量测试 | <badge label="通过" color="green"/> | 852 tests，148.570s，OK |
-| MySQL 触发器 | <badge label="通过" color="green"/> | 安装 7 条触发器并通过 `check_mysql_append_only_guards` |
+| Django CI | 通过 | [Django CI · 9b982b0](https://github.com/wulei0214/django-hotel2/actions/runs/42231517693) |
+| MySQL 8 tests | 通过 | [MySQL tests · 9b982b0](https://github.com/wulei0214/django-hotel2/actions/runs/42231517610) |
+| MySQL migrations | 通过 | billing.0021、billing.0022 及其余迁移全部成功 |
+| 全量测试 | 通过 | 852 tests，148.570s，OK |
+| MySQL 触发器 | 通过 | 安装 7 条触发器并通过 `check_mysql_append_only_guards` |
 
 之后仅对 MySQL 触发器检查器增加了定义内容断言（必须包含 `FOR UPDATE`、`NEW.shift_id`、`NEW.created_by_id` 和 OPEN 状态），当前 `main` SHA `c7f12247b527c3c1f41446f7c51ddad3defbc24d` 的两条工作流正在重新执行，需等待该 SHA 最终结论。
 
