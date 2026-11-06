@@ -274,7 +274,24 @@ class ApprovalRequestWhitelistTests(ApprovalApiTestBase):
         self.assertEqual(record.action_code, "billing.refund")
         self.assertEqual(record.status, ApprovalRecord.Status.PENDING)
         self.assertEqual(record.requested_by_id, self.frontdesk.pk)
+        self.refund.refresh_from_db()
+        self.assertEqual(self.refund.approval_record_id, record.pk)
         self.assertEqual(self._audit_count(), 1)
+
+    def test_generic_refund_approval_can_be_consumed_by_billing_service(self):
+        self.client.force_login(self.frontdesk)
+        response = self._approval_request()
+        self.assertEqual(response.status_code, 201, response.content)
+        record_id = response.json()["data"]["id"]
+        from apps.billing.services_v2 import BillingService
+        approved, changed = BillingService.approve_refund(
+            property_obj=self.property, refund_id=self.refund.pk,
+            approved_by=self.owner)
+        self.assertTrue(changed)
+        self.assertEqual(approved.status, Refund.Status.APPROVED)
+        self.assertEqual(approved.approval_record_id, record_id)
+        self.refund.refresh_from_db()
+        self.assertEqual(self.refund.status, Refund.Status.APPROVED)
 
     def test_duplicate_request_is_idempotent(self):
         self.client.force_login(self.frontdesk)
