@@ -57,6 +57,8 @@ class ReportCenterTestBase(E2EFlowTestBase):
         super().setUp()
         self.dm = self._make_staff("report_center_duty", "值班经理")
         self.fd = self._make_staff("report_center_front", "前台")
+        self.finance = self._make_staff("report_center_finance", "财务")
+        self.hk = self._make_staff("report_center_housekeeping", "客房服务员")
         self.client.force_login(self.dm)
         self._ref_seq = 0
         self._guest_seq = 0
@@ -494,13 +496,26 @@ class ReportPageTests(ReportCenterTestBase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login/", response["Location"])
 
-    def test_reports_page_forbidden_without_finance_access(self):
-        """页面门禁 = hotelapp.finance_access（页面含收入/ADR 报表）；
-        前台（view_accommodation）不能进入报表中心页面。
-        """
-        self.client.force_login(self.fd)
+    def test_reports_page_forbidden_without_any_report_category_permission(self):
+        """没有运营类/财务类报表权限时，报表中心页面必须拒绝访问。"""
+        self.client.force_login(self.hk)
         response = self.client.get("/manage/reports/")
         self.assertEqual(response.status_code, 403)
+
+    def test_reports_page_filters_cards_by_category_permissions(self):
+        """页面按岗位只显示其有权访问的报表类别，避免页面与 API 门禁错配。"""
+        self.client.force_login(self.fd)
+        operational = self.client.get("/manage/reports/")
+        self.assertEqual(operational.status_code, 200, operational.content)
+        self.assertContains(operational, '"view_accommodation": true')
+        self.assertContains(operational, '"finance_access": false')
+        self.assertContains(operational, "visibleReports")
+
+        self.client.force_login(self.finance)
+        financial = self.client.get("/manage/reports/")
+        self.assertEqual(financial.status_code, 200, financial.content)
+        self.assertContains(financial, '"view_accommodation": false')
+        self.assertContains(financial, '"finance_access": true')
 
     def test_reports_page_ok_with_dedicated_template_and_sidebar(self):
         self.client.force_login(self.dm)
