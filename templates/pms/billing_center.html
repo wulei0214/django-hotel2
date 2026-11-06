@@ -634,10 +634,12 @@
               const approveButton = document.createElement("button");
               approveButton.type = "button"; approveButton.className = "pms-row-btn";
               approveButton.textContent = "审批通过";
+              const approveKey = "PMS2-REFUND-APPROVE-" + Date.now().toString(36) +
+                  "-" + Math.random().toString(36).slice(2,10);
               approveButton.addEventListener("click", async function(){
                 approveButton.disabled = true;
                 try {
-                  await postJson("/api/v1/billing/refunds/" + refund.id + "/approve", {});
+                  await postJson("/api/v1/billing/refunds/" + refund.id + "/approve", {}, approveKey);
                   await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger(), loadShifts()]);
                   openDetail(item.id);
                 } catch (error) {
@@ -649,12 +651,22 @@
               const rejectButton = document.createElement("button");
               rejectButton.type = "button"; rejectButton.className = "pms-row-btn";
               rejectButton.textContent = "驳回申请";
+              let rejectReason = null;
+              let rejectKey = "";
               rejectButton.addEventListener("click", async function(){
-                const reason = window.prompt("请输入驳回原因");
-                if (!reason) return;
+                if (rejectReason === null) {
+                  rejectReason = window.prompt("请输入驳回原因");
+                  if (!rejectReason || !rejectReason.trim()) {
+                    rejectReason = null;
+                    return;
+                  }
+                }
+                rejectKey = rejectKey || ("PMS2-REFUND-REJECT-" + Date.now().toString(36) +
+                    "-" + Math.random().toString(36).slice(2,10));
                 rejectButton.disabled = true;
                 try {
-                  await postJson("/api/v1/billing/refunds/" + refund.id + "/reject", {reason: reason});
+                  await postJson("/api/v1/billing/refunds/" + refund.id + "/reject",
+                      {reason: rejectReason.trim()}, rejectKey);
                   await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger()]);
                   openDetail(item.id);
                 } catch (error) {
@@ -834,14 +846,26 @@
 
   buildHead();
   if (canManageShift) {
+    let openShiftKey = "";
+    let closeShiftKey = "";
+    const openingCashInput = document.getElementById("fin-shift-opening-cash");
+    const actualCashInput = document.getElementById("fin-shift-actual-cash");
+    const varianceReasonInput = document.getElementById("fin-shift-variance-reason");
+    openingCashInput.addEventListener("input", function(){ if (openShiftKey) openShiftKey = ""; });
+    actualCashInput.addEventListener("input", function(){ if (closeShiftKey) closeShiftKey = ""; });
+    varianceReasonInput.addEventListener("input", function(){ if (closeShiftKey) closeShiftKey = ""; });
     document.getElementById("fin-shift-open").addEventListener("click", async function(){
       const button = this;
       button.disabled = true;
+      const openingCash = openingCashInput.value.trim();
+      openShiftKey = openShiftKey || ("PMS2-SHIFT-OPEN-" + Date.now().toString(36) +
+          "-" + Math.random().toString(36).slice(2,10));
       try {
         await postJson("/api/v1/billing/shifts/open", {
-          opening_cash: document.getElementById("fin-shift-opening-cash").value.trim()
-        });
+          opening_cash: openingCash
+        }, openShiftKey);
         await loadShifts();
+        openShiftKey = "";
       } catch (error) {
         document.getElementById("fin-current-shift-state").textContent = error.message;
       } finally { button.disabled = false; }
@@ -850,12 +874,17 @@
       if (!activeShiftId) return;
       const button = this;
       button.disabled = true;
+      const closePayload = {
+        actual_cash: actualCashInput.value.trim(),
+        variance_reason: varianceReasonInput.value.trim()
+      };
+      closeShiftKey = closeShiftKey || ("PMS2-SHIFT-CLOSE-" + Date.now().toString(36) +
+          "-" + Math.random().toString(36).slice(2,10));
       try {
-        await postJson("/api/v1/billing/shifts/" + activeShiftId + "/close", {
-          actual_cash: document.getElementById("fin-shift-actual-cash").value.trim(),
-          variance_reason: document.getElementById("fin-shift-variance-reason").value.trim()
-        });
+        await postJson("/api/v1/billing/shifts/" + activeShiftId + "/close",
+            closePayload, closeShiftKey);
         await loadShifts();
+        closeShiftKey = "";
       } catch (error) {
         document.getElementById("fin-current-shift-state").textContent = error.message;
       } finally { button.disabled = false; }
@@ -879,9 +908,9 @@
         await postJson("/api/v1/billing/shifts/" + activeShiftId + "/movements", {
           direction: direction, amount: amount, reason: reason, idempotency_key: key
         }, key);
+        await loadShifts();
         movementKey = "";
         movementForm.reset();
-        await loadShifts();
       } catch (error) {
         document.getElementById("fin-current-shift-state").textContent = error.message;
       } finally { button.disabled = false; }
