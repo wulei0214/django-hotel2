@@ -870,7 +870,16 @@ class CashierShiftMovement(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+        if self._state.adding:
+            shift = CashierShift.objects.filter(pk=self.shift_id).values(
+                "status", "cashier_id").first()
+            if shift is None:
+                raise ValidationError("现金变动必须关联有效收银班次。")
+            if shift["status"] != CashierShift.ShiftStatus.OPEN:
+                raise ValidationError("已关班的收银班次不得新增现金变动。")
+            if shift["cashier_id"] != self.created_by_id:
+                raise ValidationError("现金变动登记人必须是该班次收银员。")
+        elif self.pk and type(self).objects.filter(pk=self.pk).exists():
             raise ValidationError("班次现金变动是不可变财务事实，禁止修改。")
         return super().save(*args, **kwargs)
 
