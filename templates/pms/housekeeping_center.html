@@ -134,9 +134,16 @@
       <div id="hk-grid"><div class="pms-state">正在读取真实房态数据…</div></div>
       <div class="pms-pager">
         <span>净房放行由当天管理者确认（决策 6）；维修登记原因必填。</span>
-        <span style="display:flex;gap:8px;align-items:center">
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label for="hk-page-size">每页</label>
+          <select id="hk-page-size" aria-label="房态每页条数">
+            <option value="20">20 间</option><option value="50" selected>50 间</option><option value="100">100 间</option>
+          </select>
           <button id="hk-prev" type="button" disabled>上一页</button>
           <span id="hk-page"></span>
+          <label for="hk-goto-page">跳至</label>
+          <input id="hk-goto-page" type="number" min="1" step="1" value="1" aria-label="房态跳转页码" style="width:72px">
+          <button id="hk-goto-btn" type="button">跳转</button>
           <button id="hk-next" type="button" disabled>下一页</button>
         </span>
       </div>
@@ -233,8 +240,10 @@
 
   /* ---------- 房态网格（按楼层分组） ---------- */
   let page = 1;
+  let pageSize = 50;
+  let totalPages = 1;
   function filters() {
-    const params = new URLSearchParams({page: String(page), page_size: "50"});
+    const params = new URLSearchParams({page: String(page), page_size: String(pageSize)});
     const floor = document.getElementById("hk-floor").value.trim();
     const hk = document.getElementById("hk-hk").value;
     const mt = document.getElementById("hk-mt").value;
@@ -348,8 +357,11 @@
         }
         cells.appendChild(roomCard(room));
       });
+      totalPages = Math.max(1, Math.ceil(pageInfo.total / pageInfo.page_size));
       document.getElementById("hk-page").textContent =
-          "第 " + pageInfo.page + " 页 / 共 " + Math.max(1, Math.ceil(pageInfo.total / pageInfo.page_size)) + " 页";
+          "第 " + pageInfo.page + " 页 / 共 " + totalPages + " 页";
+      document.getElementById("hk-goto-page").max = String(totalPages);
+      document.getElementById("hk-goto-page").value = String(pageInfo.page);
       document.getElementById("hk-prev").disabled = !pageInfo.has_previous;
       document.getElementById("hk-next").disabled = !pageInfo.has_next;
       meta.textContent = "共 " + pageInfo.total + " 间在管房间";
@@ -370,6 +382,25 @@
   });
   document.getElementById("hk-prev").addEventListener("click", function () { loadRooms(page - 1); });
   document.getElementById("hk-next").addEventListener("click", function () { loadRooms(page + 1); });
+  document.getElementById("hk-page-size").addEventListener("change", function () {
+    const parsed = Number.parseInt(this.value, 10);
+    if ([20, 50, 100].includes(parsed)) { pageSize = parsed; loadRooms(1); }
+  });
+  function gotoHousekeepingPage() {
+    const input = document.getElementById("hk-goto-page");
+    const target = Number.parseInt(input.value, 10);
+    if (!Number.isInteger(target) || target < 1 || target > totalPages) {
+      input.setCustomValidity("请输入 1 至 " + totalPages + " 之间的页码。");
+      input.reportValidity();
+      return;
+    }
+    input.setCustomValidity("");
+    loadRooms(target);
+  }
+  document.getElementById("hk-goto-btn").addEventListener("click", gotoHousekeepingPage);
+  document.getElementById("hk-goto-page").addEventListener("keydown", function (event) {
+    if (event.key === "Enter") gotoHousekeepingPage();
+  });
 
   /* ---------- 维修登记（抽屉表单，reason 必填） ---------- */
   function maintenanceButton(room, target, label, cls) {
