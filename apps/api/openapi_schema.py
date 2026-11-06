@@ -1478,6 +1478,58 @@ op("/billing/refunds", "post", "财务", "退款申请（双人审批 SoD 第一
    extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
                              "semantics": "服务层 idempotency_key（body 优先，缺省取头）强校验 1-64 字符；"
                                           "同 key 不同事实 → 400。"}})
+op("/billing/refunds/{refund_id}/approve", "post", "财务", "审批退款申请（仅审批，不执行）",
+   status="verified", path_params=[("refund_id", "退款申请 ID。")],
+   body=s_obj({}, desc="可空请求体；审批不接受“确认已付款”语义。"),
+   body_required=False, permission="有效员工 + hotelapp.finance_access + billing.refund_approve",
+   ok=(("200", "退款状态变为 APPROVED；不写 REFUND 凭证"),),
+   data=s_obj({"refund_id": s_int(), "status": s_str(),
+               "approved_by_id": s_int(), "approval_record_id": s_int(),
+               "changed": s_bool()}), errors=E_STAFF_CONFLICT,
+   notes="ApprovalRecord 审批事实与退款执行完全分离。")
+
+op("/billing/refunds/{refund_id}/reject", "post", "财务", "驳回退款申请",
+   status="verified", path_params=[("refund_id", "退款申请 ID。")],
+   body=s_obj({"reason": s_str("驳回原因，1-240 字符。")}, required=["reason"]),
+   permission="有效员工 + hotelapp.finance_access + billing.refund_approve",
+   ok=(("200", "退款状态变为 REJECTED；不写 REFUND 凭证"),),
+   data=s_obj({"refund_id": s_int(), "status": s_str(),
+               "approved_by_id": s_int(), "changed": s_bool()}),
+   errors=E_STAFF_CONFLICT)
+
+op("/billing/refunds/{refund_id}/execute", "post", "财务", "执行已批准退款",
+   status="verified", path_params=[("refund_id", "退款申请 ID。")],
+   body=s_obj({
+       "confirm_refund_paid": s_bool("确认退款已实际支付给住客，必须为 true。"),
+       "execution_reference": s_str("支付渠道或人工退款凭据参考号，最多 80 字符。"),
+       "idempotency_key": s_str("执行幂等键，1-96 字符；也可使用 Idempotency-Key 头。"),
+   }, required=["confirm_refund_paid", "idempotency_key"]),
+   permission="有效员工 + hotelapp.finance_access + billing.refund_execute",
+   ok=(("201", "退款执行成功，追加唯一 REFUND 凭证并更新 Payment"),
+       ("200", "相同执行幂等键重放，不重复入账")),
+   data=s_obj({"refund_id": s_int(), "payment_id": s_int(), "status": s_str(),
+               "amount": s_str(), "approved_by_id": s_int(),
+               "executed_by_id": s_int(), "executed_at": s_str("", format="date-time"),
+               "execution_shift_id": s_nullable(s_int()),
+               "execution_reference": s_str()}), errors=E_STAFF_CONFLICT,
+   notes="申请人、审批人、执行人必须为三个不同账号；现金退款必须关联执行人的开放班次。")
+
+op("/billing/shifts/{shift_id}/movements", "post", "财务", "登记班次现金补入或支出",
+   status="verified", path_params=[("shift_id", "收银班次 ID。")],
+   body=s_obj({
+       "direction": s_str("IN=现金补入；OUT=现金支出/取出。"),
+       "amount": s_str("正数金额，Decimal 字符串。"),
+       "reason": s_str("业务原因，1-240 字符。"),
+       "idempotency_key": s_str("班次内唯一幂等键，1-64 字符。"),
+   }, required=["direction", "amount", "reason", "idempotency_key"]),
+   permission="有效员工 + hotelapp.finance_access + billing.cash_movement_manage",
+   ok=(("201", "现金变动登记成功"), ("200", "同幂等键同事实重放")),
+   data=s_obj({"id": s_int(), "shift_id": s_int(), "direction": s_str(),
+               "amount": s_str(), "reason": s_str(),
+               "created_at": s_str("", format="date-time")}),
+   errors=E_STAFF_CONFLICT,
+   notes="已关班不可追加；班次应有现金 = 备用金 + 现金收款 - 现金退款 + IN - OUT。")
+
 
 op("/billing/reversals", "post", "财务", "红字冲销（只追加反向凭证）",
    status="verified",
