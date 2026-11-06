@@ -221,6 +221,9 @@ class DepositGuardTests(WhiteboxBillingBase):
         # 保证分账单 opened_at 严格晚于主账单（排除同刻并列导致排序不稳定）
         Folio.objects.filter(pk=guest_folio.pk).update(
             opened_at=timezone.now() + timedelta(seconds=10))
+        BillingService.open_shift(
+            property_obj=self.property, cashier=self.operator,
+            opening_cash=Decimal("0.00"))
         payment, created = BillingService.record_deposit(
             property_obj=self.property, reservation=self.reservation,
             amount="50.00", method="CASH", idempotency_key="wbb-dep-002",
@@ -237,6 +240,9 @@ class CollectPaymentRaceTests(WhiteboxBillingBase):
 
     def test_collect_payment_race_returns_existing_payment(self):
         reservation = self._make_reservation("WBBPAY0001", total="600.00", nights=2)
+        BillingService.open_shift(
+            property_obj=self.property, cashier=self.operator,
+            opening_cash=Decimal("0.00"))
         first = BillingService.collect_payment(
             property_obj=self.property, reservation=reservation,
             amount="100.00", method="CASH", collected_by=self.operator,
