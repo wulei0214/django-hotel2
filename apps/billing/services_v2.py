@@ -705,6 +705,10 @@ class BillingService:
                       reversed_by, request=None):
         """红字冲销：财务执行前必须存在值班经理/店长批准的审批事实。"""
         from apps.billing.models import ApprovalRecord, LedgerEntry
+        from apps.identity.authorization import AuthorizationService
+        if not AuthorizationService.has_permission(
+                reversed_by, property_obj, "billing.reverse_entry"):
+            raise ValueError("当前员工没有财务红字冲销执行权限。")
         reason = str(reason or "").strip()
         if not reason:
             raise ValueError("冲销必须填写原因。")
@@ -720,6 +724,12 @@ class BillingService:
         ).first()
         if approval is None:
             raise ValueError("冲销必须先取得当前物业对该原凭证的有效审批。")
+        if not AuthorizationService.has_permission(
+                approval.requested_by, property_obj, "billing.reverse_entry"):
+            raise ValueError("冲销申请人不具备财务冲销申请权限。")
+        if not AuthorizationService.has_permission(
+                approval.approved_by, property_obj, "billing.reversal_approve"):
+            raise ValueError("冲销审批人不具备值班经理/店长审批权限。")
         if approval.approved_by_id == reversed_by.pk:
             raise ValueError("冲销审批人与实际执行人必须是不同账号。")
         if approval.reason != reason:
