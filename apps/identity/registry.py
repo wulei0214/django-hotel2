@@ -405,7 +405,7 @@ ROLE_REGISTRY = (
 )
 
 # ---------------------------------------------------------------------------
-# SPECIAL_PERMISSIONS —— 高危/敏感专项权限点（14 个，跨 App 全量）
+# SPECIAL_PERMISSIONS —— 高危/敏感专项权限点（当前全量登记，跨 App）
 # ---------------------------------------------------------------------------
 # 口径：矩阵页 ACTION_PERMS 9 点 + 矩阵外 5 点（F-09：billing.refund_*、
 # core.breakglass_review、identity.staff_manage、inventory.manage_rates）。
