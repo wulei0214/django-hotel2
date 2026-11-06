@@ -777,6 +777,7 @@ class BillingService:
         cash_income = Payment.objects.filter(
             cashier_shift=shift, method="CASH",
             status__in=(Payment.Status.SUCCEEDED,
+                        Payment.Status.REFUND_PENDING,
                         Payment.Status.PARTIALLY_REFUNDED,
                         Payment.Status.REFUNDED)).aggregate(
                 total=models.Sum("amount"))["total"] or Decimal("0.00")
