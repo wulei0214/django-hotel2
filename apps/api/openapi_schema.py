@@ -1505,7 +1505,7 @@ op("/billing/refunds/{refund_id}/execute", "post", "财务", "执行已批准退
    status="verified", path_params=[("refund_id", "退款申请 ID。")],
    body=s_obj({
        "confirm_refund_paid": s_bool("确认退款已实际支付给住客，必须为 true。"),
-       "execution_reference": s_str("支付渠道或人工退款凭据参考号，最多 80 字符。"),
+       "execution_reference": s_str("支付渠道或人工退款凭据参考号，最多 80 字符；银行卡/转账退款必填，现金退款可空。"),
        "idempotency_key": s_str("执行幂等键，1-96 字符；也可使用 Idempotency-Key 头。"),
    }, required=["confirm_refund_paid", "idempotency_key"]),
    permission="有效员工 + hotelapp.finance_access + billing.refund_execute",
@@ -1595,7 +1595,7 @@ op("/billing/shifts/{shift_id}/close", "post", "财务", "收银关班（交班�
                "variance_reason": s_str("差异说明：actual-opening 差异非零时必填"
                                         "（服务强校验），≤240 字符。")},
               required=["actual_cash"]),
-   permission="有效员工 + billing.cashier_shift_manage；跨物业班次一律 404",
+   permission="有效员工 + billing.cashier_shift_manage；本人可关本人班次，hotelapp.finance_access 可代关本物业其他员工班次；跨物业班次 404",
    ok=(("200", "关班成功；返回 expected/actual/variance 与差异说明"),),
    data=s_obj({"id": s_int(), "status": s_str(), "status_label": s_str(),
                "opening_cash": s_str(), "expected_cash": s_str(),
