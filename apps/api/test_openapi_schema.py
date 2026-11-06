@@ -13,6 +13,9 @@
 """
 import json
 import re
+from pathlib import Path
+
+from django.conf import settings
 
 from django.test import TestCase
 from django.urls import URLPattern, resolve
@@ -200,6 +203,16 @@ class PMS2OpenApiStructureValidityTests(TestCase):
 
     def setUp(self):
         self.spec = build_openapi()
+
+    def test_committed_openapi_snapshot_matches_runtime_contract(self):
+        snapshot_path = (
+            Path(settings.BASE_DIR) / "docs" / "接口文档" / "openapi.json")
+        self.assertTrue(snapshot_path.exists(), "必须提交运行时 OpenAPI 快照")
+        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        self.assertEqual(snapshot["openapi"], self.spec["openapi"])
+        self.assertEqual(snapshot["paths"], self.spec["paths"])
+        self.assertEqual(snapshot["components"], self.spec["components"])
+        self.assertEqual(snapshot["tags"], self.spec["tags"])
 
     def test_document_is_parseable_and_openapi_31(self):
         raw = json.dumps(self.spec, ensure_ascii=False)  # 可 JSON 序列化
