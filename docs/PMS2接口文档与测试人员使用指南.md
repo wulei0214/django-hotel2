@@ -4,7 +4,7 @@
 > 适用项目：django-hotel2 / PMS2  
 > 核对分支：main  
 > 核对日期：2026-11-04  
-> 状态：Swagger/OpenAPI 3.1 已实施；当前 60 个已注册 API 路由纳入规范，字段级 DTO 与权限细节仍分批核验。  
+> 状态：Swagger/OpenAPI 3.1 已实施；运行时规范覆盖 97 条 API 路由。仓库静态快照当前仅 74 条，属于待同步文件，Apifox 应优先导入运行时 `/api/v1/openapi.json`。字段级 DTO 与权限细节仍需分批核验。  
 > 重要：本文描述当前代码可见的接口，不代表所有接口均已完成业务验收。
 
 ## 1. 结论：当前是否已有 API 文档
@@ -13,7 +13,7 @@
 
 - 本地地址：`http://127.0.0.1:8000/api/v1/openapi.json`
 - 作用：向 Apifox 等工具提供 OpenAPI 文档导入源。
-- 当前 OpenAPI 规范登记 60 个 JSON API 路径（具体数量随路由变化，以当前 main 生成结果为准）。
+- 当前运行时 OpenAPI 规范覆盖 97 个 JSON API 路径（以当前 main 的运行时生成结果为准）；仓库静态文件 `docs/接口文档/openapi.json` 只有 74 个 paths，不能当作完整导入源，需在具备运行环境时重新生成并加入 CI 漂移检查。
 - 覆盖路径不等于字段级契约全部完成：请求/响应 DTO、字段约束、权限码、物业范围、错误码和示例仍需按 operation 的 `x-contract-status` 逐项核验。
 - HTML 页面流程（如登录、强制改密）不应伪装为 JSON API；Apifox 导入后仍需在隔离测试环境验证 Cookie、CSRF 和真实业务副作用。
 
