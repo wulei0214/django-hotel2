@@ -524,5 +524,6 @@ class ReportPageTests(ReportCenterTestBase):
         self.assertTemplateUsed(response, "pms/report_center.html")
         self.assertContains(response, "报表选择")
         self.assertContains(response, "统计口径说明")
-        # 侧边栏入口（财务与日结组新增项）对 finance_access 持有者可见
         self.assertContains(response, "报表分析中心")
+        self.assertContains(response, '"view_accommodation": true')
+        self.assertContains(response, '"finance_access": true')
