@@ -194,5 +194,18 @@ def refresh(request):
     {active, created, updated, resolved, by_code}。
     """
     property_obj, _profile, _group_ids = _context(request)
+    from apps.core.rate_limit import check, retry_after_seconds
+    if not check(request, "pms.notification_refresh",
+                 username=request.user.get_username()):
+        raise ApiError(
+            "RATE_LIMITED",
+            "待办刷新过于频繁，请稍后再试（建议等待 %s 秒）。" %
+            retry_after_seconds("pms.notification_refresh"),
+            retryable=True)
     summary = refresh_operational_todos(property_obj)
+    AuditEvent.record(
+        action="notification.refresh", entity_type="Property",
+        entity_id=property_obj.pk, actor=request.user,
+        property_obj=property_obj,
+        after=summary, reason="员工手动触发物业待办刷新")
     return api_response(request, summary, extra_meta={"refresh_note": REFRESH_NOTE})
