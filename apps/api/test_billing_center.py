@@ -953,6 +953,54 @@ class BillingRefundThreePartyApiTests(BillingCenterTestBase):
                 reference=f"refund:{refund.provider_ref}").count(), 1)
 
 
+    def test_cash_refund_terminal_execution_facts_cannot_be_backfilled(self):
+        from django.core.exceptions import ValidationError
+
+        reservation, _folio = self._booking_with_outstanding()
+        payment = BillingService.collect_payment(
+            property_obj=self.property, reservation=reservation,
+            amount="60.00", method="CASH", collected_by=self.finance,
+            reference="BC-REFUND-CASH-IMMUTABLE-001")
+        approver = self._make_staff("fin_cash_refund_approver", "财务")
+        executor = self._make_staff("fin_cash_refund_executor", "财务")
+        self._grant(approver, "refund_approve")
+        self._grant(executor, "refund_execute")
+        BillingService.open_shift(
+            property_obj=self.property, cashier=executor,
+            opening_cash=Decimal("25.00"))
+
+        self._login(self.finance)
+        requested = _post_json(
+            self.client, "/api/v1/billing/refunds",
+            {"payment_id": payment.pk, "amount": "25.00",
+             "reason": "现金退款终态字段不可篡改",
+             "idempotency_key": "bc-cash-refund-immutable-request"})
+        self.assertEqual(requested.status_code, 201, requested.content)
+        refund_id = requested.json()["data"]["refund_id"]
+
+        self._login(approver)
+        approved = _post_json(
+            self.client, f"/api/v1/billing/refunds/{refund_id}/approve", {})
+        self.assertEqual(approved.status_code, 200, approved.content)
+
+        self._login(executor)
+        executed = _post_json(
+            self.client, f"/api/v1/billing/refunds/{refund_id}/execute",
+            {"confirm_refund_paid": True,
+             "idempotency_key": "bc-cash-refund-immutable-execution"})
+        self.assertEqual(executed.status_code, 201, executed.content)
+
+        refund = Refund.objects.get(pk=refund_id)
+        self.assertEqual(refund.status, Refund.Status.SUCCEEDED)
+        self.assertEqual(refund.execution_reference, "")
+        self.assertEqual(refund.execution_shift.cashier_id, executor.pk)
+
+        # 现金退款允许没有第三方渠道流水号；但执行成功后空值也是已冻结事实，
+        # 不能再通过 ORM save 补写伪造参考号。
+        refund.execution_reference = "FORGED-AFTER-EXECUTION"
+        with self.assertRaises(ValidationError):
+            refund.save()
+
 class FinanceLegacyRouteRetirementTests(BillingCenterTestBase):
     """旧 /finance 页面只迁移到 PMS2；旧财务写入口永久退役。"""
 
