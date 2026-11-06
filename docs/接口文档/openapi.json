@@ -11947,12 +11947,12 @@
         "tags": [
           "财务"
         ],
-        "summary": "红字冲销（只追加反向凭证）",
-        "description": "原凭证不可变；审计事件：billing.reverse_entry。\n\n权限要求：有效员工 + hotelapp.finance_access + billing.reverse_entry（F-08：新权限码，不复活已退役的 hotelapp.reverse_checkout）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "summary": "执行已获管理者批准的红字冲销",
+        "description": "申请走 POST /approvals/request（action_code=billing.reversal）；审批由值班经理/店长完成；财务仅执行已批准申请。原凭证不可变。\n\n权限要求：有效财务员工 + hotelapp.finance_access + billing.reverse_entry；关联的 billing.reversal 必须由值班经理/店长批准，且审批人与执行人不同。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_billing_reversals",
         "responses": {
           "200": {
-            "description": "同一原凭证重复冲销幂等重放（返回首次反向凭证）",
+            "description": "同一审批单与原凭证重复冲销幂等重放（返回首次反向凭证）",
             "content": {
               "application/json": {
                 "schema": {
@@ -11978,6 +11978,10 @@
                         "void_of_id": {
                           "type": "integer",
                           "description": ""
+                        },
+                        "approval_id": {
+                          "type": "integer",
+                          "description": "关联的冲销审批记录 ID。"
                         },
                         "amount": {
                           "type": "string",
@@ -12012,7 +12016,7 @@
             }
           },
           "201": {
-            "description": "冲销成功：追加等额反向 REVERSAL 凭证 + 审计 billing.reverse_entry",
+            "description": "追加等额反向 REVERSAL 凭证，关联 approval_id 并写入审计",
             "content": {
               "application/json": {
                 "schema": {
@@ -12038,6 +12042,10 @@
                         "void_of_id": {
                           "type": "integer",
                           "description": ""
+                        },
+                        "approval_id": {
+                          "type": "integer",
+                          "description": "关联的冲销审批记录 ID。"
                         },
                         "amount": {
                           "type": "string",
@@ -12134,12 +12142,12 @@
         },
         "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
-        "x-required-permission": "有效员工 + hotelapp.finance_access + billing.reverse_entry（F-08：新权限码，不复活已退役的 hotelapp.reverse_checkout）",
+        "x-required-permission": "有效财务员工 + hotelapp.finance_access + billing.reverse_entry；关联的 billing.reversal 必须由值班经理/店长批准，且审批人与执行人不同",
         "x-idempotency": {
           "header": "Idempotency-Key",
           "required": false,
           "max_length": 128,
-          "semantics": "api_contract.idempotent 头幂等 + 服务层 reference 幂等；同一原凭证只能冲销一次，重放返回首次结果。"
+          "semantics": "api_contract.idempotent + approval_id + 服务层 reference 幂等；同一原凭证只允许一个红字凭证。"
         },
         "parameters": [
           {
@@ -12174,15 +12182,15 @@
                     "type": "integer",
                     "description": "被冲销原凭证 ID（不可为红字凭证）。"
                   },
-                  "reason": {
-                    "type": "string",
-                    "description": "冲销原因，1-240 字符（服务强校验）。"
+                  "approval_id": {
+                    "type": "integer",
+                    "description": "billing.reversal 已批准的 ApprovalRecord ID。"
                   }
                 },
                 "additionalProperties": true,
                 "required": [
                   "entry_id",
-                  "reason"
+                  "approval_id"
                 ]
               }
             }
@@ -13203,6 +13211,33 @@
             "in": "query",
             "required": false,
             "description": "审批状态筛选。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action_code",
+            "in": "query",
+            "required": false,
+            "description": "按审批动作代码筛选。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entity_type",
+            "in": "query",
+            "required": false,
+            "description": "按目标实体类型筛选。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entity_id",
+            "in": "query",
+            "required": false,
+            "description": "按目标实体 ID 筛选。",
             "schema": {
               "type": "string"
             }
