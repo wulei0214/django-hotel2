@@ -851,3 +851,47 @@ class FinanceLegacyRouteRetirementTests(BillingCenterTestBase):
         self.assertEqual(response.status_code, 410)
         self.assertFalse(
             LedgerEntry.objects.filter(description="不得进入旧账本").exists())
+
+
+class BillingPermissionMigrationMatrixTests(TestCase):
+    """验证迁移后的正式角色授权，不允许权限映射静默漂移。"""
+
+    def _role_names_for(self, app_label, codename):
+        permission = Permission.objects.get(
+            content_type__app_label=app_label, codename=codename)
+        return set(Group.objects.filter(
+            permissions=permission).values_list("name", flat=True))
+
+    def test_finance_and_cash_shift_permissions_match_nine_role_decisions(self):
+        self.assertEqual(
+            self._role_names_for("billing", "refund_request"),
+            {"前台", "财务"})
+        self.assertEqual(
+            self._role_names_for("billing", "refund_approve"),
+            {"值班经理", "店长"})
+        self.assertEqual(
+            self._role_names_for("billing", "refund_execute"),
+            {"财务"})
+        self.assertEqual(
+            self._role_names_for("billing", "cashier_shift_manage"),
+            {"前台", "财务", "值班经理", "店长"})
+        self.assertEqual(
+            self._role_names_for("billing", "cash_movement_manage"),
+            {"财务"})
+
+    def test_maintenance_permission_is_not_inherited_from_no_show(self):
+        self.assertEqual(
+            self._role_names_for("inventory", "maintenance_manage"),
+            {"值班经理", "店长"})
+        maintenance = Permission.objects.get(
+            content_type__app_label="inventory",
+            codename="maintenance_manage")
+        no_show = Permission.objects.get(
+            content_type__app_label="hotelapp",
+            codename="no_show_handle")
+        maintenance_groups = set(Group.objects.filter(
+            permissions=maintenance).values_list("pk", flat=True))
+        no_show_groups = set(Group.objects.filter(
+            permissions=no_show).values_list("pk", flat=True))
+        self.assertTrue(maintenance_groups.isdisjoint(
+            no_show_groups & {Group.objects.get(name="前台").pk}))
