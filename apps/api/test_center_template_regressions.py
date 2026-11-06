@@ -44,6 +44,15 @@ class CenterTemplateRegressionTests(SimpleTestCase):
         self.assertNotIn('document.getElementById("fin-refund-amount")', source)
         self.assertNotIn('document.getElementById("fin-reverse-reason")', source)
 
+    def test_billing_write_forms_keep_idempotency_keys_across_retries(self):
+        source = self.read_template("billing_center.html")
+        self.assertIn('headers["Idempotency-Key"] = idempotencyKey', source)
+        self.assertIn("generatedReference", source)
+        self.assertIn("idempotency_key: key", source)
+        self.assertIn("requestKey ||", source)
+        self.assertIn("executionKey ||", source)
+        self.assertIn("movementKey ||", source)
+
     def test_billing_center_exposes_shift_controls_and_separate_refund_actions(self):
         source = self.read_template("billing_center.html")
         self.assertNotIn('href="/finance/"', source)
