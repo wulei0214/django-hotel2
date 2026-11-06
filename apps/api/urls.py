@@ -37,6 +37,7 @@ urlpatterns = [
     path("front-desk/reservations/<str:booking_no>/deposits", front_desk.receive_deposit_api, name="front_desk_receive_deposit"),
     path("front-desk/payments/<int:payment_id>/refunds", front_desk.request_refund_api, name="front_desk_request_refund"),
     path("front-desk/refunds/<int:refund_id>/approve", front_desk.approve_refund_api, name="front_desk_approve_refund"),
+    path("front-desk/refunds/<int:refund_id>/reject", front_desk.reject_refund_api, name="front_desk_reject_refund"),
     path("front-desk/reservation-rooms/<int:reservation_room_id>/assign", front_desk.assign_room, name="front_desk_assign_room"),
     path("front-desk/reservation-rooms/<int:reservation_room_id>/check-in", front_desk.check_in, name="front_desk_check_in"),
     path("front-desk/reservations/<str:booking_no>/payments", front_desk.collect_payment, name="front_desk_collect_payment"),
