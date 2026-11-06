@@ -428,7 +428,13 @@ class ApprovalDecisionTests(ApprovalApiTestBase):
         self.owner = self._make_staff("apd_owner", "店长")
         self.duty = self._make_staff("apd_duty", "值班经理")
         self.finance = self._make_staff("apd_finance", "财务")
-        self.record = self._make_approval(
+        self.business_date = self._make_business_date(self.property)
+        self.record, _ = ApprovalService.request_approval(
+            property_obj=self.property, action_code="night_audit.reopen",
+            entity_type="BusinessDate", entity_id=str(self.business_date.pk),
+            requested_by=self.owner, reason="通用审批状态机回归",
+            payload={"business_date": self.business_date.business_date.isoformat()})
+        self.refund_record = self._make_approval(
             self.property, self.finance, entity_id="9201")
 
     def _approve(self, record_id):
@@ -457,12 +463,13 @@ class ApprovalDecisionTests(ApprovalApiTestBase):
         self.assertEqual(response.status_code, 404, response.content)
 
     def test_approve_requires_registry_approve_permission(self):
-        # 财务有 approval_view 但无 billing.refund_approve → 403
+        # 财务有 approval_view 但无 billing.refund_approve → 403；
+        # 即使该动作属于退款，也必须先执行权限检查，再提示使用专用退款审批入口。
         self.client.force_login(self.finance)
-        response = self._approve(self.record.pk)
+        response = self._approve(self.refund_record.pk)
         self.assertEqual(response.status_code, 403, response.content)
-        self.record.refresh_from_db()
-        self.assertEqual(self.record.status, ApprovalRecord.Status.PENDING)
+        self.refund_record.refresh_from_db()
+        self.assertEqual(self.refund_record.status, ApprovalRecord.Status.PENDING)
 
     def test_approve_permission_follows_action_registry(self):
         # 仅持有 billing.refund_approve 的账号不能审批 night_audit.reopen 记录
