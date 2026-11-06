@@ -1076,7 +1076,7 @@ for _path in ("/front-desk/reservations/{booking_no}/payments",
 op("/night-audit/preview", "get", "夜审与紧急访问", "预览夜审",
    status="verified",
    query=[Q("date", "营业日期 YYYY-MM-DD；缺省取物业当前营业日。", "string", False)],
-   permission="有效员工 + hotelapp.night_audit_execute",
+   permission="有效员工 + core.night_audit_view",
    ok=(("200", "夜审预览（待过账房费行 + 汇总）"),),
    data=_ref("NightAuditPreviewResult"), errors=E_STAFF)
 
@@ -1138,19 +1138,19 @@ op("/night-audit/business-dates", "get", "夜审与紧急访问", "营业日分�
    status="verified",
    query=[Q("status", "可选；OPEN/CLOSED/REOPENED，非法值 400。", "string", False, "CLOSED"),
           *PQ()],
-   permission="有效员工 + hotelapp.night_audit_execute",
+   permission="有效员工 + core.night_audit_view",
    ok=(("200", "营业日 DTO 数组（含最近一次夜审运行摘要），稳定排序 -business_date,-id"),),
    data=s_arr(_ref("BusinessDateDto")), errors=E_STAFF)
 
 op("/night-audit/business-dates/current", "get", "夜审与紧急访问", "当前营业日",
    status="verified",
-   permission="有效员工 + hotelapp.night_audit_execute",
+   permission="有效员工 + core.night_audit_view",
    ok=(("200", "当前营业日（按物业时区解析；无记录时 exists=false 且按 OPEN 口径返回）"),),
    data=_ref("BusinessDateCurrentResult"), errors=E_STAFF)
 
 op("/night-audit/business-dates/{business_date_id}", "get", "夜审与紧急访问", "营业日详情",
    status="verified", path_params=[("business_date_id", "营业日记录 ID。")],
-   permission="有效员工 + hotelapp.night_audit_execute",
+   permission="有效员工 + core.night_audit_view",
    ok=(("200", "营业日详情：夜审运行历史、重开审批、过租/未到汇总、异常房态"),),
    data=_ref("BusinessDateDetail"), errors=E_STAFF_CONFLICT)
 
@@ -1159,7 +1159,7 @@ op("/night-audit/break-glass", "get", "夜审与紧急访问", "紧急访问记�
    query=[Q("status", "可选；GRANTED/USED/EXPIRED/REVIEWED。", "string", False, "REVIEWED"),
           Q("review_decision", "可选；CONFIRMED/REJECTED。", "string", False),
           *PQ()],
-   permission="有效员工 + hotelapp.night_audit_execute",
+   permission="有效员工 + core.night_audit_view",
    ok=(("200", "break-glass 记录数组（review_pending 标记待复核），稳定排序 -created_at,-id"),),
    data=s_arr(_ref("BreakGlassRecordDto")), errors=E_STAFF)
 
@@ -1168,13 +1168,13 @@ op("/night-audit/runs", "get", "夜审与紧急访问", "夜审历史分页列�
    query=[Q("status", "可选；RUNNING/SUCCESS/FAILED。", "string", False, "FAILED"),
           Q("business_date_id", "可选；按营业日记录 ID 过滤。", "integer", False, 1),
           *PQ()],
-   permission="有效员工 + hotelapp.night_audit_execute",
+   permission="有效员工 + core.night_audit_view",
    ok=(("200", "夜审运行 DTO 数组（含耗时与截断失败原因），稳定排序 -started_at,-id"),),
    data=s_arr(_ref("NightAuditRunDto")), errors=E_STAFF)
 
 op("/night-audit/runs/{run_id}", "get", "夜审与紧急访问", "单次夜审运行详情",
    status="verified", path_params=[("run_id", "夜审运行记录 ID。")],
-   permission="有效员工 + hotelapp.night_audit_execute",
+   permission="有效员工 + core.night_audit_view",
    ok=(("200", "运行详情（完整摘要 summary 与失败原因）"),),
    data=_ref("NightAuditRunDto"), errors=E_STAFF_CONFLICT)
 
@@ -1559,7 +1559,7 @@ op("/billing/shifts", "get", "财务", "收银班次列表",
    status="verified",
    query=[Q("status", "班次状态筛选 OPEN/CLOSED/RECONCILED。"),
           Q("mine", "1 时仅返回当前员工本人班次；财务查看全部时也可缩小到本人。"), *PQ()],
-   permission="有效员工 + billing.cashier_shift_manage；有 finance_access 时查看本物业全部班次，否则仅本人班次",
+   permission="有效员工 + (billing.cashier_shift_manage 或 hotelapp.finance_access)；仅本人班次/本物业全部班次按权限区分",
    ok=(("200", "CashierShift 行数组（备用金/应有/实盘/差异/关班人）"),),
    data=s_arr(s_obj({
        "id": s_int(), "cashier_id": s_int(), "cashier": s_str(),
@@ -1603,8 +1603,7 @@ op("/billing/shifts/{shift_id}/close", "post", "财务", "收银关班（交班�
                "closed_at": s_str("", format="date-time")}),
    errors=E_STAFF_CONFLICT,
    notes="BillingService.close_shift 唯一写入口；差异非零必须说明并审计"
-         "（billing.shift_close）；重复关班 400。expected_cash 当前口径为"
-         "开班备用金（班次内现金交易聚合待 ReconciliationRun 一并登记）。",
+         "（billing.shift_close）；重复关班 400。expected_cash 按班次现金事实计算：开班备用金 + 现金收款 - 现金退款 + 现金补入 - 现金支出。",
    extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
                              "semantics": "api_contract.idempotent：同 key 同 body 重放首次响应；"
                                           "班次状态迁移不可重复执行（重复关班 400）。"}})
@@ -1872,13 +1871,13 @@ op("/housekeeping/rooms", "get", "清洁与维修", "清洁/维修工作清单",
    query=[Q("floor", "楼层筛选。"), Q("housekeeping", "清洁状态筛选 CLEAN/DIRTY/CLEANING/INSPECTING。"),
           Q("maintenance", "维修状态筛选 NORMAL/OUT_OF_ORDER/OUT_OF_SERVICE。"),
           Q("occupancy", "占用状态筛选 VACANT/OCCUPIED。"), *PQ()],
-   permission="有效员工 + hotelapp.view_room",
+   permission="有效员工 + inventory.housekeeping_view",
    ok=(("200", "三维房态行数组（floor,number,id 稳定排序）"),),
    data=s_arr(HK_ROOM_DTO), errors=E_STAFF)
 
 op("/housekeeping/summary", "get", "清洁与维修", "今日清洁统计",
    status="verified",
-   permission="有效员工 + hotelapp.view_room",
+   permission="有效员工 + inventory.housekeeping_view",
    ok=(("200", "各清洁/维修状态计数、待放行数、楼层分布与今日审计流转量"),),
    data=s_obj({
        "housekeeping": s_obj(desc="清洁状态计数映射。"),
@@ -1898,7 +1897,7 @@ op("/housekeeping/rooms/{room_id}/status", "post", "清洁与维修", "清洁状
    body=s_obj({"status": s_str("目标清洁状态 CLEANING/INSPECTING/CLEAN/DIRTY。"),
                 "notes": s_nullable(s_str("备注（≤240 字符，入审计）。"))},
               required=["status"]),
-   permission="有效员工 + hotelapp.change_room；→CLEAN 净房放行另需专项 hotelapp.room_release_ready（服务层+API 层双重校验）",
+   permission="有效员工 + inventory.housekeeping_update；→CLEAN 净房放行另需专项 hotelapp.room_release_ready（服务层+API 层双重校验）",
    ok=(("200", "流转成功（changed=false 表示幂等空操作）"),),
    data=s_obj({**HK_ROOM_DTO["properties"], "changed": s_bool()}),
    errors=E_STAFF_CONFLICT,
@@ -1912,7 +1911,7 @@ op("/housekeeping/rooms/{room_id}/maintenance", "post", "清洁与维修", "维�
    body=s_obj({"status": s_str("目标维修状态 OUT_OF_ORDER/OUT_OF_SERVICE/NORMAL。"),
                 "reason": s_str("登记原因，1-240 字符（服务强校验）。")},
               required=["status", "reason"]),
-   permission="有效员工 + hotelapp.no_show_handle（值班经理/店长口径：维修停用直接影响可售库存）",
+   permission="有效员工 + inventory.maintenance_manage（值班经理/店长口径；与 hotelapp.no_show_handle 完全分离）",
    ok=(("200", "登记成功（changed=false 表示幂等空操作）"),),
    data=s_obj({**HK_ROOM_DTO["properties"], "changed": s_bool()}),
    errors=E_STAFF_CONFLICT,
