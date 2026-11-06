@@ -96,11 +96,15 @@ urlpatterns = [
     path("billing/ledger", billing_center.ledger_entry_list, name="billing_ledger"),
     path("billing/payments", billing_center.billing_payments, name="billing_payments"),
     path("billing/refunds", billing_center.billing_refunds, name="billing_refunds"),
+    path("billing/refunds/<int:refund_id>/approve", billing_center.approve_refund_api, name="billing_refund_approve"),
+    path("billing/refunds/<int:refund_id>/reject", billing_center.reject_refund_api, name="billing_refund_reject"),
+    path("billing/refunds/<int:refund_id>/execute", billing_center.execute_refund_api, name="billing_refund_execute"),
     path("billing/reversals", billing_center.reverse_entry_api, name="billing_reverse_entry"),
     path("billing/shifts", billing_center.shift_list, name="billing_shift_list"),
     # 基线 2.0 §3.5：收银班次开班/关班（BillingService.open_shift/close_shift）
     path("billing/shifts/open", billing_center.open_shift_api, name="billing_shift_open"),
     path("billing/shifts/<int:shift_id>/close", billing_center.close_shift_api, name="billing_shift_close"),
+    path("billing/shifts/<int:shift_id>/movements", billing_center.shift_cash_movement_api, name="billing_shift_cash_movement"),
     path("billing/summary", billing_center.billing_summary, name="billing_summary"),
     # --- 清洁与维修工作台（读/清洁/维修使用独立权限；净房放行叠加高危专项权限） ---
     path("housekeeping/rooms", housekeeping_center.housekeeping_rooms, name="housekeeping_rooms"),
