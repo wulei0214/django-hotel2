@@ -319,6 +319,32 @@ class E2EFlowTestBase(TestCase):
         return AuditEvent.objects.filter(**condition).exists()
 
 
+class FrontDeskDrawerStatusDtoTests(E2EFlowTestBase):
+    """前台详情抽屉：预订确认状态与实际入住状态必须分别表达。"""
+
+    def test_confirmed_reservation_shows_pending_stay_until_check_in(self):
+        booking_no, token = self._create_reservation()
+        self._confirm_by_mock_payment(booking_no, token)
+        line = self._line(booking_no)
+        frontdesk = self._make_staff("drawer_status_frontdesk", "前台")
+        self.client.force_login(frontdesk)
+
+        url = f"/api/v1/front-desk/reservations/{booking_no}"
+        before = self.client.get(url)
+        self.assertEqual(before.status_code, 200, before.content)
+        before_room = before.json()["data"]["rooms"][0]
+        self.assertEqual(before.json()["data"]["status"], Reservation.Status.CONFIRMED)
+        self.assertIsNone(before_room["stay"])
+        self.assertEqual(before_room["stay_status_label"], "待办理入住")
+
+        self._assign_and_check_in(line, self.room1)
+        after = self.client.get(url)
+        self.assertEqual(after.status_code, 200, after.content)
+        after_room = after.json()["data"]["rooms"][0]
+        self.assertEqual(after_room["stay"]["status"], Stay.Status.IN_HOUSE)
+        self.assertNotEqual(after_room["stay_status_label"], "待办理入住")
+
+
 class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
     """P0-B（§9.3）：收款 / 押金 / 退款双权分离 / 红字冲账全链路。"""
 
