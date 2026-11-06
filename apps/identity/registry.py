@@ -201,8 +201,8 @@ MODULE_REGISTRY_V2 = {
         "name_zh": "财务",
         "app_label": "billing",
         "status": MODULE_ACTIVE,
-        "route_prefix": "/finance",
-        "landing_url": "/finance/",
+        "route_prefix": "/manage/finance",
+        "landing_url": "/manage/finance/",
         "risk_level": "high",
         "property_scoped": True,
         "actions": {
@@ -447,6 +447,27 @@ SPECIAL_PERMISSIONS = (
         "module": "finance", "risk": "high",
         "requires_reason": True, "requires_confirm": False,
         "note": "退款审批（值班经理/店长）；approval 通用门 _check_approver",
+    },
+    {
+        "key": "refund_execute",
+        "codename": "billing.refund_execute",
+        "module": "finance", "risk": "high",
+        "requires_reason": True, "requires_confirm": True,
+        "note": "已批准退款的独立执行权；执行人必须区别于申请人和审批人",
+    },
+    {
+        "key": "cashier_shift_manage",
+        "codename": "billing.cashier_shift_manage",
+        "module": "finance", "risk": "medium",
+        "requires_reason": False, "requires_confirm": True,
+        "note": "前台/财务/管理岗位开立和关闭收银班次",
+    },
+    {
+        "key": "cash_movement_manage",
+        "codename": "billing.cash_movement_manage",
+        "module": "finance", "risk": "high",
+        "requires_reason": True, "requires_confirm": True,
+        "note": "班次现金补入/支出登记；金额、原因、操作人和幂等键必须留存",
     },
     # P0-04 清理（缺口登记册 F-08）：hotelapp.reverse_checkout 唯一检查点已随
     # 旧路由 410 退役，属"权限点存在但无执行点"，保持从 SPECIAL_PERMISSIONS
