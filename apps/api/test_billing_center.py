@@ -583,6 +583,54 @@ class BillingCenterWriteTests(BillingCenterTestBase):
             "billing.refund_request", entity_id=refund.pk,
             property_obj=self.property))
 
+    def test_manager_can_reject_refund_without_finance_access_and_retry_safely(self):
+        reservation, folio = self._booking_with_outstanding(Decimal("300.00"))
+        self._login(self.finance)
+        payment_id = _post_json(
+            self.client, "/api/v1/billing/payments",
+            {"reservation_id": reservation.pk, "amount": "100.00",
+             "method": "CARD", "reference": f"bc-manager-reject-pay-{self._seq}"}
+        ).json()["data"]["payment_id"]
+        requested = _post_json(
+            self.client, "/api/v1/billing/refunds",
+            {"payment_id": payment_id, "amount": "25.00",
+             "reason": "经理驳回权限闭环测试"},
+            idempotency_key=f"bc-manager-reject-request-{self._seq}")
+        self.assertEqual(requested.status_code, 201, requested.content)
+        refund_id = requested.json()["data"]["refund_id"]
+
+        # 值班经理只有入住查看 + 退款审批权，没有 finance_access。
+        manager = self._make_staff(
+            "frontdesk_refund_reject_manager", "值班经理", finance_access=False)
+        self._grant(manager, "view_accommodation", app_label="hotelapp")
+        self._grant(manager, "refund_approve")
+        self._login(manager)
+        payload = {"reason": "退款材料不完整，驳回补充"}
+        key = f"bc-manager-reject-action-{self._seq}"
+        response = _post_json(
+            self.client, f"/api/v1/front-desk/refunds/{refund_id}/reject",
+            payload, idempotency_key=key)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["data"]["status"], Refund.Status.REJECTED)
+
+        replay = _post_json(
+            self.client, f"/api/v1/front-desk/refunds/{refund_id}/reject",
+            payload, idempotency_key=key)
+        self.assertEqual(replay.status_code, 200, replay.content)
+        self.assertEqual(replay.json()["data"]["status"], Refund.Status.REJECTED)
+
+        refund = Refund.objects.get(pk=refund_id)
+        approval = ApprovalRecord.objects.get(pk=refund.approval_record_id)
+        payment = Payment.objects.get(pk=payment_id)
+        self.assertEqual(refund.status, Refund.Status.REJECTED)
+        self.assertEqual(approval.status, ApprovalRecord.Status.REJECTED)
+        self.assertEqual(payment.status, Payment.Status.SUCCEEDED)
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
+        self.assertTrue(self._audit_exists(
+            "billing.refund_rejected", entity_id=refund.pk,
+            property_obj=self.property))
+
     def test_refund_request_idempotent_and_conflict(self):
         reservation, folio = self._booking_with_outstanding(Decimal("300.00"))
         self._login(self.finance)
