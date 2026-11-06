@@ -194,8 +194,8 @@
         "description": "支持 Idempotency-Key 幂等：同 key 同 body 重放返回首次响应（200）；同 key 不同 body 返回 409。明文 access_token 仅在首次创建响应中返回一次。限流（§6.3，fail-closed）：IP 10 次/10 分钟 + phone_hash 3 次/10 分钟。审计事件：public.reservation_blocked / public.reservation_created / public.rate_limited。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_reservations",
         "responses": {
-          "200": {
-            "description": "相同 Idempotency-Key 与请求体的幂等重放（返回首次响应）",
+          "201": {
+            "description": "预订创建成功，一次性返回 access_token",
             "content": {
               "application/json": {
                 "schema": {
@@ -204,8 +204,8 @@
               }
             }
           },
-          "201": {
-            "description": "预订创建成功，一次性返回 access_token",
+          "200": {
+            "description": "相同 Idempotency-Key 与请求体的幂等重放（返回首次响应）",
             "content": {
               "application/json": {
                 "schema": {
@@ -2750,8 +2750,8 @@
         "description": "changed 标志在 data 外层；新分配 201，改派 200。\n\n权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_front_desk_reservation_rooms_reservation_room_id_assign",
         "responses": {
-          "200": {
-            "description": "改派成功（已有房间的明细）",
+          "201": {
+            "description": "房间已分配",
             "content": {
               "application/json": {
                 "schema": {
@@ -2797,8 +2797,8 @@
               }
             }
           },
-          "201": {
-            "description": "房间已分配",
+          "200": {
+            "description": "改派成功（已有房间的明细）",
             "content": {
               "application/json": {
                 "schema": {
@@ -2884,16 +2884,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -2906,6 +2896,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -2975,62 +2975,6 @@
         "description": "请求体可为空 JSON；创建 Stay 201，重复入住幂等 200。\n\n权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_front_desk_reservation_rooms_reservation_room_id_check_in",
         "responses": {
-          "200": {
-            "description": "已有在住 Stay（幂等）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "description": "{data, ...} 前台封套；列表附 meta 分页，写操作附 created/changed 标志。",
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "description": "",
-                      "properties": {
-                        "stay_id": {
-                          "type": "integer",
-                          "description": ""
-                        },
-                        "reservation_room_id": {
-                          "type": "integer",
-                          "description": ""
-                        },
-                        "room_id": {
-                          "type": "integer",
-                          "description": ""
-                        },
-                        "room_number": {
-                          "type": "string",
-                          "description": ""
-                        },
-                        "status": {
-                          "type": "string",
-                          "description": ""
-                        },
-                        "actual_check_in": {
-                          "anyOf": [
-                            {
-                              "type": "string",
-                              "description": "",
-                              "format": "date-time"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        }
-                      },
-                      "additionalProperties": true
-                    }
-                  },
-                  "additionalProperties": true,
-                  "required": [
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
           "201": {
             "description": "入住成功创建 Stay",
             "content": {
@@ -3087,6 +3031,62 @@
               }
             }
           },
+          "200": {
+            "description": "已有在住 Stay（幂等）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, ...} 前台封套；列表附 meta 分页，写操作附 created/changed 标志。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "stay_id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "reservation_room_id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "room_id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "room_number": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "actual_check_in": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "description": "",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
           "400": {
             "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
             "content": {
@@ -3127,16 +3127,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -3149,6 +3139,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -3198,61 +3198,6 @@
         "description": "Idempotency-Key 必填（1-64 字符，服务强校验）；BillingService 统一入账。\n\n权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_front_desk_reservations_booking_no_payments",
         "responses": {
-          "200": {
-            "description": "相同幂等键重放",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "description": "{data, ...} 前台封套；列表附 meta 分页，写操作附 created/changed 标志。",
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "description": "",
-                      "properties": {
-                        "payment_id": {
-                          "type": "integer",
-                          "description": ""
-                        },
-                        "provider_ref": {
-                          "anyOf": [
-                            {
-                              "type": "string",
-                              "description": ""
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "method": {
-                          "type": "string",
-                          "description": ""
-                        },
-                        "amount": {
-                          "type": "string",
-                          "description": ""
-                        },
-                        "currency": {
-                          "type": "string",
-                          "description": ""
-                        },
-                        "status": {
-                          "type": "string",
-                          "description": ""
-                        }
-                      },
-                      "additionalProperties": true
-                    }
-                  },
-                  "additionalProperties": true,
-                  "required": [
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
           "201": {
             "description": "收款成功",
             "content": {
@@ -3308,6 +3253,61 @@
               }
             }
           },
+          "200": {
+            "description": "相同幂等键重放",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, ...} 前台封套；列表附 meta 分页，写操作附 created/changed 标志。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "payment_id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "provider_ref": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "description": ""
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "method": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "amount": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "currency": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": ""
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
           "400": {
             "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
             "content": {
@@ -3348,16 +3348,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -3370,6 +3360,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -3553,16 +3553,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -3575,6 +3565,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -3705,16 +3705,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -3727,6 +3717,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -3927,16 +3927,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -3949,6 +3939,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -4029,8 +4029,8 @@
         "description": "独立权限 hotelapp.no_show_handle（不随入住修改权继承）；首记 201、重复幂等 200。\n\n权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.no_show_handle。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_front_desk_reservation_rooms_reservation_room_id_no_show",
         "responses": {
-          "200": {
-            "description": "已有记录（幂等）",
+          "201": {
+            "description": "No-show 记录创建",
             "content": {
               "application/json": {
                 "schema": {
@@ -4069,8 +4069,8 @@
               }
             }
           },
-          "201": {
-            "description": "No-show 记录创建",
+          "200": {
+            "description": "已有记录（幂等）",
             "content": {
               "application/json": {
                 "schema": {
@@ -4149,16 +4149,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -4171,6 +4161,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -4240,8 +4240,8 @@
         "description": "Idempotency-Key 必填（1-64 字符）；仅已确认/在住预订可收押金。\n\n权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_front_desk_reservations_booking_no_deposits",
         "responses": {
-          "200": {
-            "description": "相同幂等键重放",
+          "201": {
+            "description": "押金登记成功",
             "content": {
               "application/json": {
                 "schema": {
@@ -4295,8 +4295,8 @@
               }
             }
           },
-          "201": {
-            "description": "押金登记成功",
+          "200": {
+            "description": "相同幂等键重放",
             "content": {
               "application/json": {
                 "schema": {
@@ -4390,16 +4390,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -4412,6 +4402,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -4503,8 +4503,8 @@
         "description": "Idempotency-Key 必填（1-64 字符）；生成双人审批记录（申请人≠审批人）。\n\n权限要求：有效员工任职（DEFAULT 物业）+ billing.refund_request。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_front_desk_payments_payment_id_refunds",
         "responses": {
-          "200": {
-            "description": "相同幂等键重放",
+          "201": {
+            "description": "退款申请已提交待审批",
             "content": {
               "application/json": {
                 "schema": {
@@ -4554,8 +4554,8 @@
               }
             }
           },
-          "201": {
-            "description": "退款申请已提交待审批",
+          "200": {
+            "description": "相同幂等键重放",
             "content": {
               "application/json": {
                 "schema": {
@@ -4645,16 +4645,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -4667,6 +4657,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -4841,16 +4841,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -4863,6 +4853,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -5047,8 +5047,8 @@
         "description": "串行化同一物业并发夜审；生成营业日关账与房费过账。\n\n权限要求：有效员工 + hotelapp.night_audit_execute。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_night_audit_run",
         "responses": {
-          "200": {
-            "description": "该营业日已夜审（返回已有结果）",
+          "201": {
+            "description": "夜审执行完成",
             "content": {
               "application/json": {
                 "schema": {
@@ -5071,8 +5071,8 @@
               }
             }
           },
-          "201": {
-            "description": "夜审执行完成",
+          "200": {
+            "description": "该营业日已夜审（返回已有结果）",
             "content": {
               "application/json": {
                 "schema": {
@@ -5135,16 +5135,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -5157,6 +5147,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -5222,8 +5222,8 @@
         "description": "权限要求：有效员工 + hotelapp.business_date_reopen。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_night_audit_business_dates_business_date_id_reopen_request",
         "responses": {
-          "200": {
-            "description": "已有待审申请",
+          "201": {
+            "description": "重开申请已创建（生成审批）",
             "content": {
               "application/json": {
                 "schema": {
@@ -5246,8 +5246,8 @@
               }
             }
           },
-          "201": {
-            "description": "重开申请已创建（生成审批）",
+          "200": {
+            "description": "已有待审申请",
             "content": {
               "application/json": {
                 "schema": {
@@ -5310,16 +5310,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -5332,6 +5322,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -5465,16 +5465,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -5487,6 +5477,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -5609,16 +5609,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -5631,6 +5621,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -5769,16 +5769,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -5791,6 +5781,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -5913,16 +5913,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -5935,6 +5925,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -6317,16 +6317,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -6339,6 +6329,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -6741,16 +6741,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -6763,6 +6753,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -7713,16 +7713,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -7735,6 +7725,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -7924,16 +7924,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -7946,6 +7936,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -8152,16 +8152,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -8174,6 +8164,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -8332,16 +8332,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -8354,6 +8344,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -9010,16 +9010,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -9032,6 +9022,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -11187,16 +11187,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -11209,6 +11199,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -11354,16 +11354,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -11376,6 +11366,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -11445,8 +11445,8 @@
         "description": "申请人、审批人、执行人必须为三个不同账号；现金退款必须关联执行人的开放班次。\n\n权限要求：有效员工 + hotelapp.finance_access + billing.refund_execute。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_billing_refunds_refund_id_execute",
         "responses": {
-          "200": {
-            "description": "相同执行幂等键重放，不重复入账",
+          "201": {
+            "description": "退款执行成功，追加唯一 REFUND 凭证并更新 Payment",
             "content": {
               "application/json": {
                 "schema": {
@@ -11517,8 +11517,8 @@
               }
             }
           },
-          "201": {
-            "description": "退款执行成功，追加唯一 REFUND 凭证并更新 Payment",
+          "200": {
+            "description": "相同执行幂等键重放，不重复入账",
             "content": {
               "application/json": {
                 "schema": {
@@ -11629,16 +11629,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -11651,6 +11641,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -11729,8 +11729,8 @@
         "description": "已关班不可追加；班次应有现金 = 备用金 + 现金收款 - 现金退款 + IN - OUT。\n\n权限要求：有效员工 + hotelapp.finance_access + billing.cash_movement_manage。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_billing_shifts_shift_id_movements",
         "responses": {
-          "200": {
-            "description": "同幂等键同事实重放",
+          "201": {
+            "description": "现金变动登记成功",
             "content": {
               "application/json": {
                 "schema": {
@@ -11782,8 +11782,8 @@
               }
             }
           },
-          "201": {
-            "description": "现金变动登记成功",
+          "200": {
+            "description": "同幂等键同事实重放",
             "content": {
               "application/json": {
                 "schema": {
@@ -11875,16 +11875,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -11897,6 +11887,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -12483,8 +12483,8 @@
         "description": "BillingService.open_shift 唯一写入口；审计事件 billing.shift_open。\n\n权限要求：有效员工 + billing.cashier_shift_manage（前台/财务/管理岗位专项权）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_billing_shifts_open",
         "responses": {
-          "200": {
-            "description": "同收银员已有 OPEN 班次，幂等返回原班次（created=false）",
+          "201": {
+            "description": "开班成功",
             "content": {
               "application/json": {
                 "schema": {
@@ -12532,8 +12532,8 @@
               }
             }
           },
-          "201": {
-            "description": "开班成功",
+          "200": {
+            "description": "同收银员已有 OPEN 班次，幂等返回原班次（created=false）",
             "content": {
               "application/json": {
                 "schema": {
@@ -12621,16 +12621,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -12643,6 +12633,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -12821,16 +12821,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -12843,6 +12833,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -13309,8 +13309,8 @@
         "description": "权限要求：有效员工（DEFAULT 有效任职）+ 动作申请权限，经 ApprovalActionRegistry 白名单校验（billing.refund→billing.refund_request；未知动作 400 零副作用）。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
         "operationId": "post_approvals_request",
         "responses": {
-          "200": {
-            "description": "相同幂等键重放",
+          "201": {
+            "description": "审批申请创建成功",
             "content": {
               "application/json": {
                 "schema": {
@@ -13349,8 +13349,8 @@
               }
             }
           },
-          "201": {
-            "description": "审批申请创建成功",
+          "200": {
+            "description": "相同幂等键重放",
             "content": {
               "application/json": {
                 "schema": {
@@ -13429,16 +13429,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -13451,6 +13441,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -13631,16 +13631,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -13653,6 +13643,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -13715,7 +13715,7 @@
           "审批"
         ],
         "summary": "驳回审批申请",
-        "description": "权限要求：有效员工（DEFAULT 有效任职）+ 注册表按 action_code 绑定的审批权限（billing.refund_approve / hotelapp.business_date_reopen 等）（申请人≠审批人，SoD）。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：ApprovalActionRegistry.approve_permission（按 action_code 动态校验；申请人≠审批人，SoD）。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
         "operationId": "post_approvals_record_id_reject",
         "responses": {
           "200": {
@@ -13794,16 +13794,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -13823,11 +13813,21 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
           }
         },
         "x-contract-status": "partial",
         "x-authentication": "Django Session Cookie + 员工任职",
-        "x-required-permission": "有效员工（DEFAULT 有效任职）+ 注册表按 action_code 绑定的审批权限（billing.refund_approve / hotelapp.business_date_reopen 等）（申请人≠审批人，SoD）",
+        "x-required-permission": "ApprovalActionRegistry.approve_permission（按 action_code 动态校验；申请人≠审批人，SoD）",
         "x-idempotency": {
           "header": "Idempotency-Key",
           "required": false,
@@ -15038,16 +15038,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -15060,6 +15050,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -15250,16 +15250,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -15272,6 +15262,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -15450,16 +15450,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -15472,6 +15462,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -16985,16 +16985,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -17007,6 +16997,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -17225,16 +17225,6 @@
               }
             }
           },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
           "500": {
             "description": "服务器内部错误（INTERNAL_ERROR）",
             "content": {
@@ -17247,6 +17237,16 @@
           },
           "503": {
             "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
             "content": {
               "application/json": {
                 "schema": {
@@ -22300,6 +22300,21 @@
               }
             ]
           },
+          "execution_status": {
+            "type": "string",
+            "description": "审批状态或 EXECUTED；红字冲销执行后为 EXECUTED。"
+          },
+          "executed_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "红字冲销执行人用户名。"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reason": {
             "type": "string",
             "description": ""
@@ -22321,27 +22336,12 @@
               }
             ]
           },
-          "execution_status": {
-            "type": "string",
-            "description": "审批状态或 EXECUTED；红字冲销执行后为 EXECUTED。"
-          },
-          "executed_by": {
-            "anyOf": [
-              {
-                "type": "string",
-                "description": "红字冲销执行人用户名。"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "executed_at": {
             "anyOf": [
               {
                 "type": "string",
-                "format": "date-time",
-                "description": ""
+                "description": "",
+                "format": "date-time"
               },
               {
                 "type": "null"
