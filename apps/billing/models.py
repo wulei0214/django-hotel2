@@ -480,6 +480,8 @@ class Refund(models.Model):
         if self.payment_id and self.currency != self.payment.currency:
             raise ValidationError("退款币种必须与原支付币种一致。")
         if self._state.adding:
+            if self.legacy_workflow:
+                raise ValidationError("legacy_workflow 仅允许历史数据迁移设置，新退款不得伪装成历史记录。")
             if (self.status != self.Status.PENDING or self.approved_by_id
                     or self.executed_by_id or self.executed_at
                     or self.execution_idempotency_key or self.execution_shift_id):
