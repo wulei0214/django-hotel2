@@ -2071,40 +2071,12 @@ def finance_manage(request):
 
 @staff_required
 def finance_add(request):
-    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
-    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    """新增收支流水（仅财务）；校验失败时回显表单并保留已填内容"""
-    if not _has_role(request.user, "财务"):
-        return HttpResponse("只有财务可以录入收支", status=403)
-    if request.method != "POST":
-        return redirect("/finance/")
-    ftype = request.POST.get("type")
-    amount = (request.POST.get("amount") or "").strip()
-    reason = (request.POST.get("reason") or "").strip()
-    date = (request.POST.get("date") or "").strip()
-    error, efield = None, None
-    if ftype not in ("收入", "支出"):
-        error, efield = "类型必须是收入或支出", "type"
-    elif not reason:
-        error, efield = "事由不能为空", "reason"
-    elif not re.match(r"^\d{1,9}(\.\d{1,2})?$", amount):
-        error, efield = "金额必须是数字，整数最多9位、最多两位小数", "amount"
-    else:
-        try:
-            datetime.datetime.strptime(date, "%Y-%m-%d")
-        except ValueError:
-            error, efield = "日期不正确", "date"
-    if error is None:
-        FinanceRecord.objects.create(类型=ftype, 金额=amount, 事由=reason,
-                                     日期=date, 经手人=request.user.username)
-        messages.success(request, "收支记录已保存")
-        return redirect("/finance/")
-    form = request.POST.copy()
-    if efield:
-        form[efield] = ""
-    ctx = _finance_context()
-    ctx.update({"can_add": True, "today": _today(), "error": error, "form": form})
-    return render(request, "finance.html", ctx)
+    """旧财务写入口永久退役；新收款/退款/冲销只允许走 PMS2 BillingService。"""
+    return HttpResponse(
+        "该旧写入口已退役（410 Gone），请使用 /manage/finance/。",
+        status=410,
+        headers={"Location": "/manage/finance/"},
+    )
 
 
 # ---------- 夜审（Night Audit） ----------
