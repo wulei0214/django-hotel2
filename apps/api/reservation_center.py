@@ -4,7 +4,7 @@ from django.views.decorators.http import require_GET
 
 from apps.core.api_contract import ApiError, api_view, api_response, paginate
 from apps.identity.authorization import AuthorizationService
-from apps.reservations.models import Reservation, ReservationRoom, Stay
+from apps.reservations.models import Reservation, ReservationRoom
 
 
 @require_GET

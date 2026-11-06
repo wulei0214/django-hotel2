@@ -24,7 +24,6 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db.models import Sum
 from django.test import Client, override_settings
-from django.utils import timezone
 
 from apps.billing.models import (
     CashierShift,

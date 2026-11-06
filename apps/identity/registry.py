@@ -609,10 +609,6 @@ def legacy_module_gate_keys():
     return tuple(LEGACY_MODULE_GATE_KEYS)
 
 
-def get_module(code):
-    return MODULE_REGISTRY_V2.get(code)
-
-
 def get_special(key):
     """按 key 或完整权限码查专项权限点。"""
     for item in SPECIAL_PERMISSIONS:
@@ -824,8 +820,3 @@ def validate_registry():
 def registry_errors(findings):
     """从 validate_registry() 结果中取 ERROR 级发现。"""
     return [f for f in findings if f["level"] == "ERROR"]
-
-
-def registry_warnings(findings):
-    """从 validate_registry() 结果中取 WARNING 级发现。"""
-    return [f for f in findings if f["level"] == "WARNING"]

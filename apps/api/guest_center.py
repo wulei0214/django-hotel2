@@ -6,7 +6,6 @@
 """
 import logging
 
-from django.http import JsonResponse
 from django.utils import timezone
 from django.db.models import Prefetch
 from django.views.decorators.http import require_GET, require_POST
@@ -22,13 +21,12 @@ import json as _json
 
 from apps.guests.services import (
     decrypt_doc_no, _mask,
-    GuestService, GuestServiceError, GuestMembershipService,
-)
+    GuestService, GuestServiceError, )
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import (
-    DailyRate, RatePlan, Room, RoomType, RoomTypeInventory,
+    DailyRate, Room, RoomType, RoomTypeInventory,
 )
-from apps.reservations.models import Reservation, ReservationRoom, Stay
+from apps.reservations.models import Reservation, Stay
 from apps.billing.models import Folio, LedgerEntry, Payment, Refund
 from apps.core.models import LegacyRecordLink
 from decimal import Decimal

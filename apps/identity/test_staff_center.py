@@ -19,7 +19,6 @@ from django.utils import timezone
 
 from apps.core.models import AuditEvent, Property
 
-from .authorization import AuthorizationService
 from .models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from .services import EmployeeLifecycleService
 

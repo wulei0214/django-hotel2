@@ -18,7 +18,6 @@ from datetime import timedelta
 
 from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.billing.models import LedgerEntry
-from apps.billing.night_audit import NightAuditService
 from apps.core.models import (
     BreakGlassRecord, BusinessDate, NightAuditRun, Property,
 )

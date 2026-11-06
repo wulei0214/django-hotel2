@@ -12,7 +12,7 @@ from apps.billing.services_v2 import BillingService
 from apps.core.models import (
     AuditEvent, BreakGlassRecord, BusinessDate, NightAuditRun, Property,
 )
-from apps.reservations.models import NoShowRecord, Reservation, ReservationRoom, Stay
+from apps.reservations.models import Reservation, ReservationRoom, Stay
 
 
 class NightAuditError(Exception):

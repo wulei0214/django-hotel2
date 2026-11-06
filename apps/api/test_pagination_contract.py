@@ -75,7 +75,6 @@ P0-03 分页契约统一规则（所有列表接口同一口径）：
   * page 上限 PAGE_NUMBER_MAX=100000（防御病态 OFFSET）。
 =====================================================================
 """
-import uuid
 from datetime import timedelta
 
 from django.contrib.auth.models import Group, Permission, User

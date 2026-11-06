@@ -198,7 +198,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("真实模拟酒店测试数据创建完成"))
         # P1-10: LegacyRecordLink 填充
         from apps.core.models import LegacyRecordLink
-        from hotelapp.models import Staff as LegacyStaff, Client as LegacyClient
+        from hotelapp.models import Staff as LegacyStaff
         link_count = 0
         for ls in LegacyStaff.objects.all():
             from apps.identity.models import StaffProfile as SP
@@ -218,47 +218,3 @@ class Command(BaseCommand):
             if created:
                 link_count += 1
         self.stdout.write(f'  ✓ LegacyRecordLink 填充 {link_count} 条')
-
-
-class LegacyLinkFillMixin:
-    """P1-10：填充 LegacyRecordLink（Staff→StaffProfile 映射）。"""
-
-    def fill_legacy_links(self, prop):
-        from apps.core.models import LegacyRecordLink
-        from apps.identity.models import StaffProfile
-        from hotelapp.models import Staff as LegacyStaff
-        count = 0
-        for ls in LegacyStaff.objects.all():
-            profile = StaffProfile.objects.filter(legacy_staff=ls).first()
-            if profile is None:
-                # 按姓名匹配候选
-                profile = StaffProfile.objects.filter(full_name=ls.姓名).first()
-                status = "MATCH_CANDIDATE" if profile else "UNREVIEWED"
-            else:
-                status = "LINKED"
-            if profile is None:
-                continue
-            _, created = LegacyRecordLink.objects.get_or_create(
-                property=prop, source_system="HOTELAPP_V1",
-                source_model="Staff", source_pk=str(ls.员工id),
-                defaults={"target_model": "identity.StaffProfile",
-                          "target_pk": str(profile.pk),
-                          "mapping_status": status,
-                          "match_method": "姓名匹配" if status == "MATCH_CANDIDATE" else "legacy_staff FK"})
-            if created:
-                count += 1
-        # 客人映射
-        from hotelapp.models import Client as LegacyClient
-        for lc in LegacyClient.objects.all():
-            if not lc.身份证号:
-                continue
-            _, created = LegacyRecordLink.objects.get_or_create(
-                property=prop, source_system="HOTELAPP_V1",
-                source_model="Client", source_pk=str(lc.顾客id),
-                defaults={"target_model": "guests.Guest",
-                          "target_pk": "待核验",
-                          "mapping_status": "UNREVIEWED",
-                          "match_method": "待核验（身份证需加密迁移）"})
-            if created:
-                count += 1
-        return count

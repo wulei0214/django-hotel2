@@ -1,7 +1,6 @@
 """事件订阅器：后台联动动作集中在此，前台视图只发布事件。"""
 import logging
 
-from django.db import IntegrityError
 
 from . import events
 from .models import Room, FinanceRecord

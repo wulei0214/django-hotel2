@@ -26,7 +26,6 @@ from django.utils import timezone
 
 from apps.billing.models import (
     ApprovalRecord,
-    CashierShift,
     Folio,
     LedgerEntry,
     Payment,

@@ -57,10 +57,12 @@ from django.views.decorators.http import require_GET
 
 from apps.billing.models import LedgerEntry
 from apps.core.api_contract import ApiError, api_view, api_response
+from .billing_center import _money_str  # 金额两位小数字符串，与账务中心同口径
 from apps.core.models import AuditEvent
 from apps.guests.models import Guest
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import RoomTypeInventory
+from apps.inventory.services import _property_today
 from apps.reservations.models import Reservation
 
 # 区间上限（§4.5 技术要求：复杂报表查询需最大日期范围控制）
@@ -92,15 +94,6 @@ def _context(request, permission_code):
     return property_obj
 
 
-def _property_today(property_obj):
-    """物业营业时区的自然日今天（与 BillingService._business_date 同算法）。"""
-    try:
-        tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")
-    except Exception:
-        tz = ZoneInfo("Asia/Shanghai")
-    return timezone.localdate(timezone.now(), tz)
-
-
 def _parse_day(value, field):
     try:
         return date.fromisoformat(str(value).strip())
@@ -119,13 +112,6 @@ def _parse_range(request, property_obj):
     if (date_to - date_from).days > MAX_RANGE_DAYS:
         raise ApiError("VALIDATION_ERROR", f"统计区间最长 {MAX_RANGE_DAYS} 天。")
     return date_from, date_to
-
-
-def _money_str(value):
-    """金额统一 Decimal → str（两位小数字符串；None 透传表示口径无法计算）。"""
-    if value is None:
-        return None
-    return str(Decimal(value).quantize(Decimal("0.01")))
 
 
 def _pct_str(numerator, denominator):

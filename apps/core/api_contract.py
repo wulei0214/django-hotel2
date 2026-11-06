@@ -213,7 +213,6 @@ def idempotent(view):
         if not key:
             return view(request, *args, **kwargs)
         from apps.core.models import IdempotencyRecord
-        from apps.core.models import Property
         prop = getattr(request, "property", None)
         body_hash = hashlib.sha256(request.body or b"").hexdigest()
         user = request.user if request.user.is_authenticated else None

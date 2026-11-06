@@ -4,10 +4,8 @@
 覆盖：未知 action_code、entity_type 错配、payload 白名单/长度/敏感值、
 待实现动作不得注册、内部专用动作不对通用审批面开放。
 """
-from datetime import timedelta
 
 from django.test import TestCase
-from django.utils import timezone
 
 from apps.billing.approval_registry import (
     ApprovalActionRegistry,

@@ -2,7 +2,6 @@ from datetime import datetime as dt_datetime
 from datetime import time as _time, timedelta
 
 from django.db import transaction
-from django.db.models import Sum
 
 from .models import DailyRate, Room, RoomTypeInventory
 

@@ -12,7 +12,7 @@ from apps.core.models import Property
 
 from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from apps.identity.authorization import AuthorizationService
-from hotelapp.models import Accommodation, Client, Food, Folio, Order, Room, Staff
+from hotelapp.models import Accommodation, Client, Folio, Room, Staff
 
 
 def _make_user(username, group_name, membership_status="ACTIVE"):

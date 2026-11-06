@@ -10,7 +10,6 @@ import csv
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
-from apps.core.models import Property
 from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from hotelapp.models import Staff
 

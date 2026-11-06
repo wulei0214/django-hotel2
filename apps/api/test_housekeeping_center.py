@@ -26,8 +26,7 @@ from apps.identity.registry import (
 from apps.inventory.models import Room
 from apps.inventory.services import (
     HousekeepingOperationError, change_housekeeping_status,
-    change_maintenance_status,
-)
+    )
 
 
 class HousekeepingCenterTestBase(E2EFlowTestBase):

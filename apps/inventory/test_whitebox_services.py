@@ -13,7 +13,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.core.models import AuditEvent, Property
+from apps.core.models import Property
 from apps.inventory.models import DailyRate, RatePlan, Room, RoomType
 from apps.inventory.services import (
     adjust_daily_rate,

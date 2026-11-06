@@ -15,7 +15,6 @@
 """
 import json
 import re
-from datetime import timedelta
 
 from django.contrib.auth.models import Group, Permission, User
 from django.test import TestCase

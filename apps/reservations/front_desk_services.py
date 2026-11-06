@@ -1,13 +1,13 @@
 """事务化前台排房、入住、收款与退房服务。"""
 import logging
 from decimal import Decimal, InvalidOperation
-from zoneinfo import ZoneInfo
 
 from django.db import transaction
 from django.utils import timezone
 
 from apps.billing.models import Folio, LedgerEntry, Payment
 from apps.inventory.models import Room
+from apps.inventory.services import _property_today
 from apps.core.models import AuditEvent
 from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
 
@@ -24,14 +24,6 @@ MANUAL_PAYMENT_METHODS = {"CASH", "CARD", "BANK_TRANSFER", "OTHER"}
 
 class FrontDeskOperationError(Exception):
     """前台操作不满足业务状态或账务约束。"""
-
-
-def _property_today(property_obj):
-    try:
-        tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")
-    except Exception:
-        tz = ZoneInfo("Asia/Shanghai")
-    return timezone.localdate(timezone.now(), tz)
 
 
 def _money(value):

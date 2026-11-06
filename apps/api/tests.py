@@ -11,7 +11,7 @@ from apps.billing.models import Folio, LedgerEntry
 from apps.guests.models import Guest
 from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from apps.inventory.models import Room
-from apps.reservations.models import Reservation, ReservationRoom, Stay
+from apps.reservations.models import Reservation, ReservationRoom
 from apps.inventory.models import DailyRate, RatePlan, RoomType, RoomTypeInventory
 
 

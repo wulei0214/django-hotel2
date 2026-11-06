@@ -1,17 +1,17 @@
 """PMS 2.0 前台入住生命周期：续住、换房、No-Show、押金和退款审批。"""
-import uuid
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
-from zoneinfo import ZoneInfo
 
 from django.db import transaction
-from django.db.models import Sum
 from django.utils import timezone
 
-from apps.billing.models import ApprovalRecord, Folio, LedgerEntry, Payment, Refund
-from apps.billing.services_v2 import ApprovalRecord as RegisteredApprovalRecord, ApprovalService
+from apps.billing.models import Folio
 from apps.inventory.models import DailyRate, Room, RoomTypeInventory
-from apps.inventory.services import InventoryUnavailable, release_sold_inventory_for_room_line
+from apps.inventory.services import (
+    InventoryUnavailable,
+    _property_today,
+    release_sold_inventory_for_room_line,
+)
 from apps.core.models import AuditEvent
 from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
 
@@ -22,13 +22,6 @@ CENT = Decimal("0.01")
 class LifecycleOperationError(Exception):
     """前台入住生命周期操作冲突。"""
 
-
-def _property_today(property_obj):
-    try:
-        tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")
-    except Exception:
-        tz = ZoneInfo("Asia/Shanghai")
-    return timezone.localdate(timezone.now(), tz)
 
 
 def _money(value):

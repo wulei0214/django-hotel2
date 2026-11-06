@@ -3,11 +3,9 @@
 查询接口组装预订、Stay、客房和 Folio DTO；写接口只负责认证/权限/参数边界，
 具体事务和状态迁移由 apps.reservations.front_desk_services 负责。
 """
-import json
 from datetime import date
 from decimal import Decimal
 from functools import wraps
-from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db.models import Prefetch, Q
@@ -20,6 +18,7 @@ from apps.core import labels as L
 from apps.core.api_contract import ApiError, idempotent, parse_page_args
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import Room
+from apps.inventory.services import _property_today
 from apps.reservations.models import (
     NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment,
 )
@@ -42,7 +41,7 @@ from apps.reservations.lifecycle_services import (
 )
 from hotelapp.models import Accommodation as LegacyAccommodation, Folio as LegacyFolio
 
-from .views import api_guard
+from .views import _body, api_guard
 
 
 PAGE_DEFAULT = 20
@@ -100,22 +99,6 @@ def _front_desk_write_required(view):
         return view(request, *args, **kwargs)
     return wrapped
 
-
-def _body(request):
-    try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("请求体必须是有效 JSON。") from exc
-    if not isinstance(payload, dict):
-        raise ValueError("请求体必须是 JSON 对象。")
-    return payload
-
-def _business_date(property_obj):
-    try:
-        tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")
-    except Exception:
-        tz = ZoneInfo("Asia/Shanghai")
-    return timezone.localdate(timezone.now(), tz)
 
 
 def _parse_date(value, label, fallback):
@@ -341,7 +324,7 @@ def overview(request):
     property_obj = request.front_desk_property
     try:
         day = _parse_date(
-            request.GET.get("date"), "业务日期", _business_date(property_obj)
+            request.GET.get("date"), "业务日期", _property_today(property_obj)
         )
     except ValueError as exc:
         return _response(
@@ -386,7 +369,7 @@ def overview(request):
 def arrivals(request):
     property_obj = request.front_desk_property
     try:
-        day = _parse_date(request.GET.get("date"), "抵店日期", _business_date(property_obj))
+        day = _parse_date(request.GET.get("date"), "抵店日期", _property_today(property_obj))
         page, page_size = _page_args(request)
         queryset = ReservationRoom.objects.filter(
             property=property_obj, check_in=day, reservation__status__in=ARRIVAL_STATUSES
@@ -416,7 +399,7 @@ def arrivals(request):
 def departures(request):
     property_obj = request.front_desk_property
     try:
-        day = _parse_date(request.GET.get("date"), "离店日期", _business_date(property_obj))
+        day = _parse_date(request.GET.get("date"), "离店日期", _property_today(property_obj))
         page, page_size = _page_args(request)
     except (ValueError, ApiError) as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
@@ -992,7 +975,7 @@ def available_stay_rooms(request, stay_id):
     ).exclude(pk=stay.room_id).exclude(
         reservation_rooms__property=property_obj,
         reservation_rooms__check_in__lt=line.check_out,
-        reservation_rooms__check_out__gt=_business_date(property_obj),
+        reservation_rooms__check_out__gt=_property_today(property_obj),
         reservation_rooms__reservation__status__in=(
             Reservation.Status.PENDING, Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN
         ),

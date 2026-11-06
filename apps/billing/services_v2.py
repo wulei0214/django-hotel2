@@ -8,11 +8,10 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
-from django.conf import settings
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
-from apps.core.models import AuditEvent, Property
+from apps.core.models import AuditEvent
 
 
 from apps.billing.models import ApprovalRecord

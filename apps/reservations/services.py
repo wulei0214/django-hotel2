@@ -10,11 +10,12 @@ from django.utils import timezone
 
 from apps.billing.models import Folio
 from apps.guests.models import Guest, GuestPhone
-from apps.inventory.models import DailyRate, RatePlan, RoomType
+from apps.inventory.models import RatePlan, RoomType
 from apps.inventory.services import (
     InventoryUnavailable,
     get_room_type_availability,
     hold_inventory_for_reservation,
+    models_q_valid_to,
     release_inventory_hold,
 )
 from .models import BookingAccessToken, Reservation, ReservationRoom
@@ -50,12 +51,6 @@ def _get_rate_plan(property_obj, check_in, check_out, rate_plan_id=None):
     if plan is None:
         raise ValueError("没有覆盖所选入住日期的有效房价计划。")
     return plan
-
-
-def models_q_valid_to(last_night):
-    from django.db.models import Q
-
-    return Q(valid_to__isnull=True) | Q(valid_to__gte=last_night)
 
 
 def _create_reservation(

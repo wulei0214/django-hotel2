@@ -110,7 +110,7 @@ def dashboard_charts(property_obj, today=None):
     """
     from apps.core.labels import (
         member_level_label, choice_labels)
-    from apps.guests.models import Guest, GuestDocument, GuestMembership
+    from apps.guests.models import Guest, GuestMembership
     from apps.inventory.models import Room, RoomType
 
     if today is None:

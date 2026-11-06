@@ -57,16 +57,8 @@ def s_int(desc="", **kw):
     return {"type": "integer", "description": desc, **kw}
 
 
-def s_num(desc="", **kw):
-    return {"type": "number", "description": desc, **kw}
-
-
 def s_bool(desc=""):
     return {"type": "boolean", "description": desc}
-
-
-def s_null(desc=""):
-    return {"type": "null", "description": desc}
 
 
 def s_arr(items, desc=""):

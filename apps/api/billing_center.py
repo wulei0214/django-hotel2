@@ -23,14 +23,13 @@
   * 金额一律 Decimal → str；账本只读展示，写操作只经 BillingService 追加凭证。
 """
 import json
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 from django.db.models import Prefetch, Q, Sum
-from django.db.models.functions import Coalesce
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.billing.models import ApprovalRecord, CashierShift, CashierShiftMovement, Folio, LedgerEntry, Payment, Refund
+from apps.billing.models import ApprovalRecord, CashierShift, Folio, LedgerEntry, Payment, Refund
 from apps.billing.services_v2 import BillingService
 from apps.core import labels as L
 from apps.core.api_contract import (

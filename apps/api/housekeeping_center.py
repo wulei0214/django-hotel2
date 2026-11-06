@@ -13,12 +13,12 @@ AuditEvent 均在服务层强制），本模块只做认证/权限/参数边界�
 
 响应封套：统一 {data, meta}（apps.core.api_contract），列表端点统一分页契约。
 """
-import json
 
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.core.api_contract import ApiError, api_response, api_view, paginate
 from apps.identity.authorization import AuthorizationService
+from .night_audit import _body  # 与夜审中心同口径的 JSON 请求体解析
 from apps.inventory.models import Room
 from apps.inventory.services import (
     HousekeepingOperationError,
@@ -39,16 +39,6 @@ def _context(request, permission):
     if not AuthorizationService.has_permission(user, property_obj, permission):
         raise ApiError("PERMISSION_DENIED", "当前岗位没有清洁与维修工作台权限。")
     return property_obj
-
-
-def _body(request):
-    try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise ApiError("VALIDATION_ERROR", "请求体必须是有效 JSON。")
-    if not isinstance(payload, dict):
-        raise ApiError("VALIDATION_ERROR", "请求体必须是 JSON 对象。")
-    return payload
 
 
 def _room_dto(room, labels=None):

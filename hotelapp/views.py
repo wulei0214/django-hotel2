@@ -26,20 +26,19 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Q
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.core.paginator import Paginator
 from django.shortcuts import render, redirect, get_object_or_404
 
 from .models import (Staff, Room, Client, Food, Vip, Park, Order, Accommodation,
-                     FinanceRecord, NightAudit, Folio, ROOM_STATUS, ORDER_STATUS)
+                     FinanceRecord, NightAudit, Folio, ROOM_STATUS)
 from . import events
 
 

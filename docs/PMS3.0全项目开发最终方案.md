@@ -6,6 +6,8 @@
 > 编制日期：2026-11-06
 > 前置项目：PMS 2.0
 > 重要门禁：本文件允许现在进行方案评审、任务拆解、代码现状盘点和准备工作；**PMS 3.0 正式业务代码开发必须等 PMS 2.0 最终验收报告结论为“通过”后启动**。当前仓库 A16 开发者申报版的结论仍为“有条件整改”，G09 Redis、G10 性能容量、阶段四本地业务验收及 G14 独立签署尚未完成。本方案不得被解释为 PMS 2.0 已通过，也不得绕过该门禁。
+>
+> > 修订：2026-11-07 架构审查 —— 按 A16 申报版后续更新校准门禁现状：**G10 性能容量已完成**（A11 压测 6 场景 PASS：waitress 16 线程 + MySQL 4000 预订/4002 账本行数据集，P50/P95/P99 与错误率 0）；**Redis 5.0.14 已部署验证**（多进程共享/TTL 过期/故障连接捕获，2026-11-06）。剩余门禁为：阶段四用户本地业务验收（含空库全量迁移执行，DBA 授权待用户操作）与 G14 独立验收人指派签署；G09 多 worker 共享证据需在阶段四复核。门禁性质不变：上述完成并签署“通过”前，PMS 3.0 正式业务开发不启动。证据：`docs/acceptance/A16-final-acceptance-report.md`（§19 运行与部署行、§“进入 PMS 3.0 的门禁状态”）。
 > 现状声明：本文件是目标设计与实施任务基线，不代表其中列出的字段、接口、页面或服务已存在。开发前必须以当时最新 `main` 的模型、迁移、服务、路由和测试为准，优先复用并补齐，禁止重复造表、重复造服务。
 
 ---
@@ -121,6 +123,8 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 
 `8c30d007544aa8b24d5c57b64cac3a97cee44093`
 
+> 修订：2026-11-07 架构审查 —— 2026-11-07 完成架构现状审查时的 main 基线为 `635d9dd`（次级列表服务端分页+搜索 rate-calendar）。审查全程只读，未改业务代码；审查报告见 `docs/audit/phase0/80-architecture-review.md`。BASE-01 启动时仍须重新 fetch main 生成新基线清单。
+
 该 SHA 仅是本方案编制时的参考点；实际开发启动时必须重新 fetch main，生成新的基线清单。仓库当前已存在下列主要领域目录（实际文件和调用关系需在启动时再次核对）：
 
 - `apps/identity`：员工身份、任职、授权、邀请、会话；
@@ -133,6 +137,7 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 - `templates/pms`：PMS 工作台页面；
 - `hotel`：Django 配置与总路由；
 - `docs`：设计、开发、审计和验收文档。
+- `hotelapp`：PMS1 遗留模块（11 个旧模型、旧视图、旧事件总线与请求审计中间件；35 条旧写路由已 410 封死并有 `apps/identity/test_module_gates.py` 护栏；`/no_show_one/` 为活跃例外，见审查报告 AR-01）。
 
 当前 A16 报告记录的开发侧测试为 SQLite 729 项、MySQL 729 项通过，但报告本身明确属于开发者申报，不构成最终验收。报告记录 Redis 尚未部署、性能压测未执行、空库迁移待本地 DBA 授权、独立验收待签署。因此不能据此声称 PMS2 已完成最终验收。
 
@@ -152,6 +157,8 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 | BASE-10 | 数据规模、异常数据、重复键、孤儿关联和账务差异 | 数据质量报告 |
 
 禁止根据旧文档中的代码路径直接开发；必须先确认文件、类、函数和调用关系仍然存在。
+
+> 修订：2026-11-07 架构审查 —— BASE-01 至 BASE-10 的现状盘点已按 `635d9dd` 完成架构维度首轮（依赖矩阵、写入口调用图、URL 拓扑、MIDDLEWARE 栈、410 护栏核对），结果沉淀于 `docs/audit/phase0/80-architecture-review.md`；其漂移登记（AR-01 至 AR-11）作为本方案任务包输入。BASE-05（写入口调用图）与 BASE-08（退役依赖矩阵）已有关键实证：35 条旧写路由 410 封死，但 `/no_show_one/` 为活跃旧写入口例外，已并入 MIG-06 范围与 DEC-24 决策。
 
 ---
 
@@ -188,6 +195,16 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 - 所有日期时间遵循物业时区与营业日语义；
 - 所有状态变化有明确状态机；
 - 所有不可逆动作有审批/确认/审计/恢复策略。
+
+### 3.4 已确认的架构现状与约束继承（2026-11-07 架构审查）
+
+> 修订：2026-11-07 架构审查 —— 本节为 PMS 3.0 必须继承的架构原则，全部经 `docs/audit/phase0/80-architecture-review.md` 实证确认（基线 `635d9dd`）。后续任务包设计与验收以本节为门槛，不得在 3.0 开发中回退。
+
+1. **依赖方向单向**（已守住，必须保持）：UI/API → 应用服务/领域服务 → 模型。实证：全部服务层零 `import apps.api`；`apps/identity` 非测试代码仅依赖 `apps/core`。3.0 新增代码沿用此方向；PM-05 的 CI 依赖规则检查以本矩阵为基线，新增违例即失败。
+2. **单一写入口**（4/6 权威实体已收口，2 处登记待收口）：Payment/LedgerEntry/Refund/ApprovalRecord 的创建已完全收口于 BillingService（`.create()` 仅存在于 `billing/services.py`/`services_v2.py`）；Reservation 创建收口于 `apps/reservations/services.py`。登记待收口项：Guest 主档双路径（AR-03，公共预订内联直写）、Folio 开关单跨域写权威（AR-04/AR-05）、Room 状态直写（AR-06）。以上并入 SVC 阶段对应任务包（SVC-02/SVC-04/SVC-05）完成收口，3.0 验收时按"每个权威实体一个写服务"复检。
+3. **物业隔离三层一致**（已确认，必须保持）：中间件（`PropertyContextMiddleware` 服务端解析 DEFAULT 物业任职，无任职即拒绝+审计）、视图/API（`request.property` 注入，禁止信任客户端 property_id）、服务层（`property_obj` 必参）+ 模型层（全表 property FK、物业范围唯一键）。3.0 一切新服务签名必须延续 `property_obj` 必参模式；多物业切换维持 DEC-20 隔离，不启用。
+4. **审计覆盖**（已确认，必须扩展）：`AuditEvent.record` 现有 70 调用点/15 文件，AuditEvent 采用不可变 QuerySet，配套 StatusTransition/NightAuditRun/BreakGlassRecord 运行事实。3.0 CMP-03 事件覆盖率矩阵以此为底册增量登记；数据库级不可变（CMP-01）在应用层之上补 DB 层防护。
+5. **已知漂移白名单与清偿义务**：`core/services_notifications.py` 对业务 App 的模块级反向依赖（AR-02）、`core/labels.py` lazy 依赖（AR-07）、API 层 NotificationRead 直写（AR-08）为已登记存量漂移，分别在 WN/UI/API 任务包内清偿；清偿前不得作为"公共层可反向依赖业务"的先例引用。billing↔reservations 服务层双向耦合（AR-09）为演进项，3.0 SVC 阶段经领域事件解耦。
 
 ---
 
@@ -288,6 +305,8 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 - `StaffRoleAssignment.reason_code/reason_text`：授权原因（现状需核查，不得假设已有）；
 - `Invitation.expires_at/used_at/revoked_at`：邀请生命周期。
 
+> 修订：2026-11-07 架构审查 —— 按 `635d9dd` 实证核查本节字段现状：`StaffRoleAssignment` 现无 `effective_from/effective_to`、`reason_code/reason_text` 字段（EMP 关键字段与 IAM-07 为新建，前提成立）；`PropertyStaffMembership`/`Invitation` 字段以启动时 BASE-02 盘点为准。`billing.cashier_shift_manage` 权限码已在权限注册表注册（registry.py:474），员工中心授权调用无需重复建模。
+
 #### 服务/API/页面
 
 - 服务：`EmployeeLifecycleService` 为员工、任职和生命周期唯一写入口；角色配置调用 Authorization/RoleAssignment 服务。
@@ -332,6 +351,8 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 - GuestMergeRequest：source_guest、target_guest、reason、status、reviewer、approved_at、executed_at、reversal reference（仅在模型不存在时设计）。
 
 必须为证件类型+证件哈希建立符合物业/证件政策的索引，避免明文证件号索引。
+
+> 修订：2026-11-07 架构审查 —— 按 `635d9dd` 实证校准本节现状：①`GuestDocument.key_version` 确认不存在（GST-03 为新建任务）；②`GuestDocument.retention_until` 已存在（`apps/guests/models.py:134`），GST-08 任务聚焦到期清理任务、法律保留例外与审计，不含加字段；③`GuestMergeRequest` 模型确认不存在，GST-04 的"仅在模型不存在时设计"前提成立，决策依赖 DEC-03/DEC-06；④Guest 主档写入口现状为双路径（GuestService 与公共预订内联直写，审查报告 AR-03），本中心 SVC-02 任务须完成收口后方可叠加合并工作流。
 
 #### 服务/API/页面
 
@@ -448,6 +469,8 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 
 不得以修改 Reservation 状态代替退款；不得删除已产生账务事实的订单；不得把顾客传入价格当权威价格。
 
+> 修订：2026-11-07 架构审查 —— 按 `635d9dd` 实证校准本节现状：①`CancellationPolicy`/`DepositPolicy` 模型已存在且按 rate_plan 版本化（`apps/reservations/models.py:441/478`，含 `version`、`penalty_*`、ordering `("rate_plan_id", "-version")`），RSV-03/RSV-04 任务聚焦 Reservation 侧 `cancellation_policy_snapshot`/`deposit_policy_snapshot` 字段与创建时固化流程，**政策模型不重建**；②No-show 现状存在双入口：PMS2 权威命令 `/api/v1/reservation-rooms/<id>/no-show` 与活跃旧写入口 `/no_show_one/`（`hotelapp/views.py:1357`，直写旧 Accommodation/Room 并走旧权限链，审查报告 AR-01）——RSV-07"单一调度入口"的达成以 MIG-06 冻结 `/no_show_one/` 为前置，业务确认事项见 DEC-24；③预订创建写入口已收口（Reservation `.create()` 仅 `apps/reservations/services.py:132`，含幂等键+请求指纹+15 分钟过期），RSV-02 为契约推广与并发复测，非从零建设。
+
 #### 服务/API/页面
 
 - 服务：ReservationService、ReservationPolicySnapshotService、StayLifecycleService、RoomAssignmentService、ReservationExpiryService。
@@ -497,6 +520,8 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 - InvoiceRecord/ReconciliationRun：与业务源记录建立唯一幂等关联。
 
 数据库约束必须处理“先查后建”并发竞态；不能仅靠 Python 检查唯一性。
+
+> 修订：2026-11-07 架构审查 —— 按 `635d9dd` 实证校准本节现状：①`LedgerEntry.business_date` 已存在（`apps/billing/models.py:263`，含 `(property, business_date)`、`(folio, business_date)` 索引），FIN-05 任务聚焦 Payment（`business_date`/`received_by` 确认缺失）与 CashierShift 的营业日口径对齐，LedgerEntry 侧为核对非新建；②收款/退款/账本/审批写权威现状已收口（Payment/LedgerEntry/Refund/ApprovalRecord 的 `.create()` 仅存在于 billing 服务层，前台收款经 front_desk_services 委托 BillingService），FIN-01/FIN-03/FIN-04 的主体是状态机扩展、SoD 与 DB 级不可变，非写入口新建；③存量跨域写漂移两项（审查报告 AR-04/AR-05：Folio 开关单由 reservations 流程直写）并入 SVC-05 收口后复检。
 
 #### 服务/API/页面
 
@@ -574,6 +599,8 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 - MaintenanceTicket：severity、reported_by、assigned_to、started_at、restored_at、out_of_service_from/to；
 - RoomInspection：inspection_result、inspector、reason、checked_at。
 - 若当前模型已具备字段则复用；不因方案重复加字段。
+
+> 修订：2026-11-07 架构审查 —— 按 `635d9dd` 实证：`HousekeepingTask`/`MaintenanceTicket`/`RoomInspection` 三模型均已存在（`apps/inventory/models.py:295/355/399`）。本中心缺口是**任务池 API/UI 与流程**（HK-03/HK-05/HK-06：任务分配/执行/检查状态机、净房放行复核、超时队列），不是建模任务。A16 验收报告登记项"HousekeepingTask 任务池（§4.3 范围外）"据此并入本中心，原登记关闭。
 
 #### 服务/API/页面
 
@@ -661,6 +688,8 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 | WN-08 | P2 | 运营待办 SLA | 超时、升级、统计 |
 
 通知是投递副本，WorkItem 是待处理任务，源业务对象仍是业务事实权威。禁止通过“标记通知已读”直接改变预订/退款/维修源状态。
+
+> 修订：2026-11-07 架构审查 —— 按 `635d9dd` 实证校准本节现状：①`Notification`/`NotificationRead` 模型与 `dedupe_key`（property+dedupe_key 数据库唯一）已在位，`apps/core/services_notifications.py` 已实现实时重算+upsert 对账的待办派生，WN-01 的去重机制已落地；②存量漂移两项随本中心任务包清偿：派生服务对 billing/identity/inventory/reservations 的模块级反向依赖（审查报告 AR-02，违反 §3.2/§3.4，重构为独立 notifications app 或业务侧"待办提供者"注册）；API 层直写 `NotificationRead`（AR-08，收口为服务方法并入 WN-03）。
 
 ---
 
@@ -755,6 +784,8 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 - 变更日志。
 
 CI 必须检查 OpenAPI 与实际路由/契约漂移；Apifox 实际执行结果需归档。
+
+> 修订：2026-11-07 架构审查 —— Apifox 交付为 2.0 遗留缺口：仓库现有 `docs/接口文档/openapi.json`（97 paths）与 `apifox-env-template.json` 模板，但**实际导入与执行报告缺失**（A16 证据包未含）。API-07 为其闭环任务；在完成前，2.0 验收标准 §13"Apifox 实际导入和执行报告作为独立证据"的口径对 3.0 同样适用。
 
 ### 7.5 前端规范
 
@@ -918,6 +949,8 @@ Redis 不是数据库权威，也不能代替 MySQL 事务。只在确有跨进�
 
 唯一键保证同一来源记录不会重复映射。冲突不得静默覆盖。
 
+> 修订：2026-11-07 架构审查 —— `LegacyRecordLink` 模型已存在于 `apps/core/models.py:135`。本节任务为按上述字段清单核对既有字段完整性并落地真实迁移映射（DB-16/MIG-04），非新建模型。
+
 ### 10.3 退役矩阵
 
 逐项列出：
@@ -932,6 +965,8 @@ Redis 不是数据库权威，也不能代替 MySQL 事务。只在确有跨进�
 - 测试与负责人。
 
 只有完成业务覆盖、数据对账、归档和回滚准备后才允许删除。账务、审计、审批、订单和历史员工记录不得因版本升级被直接删除。
+
+> 修订：2026-11-07 架构审查 —— 退役矩阵首轮实证（基线 `635d9dd`）：①35 条旧写路由已 410 封死且有 `apps/identity/test_module_gates.py`（RETIRED_410_ROUTES）护栏；②**例外**：`/no_show_one/`（`hotelapp/views.py:1357`）为活跃旧写入口，直写旧 Accommodation/Room 并触发旧事件处理器，未在 410 清单内（审查报告 AR-01）——MIG-06 冻结旧写路径时必须显式包含，业务确认见 DEC-24；③`hotelapp/audit_middleware.py`（请求级写操作日志）为在役基础设施组件，位于遗留包内——Contract 阶段删除 hotelapp 前必须先迁移该中间件；④`hotelapp/services/*` 为无调用方死代码，`folio_api` 等活跃只读视图仍读旧表，归档前保持只读。
 
 ---
 
@@ -1101,6 +1136,23 @@ SQLite 不能作为 MySQL 的替代验证。
 
 所有阶段均以 PMS2 最终验收通过为正式开发前置条件。阶段可并行设计，但代码合并按依赖控制。
 
+### 14.0 任务包前置依赖与验收门槛（2026-11-07 架构审查修订）
+
+> 修订：2026-11-07 架构审查 —— 按审查报告（`docs/audit/phase0/80-architecture-review.md`）补充各 Phase 的前置依赖与验收门槛，门槛风格对齐 PMS 2.0 验收标准 §18 总闸门（G 项）；"待负责人确认"事项单列，不混入开发任务。
+
+| Phase | 前置依赖 | 退出/验收门槛（对齐 2.0 验收标准风格） | 待负责人确认 |
+|---|---|---|---|
+| Phase 0 基线复核 | PMS2 最终验收“通过”（G14 签署）；PM-02 基线冻结 | BASE-01~10 盘点产物齐备且可复现；审查报告 AR 登记项全部有归属任务或决策编号 | 无 |
+| Phase 1 领域模型与数据库 | Phase 0；DB-01 字段字典先行 | MySQL 8 迁移可执行、无 makemigrations 漂移、约束/索引证据齐（对齐 2.0 G04） | DEC-01~05、DEC-08/09（阻塞对应 DB 任务） |
+| Phase 2 核心领域服务 | Phase 1 中对应实体建模完成；AR-03/04/05/06 收口随 SVC-02/04/05 执行 | 写路径 100% 收口服务（复检审查报告 §2.1 六实体矩阵）；状态机/幂等/并发/审计测试通过 | DEC-07、DEC-10、DEC-13~15 |
+| Phase 3 API 契约与安全 | Phase 2 对应服务在位；`core/api_contract.py` 统一封套已推广完毕 | 旧写入口为 0（含 `/no_show_one/`，G11）；OpenAPI 无漂移；负向安全用例 100%（对齐 2.0 G05/G07/G11） | DEC-23（审计读取策略） |
+| Phase 4 前端工作台 | 冻结的 API 契约（Phase 3 并行约束）；无 Mock 假数据 | 11 中心页面真实接 API、详情路由可达、桌面/窄屏 E2E 证据（对齐 2.0 G02/G12） | 无 |
+| Phase 5 迁移与退役 | Phase 1/2 完成；DEC-24 旧工作台依赖确认 | 无双写双算、410 全量（路由表全量 diff 权威清单，含 AR-01 补录）、LegacyRecordLink 对账通过 | DEC-24 |
+| Phase 6 测试/性能/韧性 | 各功能 Phase 完成度 ≥ 申报可测 | 强制测试 100%、性能达冻结目标、备份恢复演练通过（对齐 2.0 G08/G10） | DEC-21（容量目标冻结） |
+| Phase 7 上线与独立验收 | Phase 0~6 全部退出 | 证据包 A01-A16 完整、独立验收签署（对齐 2.0 G13/G14） | 无 |
+
+阶段内依赖补充：SVC-10（统一幂等/Outbox/Retry）先于 WN-04 与 FIN-04 联调；API-08（旧写入口收口）先于 MIG-06；PM-05（依赖规则 CI）在 Phase 2 首个合入前就位，基线即审查报告 §1.4 依赖矩阵。
+
 ### Phase 0：启动门禁与基线复核（P0）
 
 - GATE-01 核实 PMS2 最终验收报告是否为“通过”；
@@ -1230,6 +1282,8 @@ SQLite 不能作为 MySQL 的替代验证。
 ## 15. 全项目任务清单（可直接拆分工单）
 
 以下清单是开发任务主目录。每个任务拆成独立 issue/工单时，必须补齐负责人、预估、依赖、代码路径、测试和证据。未复核的字段/接口标为设计候选，不得直接迁移。
+
+> 修订：2026-11-07 架构审查 —— 按 `635d9dd` 实证补充任务口径（不改变任务 ID 与优先级）：DB-05/GST-03（证件密钥版本）为新建字段；GST-06（证件留存）中 `retention_until` 已在位、任务聚焦清理与例外；RSV-03/04 中政策模型已在位、任务聚焦 Reservation 快照字段；FIN-05 中 `LedgerEntry.business_date` 已在位、任务聚焦 Payment/CashierShift；HK-01~HK-05 基于在位模型交付任务池 API/UI；DB-16 中 LegacyRecordLink 模型已在位；IAM-05/15.1 PM-05 以审查报告 §1.4 依赖矩阵与 §3 漂移登记为输入；A16 登记项"billing.cashier_shift_manage 独立权限码"已在 `apps/identity/registry.py:474` 注册（commit 085e32b），从缺口清单移除，仅保留 IAM-04 九角色分配复核。
 
 ### 15.1 项目治理与架构
 
@@ -1555,6 +1609,8 @@ SQLite 不能作为 MySQL 的替代验证。
 | DEC-20 | 多物业能力 | 当前单物业运营优先，不启用未经验收的切换能力 | 平台/身份 |
 | DEC-21 | 性能并发和容量目标 | 依据真实硬件和业务峰值冻结 | 性能 |
 | DEC-22 | 数据留存和匿名化周期 | 依经营地法规、财务和争议留存要求确定 | 数据治理 |
+| DEC-23 | 审计读取是否落审计（防递归的安全事件策略） | 查询/导出审计列表默认不落审计；高危揭示与导出走专门安全事件通道 | 审计合规（CMP-04；承继 A16 登记项，2026-11-07 架构审查新增） |
+| DEC-24 | 旧写入口 `/no_show_one/` 退役确认 | 确认旧工作台（/checkin/、/booking/ 页面）无依赖后并入 410 护栏；No-show 唯一权威命令为 PMS2 API | 迁移退役（MIG-06；承继审查报告 AR-01，2026-11-07 新增） |
 
 未决事项分为“全局阻塞”和“局部阻塞”。局部决策未确认时，只允许开发不依赖该决策的其他任务，不允许自行填入默认业务规则。
 
@@ -1612,6 +1668,12 @@ SQLite 不能作为 MySQL 的替代验证。
 - 数据库/API/权限/页面/测试影响；
 - 批准人；
 - 生效日期。
+
+### 修订记录
+
+| 日期 | 修订 | 原因与依据 | 影响范围 | 批准人 |
+|---|---|---|---|---|
+| 2026-11-07 | 架构现状审查修订（全部以「修订：2026-11-07 架构审查」引注标记）：门禁现状校准（G10/Redis）；新增 §3.4 架构约束继承；§2/§5.2/§5.5/§5.6/§5.8/§5.11/§7.4/§10.2/§10.3 现状实证引注；新增 §14.0 任务包依赖与验收门槛；§20 新增 DEC-23/DEC-24；§15 任务口径补充 | 架构现状审查报告 `docs/audit/phase0/80-architecture-review.md`（基线 `635d9dd`）；A16 申报版后续更新 | 无任务 ID 增删；不改变优先级与范围边界；将已实现能力从隐含开发范围排除，防止重复立项 | 待负责人确认 |
 
 不得在开发中通过口头沟通改变字段语义、权限边界、审批规则、账务行为或历史数据处理规则。
 

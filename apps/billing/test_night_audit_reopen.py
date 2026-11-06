@@ -7,7 +7,7 @@
   * D-02：营业日再次关账后，旧的已批准审批不得重放驱动第二次重开；
   * 待审批申请的幂等重放契约保持不变。
 """
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.test import TestCase
