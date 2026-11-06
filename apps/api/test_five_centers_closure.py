@@ -526,6 +526,53 @@ class CashierShiftClosureTests(E2EFlowTestBase):
             {"actual_cash": "80.00", "variance_reason": "重复关班"})
         self.assertEqual(again.status_code, 400)
 
+    def test_expected_cash_uses_cash_payments_refunds_and_cash_movements(self):
+        from apps.reservations.models import Reservation
+        booking_no, _, _, _ = self._booking_with_outstanding()
+        reservation = Reservation.objects.get(booking_no=booking_no)
+        self.client.force_login(self.fin)
+        opened = _post_json(
+            self.client, "/api/v1/billing/shifts/open",
+            {"opening_cash": "100.00"})
+        self.assertEqual(opened.status_code, 201, opened.content)
+        shift_id = opened.json()["data"]["id"]
+
+        collected = _post_json(
+            self.client, "/api/v1/billing/payments",
+            {"reservation_id": reservation.pk, "amount": "100.00",
+             "method": "CASH", "reference": "closure-cash-payment-001"})
+        self.assertEqual(collected.status_code, 201, collected.content)
+        payment = Payment.objects.get(pk=collected.json()["data"]["payment_id"])
+        self.assertEqual(payment.cashier_shift_id, shift_id)
+
+        cash_in = _post_json(
+            self.client, f"/api/v1/billing/shifts/{shift_id}/movements",
+            {"direction": "IN", "amount": "5.00", "reason": "补入备用现金",
+             "idempotency_key": "closure-cash-in-001"})
+        self.assertEqual(cash_in.status_code, 201, cash_in.content)
+        cash_out = _post_json(
+            self.client, f"/api/v1/billing/shifts/{shift_id}/movements",
+            {"direction": "OUT", "amount": "10.00", "reason": "现金支出",
+             "idempotency_key": "closure-cash-out-001"})
+        self.assertEqual(cash_out.status_code, 201, cash_out.content)
+
+        closed = _post_json(
+            self.client, f"/api/v1/billing/shifts/{shift_id}/close",
+            {"actual_cash": "195.00"})
+        self.assertEqual(closed.status_code, 200, closed.content)
+        data = closed.json()["data"]
+        self.assertEqual(Decimal(data["expected_cash"]), Decimal("195.00"))
+        self.assertEqual(Decimal(data["variance"]), Decimal("0.00"))
+        shift = CashierShift.objects.get(pk=shift_id)
+        self.assertEqual(shift.closed_by_id, self.fin.pk)
+
+        # 关班后不能继续登记现金支出或把新收款归入已关闭班次。
+        rejected = _post_json(
+            self.client, f"/api/v1/billing/shifts/{shift_id}/movements",
+            {"direction": "OUT", "amount": "1.00", "reason": "关班后不得追加",
+             "idempotency_key": "closure-cash-out-after-close"})
+        self.assertEqual(rejected.status_code, 400)
+
     def test_shift_endpoints_use_cashier_permission_and_property_scope(self):
         # 前台没有 finance_access，但拥有本人班次开闭专项权。
         self.client.force_login(self.nofin)
