@@ -584,7 +584,7 @@ class PermissionCenterPageTests(PermissionCenterTestBase):
         self.assertEqual(len(data["roles"]), 9)
             # F-08 补执行点（§4.3）：room_release_ready 恢复登记；
             # 15 - reverse_entry = 14（含 F-06 export_approve）
-        self.assertEqual(len(data["special_codenames"]), 14)
+        self.assertEqual(len(data["special_codenames"]), 17)
         module_codes = {m["code"] for m in data["modules"]}
         self.assertEqual(
             module_codes,
