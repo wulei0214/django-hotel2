@@ -482,6 +482,9 @@ class NightAuditCenterPageTests(E2EFlowTestBase):
         self.assertIn('let hasNext = true', content)
         self.assertIn('page_size=100', content)
         self.assertIn('const maxRows = 5000', content)
+        for control_id in ("na-bd-goto", "na-runs-goto", "na-bg-goto",
+                           "na-bd-page-size", "na-runs-page-size", "na-bg-page-size"):
+            self.assertIn('id="' + control_id + '"', content)
 
     def test_center_page_registered_in_management_centers(self):
         from apps.api.pages import MANAGEMENT_CENTERS
