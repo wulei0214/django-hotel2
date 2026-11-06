@@ -443,7 +443,7 @@ class HousekeepingReportTests(ReportCenterTestBase):
         self._make_hk_event(self.room1.pk, days_ago=0,
                             property_obj=other_property)
         self._make_hk_event(self.room3.pk, days_ago=0)  # 覆盖为其他 action
-        AuditEvent.objects.filter(
+        AuditEvent._base_manager.filter(
             property=self.property, entity_id=str(self.room3.pk)).update(
             action="room.maintenance_changed")
 
