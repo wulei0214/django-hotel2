@@ -176,6 +176,12 @@ class ReverseEntryBusinessDateTests(WhiteboxBillingBase):
         self.assertTrue(approval_created)
         approval = ApprovalService.approve(
             approval.pk, approved_by=approver, property_obj=self.property)
+        unprivileged = User.objects.create_user(username="wbb-reversal-no-permission")
+        with self.assertRaises(ValueError):
+            BillingService.reverse_entry(
+                property_obj=self.property, entry_id=original.pk,
+                approval_id=approval.pk, reason=reason,
+                reversed_by=unprivileged)
 
         # 固定“现在”：物业当地已是 2026-01-16，而默认时区（Asia/Shanghai）仍是 01-15
         fixed_now = datetime(2026, 1, 15, 15, 59, 0, tzinfo=dt_timezone.utc)
