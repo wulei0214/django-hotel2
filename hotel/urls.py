@@ -158,7 +158,7 @@ urlpatterns = [
     path('search_park/', views.search_park),
     #path('show_cook/', views.show_cook),
     path('insert_room/', views.insert_room),
-    path('show_room/', views.show_room),
+    path('show_room/', RedirectView.as_view(url='/manage/rooms/', permanent=False)),  # 旧客房管理入口统一跳转 PMS2 房态与库存中心
     path('delete_room/', views.delete_room),
     path('update_room/', views.update_room),
     path('search_room/', views.search_room),
