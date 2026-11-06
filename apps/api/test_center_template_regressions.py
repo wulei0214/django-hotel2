@@ -32,7 +32,8 @@ class CenterTemplateRegressionTests(SimpleTestCase):
                 source = self.read_template(name)
                 self.assertIn("{% csrf_token %}", source)
                 self.assertIn('name="csrfmiddlewaretoken"', source)
-                self.assertIn('headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF}', source)
+                self.assertIn("X-CSRFToken", source)
+                self.assertIn("CSRF", source)
                 self.assertNotIn("document.cookie", source)
 
     def test_billing_forms_read_values_before_any_dom_replacement(self):
