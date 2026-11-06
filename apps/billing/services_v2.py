@@ -683,7 +683,7 @@ class BillingService:
 
     @staticmethod
     @transaction.atomic
-    def reverse_entry(*, entry_id, reason, reversed_by, request=None):
+    def reverse_entry(*, property_obj, entry_id, reason, reversed_by, request=None):
         """红字冲销（V1.1 P1-08/Q-05）：追加反向凭证，不修改原凭证。
 
         规则：不可冲销红字凭证；同 reference 幂等；须填写原因。
@@ -692,7 +692,8 @@ class BillingService:
         reason = (reason or "").strip()
         if not reason:
             raise ValueError("冲销必须填写原因。")
-        original = LedgerEntry.objects.select_for_update().get(pk=entry_id)
+        original = LedgerEntry.objects.select_for_update().get(
+            pk=entry_id, property=property_obj)
         existing_ref = f"reversal:{original.reference}"
         dup = LedgerEntry.objects.filter(reference=existing_ref).first()
         if dup:
@@ -777,13 +778,16 @@ class BillingService:
 
     @staticmethod
     @transaction.atomic
-    def close_shift(*, property_obj, shift_id, actual_cash, closed_by, variance_reason=""):
+    def close_shift(*, property_obj, shift_id, actual_cash, closed_by,
+                    variance_reason="", allow_other_cashier=False):
         """关班（CashierShift）：物业范围内锁定班次，按现金事实计算差异。"""
         from apps.billing.models import CashierShift
         shift = CashierShift.objects.select_for_update().get(
             pk=shift_id, property=property_obj)
         if shift.status != CashierShift.ShiftStatus.OPEN:
             raise ValueError("班次已关闭。")
+        if shift.cashier_id != closed_by.pk and not allow_other_cashier:
+            raise ValueError("只能关闭本人班次；代关其他员工班次需要财务/管理权限。")
         actual = BillingService._money(actual_cash)
         if actual < 0:
             raise ValueError("实盘现金不能为负数。")
