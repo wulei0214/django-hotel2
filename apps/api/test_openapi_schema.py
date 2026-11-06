@@ -516,6 +516,12 @@ class PMS2PermissionAnnotationTests(TestCase):
         self.assertIn("billing.cashier_shift_manage", permission)
         self.assertIn("hotelapp.finance_access", permission)
 
+    def test_shift_close_contract_documents_supervisor_delegation(self):
+        permission = self.spec["paths"][
+            BASE + "/billing/shifts/{shift_id}/close"]["post"]["x-required-permission"]
+        self.assertIn("billing.cashier_shift_manage", permission)
+        self.assertIn("hotelapp.finance_access", permission)
+
     def test_session_post_operations_require_csrf_header(self):
         for path, method, operation in _iter_operations(self.spec):
             if method != "post" or path.endswith("/payments/callback"):
