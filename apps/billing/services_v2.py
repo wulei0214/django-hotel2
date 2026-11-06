@@ -834,10 +834,9 @@ class BillingService:
         if not key or len(key) > 64:
             raise ValueError("现金变动必须提供 1 至 64 个字符的幂等键。")
         shift = CashierShift.objects.select_for_update().filter(
-            pk=shift_id, cashier=created_by,
-            status=CashierShift.ShiftStatus.OPEN).first()
+            pk=shift_id, cashier=created_by).first()
         if shift is None:
-            raise ValueError("班次不存在、已关闭或不属于当前操作人。")
+            raise ValueError("班次不存在或不属于当前操作人。")
         existing = CashierShiftMovement.objects.filter(
             shift=shift, idempotency_key=key).first()
         if existing:
@@ -845,6 +844,8 @@ class BillingService:
                     or existing.reason != reason):
                 raise ValueError("该幂等键已用于不同现金变动。")
             return existing, False
+        if shift.status != CashierShift.ShiftStatus.OPEN:
+            raise ValueError("已关闭班次不能登记新的现金变动。")
         # 幂等重放必须先返回原事实，再检查新支出余额；否则重放会被首次支出
         # 已经扣减的余额误拒绝，破坏“同 key 同事实返回既有记录”的契约。
         if direction == CashierShiftMovement.Direction.OUT:
