@@ -95,15 +95,23 @@ class ApprovalApiTestBase(TestCase):
             method="CASH", amount=Decimal("300.00"), currency="CNY",
             status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
         from apps.billing.services_v2 import BillingService
+        if status == Refund.Status.PENDING:
+            # 本测试覆盖通用审批申请 API；退款本身先保持 PENDING 且不预建审批记录。
+            return Refund.objects.create(
+                property=property_obj, payment=payment,
+                amount=Decimal("100.00"), currency="CNY",
+                reason="审批API退款原因",
+                idempotency_key=f"apit-rf-{seq:06d}",
+                provider_ref=f"APIT-RFD-{seq:06d}",
+                requested_by=requester)
         refund, _ = BillingService.request_refund(
             property_obj=property_obj, payment_id=payment.pk,
             amount="100.00", reason="审批API退款原因",
             idempotency_key=f"apit-rf-{seq:06d}", requested_by=requester)
-        if status != Refund.Status.PENDING:
-            approver = User.objects.create_user(username=f"apit-approver-{seq}")
-            BillingService.approve_refund(
-                property_obj=property_obj, refund_id=refund.pk,
-                approved_by=approver)
+        approver = User.objects.create_user(username=f"apit-approver-{seq}")
+        BillingService.approve_refund(
+            property_obj=property_obj, refund_id=refund.pk,
+            approved_by=approver)
         if status == Refund.Status.SUCCEEDED:
             executor = User.objects.create_user(username=f"apit-executor-{seq}")
             BillingService.open_shift(
@@ -489,7 +497,7 @@ class ApprovalDecisionTests(ApprovalApiTestBase):
         self.assertEqual(second.status_code, 409, second.content)
 
     def test_expired_approval_is_marked_expired_on_approve(self):
-        type(self.record).objects.filter(pk=self.record.pk).update(
+        type(self.record)._base_manager.filter(pk=self.record.pk).update(
             expires_at=timezone.now() - timedelta(minutes=1))
         self.client.force_login(self.owner)
         response = self._approve(self.record.pk)
