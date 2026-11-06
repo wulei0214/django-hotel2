@@ -102,8 +102,7 @@ urlpatterns = [
     path("billing/shifts/open", billing_center.open_shift_api, name="billing_shift_open"),
     path("billing/shifts/<int:shift_id>/close", billing_center.close_shift_api, name="billing_shift_close"),
     path("billing/summary", billing_center.billing_summary, name="billing_summary"),
-    # --- 清洁与维修工作台 (基线 2.0 §4.3；读=view_room，清洁链=change_room，
-    #     净房放行=room_release_ready（F-08 补执行点），维修=no_show_handle) ---
+    # --- 清洁与维修工作台（读/清洁/维修使用独立权限；净房放行叠加高危专项权限） ---
     path("housekeeping/rooms", housekeeping_center.housekeeping_rooms, name="housekeeping_rooms"),
     path("housekeeping/summary", housekeeping_center.housekeeping_summary_api, name="housekeeping_summary"),
     path("housekeeping/rooms/<int:room_id>/status", housekeeping_center.housekeeping_status_change, name="housekeeping_status_change"),
