@@ -447,7 +447,7 @@ COMPONENTS = {
             })),
         }),
         "source_system": s_str(),
-        "allowed_actions": s_arr(s_str(), "当前用户可用操作：view_detail/operate/mark_no_show/request_refund/approve_refund。"),
+        "allowed_actions": s_arr(s_str(), "当前用户可用操作：view_detail/operate/mark_no_show/request_refund/approve_refund/reject_refund。"),
     }),
     "FrontDeskRoomRow": s_obj({
         "id": s_int(), "number": s_str(), "floor": s_str(),
@@ -487,7 +487,7 @@ COMPONENTS = {
         "summary": s_nullable(_ref("FolioSummaryDto")),
         "entries": s_arr(_ref("FolioEntryDto")),
         "payments": s_arr(_ref("FolioPaymentDto")),
-        "allowed_actions": s_arr(s_str(), "request_refund / approve_refund（按权限）。"),
+        "allowed_actions": s_arr(s_str(), "request_refund / approve_refund / reject_refund（按权限）。"),
     }, desc="未开账时 folio 为 null、summary 为空账摘要且 entries/payments 为空。"),
     "LegacyReservationDto": s_obj({
         "booking_no": s_str("LEGACY-{id} 形式的展示编号。"),
@@ -1056,13 +1056,22 @@ fd_write = [
      (("201", "退款申请已提交待审批"), ("200", "相同幂等键重放"))),
     ("/front-desk/refunds/{refund_id}/approve", "审批退款", "verified",
      [("refund_id", "退款申请 ID。")],
-     s_obj({"confirm_refund_paid": s_bool("必须显式传 true：确认人工退款已实际完成。")},
-           required=["confirm_refund_paid"]),
-     s_obj({"refund_id": s_int(), "status": s_str("REFUNDED"),
-            "approved_by": s_nullable(s_int("审批人 ID。"))}),
-     "独立权限 billing.refund_approve；confirm_refund_paid 非 true 直接 400。",
+     None,
+     s_obj({"refund_id": s_int(), "status": s_str("APPROVED"),
+            "approved_by": s_nullable(s_int("审批人 ID。")),
+            "execution_required": s_bool("审批后仍须由独立财务执行人实际退款。")}),
+     "仅改变审批状态；不确认付款、不执行退款、不追加 REFUND 凭证。",
      "有效员工任职（DEFAULT 物业）+ billing.refund_approve",
-     (("200", "退款审批入账完成"),)),
+     (("200", "退款审批通过，等待独立执行"),)),
+    ("/front-desk/refunds/{refund_id}/reject", "驳回退款", "verified",
+     [("refund_id", "退款申请 ID。")],
+     s_obj({"reason": s_str("驳回原因，必填。")}, required=["reason"]),
+     s_obj({"refund_id": s_int(), "status": s_str("REJECTED"),
+            "approved_by": s_nullable(s_int("驳回人 ID。")),
+            "changed": s_bool()}),
+     "仅驳回待审批申请，不执行退款、不追加 REFUND 凭证；必须提供 Idempotency-Key。",
+     "有效员工任职（DEFAULT 物业）+ billing.refund_approve",
+     (("200", "退款申请已驳回"),)),
 ]
 for path, summary, status, pp, body, data, note, perm, ok in fd_write:
     op(path, "post", "前台接待", summary, status=status, path_params=pp, body=body,
@@ -1072,7 +1081,8 @@ for path, summary, status, pp, body, data, note, perm, ok in fd_write:
 # 服务层强校验 Idempotency-Key（1-64 字符必填）的三个收款/押金/退款端点。
 for _path in ("/front-desk/reservations/{booking_no}/payments",
               "/front-desk/reservations/{booking_no}/deposits",
-              "/front-desk/payments/{payment_id}/refunds"):
+              "/front-desk/payments/{payment_id}/refunds",
+              "/front-desk/refunds/{refund_id}/reject"):
     _entry = next(e for e in CONTRACTS if e["path"] == _path)
     _entry["extras"]["x-idempotency"] = {
         "header": "Idempotency-Key", "required": True, "max_length": 64,
