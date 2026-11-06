@@ -5,7 +5,7 @@
   * 站内通知即可；短信、邮件、WhatsApp/第三方消息渠道暂缓；
   * 无 celery：每次调用 refresh_operational_todos() 实时重算"当前应处理集合"，
     与库内未销项待办做 upsert 对账——新增项创建、计数/文案变化更新、
-    已解决项标记 is_read=True（从"待处理"视图自动消失）；
+    已解决项写 resolved_at（从"待处理"视图自动消失），不修改员工个人已读回执；
   * 去重：dedupe_key = "{todo_code}|{业务键}|g{岗位组id}"，
     (property, dedupe_key) 数据库唯一 → 重复事件/重复刷新不重复堆积（§4.6
     闭环验收"重复事件不重复生成"）；
