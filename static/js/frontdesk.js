@@ -391,8 +391,7 @@
         [
             ["CASH", "现金"],
             ["CARD", "银行卡 / 刷卡"],
-            ["BANK_TRANSFER", "银行转账"],
-            ["OTHER", "其他"]
+            ["BANK_TRANSFER", "银行转账"]
         ].forEach(function (entry) {
             var option = element("option", "", entry[1]);
             option.value = entry[0];
