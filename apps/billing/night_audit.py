@@ -150,7 +150,7 @@ class NightAuditService:
             "business_date": day.isoformat(),
             "business_date_status": bd.status if bd else BusinessDate.Status.OPEN,
             "stays": rows,
-            "stay_count": len(rows),
+            "stay_count": len(stays),
             "charge_count": sum(1 for row in rows if not row["already_posted"]),
             "already_posted_count": sum(1 for row in rows if row["already_posted"]),
             "charge_total": str(total.quantize(Decimal("0.01"))),
