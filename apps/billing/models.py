@@ -578,6 +578,17 @@ class Refund(models.Model):
                 check=(Q(legacy_workflow=True) | Q(status="PENDING")
                        | Q(approval_record__isnull=False)),
                 name="ck_refund_nonpending_approval_record"),
+            models.CheckConstraint(
+                check=(Q(legacy_workflow=True)
+                       | (Q(status__in=("PENDING", "APPROVED"),
+                            processed_at__isnull=True)
+                          | Q(status__in=("REJECTED", "SUCCEEDED"),
+                              processed_at__isnull=False))),
+                name="ck_refund_processed_at_state"),
+            models.CheckConstraint(
+                check=(Q(legacy_workflow=True) | Q(status="SUCCEEDED")
+                       | Q(execution_reference="")),
+                name="ck_refund_execution_reference_state"),
         ]
         permissions = (
             ("refund_request", "可以登记退款申请"),
