@@ -609,6 +609,57 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
         self.assertEqual(payment.status, Payment.Status.PARTIALLY_REFUNDED)
 
 
+    def test_multiple_partial_refunds_keep_payment_pending_until_all_resolved(self):
+        reservation = self._make_reservation("WBBRFDMULTI001")
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref="WBB-MULTI-PAY-001",
+            method="CARD", amount=Decimal("100.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        first, first_created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="30.00", reason="第一笔部分退款",
+            requested_by=self.operator, idempotency_key="wbb-multi-refund-1")
+        self.assertTrue(first_created)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
+
+        second, second_created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="20.00", reason="第二笔部分退款",
+            requested_by=self.operator, idempotency_key="wbb-multi-refund-2")
+        self.assertTrue(second_created)
+        self.assertEqual(second.status, Refund.Status.PENDING)
+
+        approver1 = User.objects.create_user(username="wbb-multi-approver-1")
+        approver2 = User.objects.create_user(username="wbb-multi-approver-2")
+        executor = User.objects.create_user(username="wbb-multi-executor")
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=first.pk, approved_by=approver1)
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=second.pk, approved_by=approver2)
+        executed, created = BillingService.execute_refund(
+            property_obj=self.property, refund_id=first.pk,
+            executed_by=executor, confirm_refund_paid=True,
+            execution_reference="BANK-MULTI-REF-1",
+            idempotency_key="wbb-multi-exec-1")
+        self.assertTrue(created)
+        self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
+
+        BillingService.reject_refund(
+            property_obj=self.property, refund_id=second.pk,
+            rejected_by=approver2, reason="第二笔申请取消")
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PARTIALLY_REFUNDED)
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference=f"refund:{first.provider_ref}").count(), 1)
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{second.provider_ref}").exists())
+
+
 class CashShiftReconciliationTests(WhiteboxBillingBase):
     """现金班次对账：现金支付、现金退款和现金变动按事实归属到执行班次。"""
 
