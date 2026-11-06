@@ -146,10 +146,15 @@ class ReverseEntryBusinessDateTests(WhiteboxBillingBase):
         fixed_now = datetime(2026, 1, 15, 15, 59, 0, tzinfo=dt_timezone.utc)
         with mock.patch.object(timezone, "now", return_value=fixed_now):
             reversal, created = BillingService.reverse_entry(
-                entry_id=original.pk, reason="错账冲销白盒测试",
-                reversed_by=self.operator)
+                property_obj=self.property, entry_id=original.pk,
+                reason="错账冲销白盒测试", reversed_by=self.operator)
         self.assertTrue(created)
         self.assertEqual(reversal.business_date, date(2026, 1, 16))
+        other_property = Property.objects.create(code="WBBREVOTHER", name="冲销跨物业测试")
+        with self.assertRaises(LedgerEntry.DoesNotExist):
+            BillingService.reverse_entry(
+                property_obj=other_property, entry_id=original.pk,
+                reason="跨物业冲销必须拒绝", reversed_by=self.operator)
 
 
 class ApprovalRaceTests(WhiteboxBillingBase):
