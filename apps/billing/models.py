@@ -490,9 +490,10 @@ class Refund(models.Model):
             previous = type(self).objects.filter(pk=self.pk).values(
                 "payment_id", "property_id", "requested_by_id", "amount",
                 "currency", "reason", "idempotency_key", "provider_ref",
-                "approved_by_id", "executed_by_id", "executed_at",
-                "execution_reference", "execution_idempotency_key",
-                "execution_shift_id", "status", "legacy_workflow").first()
+                "approval_record_id", "approved_by_id", "executed_by_id",
+                "executed_at", "execution_reference", "execution_idempotency_key",
+                "execution_shift_id", "processed_at", "status",
+                "legacy_workflow").first()
             if previous:
                 immutable_request = (
                     "payment_id", "property_id", "requested_by_id", "amount",
@@ -501,10 +502,13 @@ class Refund(models.Model):
                 if any(previous[field] != getattr(self, field)
                        for field in immutable_request):
                     raise ValidationError("退款申请的原支付、物业、申请人、金额、原因和编号不可修改。")
+                if previous["legacy_workflow"] != self.legacy_workflow:
+                    raise ValidationError("历史退款流程标记由数据迁移维护，业务代码不得修改。")
                 immutable_once_set = (
-                    "approved_by_id", "executed_by_id", "executed_at",
-                    "execution_reference", "execution_idempotency_key",
-                    "execution_shift_id")
+                    "approval_record_id", "approved_by_id", "executed_by_id",
+                    "executed_at", "execution_reference",
+                    "execution_idempotency_key", "execution_shift_id",
+                    "processed_at")
                 for field in immutable_once_set:
                     old_value = previous[field]
                     if old_value not in (None, "") and getattr(self, field) != old_value:
