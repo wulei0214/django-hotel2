@@ -194,7 +194,7 @@ def change_maintenance_status(*, property_obj, room_id, target_status, reason,
       * 合法流转见 MAINTENANCE_TRANSITIONS；reason 必填（1-240 字符）；
       * inventory.maintenance_manage（值班经理/店长专项权限）由 API 层和服务层双重校验；
         该权限与 no_show_handle（未到处理）独立，维修停用直接影响可售库存，属管理者动作，
-        不能开放给客房服务员（change_room 持有者含客房服务员）；
+        不能开放给客房服务员（housekeeping_update 持有者含客房服务员）；
       * 恢复（→NORMAL）不联动清洁状态：房间仍脏则继续清洁链；
       * 基线 2.0 §3.3：停用/恢复与未来库存 out_of_service 同事务同步，
         维修停用立即降低未来可售（不再依赖手动日历同步）；
