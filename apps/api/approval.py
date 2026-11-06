@@ -161,6 +161,9 @@ def approval_request(request):
                 if refund is None:
                     raise ApiError(
                         "BUSINESS_CONFLICT", "退款状态已变化，不能关联审批记录。")
+                if record.status != ApprovalRecord.Status.PENDING:
+                    raise ApiError(
+                        "BUSINESS_CONFLICT", "已有审批记录不是待审批状态，不能关联到待处理退款。")
                 if refund.approval_record_id not in (None, record.pk):
                     raise ApiError(
                         "BUSINESS_CONFLICT", "退款已关联其他审批记录，拒绝覆盖。")
