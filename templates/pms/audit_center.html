@@ -191,9 +191,30 @@
       });
   }
 
+  var AUDIT_FIELD_LABELS = {
+    "id":"编号","full_name":"姓名","employee_no":"物业工号","position_code":"岗位代码",
+    "status":"状态","employment_status":"雇用状态","membership_status":"任职状态",
+    "phone":"手机号","phone_masked":"手机号（脱敏）","email":"电子邮箱",
+    "amount":"金额","currency":"币种","reason":"原因","created_at":"创建时间",
+    "updated_at":"更新时间","starts_at":"生效时间","ends_at":"结束时间",
+    "role":"角色","group":"角色组","is_active":"是否启用","is_read":"是否已读",
+    "room_number":"房间号","reservation_id":"预订ID","booking_no":"预订编号",
+    "check_in":"入住日期","check_out":"离店日期","before":"变更前","after":"变更后"
+  };
+  function localizeAuditValue(value) {
+    if (Array.isArray(value)) return value.map(localizeAuditValue);
+    if (value && typeof value === "object") {
+      var localized = {};
+      Object.keys(value).forEach(function (key) {
+        localized[AUDIT_FIELD_LABELS[key] || key] = localizeAuditValue(value[key]);
+      });
+      return localized;
+    }
+    return value;
+  }
   function formatJSON(value) {
     if (value === null || typeof value === "undefined") return null;
-    try { return JSON.stringify(value, null, 2); }
+    try { return JSON.stringify(localizeAuditValue(value), null, 2); }
     catch (err) { return String(value); }
   }
   function fillJSON(el, value, emptyText) {
@@ -249,7 +270,7 @@
       var current = select.value;
       select.innerHTML = '<option value="">全部动作</option>' +
         (body.data || []).map(function (row) {
-          var label = row.action + "（" + row.count + "）" +
+          var label = (row.action_label || row.action) + "（" + row.count + "）" +
                       (row.is_sensitive ? " · 敏感" : "");
           return '<option value="' + escapeHtml(row.action) + '">' +
                  escapeHtml(label) + "</option>";
@@ -267,8 +288,8 @@
     rows.innerHTML = data.map(function (row) {
       return "<tr>" +
         "<td>" + escapeHtml((row.created_at || "").replace("T", " ").slice(0, 19)) + "</td>" +
-        "<td>" + escapeHtml(row.action) + "</td>" +
-        "<td>" + escapeHtml(row.entity_type) + "</td>" +
+        "<td>" + escapeHtml(row.action_label || row.action) + "</td>" +
+        "<td>" + escapeHtml(row.entity_type_label || row.entity_type) + "</td>" +
         "<td>" + escapeHtml(row.entity_id) + "</td>" +
         "<td>" + escapeHtml(row.actor) + "</td>" +
         "<td>" + escapeHtml(row.reason || "—") + "</td>" +
@@ -317,7 +338,7 @@
     getJSON(api + "/events/" + eventId).then(function (body) {
       var row = body.data;
       var kv = [
-        ["动作", row.action], ["实体", row.entity_type + " #" + row.entity_id],
+        ["操作类型", (row.action_label || row.action) + "（" + row.action + "）"], ["业务实体", (row.entity_type_label || row.entity_type) + " #" + row.entity_id],
         ["操作人", row.actor], ["原因", row.reason || "—"],
         ["敏感", row.is_sensitive ? "是（SPECIAL_PERMISSIONS 相关动作）" : "否"],
         ["请求链路 ID", row.request_id || "—"], ["来源 IP", row.ip || "—"],
