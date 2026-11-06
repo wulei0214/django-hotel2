@@ -17,7 +17,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from apps.billing.models import Folio, Payment, Refund
 from apps.core import labels as L
-from apps.core.api_contract import ApiError, parse_page_args
+from apps.core.api_contract import ApiError, idempotent, parse_page_args
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import Room
 from apps.reservations.models import (
@@ -33,6 +33,7 @@ from apps.reservations.front_desk_services import (
 from apps.reservations.lifecycle_services import (
     LifecycleOperationError,
     approve_refund as approve_refund_service,
+    reject_refund as reject_refund_service,
     change_stay_room,
     extend_stay,
     mark_reservation_room_no_show,
@@ -605,7 +606,7 @@ def reservation_detail(request, booking_no):
             + (["operate"] if AuthorizationService.has_permission(request.user, property_obj, "hotelapp.change_accommodation") else [])
             + (["mark_no_show"] if AuthorizationService.has_permission(request.user, property_obj, "hotelapp.no_show_handle") else [])
             + (["request_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_request") else [])
-            + (["approve_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve") else [])),
+            + (["approve_refund", "reject_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve") else [])),
     }})
 
 
@@ -1130,3 +1131,33 @@ def approve_refund_api(request, refund_id):
         "approved_by": refund.approved_by_id,
         "execution_required": refund.status == Refund.Status.APPROVED,
     }, "changed": changed})
+
+
+@api_guard
+@require_POST
+@idempotent
+@_front_desk_action_required("billing.refund_approve")
+def reject_refund_api(request, refund_id):
+    """经理岗位驳回退款；只登记审批结果，不执行退款、不追加 REFUND 凭证。
+
+    Idempotency-Key 必填，避免网络重试把已成功驳回误报为重复操作失败。
+    """
+    key = request.headers.get("Idempotency-Key", "").strip()
+    if not key:
+        return _response({"error": {
+            "code": "VALIDATION_ERROR",
+            "message": "驳回退款必须提供 Idempotency-Key。",
+        }}, 400)
+    try:
+        body = _body(request)
+        refund, changed = reject_refund_service(
+            property_obj=request.front_desk_property, refund_id=refund_id,
+            rejected_by=request.user, reason=body.get("reason"))
+    except LifecycleOperationError as exc:
+        return _response({"error": {
+            "code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    return _response({"data": {
+        "refund_id": refund.pk, "status": refund.status,
+        "approved_by": refund.approved_by_id,
+        "changed": changed,
+    }})
