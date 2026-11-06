@@ -164,7 +164,7 @@
 <script>
 (function () {
   "use strict";
-  const csrfInput = document.querySelector("#pms-csrf-token input[name=\"csrfmiddlewaretoken\"]");
+  const csrfInput = document.querySelector('#pms-csrf-token input[name="csrfmiddlewaretoken"]');
   const CSRF = csrfInput ? csrfInput.value : "";
   const canFlow = {{ can_flow_housekeeping|yesno:"true,false" }};
   const canRelease = {{ can_release_room|yesno:"true,false" }};
