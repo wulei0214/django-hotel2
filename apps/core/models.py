@@ -43,6 +43,22 @@ class Property(models.Model):
         return f"{self.code} - {self.name}"
 
 
+class ImmutableAuditEventQuerySet(models.QuerySet):
+    """审计事实只追加，阻断 ORM 批量更新/删除旁路。"""
+
+    def update(self, **kwargs):
+        raise ValidationError("审计事件不可批量修改。")
+
+    def delete(self):
+        raise ValidationError("审计事件不可批量删除。")
+
+    def bulk_create(self, objs, **kwargs):
+        raise ValidationError("审计事件必须通过 AuditEvent.record 逐条追加。")
+
+    def bulk_update(self, objs, fields, **kwargs):
+        raise ValidationError("审计事件不可批量修改。")
+
+
 class AuditEvent(models.Model):
     """不可变审计事件（V1.1 M-07 P0）。
 
@@ -72,6 +88,8 @@ class AuditEvent(models.Model):
     ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="来源IP")
     user_agent = models.CharField(max_length=240, blank=True, verbose_name="User-Agent")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="时间")
+
+    objects = models.Manager.from_queryset(ImmutableAuditEventQuerySet)()
 
     class Meta:
         verbose_name = "审计事件"
