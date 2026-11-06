@@ -421,10 +421,19 @@ class BillingService:
             return existing, False
         if reservation.deposit_amount + amount > reservation.total_amount:
             raise ValueError("累计押金不能超过当前预订房费总额。")
+        cashier_shift = None
+        if method == "CASH":
+            from apps.billing.models import CashierShift
+            cashier_shift = CashierShift.objects.select_for_update().filter(
+                property=property_obj, cashier=received_by,
+                status=CashierShift.ShiftStatus.OPEN).first()
+            if cashier_shift is None:
+                raise ValueError("现金押金登记前必须先开立本人收银班次。")
         payment = Payment.objects.create(
             property=property_obj, reservation=reservation, folio=folio,
             provider="frontdesk_deposit", provider_ref=provider_ref,
             method=method, amount=amount, currency=folio.currency,
+            cashier_shift=cashier_shift,
             status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
         BillingService.post_entry(
             property_obj=property_obj, folio=folio,
@@ -472,7 +481,8 @@ class BillingService:
                 Payment.Status.SUCCEEDED, Payment.Status.PARTIALLY_REFUNDED):
             raise ValueError("只有成功或部分退款的支付可申请退款。")
         reserved = Refund.objects.filter(
-            payment=payment, status__in=(Refund.Status.PENDING, Refund.Status.SUCCEEDED)
+            payment=payment, status__in=(Refund.Status.PENDING, Refund.Status.APPROVED,
+                        Refund.Status.SUCCEEDED)
         ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
         if reserved + amount > payment.amount:
             raise ValueError("累计退款申请及已完成退款不能超过原支付金额。")
@@ -742,7 +752,22 @@ class BillingService:
         if shift.status != CashierShift.ShiftStatus.OPEN:
             raise ValueError("班次已关闭。")
         actual = BillingService._money(actual_cash)
-        expected = shift.opening_cash
+        from apps.billing.models import Payment, Refund, CashierShiftMovement
+        cash_income = Payment.objects.filter(
+            cashier_shift=shift, method="CASH",
+            status=Payment.Status.SUCCEEDED).aggregate(
+                total=models.Sum("amount"))["total"] or Decimal("0.00")
+        cash_refunds = Refund.objects.filter(
+            execution_shift=shift, payment__method="CASH",
+            status=Refund.Status.SUCCEEDED).aggregate(
+                total=models.Sum("amount"))["total"] or Decimal("0.00")
+        cash_in = CashierShiftMovement.objects.filter(
+            shift=shift, direction=CashierShiftMovement.Direction.IN).aggregate(
+                total=models.Sum("amount"))["total"] or Decimal("0.00")
+        cash_out = CashierShiftMovement.objects.filter(
+            shift=shift, direction=CashierShiftMovement.Direction.OUT).aggregate(
+                total=models.Sum("amount"))["total"] or Decimal("0.00")
+        expected = shift.opening_cash + cash_income - cash_refunds + cash_in - cash_out
         shift.expected_cash = expected
         shift.actual_cash = actual
         variance = actual - expected
@@ -757,9 +782,52 @@ class BillingService:
         AuditEvent.record(
             action="billing.shift_close", entity_type="CashierShift",
             entity_id=shift.pk, actor=closed_by, property_obj=shift.property,
-            after={"expected": str(expected), "actual": str(actual),
+            after={"opening_cash": str(shift.opening_cash),
+                   "cash_income": str(cash_income), "cash_refunds": str(cash_refunds),
+                   "cash_in": str(cash_in), "cash_out": str(cash_out),
+                   "expected": str(expected), "actual": str(actual),
                    "variance": str(variance), "reason": variance_reason})
         return shift
+
+    @staticmethod
+    @transaction.atomic
+    def record_shift_movement(*, shift_id, direction, amount, reason,
+                              created_by, idempotency_key):
+        """登记班次现金补入/支出；只追加、幂等且仅开放班次可写。"""
+        from apps.billing.models import CashierShift, CashierShiftMovement
+        direction = str(direction or "").strip().upper()
+        if direction not in CashierShiftMovement.Direction.values:
+            raise ValueError("现金方向必须是 IN 或 OUT。")
+        amount = BillingService._money(amount)
+        if amount <= 0:
+            raise ValueError("现金变动金额必须大于零。")
+        reason = str(reason or "").strip()
+        if not reason or len(reason) > 240:
+            raise ValueError("现金变动原因必须填写且不能超过 240 个字符。")
+        key = str(idempotency_key or "").strip()
+        if not key or len(key) > 64:
+            raise ValueError("现金变动必须提供 1 至 64 个字符的幂等键。")
+        shift = CashierShift.objects.select_for_update().filter(
+            pk=shift_id, cashier=created_by,
+            status=CashierShift.ShiftStatus.OPEN).first()
+        if shift is None:
+            raise ValueError("班次不存在、已关闭或不属于当前操作人。")
+        existing = CashierShiftMovement.objects.filter(
+            shift=shift, idempotency_key=key).first()
+        if existing:
+            if (existing.direction != direction or existing.amount != amount
+                    or existing.reason != reason):
+                raise ValueError("该幂等键已用于不同现金变动。")
+            return existing, False
+        movement = CashierShiftMovement.objects.create(
+            shift=shift, direction=direction, amount=amount,
+            reason=reason, idempotency_key=key, created_by=created_by)
+        AuditEvent.record(
+            action="billing.shift_cash_movement", entity_type="CashierShiftMovement",
+            entity_id=movement.pk, actor=created_by, property_obj=shift.property,
+            after={"shift_id": shift.pk, "direction": direction,
+                   "amount": str(amount)}, reason=reason)
+        return movement, True
 
     @staticmethod
     def financial_summary(*, property_obj, start_date, end_date):
