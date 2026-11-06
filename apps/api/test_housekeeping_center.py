@@ -372,7 +372,7 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
 
 
 class HousekeepingMaintenanceTests(HousekeepingCenterTestBase):
-    """维修登记：reason 必填、no_show_handle 口径、登记/恢复链与审计。"""
+    """维修登记：reason 必填、inventory.maintenance_manage 独立权限、登记/恢复链与审计。"""
 
     def test_maintenance_requires_authentication(self):
         room = self._make_dirty_room("HK-8501")
