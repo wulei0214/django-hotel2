@@ -33,6 +33,7 @@ class ApprovalRecord(models.Model):
         APPROVED = "APPROVED", "已批准"
         REJECTED = "REJECTED", "已驳回"
         EXPIRED = "EXPIRED", "已过期"
+        EXPIRED = "EXPIRED", "已过期"
         CANCELLED = "CANCELLED", "已撤销"
 
     property = models.ForeignKey(
@@ -575,7 +576,8 @@ class Refund(models.Model):
                     Q(legacy_workflow=True)
                     | (Q(status="PENDING", approved_by__isnull=True)
                        | Q(status__in=("APPROVED", "SUCCEEDED", "REJECTED"),
-                           approved_by__isnull=False))
+                           approved_by__isnull=False)
+                       | Q(status="EXPIRED", approved_by__isnull=True))
                 ),
                 name="ck_refund_approval_facts"),
             models.CheckConstraint(
@@ -584,7 +586,7 @@ class Refund(models.Model):
                     | (Q(status="SUCCEEDED", executed_by__isnull=False,
                          executed_at__isnull=False,
                          execution_idempotency_key__isnull=False))
-                    | (Q(status__in=("PENDING", "APPROVED", "REJECTED"),
+                    | (Q(status__in=("PENDING", "APPROVED", "REJECTED", "EXPIRED"),
                          executed_by__isnull=True, executed_at__isnull=True,
                          execution_idempotency_key__isnull=True,
                          execution_shift__isnull=True))
@@ -598,7 +600,7 @@ class Refund(models.Model):
                 check=(Q(legacy_workflow=True)
                        | (Q(status__in=("PENDING", "APPROVED"),
                             processed_at__isnull=True)
-                          | Q(status__in=("REJECTED", "SUCCEEDED"),
+                          | Q(status__in=("REJECTED", "SUCCEEDED", "EXPIRED"),
                               processed_at__isnull=False))),
                 name="ck_refund_processed_at_state"),
             models.CheckConstraint(
@@ -652,7 +654,8 @@ class Refund(models.Model):
                     if any(previous[field] != getattr(self, field)
                            for field in historical_fields):
                         raise ValidationError("历史退款记录只读，不能补写或改写审批/执行事实。")
-                elif previous["status"] in (self.Status.SUCCEEDED, self.Status.REJECTED):
+                elif previous["status"] in (self.Status.SUCCEEDED, self.Status.REJECTED,
+                                            self.Status.EXPIRED):
                     # 终态后所有审批/执行字段（包括空参考号、空班次）都冻结；
                     # 否则现金退款的空 execution_reference 可在事后被补写篡改。
                     terminal_fields = immutable_once_set + ("status",)
@@ -670,6 +673,7 @@ class Refund(models.Model):
                         self.Status.APPROVED: {self.Status.APPROVED, self.Status.SUCCEEDED},
                         self.Status.SUCCEEDED: {self.Status.SUCCEEDED},
                         self.Status.REJECTED: {self.Status.REJECTED},
+                        self.Status.EXPIRED: {self.Status.EXPIRED},
                     }
                     if self.status not in allowed.get(previous["status"], {previous["status"]}):
                         raise ValidationError("退款状态不允许该迁移。")
@@ -687,8 +691,10 @@ class Refund(models.Model):
                                self.Status.SUCCEEDED) and not self.approved_by_id:
                 raise ValidationError("已审批/驳回/执行退款必须记录审批人。")
             if self.status in (self.Status.APPROVED, self.Status.REJECTED,
-                               self.Status.SUCCEEDED) and not self.approval_record_id:
-                raise ValidationError("已审批/驳回/执行退款必须关联审批记录。")
+                               self.Status.SUCCEEDED, self.Status.EXPIRED) and not self.approval_record_id:
+                raise ValidationError("已审批/驳回/执行/过期退款必须关联审批记录。")
+            if self.status == self.Status.EXPIRED and self.approved_by_id:
+                raise ValidationError("已过期退款不得伪造审批人。")
             if self.status == self.Status.SUCCEEDED:
                 if (not self.executed_by_id or not self.executed_at
                         or not self.execution_idempotency_key or not self.processed_at):
@@ -698,8 +704,8 @@ class Refund(models.Model):
                 raise ValidationError("退款未执行成功前不得写入执行事实。")
             if self.status in (self.Status.PENDING, self.Status.APPROVED) and self.processed_at:
                 raise ValidationError("待审批/已批准待执行退款不得预先写入处理完成时间。")
-            if self.status == self.Status.REJECTED and not self.processed_at:
-                raise ValidationError("已驳回退款必须记录处理时间。")
+            if self.status in (self.Status.REJECTED, self.Status.EXPIRED) and not self.processed_at:
+                raise ValidationError("已驳回/已过期退款必须记录处理时间。")
         return super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
