@@ -17,6 +17,7 @@
 from datetime import timedelta
 
 from apps.api.test_e2e_flows import E2EFlowTestBase
+from apps.billing.models import LedgerEntry
 from apps.billing.night_audit import NightAuditService
 from apps.core.models import (
     BreakGlassRecord, BusinessDate, NightAuditRun, Property,
@@ -195,12 +196,10 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
         self.assertEqual(data["blockers"][0]["severity"], "critical")
         self.assertIn(booking_no, data["blockers"][0]["message"])
 
-        before = __import__(
-            "apps.billing.models", fromlist=["LedgerEntry"]).LedgerEntry.objects.count()
+        before = LedgerEntry.objects.count()
         run_response = self._post_json("/api/v1/night-audit/run")
         self.assertEqual(run_response.status_code, 409, run_response.content)
-        after = __import__(
-            "apps.billing.models", fromlist=["LedgerEntry"]).LedgerEntry.objects.count()
+        after = LedgerEntry.objects.count()
         self.assertEqual(after, before)
         failed = NightAuditRun.objects.filter(
             business_date__property=self.property,
