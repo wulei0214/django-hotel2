@@ -791,6 +791,12 @@ class CashShiftReconciliationTests(WhiteboxBillingBase):
                 shift_id=shift.pk, direction="OUT", amount="1.00",
                 reason="关班后不得补录", created_by=self.operator,
                 idempotency_key="wbb-cash-closed-001")
+        with self.assertRaises(ValidationError):
+            CashierShiftMovement.objects.create(
+                shift=shift, direction=CashierShiftMovement.Direction.OUT,
+                amount=Decimal("1.00"), reason="ORM 直写也不得关班后补录",
+                idempotency_key="wbb-cash-closed-direct-001",
+                created_by=self.operator)
 
 class RefundDatabaseInvariantTests(WhiteboxBillingBase):
     """退款 SoD 与执行状态不只依赖 service；数据库约束必须阻止 QuerySet.update 绕过。"""
