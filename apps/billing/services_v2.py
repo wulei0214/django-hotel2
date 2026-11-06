@@ -756,7 +756,9 @@ class BillingService:
         from apps.billing.models import Payment, Refund, CashierShiftMovement
         cash_income = Payment.objects.filter(
             cashier_shift=shift, method="CASH",
-            status=Payment.Status.SUCCEEDED).aggregate(
+            status__in=(Payment.Status.SUCCEEDED,
+                        Payment.Status.PARTIALLY_REFUNDED,
+                        Payment.Status.REFUNDED)).aggregate(
                 total=models.Sum("amount"))["total"] or Decimal("0.00")
         cash_refunds = Refund.objects.filter(
             execution_shift=shift, payment__method="CASH",
