@@ -577,3 +577,52 @@ class RefundDatabaseInvariantTests(WhiteboxBillingBase):
         with self.assertRaises(ValidationError):
             refund.save()
 
+
+class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
+    """防止 ORM bulk update/delete 绕过财务模型的实例级不可变保护。"""
+
+    def test_payment_refund_and_cash_movement_reject_bulk_mutation(self):
+        reservation = self._make_reservation("WBBIMMUTABLE001")
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref="WBB-IMM-PAY-001",
+            method="CARD", amount=Decimal("100.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        with self.assertRaises(ValidationError):
+            Payment.objects.filter(pk=payment.pk).update(amount=Decimal("99.00"))
+        with self.assertRaises(ValidationError):
+            Payment.objects.filter(pk=payment.pk).delete()
+
+        refund = Refund.objects.create(
+            property=self.property, payment=payment, amount=Decimal("20.00"),
+            currency="CNY", reason="不可变事实测试",
+            idempotency_key="wbb-immutable-refund-001",
+            provider_ref="WBB-IMM-RFD-001", requested_by=self.operator)
+        with self.assertRaises(ValidationError):
+            Refund.objects.filter(pk=refund.pk).update(amount=Decimal("19.00"))
+        with self.assertRaises(ValidationError):
+            Refund.objects.filter(pk=refund.pk).delete()
+
+        refund.legacy_workflow = True
+        with self.assertRaises(ValidationError):
+            refund.save()
+        with self.assertRaises(ValidationError):
+            Refund.objects.create(
+                property=self.property, payment=payment,
+                amount=Decimal("10.00"), currency="CNY",
+                reason="不得伪造历史", idempotency_key="wbb-legacy-forgery",
+                provider_ref="WBB-IMM-RFD-002", requested_by=self.operator,
+                legacy_workflow=True)
+
+        shift, _ = BillingService.open_shift(
+            property_obj=self.property, cashier=self.operator,
+            opening_cash="10.00")
+        movement, _ = BillingService.record_shift_movement(
+            shift_id=shift.pk, direction="IN", amount="1.00",
+            reason="不可变现金变动测试", created_by=self.operator,
+            idempotency_key="wbb-immutable-movement-001")
+        with self.assertRaises(ValidationError):
+            CashierShiftMovement.objects.filter(pk=movement.pk).update(
+                amount=Decimal("2.00"))
+        with self.assertRaises(ValidationError):
+            CashierShiftMovement.objects.filter(pk=movement.pk).delete()
