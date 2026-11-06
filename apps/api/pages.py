@@ -287,14 +287,14 @@ MANAGEMENT_CENTERS = {
         ],
     },
     # 基线 2.0 §4.5：报表分析中心（专属工作台模板；纯只读聚合，不作为第二账本）。
-    # 页面门禁取报表中心最高敏感档 hotelapp.finance_access（含收入/ADR 报表）；
-    # 各报表 API 按自身敏感度逐请求复核：收入/ADR=finance_access，
-    # 入住率/客源/清洁=view_accommodation（口径见 apps/api/report_center.py 模块注）。
+    # 页面允许任一报表类别权限进入；前端按权限隐藏无权报表卡片，API 仍逐请求复核。
+    # 收入/ADR=finance_access；入住率/客源/清洁=view_accommodation。
     # 键名与 URL 段一致（/manage/reports/）。
     "reports": {
         "title": "报表分析中心",
         "subtitle": "入住率、ADR、收入、客源与清洁效率（只读聚合，含统计口径说明）",
-        "permission": "hotelapp.finance_access",
+        "permission": "",
+        "any_permissions": ("hotelapp.view_accommodation", "hotelapp.finance_access"),
         "endpoint": "/api/v1/reports/occupancy",
         "template": "pms/report_center.html",
         "columns": [],
@@ -337,7 +337,12 @@ def management_center_page(request, center):
     # §4.6 通知与待办中心：permission 留空 → 仅要求认证 + 当前物业有效任职
     #（§4.6 规则"所有员工都能收通知"，不设专项权限码）；其余中心维持原门禁。
     required_permission = config.get("permission")
-    if required_permission:
+    any_permissions = config.get("any_permissions", ())
+    if any_permissions:
+        allowed = any(
+            AuthorizationService.has_permission(request.user, property_obj, code)
+            for code in any_permissions)
+    elif required_permission:
         allowed = AuthorizationService.has_permission(
             request.user, property_obj, required_permission)
     else:
@@ -390,4 +395,10 @@ def management_center_page(request, center):
         "can_flow_housekeeping": can_flow_housekeeping,
         "can_release_room": can_release_room,
         "can_register_maintenance": can_register_maintenance,
+        "report_permissions": {
+            "view_accommodation": AuthorizationService.has_permission(
+                user, property_obj, "hotelapp.view_accommodation"),
+            "finance_access": AuthorizationService.has_permission(
+                user, property_obj, "hotelapp.finance_access"),
+        } if center == "reports" else {},
     })
