@@ -52,6 +52,10 @@ class CenterTemplateRegressionTests(SimpleTestCase):
         self.assertIn("requestKey ||", source)
         self.assertIn("executionKey ||", source)
         self.assertIn("movementKey ||", source)
+        self.assertIn("approveKey", source)
+        self.assertIn("rejectKey ||", source)
+        self.assertIn("openShiftKey ||", source)
+        self.assertIn("closeShiftKey ||", source)
 
     def test_billing_center_exposes_shift_controls_and_separate_refund_actions(self):
         source = self.read_template("billing_center.html")
