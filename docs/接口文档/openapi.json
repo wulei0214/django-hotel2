@@ -22320,6 +22320,33 @@
                 "type": "null"
               }
             ]
+          },
+          "execution_status": {
+            "type": "string",
+            "description": "审批状态或 EXECUTED；红字冲销执行后为 EXECUTED。"
+          },
+          "executed_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "红字冲销执行人用户名。"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "executed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "description": ""
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": true
