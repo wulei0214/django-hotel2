@@ -1018,6 +1018,38 @@ class BillingRefundThreePartyApiTests(BillingCenterTestBase):
         with self.assertRaises(ValidationError):
             refund.save()
 
+    def test_payment_provider_is_immutable_and_refund_pending_cannot_fail(self):
+        from django.core.exceptions import ValidationError
+
+        reservation, _folio = self._booking_with_outstanding()
+        payment = BillingService.collect_payment(
+            property_obj=self.property, reservation=reservation,
+            amount="60.00", method="CARD", collected_by=self.finance,
+            reference="BC-PAYMENT-IMMUTABLE-001")
+
+        payment.provider = "forged-provider"
+        with self.assertRaises(ValidationError):
+            payment.save()
+        payment.refresh_from_db()
+        self.assertEqual(payment.provider, "frontdesk_manual")
+
+        self._login(self.finance)
+        requested = _post_json(
+            self.client, "/api/v1/billing/refunds",
+            {"payment_id": payment.pk, "amount": "10.00",
+             "reason": "支付状态机回归", "idempotency_key": "bc-payment-state-001"})
+        self.assertEqual(requested.status_code, 201, requested.content)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
+
+        # 已有退款申请时，支付不能被其他路径改写成 FAILED。
+        payment.status = Payment.Status.FAILED
+        with self.assertRaises(ValidationError):
+            payment.save()
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
+
+
 class FinanceLegacyRouteRetirementTests(BillingCenterTestBase):
     """旧 /finance 页面只迁移到 PMS2；旧财务写入口永久退役。"""
 
