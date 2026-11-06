@@ -85,6 +85,11 @@ TOP_ACTORS_LIMIT = 5
 # 面向中文一线运营人员的审计展示字典；原始代码字段仍保留用于检索与追溯。
 ACTION_LABELS = {
     "billing.payment_collected": "登记收款",
+    "billing.collect": "登记收款",
+    "billing.deposit_collect": "登记押金",
+    "billing.ledger_post": "记入账务凭证",
+    "billing.shift_open": "收银班次开班",
+    "billing.shift_close": "收银班次关班",
     "billing.refund_request": "提交退款申请",
     "billing.refund_completed": "退款完成",
     "billing.refund_approved": "退款审批通过",
@@ -92,6 +97,11 @@ ACTION_LABELS = {
     "frontdesk.reservation_created": "创建预订",
     "frontdesk.reservation_cancelled": "取消预订",
     "frontdesk.check_in": "办理入住",
+    "frontdesk.checked_in": "办理入住",
+    "frontdesk.checked_out": "办理退房",
+    "frontdesk.stay_extended": "办理续住",
+    "frontdesk.stay_room_changed": "办理换房",
+    "frontdesk.no_show_processed": "登记未到",
     "frontdesk.check_out": "办理退房",
     "frontdesk.no_show_processed": "登记未到",
     "frontdesk.room_assigned": "分配房间",
@@ -101,11 +111,17 @@ ACTION_LABELS = {
     "guest.pii_reveal.phone": "查看客人完整手机号",
     "guest.document_reveal": "查看客人证件信息",
     "guest.phone_reveal": "查看客人完整手机号",
+    "identity.employee_create": "建立员工档案",
+    "identity.employment_status": "变更员工状态",
     "identity.role_assign": "授予员工角色",
     "identity.role_end": "结束员工角色授权",
     "identity.password_reset": "重置员工密码",
     "identity.account_provision": "开通员工账号",
     "permissions.matrix_saved": "保存角色权限矩阵",
+    "approval.request": "提交审批申请",
+    "approval.approve": "审批通过",
+    "approval.reject": "审批驳回",
+    "approval.expire": "审批过期",
     "night_audit.run": "执行夜审",
     "night_audit.reopen": "重新开启营业日",
     "night_audit.break_glass_requested": "申请紧急重开",
@@ -118,9 +134,12 @@ ACTION_LABELS = {
 ENTITY_TYPE_LABELS = {
     "Guest": "客人档案", "GuestDocument": "客人证件",
     "GuestPhone": "客人联系方式", "Reservation": "预订订单",
+    "ReservationRoom": "预订房间明细",
     "ReservationRoom": "预订房间", "Stay": "入住记录",
     "StayRoomSegment": "房间住宿段", "Folio": "账单",
+    "Stay": "实际入住记录",
     "LedgerEntry": "账务凭证", "Payment": "收款记录",
+    "CashierShift": "收银班次",
     "Refund": "退款记录", "Room": "客房",
     "RoomType": "房型", "DailyRate": "每日房价",
     "RoomTypeInventory": "房型库存", "Property": "物业",
@@ -162,8 +181,12 @@ def _parse_day(value, field):
 
 
 def _actor_label(actor):
-    """操作人展示名：系统操作（actor 为空）统一标 system（同 audit_timeline）。"""
-    return actor.username if actor else "系统"
+    """展示员工姓名和登录账号；系统操作统一显示系统。"""
+    if actor is None:
+        return "系统"
+    profile = getattr(actor, "staff_profile", None)
+    full_name = getattr(profile, "full_name", "") if profile else ""
+    return "%s（%s）" % (full_name, actor.username) if full_name else actor.username
 
 
 def _sensitive_flag(action):
@@ -183,7 +206,7 @@ def audit_events(request):
     -created_at,-id（P0-03 ensure_stable_ordering 校验通过）。
     """
     property_obj = _context(request)
-    qs = AuditEvent.objects.filter(property=property_obj).select_related("actor")
+    qs = AuditEvent.objects.filter(property=property_obj).select_related("actor", "actor__staff_profile")
 
     action = (request.GET.get("action") or "").strip()
     if action:
@@ -226,7 +249,8 @@ def audit_events(request):
         "entity_type": event.entity_type,
         "entity_type_label": _entity_type_label(event.entity_type),
         "entity_id": event.entity_id,
-        "actor": _actor_label(event.actor),
+        "actor": event.actor.username if event.actor else None,
+        "actor_label": _actor_label(event.actor),
         "reason": event.reason or None,
         "is_sensitive": _sensitive_flag(event.action),
         "created_at": event.created_at.isoformat(),
