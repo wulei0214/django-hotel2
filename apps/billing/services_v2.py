@@ -628,6 +628,19 @@ class BillingService:
             raise ValueError("退款审批人与执行人不能是同一账号。")
         payment = Payment.objects.select_for_update().get(
             pk=refund.payment_id, property=property_obj)
+        execution_shift = None
+        if payment.method == "CASH":
+            # 先锁执行班次，再做任何普通聚合读取。MySQL 默认 REPEATABLE READ：
+            # 若先聚合再等待班次锁，快照可能看不到刚提交的现金支出，造成余额过估。
+            execution_shift = CashierShift.objects.select_for_update().filter(
+                property=property_obj, cashier=executed_by,
+                status=CashierShift.ShiftStatus.OPEN).first()
+            if execution_shift is None:
+                raise ValueError("现金退款执行前必须先开立执行人本人收银班次。")
+        elif not execution_reference:
+            raise ValueError("银行卡/转账退款必须记录渠道退款参考号。")
+
+        # 现金班次锁已取得后才建立一致性读快照；所有现金写入也必须先锁同一班次。
         reserved = Refund.objects.filter(
             payment=payment,
             status__in=(Refund.Status.PENDING, Refund.Status.APPROVED,
@@ -639,20 +652,12 @@ class BillingService:
         folio = payment.folio
         if folio.property_id != property_obj.pk or folio.status == "VOIDED":
             raise ValueError("原支付对应账单不存在或已作废。")
-        execution_shift = None
-        if payment.method == "CASH":
-            execution_shift = CashierShift.objects.select_for_update().filter(
-                property=property_obj, cashier=executed_by,
-                status=CashierShift.ShiftStatus.OPEN).first()
-            if execution_shift is None:
-                raise ValueError("现金退款执行前必须先开立执行人本人收银班次。")
+        if execution_shift is not None:
             available_cash = BillingService.cash_shift_expected_cash(execution_shift)
             if refund.amount > available_cash:
                 raise ValueError(
                     f"执行班次现金余额不足：当前应有 {available_cash}，退款金额 {refund.amount}。"
                     "请先通过现金补入记录实际领取备用金。")
-        elif not execution_reference:
-            raise ValueError("银行卡/转账退款必须记录渠道退款参考号。")
         BillingService.post_entry(
             property_obj=property_obj, folio=folio,
             entry_type=LedgerEntry.EntryType.REFUND,
