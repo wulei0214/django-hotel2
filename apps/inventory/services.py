@@ -80,13 +80,18 @@ def change_housekeeping_status(*, property_obj, room_id, target_status,
       * 同状态重复提交为幂等空操作，返回 changed=False（不落审计）；
       * →CLEAN（净房放行）在服务层复核 hotelapp.room_release_ready（三层复核
         中的服务层一道；API 层先行校验同一权限码）；其余流转的
-        hotelapp.change_room 由 API 层门禁（与房态 CRUD 同码，客房服务员在列）；
+        inventory.housekeeping_update 由 API 层和服务层双重门禁（客房服务员在列）；
       * 占用（occupancy）与维修（maintenance）维度不在本服务修改；
       * 每次实际变更落 AuditEvent housekeeping.status_changed。
 
     返回 (room, changed)。
     """
     from apps.core.models import AuditEvent
+    from apps.identity.authorization import AuthorizationService
+
+    if changed_by is None or not AuthorizationService.has_permission(
+            changed_by, property_obj, "inventory.housekeeping_update"):
+        raise HousekeepingOperationError("当前岗位没有清洁状态流转权限。")
 
     if target_status not in Room.HousekeepingStatus.values:
         raise HousekeepingOperationError(
@@ -187,8 +192,8 @@ def change_maintenance_status(*, property_obj, room_id, target_status, reason,
 
     规则：
       * 合法流转见 MAINTENANCE_TRANSITIONS；reason 必填（1-240 字符）；
-      * hotelapp.no_show_handle（值班经理/店长专项权限）由 API 层先行校验；
-        选择该口径而非 change_room：维修停用直接影响可售库存，属管理者动作，
+      * inventory.maintenance_manage（值班经理/店长专项权限）由 API 层和服务层双重校验；
+        该权限与 no_show_handle（未到处理）独立，维修停用直接影响可售库存，属管理者动作，
         不能开放给客房服务员（change_room 持有者含客房服务员）；
       * 恢复（→NORMAL）不联动清洁状态：房间仍脏则继续清洁链；
       * 基线 2.0 §3.3：停用/恢复与未来库存 out_of_service 同事务同步，
@@ -198,6 +203,11 @@ def change_maintenance_status(*, property_obj, room_id, target_status, reason,
     返回 (room, changed)。
     """
     from apps.core.models import AuditEvent
+    from apps.identity.authorization import AuthorizationService
+
+    if changed_by is None or not AuthorizationService.has_permission(
+            changed_by, property_obj, "inventory.maintenance_manage"):
+        raise HousekeepingOperationError("当前岗位没有维修状态登记权限。")
 
     reason = str(reason or "").strip()
     if not reason or len(reason) > 240:
