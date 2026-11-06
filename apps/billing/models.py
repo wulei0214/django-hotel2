@@ -456,6 +456,7 @@ class CashierShift(models.Model):
         verbose_name_plural = "现金班次"
         ordering = ("-opened_at",)
         permissions = (
+            ("cashier_shift_manage", "可以开立和关闭收银班次"),
             ("cash_movement_manage", "可以登记班次现金收入与支出"),
         )
 
