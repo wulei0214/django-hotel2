@@ -70,6 +70,20 @@ class HousekeepingSummaryTimezoneTests(TestCase):
             property=self.property, room_type=self.room_type, number="WBI2-8202",
             floor="8", housekeeping_status=Room.HousekeepingStatus.DIRTY)
         self.operator = User.objects.create_user(username="wbi2-operator")
+        from django.contrib.auth.models import Group, Permission
+        group = Group.objects.create(name="WBI2-清洁操作组")
+        permission = Permission.objects.get(
+            content_type__app_label="inventory",
+            codename="housekeeping_update")
+        group.permissions.add(permission)
+        self.operator.groups.add(group)
+        from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
+        profile = StaffProfile.objects.create(user=self.operator)
+        membership = PropertyStaffMembership.objects.create(
+            property=self.property, staff_profile=profile,
+            employee_no="WBI2-001", status="ACTIVE")
+        StaffRoleAssignment.objects.create(
+            membership=membership, group=group, is_active=True)
 
     def test_today_window_uses_property_timezone(self):
         # T1：物业当地 2026-01-15 23:30（就物业日历而言是“昨天”）；
