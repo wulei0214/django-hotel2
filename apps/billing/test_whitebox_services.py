@@ -571,6 +571,17 @@ class CashShiftReconciliationTests(WhiteboxBillingBase):
         self.assertFalse(replay_created)
         self.assertEqual(replay_after_close.pk, out_movement.pk)
 
+    def test_close_shift_accepts_null_reason_when_cash_balances(self):
+        shift, _ = BillingService.open_shift(
+            property_obj=self.property, cashier=self.operator,
+            opening_cash="20.00")
+        closed = BillingService.close_shift(
+            property_obj=self.property, shift_id=shift.pk,
+            actual_cash="20.00", closed_by=self.operator,
+            variance_reason=None)
+        self.assertEqual(closed.variance, Decimal("0.00"))
+        self.assertEqual(closed.variance_reason, "")
+
     def test_non_cash_payment_is_not_counted_in_cash_shift(self):
         reservation = self._make_reservation("WBBCASHSHIFT002")
         shift, _ = BillingService.open_shift(
