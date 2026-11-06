@@ -290,6 +290,11 @@ class LedgerEntry(models.Model):
         max_length=240, blank=True, verbose_name="冲销原因",
         help_text="红字冲销凭证必填（数据库约束强制）",
     )
+    approval_record = models.ForeignKey(
+        "ApprovalRecord", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="reversal_entries", verbose_name="冲销审批记录",
+        help_text="PMS2 新冲销必须关联值班经理/店长已批准的审批记录；历史冲销可为空",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="入账时间")
 
     class Meta:
@@ -310,7 +315,8 @@ class LedgerEntry(models.Model):
         # F-08（基线 2.0 §4.1）：红字冲销 HTTP 入口启用新权限码，
         # 不复用已随旧路由退役的 hotelapp.reverse_checkout。
         permissions = (
-            ("reverse_entry", "可以红字冲销账本凭证（LedgerEntry）"),
+            ("reverse_entry", "可以申请并执行已批准的账本红字冲销（LedgerEntry）"),
+            ("reversal_approve", "可以审批账本红字冲销申请（LedgerEntry）"),
         )
 
     def __str__(self):
