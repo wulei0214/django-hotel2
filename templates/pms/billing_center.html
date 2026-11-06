@@ -610,6 +610,10 @@
             ["executed_by","执行人"],["executed_at","执行时间"],
             ["execution_reference","执行凭据"],["created_at","申请时间"]], payment.refunds));
           payment.refunds.forEach(function(refund){
+            if (refund.legacy_workflow) {
+              drawerBody.appendChild(notify(
+                "历史退款记录：旧流程未能证明申请、审批、执行三方分离；该记录只读，不作为新流程执行凭据。"));
+            }
             const actions = document.createElement("div");
             actions.className = "pms-tools";
             actions.style.margin = "6px 0 12px";
@@ -656,13 +660,21 @@
                   actions.appendChild(notify("现金退款执行前，请先开立本人收银班次。"));
                   return;
                 }
+                let executionReference = "";
+                if (payment.method !== "CASH") {
+                  executionReference = window.prompt("请输入银行卡/转账渠道退款参考号（必填）") || "";
+                  if (!executionReference.trim()) {
+                    actions.appendChild(notify("非现金退款必须填写渠道退款参考号。"));
+                    return;
+                  }
+                }
                 if (!window.confirm("请确认退款已经实际支付给住客；确认后系统将追加退款凭证。")) return;
                 executeButton.disabled = true;
                 const key = "refund-exec-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,10);
                 try {
                   await postJson("/api/v1/billing/refunds/" + refund.id + "/execute", {
                     confirm_refund_paid: true,
-                    execution_reference: "",
+                    execution_reference: executionReference.trim(),
                     idempotency_key: key
                   });
                   await Promise.all([loadFolios(currentPage), loadSummary(), loadLedger(), loadShifts()]);
