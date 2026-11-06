@@ -53,39 +53,81 @@ class NightAuditService:
             .order_by("id")
         )
         rows = []
+        blockers = []
         total = Decimal("0.00")
         for stay in stays:
             line = stay.reservation_room
+            booking_no = line.reservation.booking_no
             nightly = next(
                 (item for item in (line.nightly_rates or [])
                  if str(item.get("date")) == day.isoformat()),
                 None,
             )
             if nightly is None:
-                raise NightAuditError(
-                    f"在住单 {line.reservation.booking_no} 的房间明细 {line.pk} "
-                    f"缺少 {day.isoformat()} 的每晚房价快照，夜审已阻断。"
-                )
+                blockers.append({
+                    "code": "NIGHTLY_RATE_MISSING",
+                    "severity": "critical",
+                    "entity": {"type": "Stay", "id": stay.pk,
+                               "booking_no": booking_no},
+                    "message": (f"预订 {booking_no} 的房间明细 {line.pk} "
+                                f"缺少 {day.isoformat()} 的每晚房价快照。"),
+                    "suggested_action": "核对预订房价快照；不得在缺少价格依据时自动过租。",
+                })
+                continue
             try:
                 amount = Decimal(str(nightly.get("price")))
-            except (InvalidOperation, TypeError, ValueError) as exc:
-                raise NightAuditError(
-                    f"在住单 {line.reservation.booking_no} 的当日房价快照无效。"
-                ) from exc
-            if not amount.is_finite() or amount < 0 or amount != amount.quantize(Decimal("0.01")):
-                raise NightAuditError(
-                    f"在住单 {line.reservation.booking_no} 的当日房价金额无效。"
-                )
+            except (InvalidOperation, TypeError, ValueError):
+                blockers.append({
+                    "code": "NIGHTLY_RATE_INVALID",
+                    "severity": "critical",
+                    "entity": {"type": "Stay", "id": stay.pk,
+                               "booking_no": booking_no},
+                    "message": f"预订 {booking_no} 的当日房价快照不是有效金额。",
+                    "suggested_action": "修复并核验原始房价快照后重新预览。",
+                })
+                continue
+            try:
+                valid_amount = (amount.is_finite() and amount >= 0
+                                and amount == amount.quantize(Decimal("0.01")))
+            except InvalidOperation:
+                valid_amount = False
+            if not valid_amount:
+                blockers.append({
+                    "code": "NIGHTLY_RATE_INVALID",
+                    "severity": "critical",
+                    "entity": {"type": "Stay", "id": stay.pk,
+                               "booking_no": booking_no},
+                    "message": f"预订 {booking_no} 的当日房价金额无效。",
+                    "suggested_action": "修复并核验原始房价快照后重新预览。",
+                })
+                continue
+            folio = Folio.objects.filter(
+                property=property_obj,
+                reservation_id=line.reservation_id,
+                folio_type=Folio.FolioType.MASTER,
+                status=Folio.Status.OPEN,
+            ).only("id").first()
+            if folio is None:
+                blockers.append({
+                    "code": "MASTER_FOLIO_MISSING",
+                    "severity": "critical",
+                    "entity": {"type": "Reservation", "id": line.reservation_id,
+                               "booking_no": booking_no},
+                    "message": f"预订 {booking_no} 缺少有效的未结主账单。",
+                    "suggested_action": "核查账单归属与状态；不得自动创建重复账单。",
+                })
+                continue
             reference = f"night-audit:{property_obj.pk}:{day.isoformat()}:stay:{stay.pk}"
             already_posted = LedgerEntry.objects.filter(
                 property=property_obj, reference=reference
             ).exists()
             rows.append({
                 "stay_id": stay.pk,
-                "booking_no": line.reservation.booking_no,
+                "booking_no": booking_no,
                 "room_number": stay.room.number,
                 "amount": str(amount),
                 "currency": line.reservation.currency,
+                "folio_id": folio.pk,
                 "already_posted": already_posted,
                 "reference": reference,
             })
@@ -114,6 +156,9 @@ class NightAuditService:
             "charge_total": str(total.quantize(Decimal("0.01"))),
             "currency": property_obj.currency,
             "no_show_review_candidates": candidates,
+            "blockers": blockers,
+            "blocker_count": len(blockers),
+            "can_run": not blockers,
             "note": "未到候选只列示，不在夜审中自动标记或没收押金；需按已披露政策由授权员工处理。",
         }
 
@@ -163,6 +208,12 @@ class NightAuditService:
                 if bd.status not in (BusinessDate.Status.OPEN, BusinessDate.Status.REOPENED):
                     raise NightAuditError("营业日状态已变化，夜审未执行。")
                 preview = cls.preview(property_obj=property_obj, business_date=day)
+                if preview.get("blockers"):
+                    codes = sorted({item.get("code", "UNKNOWN")
+                                     for item in preview["blockers"]})
+                    raise NightAuditError(
+                        "夜审存在 %s 项未解决阻断，执行已停止：%s" %
+                        (len(preview["blockers"]), "、".join(codes)))
                 posted = 0
                 already = 0
                 for row in preview["stays"]:
