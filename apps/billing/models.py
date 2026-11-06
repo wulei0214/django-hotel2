@@ -33,7 +33,6 @@ class ApprovalRecord(models.Model):
         APPROVED = "APPROVED", "已批准"
         REJECTED = "REJECTED", "已驳回"
         EXPIRED = "EXPIRED", "已过期"
-        EXPIRED = "EXPIRED", "已过期"
         CANCELLED = "CANCELLED", "已撤销"
 
     property = models.ForeignKey(
@@ -500,6 +499,7 @@ class Refund(models.Model):
         APPROVED = "APPROVED", "已批准待执行"
         SUCCEEDED = "SUCCEEDED", "已执行完成"
         REJECTED = "REJECTED", "已驳回"
+        EXPIRED = "EXPIRED", "已过期"
 
     property = models.ForeignKey(
         "core.Property", on_delete=models.PROTECT, related_name="refunds",
@@ -669,7 +669,7 @@ class Refund(models.Model):
                             raise ValidationError("退款审批/执行事实不可覆盖或改写。")
                     allowed = {
                         self.Status.PENDING: {self.Status.PENDING, self.Status.APPROVED,
-                                              self.Status.REJECTED},
+                                              self.Status.REJECTED, self.Status.EXPIRED},
                         self.Status.APPROVED: {self.Status.APPROVED, self.Status.SUCCEEDED},
                         self.Status.SUCCEEDED: {self.Status.SUCCEEDED},
                         self.Status.REJECTED: {self.Status.REJECTED},
