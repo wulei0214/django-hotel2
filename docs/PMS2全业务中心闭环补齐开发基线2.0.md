@@ -1074,3 +1074,53 @@ P0 权限测试必须覆盖匿名与跨物业。每一个权限拒绝都应验�
 7. 财务工作台改为“提交审批 → 管理者审批 → 财务刷新状态 → 执行冲销”两阶段操作。
 
 本项代码已提交到 main；最终验收仍须等待最新 Django CI、MySQL 8 测试与触发器检查全部通过，并完成人工浏览器角色验收。
+
+
+---
+
+## 12. 2026-11-06 第七批：财务状态事实、MySQL 锁顺序与 CI 兼容性修正
+
+> 本节记录本轮直接提交到 `main` 的代码修复。提交后 CI 仍须以最新 SHA 重新完成；任何旧 SHA 的成功/失败均不得外推到新 SHA。
+
+### 12.1 本轮提交记录
+
+| 提交 | 修改范围 | 目的 |
+|---|---|---|
+| `c3ea524` | `apps/api/test_billing_center.py` | 测试工号改用数据库生成的短 ID，修复 MySQL 8 下 `employee_no` 超过 32 字符导致的测试失败；不放宽正式字段长度 |
+| `71b1fb7` | `apps/billing/models.py` | 冻结已执行/已驳回退款的所有审批与执行字段，包含空参考号、空执行班次等空值事实 |
+| `dbfaf9b` | `apps/billing/services_v2.py` | 初步调整现金退款与关班锁定顺序 |
+| `2ad7a28` | `apps/billing/models.py` | 增加退款处理时间和执行参考号状态约束 |
+| `59ade32` | `apps/billing/migrations/0021_refund_execution_fact_freeze.py` | 新增 MySQL/SQLite 可执行的退款事实约束迁移；历史异常记录仅标记 `legacy_workflow` |
+| `458199e` | `apps/api/test_billing_center.py` | 增加现金退款执行成功后空参考号不可回填的回归测试 |
+| `1e25fe7` | `apps/billing/services_v2.py` | 统一退款/关班锁顺序为现金班次 → Payment → Refund；同支付退款金额聚合采用 MySQL 当前读 |
+
+### 12.2 退款三分离的补充保护
+
+- 申请、审批、执行仍为三个不同账号；只有执行成功才追加 REFUND LedgerEntry。
+- 已执行或已驳回退款进入终态后，申请、审批、执行字段全部冻结；现金退款的空渠道参考号也属于不可变事实，不能事后补写。
+- 新增数据库约束：
+  - `PENDING/APPROVED` 不得预写 `processed_at`；
+  - `REJECTED/SUCCEEDED` 必须有 `processed_at`；
+  - 非 `SUCCEEDED` 退款不得预写执行参考号。
+- 迁移发现无法证明上述事实的历史记录时，只设置 `legacy_workflow=True`，不回填执行人、不伪造时间、不修改金额/凭证。
+- 现金退款执行与关班共享班次锁；退款操作锁顺序统一，避免 MySQL InnoDB 死锁。退款金额上限聚合使用 `SELECT ... FOR UPDATE` 当前读，避免 REPEATABLE READ 旧快照漏算并发退款。
+
+### 12.3 MySQL CI 失败根因与修复状态
+
+- `596f359` 的 MySQL 8 测试 workflow 已成功执行完整迁移，但 848 项测试中有 1 项失败：测试账号工号拼接用户名超过 `PropertyStaffMembership.employee_no.max_length=32`。
+- 正式工号字段长度和数据库 schema 不应为测试夹具错误而放宽；已改用创建后的 User 主键生成测试工号。
+- `2ad7a28` 的 Django CI 曾因模型约束已修改、迁移尚未提交而在 migration drift check 失败；后续新增 `billing.0021` 迁移予以同步。
+- 最新代码提交 `1e25fe7` 对应的 `tests` 与 `Django CI` 必须全部完成成功后，才可标记代码 CI 通过。运行中或旧 SHA 成功都不算本轮通过。
+
+### 12.4 仍需独立验收，不得混为“已完成”
+
+| 验收项 | 当前状态 | 关闭条件 |
+|---|---|---|
+| MySQL 8 CI | 最新 SHA 运行中 | 最新 SHA 的 migrations、全量测试、append-only guard 检查均成功 |
+| 本地 MySQL | 待处理 | 修复本地账号/Host 授权后，真实目标库执行迁移与只追加触发器检查 |
+| 浏览器 E2E | 待处理 | Playwright/真实浏览器完成财务收款、退款三方、冲销、班次开闭、权限 403/200 |
+| 九角色授权 | 代码迁移已有；实际账号回归待处理 | 九角色登录验证页面可见性、API 权限、服务端拒绝和对象物业隔离 |
+| 财务报表指标 | DEC-16 未验收 | 负责人签署收入、退款、冲账、营业日和自然日统计口径后再冻结 |
+| 生产备份恢复 | 待处理 | 在独立 MySQL 环境完成备份、恢复和数据核对演练 |
+
+**当前结论：** 财务三分离、现金班次、维修专项权限和通知个人已读已具备对应代码/迁移；本轮继续修复了退款事实不可变和 MySQL 锁顺序问题。仍不得宣称 PMS2 财务/数据库全部验收完成，也不得冻结基线 2.0 或启动 PMS3.0 功能排期。
