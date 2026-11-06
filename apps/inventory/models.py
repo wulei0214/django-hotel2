@@ -109,6 +109,11 @@ class Room(models.Model):
         indexes = [
             models.Index(fields=("property", "occupancy_status", "housekeeping_status"), name="idx_room_prop_occ_clean"),
         ]
+        permissions = (
+            ("housekeeping_view", "可以查看清洁与维修工作台"),
+            ("housekeeping_update", "可以流转客房清洁状态"),
+            ("maintenance_manage", "可以登记和恢复客房维修状态"),
+        )
 
     def __str__(self):
         return self.number
