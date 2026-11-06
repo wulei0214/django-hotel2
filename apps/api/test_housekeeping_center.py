@@ -514,6 +514,8 @@ class HousekeepingPageAndRegistryTests(HousekeepingCenterTestBase):
         self.assertIn('getElementById("hk-hk").addEventListener("change"', content)
         self.assertIn('getElementById("hk-mt").addEventListener("change"', content)
         self.assertIn('event.key === "Enter"', content)
+        self.assertIn('id="hk-page-size"', content)
+        self.assertIn('id="hk-goto-page"', content)
 
     def test_page_flags_hidden_without_special_permissions(self):
         """客房服务员：清洁流转可见；净房放行/维修登记不渲染（按钮显隐）。"""
