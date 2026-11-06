@@ -436,3 +436,87 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
             LedgerEntry.objects.filter(
                 reference=f"refund:{refund.provider_ref}").count(), 1)
 
+
+class CashShiftReconciliationTests(WhiteboxBillingBase):
+    """现金班次对账：现金支付、现金退款和现金变动按事实归属到执行班次。"""
+
+    def test_cash_shift_expected_balance_includes_income_refunds_and_movements(self):
+        reservation = self._make_reservation("WBBCASHSHIFT001")
+        cashier_shift, created = BillingService.open_shift(
+            property_obj=self.property, cashier=self.operator,
+            opening_cash="50.00")
+        self.assertTrue(created)
+
+        payment = BillingService.collect_payment(
+            property_obj=self.property, reservation=reservation,
+            amount="100.00", method="CASH", collected_by=self.operator,
+            reference="WBB-CASH-PAY-001")
+        self.assertEqual(payment.cashier_shift_id, cashier_shift.pk)
+
+        approver = User.objects.create_user(username="wbb-cash-approver")
+        executor = User.objects.create_user(username="wbb-cash-executor")
+        execution_shift, created = BillingService.open_shift(
+            property_obj=self.property, cashier=executor,
+            opening_cash="50.00")
+        self.assertTrue(created)
+
+        refund, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="20.00", reason="现金退款班次对账",
+            requested_by=self.operator, idempotency_key="wbb-cash-refund-001")
+        self.assertTrue(created)
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=refund.pk,
+            approved_by=approver)
+        executed, created = BillingService.execute_refund(
+            property_obj=self.property, refund_id=refund.pk,
+            executed_by=executor, confirm_refund_paid=True,
+            execution_reference="CASH-VOUCHER-001",
+            idempotency_key="wbb-cash-refund-exec-001")
+        self.assertTrue(created)
+        self.assertEqual(executed.execution_shift_id, execution_shift.pk)
+
+        BillingService.record_shift_movement(
+            shift_id=execution_shift.pk, direction="IN", amount="10.00",
+            reason="补充备用金", created_by=executor,
+            idempotency_key="wbb-cash-in-001")
+        BillingService.record_shift_movement(
+            shift_id=execution_shift.pk, direction="OUT", amount="5.00",
+            reason="经批准现金支出", created_by=executor,
+            idempotency_key="wbb-cash-out-001")
+
+        closed = BillingService.close_shift(
+            property_obj=self.property, shift_id=execution_shift.pk,
+            actual_cash="35.00", closed_by=executor)
+        self.assertEqual(closed.expected_cash, Decimal("35.00"))
+        self.assertEqual(closed.variance, Decimal("0.00"))
+        self.assertEqual(closed.status, CashierShift.ShiftStatus.CLOSED)
+
+    def test_non_cash_payment_is_not_counted_in_cash_shift(self):
+        reservation = self._make_reservation("WBBCASHSHIFT002")
+        shift, _ = BillingService.open_shift(
+            property_obj=self.property, cashier=self.operator,
+            opening_cash="25.00")
+        payment = BillingService.collect_payment(
+            property_obj=self.property, reservation=reservation,
+            amount="80.00", method="CARD", collected_by=self.operator,
+            reference="WBB-CARD-PAY-001")
+        self.assertIsNone(payment.cashier_shift_id)
+
+        closed = BillingService.close_shift(
+            property_obj=self.property, shift_id=shift.pk,
+            actual_cash="25.00", closed_by=self.operator)
+        self.assertEqual(closed.expected_cash, Decimal("25.00"))
+
+    def test_closed_shift_rejects_new_cash_movement(self):
+        shift, _ = BillingService.open_shift(
+            property_obj=self.property, cashier=self.operator,
+            opening_cash="10.00")
+        BillingService.close_shift(
+            property_obj=self.property, shift_id=shift.pk,
+            actual_cash="10.00", closed_by=self.operator)
+        with self.assertRaises(ValueError):
+            BillingService.record_shift_movement(
+                shift_id=shift.pk, direction="OUT", amount="1.00",
+                reason="关班后不得补录", created_by=self.operator,
+                idempotency_key="wbb-cash-closed-001")
