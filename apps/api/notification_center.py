@@ -15,15 +15,14 @@
 无高危副作用，故门禁同读取（有效任职即可）。
 
 响应封套：统一 {data, meta}（apps.core.api_contract），列表端点统一分页契约。
-站内通知不发第三方渠道（短信/邮件暂缓）；通知读写不产生 AuditEvent
-（§4.6：通知非审计动作）。
+站内通知不发第三方渠道（短信/邮件暂缓）；单条已读属于低风险个人状态，不写业务审计；物业级待办重算写入 AuditEvent。
 """
 from django.db.models import Count, Q
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.core.api_contract import ApiError, api_response, api_view, paginate
-from apps.core.models import Notification
+from apps.core.models import AuditEvent, Notification
 from apps.core.services_notifications import refresh_operational_todos
 from apps.identity.authorization import AuthorizationService
 
@@ -190,7 +189,7 @@ def read_all(request):
 def refresh(request):
     """触发当前物业运营待办重算（§4.6 首期口径：实时派生 + upsert，无 celery）。
 
-    员工可触发；物业隔离——只重算当前物业。返回对账摘要
+    员工可触发但按员工/IP 限流并记录审计；物业隔离——只重算当前物业。返回对账摘要
     {active, created, updated, resolved, by_code}。
     """
     property_obj, _profile, _group_ids = _context(request)
