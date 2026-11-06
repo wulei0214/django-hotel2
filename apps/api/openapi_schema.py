@@ -356,13 +356,17 @@ COMPONENTS = {
     }, desc="紧急重开授权记录（apps.core.models.BreakGlassRecord）。"),
 
     "FolioSummaryDto": s_obj({
-        "folio_id": s_nullable(s_int("账单 ID；未开账为 null。")),
-        "status": s_str("账单状态；未开账为 NOT_OPENED。"),
-        "status_label": s_str("状态中文标签。"),
-        "charges": s_str("借方合计。"), "credits": s_str("贷方合计。"),
-        "balance": s_str("余额。"),
-        "pending_payment_count": s_int("处理中支付笔数。"),
+        "folio_id": s_nullable(s_int("主账单 ID；未开账为 null。")),
+        "status": s_str("主账单状态；未开账为 NOT_OPENED。"),
+        "status_label": s_str("主账单状态中文标签。"),
+        "charges": s_nullable(s_str("所有 OPEN Folio 借方合计；币种不一致时为 null。")),
+        "credits": s_nullable(s_str("所有 OPEN Folio 贷方合计；币种不一致时为 null。")),
+        "balance": s_nullable(s_str("所有 OPEN Folio 带符号余额；币种不一致时为 null。")),
+        "pending_payment_count": s_int("所有 OPEN Folio 处理中支付笔数。"),
         "currency": s_str(), "currency_label": s_str(),
+        "folio_count": s_int("预订关联的全部账单数，含历史已结账单。"),
+        "open_folio_count": s_int("参与当前余额计算的未结账单数。"),
+        "currency_mismatch": s_bool("未结账单币种与预订币种不一致时为 true；金额字段不合并。"),
     }),
     "ReservationRoomSummary": s_obj({
         "reservation_room_id": s_int(),
@@ -381,6 +385,7 @@ COMPONENTS = {
         "adults": s_int(), "children": s_int(),
         "amount": s_str("该明细房费。"),
         "folio_summary": _ref("FolioSummaryDto"),
+        "stay_status_label": s_str("该房间实际入住状态中文标签；已确认但未办理入住显示待办理入住。"),
         "stay": s_nullable(s_obj({
             "id": s_int(), "status": s_str(), "status_label": s_str(),
             "actual_check_in": s_nullable(s_str("", format="date-time")),
