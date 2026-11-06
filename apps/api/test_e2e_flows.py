@@ -671,6 +671,17 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.assertIsNotNone(refund.executed_at)
         self.assertIsNotNone(refund.execution_shift_id)
 
+        refund_list = self.client.get("/api/v1/billing/refunds")
+        self.assertEqual(refund_list.status_code, 200, refund_list.content)
+        refund_dto = next(
+            row for row in refund_list.json()["data"]
+            if row["id"] == refund_id)
+        self.assertEqual(refund_dto["requested_by"], self.fd.username)
+        self.assertEqual(refund_dto["approved_by"], self.owner.username)
+        self.assertEqual(refund_dto["executed_by"], self.fin.username)
+        self.assertTrue(refund_dto["executed_at"])
+        self.assertFalse(refund_dto["legacy_workflow"])
+
         refund_entry = LedgerEntry.objects.get(
             reference=f"refund:{refund.provider_ref}")
         self.assertEqual(refund_entry.entry_type, LedgerEntry.EntryType.REFUND)
