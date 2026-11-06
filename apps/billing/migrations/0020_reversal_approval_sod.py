@@ -71,10 +71,10 @@ class Migration(migrations.Migration):
                 "ordering": ("created_at", "id"),
                 "verbose_name": "不可变账本凭证",
                 "verbose_name_plural": "不可变账本凭证",
-                "permissions": [
+                "permissions": (
                     ("reverse_entry", "可以申请并执行已批准的账本红字冲销（LedgerEntry）"),
                     ("reversal_approve", "可以审批账本红字冲销申请（LedgerEntry）"),
-                ],
+                ),
             },
         ),
         migrations.AddField(
