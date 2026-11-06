@@ -30,7 +30,7 @@ from django.db.models import Prefetch, Q, Sum
 from django.db.models.functions import Coalesce
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.billing.models import CashierShift, CashierShiftMovement, Folio, LedgerEntry, Payment, Refund
+from apps.billing.models import ApprovalRecord, CashierShift, CashierShiftMovement, Folio, LedgerEntry, Payment, Refund
 from apps.billing.services_v2 import BillingService
 from apps.core import labels as L
 from apps.core.api_contract import (
@@ -789,9 +789,8 @@ def close_shift_api(request, shift_id):
 def reverse_entry_api(request):
     """POST /api/v1/billing/reversals — 红字冲销（BillingService.reverse_entry）。
 
-    权限：hotelapp.finance_access + billing.reverse_entry（F-08：新权限码，
-    不复活已退役的 hotelapp.reverse_checkout）。账本只追加：原凭证不可变，
-    同一原凭证重复冲销走 reference 幂等返回首次结果。
+    权限：财务 hotelapp.finance_access + billing.reverse_entry；执行必须携带
+    值班经理/店长已批准的 billing.reversal ApprovalRecord。账本只追加，原凭证不可变。
     """
     property_obj = _require_finance_access(request, extra_permission="billing.reverse_entry")
     body = _json_body(request)
@@ -808,7 +807,7 @@ def reverse_entry_api(request):
     except (TypeError, ValueError):
         raise ApiError("VALIDATION_ERROR", "approval_id 必须是已批准的冲销审批编号。")
     try:
-        approval = __import__("apps.billing.models", fromlist=["ApprovalRecord"]).ApprovalRecord.objects.filter(
+        approval = ApprovalRecord.objects.filter(
             pk=approval_id, property=property_obj, action_code="billing.reversal",
             entity_type="LedgerEntry", entity_id=str(original.pk)).first()
         if approval is None:
