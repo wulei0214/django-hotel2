@@ -1019,6 +1019,54 @@ class BillingRefundThreePartyApiTests(BillingCenterTestBase):
         with self.assertRaises(ValidationError):
             refund.save()
 
+    def test_scheduled_expiry_command_closes_overdue_refunds(self):
+        from django.core.management import call_command
+
+        reservation, _folio = self._booking_with_outstanding()
+        payment = BillingService.collect_payment(
+            property_obj=self.property, reservation=reservation,
+            amount="60.00", method="CARD", collected_by=self.finance,
+            reference="BC-REFUND-EXPIRY-CMD-PAY-001")
+        self._login(self.finance)
+        requested = _post_json(
+            self.client, "/api/v1/billing/refunds",
+            {"payment_id": payment.pk, "amount": "15.00",
+             "reason": "定时到期任务回归",
+             "idempotency_key": "bc-refund-expiry-cmd-request"})
+        self.assertEqual(requested.status_code, 201, requested.content)
+        refund_id = requested.json()["data"]["refund_id"]
+        refund = Refund.objects.get(pk=refund_id)
+        ApprovalRecord._base_manager.filter(
+            pk=refund.approval_record_id
+        ).update(expires_at=timezone.now() - timedelta(minutes=1))
+
+        call_command(
+            "expire_pending_refunds", property_id=self.property.pk, limit=20)
+
+        refund.refresh_from_db()
+        payment.refresh_from_db()
+        approval = ApprovalRecord.objects.get(pk=refund.approval_record_id)
+        self.assertEqual(refund.status, Refund.Status.EXPIRED)
+        self.assertEqual(approval.status, ApprovalRecord.Status.EXPIRED)
+        self.assertEqual(payment.status, Payment.Status.SUCCEEDED)
+        self.assertTrue(AuditEvent.objects.filter(
+            action="billing.refund_expired",
+            entity_type="Refund", entity_id=str(refund.pk),
+            actor__isnull=True).exists())
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
+
+        # 重复运行命令必须幂等，不重复关闭或写审计。
+        before = AuditEvent.objects.filter(
+            action="billing.refund_expired",
+            entity_type="Refund", entity_id=str(refund.pk)).count()
+        call_command(
+            "expire_pending_refunds", property_id=self.property.pk, limit=20)
+        self.assertEqual(AuditEvent.objects.filter(
+            action="billing.refund_expired",
+            entity_type="Refund", entity_id=str(refund.pk)).count(), before)
+
+
     def test_expired_refund_approval_closes_refund_and_releases_payment_hold(self):
         reservation, _folio = self._booking_with_outstanding()
         payment = BillingService.collect_payment(
