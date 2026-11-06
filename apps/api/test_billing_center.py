@@ -712,7 +712,7 @@ class BillingCenterWriteTests(BillingCenterTestBase):
         again = _post_json(
             self.client, "/api/v1/billing/reversals",
             {"entry_id": reversal.pk, "approval_id": approval_id})
-        self.assertEqual(again.status_code, 400, again.content)
+        self.assertEqual(again.status_code, 409, again.content)
 
     def test_reverse_entry_requires_approved_manager_record(self):
         reservation, folio = self._booking_with_outstanding(Decimal("300.00"))
