@@ -21,7 +21,7 @@ from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, transaction, transaction
 from django.test import TestCase
 from django.utils import timezone
 
@@ -626,3 +626,14 @@ class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
                 amount=Decimal("2.00"))
         with self.assertRaises(ValidationError):
             CashierShiftMovement.objects.filter(pk=movement.pk).delete()
+
+    def test_cash_movement_direction_is_database_constrained(self):
+        shift, _ = BillingService.open_shift(
+            property_obj=self.property, cashier=self.operator,
+            opening_cash="10.00")
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CashierShiftMovement.objects.create(
+                    shift=shift, direction="SIDEWAYS", amount=Decimal("1.00"),
+                    reason="非法方向", idempotency_key="wbb-invalid-direction",
+                    created_by=self.operator)
