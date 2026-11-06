@@ -619,12 +619,23 @@ class Refund(models.Model):
             raise ValidationError("退款与原支付必须属于同一物业。")
         if self.payment_id and self.currency != self.payment.currency:
             raise ValidationError("退款币种必须与原支付币种一致。")
+        if not self.legacy_workflow and self.status == self.Status.SUCCEEDED:
+            if self.payment.method == "CASH":
+                if not self.execution_shift_id:
+                    raise ValidationError("现金退款执行成功必须关联执行人本人收银班次。")
+                shift = self.execution_shift
+                if (shift.property_id != self.property_id
+                        or shift.cashier_id != self.executed_by_id):
+                    raise ValidationError("现金退款执行班次必须属于当前物业和实际执行人。")
+            elif self.execution_shift_id:
+                raise ValidationError("非现金退款不得伪造现金执行班次。")
         if self._state.adding:
             if self.legacy_workflow:
                 raise ValidationError("legacy_workflow 仅允许历史数据迁移设置，新退款不得伪装成历史记录。")
             if (self.status != self.Status.PENDING or self.approved_by_id
-                    or self.executed_by_id or self.executed_at
-                    or self.execution_idempotency_key or self.execution_shift_id):
+                    or self.executed_by_id or self.executed_at or self.execution_reference
+                    or self.execution_idempotency_key or self.execution_shift_id
+                    or self.processed_at):
                 raise ValidationError("退款必须从待审批申请开始，不能直接创建已审批/已执行记录。")
         else:
             previous = type(self).objects.filter(pk=self.pk).values(
