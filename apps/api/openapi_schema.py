@@ -356,6 +356,15 @@ COMPONENTS = {
     }, desc="紧急重开授权记录（apps.core.models.BreakGlassRecord）。"),
 
     "FolioSummaryDto": s_obj({
+        "folio_id": s_nullable(s_int("账单 ID；未开账为 null。")),
+        "status": s_str("账单状态；未开账为 NOT_OPENED。"),
+        "status_label": s_str("状态中文标签。"),
+        "charges": s_str("借方合计。"), "credits": s_str("贷方合计。"),
+        "balance": s_str("余额。"),
+        "pending_payment_count": s_int("处理中支付笔数。"),
+        "currency": s_str(), "currency_label": s_str(),
+    }),
+    "FrontDeskFolioSummaryDto": s_obj({
         "folio_id": s_nullable(s_int("主账单 ID；未开账为 null。")),
         "status": s_str("主账单状态；未开账为 NOT_OPENED。"),
         "status_label": s_str("主账单状态中文标签。"),
@@ -384,7 +393,7 @@ COMPONENTS = {
         "nights": s_int(),
         "adults": s_int(), "children": s_int(),
         "amount": s_str("该明细房费。"),
-        "folio_summary": _ref("FolioSummaryDto"),
+        "folio_summary": _ref("FrontDeskFolioSummaryDto"),
         "stay_status_label": s_str("该房间实际入住状态中文标签；已确认但未办理入住显示待办理入住。"),
         "stay": s_nullable(s_obj({
             "id": s_int(), "status": s_str(), "status_label": s_str(),
