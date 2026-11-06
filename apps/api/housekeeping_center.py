@@ -96,7 +96,7 @@ def _require_room(property_obj, room_id):
 @api_view
 def housekeeping_rooms(request):
     """清洁/维修工作清单：按楼层、清洁状态、维修状态筛选；稳定排序。"""
-    property_obj = _context(request, "hotelapp.view_room")
+    property_obj = _context(request, "inventory.housekeeping_view")
     queryset = (
         Room.objects.filter(property=property_obj, is_active=True)
         .select_related("room_type")
@@ -151,10 +151,10 @@ def housekeeping_summary_api(request):
 def housekeeping_status_change(request, room_id):
     """清洁状态流转：DIRTY→CLEANING→INSPECTING→CLEAN 链式规则（§4.3）。
 
-    * change_room：清洁链推进与检查退回（客房服务员在列）；
+    * inventory.housekeeping_update：清洁链推进与检查退回（客房服务员在列）；
     * →CLEAN 净房放行：额外要求 room_release_ready（服务层复核同一权限）。
     """
-    property_obj = _context(request, "hotelapp.change_room")
+    property_obj = _context(request, "inventory.housekeeping_update")
     body = _body(request)
     target = str(body.get("status") or "").strip()
     if not target:
@@ -189,9 +189,9 @@ def housekeeping_status_change(request, room_id):
 def housekeeping_maintenance_change(request, room_id):
     """维修状态登记：OUT_OF_ORDER/OUT_OF_SERVICE/NORMAL，reason 必填。
 
-    门禁复用 hotelapp.no_show_handle（值班经理/店长专项权限口径）。
+    门禁使用 inventory.maintenance_manage（值班经理/店长专项权限口径），与未到订单处理分离。
     """
-    property_obj = _context(request, "hotelapp.no_show_handle")
+    property_obj = _context(request, "inventory.maintenance_manage")
     body = _body(request)
     target = str(body.get("status") or "").strip()
     if not target:
