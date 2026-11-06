@@ -42,7 +42,7 @@ from apps.billing.models import (
     Refund,
 )
 from apps.billing.services import sign_mock_callback
-from apps.billing.services_v2 import BillingService
+from apps.billing.services_v2 import ApprovalService, BillingService
 from apps.core.models import (
     AuditEvent,
     BreakGlassRecord,
@@ -795,9 +795,19 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
             reference=f"payment:FD{self.property.pk}-e2e-pay-rev")
         self.client.logout()
 
+        reversal_reason = "收款金额录入错误，红字冲销重收"
+        approval, approval_created = ApprovalService.request_approval(
+            property_obj=self.property, action_code="billing.reversal",
+            entity_type="LedgerEntry", entity_id=str(original.pk),
+            requested_by=self.fin, reason=reversal_reason, payload={})
+        self.assertTrue(approval_created)
+        approval = ApprovalService.approve(
+            approval.pk, approved_by=self.owner, property_obj=self.property)
+        self.assertEqual(approval.status, ApprovalRecord.Status.APPROVED)
+
         reversal, created = BillingService.reverse_entry(
             property_obj=self.property, entry_id=original.pk,
-            reason="收款金额录入错误，红字冲销重收",
+            approval_id=approval.pk, reason=reversal_reason,
             reversed_by=self.fin)
         self.assertTrue(created)
         self.assertEqual(reversal.entry_type, LedgerEntry.EntryType.REVERSAL)
@@ -817,7 +827,7 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         # 同一原凭证重复冲销幂等：返回既有红字凭证
         again, created_again = BillingService.reverse_entry(
             property_obj=self.property, entry_id=original.pk,
-            reason="收款金额录入错误，红字冲销重收",
+            approval_id=approval.pk, reason=reversal_reason,
             reversed_by=self.fin)
         self.assertFalse(created_again)
         self.assertEqual(again.pk, reversal.pk)
@@ -825,7 +835,8 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         # 红字凭证本身不可再冲销
         with self.assertRaises(ValueError):
             BillingService.reverse_entry(
-                property_obj=self.property, entry_id=reversal.pk, reason="试图冲销红字", reversed_by=self.fin)
+                property_obj=self.property, entry_id=reversal.pk,
+                approval_id=approval.pk, reason=reversal_reason, reversed_by=self.fin)
 
 
 class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
