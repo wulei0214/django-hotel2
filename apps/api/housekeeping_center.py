@@ -132,7 +132,7 @@ def housekeeping_rooms(request):
 @api_view
 def housekeeping_summary_api(request):
     """今日清洁统计：各状态计数、待放行数、楼层分布与今日审计流转量。"""
-    property_obj = _context(request, "hotelapp.view_room")
+    property_obj = _context(request, "inventory.housekeeping_view")
     data = housekeeping_summary(property_obj)
     data["labels"] = _room_labels()
     return api_response(request, data)
