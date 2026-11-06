@@ -270,6 +270,30 @@ class CollectPaymentRaceTests(WhiteboxBillingBase):
                 reference="payment:FDWBB-RACE-001").count(), 1)
 
 
+
+
+class CollectPaymentClosedFolioReplayTests(WhiteboxBillingBase):
+    """收款成功后账单结账，原参考号重放仍返回既有支付，不重复入账。"""
+
+    def test_successful_payment_replay_survives_folio_close(self):
+        reservation = self._make_reservation("WBBPAYCLOSED001")
+        payment = BillingService.collect_payment(
+            property_obj=self.property, reservation=reservation,
+            amount="80.00", method="CARD", collected_by=self.operator,
+            reference="WBB-PAY-CLOSED-001")
+        folio = payment.folio
+        folio.status = Folio.Status.CLOSED
+        folio.save(update_fields=("status", "updated_at"))
+
+        replay = BillingService.collect_payment(
+            property_obj=self.property, reservation=reservation,
+            amount="80.00", method="CARD", collected_by=self.operator,
+            reference="WBB-PAY-CLOSED-001")
+        self.assertEqual(replay.pk, payment.pk)
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference="payment:WBB-PAY-CLOSED-001").count(), 1)
+
 class RefundRaceTests(WhiteboxBillingBase):
     """WB-13：request_refund 并发同幂等键必须幂等返回既有申请。"""
 
