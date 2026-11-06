@@ -95,7 +95,8 @@ class ReportCenterTestBase(E2EFlowTestBase):
             entry_type=entry_type, amount=Decimal(str(amount)),
             currency=currency, business_date=business_date,
             reference=self._next_ref(), void_of=void_of,
-            void_reason="口径测试冲销" if void_of else "")
+            void_reason="口径测试冲销" if void_of else "",
+            legacy_workflow=(entry_type == LedgerEntry.EntryType.REVERSAL))
         return entry
 
     def _make_guest(self, created_days_ago=0):
