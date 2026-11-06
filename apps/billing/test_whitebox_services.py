@@ -529,6 +529,8 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
             requested_by=self.operator, idempotency_key="wbb-refund-3p-001")
         self.assertTrue(created)
         self.assertEqual(refund.status, Refund.Status.PENDING)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
         self.assertFalse(LedgerEntry.objects.filter(
             reference=f"refund:{refund.provider_ref}").exists())
 
@@ -536,6 +538,8 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
             property_obj=self.property, refund_id=refund.pk, approved_by=approver)
         self.assertTrue(changed)
         self.assertEqual(approved.status, Refund.Status.APPROVED)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
         self.assertFalse(LedgerEntry.objects.filter(
             reference=f"refund:{refund.provider_ref}").exists())
 
@@ -561,6 +565,8 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
         self.assertEqual(executed.approved_by_id, approver.pk)
         self.assertEqual(executed.executed_by_id, executor.pk)
         self.assertEqual(executed.execution_reference, "BANK-REF-3P-001")
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PARTIALLY_REFUNDED)
         self.assertEqual(
             LedgerEntry.objects.filter(
                 reference=f"refund:{refund.provider_ref}").count(), 1)
@@ -586,6 +592,8 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
         BillingService.approve_refund(
             property_obj=self.property, refund_id=second_refund.pk,
             approved_by=second_approver)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
         with self.assertRaises(ValueError):
             BillingService.execute_refund(
                 property_obj=self.property, refund_id=second_refund.pk,
@@ -594,6 +602,11 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
                 idempotency_key="wbb-refund-exec-3p-001")
         self.assertFalse(LedgerEntry.objects.filter(
             reference=f"refund:{second_refund.provider_ref}").exists())
+        BillingService.reject_refund(
+            property_obj=self.property, refund_id=second_refund.pk,
+            rejected_by=second_approver, reason="幂等键冲突后驳回")
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PARTIALLY_REFUNDED)
 
 
 class CashShiftReconciliationTests(WhiteboxBillingBase):
