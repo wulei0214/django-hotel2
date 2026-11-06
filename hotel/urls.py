@@ -91,7 +91,7 @@ urlpatterns = [
     path('nightaudit/', views.night_audit),
     path('nightaudit_run/', views.night_audit_run),
     path('room_status/', views.room_status_change),
-    path('finance/', views.finance_manage),
+    path('finance/', RedirectView.as_view(url='/manage/finance/', permanent=False), name='legacy_finance_redirect'),
     path('finance_add/', views.finance_add),
     path('check_unique/', views.check_unique),
     path('client/reveal_id/', views.client_reveal_id),
