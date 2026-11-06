@@ -272,7 +272,7 @@ MANAGEMENT_CENTERS = {
     "housekeeping": {
         "title": "清洁与维修工作台",
         "subtitle": "清洁链流转、净房放行、维修停用登记与今日清洁统计",
-        "permission": "hotelapp.view_room",
+        "permission": "inventory.housekeeping_view",
         "endpoint": "/api/v1/housekeeping/rooms",
         "template": "pms/housekeeping_center.html",
         "enable_housekeeping_actions": True,
@@ -361,13 +361,13 @@ def management_center_page(request, center):
     enable_housekeeping = config.get("enable_housekeeping_actions", False)
     can_flow_housekeeping = (
         enable_housekeeping and AuthorizationService.has_permission(
-            user, property_obj, "hotelapp.change_room"))
+            user, property_obj, "inventory.housekeeping_update"))
     can_release_room = (
         enable_housekeeping and AuthorizationService.has_permission(
             user, property_obj, "hotelapp.room_release_ready"))
     can_register_maintenance = (
         enable_housekeeping and AuthorizationService.has_permission(
-            user, property_obj, "hotelapp.no_show_handle"))
+            user, property_obj, "inventory.maintenance_manage"))
     return render(request, config.get("template", "pms/management_center.html"), {
         "center": center,
         "title": config["title"],
