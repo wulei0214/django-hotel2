@@ -461,8 +461,9 @@ class Notification(models.Model):
     运营待办去重：dedupe_key 非空的行由
     apps.core.services_notifications.refresh_operational_todos 按源业务状态
     实时派生并 upsert（(property, dedupe_key) 唯一，重复事件不重复生成）；
-    源业务解决后自动置 is_read（"自动消失"）。dedupe_key 为空 = 人工/公告类
-    通知，不参与自动销项。
+    源业务解决后写 resolved_at（从待处理视图消失）。员工个人已读写入
+    NotificationRead，岗位广播的不同接收员工互不影响。旧 is_read/read_at
+    字段仅为迁移兼容保留，不再作为 API/侧边栏的个人已读权威。
     """
 
     class Category(models.TextChoices):
