@@ -725,6 +725,10 @@ class CashierShift(models.Model):
                 if previous["status"] == self.ShiftStatus.OPEN:
                     if self.status not in (self.ShiftStatus.OPEN, self.ShiftStatus.CLOSED):
                         raise ValidationError("班次只允许从 OPEN 关账为 CLOSED。")
+                    if self.status == self.ShiftStatus.OPEN:
+                        if any((self.closed_at, self.closed_by_id, self.expected_cash,
+                                self.actual_cash, self.variance)):
+                            raise ValidationError("OPEN 班次不得提前写入关班事实。")
                     if self.status == self.ShiftStatus.CLOSED:
                         if (not self.closed_at or not self.closed_by_id
                                 or self.expected_cash is None
@@ -732,6 +736,8 @@ class CashierShift(models.Model):
                             raise ValidationError("关班必须完整记录关班人、时间、应有现金、实盘现金和差异。")
                         if self.expected_cash < 0 or self.actual_cash < 0:
                             raise ValidationError("关班应有现金和实盘现金不能为负数。")
+                        if self.variance != self.actual_cash - self.expected_cash:
+                            raise ValidationError("关班差异必须等于实盘现金减去应有现金。")
                         if self.variance != 0 and not (self.variance_reason or "").strip():
                             raise ValidationError("现金差异非零必须填写差异说明。")
                 else:
