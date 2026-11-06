@@ -474,6 +474,15 @@ class NightAuditCenterPageTests(E2EFlowTestBase):
         self.assertIn("营业日与夜审中心", content)
         self.assertIn("/api/v1/night-audit/business-dates", content)
 
+    def test_reopen_select_loads_all_pages_of_closed_business_dates(self):
+        self.client.force_login(self.dm)
+        response = self.client.get("/manage/night-audit/")
+        self.assertEqual(response.status_code, 200, response.content)
+        content = response.content.decode("utf-8")
+        self.assertIn('let hasNext = true', content)
+        self.assertIn('page_size=100', content)
+        self.assertIn('const maxRows = 5000', content)
+
     def test_center_page_registered_in_management_centers(self):
         from apps.api.pages import MANAGEMENT_CENTERS
         config = MANAGEMENT_CENTERS["night-audit"]
