@@ -161,3 +161,6 @@
 .fd-payment-form { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; margin-top:12px; }
 .fd-payment-form .fd-operation-label { flex:1 1 140px; }
 .fd-payment-form .fd-operation-select,.fd-payment-form .fd-operation-input { width:100%; box-sizing:border-box; }
+
+/* 账单负数余额表示客人预存款，不作为欠款红色警示 */
+.fd-folio-summary .is-balance.is-credit b { color:#24794e; }
