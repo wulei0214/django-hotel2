@@ -474,7 +474,7 @@
 /* 键值概览表 */
 .pms-kv { width: 100%; border-collapse: collapse; }
 .pms-kv th {
-    width: 110px; text-align: right; padding: 7px 10px;
+    width: 110px; text-align: left; padding: 7px 10px;
     color: var(--color-text-secondary); font-weight: 600;
     font-size: var(--text-xs);
     background: var(--color-bg-subtle);
