@@ -172,3 +172,15 @@
 | `billing.cash_movement_manage` | billing.0013 | 财务 | `apps/api/billing_center.py:shift_cash_movement_api`；`apps/billing/services_v2.py:record_shift_movement` | 登记班次现金补入/支出；按班次幂等、留原因和审计 |
 
 退款权限语义现在为三方分离：`billing.refund_request`（申请）、`billing.refund_approve`（审批）、`billing.refund_execute`（执行）。班次权限与 `hotelapp.finance_access` 分离：前台可以开闭本人班次，但不能因此读取财务中心敏感明细。
+
+
+### 2026-11-06 PMS2 冲销双人审批补充
+
+以下权限为 Phase 0 快照后新增，按财务与管理岗位职责分离，不回写旧迁移：
+
+| 权限码 | 迁移 | 授权角色 | 真实执行点 | 语义 |
+|---|---|---|---|---|
+| `billing.reverse_entry` | billing.0011 + billing.0020 | 财务 | `apps/api/approval.py`（申请白名单）与 `apps/api/billing_center.py:reverse_entry_api`；`BillingService.reverse_entry` | 财务发起冲销申请并执行已批准冲销；不得由审批岗位代执行 |
+| `billing.reversal_approve` | billing.0020 | 值班经理、店长 | `apps/api/approval.py:approval_approve`；`ApprovalActionRegistry` | 独立审批红字冲销；审批人与执行人必须不同 |
+
+数据库闭环：`LedgerEntry.approval_record` 关联审批事实；`legacy_workflow` 标记迁移前无法证明审批关联的历史冲销。约束 `ck_ledger_reversal_approval_link` 禁止新红字凭证在没有审批外键时入账。历史记录只标记为旧流程，不补造审批人或审批记录。
