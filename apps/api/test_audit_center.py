@@ -60,7 +60,7 @@ class AuditCenterTestBase(E2EFlowTestBase):
     def _backdate(self, event, days):
         """把事件 created_at 回拨 N 天（只追加模型禁改实例；查询集 update 为
         固化基线行为，见 apps/core/test_audit_immutability.py）。"""
-        AuditEvent.objects.filter(pk=event.pk).update(
+        AuditEvent._base_manager.filter(pk=event.pk).update(
             created_at=timezone.now() - timedelta(days=days))
 
 
