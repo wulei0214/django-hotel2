@@ -637,6 +637,42 @@ class BillingService:
         execution_reference = str(execution_reference or "").strip()
         if len(execution_reference) > 80:
             raise ValueError("退款执行参考号不能超过 80 个字符。")
+        # 先用非锁定读取确定支付方式；现金退款必须先锁班次，再锁 Refund/Payment。
+        # close_shift 的顺序是 Shift -> Payment/Refund。若这里先锁 Refund/Payment
+        # 再等待 Shift，会与关班形成反向锁顺序并在 MySQL 产生死锁。
+        probe = Refund.objects.filter(
+            pk=refund_id, property=property_obj
+        ).values("payment_id", "status", "execution_idempotency_key",
+                 "payment__method").first()
+        if probe is None:
+            raise ValueError("退款申请不存在或不属于当前物业。")
+        if probe["status"] == Refund.Status.SUCCEEDED:
+            completed = Refund.objects.select_for_update().get(
+                pk=refund_id, property=property_obj)
+            if completed.status == Refund.Status.SUCCEEDED:
+                if completed.execution_idempotency_key == key:
+                    return completed, False
+                raise ValueError("该退款已经执行，不能使用其他幂等键重复执行。")
+
+        execution_shift = None
+        if probe["payment__method"] == "CASH":
+            execution_shift = CashierShift.objects.select_for_update().filter(
+                property=property_obj, cashier=executed_by,
+                status=CashierShift.ShiftStatus.OPEN).first()
+            if execution_shift is None:
+                # 可能另一请求已完成执行并关闭班次；先复核幂等终态，避免把成功重放
+                # 错误报告为“未开班”。
+                completed = Refund.objects.select_for_update().filter(
+                    pk=refund_id, property=property_obj).first()
+                if (completed is not None
+                        and completed.status == Refund.Status.SUCCEEDED
+                        and completed.execution_idempotency_key == key):
+                    return completed, False
+                raise ValueError("现金退款执行前必须先开立执行人本人收银班次。")
+        elif not execution_reference:
+            raise ValueError("银行卡/转账退款必须记录渠道退款参考号。")
+
+        # 已取得现金班次锁（如适用）后，再按统一顺序锁退款与支付记录。
         refund = Refund.objects.select_for_update().filter(
             pk=refund_id, property=property_obj).first()
         if refund is None:
@@ -659,17 +695,8 @@ class BillingService:
             raise ValueError("退款审批人与执行人不能是同一账号。")
         payment = Payment.objects.select_for_update().get(
             pk=refund.payment_id, property=property_obj)
-        execution_shift = None
-        if payment.method == "CASH":
-            # 先锁执行班次，再做任何普通聚合读取。MySQL 默认 REPEATABLE READ：
-            # 若先聚合再等待班次锁，快照可能看不到刚提交的现金支出，造成余额过估。
-            execution_shift = CashierShift.objects.select_for_update().filter(
-                property=property_obj, cashier=executed_by,
-                status=CashierShift.ShiftStatus.OPEN).first()
-            if execution_shift is None:
-                raise ValueError("现金退款执行前必须先开立执行人本人收银班次。")
-        elif not execution_reference:
-            raise ValueError("银行卡/转账退款必须记录渠道退款参考号。")
+        if payment.method == "CASH" and execution_shift is None:
+            raise ValueError("现金退款执行前必须先开立执行人本人收银班次。")
 
         # 现金班次锁已取得后才建立一致性读快照；所有现金写入也必须先锁同一班次。
         reserved = Refund.objects.filter(
