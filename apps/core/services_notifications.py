@@ -209,7 +209,7 @@ def refresh_operational_todos(property_obj, now=None):
       * 活跃项逐条按 (property, dedupe_key) get_or_create；已存在则仅当
         标题/内容/级别变化时更新（不重置人工已读状态，避免已读项每次刷新
         反复变未读形成提醒风暴）；
-      * 库内 dedupe_key 非空且不在活跃集合的未读通知 → 标记已读（自动消失）；
+      * 库内 dedupe_key 非空且不在活跃集合的未解决通知 → 写 resolved_at（自动消失）；
         dedupe_key 为空（人工/公告类）永不自动销项；
       * 全程事务；不写业务表、不产生 AuditEvent。
     """
@@ -253,6 +253,9 @@ def refresh_operational_todos(property_obj, now=None):
                     summary["created"] += 1
                     continue
                 changed_fields = []
+                if notification.resolved_at is not None:
+                    notification.resolved_at = None
+                    changed_fields.append("resolved_at")
                 for field in ("title", "body", "severity", "expires_at"):
                     if getattr(notification, field) != item[field]:
                         setattr(notification, field, item[field])
@@ -261,13 +264,14 @@ def refresh_operational_todos(property_obj, now=None):
                     notification.save(update_fields=changed_fields)
                     summary["updated"] += 1
 
-        # 已解决项自动销项：仅限运营待办（dedupe_key 非空）且仍未读
+        # 已解决项自动销项：仅限运营待办（dedupe_key 非空）且尚未解决；
+        # 不触碰 NotificationRead，个人已读事实与源业务解决状态完全分离。
         resolved = (Notification.objects
-                    .filter(property=property_obj, is_read=False)
+                    .filter(property=property_obj, resolved_at__isnull=True)
                     .exclude(dedupe_key__isnull=True)
                     .exclude(dedupe_key="")
                     .exclude(dedupe_key__in=active_keys))
-        summary["resolved"] = resolved.update(is_read=True, read_at=now)
+        summary["resolved"] = resolved.update(resolved_at=now)
         summary["active"] = len(active_keys)
 
     return summary
