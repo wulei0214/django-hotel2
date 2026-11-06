@@ -26,6 +26,8 @@ import json
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Prefetch, Q, Sum
 from django.db.models.functions import Coalesce
 from django.views.decorators.http import require_GET, require_POST
@@ -110,6 +112,12 @@ def _user_name(user):
     if user is None:
         return None
     return getattr(user, "username", None) or str(user.pk)
+
+
+def _invalidate_billing_summary(property_obj):
+    """账务写入提交后失效物业级汇总缓存，避免写后读 60 秒旧余额。"""
+    cache_key = "billing:open-summary:%s" % property_obj.pk
+    transaction.on_commit(lambda: cache.delete(cache_key))
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +487,7 @@ def collect_payment_api(request):
             collected_by=request.user, reference=reference)
     except ValueError as exc:
         raise ApiError("VALIDATION_ERROR", str(exc))
+    _invalidate_billing_summary(property_obj)
     return api_response(request, {
         "id": payment.pk,
         "payment_id": payment.pk,
@@ -644,6 +653,7 @@ def reverse_entry_api(request):
         raise ApiError("RESOURCE_NOT_FOUND", "账本凭证不存在。")
     except ValueError as exc:
         raise ApiError("VALIDATION_ERROR", str(exc))
+    _invalidate_billing_summary(property_obj)
     return api_response(request, {
         "id": reversal.pk,
         "reversal_id": reversal.pk,
