@@ -17,12 +17,13 @@
 响应封套：统一 {data, meta}（apps.core.api_contract），列表端点统一分页契约。
 站内通知不发第三方渠道（短信/邮件暂缓）；单条已读属于低风险个人状态，不写业务审计；物业级待办重算写入 AuditEvent。
 """
-from django.db.models import Count, Q
+from django.db import transaction
+from django.db.models import Count, Exists, OuterRef, Q, Subquery
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.core.api_contract import ApiError, api_response, api_view, paginate
-from apps.core.models import AuditEvent, Notification
+from apps.core.models import AuditEvent, Notification, NotificationRead
 from apps.core.services_notifications import refresh_operational_todos
 from apps.identity.authorization import AuthorizationService
 
@@ -62,13 +63,24 @@ def _context(request):
 def _visible_notifications(property_obj, profile, group_ids):
     """我的通知范围：当前物业 +（定向本人 或 岗位广播组∈我的有效组）。"""
     return Notification.objects.filter(
-        property=property_obj,
+        property=property_obj, resolved_at__isnull=True,
     ).filter(
         Q(recipient=profile) | Q(role_group_id__in=group_ids),
     ).select_related("role_group", "recipient")
 
 
+def _with_personal_read_state(queryset, profile):
+    """把当前员工个人回执注入列表查询；不读取 Notification 的旧全局已读字段。"""
+    receipts = NotificationRead.objects.filter(
+        notification_id=OuterRef("pk"), staff_profile=profile)
+    return queryset.annotate(
+        user_is_read=Exists(receipts),
+        user_read_at=Subquery(receipts.values("read_at")[:1]),
+    )
+
+
 def _dto(notification):
+    personal_read_at = getattr(notification, "user_read_at", None)
     return {
         "id": notification.pk,
         "category": notification.category,
@@ -78,8 +90,8 @@ def _dto(notification):
         "title": notification.title,
         "body": notification.body,
         "link": notification.link or None,
-        "is_read": notification.is_read,
-        "read_at": notification.read_at.isoformat() if notification.read_at else None,
+        "is_read": bool(getattr(notification, "user_is_read", False)),
+        "read_at": personal_read_at.isoformat() if personal_read_at else None,
         "created_at": notification.created_at.isoformat(),
         "expires_at": notification.expires_at.isoformat() if notification.expires_at else None,
         "audience": {
@@ -103,7 +115,8 @@ def notification_list(request):
     排序：-created_at,-id（模型稳定排序，含主键兜底）。
     """
     property_obj, profile, group_ids = _context(request)
-    queryset = _visible_notifications(property_obj, profile, group_ids)
+    queryset = _with_personal_read_state(
+        _visible_notifications(property_obj, profile, group_ids), profile)
 
     category = (request.GET.get("category") or "").strip()
     if category:
@@ -122,7 +135,7 @@ def notification_list(request):
     if raw_read:
         if raw_read not in ("true", "false"):
             raise ApiError("VALIDATION_ERROR", "is_read 只支持 true/false。")
-        queryset = queryset.filter(is_read=(raw_read == "true"))
+        queryset = queryset.filter(user_is_read=(raw_read == "true"))
 
     items, pagination = paginate(queryset, request)
     return api_response(request, [_dto(n) for n in items], pagination=pagination,
@@ -137,7 +150,9 @@ def notification_list(request):
 def unread_count(request):
     """我的未读通知计数 + 按类别分布（侧边栏徽标数据源）。"""
     property_obj, profile, group_ids = _context(request)
-    base = _visible_notifications(property_obj, profile, group_ids).filter(is_read=False)
+    base = _with_personal_read_state(
+        _visible_notifications(property_obj, profile, group_ids), profile
+    ).filter(user_is_read=False)
     by_category = dict(base.values_list("category").annotate(count=Count("id")))
     return api_response(request, {
         "unread_count": sum(by_category.values()),
@@ -160,10 +175,12 @@ def mark_read(request, notification_id):
                     .filter(pk=notification_id).first())
     if notification is None:
         raise ApiError("RESOURCE_NOT_FOUND", "通知不存在或不在你的接收范围内。")
-    if not notification.is_read:
-        notification.is_read = True
-        notification.read_at = timezone.now()
-        notification.save(update_fields=("is_read", "read_at"))
+    receipt, _created = NotificationRead.objects.get_or_create(
+        notification=notification, staff_profile=profile,
+        defaults={"read_at": timezone.now()},
+    )
+    notification.user_is_read = True
+    notification.user_read_at = receipt.read_at
     return api_response(request, _dto(notification))
 
 
@@ -175,10 +192,21 @@ def mark_read(request, notification_id):
 def read_all(request):
     """把"我的范围"内全部未读一次性标记已读；返回本次标记条数。"""
     property_obj, profile, group_ids = _context(request)
-    updated = (_visible_notifications(property_obj, profile, group_ids)
-               .filter(is_read=False)
-               .update(is_read=True, read_at=timezone.now()))
-    return api_response(request, {"marked_read": updated})
+    unread = _with_personal_read_state(
+        _visible_notifications(property_obj, profile, group_ids), profile
+    ).filter(user_is_read=False)
+    notification_ids = list(unread.values_list("pk", flat=True))
+    now = timezone.now()
+    with transaction.atomic():
+        NotificationRead.objects.bulk_create(
+            [NotificationRead(
+                notification_id=notification_id,
+                staff_profile=profile,
+                read_at=now,
+            ) for notification_id in notification_ids],
+            ignore_conflicts=True,
+        )
+    return api_response(request, {"marked_read": len(notification_ids)})
 
 
 # ---------------------------------------------------------------------------
