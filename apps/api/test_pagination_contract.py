@@ -422,10 +422,7 @@ class MultiEndpointPaginationSamplingTests(PaginationContractTestBase):
         self.assertEqual(over.status_code, 400)
 
     def test_approval_list_is_stable_ordering_at_runtime(self):
-        """approval.py 属禁碰治理域；主键兜底由统一解析器运行时保证。
-
-        运行时兜底为升序主键（确定性即可，方向由调用方显式排序决定）。
-        """
+        """approval.py 属禁碰治理域；列表默认按创建时间和主键倒序稳定排序。"""
         for index in range(3):
             ApprovalRecord.objects.create(
                 property=self.property,
@@ -441,7 +438,7 @@ class MultiEndpointPaginationSamplingTests(PaginationContractTestBase):
         self.assertEqual(ids_first, [row["id"] for row in second["data"]])
         expected = list(
             ApprovalRecord.objects.filter(requested_by=self.user)
-            .order_by("-created_at", "id").values_list("id", flat=True))
+            .order_by("-created_at", "-id").values_list("id", flat=True))
         self.assertEqual(ids_first, expected)
         self.assertEqual(len(ids_first), 3)
 
