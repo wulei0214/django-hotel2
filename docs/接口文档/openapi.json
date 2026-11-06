@@ -9530,6 +9530,21 @@
                                 "type": "string",
                                 "description": ""
                               },
+                              "approval_id": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "description": "红字冲销审批记录 ID；历史冲销为空。"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "legacy_workflow": {
+                                "type": "boolean",
+                                "description": "历史冲销无法证明新流程审批关联。"
+                              },
                               "posted_by": {
                                 "anyOf": [
                                   {
@@ -9861,6 +9876,21 @@
                           "void_reason": {
                             "type": "string",
                             "description": ""
+                          },
+                          "approval_id": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "description": "红字冲销审批记录 ID；历史冲销为空。"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "legacy_workflow": {
+                            "type": "boolean",
+                            "description": "历史冲销无法证明新流程审批关联。"
                           },
                           "posted_by": {
                             "anyOf": [
@@ -13522,7 +13552,7 @@
           "审批"
         ],
         "summary": "批准审批申请",
-        "description": "权限要求：有效员工（DEFAULT 有效任职）+ 注册表按 action_code 绑定的审批权限（billing.refund_approve / hotelapp.business_date_reopen 等）（申请人≠审批人，SoD）。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：ApprovalActionRegistry.approve_permission（按 action_code 动态校验；申请人≠审批人，SoD）。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
         "operationId": "post_approvals_record_id_approve",
         "responses": {
           "200": {
@@ -13634,7 +13664,7 @@
         },
         "x-contract-status": "partial",
         "x-authentication": "Django Session Cookie + 员工任职",
-        "x-required-permission": "有效员工（DEFAULT 有效任职）+ 注册表按 action_code 绑定的审批权限（billing.refund_approve / hotelapp.business_date_reopen 等）（申请人≠审批人，SoD）",
+        "x-required-permission": "ApprovalActionRegistry.approve_permission（按 action_code 动态校验；申请人≠审批人，SoD）",
         "x-idempotency": {
           "header": "Idempotency-Key",
           "required": false,
