@@ -198,7 +198,7 @@ class ApprovalRecordTests(TestCase):
             requested_by=self.requester, reason="审批超时流程测试")
         from datetime import timedelta
         from django.utils import timezone
-        type(record).objects.filter(pk=record.pk).update(
+        type(record)._base_manager.filter(pk=record.pk).update(
             expires_at=timezone.now() - timedelta(minutes=1))
         expired = self.ApprovalService.approve(
             record.pk, approved_by=self.approver, property_obj=self.property)
