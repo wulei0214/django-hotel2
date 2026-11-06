@@ -191,10 +191,18 @@
       credentials: "same-origin", headers: Object.assign(
           {"Accept": "application/json"}, options.headers || {}),
     }, options));
-    const payload = await response.json();
+    const raw = await response.text();
+    let payload = null;
+    if (raw) {
+      try { payload = JSON.parse(raw); } catch (parseError) { payload = null; }
+    }
     if (!response.ok) {
       throw new Error(payload && payload.error && payload.error.message
           || ("请求失败（HTTP " + response.status + "）"));
+    }
+    if (!payload || typeof payload !== "object") {
+      throw new Error("服务器返回非 JSON 响应（HTTP " + response.status +
+          "），请检查登录状态、CSRF 令牌和服务端日志。");
     }
     return payload;
   }
