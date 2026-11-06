@@ -46,6 +46,22 @@ TRIGGERS = (
         "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "
         "'PMS2 cashier shift movements cannot be deleted'",
     ),
+    (
+        "trg_billing_shiftmovement_open_shift_insert",
+        "CREATE TRIGGER trg_billing_shiftmovement_open_shift_insert "
+        "BEFORE INSERT ON billing_cashiershiftmovement FOR EACH ROW "
+        "BEGIN "
+        "DECLARE v_shift_status VARCHAR(16) DEFAULT NULL; "
+        "DECLARE v_shift_cashier BIGINT DEFAULT NULL; "
+        "SELECT status, cashier_id INTO v_shift_status, v_shift_cashier "
+        "FROM billing_cashiershift WHERE id = NEW.shift_id FOR UPDATE; "
+        "IF v_shift_status IS NULL OR v_shift_status <> 'OPEN' "
+        "OR v_shift_cashier <> NEW.created_by_id THEN "
+        "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "
+        "'PMS2 cash movement requires its own open cashier shift'; "
+        "END IF; "
+        "END",
+    ),
 )
 
 
@@ -61,4 +77,4 @@ class Command(BaseCommand):
                 cursor.execute(f"DROP TRIGGER IF EXISTS `{name}`")
                 cursor.execute(statement)
         self.stdout.write(self.style.SUCCESS(
-            "已安装 6 条 MySQL BEFORE UPDATE/DELETE 只追加事实触发器。"))
+            "已安装 6 条只追加触发器及 1 条现金变动 OPEN 班次插入保护触发器。"))
