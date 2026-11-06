@@ -443,6 +443,8 @@ def shift_list(request):
     qs = CashierShift.objects.filter(property=property_obj).select_related("cashier", "closed_by")
     if not can_view_all:
         qs = qs.filter(cashier=request.user)
+    if request.GET.get("mine") == "1":
+        qs = qs.filter(cashier=request.user)
     status_filter = request.GET.get("status", "").strip().upper()
     if status_filter:
         if status_filter not in CashierShift.ShiftStatus.values:
