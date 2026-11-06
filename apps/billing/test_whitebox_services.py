@@ -773,6 +773,30 @@ class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
         with self.assertRaises(ValidationError):
             refund.save()
 
+    def test_nonpending_refund_requires_approval_record_in_model_and_database(self):
+        reservation = self._make_reservation("WBBNOAPPROVAL001")
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref="WBB-NOAPP-PAY-001",
+            method="CARD", amount=Decimal("100.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        refund = Refund.objects.create(
+            property=self.property, payment=payment, amount=Decimal("20.00"),
+            currency="CNY", reason="审批关联约束测试",
+            idempotency_key="wbb-noapproval-001",
+            provider_ref="WBB-NOAPP-RFD-001", requested_by=self.operator)
+        approver = User.objects.create_user(username="wbb-noapproval-approver")
+        refund.approved_by = approver
+        refund.status = Refund.Status.APPROVED
+        with self.assertRaises(ValidationError):
+            refund.save()
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                QuerySet.update(
+                    Refund.objects.filter(pk=refund.pk),
+                    status=Refund.Status.APPROVED,
+                    approved_by_id=approver.pk)
+
     def test_cash_movement_direction_is_database_constrained(self):
         shift, _ = BillingService.open_shift(
             property_obj=self.property, cashier=self.operator,
