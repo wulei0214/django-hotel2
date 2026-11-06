@@ -384,13 +384,12 @@ def request_refund(*, property_obj, payment_id, amount, reason, idempotency_key,
 
 
 @transaction.atomic
-def approve_refund(*, property_obj, refund_id, approved_by,
-                   confirm_refund_paid=False):
-    """审批并确认实际退款；账本写入统一委托 BillingService。"""
+def approve_refund(*, property_obj, refund_id, approved_by):
+    """仅审批退款；不确认实际付款、不执行退款、不写 REFUND 账本凭证。"""
     from apps.billing.services_v2 import BillingService
     try:
-        return BillingService.complete_refund(
+        return BillingService.approve_refund(
             property_obj=property_obj, refund_id=refund_id,
-            approved_by=approved_by, confirm_refund_paid=confirm_refund_paid)
+            approved_by=approved_by)
     except ValueError as exc:
         raise LifecycleOperationError(str(exc)) from exc
