@@ -53,7 +53,7 @@
         <h1>{{ title }}</h1>
         <p class="pms-center-sub">{{ property_name }} · {{ subtitle }}</p>
       </div>
-      <a href="/manage/finance/">返回财务与账单中心</a>
+      <a href="/home/">返回工作台</a>
     </div>
 
     {# ── 报表选择卡 ── #}
@@ -86,6 +86,7 @@
     </section>
   </div>
 </div>
+{{ report_permissions|json_script:"rp-permissions" }}
 
 <script>
 (function () {
@@ -190,10 +191,16 @@
     return payload;
   }
 
-  /* ---------- 报表选择卡 ---------- */
-  let current = "occupancy";
+  /* ---------- 按当前岗位权限过滤报表卡；API 仍做独立授权复核 ---------- */
+  const reportPermissions = JSON.parse(
+    document.getElementById("rp-permissions").textContent || "{}");
+  const visibleReports = Object.fromEntries(
+    Object.entries(REPORTS).filter(function (entry) {
+      return reportPermissions[entry[1].gate] === true;
+    }));
+  let current = Object.keys(visibleReports)[0] || null;
   const cards = document.getElementById("rp-cards");
-  Object.entries(REPORTS).forEach(function (entry) {
+  Object.entries(visibleReports).forEach(function (entry) {
     const key = entry[0], spec = entry[1];
     const card = el("button", "rp-card" + (key === current ? " rp-active" : ""));
     card.type = "button";
@@ -219,6 +226,7 @@
     document.getElementById("rp-summary").replaceChildren();
     document.getElementById("rp-basis").hidden = true;
   }
+  if (current) selectReport(current);
 
   /* ---------- 日期区间（缺省最近 7 天） ---------- */
   function initDates() {
