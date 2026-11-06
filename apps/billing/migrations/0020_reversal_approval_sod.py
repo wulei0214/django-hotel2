@@ -4,6 +4,20 @@ from django.db import migrations, models
 import django.db.models.deletion
 
 
+def mark_legacy_reversals(apps, schema_editor):
+    LedgerEntry = apps.get_model("billing", "LedgerEntry")
+    LedgerEntry.objects.filter(
+        entry_type="REVERSAL", approval_record__isnull=True
+    ).update(legacy_workflow=True)
+
+
+def unmark_legacy_reversals(apps, schema_editor):
+    LedgerEntry = apps.get_model("billing", "LedgerEntry")
+    LedgerEntry.objects.filter(
+        entry_type="REVERSAL", legacy_workflow=True
+    ).update(legacy_workflow=False)
+
+
 def grant_reversal_sod_permissions(apps, schema_editor):
     Group = apps.get_model("auth", "Group")
     Permission = apps.get_model("auth", "Permission")
@@ -88,6 +102,32 @@ class Migration(migrations.Migration):
                 to="billing.approvalrecord",
                 verbose_name="冲销审批记录",
                 help_text="PMS2 新冲销必须关联值班经理/店长已批准的审批记录；历史冲销可为空",
+            ),
+        ),
+        migrations.AddField(
+            model_name="ledgerentry",
+            name="legacy_workflow",
+            field=models.BooleanField(
+                default=False,
+                verbose_name="历史旧流程冲销",
+                help_text="仅迁移前无法证明审批关联的历史红字凭证为 True；新冲销必须为 False",
+            ),
+        ),
+        migrations.RunPython(mark_legacy_reversals, unmark_legacy_reversals),
+        migrations.AddConstraint(
+            model_name="ledgerentry",
+            constraint=models.CheckConstraint(
+                check=(
+                    models.Q(entry_type="REVERSAL", legacy_workflow=True,
+                             approval_record__isnull=True)
+                    | models.Q(entry_type="REVERSAL", legacy_workflow=False,
+                               approval_record__isnull=False,
+                               void_of__isnull=False, void_reason__gt="")
+                    | (~models.Q(entry_type="REVERSAL") & models.Q(
+                        legacy_workflow=False, approval_record__isnull=True,
+                        void_of__isnull=True))
+                ),
+                name="ck_ledger_reversal_approval_link",
             ),
         ),
         migrations.RunPython(
