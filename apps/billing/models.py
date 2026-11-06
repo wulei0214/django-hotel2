@@ -540,14 +540,16 @@ class Refund(models.Model):
                     "executed_at", "execution_reference",
                     "execution_idempotency_key", "execution_shift_id",
                     "processed_at")
-                for field in immutable_once_set:
-                    old_value = previous[field]
-                    if old_value not in (None, "") and getattr(self, field) != old_value:
-                        raise ValidationError("退款审批/执行事实不可覆盖或改写。")
                 if previous["legacy_workflow"]:
-                    if self.status != previous["status"]:
-                        raise ValidationError("历史退款记录只读，不能改写其历史状态。")
+                    historical_fields = immutable_once_set + ("status",)
+                    if any(previous[field] != getattr(self, field)
+                           for field in historical_fields):
+                        raise ValidationError("历史退款记录只读，不能补写或改写审批/执行事实。")
                 else:
+                    for field in immutable_once_set:
+                        old_value = previous[field]
+                        if old_value not in (None, "") and getattr(self, field) != old_value:
+                            raise ValidationError("退款审批/执行事实不可覆盖或改写。")
                     allowed = {
                         self.Status.PENDING: {self.Status.PENDING, self.Status.APPROVED,
                                               self.Status.REJECTED},
