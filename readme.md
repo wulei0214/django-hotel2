@@ -183,6 +183,10 @@ python manage.py runserver 0.0.0.0:8000 --noreload
 
 用户截图反馈详情抽屉「记录时间」区 订单创建/最近更新 标签漂在行中部。根因：`.fd-timeline-item` 用 `justify-content:space-between` 把 时间线圆点/标签/值 三元素均匀撑开。修复：改为圆点+标签贴左（`gap:8px` + `span{margin-right:auto}`），时间值保持右对齐；`frontdesk.css` 缓存版本 v=4→v=5。活页截图验证对齐生效（测试环境强制渲染抽屉填充样例值比对）。
 
+### 5.10 PMS3.0 方案 V2.1 针对性修订（2026-11-07，用户五项复核意见落地，不推翻重写）
+
+在最新 main（业务代码基线 7a2c9b8、文档时点 HEAD 9542b8b）上对 `docs/PMS3.0全项目开发最终方案.md` 做定点修订（§22 修订记录 V2.1 行）：①**任务编号冲突**——AR-06（Room 状态直写）收口归属由 SVC-02/04/05 更正为 SVC-07（§3.4/§14.0/§15.3 三处同步）；GATE-02/04 明确为 PM-02/03 的门禁复核视图不重复建单；§26.1 新增前缀消歧（AUD=夜审、CMP=审计合规、INV 跨域归属说明）与**同范围任务去重归属表**（6 对近似任务指定唯一执行归属）；RSV-18（渠道侧对账）与 FIN-07（PMS 内部对账）分工。②**中心清单↔任务对应**——§5 前言冻结 11 中心口径，明确「权限管理/系统设置」为 IAM/INF 域页面不设中心任务。③**现状矛盾**——§1.1 七项门禁逐项标注状态（G10 完成、Redis 部署验证完成、A04/A09/阶段四/G14 待）、§7.4 OpenAPI 97→**102** paths、§2 补文档时点 HEAD、§0.3 能力继承措辞校准。④**生命周期细节**——§24.3 声明 PaymentIntent/ProviderTransaction 模型当前不存在、严禁复用 Payment 表承载意图状态（BIZ-RSV-14 为新建）；§24.4 九类异常用例绑定 QA-04/QA-06/REL-09；DEC-25 补库存 Hold 延长/释放规则；新增 DEC-30（发票范围决策）。⑤**一致性/后台任务/恢复**——§9.3 十一项后台任务逐条绑定唯一执行任务编号，任务框架（租约锁/重试/死信/重放）统一由 SVC-10 交付、禁止自建调度。全文交叉引用自检：BIZ 105/工程 106/DEC 30/INV 16，引用无缺失、注册无冲突。
+
 ### 5.8 公开预订订单生命周期闭环整改（2026-11-07，外部评审落地：SEC-01~06 + 十一场景验收）
 
 对 `635d9dd..b737489`（预订页令牌+续付）的外部评审逐条落地，审查报告见 `docs/audit/phase0/90-public-booking-order-lifecycle-review.md`：① **SEC-01 安全修复**——续付曾用 `?token=` query（落服务器访问日志/浏览器历史），已删除 `reservation_detail` 的 query 回退，令牌仅经 `X-Booking-Token` 头传递，OpenAPI 契约与快照（102 paths）同步，`test_sec01` 断言 query 传参一律 404；② **UI 整改**——凭证独立区（02 / BOOKING CONFIRMATION）+ 创建时一次性完整展示令牌 + 复制按钮（clipboard API/execCommand 回退）+ 复制成功反馈 + 找回后脱敏（前4••••••••后4）+ 04 面板升级「ORDER RETRIEVAL 订单查询与管理」+ 状态门控（PENDING→支付/取消，其余状态仅查看，中文状态标签对齐 Reservation.Status）；③ **验收测试**——新增 `apps/api/test_public_booking_lifecycle.py` 11 项（S1 令牌一次性返回/S2·S11 无 Cookie 找回/S3·S4 错凭据 404 无泄露/S5 PENDING 可支付/S6 CONFIRMED 关支付入口/S7 连点单笔支付/S8 响应丢失重查/S9 已入住取消被拒/S10 爆破限流/SEC-01）；④ **六项安全要求逐条核验达标**（256bit 熵/SHA-256 摘要/限流/幂等/取消审计/token 不进 URL），员工邀请链接 URL 传参登记为独立决策项；⑤ 令牌丢失政策：无手机号绕过，PENDING 过期自动释放、已付订单走店内前台核验。SQLite 全量 **887 项通过**（DJANGO_ENV=test；dev 环境运行命令类测试会被库门禁正确拒绝）。
