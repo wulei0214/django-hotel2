@@ -195,6 +195,10 @@ python manage.py runserver 0.0.0.0:8000 --noreload
 
 对 `635d9dd..b737489`（预订页令牌+续付）的外部评审逐条落地，审查报告见 `docs/audit/phase0/90-public-booking-order-lifecycle-review.md`：① **SEC-01 安全修复**——续付曾用 `?token=` query（落服务器访问日志/浏览器历史），已删除 `reservation_detail` 的 query 回退，令牌仅经 `X-Booking-Token` 头传递，OpenAPI 契约与快照（102 paths）同步，`test_sec01` 断言 query 传参一律 404；② **UI 整改**——凭证独立区（02 / BOOKING CONFIRMATION）+ 创建时一次性完整展示令牌 + 复制按钮（clipboard API/execCommand 回退）+ 复制成功反馈 + 找回后脱敏（前4••••••••后4）+ 04 面板升级「ORDER RETRIEVAL 订单查询与管理」+ 状态门控（PENDING→支付/取消，其余状态仅查看，中文状态标签对齐 Reservation.Status）；③ **验收测试**——新增 `apps/api/test_public_booking_lifecycle.py` 11 项（S1 令牌一次性返回/S2·S11 无 Cookie 找回/S3·S4 错凭据 404 无泄露/S5 PENDING 可支付/S6 CONFIRMED 关支付入口/S7 连点单笔支付/S8 响应丢失重查/S9 已入住取消被拒/S10 爆破限流/SEC-01）；④ **六项安全要求逐条核验达标**（256bit 熵/SHA-256 摘要/限流/幂等/取消审计/token 不进 URL），员工邀请链接 URL 传参登记为独立决策项；⑤ 令牌丢失政策：无手机号绕过，PENDING 过期自动释放、已付订单走店内前台核验。SQLite 全量 **887 项通过**（DJANGO_ENV=test；dev 环境运行命令类测试会被库门禁正确拒绝）。
 
+### 5.11 PMS 2.0 门禁收口（2026-11-07，五项优先门禁机器证据全部完成）
+
+按用户指令优先完成五项门禁，证据报告 `docs/acceptance/95-gate-closure-evidence-20261107.md`（基线 c402a37）：①**完整测试证据**——修正引擎标注（settings 读 `DJANGO_DB_ENGINE`，此前误传 `DB_ENGINE`，历史"SQLite"实为 MySQL；诚实声明入报告 §1），取得真实双引擎结果：**MySQL 887 项全过 264.9s + SQLite 887 项全过 242.9s**；②**A04**——"DBA 授权"阻塞经 test_hotel 库级自带建/删权绕过（无需 root）：空库全量迁移 97 条全过/70 表/138 FK/53 唯一/无漂移；升级库=mysqldump 备份（2.37MB）还原后 migrate 无待应用 + 74 表行数对账零差异 + Folio 余额重算零差异 + 营业日单开零违例；③**G09**——双 waitress worker 跨进程共享证明（A 写缓存→插探针 Folio→B 在 TTL 内仍读旧值；62s 后 B 读新值=TTL）+ 故障降级（缓存层 ConnectionError fail-closed，核心页面 200 存活）+ 容量观察（本地 max_connections=20，4 实例并发触发 1040，写入 DEC-29 部署输入）；④**阶段四机器可执行项**完成（备份恢复演练/账号任职授权完整性抽查/业务闭环数据抽查），剩用户亲自项：九角色真实口令登录、业务走查、数据治理确认；⑤**G14 签署页** `docs/acceptance/96-g14-signoff.md` 备好（R1~R8 复核清单+证据索引+签署栏），按开发与验收分离**不代签**，待用户指派独立验收人。A16 §19 门禁行与 PMS3.0 方案 §1.1 已同步。
+
 ## 6. 文档索引
 
 | 文档 | 内容 |

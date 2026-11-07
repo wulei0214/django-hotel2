@@ -1,0 +1,26 @@
+Found 887 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+.......................................................................login_failed ip=127.0.0.1 username_fp=2942f05b93ba reason=disabled
+.login_failed ip=127.0.0.1 username_fp=00bdef82f273 reason=no_employment
+.login_failed ip=127.0.0.1 username_fp=53f88ee8f52f reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=2942f05b93ba reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=fa2a84f5b524 reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=rate_limited
+................................................本次关闭 1 笔审批超时退款。
+退款申请 ID：1
+本次关闭 0 笔审批超时退款。
+.............................Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/billing/shifts/open
+.Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/notifications/refresh
+.........login_failed ip=127.0.0.1 username_fp=1064ae8d7d60 reason=disabled
+....................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+----------------------------------------------------------------------
+Ran 887 tests in 242.854s
+
+OK
+Destroying test database for alias 'default'...

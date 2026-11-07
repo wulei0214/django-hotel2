@@ -1,0 +1,6 @@
+{
+ "experiment": "G09-failover",
+ "redis_url": "redis://127.0.0.1:6399/0",
+ "cache_set": "抛出异常: ConnectionError: Error 10061 connecting to 127.0.0.1:6399. 由于目标计算机积极拒绝，无法连接。.",
+ "cache_get": "抛出异常: ConnectionError: Error 10061 connecting to 127.0.0.1:6399. 由于目标计算机积极拒绝，无法连接。."
+}

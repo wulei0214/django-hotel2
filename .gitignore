@@ -39,3 +39,4 @@ Thumbs.db
 *.sql
 !docs/schema_only/*.sql
 staticfiles/
+docs/acceptance/evidence/hotel-backup-*.sql

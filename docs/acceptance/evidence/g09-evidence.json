@@ -1,0 +1,44 @@
+{
+ "experiment": "G09-multi-worker-and-failover",
+ "date": "2026-11-07",
+ "head": "c402a37",
+ "topology": "waitress worker A(8001,4t) + worker B(8002,4t) 同一 Django settings、同一 Redis(redis://127.0.0.1:6379/0)",
+ "shared_cache": {
+  "experiment": "G09-multi-worker",
+  "workerA_first_summary": {
+   "open_folios": 4021,
+   "open_balance": "1474282.00",
+   "basis": "LedgerEntry 带符号金额汇总（账本口径，60 秒缓存）"
+  },
+  "inserted_probe_folio": 4022,
+  "true_open_folios_after_insert": 4022,
+  "workerB_within_ttl_summary": {
+   "open_folios": 4021,
+   "open_balance": "1474282.00",
+   "basis": "LedgerEntry 带符号金额汇总（账本口径，60 秒缓存）"
+  },
+  "shared_cache_proof": true,
+  "workerB_after_ttl_summary": {
+   "open_folios": 4022,
+   "open_balance": "1474282.00",
+   "basis": "LedgerEntry 带符号金额汇总（账本口径，60 秒缓存）"
+  },
+  "ttl_expiry_proof": true,
+  "cleanup": "probe folio deleted, cache invalidated"
+ },
+ "failover": {
+  "experiment": "G09-failover",
+  "redis_url": "redis://127.0.0.1:6399/0",
+  "cache_set": "抛出异常: ConnectionError: Error 10061 connecting to 127.0.0.1:6399. 由于目标计算机积极拒绝，无法连接。.",
+  "cache_get": "抛出异常: ConnectionError: Error 10061 connecting to 127.0.0.1:6399. 由于目标计算机积极拒绝，无法连接。."
+ },
+ "failover_page_survival": {
+  "redis_unreachable_worker": {
+   "/reserve/": 200,
+   "/login/": 200,
+   "/api/v1/availability": 200
+  },
+  "conclusion": "缓存层 fail-closed（ConnectionError 上抛），但不阻断不依赖缓存的读写路径；billing summary 等依赖缓存的端点在 Redis 故障时不可用（fail-closed），DEC-18 降级策略决策仍待负责人确认"
+ },
+ "capacity_observation": "本地 MySQL max_connections 较小：4 个 waitress 实例并发时出现 1040 Too many connections（见 g09 期间观察）；生产部署（DEC-29）须按 worker×线程数+CONN_MAX_AGE 规划连接池上限"
+}

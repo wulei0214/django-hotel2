@@ -1,0 +1,36 @@
+{
+ "label": "A04-upgrade-db",
+ "db": "test_hotel",
+ "base_tables": 74,
+ "django_migrations": 97,
+ "foreign_keys": 144,
+ "unique_constraints": 60,
+ "index_entries": 361,
+ "model_smoke_ok": [
+  "core.Property",
+  "identity.StaffProfile",
+  "guests.Guest",
+  "inventory.Room",
+  "inventory.RoomTypeInventory",
+  "reservations.Reservation",
+  "reservations.InventoryHold",
+  "reservations.BookingAccessToken",
+  "billing.Folio",
+  "billing.LedgerEntry",
+  "billing.CashierShift",
+  "core.AuditEvent",
+  "core.RateLimitCounter",
+  "core.IdempotencyRecord"
+ ],
+ "model_smoke_fail": [],
+ "invariants": {
+  "folio_balance_recheck_sample": {
+   "folios": 20,
+   "mismatch": 0
+  },
+  "business_date_single_open": {
+   "props_with_open": 0,
+   "violations": 0
+  }
+ }
+}

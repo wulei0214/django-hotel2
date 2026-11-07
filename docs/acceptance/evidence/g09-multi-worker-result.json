@@ -1,0 +1,23 @@
+{
+ "experiment": "G09-multi-worker",
+ "workerA_first_summary": {
+  "open_folios": 4021,
+  "open_balance": "1474282.00",
+  "basis": "LedgerEntry 带符号金额汇总（账本口径，60 秒缓存）"
+ },
+ "inserted_probe_folio": 4022,
+ "true_open_folios_after_insert": 4022,
+ "workerB_within_ttl_summary": {
+  "open_folios": 4021,
+  "open_balance": "1474282.00",
+  "basis": "LedgerEntry 带符号金额汇总（账本口径，60 秒缓存）"
+ },
+ "shared_cache_proof": true,
+ "workerB_after_ttl_summary": {
+  "open_folios": 4022,
+  "open_balance": "1474282.00",
+  "basis": "LedgerEntry 带符号金额汇总（账本口径，60 秒缓存）"
+ },
+ "ttl_expiry_proof": true,
+ "cleanup": "probe folio deleted, cache invalidated"
+}
