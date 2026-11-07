@@ -3,14 +3,15 @@
 > 文档性质：PMS 3.0 最终开发方案与任务执行基线（待负责人确认后冻结）
 > 目标仓库：`wulei0214/django-hotel2`
 > 基线分支：`main`
-> V2.1 修订日期：2026-11-07（V2 针对性修订 + 五项复核意见落地，修订清单见 §22 修订记录 V2.1 行）
-> 代码现状复核基线（最新业务代码提交）：7a2c9b8c896adf8fcb5220d6c768586fc9ad3bbe
-> 文档修订时点 main HEAD：9542b8b（纯前端样式提交，不改业务代码复核结论）
+> V2.2 修订日期：2026-11-07（V2.1 执行契约补强；修订清单见 §22 修订记录 V2.2 行）
+> 代码现状复核基线（业务代码 HEAD）：9542b8b5037564b02c3ed0934bef08927dac229f
+> 公共预订专项证据基线：7a2c9b8c896adf8fcb5220d6c768586fc9ad3bbe（`9542b8b` 仅前台详情抽屉样式/模板改动，未触及公共预订/支付逻辑）
+> 文档修订时点：2026-11-07（V2.1 文档提交 `c402a37` 起；文档 SHA 不作为业务代码基线）
 > 文档修订目标分支：main（本次仅修订方案文档，不改业务代码）
 > 前置项目：PMS 2.0
 > 重要门禁：本文件允许现在进行方案评审、任务拆解、代码现状盘点和准备工作；**PMS 3.0 正式业务代码开发必须等 PMS 2.0 最终验收报告结论为“通过”后启动**。当前仓库 A16 仍是开发者申报版，结论为“有条件整改”，不能视为最终验收通过。按 2026-11-07 架构审查及后续证据校准：Redis 已部署验证，G10 性能压测已完成；G09 多 worker 共享证据仍需阶段四复核；阶段四本地业务验收（含空库迁移）和 G14 独立验收签署仍未完成。本方案不得被解释为 PMS 2.0 已通过，也不得绕过该门禁。
 >
-> > 修订：2026-11-07 架构审查 —— 按 A16 申报版后续更新校准门禁现状：**G10 性能容量已完成**（A11 压测 6 场景 PASS：waitress 16 线程 + MySQL 4000 预订/4002 账本行数据集，P50/P95/P99 与错误率 0）；**Redis 5.0.14 已部署验证**（多进程共享/TTL 过期/故障连接捕获，2026-11-06）。剩余门禁为：阶段四用户本地业务验收（含空库全量迁移执行，DBA 授权待用户操作）与 G14 独立验收人指派签署；G09 多 worker 共享证据需在阶段四复核。门禁性质不变：上述完成并签署“通过”前，PMS 3.0 正式业务开发不启动。证据：`docs/acceptance/A16-final-acceptance-report.md`（§19 运行与部署行、§“进入 PMS 3.0 的门禁状态”）。
+> > 修订：2026-11-07 架构审查 —— 按 A16 申报版后续更新校准门禁现状：**G10 性能容量已完成**（A11 压测 6 场景 PASS：waitress 16 线程 + MySQL 4000 预订/4002 账本行数据集，P50/P95/P99 与错误率 0）；**Redis 5.0.14 已部署验证**（多进程共享/TTL 过期/故障连接捕获，2026-11-06）。剩余门禁为：阶段四用户本地业务验收（含空库全量迁移执行，DBA 授权待用户操作）与 G14 独立验收人指派签署；G09 多 worker 共享证据需在阶段四复核。门禁性质不变：上述完成并签署“通过”前，PMS 3.0 正式业务开发不启动。证据：`docs/acceptance/A16-final-acceptance-report.md`（§19 运行与部署行、§“进入 PMS 3.0 的门禁状态”）。**上述门禁状态的唯一口径见 §2.1；A16 表头“Redis 未部署”为过期文字，以 A10 证据为准，但 G09 仍独立待复核。**
 > 现状声明：本文件是目标设计与实施任务基线，不代表其中列出的字段、接口、页面或服务已存在。开发前必须以当时最新 `main` 的模型、迁移、服务、路由和测试为准，优先复用并补齐，禁止重复造表、重复造服务。
 
 ---
@@ -72,7 +73,7 @@ PMS 3.0 必须保持以下方向：
 PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必须完成（**状态按 2026-11-07 证据校准**，与本文件头部门禁说明保持一致）：
 
 - A04：MySQL 8 空库全量迁移和已有库升级验证 —— **未完成**（需 DBA 授权后由用户执行，SQL 无需变更）；
-- A09：MySQL 约束、索引、事务、并发和数据核对证据 —— **部分完成**（双引擎 887 项通过为开发侧证据；7a2c9b8 对应的 MySQL 8 全量回归报告未取得，按未完成门禁处理）；
+- A09：MySQL 约束、索引、事务、并发和数据核对证据 —— **部分完成**（A16 在 `1a39dd0` 记录 SQLite 729 + MySQL 729；`7a2c9b8` 记录 SQLite 887；`9542b8b` 本次复核 SQLite 887 通过，但 MySQL 8 因本机账号 1045 未执行。**不得写成“双引擎 887 通过”**；MySQL 8 全量、空库迁移和升级库仍按未完成门禁处理）；
 - G09：Redis 部署、多 worker 共享、TTL、故障降级和恢复验证 —— **部署验证已完成**（Redis 5.0.14，2026-11-06；多 worker 共享证据待阶段四复核）；
 - G10：负责人冻结容量目标并完成性能压测 —— **已完成**（A11：6 场景 PASS，waitress 16 线程 + MySQL 4000 预订数据集）；
 - 阶段四：用户本地实际业务验收、九角色登录、备份恢复和必要数据治理 —— **未完成**；
@@ -140,9 +141,32 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 - `docs`：设计、开发、审计和验收文档。
 - `hotelapp`：PMS1 遗留模块（11 个旧模型、旧视图、旧事件总线与请求审计中间件；35 条旧写路由已 410 封死并有 `apps/identity/test_module_gates.py` 护栏；`/no_show_one/` 为活跃例外，见审查报告 AR-01）。
 
-历史 A16 报告中的 SQLite/MySQL 729 项测试结果属于较早提交，不可直接作为最新 main 的测试结论；A16 原始表格关于 Redis 未部署、性能未执行的记录也已被后续 2026-11-07 审查证据更新。最新可核验的公共预订整改报告记录 SQLite 全量 887 项通过，新增订单生命周期测试 11 项；本次复核未取得最新 7a2c9b8 对应的 MySQL 8 全量回归报告，因此 MySQL 8、空库迁移、升级库和阶段四用户验收仍按未完成门禁处理。
+历史 A16 报告中的 SQLite/MySQL 729 项测试结果属于较早提交，不可直接作为最新 main 的测试结论；A16 原始表格关于 Redis 未部署、性能未执行的记录也已被后续 2026-11-07 审查证据更新。最新可核验的公共预订整改报告记录 SQLite 全量 887 项通过，新增订单生命周期测试覆盖 S1～S11 与 SEC-01；本次复核未取得最新 9542b8b 对应的 MySQL 8 全量回归报告，因此 MySQL 8、空库迁移、升级库和阶段四用户验收仍按未完成门禁处理。
 
-### 2.1 启动时必须重新执行的现状盘点
+### 2.1 PMS 2.0 现状事实表（唯一口径，2026-11-07）
+
+> 本表是 PMS 2.0 现状的唯一事实口径。文中其他章节（含 A16 原文、历史评审记录）与本表冲突时，以本表为准；引用任何测试数字、门禁状态或 Redis/G09/G10 结论时必须同时注明日期与 SHA。
+
+| 事实项 | 本次结论 | 证据/命令 | 日期/SHA | 对 PMS3 门禁的影响 |
+|---|---|---|---|---|
+| PMS2 最终验收结论 | **未通过，当前为“有条件整改”** | `docs/acceptance/A16-final-acceptance-report.md` §“进入 PMS 3.0 的门禁状态” | 2026-11-06 / `1a39dd0` | 阻断 PMS3 正式业务代码开发 |
+| A16 的 729 项测试 | SQLite 729 + MySQL 729，属开发者申报的历史证据 | A16 A08 | 2026-11-06 / `1a39dd0` | 不能代表最新 `main`，不得作为启动依据 |
+| 90 号专项报告的 887 项 | SQLite 887 通过；覆盖公共预订 S1～S11 与 SEC-01，支付为 mock | `docs/audit/phase0/90-public-booking-order-lifecycle-review.md` | 2026-11-07 / `7a2c9b8` | 仅证明公共预订专项，不等于 PMS2 全量验收 |
+| 当前 `main` 的 SQLite 全量 | **887 项通过（OK）** | `DJANGO_ENV=test DJANGO_DB_ENGINE=sqlite python manage.py test` | 2026-11-07 / `9542b8b` | 最新 SQLite 证据；仍不能替代 MySQL 8 |
+| 当前 `main` 的默认测试环境偏差 | `DJANGO_ENV=dev` 下全量 887 项出现 **2 errors**（`hotelapp.tests.ReconcileTestUsersCommandTests`，命令因测试运行器将 DEBUG 置 False 而拒绝执行）；`DJANGO_ENV=test` 下 4 项该命令测试全过 | 同上；`hotelapp/management/commands/reconcile_test_users.py` `_check_target()` | 2026-11-07 / `9542b8b` | CI 必须显式设置 `DJANGO_ENV=test`；这是环境口径问题，不得写成产品缺陷 |
+| 当前 `main` 的 MySQL 8 全量 | **未执行**（本机 `Access denied for user 'wu'lei'@'localhost' (1045)`，无可用账号） | `python manage.py test`（MySQL）失败日志 | 2026-11-07 / `9542b8b` | MySQL 8 门禁仍未完成；SQLite 绿灯不能替代 |
+| A04 空库全量迁移 | **未完成**（DBA 授权待用户执行；SQL 无需变更） | A16 A04 | 2026-11-06 / `1a39dd0` | 门禁未完成 |
+| Redis 部署 | **已部署验证**：Redis 5.0.14，多进程 A 写 B 读、TTL 过期、故障连接捕获、Django RedisCache 读写 | A16 A10（注意 A16 表头第 10 行“未部署”为过期文字，以 A10 与第 28 行为准） | 2026-11-06 | 部署验证完成，但不等于 G09 签署通过 |
+| G09 多 worker 共享 | **待阶段四复核** | A16 §“进入 PMS 3.0 的门禁状态”第 2 项 | 2026-11-06 / `1a39dd0` | 门禁未完成 |
+| G10 性能容量 | **已完成开发侧压测**：6 场景 PASS，waitress 16 线程 + MySQL 4000 预订/4002 账本行数据集 | A16 A11 | 2026-11-06 | 独立复核仍待 G14 一并确认 |
+| 阶段四用户本地业务验收 | **未执行** | A16 §“进入 PMS 3.0 的门禁状态”第 1 项 | 2026-11-06 | 门禁未完成 |
+| G14 独立验收签署 | **未指派、未签署** | A16 §“进入 PMS 3.0 的门禁状态”第 4 项 | 2026-11-06 | 门禁未完成 |
+| `makemigrations --check --dry-run` | **No changes detected** | `DJANGO_ENV=test DJANGO_DB_ENGINE=sqlite python manage.py makemigrations --check --dry-run` | 2026-11-07 / `9542b8b` | 支持“无模型漂移”结论，但仍需 MySQL 复验 |
+| 真实支付服务商 | **未接入**；现有回调为受控 mock | §24.1/§24.2；`apps/billing/services.py` | 2026-11-07 / `7a2c9b8` | 生产支付、退款、对账、争议处理均不得标记为已实现 |
+| A16 内部 Redis 表述冲突 | A16 表头第 10 行“未部署”与第 28 行/A10“已部署验证”并存；**以较晚的 A10 证据为准**，但 G09 仍独立待复核 | A16 第 10/28/57 行 | 2026-11-06 | 本表消除该冲突；禁止继续引用“Redis 未部署” |
+| 业务代码/文档基线 | 业务代码 HEAD `9542b8b`；公共预订专项证据 `7a2c9b8`；架构审查证据 `635d9dd`；文档提交 `c402a37` 起 | `git log`/`git rev-parse` | 2026-11-07 | BASE-01 启动时必须重新 fetch，不沿用本表 SHA |
+
+### 2.2 启动时必须重新执行的现状盘点
 
 | 编号 | 盘点内容 | 产物 |
 |---|---|---|
@@ -277,6 +301,26 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 每个中心必须交付：业务流程、字段字典、领域服务、API 契约、前端页面、权限矩阵、审计规则、数据迁移（如适用）、自动化测试和验收报告。
 
 > **V2.1 中心清单口径（消除"功能清单与任务清单不对应"）**：PMS 3.0 业务中心固定为上述 §5.1~§5.11 共 **11 个**，与 PMS2 main 的管理中心注册表一一对应（员工=员工与账号中心）。§13.1 导航中的**「权限管理」不是第 12 个业务中心**：它是 IAM 域（IAM-01~10）的独立管理域页面，权限码/角色注册表演进与矩阵复核由 IAM-04/IAM-10 承载、页面一致性由 UI-02 承载；**「系统设置」**仅平台授权人员的配置面，归 INF/REL 域。二者不设 REQ/BIZ 中心任务，防止中心清单与任务台账脱节。若负责人未来批准新增中心，必须先按 §26.5 走 DEC/ADR 并同步 §5/§15/§13。
+
+### 5.0 11 中心 × 需求 × 任务 × 现状对照表（V2.2）
+
+> 本表把 §5 的功能清单、§15.1 的 BIZ 父任务、§15.3 的工程任务和当前代码证据放在同一视图中。**“当前状态”是截至 `9542b8b` 的代码证据判断，不是验收结论**；任务是否完成只以 §1.3 状态和 §26.2 证据链为准。
+
+| 中心 | REQ 范围 | BIZ 父任务 | 主要工程任务 | 关键跨中心依赖 | 当前状态（未独立验收） | 主要缺口/证据 |
+|---|---|---|---|---|---|---|
+| 5.1 员工 | REQ-EMP-01~10 | BIZ-EMP-01~10 | SVC-01；IAM-01~10；DB-03；API-03/04 | 权限、会话、审计、待办转交 | **部分开发**：User/StaffProfile/Membership/Assignment、邀请、员工列表/详情在位 | 工号规则、再入职、批量导入、员工时间线未验收；`apps/identity`、`apps/api/staff_center.py` |
+| 5.2 Guest 360 | REQ-GST-01~10 | BIZ-GST-01~10 | SVC-02；DB-02/04/05 | 会员、预订、账务、通知 | **部分开发**：Guest/GuestPhone/GuestDocument/时间线/揭示在位 | GuestMergeRequest、`key_version` 未建；公共预订内联直写需收口（AR-03）；`apps/guests` |
+| 5.3 房态库存 | REQ-INV-01~10 | BIZ-INV-01~10 | SVC-03；DB-13；DB-18 | 预订、清洁维修、报表 | **部分开发**：Room/RoomType/RoomTypeInventory/InventoryHold/价格日历在位 | 可售公式、并发、Hold 过期、差异监控未验收；`apps/inventory`、`apps/reservations/models.py:376` |
+| 5.4 会员 | REQ-MEM-01~06 | BIZ-MEM-01~06 | SVC-11（新增收口）；API-03/04 | Guest、预订、账务 | **部分开发**：GuestMembership/MembershipLevelHistory/GuestMembershipService/会员 API 在位 | 等级权益、状态机、合并联动、会员报表未验收；`apps/guests/models.py:154`、`apps/guests/services.py` |
+| 5.5 预订入住 | REQ-RSV-01~18 | BIZ-RSV-01~18 | SVC-04；SVC-10；DB-06；DB-13/14 | 库存、支付、账务、清洁 | **部分开发**：Reservation/Stay/多房/令牌/公共预订 S1～S11/mock 支付在位 | 政策快照字段缺失；真实支付、ProviderTransaction、Hold 竞态、No-show 单入口未验收；`apps/reservations/models.py`、`apps/api/test_public_booking_lifecycle.py` |
+| 5.6 财务账单 | REQ-FIN-01~11 | BIZ-FIN-01~11 | SVC-05；DB-07/08/09/10；SVC-10 | 预订、夜审、支付、审批 | **部分开发**：Folio/Payment/Refund/LedgerEntry/Approval/CashierShift 与 BillingService 在位；Refund 已有 `executed_by`/SoD 约束 | Payment 缺 `business_date`/`received_by`；Refund 缺 EXECUTING/FAILED；真实渠道、对账、DB 不可变未验收；`apps/billing` |
+| 5.7 夜审营业日 | REQ-AUD-01~09 | BIZ-AUD-01~09 | SVC-06；DB-11 | 账务、入住、库存、报表 | **部分开发**：预览/执行/运行历史/重开/Break-glass API 在位；读权限 `core.night_audit_view`、执行 `hotelapp.night_audit_execute` | 全量 blocker、失败恢复、自动调度、差异报告未验收；`apps/api/night_audit.py` |
+| 5.8 清洁维修 | REQ-HK-01~08 | BIZ-HK-01~08 | SVC-07；DB-13/18 | 房态、库存、通知 | **部分开发**：HousekeepingTask/MaintenanceTicket/RoomInspection 模型与房态/维修 API 在位 | 任务池、分配/检查、净房放行、SLA 未建；`apps/inventory/models.py:295/355/399`、`apps/api/housekeeping_center.py` |
+| 5.9 审计合规 | REQ-CMP-01~07 | BIZ-CMP-01~07 | SVC-12（新增收口）；DB-12；DB-20 | 全中心、审计读取、归档 | **部分开发**：AuditEvent/StatusTransition/NightAuditRun/BreakGlassRecord 与审计查询 API 在位 | DB 级不可变、覆盖率、归档完整性、留存策略未验收；`apps/core/models.py:62`、`apps/api/audit_center.py` |
+| 5.10 报表分析 | REQ-RPT-01~08 | BIZ-RPT-01~08 | SVC-09；DB-19 | 账务、预订、房态、权限 | **部分开发**：occupancy/ADR/revenue/guests/housekeeping 查询与财务汇总在位 | 指标注册、版本、异步导出、权限口径未验收；`apps/api/report_center.py` |
+| 5.11 通知待办 | REQ-WN-01~08 | BIZ-WN-01~08 | SVC-08；SVC-10；DB-14 | 全中心事件、员工离职 | **部分开发**：Notification/NotificationRead/dedupe/派生/通知 API 在位 | Outbox、失败队列、离职转交、SLA、AR-02/AR-08 未收口；`apps/core/models.py:468/562`、`apps/api/notification_center.py` |
+
+**中心-任务对应门禁**：每个 BIZ 父任务必须在 §15.4 找到至少一个 DB/SVC/API/UI/QA 执行任务；找不到的，只能标记“不适用”并写明理由，不得只写“完成 BIZ-* 子项”。
 
 ### 5.1 员工中心（Employee Center）
 
@@ -434,11 +478,28 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 | REQ-MEM-05 | P2 | 会员标签/偏好 | 仅基于合法来源和业务用途 |
 | REQ-MEM-06 | P2 | 会员报表 | 会员数量、等级变动和活跃口径冻结 |
 
-字段评估：Membership status、level、effective_from/to、source、reason、changed_by；历史使用独立 history，不覆盖旧等级。不得擅自引入积分、储值、折扣钱包等财务实体。
+#### 字段与规则
 
-服务/API/页面：GuestMembershipService；会员列表、详情、等级历史、暂停/恢复、关联修复；会员详情从 Guest 进入，不创建另一套 Guest profile。
+- `GuestMembership`：status、level、source、reason、changed_by、生效时间；`MembershipLevelHistory` 独立记录旧等级、新等级、操作者、原因和时间，不覆盖旧值。
+- `GuestMembership.active_membership_key` 一类的物业范围唯一键用于阻止同一 Guest 在同一会员体系下出现多个 ACTIVE 关系（以 BASE-02 盘点为准，不重复造字段）。
+- 不得擅自引入积分、储值、折扣钱包等财务实体；权益范围未按 DEC-15 批准前，只展示已有事实，不生成虚构权益。
 
-验收：重复关联被阻止；Guest 合并时会员关系处理正确；等级历史不可篡改；无会员权益时不显示虚构权益。
+#### 服务/API/页面
+
+- 服务：复用并收口 `GuestMembershipService`（`apps/guests/services.py`）作为会员关系、等级、暂停/恢复/注销的唯一写入口；PMS3 新增 SVC-11 只做收口与补强，不新建平行会员主档。
+- API：会员列表/详情、创建、等级变更、状态变更、等级历史、会员报表。
+- 页面：会员列表、会员详情（从 Guest 进入）、等级历史、状态操作、Guest 合并影响提示。
+
+#### 权限/审计/测试
+
+- 会员查看、创建、等级变更、状态变更、导出分别授权；等级变更、暂停、恢复、注销必须有原因、操作者、前后值和审计事件。
+- Guest 合并时会员关系迁移必须由 GuestMergeService 与会员服务协同，不得直接改 FK；合并前后会员历史可追溯。
+- 测试：重复关联被数据库约束和服务双重阻止；合法/非法状态迁移；等级历史不可覆盖；无权益时不展示虚构权益；Guest 合并后会员关系、历史、权益摘要可追溯。
+
+#### 当前缺口
+
+- `GuestMembership`、`MembershipLevelHistory`、`GuestMembershipService` 与会员 API 已在位，但 §15 原任务台账没有独立会员服务任务；V2.2 新增 SVC-11 作为收口/补强任务，并纳入 BIZ-MEM-01~06 验收。
+- 会员权益、积分、储值仍不在默认范围，未经 DEC-15 不建模。
 
 ### 5.5 预订与入住中心（Reservation & Stay）
 
@@ -599,6 +660,17 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 - 失败可诊断、可恢复且保留运行历史；
 - 物业时区和营业日截止规则一致。
 
+#### 权限/审计/测试
+
+- 读取、预览、执行、重开申请、重开审批、Break-glass 申请/执行/复核使用独立权限；读取权限不得复用执行权限（当前读接口使用 `core.night_audit_view`，执行使用 `hotelapp.night_audit_execute`，PMS3 必须固化为权限矩阵并补负向测试）。
+- 每次预览、执行、失败、重试、重开、Break-glass 均记录 actor/property/request_id/结果/原因；重开和 Break-glass 必须有复核链。
+- 测试：并发执行、重复执行、硬阻断、全量 blocker、失败重试、营业日重开、SQLite/MySQL 时区边界。
+
+#### 当前缺口
+
+- 预览/执行/运行历史/重开/Break-glass API 已在位，但“全量 blockers 结构化返回”“失败恢复面板”“自动调度与告警”“夜审差异报告”尚无统一验收证据；并入 BIZ-AUD-02/04/06/08/09 与 SVC-06。
+- 自动调度进程不得在业务服务内自建锁；统一使用 §25.4 任务注册表和 SVC-10 任务框架。
+
 ### 5.8 清洁与维修中心（Housekeeping & Maintenance）
 
 #### 功能需求（REQ 编号，不是执行任务 ID）
@@ -661,6 +733,22 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 - 日志和审计分离：日志排障，审计证明业务行为；
 - 任何导出不得默认输出完整敏感字段。
 
+#### 服务/API/页面
+
+- 服务：复用 `AuditEvent.record` 作为唯一审计写入口，新增 SVC-12 负责检索、导出、归档、完整性校验和合规报告；不新建第二套审计表。
+- API：审计事件列表/详情/汇总/动作字典、导出、归档校验、Break-glass/高风险揭示报告。
+- 页面：审计检索、事件详情、合规报告、导出任务、归档/校验结果。
+
+#### 权限/审计/测试
+
+- 审计读取、导出、PII 揭示分别授权；审计查询本身按 DEC-23 处理，避免递归记录；物业范围和字段遮罩必须在服务端生效。
+- 测试：普通账号 UPDATE/DELETE 失败（DB-12）；PII 不入库；关键写操作覆盖率矩阵（CMP-03）；归档校验和、恢复演练；导出越权拒绝。
+
+#### 当前缺口
+
+- `AuditEvent` 不可变 QuerySet 与 70 调用点/15 文件为 `635d9dd` 基线记录，需在 `9542b8b` 复验；DB 级不可变、事件覆盖率矩阵、归档/完整性校验、留存策略仍未验收。
+- §15 原任务台账没有审计中心领域服务任务；V2.2 新增 SVC-12 作为收口/补强任务，DB 级不可变仍由 DB-12 承担。
+
 ### 5.10 报表分析中心（Reporting & Analytics）
 
 #### 功能需求（REQ 编号，不是执行任务 ID）
@@ -693,6 +781,22 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 
 报表必须有固定数据集的黄金样本，结果与 SQL/账务事实对账。复杂报表使用预聚合或缓存前必须证明口径正确。
 
+#### 服务/API/页面
+
+- 服务：MetricRegistryService（口径注册/版本/黄金样本）、ReportQueryService、AsyncReportService；复用现有 `report_center.py` 查询逻辑，不新建平行报表引擎。
+- API：入住率、ADR、RevPAR、收入、客源、取消/No-show、房态清洁维修、财务汇总、异步导出任务。
+- 页面：经营日报/月报、指标说明、筛选、导出任务、权限提示、过期下载提示。
+
+#### 权限/审计/测试
+
+- 报表查看、明细下钻、导出、跨物业范围分别授权；导出有理由、限流、审计、水印/脱敏和过期清理。
+- 测试：黄金样本与 SQL/账务事实对账；时区/营业日边界；指标版本重算；越权拒绝；大报表异步任务失败/重试/过期。
+
+#### 当前缺口
+
+- 现有 `apps/api/report_center.py` 提供 occupancy/ADR/revenue/guests/housekeeping 查询，`billing/summary` 提供财务汇总；但指标注册表、版本、异步大报表、导出和权限口径未验收。并入 BIZ-RPT-01~08 与 SVC-09/DB-19。
+- 财务指标必须以 LedgerEntry/批准口径为准，不得直接累计 Payment（INV-A09、REQ-RPT-02）。
+
 ### 5.11 通知与待办中心（Work Items & Notifications）
 
 #### 功能需求（REQ 编号，不是执行任务 ID）
@@ -711,6 +815,21 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 通知是投递副本，WorkItem 是待处理任务，源业务对象仍是业务事实权威。禁止通过“标记通知已读”直接改变预订/退款/维修源状态。
 
 > 修订：2026-11-07 架构审查 —— 按 `635d9dd` 实证校准本节现状：①`Notification`/`NotificationRead` 模型与 `dedupe_key`（property+dedupe_key 数据库唯一）已在位，`apps/core/services_notifications.py` 已实现实时重算+upsert 对账的待办派生，WN-01 的去重机制已落地；②存量漂移两项随本中心任务包清偿：派生服务对 billing/identity/inventory/reservations 的模块级反向依赖（审查报告 AR-02，违反 §3.2/§3.4，重构为独立 notifications app 或业务侧"待办提供者"注册）；API 层直写 `NotificationRead`（AR-08，收口为服务方法并入 WN-03）。
+
+#### 服务/API/页面
+
+- 服务：WorkItemService、NotificationDispatchService、OutboxConsumer；复用现有 `Notification`/`NotificationRead` 和派生服务，不新建第二套通知表。
+- API：通知列表/未读数/单条已读/全部已读/刷新、待办列表/分配/转交/处理/关闭、投递失败队列、死信重放。
+- 页面：通知中心、待办工作台、失败重试/死信面板、离职转交确认。
+
+#### 权限/审计/测试
+
+- 通知按收件人/角色组/物业隔离；`NotificationRead` 是个人已读事实，不得用一条全局布尔影响他人；待办操作必须重新校验源业务对象状态和权限；离职转交有审计。
+- 测试：重复事件不重复生成；Outbox 重复投递幂等；源业务状态变化后待办不可误完成；个人已读不影响他人；失败重试/死信重放；离职员工待办不丢失。
+
+#### 当前缺口
+
+- `Notification`/`NotificationRead`/`dedupe_key` 已实现个人已读和派生去重；`apps/core/services_notifications.py` 仍反向依赖业务 App（AR-02），API 层仍直写 `NotificationRead`（AR-08）；Outbox、失败队列、离职转交和 SLA 未验收。并入 BIZ-WN-01~08、SVC-08/10、INF-02。
 
 ---
 
@@ -939,7 +1058,7 @@ Redis 不是数据库权威，也不能代替 MySQL 事务。只在确有跨进�
 | RateLimitCounter/幂等记录清理 | DB-15 / DB-14 | 数据规模评估、不影响在途窗口 |
 | Django session 清理 | INF-02（通用任务框架交付物） | 与离职强制撤销（IAM-09）联动 |
 
-所有后台任务统一执行 §9.3 上文要求的 dry-run、互斥锁、物业范围、审计和运行报告；任务框架（租约锁/重试/死信/重放）由 SVC-10 一次交付，各任务不得自建调度框架。
+所有后台任务统一执行 §9.3 上文要求的 dry-run、互斥锁、物业范围、审计和运行报告；任务框架（租约锁/重试/死信/重放）由 SVC-10 一次交付，各任务不得自建调度框架。**完整注册表（锁键/幂等键/恢复方式/指标）见 §25.4；未在 §25.4 注册的任务不得上线。**
 
 ---
 
@@ -1185,22 +1304,22 @@ SQLite 不能作为 MySQL 的替代验证。
 
 ### Phase 1：领域模型与数据库治理（P0）
 
-执行任务：DB-01~DB-20，并完成 BIZ-* 任务中标记为 Phase 1 的数据模型/字段/约束子项。
+执行任务：DB-01~DB-20，并完成所有 BIZ 父任务的 **S01（DB/数据）** 检查点（按 §15.5 矩阵）。
 退出标准：字段字典完整；无重复权威实体；MySQL 8 空库迁移、升级迁移、约束、索引、数据回填和对账证据通过；不修改已发布 migration。
 
 ### Phase 2：核心领域服务和状态机（P0/P1）
 
-执行任务：SVC-01~SVC-10，并完成 BIZ-* 任务中标记为 Phase 2 的领域服务子项。
+执行任务：SVC-01~SVC-12，并完成所有 BIZ 父任务的 **S02（服务/状态机）** 检查点。
 退出标准：关键写路径 100% 收口到唯一服务；状态机、事务、幂等、并发、补偿和审计测试通过；跨 App 依赖方向无新增违例。
 
 ### Phase 3：API 契约与安全治理（P0/P1）
 
-执行任务：API-01~API-10，并完成 BIZ-* 任务中标记为 Phase 3 的 API 子项。
+执行任务：API-01~API-10，并完成所有 BIZ 父任务的 **S03（API/权限）** 检查点。
 退出标准：每个写 API 可追踪到服务、权限和审计；OpenAPI 与真实路由/DTO 无漂移；对象/物业越权、CSRF、限流、Token 泄露和重放负向用例通过；旧写入口退役以 MIG-06 为最终门禁。
 
 ### Phase 4：前端工作台与跨中心闭环（P1）
 
-执行任务：UI-01~UI-04，并完成所有 BIZ-* 任务的页面、表单、按钮和真实 API 接线。
+执行任务：UI-01~UI-04，并完成所有 BIZ 父任务的 **S04（UI）** 检查点（按 §15.5 矩阵）。
 交付顺序：预订入住、房态库存、Guest 360、清洁维修、财务账单、夜审营业日、员工、会员、通知待办、报表、审计。
 退出标准：无 Mock 假数据；所有页面路由可达；按钮状态、异常态、权限态和表单校验正确；11 个中心的页面/API/服务/权限逐项对应。
 
@@ -1211,7 +1330,7 @@ SQLite 不能作为 MySQL 的替代验证。
 
 ### Phase 6：自动化测试、性能和韧性（P0/P1/P2）
 
-执行任务：QA-01~QA-10。
+执行任务：QA-01~QA-10，并完成所有 BIZ 父任务的 **S05（QA/验收）** 检查点。
 退出标准：强制测试 100% 通过；MySQL 8 与 SQLite 结果差异可解释；多 worker、Redis/DB 故障、回调重复/乱序、后台任务中断、备份恢复、库存并发、财务对账均有可复现证据。
 
 ### Phase 7：上线准备与独立验收（P0）
@@ -1353,7 +1472,7 @@ SQLite 不能作为 MySQL 的替代验证。
 | DB-06 | P0 | Reservation 政策快照 | 创建时快照和历史测试 |
 | DB-07 | P0 | 退款状态/审批执行分离 | 状态机和 SoD 测试 |
 | DB-08 | P0 | LedgerEntry 唯一凭证/冲销约束 | 并发唯一性测试 |
-| DB-09 | P0 | Payment/CashierShift 营业日字段 | 业务日对账 |
+| DB-09 | P0 | Payment/CashierShift 营业日字段与支付键口径 | 业务日对账；Payment 补 `business_date`/`received_by`/`provider`，`provider_ref` 唯一键调整为渠道范围（见 §24.5 P0-RSV-04/05） |
 | DB-10 | P0 | FolioTransfer 配对事实 | 双边凭证完整性 |
 | DB-11 | P0 | BusinessDate/NightAudit 运行约束 | 单 OPEN/单 RUNNING |
 | DB-12 | P0 | AuditEvent DB 级不可变 | 普通账号 UPDATE/DELETE 失败 |
@@ -1390,6 +1509,8 @@ SQLite 不能作为 MySQL 的替代验证。
 | SVC-08 | P1 | WorkItem/Notification 服务边界 | AR-02/08 收口；Outbox 事件消费者 |
 | SVC-09 | P1 | Reporting Metric Registry 服务 | 指标版本/黄金样本 |
 | SVC-10 | P0 | 统一 Idempotency/Outbox/Retry | 同事务 Outbox、租约锁、退避、死信、重放审计 |
+| SVC-11 | P1 | Membership 唯一写服务收口（V2.2 新增） | 复用并收口 `GuestMembershipService`：会员创建/等级变更/暂停/恢复/注销/合并迁移唯一入口；不新建平行会员主档 |
+| SVC-12 | P1 | Audit 查询/导出/归档服务（V2.2 新增） | 复用 `AuditEvent.record` 为唯一写入口；服务层负责检索、导出、归档、完整性校验和合规报告；不新建第二套审计表 |
 | MIG-01 | P0 | 源数据盘点 | 表/字段/记录/外部依赖清单 |
 | MIG-02 | P0 | 备份与恢复准备 | 迁移前恢复演练 |
 | MIG-03 | P0 | 迁移预览与冲突分类 | dry-run/冲突报告/白名单 |
@@ -1448,6 +1569,57 @@ SQLite 不能作为 MySQL 的替代验证。
 | REL-07 | P1 | 业务培训和操作手册 | 培训/签收 |
 | REL-08 | P0 | 发布后观察与回滚决策 | 观察期指标与决策记录 |
 | REL-09 | P0 | 生产支付供应商验收 | 渠道沙箱/生产回调/对账；不得用 mock 代替 |
+
+### 15.4 业务父任务 → 工程任务映射（V2.2）
+
+> 本表回答“每个 BIZ 父任务由哪些 DB/SVC/API/UI/QA 任务交付”。一个 BIZ 可以有多个工程任务；一个工程任务可以服务多个 BIZ。**没有工程任务承接的 BIZ 不得标记为可开发**；确实不适用（如纯报表无独立 UI）必须写明理由。
+
+| BIZ 范围 | 主要 DB 任务 | 主要 SVC 任务 | API/权限 | UI | QA/交付证据 |
+|---|---|---|---|---|---|
+| BIZ-EMP-01~10 | DB-02、DB-03 | SVC-01、IAM-01~10 | API-03、API-04、API-09 | UI-02、UI-03 | QA-01、QA-02、QA-09 |
+| BIZ-GST-01~10 | DB-02、DB-04、DB-05 | SVC-02 | API-03、API-04、API-09 | UI-02、UI-03 | QA-01、QA-02、QA-09 |
+| BIZ-INV-01~10 | DB-13、DB-18 | SVC-03、SVC-04 | API-03、API-05 | UI-02、UI-03 | QA-01、QA-04、QA-10 |
+| BIZ-MEM-01~06 | DB-02 | SVC-11 | API-03、API-04 | UI-02、UI-03 | QA-01、QA-02 |
+| BIZ-RSV-01~12 | DB-06、DB-13、DB-14、DB-18 | SVC-04、SVC-10 | API-01~API-06、API-08、API-10 | UI-02、UI-03、UI-04 | QA-01、QA-04、QA-06 |
+| BIZ-RSV-13~18 | DB-09、DB-14 | SVC-05、SVC-10 | API-01~API-06、API-10 | UI-02 | QA-01、QA-04、QA-06、REL-09 |
+| BIZ-FIN-01~11 | DB-07、DB-08、DB-09、DB-10、DB-14 | SVC-05、SVC-10 | API-03、API-05、API-09 | UI-02 | QA-01、QA-04、QA-06、QA-08 |
+| BIZ-AUD-01~09 | DB-11、DB-14 | SVC-06、SVC-10 | API-03、API-05 | UI-02、UI-03 | QA-01、QA-06 |
+| BIZ-HK-01~08 | DB-13、DB-18 | SVC-07 | API-03、API-05 | UI-02、UI-03 | QA-01、QA-04、QA-10 |
+| BIZ-CMP-01~07 | DB-12、DB-20 | SVC-12 | API-03、API-09 | UI-02 | QA-01、QA-09 |
+| BIZ-RPT-01~08 | DB-19 | SVC-09 | API-05、API-09 | UI-02 | QA-01、QA-07 |
+| BIZ-WN-01~08 | DB-14 | SVC-08、SVC-10 | API-03、API-05 | UI-02 | QA-01、QA-04、QA-06 |
+
+**不适用说明**：
+
+- 平台/治理任务（PM/GATE/MIG/REL）没有独立业务中心 UI，页面证据由 REL-02 证据包与 REL-07 操作手册承接。
+- INF-* 是基础设施交付，不以页面验收；其验收证据为 INF-01~08 的部署/演练报告。
+- UI-02 是“11 中心页面状态/动作一致性”横向任务，不替代各中心的页面验收；各中心仍须在 BIZ 子任务 S04 内提供逐页截图与 E2E。
+
+### 15.5 11 中心阶段检查点矩阵（S01~S05）
+
+> 每个 BIZ 父任务按 §26.1 拆为 S01~S05 检查点；只创建实际适用的检查点。**父任务只有在适用检查点全部通过后才可标记“已验收”**。下表给出每个中心默认适用的检查点；无 DB 变更的中心可标注 S01 不适用，但必须写明理由。
+
+| 中心 | S01 DB/数据 | S02 服务/状态机 | S03 API/权限 | S04 UI | S05 QA/验收 | 备注 |
+|---|---|---|---|---|---|---|
+| 5.1 员工 | 适用（DB-02/03） | 适用（SVC-01/IAM） | 适用 | 适用 | 适用 | 再入职依赖 DEC-01 |
+| 5.2 Guest 360 | 适用（DB-02/04/05） | 适用（SVC-02） | 适用 | 适用 | 适用 | 合并依赖 DEC-03/06 |
+| 5.3 房态库存 | 适用（DB-13/18） | 适用（SVC-03） | 适用 | 适用 | 适用 | 公式依赖 DEC-26 |
+| 5.4 会员 | 适用（DB-02，可能无新表） | 适用（SVC-11） | 适用 | 适用 | 适用 | 权益依赖 DEC-15 |
+| 5.5 预订入住 | 适用（DB-06/13/14） | 适用（SVC-04/10） | 适用 | 适用 | 适用 | 支付部分见 5.6 |
+| 5.6 财务账单 | 适用（DB-07/08/09/10） | 适用（SVC-05/10） | 适用 | 适用 | 适用 | 退款 SoD 依赖 DEC-10 |
+| 5.7 夜审营业日 | 适用（DB-11） | 适用（SVC-06/10） | 适用 | 适用 | 适用 | 重开依赖 DEC-13 |
+| 5.8 清洁维修 | 适用（DB-13/18） | 适用（SVC-07） | 适用 | 适用 | 适用 | 放行依赖 DEC-14 |
+| 5.9 审计合规 | 适用（DB-12/20） | 适用（SVC-12） | 适用 | 适用 | 适用 | 读取策略依赖 DEC-23 |
+| 5.10 报表分析 | 适用（DB-19，评估性） | 适用（SVC-09） | 适用 | 适用 | 适用 | 口径依赖 DEC-16/21 |
+| 5.11 通知待办 | 适用（DB-14） | 适用（SVC-08/10） | 适用 | 适用 | 适用 | 事件目录依赖 DEC-27 |
+
+**检查点退出证据（统一口径）**：
+
+- S01：迁移可执行、无 `makemigrations` 漂移、约束/索引/回填脚本和 MySQL 8 证据；无 DB 变更时提交“不适用理由 + 代码检索证据”。
+- S02：唯一写服务调用图、状态机表、幂等键、锁顺序、补偿用例和审计事件。
+- S03：路由、DTO、权限码、对象级授权、OpenAPI 同步和负向用例。
+- S04：真实 API 接线、无 Mock 数据、桌面/窄屏截图和 E2E。
+- S05：§11 强制用例、黄金样本、对账/恢复证据和验收报告；无独立复核不得进入“已验收”。
 
 
 ## 16. 技术栈与版本升级策略
@@ -1627,6 +1799,8 @@ SQLite 不能作为 MySQL 的替代验证。
 | DEC-28 | RPO/RTO 与备份保留目标 | 明确最大数据丢失窗口、恢复时限、备份保留和演练频率 | INF-03/08、QA-08、REL-01 |
 | DEC-29 | 生产部署拓扑与运行边界 | 冻结 Nginx/WSGI/worker/DB/Redis/任务进程/文件存储/监控的部署方式与资源上限 | INF-01~08、REL-04~06 |
 | DEC-30 | 发票模块是否纳入 PMS3 范围（V2.1 新增，消除 REQ-FIN-08 的条件歧义） | 未确认前 REQ-FIN-08/BIZ-FIN-08 保持"设计待确认"状态，不得提前建模；确认纳入则按 DEC 流程补充发票状态机与冲红规则 | BIZ-FIN-08、FIN 报表 |
+| DEC-31 | 支付成功与订单终态竞态的业务处置（V2.2 新增，修复 P0-RSV-01） | 必须先查渠道事实；库存仍可用且政策允许时恢复订单，否则自动全额退款并进入人工队列；**任何情况下不得把已成功扣款的 Payment 标记 FAILED**；同时冻结支付窗口上限与 Hold 延长规则 | BIZ-RSV-14/16/17、SVC-05、DB-09 |
+| DEC-32 | 支付/订单事件的权威时间与迟到回调判定（V2.2 新增） | 明确优先级：渠道 `occurred_at` 用于事实归属，PMS `received_at` 用于审计，订单 `expires_at` 用于业务门控；迟到回调按 DEC-31 处置并留痕；禁止用客户端时间判定 | BIZ-RSV-15/17、SVC-10、§23.2/§24.3 |
 
 未决事项分为“全局阻塞”和“局部阻塞”。局部决策未确认时，只允许开发不依赖该决策的其他任务，不允许自行填入默认业务规则。
 
@@ -1691,7 +1865,8 @@ SQLite 不能作为 MySQL 的替代验证。
 |---|---|---|---|---|
 | 2026-11-07 | V1 架构现状校准 | 80-architecture-review.md（基线 635d9dd）及 A16 后续证据 | 形成 §3.4、§14.0、DEC-23/24；历史修订保留 | 待负责人确认 |
 | 2026-11-07 | V2 针对性修订 | 最新 main 7a2c9b8；90-public-booking-order-lifecycle-review.md；全量任务编号交叉核对 | §0/§2 门禁状态校准；§5 需求编号改为 REQ；§14 阶段仅引用任务台账；§15 重建唯一执行任务注册表；新增 REQ-RSV-13~18、DEC-25~29、§23~26；明确 mock 与真实支付边界；不新增业务中心 | 待负责人确认 |
-| 2026-11-07 | **V2.1 针对性修订（最新 main 9542b8b 复核）** | 用户复核意见五项：任务编号冲突/中心清单与任务不对应/PMS2 现状前后矛盾/预订支付生命周期细节不足/一致性·后台任务·故障恢复约束不足 | ①编号冲突：AR-06 收口归属改为 SVC-07（§3.4/§14.0/§15.3）；GATE-02/04 明确为 PM-02/03 的复核视图不重复建单；§26.1 新增前缀消歧（AUD=夜审、CMP=审计合规、INV 跨域归属）与同范围任务去重归属表；RSV-18（渠道对账）与 FIN-07（内部对账）分工。②清单对应：§5 前言明确 11 中心口径，权限管理/系统设置不设中心任务。③现状矛盾：§1.1 门禁状态逐项标注（G10 完成/Redis 已部署/A04·A09·阶段四·G14 待）；§7.4 OpenAPI 97→102 paths；§2 补文档时点 HEAD 9542b8b；§0.3 措辞校准。④生命周期：§24.3 声明 PaymentIntent/ProviderTransaction 模型当前不存在且严禁复用 Payment 表承载意图状态（BIZ-RSV-14 为新建）；§24.4 补 QA-04/QA-06/REL-09 测试归属；DEC-25 补 Hold 延长/释放规则；新增 DEC-30（发票范围）。⑤一致性/任务/恢复：§9.3 后台任务清单逐项绑定唯一执行任务编号并统一 SVC-10 任务框架；其余沿用 §23/§25 V2 规范 | 待负责人确认 |
+| 2026-11-07 | **V2.1 针对性修订（最新 main 9542b8b 复核）** | 用户复核意见五项：任务编号冲突/中心清单与任务不对应/PMS2 现状前后矛盾/预订支付生命周期细节不足/一致性·后台任务·故障恢复约束不足 | ①编号冲突：AR-06 收口归属改为 SVC-07（§3.4/§14.0/§15.3）；GATE-02/04 明确为 PM-02/03 的复核视图不重复建单；§26.1 新增前缀消歧（AUD=夜审、CMP=审计合规、INV 跨域归属）与同范围任务去重归属表；RSV-18（渠道对账）与 FIN-07（内部对账）分工。②清单对应：§5 前言明确 11 中心口径，权限管理/系统设置不设中心任务。③现状矛盾：§1.1 门禁状态逐项标注（G10 完成/Redis 已部署/A04·A09·阶段四·G14 待）；§7.4 OpenAPI 97→102 paths；§2 补文档时点 HEAD 9542b8b；§0 执行摘要措辞校准。④生命周期：§24.3 声明 PaymentIntent/ProviderTransaction 模型当前不存在且严禁复用 Payment 表承载意图状态（BIZ-RSV-14 为新建）；§24.4 补 QA-04/QA-06/REL-09 测试归属；DEC-25 补 Hold 延长/释放规则；新增 DEC-30（发票范围）。⑤一致性/任务/恢复：§9.3 后台任务清单逐项绑定唯一执行任务编号并统一 SVC-10 任务框架；其余沿用 §23/§25 V2 规范 | 待负责人确认 |
+| 2026-11-07 | **V2.2 执行契约补强（业务代码 9542b8b 复核）** | 用户复核五项问题在上版仅“声明”、缺少可执行契约；本次以真实代码证据补齐任务映射、状态机、Outbox、后台任务和 P0 整改 | ①头部版本/基线改为 V2.2，业务代码 `9542b8b`、公共预订证据 `7a2c9b8`、文档起点 `c402a37`；②新增 §2.1 PMS2 现状唯一事实表（887/729、Redis/G09/G10、MySQL、空库迁移、G14、mock 支付、A16 内部冲突）；③新增 §5.0 11 中心×REQ×BIZ×工程任务×现状对照；④扩写 §5.4/5.7/5.9/5.10/5.11 服务/API/页面/权限/审计/测试/缺口；⑤§15.3 新增 SVC-11（会员）/SVC-12（审计）；⑥新增 §15.4 BIZ→工程任务映射、§15.5 11 中心 S01~S05 检查点矩阵，并同步 §14 Phase 1~6；⑦§23 新增 Outbox 契约、幂等键与全局锁顺序、Saga 补偿、事件目录；⑧§24 新增 Reservation/PaymentIntent/ProviderTransaction/Payment/Refund/LedgerEntry/InventoryHold 状态迁移表、事件/锁顺序、异常补偿矩阵、S01~S11 验收矩阵和 P0 整改清单（含已扣款置 FAILED 缺陷）；⑨§25 新增后台任务注册表、恢复 runbook、监控指标；⑩§20 新增 DEC-31/32；§26 强化 S01~S05 映射与去重规则 | 待负责人确认 |
 不得在开发中通过口头沟通改变字段语义、权限边界、审批规则、账务行为或历史数据处理规则。
 
 **最终原则：先确认 PMS2 验收通过，再启动 PMS3；先盘点再设计，先设计再开发；一个业务事实只保留一个权威来源，一个业务动作只保留一个权威写入口，所有开发必须有测试和可复核证据。**
@@ -1732,6 +1907,70 @@ SQLite 不能作为 MySQL 的替代验证。
 4. BusinessDate → NightAudit Preview/Blocker → NightAuditRun → LedgerPosting → Report Snapshot。
 5. Employee Termination → Membership/RoleAssignment Revocation → Session Revocation → WorkItem Reassignment → AuditEvent。
 
+### 23.2 Outbox 契约（SVC-10，V2.2）
+
+所有跨中心异步事件必须走事务性 Outbox，禁止“先提交业务、再尽力发消息”。
+
+| 契约项 | 强制规则 |
+|---|---|
+| 同事务写入 | 业务事实与 `OutboxEvent` 在**同一数据库事务**提交；事务回滚时事件不得残留 |
+| 事件字段 | `event_id`（全局唯一）、`property_id`、`aggregate_type`、`aggregate_id`、`event_type`、`event_version`、`payload`、`dedupe_key`（唯一）、`status`、`attempts`、`next_attempt_at`、`locked_by`、`locked_until`、`last_error`、`created_at`、`published_at` |
+| 投递语义 | **至少一次**；消费者必须幂等，不得假设只投递一次 |
+| 顺序 | 仅保证**同一 `aggregate_id`** 内按 `id` 升序；跨聚合不保证全局顺序；需要顺序的消费者按聚合键串行处理 |
+| 重试 | 指数退避 + 抖动；达到上限转 `DEAD`，不得无限重试 |
+| 死信 | `DEAD` 事件进入可查询死信队列；重放必须保留原 `event_id`、记录操作者/原因/次数并写审计 |
+| 清理 | 仅清理已归档且超过留存期的 `PUBLISHED` 事件；`DEAD` 不得被自动清理 |
+| 进程边界 | 投递器必须在独立后台进程运行（§25.4），不得依赖 Web 请求线程 |
+
+**禁止**：在事务提交前调用外部 HTTP；用 Redis 列表替代 Outbox 作为权威事件存储；消费者以“没收到事件”为由修改源业务事实。
+
+### 23.3 幂等键与全局锁顺序（V2.2）
+
+**幂等键统一格式**：`<domain>:<action>:<property_id>:<natural_key>`，长度 ≤64，超长用 SHA-256 截断；`IdempotencyRecord` 以 `(property, scope, key)` 唯一。
+
+| 动作 | 幂等键 | 冲突/重复处理 |
+|---|---|---|
+| 创建预订 | `reservation:create:{property}:{client_request_id}` | 同键同 payload 返回原结果；同键不同 payload → 409 `IDEMPOTENCY_CONFLICT` |
+| 创建支付意图 | `payment:intent:{reservation}:{attempt_no}` | 同键返回同一意图；不得新建第二个意图 |
+| 渠道回调 | `payment:callback:{provider}:{provider_txn_id}:{status}` | 由 `ProviderTransaction(provider, provider_ref)` 唯一约束兜底；重复回调无副作用 |
+| 前台收款 | `payment:collect:{property}:{provider_ref}` | 复用现有 `provider_ref` 唯一约束 |
+| 退款执行 | `refund:execute:{refund_id}` | 复用 `execution_idempotency_key`；重复执行返回原结果 |
+| 账本入账 | `ledger:{entry_type}:{source_type}:{source_id}` | 唯一约束兜底；重复入账拒绝并告警 |
+| 夜审执行 | `night_audit:run:{property}:{business_date}` | 唯一运行约束兜底；重复执行返回原运行 |
+| 通知派生 | `notification:{property}:{dedupe_key}` | 复用现有唯一约束 |
+
+**全局锁顺序（强制）**：`Reservation → Payment/Refund → InventoryHold → Folio → LedgerEntry → Outbox → Notification`。任何跨实体事务必须按此顺序加锁，禁止逆序。
+
+**V2.2 现状整改要求**：当前 `apps/billing/services.py::process_mock_payment_callback` 先锁 `Payment` 再锁 `Reservation`，与上述顺序相反；SVC-05/BIZ-RSV-17 必须统一为“先 Reservation 后 Payment”，并新增双向并发死锁回归测试（QA-04）。禁止仅靠 Redis 锁规避。
+
+### 23.4 Saga 与异常补偿（V2.2）
+
+| 业务链路 | 正向步骤 | 失败补偿 | 幂等要求 |
+|---|---|---|---|
+| 公共预订创建 | 库存 Hold → Reservation(PENDING) → 支付意图 → Outbox | 任一步失败：释放 Hold → 标记 Reservation CANCELLED/EXPIRED → 关闭意图；补偿自身可重入 | 每步幂等；补偿失败进入人工队列，不静默吞掉 |
+| 支付成功 | ProviderTransaction 成功 → Payment(SUCCEEDED) → LedgerEntry → Reservation(CONFIRMED) → Hold(CONFIRMED) → Outbox | 入库失败：保留 ProviderTransaction 成功事实，重试入账；**不得把已扣款支付标记 FAILED** | 以外部交易号唯一约束防止重复入账 |
+| 订单过期与支付竞态 | 过期任务锁 Reservation → 校验是否存在成功 ProviderTransaction → 有则转“待恢复/退款”流程；无则 EXPIRED + 释放 Hold | 迟到成功回调：按 DEC-31 处置（恢复订单或自动退款），并写审计 | 过期任务与回调都必须先锁 Reservation |
+| 退款 | 审批 → Refund(EXECUTING) → 渠道退款 → Refund(SUCCEEDED) + LedgerEntry | 渠道成功但 DB 失败：查询渠道状态后补记；渠道失败：Refund(FAILED) 并保留可重试信息 | `execution_idempotency_key` 唯一；禁止二次退款 |
+| 夜审 | 预览 blockers → 获取运行锁 → 过账 → 关闭营业日 | 过账失败：运行标记 FAILED、保留已完成步骤、按 blocker 恢复；不得重复过账 | `(property, business_date)` 运行唯一 + 凭证唯一键 |
+
+### 23.5 事件目录（DEC-27 冻结前的最小集合）
+
+| 事件 | 生产者 | 主要消费者 | 关键 payload |
+|---|---|---|---|
+| `reservation.created` | SVC-04 | WN、RPT、CMP | reservation_id、property_id、status、source |
+| `reservation.confirmed` | SVC-04 | WN、INV、FIN | reservation_id、confirmed_at |
+| `reservation.cancelled` / `reservation.expired` | SVC-04 | INV、FIN、WN | reservation_id、reason、released_hold_ids |
+| `reservation.checked_in` / `checked_out` | SVC-04 | HK、FIN、WN | reservation_id、stay_id、room_ids |
+| `payment.intent.created` | SVC-05 | WN、CMP | intent_id、reservation_id、amount、currency |
+| `payment.succeeded` / `payment.failed` / `payment.unknown` | SVC-05 | FIN、RSV、WN、CMP | payment_id、provider_txn_id、amount、occurred_at |
+| `refund.requested` / `approved` / `executed` / `failed` | SVC-05 | FIN、WN、CMP | refund_id、payment_id、amount、status |
+| `inventory.hold.created` / `confirmed` / `released` / `expired` | SVC-03 | RSV、RPT、CMP | hold_id、room_type_id、stay_date、quantity |
+| `ledger.entry.posted` | SVC-05 | RPT、CMP | entry_id、folio_id、entry_type、amount、business_date |
+| `night_audit.completed` | SVC-06 | RPT、WN、CMP | property_id、business_date、run_id |
+| `notification.dispatch.requested` | SVC-08 | 通知投递器 | notification_id、recipient、channel |
+
+事件新增/改名/改 payload 必须走 DEC-27 与 event_version 升级；禁止消费者依赖未登记事件。
+
 ## 24. 公共预订、支付和订单生命周期专项规范
 
 ### 24.1 当前实现边界（main@7a2c9b8）
@@ -1764,7 +2003,100 @@ SQLite 不能作为 MySQL 的替代验证。
 
 必须明确每个状态的唯一写服务、触发来源、允许迁移、超时规则、幂等键、并发锁、补偿动作和审计事件。
 
-**V2.1 现状声明（防止数据权威冲突）**：当前代码（7a2c9b8）**不存在**持久化的 PaymentIntent 与 ProviderTransaction 模型——mock 支付意图是无状态派生（`Payment` 行承载 `provider_ref`，重复创建意图返回同一 PENDING Payment）。因此 BIZ-RSV-14 的模型部分为**新建**性质：必须新建独立的支付意图/外部交易实体，**严禁复用 Payment 表承载意图状态**（否则 INV-A06"一个外部成功交易最多产生一笔有效 Payment"将无法在 DB 层约束）。新建表须带外部交易号唯一约束与渠道侧状态，迁移按 §10 Expand 流程执行。
+**V2.1 现状声明（防止数据权威冲突）**：当前代码（`9542b8b`，支付/账务逻辑与 `7a2c9b8` 一致）**不存在**持久化的 PaymentIntent 与 ProviderTransaction 模型——mock 支付意图是无状态派生（`Payment` 行承载 `provider_ref`，重复创建意图返回同一 PENDING Payment）。因此 BIZ-RSV-14 的模型部分为**新建**性质：必须新建独立的支付意图/外部交易实体，**严禁复用 Payment 表承载意图状态**（否则 INV-A06"一个外部成功交易最多产生一笔有效 Payment"将无法在 DB 层约束）。新建表须带外部交易号唯一约束与渠道侧状态，迁移按 §10 Expand 流程执行。
+
+#### 24.3.1 Reservation 目标状态机
+
+| 当前状态 | 允许迁移 | 唯一写服务 | 触发来源 | 关键守卫 | 主要副作用 |
+|---|---|---|---|---|---|
+| （新建） | PENDING | SVC-04 | 公共预订/前台/渠道 | 库存 Hold 已创建；政策快照已保存 | 创建 Reservation/ReservationRoom；写 Outbox |
+| PENDING | CONFIRMED | SVC-04 | 支付成功回调/前台确认 | ProviderTransaction 成功且金额匹配；库存仍有效 | 确认 Hold；写账本；通知 |
+| PENDING | CANCELLED | SVC-04 | 客人/员工取消 | 取消政策已计算并留痕 | 释放 Hold；必要时退款 |
+| PENDING | EXPIRED | SVC-04 | 过期任务 | 无成功 ProviderTransaction（见 24.4） | 释放 Hold；关闭意图 |
+| CONFIRMED | CHECKED_IN | SVC-04 | 前台入住 | 房间可用、住客信息合规 | 建 Stay/Segment；房态变更 |
+| CONFIRMED | CANCELLED | SVC-04 | 客人/员工取消 | 政策计算；未入住 | 释放/回收库存；退款流程 |
+| CONFIRMED | NO_SHOW | SVC-04 | 夜审/前台 | 已过入住日截止；政策允许 | 罚金按政策入账；释放库存 |
+| CHECKED_IN | CHECKED_OUT | SVC-04 | 前台退房 | Folio 结清或挂账批准 | 建清洁任务；释放房间 |
+| CANCELLED / EXPIRED / CHECKED_OUT / NO_SHOW | （终态） | — | — | 不得复活；需新订单 | 仅允许冲销/补偿凭证 |
+
+**禁止**：`CHECKED_IN → CANCELLED`（当前 `test_s9` 已返回 409，必须保留）；任何状态直接 UPDATE 绕过 SVC-04。
+
+#### 24.3.2 PaymentIntent / ProviderTransaction（新建）
+
+| 实体 | 状态 | 允许迁移 | 说明 |
+|---|---|---|---|
+| PaymentIntent | CREATED | REQUIRES_ACTION / PROCESSING / CANCELLED / EXPIRED | PMS 发起，尚无渠道结果 |
+| PaymentIntent | REQUIRES_ACTION | PROCESSING / CANCELLED / EXPIRED | 需 3DS/跳转等 |
+| PaymentIntent | PROCESSING | SUCCEEDED / FAILED / UNKNOWN / EXPIRED | 渠道处理中 |
+| PaymentIntent | UNKNOWN | SUCCEEDED / FAILED（仅经主动查询） | **禁止**从 UNKNOWN 直接再次创建扣款意图 |
+| PaymentIntent | SUCCEEDED / FAILED / CANCELLED / EXPIRED | （终态） | 需重试时新建 attempt |
+| ProviderTransaction | INITIATED | AUTHORIZED / CAPTURED / FAILED / EXPIRED / UNKNOWN | 渠道侧事实 |
+| ProviderTransaction | AUTHORIZED | CAPTURED / FAILED / EXPIRED / UNKNOWN | 预授权 |
+| ProviderTransaction | CAPTURED | REFUNDED / PARTIALLY_REFUNDED | 已扣款，只能退款不能改失败 |
+| ProviderTransaction | UNKNOWN | CAPTURED / FAILED / EXPIRED（仅经查询） | 查询结果落库并审计 |
+
+约束：`(provider, provider_ref)` 唯一；`provider_ref` 不再全局唯一（现 `Payment.provider_ref` 全局唯一需在 DB-09 调整为物业/渠道范围，避免跨物业碰撞）。`PaymentIntent` 必须有 `expires_at`，窗口上限由 DEC-31 冻结。
+
+#### 24.3.3 Payment / Refund / LedgerEntry / InventoryHold 目标状态机
+
+| 实体 | 目标状态 | 规则 |
+|---|---|---|
+| Payment | CREATED / PENDING / SUCCEEDED / FAILED / CANCELLED / REFUND_PENDING / PARTIALLY_REFUNDED / REFUNDED | 只表达 PMS 已确认的收款事实；**不承载意图状态**。`SUCCEEDED` 后不得改 `FAILED`。过渡期若仍保留合一模型，必须增加 `UNKNOWN` 且 UNKNOWN 时禁止二次扣款（BIZ-RSV-14 改造项） |
+| Payment | — | 新增 `business_date`、`received_by`、`provider`；唯一键从 `provider_ref` 调整为 `(provider, provider_ref)` 或等价口径（DB-09） |
+| Refund | PENDING | 待审批；只能到 APPROVED / REJECTED / EXPIRED |
+| Refund | APPROVED | 已批准待执行；只能到 EXECUTING |
+| Refund | EXECUTING | 已提交渠道；只能到 SUCCEEDED / FAILED；必须有 `executed_by`、`execution_idempotency_key` |
+| Refund | FAILED | 渠道失败/未知已确认失败；仅授权人可重试到 EXECUTING，禁止自动重复退款 |
+| Refund | SUCCEEDED / REJECTED / EXPIRED | 终态 |
+| LedgerEntry | 无状态机 | 只增不改不删；更正用 `REVERSAL` + `void_of`；`reference` 唯一策略按 DB-08 复核为 `(property, reference)` 或 `(source_type, source_id, entry_type)` |
+| InventoryHold | HELD | 只能到 CONFIRMED / RELEASED / EXPIRED |
+| InventoryHold | CONFIRMED | 只能到 RELEASED（退房/取消）；**过期任务不得释放 CONFIRMED** |
+| InventoryHold | RELEASED / EXPIRED | 终态；重复释放幂等 |
+
+#### 24.3.4 事件顺序与锁顺序（订单-支付主链路）
+
+同一订单聚合内必须保证以下因果顺序（Outbox `id` 升序）：
+
+`inventory.hold.created → reservation.created → payment.intent.created → payment.succeeded → ledger.entry.posted → inventory.hold.confirmed → reservation.confirmed`
+
+- 失败顺序：`payment.failed` 后不得出现 `inventory.hold.confirmed` / `reservation.confirmed`。
+- 取消/过期：`reservation.cancelled|expired` 必须先于 `inventory.hold.released|expired`；释放事件不得早于订单终态事件。
+- 锁顺序固定为 `Reservation → Payment/Refund → InventoryHold → Folio → LedgerEntry → Outbox`；支付回调、过期任务、取消任务都必须先锁 Reservation。
+- 跨聚合不保证顺序；报表/通知消费者必须按 `event_id` 幂等。
+
+#### 24.3.5 异常补偿矩阵（订单-支付）
+
+| 异常 | 权威事实 | 处置 | 禁止 |
+|---|---|---|---|
+| 客户端超时但渠道已扣款 | ProviderTransaction 成功 | 查询渠道 → 补记 Payment/LedgerEntry → 确认订单 | 依据客户端超时判定失败 |
+| 订单已过期后收到成功回调 | ProviderTransaction 成功 | 按 DEC-31：库存仍可用且政策允许则恢复订单；否则自动全额退款并进入人工队列 | 把已扣款 Payment 置 FAILED（当前 `apps/billing/services.py:109-115` 的 P0 缺陷） |
+| 回调重复/乱序 | ProviderTransaction 唯一 | 按 `(provider, provider_ref)` 幂等；旧状态不回退 | 重复入账 |
+| 渠道成功但 DB 短暂不可用 | 渠道成功事实 | 保留待处理事件，重试入账；人工可见 | 丢弃回调 |
+| Payment 成功但 LedgerEntry 失败 | Payment 成功 | 重试入账；对账队列兜底 | 回滚已成功支付 |
+| 过期任务与支付回调并发 | 先锁 Reservation 者为准 | 后到者重新校验状态；成功交易优先按 DEC-31 处理 | 双写、互相覆盖 |
+| 退款渠道成功但 PMS 未收到响应 | 渠道退款成功 | 主动查询 → 补记 Refund/LedgerEntry | 二次退款 |
+| 退款渠道失败/未知 | 渠道状态 | FAILED 或保持 EXECUTING 待查询；人工队列 | 自动重试扣款 |
+
+#### 24.3.6 验收矩阵（公共预订与支付）
+
+| 场景 | 覆盖 | 验收证据 | 归属 |
+|---|---|---|---|
+| S1 创建返回一次性 Token | 已实现 | `test_s1` | BIZ-RSV-10 |
+| S2/S11 刷新后凭 Token 查询 | 已实现 | `test_s2_and_s11` | BIZ-RSV-10 |
+| SEC-01 query token 拒绝 | 已实现 | `test_sec01` | API-10 |
+| S3/S4 错误 Token 不泄露 | 已实现 | `test_s3_s4` | BIZ-RSV-10 |
+| S5 PENDING 可支付 | 已实现 | `test_s5` | BIZ-RSV-14 |
+| S6 CONFIRMED 关闭支付入口 | 已实现 | `test_s6` | BIZ-RSV-14 |
+| S7 双击只创建一个支付 | 已实现（mock） | `test_s7` | BIZ-RSV-15 |
+| S8 响应丢失后查询恢复 | 已实现（mock） | `test_s8` | BIZ-RSV-16 |
+| S9 已入住取消拒绝 | 已实现 | `test_s9` | BIZ-RSV-01 |
+| S10 错误 Token 暴力限流 | 已实现 | `test_s10` | BIZ-RSV-10 |
+| 订单过期后成功回调 | **未实现，P0** | 新增竞态测试 | BIZ-RSV-17 / QA-04 |
+| 锁顺序死锁回归 | **未实现，P0** | 双向并发测试 | SVC-05 / QA-04 |
+| 未知支付状态禁止二次扣款 | **未实现，P0** | UNKNOWN 状态测试 | BIZ-RSV-14/16 |
+| Refund EXECUTING/FAILED | **未实现，P0** | 状态机测试 | BIZ-FIN-02 / DB-07 |
+| Hold 过期不释放已确认订单 | **未验证，P0** | 并发测试 | BIZ-INV-03 / QA-04 |
+| 真实渠道沙箱/生产回调 | **未实现** | 渠道验收报告 | REL-09 |
 
 ### 24.4 支付/库存异常处理
 
@@ -1782,6 +2114,25 @@ SQLite 不能作为 MySQL 的替代验证。
 处理原则：先向渠道查询真实交易状态，再按幂等业务命令恢复；未知状态不重复扣款；不得直接改历史账本；差异进入可追踪人工队列。
 
 **V2.1 测试归属**：上述九类异常用例纳入 QA-04（并发/幂等/竞态）、QA-06（后台任务中断恢复）与 REL-09（生产支付渠道验收）的证据包；mock 环境只允许验证 PMS 侧状态机与恢复逻辑，渠道侧行为必须以渠道沙箱/生产验收为准（§24.2 边界）。
+
+### 24.5 P0 整改清单（V2.2，开发启动后优先清偿）
+
+> 以下问题均基于 `9542b8b` 代码事实，且会直接造成资金、库存或状态事实错误。**在任何真实支付接入前必须全部关闭**，不得以“后续优化”挂起。
+
+| 编号 | 现状事实（证据） | 风险 | 整改任务 | 验收证据 |
+|---|---|---|---|---|
+| P0-RSV-01 | `process_mock_payment_callback` 在 `reservation.status != PENDING` 时直接抛 `PaymentConflict`（成功回调无法落账）；在 `PENDING` 但 `expires_at <= now` 时释放 Hold、把 `Reservation` 置 `EXPIRED`、把 `Payment` 置 `FAILED`（`apps/billing/services.py:107-115`） | 已扣款交易被标记失败或永久悬挂，资金与订单状态失真 | BIZ-RSV-17 / SVC-05 | 过期后成功回调竞态测试；Payment 保持成功、进入退款或恢复流程 |
+| P0-RSV-02 | mock 回调先锁 `Payment` 再锁 `Reservation`，与全局锁顺序相反 | 与过期/取消任务并发时死锁或事实覆盖 | SVC-05 / QA-04 | 双向并发死锁回归测试 |
+| P0-RSV-03 | `Payment` 单模型承载意图与结果，`Status` 无 `UNKNOWN` | 无法表达渠道未知状态，易重复扣款 | BIZ-RSV-14 / DB-09 | 新建 PaymentIntent/ProviderTransaction；UNKNOWN 流程测试 |
+| P0-RSV-04 | `Payment.provider_ref` 与 `Refund.provider_ref` 均为全局 `unique=True`（`apps/billing/models.py:382/519`） | 跨物业/渠道交易号碰撞导致误判重复 | DB-09 | 唯一键调整为渠道/物业范围；跨物业同号测试 |
+| P0-RSV-05 | `Payment` 缺 `business_date`、`received_by` | 营业日归属和收款人不可追溯 | DB-09 / BIZ-FIN-05 | 营业日对账测试 |
+| P0-RSV-06 | `Refund` 缺 `EXECUTING`/`FAILED` | 无法区分“已提交渠道”和“已完成”，失败退款不可恢复 | DB-07 / BIZ-FIN-02 | 状态机与渠道失败恢复测试 |
+| P0-RSV-07 | `Reservation` 缺 `cancellation_policy_snapshot` / `deposit_policy_snapshot` | 取消/押金争议无当时政策证据 | DB-06 / BIZ-RSV-03/04 | 创建后改政策不影响历史订单 |
+| P0-RSV-08 | Hold 过期任务未证明不会释放 `CONFIRMED` 订单库存 | 已确认/已支付订单库存被误释放，导致超卖 | BIZ-INV-03 / QA-04 | Hold 状态并发测试 |
+| P0-RSV-09 | `LedgerEntry.reference` 全局唯一 | 跨物业/渠道凭证号冲突 | DB-08 | 唯一键口径复核与并发测试 |
+| P0-RSV-10 | 公共预订创建路径内联直写 Guest（AR-03） | 绕过 Guest 唯一写服务，合并/去重失效 | SVC-02 | 写入口扫描 + 合并回归测试 |
+
+**关闭定义**：每项必须有“代码改动 + 迁移 + 自动化测试 + 审计事件 + 证据路径”；仅在文档中标记“已规划”不算关闭。
 
 ## 25. 生产部署、故障恢复与灾备规范
 
@@ -1806,6 +2157,51 @@ SQLite 不能作为 MySQL 的替代验证。
 ### 25.3 RPO/RTO 与恢复验收
 
 DEC-28 冻结目标后，执行全量/增量/binlog 备份和恢复演练。恢复后必须验证：员工登录、角色权限、Guest 查询、预订/入住状态、支付/退款/账本对账、营业日/夜审运行事实、附件与密钥可用。仅恢复数据库文件不算恢复成功。
+
+### 25.4 后台任务注册表（V2.2 强制）
+
+> 所有后台任务必须在 SVC-10 任务框架注册，禁止在业务代码里自建 `while True`、裸线程或第三方 cron 直连数据库。未注册任务不得上线。
+
+| 任务键 | 所有者 | 触发 | 锁键 | 幂等键 | 重试/死信 | 恢复方式 | 关键指标 | 任务归属 |
+|---|---|---|---|---|---|---|---|---|
+| `hold_expire` | SVC-03 | 每 1~5 分钟 | `job:hold_expire:{property}` | `hold:{hold_id}:expire` | 3 次退避；超限入死信 | 重新扫描 `HELD` 且 `expire_at < now`，逐条幂等释放 | 过期 Hold 数、失败数 | BIZ-INV-03 |
+| `reservation_expire` | SVC-04 | 每 1~5 分钟 | `job:reservation_expire:{property}` | `reservation:{id}:expire` | 同上 | 重新扫描 PENDING 超时；先查成功 ProviderTransaction | 过期订单数、竞态恢复数 | BIZ-RSV-07/17 |
+| `no_show_mark` | SVC-04 | 每日营业日截止后 | `job:no_show:{property}:{business_date}` | `reservation:{id}:no_show` | 3 次；超限人工 | 按营业日重跑；已处理订单跳过 | No-show 数、跳过数 | BIZ-RSV-07 |
+| `payment_unknown_reconcile` | SVC-05 | 每 5~15 分钟 | `job:payment_reconcile:{provider}` | `provider_txn:{id}:query` | 查询失败退避；超限人工 | 主动查询渠道并落库；UNKNOWN 不重复扣款 | UNKNOWN 年龄、查询失败数 | BIZ-RSV-16/18 |
+| `refund_reconcile` | SVC-05 | 每 5~15 分钟 | `job:refund_reconcile:{provider}` | `refund:{id}:query` | 同上 | 查询渠道退款状态；补记或标记 FAILED | EXECUTING 年龄、失败数 | BIZ-FIN-02 |
+| `outbox_dispatch` | SVC-10 | 常驻/每 5 秒 | `job:outbox:{partition}` | `event_id` | 指数退避；`DEAD` 不自动重试 | 死信重放需权限+审计；保留原 event_id | 积压、投递延迟、死信深度 | BIZ-WN-04 |
+| `notification_dispatch` | SVC-08 | Outbox 事件 | `job:notify:{recipient}` | `notification:{dedupe_key}` | 3 次退避；失败入死信 | 重放未读通知；按个人已读幂等 | 投递成功率、未读数 | BIZ-WN-04/07 |
+| `night_audit_schedule` | SVC-06 | 每物业营业日截止 | `job:night_audit:{property}:{business_date}` | `night_audit:{property}:{business_date}` | 可重试错误退避；不可重试转人工 | 从失败步骤恢复；凭证唯一键防重复过账 | 运行时长、失败率、阻断项 | BIZ-AUD-08 |
+| `report_export` | SVC-09 | 用户请求 | `job:export:{task_id}` | `export:{task_id}` | 3 次；超限标记失败 | 断点重跑；过期文件清理 | 队列时长、失败率 | BIZ-RPT-07 |
+| `document_expiry` | SVC-02 | 每日 | `job:document_expiry:{property}` | `document:{id}:expire` | 3 次；超限人工 | 按留存规则重扫；法律保留例外跳过 | 待清理数、跳过数 | BIZ-GST-08 |
+| `retention_anonymize` | SVC-12 | 每日 | `job:retention:{property}` | `retention:{policy}:{date}` | 3 次；超限人工 | 按类别分批；失败可续跑 | 处理量、失败量 | BIZ-CMP-05 |
+| `inventory_diff_scan` | SVC-03 | 每日 | `job:inv_diff:{property}:{date}` | `inv_diff:{property}:{date}` | 3 次；超限告警 | 重算差异并进入人工队列 | 差异条数、超卖风险数 | BIZ-INV-09 |
+
+**统一要求**：任务运行记录必须包含 `task_key`、`property_id`、`started_at`、`finished_at`、`status`、`attempt`、`error_code`、`trace_id`；多 worker 用租约锁 + 心跳，租约过期可接管；任何任务不得以“修复”为名直接改账本或订单终态。
+
+### 25.5 故障恢复 Runbook（V2.2）
+
+1. **检测**：告警或对账差异触发；记录 `trace_id`、任务键、物业、时间窗。
+2. **止血**：停止相关任务/投递器；敏感入口按 DEC-18 fail-closed；不得删除或覆盖现场。
+3. **定级**：区分“已产生错误事实”（资金/库存/状态）与“仅延迟”；前者进入人工队列并上报。
+4. **恢复**：按 §23.4 补偿矩阵执行幂等命令；先查外部渠道事实，再补记 PMS。
+5. **核对**：重算 Folio 余额、Payment/Refund 与 LedgerEntry、Reservation 与 Hold、营业日与夜审过账。
+6. **重放**：Outbox/死信重放必须保留原 `event_id`，记录操作者、原因、次数并写审计。
+7. **复盘**：输出时间线、根因、影响范围、修复任务与防复发测试；关闭前必须有证据路径。
+
+### 25.6 监控指标（最低集合）
+
+| 指标 | 说明 | 告警建议 |
+|---|---|---|
+| `outbox_lag_seconds` | 最早未投递事件年龄 | >60s 警告，>300s 严重 |
+| `outbox_dead_count` | 死信数量 | >0 立即告警 |
+| `job_failure_rate` | 任务失败比例 | 5 分钟窗口 >5% |
+| `payment_unknown_age_seconds` | UNKNOWN 支付最长年龄 | >支付窗口上限 |
+| `hold_confirmed_release_conflict` | 已确认 Hold 被释放尝试 | >0 立即 P0 |
+| `ledger_duplicate_blocked` | 唯一键拦截重复入账 | 持续增长告警 |
+| `reconciliation_diff_count` | 对账差异条数 | >0 人工复核 |
+| `night_audit_duration_seconds` | 夜审耗时 | 超阈值告警 |
+| `db_deadlock_count` | 数据库死锁 | 突增告警 |
 
 ## 26. 全项目任务追踪、验收证据与变更控制
 
@@ -1841,6 +2237,14 @@ DEC-28 冻结目标后，执行全量/增量/binlog 备份和恢复演练。恢�
 
 纯基础设施/治理任务可不关联 UI，但必须说明不适用原因。
 
+**唯一映射视图（V2.2）**：
+
+- 中心/需求/任务/现状的对照只认 §5.0；
+- BIZ → 工程任务的承接只认 §15.4；
+- 中心 → S01~S05 检查点只认 §15.5；
+- 任一 BIZ 在 §15.4 无工程任务承接时，状态只能是“未开发/阻塞”，不得进入开发或验收；
+- §5/§14/§15.1/§26 中的其他表述与上述三张表冲突时，以上述三表为准并回改源章节。
+
 ### 26.3 任务状态与验收证据
 
 每个任务记录：任务 ID、需求 ID、优先级、Phase、依赖、当前代码现状、目标行为、模型字段、唯一写服务、API、权限、页面、审计、幂等/并发、异常补偿、迁移/回滚、测试、验收证据、负责人、状态、Commit SHA。
@@ -1850,16 +2254,40 @@ DEC-28 冻结目标后，执行全量/增量/binlog 备份和恢复演练。恢�
 ### 26.4 阶段映射与任务依赖
 
 - Phase 0：GATE/PM 基线任务；
-- Phase 1：DB 任务 + BIZ 子任务 S01；
-- Phase 2：SVC 任务 + BIZ 子任务 S02；
-- Phase 3：API 任务 + BIZ 子任务 S03；
-- Phase 4：UI 任务 + BIZ 子任务 S04；
+- Phase 1：DB 任务 + 所有 BIZ 的 **S01（DB/数据）**；
+- Phase 2：SVC 任务 + 所有 BIZ 的 **S02（服务/状态机）**；
+- Phase 3：API 任务 + 所有 BIZ 的 **S03（API/权限）**；
+- Phase 4：UI 任务 + 所有 BIZ 的 **S04（UI）**；
 - Phase 5：MIG 任务；
-- Phase 6：QA 任务 + BIZ 子任务 S05；
+- Phase 6：QA 任务 + 所有 BIZ 的 **S05（QA/验收）**；
 - Phase 7：REL 任务。
 
-一个 BIZ 父任务只有在适用阶段子任务全部通过后才能标记“已验收”。阶段任务不得复制业务需求，不得另造与 BIZ 父任务同义的任务。
+一个 BIZ 父任务只有在 §15.5 中适用检查点全部通过后才能标记“已验收”。阶段任务不得复制业务需求，不得另造与 BIZ 父任务同义的任务。
 
 ### 26.5 变更控制
 
 改变字段语义、状态机、权限、审批、金额、营业日、库存公式、支付供应商或历史迁移规则时，必须先新增/更新 DEC 或 ADR，记录影响 REQ/BIZ/DB/API/UI/QA 任务。未经负责人批准，不允许以代码提交事实替代业务决策。
+
+### 26.6 文档一致性校验（V2.2，提交前必跑）
+
+每次修订提交前至少完成以下检查，并在提交说明中记录结果：
+
+1. **ID 完整性**：§5 中每个 REQ 在 §15.1 恰有一个 BIZ；每个 BIZ 在 §15.4 至少有一个工程任务；每个工程任务ID在 §15 只定义一次。
+2. **无孤儿引用**：全文出现的 `REQ-/BIZ-/DB-/SVC-/API-/UI-/QA-/INF-/GATE-/REL-/MIG-/DEC-/INV-` 编号都能在 §15 或 §20 找到定义。
+3. **无同义重复**：不得同时存在两个描述同一交付的平级任务；按 §26.1 去重表归属。
+4. **状态口径统一**：测试数字、Redis/G09/G10、MySQL、空库迁移、G14、真实支付只能引用 §2.1 的结论，且必须带日期/SHA。
+5. **中心数量**：业务中心固定 11 个；权限管理/系统设置不作为第 12 中心。
+6. **阶段一致**：§14 的 Phase 1~6 与 §15.5 的 S01~S05 一一对应，不得出现“完成 BIZ-* 子项”这类无编号表述。
+7. **生命周期闭合**：§24 每个状态至少有“唯一写服务、触发、守卫、副作用、补偿”之一；P0 整改项都有任务归属和验收证据。
+
+建议的机械检查命令（PowerShell，输出仅用于人工复核）：
+
+```powershell
+$f = "docs/PMS3.0全项目开发最终方案.md"
+$text = Get-Content $f -Raw
+foreach ($p in 'REQ','BIZ','DB','SVC','API','UI','QA','INF','GATE','REL','MIG','DEC','INV') {
+  $ids = [regex]::Matches($text, "$p-[A-Z0-9]+(?:-[0-9]{2})?") | ForEach-Object { $_.Value } | Sort-Object -Unique
+  "{0}: {1}" -f $p, ($ids -join ', ')
+}
+Select-String -Path $f -Pattern '完成 BIZ-\*|双引擎 887|Redis 未部署' | ForEach-Object { "冲突词 L$($_.LineNumber): $($_.Line.Trim())" }
+```
