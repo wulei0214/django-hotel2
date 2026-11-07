@@ -179,7 +179,8 @@ class PMS2OpenApiDocumentationTests(TestCase):
         detail = spec["paths"]["/api/v1/reservations/{booking_no}"]["get"]
         parameter_names = {item["name"] for item in detail["parameters"]}
         self.assertIn("X-Booking-Token", parameter_names)
-        self.assertIn("token", parameter_names)
+        # SEC-01：query 传令牌已移除（会落访问日志），仅允许请求头传递
+        self.assertNotIn("token", parameter_names)
         self.assertNotIn("phone", parameter_names)
         create = spec["paths"]["/api/v1/reservations"]["post"]
         self.assertIn("access_token", create["description"].lower())
@@ -433,7 +434,9 @@ class PMS2PublicBookingContractTests(TestCase):
     def test_public_query_and_cancel_require_booking_access_token(self):
         detail = self.spec["paths"][BASE + "/reservations/{booking_no}"]["get"]
         self.assertIn("x-booking-access-token", detail)
-        self.assertIn("token", detail["description"])
+        # SEC-01：令牌仅经 X-Booking-Token 头传递，禁止 query 传参
+        self.assertIn("X-Booking-Token", detail["description"])
+        self.assertIn("query 传参已被移除", detail["description"])
         cancel = self.spec["paths"][BASE + "/reservations/{booking_no}/cancel"]["post"]
         token_props = cancel["requestBody"]["content"]["application/json"]["schema"]["properties"]
         self.assertIn("token", token_props)

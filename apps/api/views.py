@@ -238,7 +238,9 @@ def reservation_detail(request, booking_no):
         # WB-46-11：DEFAULT 物业缺失时此前 property_obj.pk 抛 AttributeError → 500；
         # 与 availability/reservations_create 同口径 503。
         return JsonResponse({"error": "酒店物业不可用。"}, status=503)
-    token = request.headers.get("X-Booking-Token", "") or request.GET.get("token", "")
+    # SEC-01：令牌只经 X-Booking-Token 头传递。query 参数会落入服务器访问
+    # 日志、浏览器历史与代理日志（验收红线：Token 不得写入 URL 查询参数）。
+    token = request.headers.get("X-Booking-Token", "")
     from apps.core import rate_limit
     if not rate_limit.check(request, "public.reservation_query", booking_no=booking_no):
         return _throttle_deny(request, "public.reservation_query")

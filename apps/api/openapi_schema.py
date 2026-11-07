@@ -793,10 +793,10 @@ op("/reservations", "post", "公开预订", "创建客房预订",
 op("/reservations/{booking_no}", "get", "公开预订", "使用 Booking Access Token 查询预订",
    status="verified", auth=False,
    path_params=[("booking_no", "预订号。")],
-   query=[Q("token", "Booking Access Token（也可经 X-Booking-Token 头传递）。", "string", False)],
    ok=(("200", "脱敏预订详情"),), data=_ref("BookingAccessTokenDetail"),
    envelope="raw", errors=("404", "429"),
-   notes="必须提供首次创建预订时返回的 Booking Access Token（header X-Booking-Token 或 query token）；"
+   notes="必须提供首次创建预订时返回的 Booking Access Token（仅经 X-Booking-Token 请求头传递）；"
+         "SEC-01：令牌禁止写入 URL 查询参数（会落入访问日志/浏览器历史），query 传参已被移除；"
          "不再使用手机号作为查询凭据。字段按 §6.5 白名单脱敏：姓名掩码，"
          "不返回完整手机号/证件号/provider_ref/内部流水。"
          "限流（§6.3）：IP 30 次/5 分钟 + booking_no+IP 10 次/5 分钟。"
@@ -816,7 +816,7 @@ op("/reservations/{booking_no}", "get", "公开预订", "使用 Booking Access T
        "x-audit-events": ["guest.booking_access_viewed", "guest.booking_access_denied", "public.rate_limited"],
    })
 CONTRACTS[-1]["extras"]["x-booking_token_header_param"] = P(
-    "X-Booking-Token", "Booking Access Token（与 query 参数 token 二选一）。", "string", "header", False)
+    "X-Booking-Token", "Booking Access Token（唯一传递方式，SEC-01 禁止 query 传参）。", "string", "header", False)
 
 op("/reservations/{booking_no}/cancel", "post", "公开预订", "取消待支付预订",
    status="verified", auth=False,

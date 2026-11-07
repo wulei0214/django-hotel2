@@ -179,6 +179,10 @@ python manage.py runserver 0.0.0.0:8000 --noreload
 
 用户报告前台"登记线下收款 100 → 报应收余额 0.00；押金 50 通过后再收款 → 报应收余额 −50.00"。核实为**正确的业务守卫**而非缺陷：应收余额公式 `outstanding = 账本余额 + 未入账合同房费 − 已入账房费`（`billing/services_v2.py collect_payment`），预付全款客人入住时应收恰为 0，收款（≤应收）被拒；押金通道允许预存（累计 ≤ 房费总额），收 50 后余额转负再收款自然被拒。交付：① 新增 `docs/PMS业务流程与名词说明.md`——名词表（Folio/LedgerEntry/应收余额/押金/预存款/收银班次/备用金/房态三维等）、余额三态解读、预订状态机、预订→支付→入住→退房→退款全流程走读、常见报错速查表、新人误区与代码索引，全部条目标注代码出处；② 修正 `frontdesk.js` 收款方式下拉：移除后端不支持的「其他(OTHER)」选项（后端仅 CASH/CARD/TRANSFER，原样提交必 409），node --check 通过。
 
+### 5.8 公开预订订单生命周期闭环整改（2026-11-07，外部评审落地：SEC-01~06 + 十一场景验收）
+
+对 `635d9dd..b737489`（预订页令牌+续付）的外部评审逐条落地，审查报告见 `docs/audit/phase0/90-public-booking-order-lifecycle-review.md`：① **SEC-01 安全修复**——续付曾用 `?token=` query（落服务器访问日志/浏览器历史），已删除 `reservation_detail` 的 query 回退，令牌仅经 `X-Booking-Token` 头传递，OpenAPI 契约与快照（102 paths）同步，`test_sec01` 断言 query 传参一律 404；② **UI 整改**——凭证独立区（02 / BOOKING CONFIRMATION）+ 创建时一次性完整展示令牌 + 复制按钮（clipboard API/execCommand 回退）+ 复制成功反馈 + 找回后脱敏（前4••••••••后4）+ 04 面板升级「ORDER RETRIEVAL 订单查询与管理」+ 状态门控（PENDING→支付/取消，其余状态仅查看，中文状态标签对齐 Reservation.Status）；③ **验收测试**——新增 `apps/api/test_public_booking_lifecycle.py` 11 项（S1 令牌一次性返回/S2·S11 无 Cookie 找回/S3·S4 错凭据 404 无泄露/S5 PENDING 可支付/S6 CONFIRMED 关支付入口/S7 连点单笔支付/S8 响应丢失重查/S9 已入住取消被拒/S10 爆破限流/SEC-01）；④ **六项安全要求逐条核验达标**（256bit 熵/SHA-256 摘要/限流/幂等/取消审计/token 不进 URL），员工邀请链接 URL 传参登记为独立决策项；⑤ 令牌丢失政策：无手机号绕过，PENDING 过期自动释放、已付订单走店内前台核验。SQLite 全量 **887 项通过**（DJANGO_ENV=test；dev 环境运行命令类测试会被库门禁正确拒绝）。
+
 ## 6. 文档索引
 
 | 文档 | 内容 |

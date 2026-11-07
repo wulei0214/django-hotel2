@@ -58,8 +58,8 @@
         <div class="layout"><div class="main-column">
           <section class="panel"><div class="panel-head"><div><div class="step">01 / AVAILABILITY</div><h3>可订客房与价格</h3></div><span class="muted" id="room-count-label">等待查询</span></div><div id="search-message" class="notice" role="status" aria-live="polite">正在查询可订客房…</div><div id="room-list" class="room-list"><div class="empty">客房与逐晚价格将显示在这里。</div></div></section>
           <section class="panel"><div class="panel-head"><div><div class="step">02 / GUEST DETAILS</div><h3>填写入住人信息</h3></div><span class="muted">仅用于本次预订联系</span></div><div class="guest-grid"><div class="field"><label for="guest-name">入住人姓名</label><input id="guest-name" type="text" maxlength="80" autocomplete="name" placeholder="请输入入住人姓名"></div><div class="field"><label for="guest-phone">联系电话</label><input id="guest-phone" type="tel" maxlength="24" autocomplete="tel" placeholder="用于预订联系与订单查询"></div></div><div id="booking-message" class="notice" role="status" aria-live="polite">选择客房后即可提交预订。</div><button id="book-button" class="btn btn-gold" type="button" disabled style="width:100%;margin-top:14px">确认并提交预订</button></section>
-          <section id="reservation-result" class="panel reservation-result"><div class="panel-head"><div><div class="step">03 / BOOKING CONFIRMATION</div><h3>您的预订已创建</h3></div><span class="muted" id="reservation-status">待支付</span></div><p class="muted">请妥善保存预订编号。查询或取消待支付预订时，需要同时提供预订联系电话。</p><div id="booking-number" class="booking-no"></div><div id="booking-detail" class="summary-line"></div><div class="summary-line"><span>访问令牌</span><strong id="booking-token" style="word-break:break-all;font-family:ui-monospace,monospace;font-size:13px">—</strong></div><div id="payment-message" class="notice">库存已暂时保留，请留意预订状态。</div><div class="result-actions"><button id="payment-button" class="btn btn-gold" type="button">本地模拟支付成功</button><button id="cancel-button" class="btn btn-light" type="button">取消待支付预订</button></div>{% if not mock_payments_enabled %}<div class="notice">当前环境未开放模拟支付；真实支付服务商尚未接入。</div>{% endif %}</section>
-          <section id="resume-payment" class="panel"><div class="panel-head"><div><div class="step">04 / RESUME PAYMENT</div><h3>已有订单？继续支付</h3></div><span class="muted">页面刷新后凭令牌找回</span></div><p class="muted">提交预订后系统会显示预订编号与访问令牌，请立即保存；刷新或关闭页面后，凭这两项即可继续支付或取消待支付订单。</p><div class="guest-grid"><div class="field"><label for="resume-booking-no">预订编号</label><input id="resume-booking-no" type="text" maxlength="32" autocomplete="off" placeholder="以 R 开头的预订编号"></div><div class="field"><label for="resume-token">访问令牌</label><input id="resume-token" type="text" maxlength="80" autocomplete="off" placeholder="提交预订时保存的令牌"></div></div><div id="resume-message" class="notice" role="status" aria-live="polite">输入预订编号与访问令牌后找回订单。</div><button id="resume-button" class="btn btn-gold" type="button" style="width:100%;margin-top:14px">找回订单并继续支付</button></section>
+          <section id="reservation-result" class="panel reservation-result"><div class="panel-head"><div><div class="step">02 / BOOKING CONFIRMATION</div><h3>订单凭证</h3></div><span class="muted" id="reservation-status">—</span></div><p class="muted" id="credential-note">请妥善保存预订编号与访问令牌：令牌是查询、继续支付、取消订单的唯一凭据，请勿向他人泄露。</p><div id="booking-number" class="booking-no"></div><div id="booking-detail" class="summary-line"></div><div class="summary-line"><span>访问令牌</span><strong id="booking-token" style="word-break:break-all;font-family:ui-monospace,monospace;font-size:13px">—</strong><button id="token-copy" class="btn btn-light" type="button" hidden style="margin-left:10px">复制令牌</button><span id="token-copy-feedback" class="muted" aria-live="polite" style="margin-left:8px"></span></div><div id="payment-message" class="notice">库存已暂时保留，请留意预订状态。</div><div class="result-actions"><button id="payment-button" class="btn btn-gold" type="button">本地模拟支付成功</button><button id="cancel-button" class="btn btn-light" type="button">取消待支付订单</button></div>{% if not mock_payments_enabled %}<div class="notice">当前环境未开放模拟支付；真实支付服务商尚未接入。</div>{% endif %}</section>
+          <section id="resume-payment" class="panel"><div class="panel-head"><div><div class="step">04 / ORDER RETRIEVAL</div><h3>订单查询与管理</h3></div><span class="muted">页面刷新后凭令牌找回</span></div><p class="muted">通过预订编号和访问令牌安全找回订单；找回后可查看订单状态与预订信息、继续支付待支付订单、或取消符合条件的待支付订单。</p><div class="guest-grid"><div class="field"><label for="resume-booking-no">预订编号</label><input id="resume-booking-no" type="text" maxlength="32" autocomplete="off" placeholder="以 R 开头的预订编号"></div><div class="field"><label for="resume-token">访问令牌</label><input id="resume-token" type="text" maxlength="80" autocomplete="off" placeholder="提交预订时保存的令牌"></div></div><div id="resume-message" class="notice" role="status" aria-live="polite">输入预订编号与访问令牌后找回订单。</div><button id="resume-button" class="btn btn-gold" type="button" style="width:100%;margin-top:14px">查询订单</button></section>
         </div><aside class="panel summary"><div class="summary-top"><div class="eyebrow">YOUR STAY</div><h3>入住行程摘要</h3></div><div class="summary-line"><span>酒店</span><strong>{{ property_name }}</strong></div><div class="summary-line"><span>入住</span><strong id="summary-check-in">—</strong></div><div class="summary-line"><span>离店</span><strong id="summary-check-out">—</strong></div><div class="summary-line"><span>住宿晚数</span><strong id="summary-nights">—</strong></div><div class="summary-line"><span>房间数量</span><strong id="summary-rooms">1 间</strong></div><div class="summary-line"><span>入住人数</span><strong id="summary-guests">—</strong></div><div class="summary-line"><span>已选房型</span><strong id="summary-room-type">尚未选择</strong></div><div class="summary-total"><span>预计总价</span><strong id="summary-total">—</strong></div><div class="notice">最终价格以提交预订时的逐晚价格快照为准。库存保留时间以订单返回信息为准。</div></aside></div>
       </div></section>
       <div class="footer"><div class="footer-brand">{{ property_name }}</div><p>欢迎下次再见 · 期待为您提供舒适的入住体验</p><small>预订服务由酒店 PMS 提供 · 顾客资料仅用于本次预订与联系</small></div>
@@ -98,6 +98,44 @@
           function setNotice(node, message, kind) {
             node.textContent = message;
             node.className = "notice" + (kind ? " " + kind : "");
+          }
+
+          /* 订单状态 → 中文标签（与 Reservation.Status 枚举一一对应） */
+          const STATUS_LABELS = {
+            PENDING: "待支付", CONFIRMED: "已确认", CANCELLED: "已取消",
+            EXPIRED: "已过期", CHECKED_IN: "已入住", CHECKED_OUT: "已退房",
+            NO_SHOW: "未到店"
+          };
+
+          /* SEC-06：找回订单后令牌只显示脱敏形态（前 4 位 + 掩码 + 后 4 位） */
+          function maskToken(token) {
+            if (!token || token.length <= 8) return "••••••••";
+            return token.slice(0, 4) + "••••••••" + token.slice(-4);
+          }
+
+          /* 复制令牌：优先剪贴板 API，非安全上下文回退 execCommand */
+          async function copyToken() {
+            const token = activeReservation ? activeReservation.token : "";
+            if (!token) return;
+            let copied = false;
+            try {
+              if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(token);
+                copied = true;
+              }
+            } catch (error) { copied = false; }
+            if (!copied) {
+              const holder = document.createElement("textarea");
+              holder.value = token;
+              holder.style.position = "fixed";
+              holder.style.opacity = "0";
+              document.body.appendChild(holder);
+              holder.select();
+              try { copied = document.execCommand("copy"); } catch (error) { copied = false; }
+              holder.remove();
+            }
+            const feedback = byId("token-copy-feedback");
+            feedback.textContent = copied ? "已复制，请立即粘贴保存" : "复制失败，请手动选中复制";
           }
 
           function csrfToken() {
@@ -266,20 +304,22 @@
               });
               activeReservation = { bookingNo: result.booking_no, token: result.access_token || "" };
               if (result.access_token) {
-                /* 令牌是续付/取消的唯一凭据：必须显式展示，否则刷新后订单无法找回 */
+                /* SEC-06：令牌仅创建成功这一次完整展示（配复制按钮），此后一律脱敏；
+                   刷新后只能凭编号+令牌在「订单查询与管理」找回 */
                 byId("booking-token").textContent = result.access_token;
-                setNotice(bookingMessage, "预订成功！请立即复制保存预订编号与访问令牌（令牌仅本次显示），刷新后凭这两项继续支付。", "ok");
+                byId("token-copy").hidden = false;
+                byId("token-copy-feedback").textContent = "";
+                setNotice(bookingMessage, "预订成功！请立即点击「复制令牌」保存预订编号与访问令牌（令牌仅本次完整显示），刷新后凭这两项找回订单。", "ok");
               }
               byId("booking-number").textContent = result.booking_no;
               byId("booking-detail").textContent = result.check_in + " 至 " + result.check_out +
                 " · " + result.room_count + " 间 · ¥" + result.total_amount;
-              byId("reservation-status").textContent = result.status === "PENDING" ? "待支付" : result.status;
+              byId("reservation-status").textContent = STATUS_LABELS[result.status] || result.status;
               byId("payment-button").hidden = !mockPaymentsEnabled;
               byId("cancel-button").hidden = result.status !== "PENDING";
               reservationResult.style.display = "block";
               setNotice(byId("payment-message"), "订单已创建，库存暂时保留至 " +
                 (result.expires_at ? new Date(result.expires_at).toLocaleTimeString() : "15 分钟后") + "。", "success");
-              setNotice(bookingMessage, "预订创建成功，请保存预订编号。", "success");
               reservationResult.scrollIntoView({ behavior: "smooth", block: "start" });
             } catch (error) {
               setNotice(bookingMessage, error.message, "error");
@@ -321,7 +361,7 @@
                 },
                 body: raw
               });
-              byId("reservation-status").textContent = callback.reservation_status;
+              byId("reservation-status").textContent = STATUS_LABELS[callback.reservation_status] || callback.reservation_status;
               paymentButton.hidden = true;
               cancelButton.hidden = true;
               setNotice(byId("payment-message"), "本地模拟支付成功。预订已确认，账本只记录一笔收款凭证。请注意：这不是真实扣款。", "success");
@@ -343,7 +383,7 @@
                   body: JSON.stringify({ token: activeReservation.token })
                 }
               );
-              byId("reservation-status").textContent = result.status;
+              byId("reservation-status").textContent = STATUS_LABELS[result.status] || result.status;
               paymentButton.hidden = true;
               cancelButton.hidden = true;
               setNotice(byId("payment-message"), "待支付预订已取消，库存 Hold 已释放。", "success");
@@ -366,8 +406,9 @@
             }
           }
 
-          /* 续付：页面刷新/关闭后，凭预订编号 + 访问令牌找回待支付订单（P0-08：
-             token 为唯一凭据，phone 不参与鉴权）。找回后复用 03 区的支付/取消按钮。 */
+          /* 订单查询与管理（SEC-01/06）：凭预订编号 + X-Booking-Token 头找回订单；
+             token 不进 URL（访问日志红线）；按订单状态门控操作：
+             PENDING → 可继续支付/取消；其余状态 → 仅查看（公共自助取消仅限 PENDING）。 */
           async function resumePayment() {
             const bookingNo = byId("resume-booking-no").value.trim();
             const token = byId("resume-token").value.trim();
@@ -379,27 +420,32 @@
             setNotice(byId("resume-message"), "正在查询订单…", "");
             try {
               const result = await requestJson(
-                "/api/v1/reservations/" + encodeURIComponent(bookingNo) +
-                "?token=" + encodeURIComponent(token),
-                { headers: { "Accept": "application/json" } }
+                "/api/v1/reservations/" + encodeURIComponent(bookingNo),
+                { headers: { "Accept": "application/json", "X-Booking-Token": token } }
               );
               activeReservation = { bookingNo: bookingNo, token: token };
               byId("booking-number").textContent = result.booking_no || bookingNo;
-              byId("booking-token").textContent = token;
               byId("booking-detail").textContent =
                 (result.check_in || "—") + " 至 " + (result.check_out || "—") +
                 " · " + (result.room_count || 1) + " 间 · ¥" + (result.total_amount || "—");
-              byId("reservation-status").textContent =
-                result.status === "PENDING" ? "待支付" : (result.status || "—");
-              byId("payment-button").hidden = !mockPaymentsEnabled || result.status !== "PENDING";
-              byId("cancel-button").hidden = result.status !== "PENDING";
+              /* SEC-06：找回后令牌只展示脱敏凭证信息，不重新完整展示 */
+              byId("booking-token").textContent = maskToken(token);
+              byId("token-copy").hidden = true;
+              byId("token-copy-feedback").textContent = "";
+              const statusLabel = STATUS_LABELS[result.status] || result.status || "—";
+              byId("reservation-status").textContent = statusLabel;
+              /* 状态门控：仅 PENDING 提供支付/取消；其他状态仅查看 */
+              const canPay = result.status === "PENDING";
+              byId("payment-button").hidden = !mockPaymentsEnabled || !canPay;
+              byId("cancel-button").hidden = !canPay;
               reservationResult.style.display = "block";
-              if (result.status === "PENDING") {
+              if (canPay) {
                 setNotice(byId("payment-message"), "已找回待支付订单，可继续支付或取消。", "success");
               } else {
-                setNotice(byId("payment-message"), "订单已找回；当前状态无需支付。", "");
+                setNotice(byId("payment-message"),
+                  "订单已找回（" + statusLabel + "）：当前状态仅支持查看，不提供公共页面支付/取消操作。", "");
               }
-              setNotice(byId("resume-message"), "订单已找回，见上方「03 / BOOKING CONFIRMATION」。", "ok");
+              setNotice(byId("resume-message"), "订单已找回，见上方「订单凭证」区域。", "ok");
               reservationResult.scrollIntoView({ behavior: "smooth", block: "start" });
             } catch (error) {
               setNotice(byId("resume-message"), error.message, "error");
@@ -436,6 +482,7 @@
           paymentButton.addEventListener("click", simulatePayment);
           cancelButton.addEventListener("click", cancelBooking);
           resumeButton.addEventListener("click", resumePayment);
+          byId("token-copy").addEventListener("click", copyToken);
           dateSummary();
           searchAvailability();
         })();

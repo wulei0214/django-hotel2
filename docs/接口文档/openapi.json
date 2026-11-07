@@ -408,7 +408,7 @@
           "公开预订"
         ],
         "summary": "使用 Booking Access Token 查询预订",
-        "description": "必须提供首次创建预订时返回的 Booking Access Token（header X-Booking-Token 或 query token）；不再使用手机号作为查询凭据。字段按 §6.5 白名单脱敏：姓名掩码，不返回完整手机号/证件号/provider_ref/内部流水。限流（§6.3）：IP 30 次/5 分钟 + booking_no+IP 10 次/5 分钟。审计事件：guest.booking_access_viewed / guest.booking_access_denied / public.rate_limited。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "description": "必须提供首次创建预订时返回的 Booking Access Token（仅经 X-Booking-Token 请求头传递）；SEC-01：令牌禁止写入 URL 查询参数（会落入访问日志/浏览器历史），query 传参已被移除；不再使用手机号作为查询凭据。字段按 §6.5 白名单脱敏：姓名掩码，不返回完整手机号/证件号/provider_ref/内部流水。限流（§6.3）：IP 30 次/5 分钟 + booking_no+IP 10 次/5 分钟。审计事件：guest.booking_access_viewed / guest.booking_access_denied / public.rate_limited。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_reservations_booking_no",
         "responses": {
           "200": {
@@ -484,19 +484,10 @@
             }
           },
           {
-            "name": "token",
-            "in": "query",
-            "required": false,
-            "description": "Booking Access Token（也可经 X-Booking-Token 头传递）。",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "X-Booking-Token",
             "in": "header",
             "required": false,
-            "description": "Booking Access Token（与 query 参数 token 二选一）。",
+            "description": "Booking Access Token（唯一传递方式，SEC-01 禁止 query 传参）。",
             "schema": {
               "type": "string"
             }
