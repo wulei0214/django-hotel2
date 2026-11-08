@@ -3,6 +3,7 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.billing.models import Folio, LedgerEntry, Payment
@@ -242,7 +243,8 @@ def collect_manual_payment(
     if reservation is None:
         raise FrontDeskOperationError("未找到该物业下的预订。")
     if reservation.status not in (
-        Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN
+        Reservation.Status.PENDING, Reservation.Status.CONFIRMED,
+        Reservation.Status.CHECKED_IN,
     ):
         raise FrontDeskOperationError("当前预订状态不允许前台收款。")
     provider_ref = f"FD{property_obj.pk}-{key}"
@@ -265,6 +267,26 @@ def collect_manual_payment(
             reference=provider_ref)
     except ValueError as exc:
         raise FrontDeskOperationError(str(exc)) from exc
+
+    # 业务闭环缺口修复（用户全链路串测发现）：未接入真实支付渠道时，
+    # PENDING 公开订单没有任何确认路径（收款只收已确认单、入住又要求
+    # 已确认）→ 永远卡在 PENDING。现定：前台收款成功即确认，状态迁移
+    # 与在线支付回调同口径（先确认库存占用，再置 CONFIRMED），并落审计。
+    if reservation.status == Reservation.Status.PENDING:
+        from apps.inventory.services import confirm_inventory_for_reservation
+        from apps.inventory.services import InventoryUnavailable
+        try:
+            confirm_inventory_for_reservation(reservation)
+        except InventoryUnavailable as exc:
+            raise FrontDeskOperationError(str(exc)) from exc
+        reservation.status = Reservation.Status.CONFIRMED
+        reservation.save(update_fields=("status", "updated_at"))
+        AuditEvent.record(
+            action="reservation.confirmed_at_frontdesk",
+            entity_type="Reservation", entity_id=reservation.booking_no,
+            property_obj=property_obj, actor=received_by,
+            reason=f"前台收款确认（{method} {amount}，凭证 {payment.provider_ref}）")
+
     return payment, existing is None
 
 
@@ -297,15 +319,33 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
     if folio is None or folio.status != Folio.Status.OPEN:
         raise FrontDeskOperationError("账单不存在或已关闭，不能办理退房。")
 
+    # 退房房费按净额入账（用户全链路串测发现双记风险）：夜审已按晚过账
+    # 的部分（night-audit:*:stay:{pk} 凭证）不得在退房时以整单金额重复入账。
+    # 归集口径=本入住单（多房预订共用一本 Folio，不能把兄弟房间的房费算进来）。
+    # 待补房费 = 本间合同房费 − 本间已入账房费；为 0 则不再生成凭证。
     charge_reference = f"stay-room-charge:{stay.pk}"
-    if line.amount > 0 and not folio.entries.filter(
+    posted_for_stay = (
+        folio.entries.filter(
+            entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+            reference=charge_reference,
+        ).aggregate(total=Sum("amount"))["total"]
+        or Decimal("0.00")
+    ) + (
+        folio.entries.filter(
+            entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+            reference__endswith=f":stay:{stay.pk}",
+        ).aggregate(total=Sum("amount"))["total"]
+        or Decimal("0.00")
+    )
+    remaining_room_charge = (line.amount or Decimal("0.00")) - posted_for_stay
+    if remaining_room_charge > 0 and not folio.entries.filter(
         reference=charge_reference
     ).exists():
         from apps.billing.services_v2 import BillingService
         BillingService.post_entry(
             property_obj=property_obj, folio=folio, stay=stay,
             entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-            amount=line.amount, currency=folio.currency,
+            amount=remaining_room_charge, currency=folio.currency,
             business_date=_property_today(property_obj),
             reference=charge_reference,
             description=f"房费：{line.check_in.isoformat()} 至 {line.check_out.isoformat()}",

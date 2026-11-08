@@ -494,8 +494,8 @@ class BillingService:
                         Payment.Status.REFUNDED)):
                 raise ValueError("该幂等键已用于其他押金登记。")
             return existing, False
-        if reservation.status not in ("CONFIRMED", "CHECKED_IN"):
-            raise ValueError("只有已确认或在住预订可以收取押金。")
+        if reservation.status not in ("PENDING", "CONFIRMED", "CHECKED_IN"):
+            raise ValueError("只有待支付/已确认或在住预订可以收取押金。")
         folio = Folio.objects.select_for_update().filter(
             property=property_obj, reservation=reservation,
             folio_type=Folio.FolioType.MASTER,
@@ -526,6 +526,17 @@ class BillingService:
             reference=f"deposit:{provider_ref}",
             description=f"前台登记押金（{method}）", posted_by=received_by)
         reservation.deposit_amount += amount
+        # 业务闭环缺口修复（用户全链路串测发现）：PENDING 公开订单在前台
+        # 收押金即确认——先确认库存占用，再迁移状态，与在线支付回调同口径。
+        if reservation.status == "PENDING":
+            from apps.inventory.services import (
+                InventoryUnavailable, confirm_inventory_for_reservation)
+            try:
+                confirm_inventory_for_reservation(reservation)
+            except InventoryUnavailable as exc:
+                raise ValueError(str(exc)) from exc
+            reservation.status = "CONFIRMED"
+            reservation.save(update_fields=("status", "updated_at"))
         reservation.save(update_fields=("deposit_amount", "updated_at"))
         AuditEvent.record(
             action="billing.deposit_collect", entity_type="Payment",

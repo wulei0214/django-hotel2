@@ -355,12 +355,15 @@ def receive_manual_deposit(
     *, property_obj, booking_no, amount, method, idempotency_key, received_by=None
 ):
     """押金登记统一委托 BillingService，避免绕开账务唯一写入口。"""
+    # PENDING 一并允许：押金即确认（与收款/在线支付回调同口径，业务闭环缺口修复），
+    # BillingService.record_deposit 内部会在押金登记成功后完成库存确认与状态迁移。
     reservation = Reservation.objects.select_for_update().filter(
         property=property_obj, booking_no=booking_no,
-        status__in=(Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN),
+        status__in=(Reservation.Status.PENDING, Reservation.Status.CONFIRMED,
+                    Reservation.Status.CHECKED_IN),
     ).first()
     if reservation is None:
-        raise LifecycleOperationError("未找到可收取押金的已确认/在住预订。")
+        raise LifecycleOperationError("未找到可收取押金的待支付/已确认/在住预订。")
     from apps.billing.services_v2 import BillingService
     try:
         return BillingService.record_deposit(
