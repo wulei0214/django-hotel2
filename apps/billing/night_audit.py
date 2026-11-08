@@ -58,6 +58,12 @@ class NightAuditService:
         for stay in stays:
             line = stay.reservation_room
             booking_no = line.reservation.booking_no
+            # 房价窗口守卫：营业日不在 [check_in, check_out) 内的入住单
+            # 不属当晚应过租范围，也不得因窗口外缺快照而阻断夜审
+            # （用户报告：legacy 在住数据 check_in 晚于营业日被误判缺快照）。
+            # 与下方 no-show 候选查询的 check_in__lte=day / check_out__gt=day 同口径。
+            if not (line.check_in <= day < line.check_out):
+                continue
             nightly = next(
                 (item for item in (line.nightly_rates or [])
                  if str(item.get("date")) == day.isoformat()),

@@ -383,7 +383,14 @@
         tr.appendChild(el("td", "", row.reference));
         body.appendChild(tr);
       });
-      const blockers = Array.isArray(data.blockers) ? data.blockers : [];
+      const rawBlockers = Array.isArray(data.blockers) ? data.blockers : [];
+      const seenBlockers = {};
+      const blockers = rawBlockers.filter(function (item) {
+        const key = (item.code || "") + "|" + ((item.entity && item.entity.id) || "") + "|" + (item.message || "");
+        if (seenBlockers[key]) return false;
+        seenBlockers[key] = true;
+        return true;
+      });
       blockers.forEach(function (item) {
         const tr = el("tr", "na-fail");
         const td = el("td", "pms-state");
@@ -455,7 +462,7 @@
     const body = document.getElementById("na-bd-body");
     meta.textContent = "读取中…";
     try {
-      const payload = await api("/api/v1/night-audit/business-dates?" + params.toString());
+      const payload = await api("/api/v1/night-audit/business-dates?" + query);
       const pageInfo = payload.meta.pagination;
       body.replaceChildren();
       if (!payload.data.length) {
@@ -595,7 +602,7 @@
     const body = document.getElementById("na-runs-body");
     meta.textContent = "读取中…";
     try {
-      const payload = await api("/api/v1/night-audit/runs?" + params.toString());
+      const payload = await api("/api/v1/night-audit/runs?" + query);
       const pageInfo = payload.meta.pagination;
       body.replaceChildren();
       if (!payload.data.length) {

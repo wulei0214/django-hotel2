@@ -370,19 +370,40 @@
     }
     rows.forEach(function(item){
       const tr=document.createElement("tr");
-      cols.forEach(function(c){const td=document.createElement("td");td.textContent=value(at(item,c.path));tr.appendChild(td);});
+      cols.forEach(function(c){
+        const td=document.createElement("td");
+        td.textContent=value(at(item,c.path));
+        if (c.titlePath) td.title = value(at(item,c.titlePath)) || "";
+        tr.appendChild(td);
+      });
       tbody.appendChild(tr);
     });
+  }
+  /* 凭证号中文展示（用户报告：stay-room-charge/FD/deposit 等前缀不直观）；
+     原始凭证号保留在悬停提示与账单明细中，账本权威记录不变。 */
+  function referenceLabel(ref){
+    if (!ref) return "—";
+    if (ref.indexOf("stay-room-charge:") === 0) return "房费入账 · 入住单 #" + ref.slice("stay-room-charge:".length);
+    if (/^FD\d+-/.test(ref)) return "前台人工收款";
+    if (ref.indexOf("MOCK-") === 0) return "本地模拟支付";
+    if (ref.indexOf("deposit:") === 0) return "押金入账";
+    if (ref.indexOf("payment:") === 0) return "收款入账";
+    if (ref.indexOf("refund:") === 0) return "退款出账";
+    if (ref.indexOf("reversal:") === 0) return "红字冲销";
+    if (ref.indexOf("night-audit:") === 0) return "夜审过账";
+    return ref;
   }
   async function loadLedger() {
     try {
       const payload = await fetchJson("/api/v1/billing/ledger?page=1&page_size=8");
       simpleTable("fin-ledger-head","fin-ledger-body",[
-        {label:"凭证号",path:"reference"},{label:"类型",path:"entry_type_label"},
+        {label:"凭证号",path:"reference_label",titlePath:"reference"},{label:"类型",path:"entry_type_label"},
         {label:"金额",path:"amount"},{label:"币种",path:"currency"},
         {label:"营业日",path:"business_date"},{label:"摘要",path:"description"},
         {label:"冲销关联",path:"void_of_id"}],
-        Array.isArray(payload.data) ? payload.data : []);
+        (Array.isArray(payload.data) ? payload.data : []).map(function(r){
+          return Object.assign({}, r, {reference_label: referenceLabel(r.reference)});
+        }));
       const info = payload.meta && payload.meta.pagination;
       document.getElementById("fin-ledger-meta").textContent = info ? ("共 " + info.total + " 条") : "";
     } catch (error) {

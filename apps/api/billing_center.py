@@ -197,9 +197,18 @@ def folio_list(request):
     # G10：摘要聚合走 Redis 缓存（60s TTL，P0-05 共享缓存）——
     # 4000+ 账本行 Sum 在高并发下排队是压测 P95 超标主因；
     # 账单写操作（collect/refund/reverse）后由调用方场景自然过期。
+    # DEC-18 缓存韧性（用户报告：Redis 未运行时本端点 500）——
+    # 缓存不是权威（INV-A09），故障时降级直查数据库，只损失性能不损失可用性。
     from django.core.cache import cache
+    import logging
     _summary_key = "billing:open-summary:%s" % property_obj.pk
-    summary_cached = cache.get(_summary_key)
+    summary_cached = None
+    try:
+        summary_cached = cache.get(_summary_key)
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "billing summary cache read failed for property %s; degrade to DB",
+            property_obj.pk)
     if summary_cached is None:
         open_totals = Folio.objects.filter(
             property=property_obj, status=Folio.Status.OPEN)
@@ -213,7 +222,12 @@ def folio_list(request):
             "open_folios": open_totals.count(),
             "open_balance": _money_str(open_balance),
         }
-        cache.set(_summary_key, summary_cached, 60)
+        try:
+            cache.set(_summary_key, summary_cached, 60)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "billing summary cache write failed for property %s",
+                property_obj.pk)
     pagination["summary"] = {
         "open_folios": summary_cached["open_folios"],
         "open_balance": summary_cached["open_balance"],

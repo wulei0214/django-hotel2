@@ -404,6 +404,10 @@ def guests_report(request):
             "unique_guests": len(guest_ids),
         },
         "by_source": by_source,
+        # 报表中心前端统一读 data.series 渲染明细表（用户报告：
+        # 客源报表 "Cannot read properties of undefined (reading 'length')"）；
+        # by_source 保留为兼容别名，二者指向同一数组。
+        "series": by_source,
         "metadata": _metadata(
             property_obj, date_from, date_to,
             date_basis={
