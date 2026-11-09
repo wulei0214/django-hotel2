@@ -439,8 +439,10 @@ class Payment(models.Model):
                     self.Status.PARTIALLY_REFUNDED: {
                         self.Status.PARTIALLY_REFUNDED, self.Status.REFUND_PENDING,
                         self.Status.REFUNDED},
-                    self.Status.FAILED: {self.Status.FAILED},
-                    self.Status.CANCELLED: {self.Status.CANCELLED},
+                    # 渠道迟到 SUCCESS 是外部资金事实，允许纠正本地先前的
+                    # FAILED/CANCELLED 意图状态；必须由回调服务同时生成补偿审计。
+                    self.Status.FAILED: {self.Status.FAILED, self.Status.SUCCEEDED},
+                    self.Status.CANCELLED: {self.Status.CANCELLED, self.Status.SUCCEEDED},
                     self.Status.REFUNDED: {self.Status.REFUNDED},
                 }
                 if self.status not in allowed.get(previous["status"], {previous["status"]}):
