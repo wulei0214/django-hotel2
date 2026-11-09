@@ -1,0 +1,53 @@
+Found 944 test(s).
+Creating test database for alias 'default'...
+System check identified some issues:
+
+WARNINGS:
+billing.ProviderTransaction: (models.W036) MySQL does not support unique constraints with conditions.
+	HINT: A constraint won't be created. Silence this warning if you don't care about it.
+identity.PropertyStaffMembership: (models.W036) MySQL does not support unique constraints with conditions.
+	HINT: A constraint won't be created. Silence this warning if you don't care about it.
+
+System check identified 2 issues (0 silenced).
+.......................................................................login_failed ip=127.0.0.1 username_fp=2942f05b93ba reason=disabled
+.login_failed ip=127.0.0.1 username_fp=00bdef82f273 reason=no_employment
+.login_failed ip=127.0.0.1 username_fp=53f88ee8f52f reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=2942f05b93ba reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=fa2a84f5b524 reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=rate_limited
+...................................................本次关闭 1 笔审批超时退款。
+退款申请 ID：31
+本次关闭 0 笔审批超时退款。
+....................................Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/billing/shifts/open
+.Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/notifications/refresh
+.........login_failed ip=127.0.0.1 username_fp=1064ae8d7d60 reason=disabled
+.............................................................................................................................F..................................................................................................................................................................................................................................................................................................................................................................................................................................................E.......................................................................................x..........................................................................................................................
+======================================================================
+ERROR: test_module_codes_traceable_to_phase0_audit_docs (apps.identity.test_registry.RegistryConsistencyTests)
+注册表权限码与 Phase 0 审计文档（11/12 号报告）逐点交叉核对。
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\identity\test_registry.py", line 101, in test_module_codes_traceable_to_phase0_audit_docs
+    audit_text = _phase0_audit_text()
+  File "F:\Desktop\django-hotel\apps\identity\test_registry.py", line 51, in _phase0_audit_text
+    with open(path, "r", encoding="utf-8") as fh:
+FileNotFoundError: [Errno 2] No such file or directory: 'F:\\Desktop\\django-hotel\\docs\\audit\\phase0\\11-permissions.md'
+
+======================================================================
+FAIL: test_committed_openapi_snapshot_matches_runtime_contract (apps.api.test_openapi_schema.PMS2OpenApiStructureValidityTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\api\test_openapi_schema.py", line 211, in test_committed_openapi_snapshot_matches_runtime_contract
+    self.assertTrue(snapshot_path.exists(), "必须提交运行时 OpenAPI 快照")
+AssertionError: False is not true : 必须提交运行时 OpenAPI 快照
+
+----------------------------------------------------------------------
+Ran 944 tests in 291.904s
+
+FAILED (failures=1, errors=1, expected failures=1)
+Destroying test database for alias 'default'...

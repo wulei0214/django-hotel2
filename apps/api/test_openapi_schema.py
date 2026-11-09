@@ -207,7 +207,7 @@ class PMS2OpenApiStructureValidityTests(TestCase):
 
     def test_committed_openapi_snapshot_matches_runtime_contract(self):
         snapshot_path = (
-            Path(settings.BASE_DIR) / "docs" / "接口文档" / "openapi.json")
+            Path(settings.BASE_DIR) / "docs" / "PMS2.0_当前版本" / "03_API接口与前后端规范" / "接口文档" / "openapi.json")
         self.assertTrue(snapshot_path.exists(), "必须提交运行时 OpenAPI 快照")
         snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
         self.assertEqual(snapshot["openapi"], self.spec["openapi"])

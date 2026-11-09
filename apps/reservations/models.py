@@ -569,3 +569,42 @@ class BookingAccessToken(models.Model):
         from django.utils import timezone as tz
         self.revoked_at = tz.now()
         self.save(update_fields=("revoked_at",))
+
+
+class EarlyDeparturePolicy(models.Model):
+    """提前离店政策：按 RatePlan 关联，5 种类型，版本化快照。"""
+
+    objects = models.Manager()
+
+    class PolicyType(models.TextChoices):
+        NONE = "NONE", "不收违约金"
+        FIRST_NIGHT = "FIRST_NIGHT", "按第一晚价格收取"
+        FIXED = "FIXED", "固定金额"
+        PERCENT_UNUSED = "PERCENT_UNUSED", "未住晚数比例"
+        REMAINING_NIGHTS = "REMAINING_NIGHTS", "按未住晚数全额"
+
+    rate_plan = models.ForeignKey(
+        "inventory.RatePlan", on_delete=models.PROTECT,
+        related_name="early_departure_policies", verbose_name="房价计划")
+    policy_type = models.CharField(
+        max_length=20, choices=PolicyType.choices, default=PolicyType.NONE,
+        verbose_name="政策类型")
+    policy_value = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name="政策数值",
+        help_text="FIXED 为金额；PERCENT_UNUSED 为比例（0-100）")
+    is_active = models.BooleanField(default=True, verbose_name="启用")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="created_early_departure_policies", verbose_name="创建人")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "提前离店政策"
+        verbose_name_plural = "提前离店政策"
+        ordering = ("rate_plan_id", "-created_at")
+
+    def __str__(self):
+        return f"{self.rate_plan_id} [{self.policy_type}] {self.policy_value or ''}"
+
+

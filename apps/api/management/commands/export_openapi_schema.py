@@ -8,10 +8,10 @@ from apps.api.openapi_schema import build_openapi
 
 
 class Command(BaseCommand):
-    help = "Regenerate docs/接口文档/openapi.json from the current runtime API contract."
+    help = "Regenerate docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/openapi.json from the current runtime API contract."
 
     def handle(self, *args, **options):
-        output = Path(settings.BASE_DIR) / "docs" / "接口文档" / "openapi.json"
+        output = Path(settings.BASE_DIR) / "docs" / "PMS2.0_当前版本" / "03_API接口与前后端规范" / "接口文档" / "openapi.json"
         output.parent.mkdir(parents=True, exist_ok=True)
         spec = build_openapi()
         output.write_text(

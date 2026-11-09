@@ -459,10 +459,18 @@ class BillingService:
     @staticmethod
     @transaction.atomic
     def record_deposit(*, property_obj, reservation, amount, method,
-                       idempotency_key, received_by=None):
-        """统一登记实际收到的押金；Payment 与 DEPOSIT 凭证原子提交。"""
+                       idempotency_key, received_by=None,
+                       client_display_amount=None):
+        """统一登记实际收到的押金；Payment 与 DEPOSIT 凭证原子提交。
+
+        DEC-DEP-01（用户已确认）：押金金额由服务端按 DepositPolicy 计算
+        （默认 30% of Reservation.total_amount）；客户端传入的 amount 仅
+        用于展示核对，不得覆盖服务端计算结果。若房型无 DepositPolicy
+        或 deposit_type=NONE，押金金额退回调用方传入值（兼容 Walk-in
+        和未配置政策的 RatePlan）。
+        """
         from apps.billing.models import Folio, Payment, LedgerEntry
-        from apps.reservations.models import Reservation
+        from apps.reservations.models import Reservation, DepositPolicy
         method = str(method or "").strip().upper()
         if method == "BANK_TRANSFER":
             method = "TRANSFER"
@@ -473,6 +481,27 @@ class BillingService:
             raise ValueError("押金金额必须大于零。")
         if reservation.property_id != property_obj.pk:
             raise ValueError("预订不属于当前物业。")
+
+        # DEC-DEP-01：服务端按 DepositPolicy 计算押金金额（30% 默认）。
+        # 客户端 amount 仅用于展示/核对；服务端计算结果才是权威金额。
+        rate_plan = None
+        for rr in reservation.reservation_rooms.all():
+            if rr.rate_plan_id:
+                rate_plan = rr.rate_plan
+                break
+        policy = DepositPolicy.objects.filter(rate_plan=rate_plan).first() if rate_plan else None
+        if policy is not None and policy.deposit_type == DepositPolicy.DepositType.PERCENT:
+            pct = policy.deposit_value or Decimal("30")
+            server_amount = (reservation.total_amount * pct / Decimal("100")).quantize(
+                Decimal("0.01"))
+            if client_display_amount is not None:
+                display = BillingService._money(client_display_amount)
+                if display != server_amount:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "DEC-DEP-01 押金金额不一致：前端展示 %s，服务端计算 %s（以服务端为准）",
+                        display, server_amount)
+            amount = server_amount
         key = str(idempotency_key or "").strip()
         if not key or len(key) > 64:
             raise ValueError("押金登记必须提供 1 至 64 个字符的幂等键。")

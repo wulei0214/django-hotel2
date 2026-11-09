@@ -105,9 +105,12 @@ class PropertyStaffMembership(models.Model):
                 fields=("property", "employee_no"),
                 name="uq_membership_property_employee_no",
             ),
+            # DEC-EMP-01：同一员工同一物业最多一条 ACTIVE 任职（条件唯一约束）。
+            # 离职（TERMINATED/SUSPENDED）后可创建新任职记录，历史保留不覆盖。
             models.UniqueConstraint(
                 fields=("property", "staff_profile"),
-                name="uq_membership_property_staff",
+                condition=Q(status="ACTIVE"),
+                name="uq_membership_property_staff_active",
             ),
             models.CheckConstraint(
                 check=Q(ended_at__isnull=True) | Q(ended_at__gte=F("started_at")),

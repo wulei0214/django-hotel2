@@ -1,4 +1,4 @@
-"""§7 跨 App RBAC 注册表测试（对应 docs/audit/phase0/25-rbac-registry.md）。
+"""§7 跨 App RBAC 注册表测试（对应 docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/25-rbac-registry.md）。
 
 覆盖四条验收线：
   1. validate_registry() 无 ERROR——ACTIVE 模块权限码全部解析到真实 Permission，
@@ -38,7 +38,7 @@ from .registry import (
 )
 from .roles import BUSINESS_ROLE_NAMES
 
-_PHASE0_DOCS = ("11-permissions.md", "12-roles.md", "20-findings-register.md")
+_PHASE0_DOCS = ("11-permissions_2026-11-10.md", "12-roles_2026-11-10.md", "20-findings-register_2026-11-10.md")
 
 
 def _phase0_audit_text():
@@ -47,7 +47,7 @@ def _phase0_audit_text():
         os.path.abspath(__file__))))
     parts = []
     for name in _PHASE0_DOCS:
-        path = os.path.join(root, "docs", "audit", "phase0", name)
+        path = os.path.join(root, "docs", "PMS2.0_当前版本", "05_测试审计与缺陷整改", "历史审计", "phase0", name)
         with open(path, "r", encoding="utf-8") as fh:
             parts.append(fh.read())
     return "\n".join(parts)
