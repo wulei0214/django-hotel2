@@ -70,3 +70,5 @@ python manage.py seed_role_test_accounts
 ## 7. 验收声明
 
 887 项 SQLite/MySQL CI 通过是自动化回归证据，不代表 PMS2 最终验收通过。九角色真实登录、核心业务操作走查、真实浏览器 E2E、OpenAPI partial 接口关闭和 G14 独立签署仍需完成。PMS3 正式业务代码开发继续受 PMS2 最终验收门禁约束。
+
+- [docs Markdown 全目录清单与维护状态（64 篇）](docs/Markdown文档清单与维护状态_2026-11-09.md)
