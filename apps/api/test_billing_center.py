@@ -1494,6 +1494,40 @@ class RefundLiabilityIntegrityRegressionTests(BillingCenterTestBase):
         self.assertNotIn(
             other_liability.pk, {item["id"] for item in response.json()["data"]})
 
+    def test_duplicate_liability_refund_application_is_idempotent_and_cannot_overreserve(self):
+        _reservation, _folio, payment, liability = self._liability_with_payment("DUP-REQUEST")
+        approver = self._make_staff("rfl_dup_approver", "财务")
+        first, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount=Decimal("30.00"), reason="待退款负债重复申请幂等",
+            requested_by=self.finance,
+            idempotency_key="bc-rfl-duplicate-request",
+            refund_liability_id=liability.pk)
+        self.assertTrue(created)
+
+        replay, replay_created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount=Decimal("30.00"), reason="待退款负债重复申请幂等",
+            requested_by=self.finance,
+            idempotency_key="bc-rfl-duplicate-request",
+            refund_liability_id=liability.pk)
+        self.assertFalse(replay_created)
+        self.assertEqual(replay.pk, first.pk)
+        self.assertEqual(
+            Refund.objects.filter(refund_liability=liability).count(), 1)
+
+        with self.assertRaisesRegex(ValueError, "未处理余额不足"):
+            BillingService.request_refund(
+                property_obj=self.property, payment_id=payment.pk,
+                amount=Decimal("25.00"), reason="不同幂等键不能超额占用负债",
+                requested_by=self.finance,
+                idempotency_key="bc-rfl-overreserve-request",
+                refund_liability_id=liability.pk)
+        liability.refresh_from_db()
+        self.assertEqual(liability.remaining_amount, Decimal("50.00"))
+        self.assertEqual(
+            Refund.objects.filter(refund_liability=liability).count(), 1)
+
     def test_failed_refund_execution_does_not_post_or_reduce_liability(self):
         _reservation, folio, payment, liability = self._liability_with_payment("FAIL")
         approver = self._make_staff("rfl_fail_approver", "财务")
