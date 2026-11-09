@@ -29,22 +29,38 @@ if os.environ.get("E2E_ALLOW_RESET") != "1" or not _ARGS.yes:
     print("拒绝执行：必须同时设置 E2E_ALLOW_RESET=1 并传入 --yes。")
     sys.exit(2)
 
-_DB_HOST = os.environ.get("DJANGO_DB_HOST", "127.0.0.1").strip().lower()
-_DB_NAME = os.environ.get("DJANGO_DB_NAME", "").strip()
+# 清库目标必须由操作者显式列入专用隔离库白名单；默认白名单为空。
+# 不接受通用库名 hotel，也不把 *_dev 当作可清库证明。
+_REQUIRED_DB_ENV = (
+    "DJANGO_DB_HOST", "DJANGO_DB_NAME", "DJANGO_DB_USER",
+    "DJANGO_DB_PASSWORD", "DJANGO_DB_PORT", "PMS_E2E_ALLOWED_DB_NAMES",
+)
+for _required in _REQUIRED_DB_ENV:
+    if not os.environ.get(_required, "").strip():
+        print(f"拒绝执行：缺少数据库安全配置 {_required}。")
+        sys.exit(2)
+
+_DB_HOST = os.environ["DJANGO_DB_HOST"].strip().lower()
+_DB_NAME = os.environ["DJANGO_DB_NAME"].strip()
+_DB_USER = os.environ["DJANGO_DB_USER"]
+_DB_PASSWORD = os.environ["DJANGO_DB_PASSWORD"]
+_DB_PORT = os.environ["DJANGO_DB_PORT"].strip()
 _ALLOWED_DB_NAMES = {
-    item.strip() for item in os.environ.get("PMS_E2E_ALLOWED_DB_NAMES", "hotel").split(",")
+    item.strip() for item in os.environ["PMS_E2E_ALLOWED_DB_NAMES"].split(",")
     if item.strip()
 }
 if _DB_HOST not in {"127.0.0.1", "localhost", "::1"}:
     print("拒绝执行：E2E 清库只允许连接本机数据库主机。")
     sys.exit(2)
-if not _DB_NAME or not (_DB_NAME in _ALLOWED_DB_NAMES or _DB_NAME.endswith("_dev")):
-    print("拒绝执行：数据库名不在 PMS_E2E_ALLOWED_DB_NAMES 白名单且不是 *_dev。")
+if not _ALLOWED_DB_NAMES or _DB_NAME not in _ALLOWED_DB_NAMES:
+    print("拒绝执行：目标数据库必须显式存在于 PMS_E2E_ALLOWED_DB_NAMES 白名单。")
     sys.exit(2)
-for _required in ("DJANGO_DB_USER", "DJANGO_DB_PASSWORD"):
-    if not os.environ.get(_required):
-        print(f"拒绝执行：缺少数据库环境变量 {_required}。")
-        sys.exit(2)
+if not _DB_NAME.endswith(("_e2e", "_test")):
+    print("拒绝执行：清库目标数据库名必须以 _e2e 或 _test 结尾。")
+    sys.exit(2)
+if _DB_PORT != "3306":
+    print("拒绝执行：当前清库脚本仅支持显式指定的本机 MySQL 3306 端口。")
+    sys.exit(2)
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hotel.settings")
 import django
@@ -54,6 +70,23 @@ from django.conf import settings  # noqa: E402
 
 if not settings.DEBUG or getattr(settings, "DJANGO_ENV", "dev") != "dev":
     print("拒绝执行：全链路串测（含清库）仅允许本机 DEBUG dev 环境。")
+    sys.exit(2)
+
+# 防止环境变量检查通过，但 Django 实际业务连接指向另一个数据库。
+# 清库连接与 Django default 连接必须逐项一致，且都必须是专用隔离 MySQL 库。
+_DB_CONFIG = settings.DATABASES.get("default", {})
+if "mysql" not in str(_DB_CONFIG.get("ENGINE", "")).lower():
+    print("拒绝执行：Django default 数据库必须是 MySQL。")
+    sys.exit(2)
+if (
+    str(_DB_CONFIG.get("HOST", "")).strip().lower() not in {"127.0.0.1", "localhost", "::1"}
+    or str(_DB_CONFIG.get("HOST", "")).strip().lower() != _DB_HOST
+    or str(_DB_CONFIG.get("NAME", "")).strip() != _DB_NAME
+    or str(_DB_CONFIG.get("USER", "")) != _DB_USER
+    or str(_DB_CONFIG.get("PASSWORD", "")) != _DB_PASSWORD
+    or str(_DB_CONFIG.get("PORT", "")) != _DB_PORT
+):
+    print("拒绝执行：Django default 数据库连接与 E2E 清库环境变量不完全一致。")
     sys.exit(2)
 
 import requests
@@ -121,10 +154,12 @@ def _reset_baseline():
     """清空交易数据 + 复位库存计数器/房态（保留主数据与员工账号）。"""
     import os
     import pymysql
-    conn = pymysql.connect(host=os.environ["DJANGO_DB_HOST"] if os.environ.get("DJANGO_DB_HOST") not in (None, "localhost") else "127.0.0.1",
-                           user=os.environ["DJANGO_DB_USER"],
-                           password=os.environ["DJANGO_DB_PASSWORD"],
-                           database=os.environ["DJANGO_DB_NAME"], port=3306)
+    conn = pymysql.connect(
+        host=_DB_CONFIG["HOST"], user=_DB_CONFIG["USER"],
+        password=_DB_CONFIG["PASSWORD"], database=_DB_CONFIG["NAME"],
+        port=int(_DB_CONFIG["PORT"]), charset="utf8mb4",
+        connect_timeout=5,
+    )
     KEEP = {'core_property','inventory_roomtype','inventory_room','inventory_rateplan',
             'inventory_dailyrate','inventory_roomtypeinventory',
             'reservations_cancellationpolicy','reservations_depositpolicy',
