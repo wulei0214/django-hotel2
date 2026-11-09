@@ -263,6 +263,8 @@ def cancel_pending_reservation(*, property_obj, booking_no, reservation_pk):
         else:
             reservation.status = Reservation.Status.CANCELLED
         reservation.save(update_fields=("status", "updated_at"))
+        from apps.billing.services import cancel_open_payment_intents_for_reservation
+        cancel_open_payment_intents_for_reservation(reservation)
         return reservation, True
     if reservation.status == Reservation.Status.EXPIRED:
         return reservation, False
