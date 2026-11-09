@@ -80,3 +80,11 @@ python manage.py expire_pending_refunds --limit 100
 - 使用 DBA 账号核对 `mysql.user` 中账号与 Host 授权范围，并确认目标数据库权限。
 - 修复连接后先备份，再执行 `python manage.py migrate --plan`、`python manage.py migrate`、`python manage.py check_mysql_append_only_guards`。
 - 不要把生产密码、个人密码或迁移账号密码写入仓库或文档。
+
+
+## 8. 2026-11-09 MySQL CI 证据补充
+
+- 最新 main 业务代码基线：8e310b5a8491f31dd91b5461160fd6dfc1f22e06。
+- MySQL 8.0.46 GitHub Actions 在该 SHA 执行 887 项测试并通过；同一工作流执行迁移和 MySQL append-only guards 安装/校验。
+- 该 CI 仅在临时测试数据库验证触发器创建和定义；不能替代用户本地/生产 MySQL 实例由 DBA 执行部署、应用账号 UPDATE/DELETE 拒绝验证及备份恢复演练。
+- 触发器数量和部署前提以当前命令 python manage.py check_mysql_append_only_guards 的运行结果为准；本地部署不得只凭 SQLite 测试通过。
