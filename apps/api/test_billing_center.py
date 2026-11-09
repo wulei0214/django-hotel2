@@ -924,6 +924,32 @@ class BillingRefundThreePartyApiTests(BillingCenterTestBase):
         liability.refresh_from_db()
         self.assertEqual(liability.remaining_amount, Decimal("50.00"))
 
+    def test_deposit_payment_is_a_refund_liability_candidate(self):
+        """前台押金凭证为 DEPOSIT/deposit:，仍须进入待退款原支付候选。"""
+        reservation, folio = self._booking_with_outstanding()
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=folio,
+            provider="frontdesk_deposit", provider_ref="BC-LIABILITY-DEP-001",
+            method="CARD", amount=Decimal("350.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        BillingService.post_entry(
+            property_obj=self.property, folio=folio,
+            entry_type=LedgerEntry.EntryType.DEPOSIT,
+            amount=Decimal("-350.00"),
+            reference=f"deposit:{payment.provider_ref}",
+            description="待退款负债押金原支付回归测试",
+            posted_by=self.finance)
+
+        from apps.billing.liabilities import register_refund_liability
+        liability, created = register_refund_liability(
+            property_obj=self.property, reservation=reservation,
+            folio=folio, amount=Decimal("50.00"), created_by=self.finance)
+
+        self.assertTrue(created)
+        self.assertEqual(liability.remaining_amount, Decimal("50.00"))
+        self.assertQuerySetEqual(
+            liability.source_payments.order_by("pk"), [payment], transform=lambda x: x)
+
     def test_refund_api_requires_three_distinct_people_and_posts_once(self):
         reservation, _folio = self._booking_with_outstanding()
         payment = BillingService.collect_payment(
