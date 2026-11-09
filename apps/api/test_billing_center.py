@@ -1388,3 +1388,77 @@ class BillingCsrfEnforcementTests(BillingCenterTestBase):
             HTTP_X_CSRFTOKEN=token)
         self.assertEqual(valid.status_code, 404, valid.content)
         self.assertEqual(valid.json()["error"]["code"], "RESOURCE_NOT_FOUND")
+
+
+class RefundLiabilityIntegrityRegressionTests(BillingCenterTestBase):
+    """DEC-02 负债幂等、失败回滚与物业边界回归。"""
+
+    def _liability_with_payment(self, suffix):
+        reservation, folio = self._booking_with_outstanding()
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=folio,
+            provider="frontdesk_manual", provider_ref=f"BC-RFL-{suffix}",
+            method="CARD", amount=Decimal("200.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        BillingService.post_entry(
+            property_obj=self.property, folio=folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+            amount=Decimal("-200.00"),
+            reference=f"payment:{payment.provider_ref}",
+            description="DEC-02 负债完整性测试原支付",
+            posted_by=self.finance)
+        from apps.billing.liabilities import register_refund_liability
+        liability, created = register_refund_liability(
+            property_obj=self.property, reservation=reservation,
+            folio=folio, amount=Decimal("50.00"), created_by=self.finance)
+        self.assertTrue(created)
+        return reservation, folio, payment, liability
+
+    def test_duplicate_liability_registration_is_idempotent(self):
+        reservation, folio, _payment, liability = self._liability_with_payment("DUP")
+        from apps.billing.liabilities import register_refund_liability
+        repeated, created = register_refund_liability(
+            property_obj=self.property, reservation=reservation,
+            folio=folio, amount=Decimal("50.00"), created_by=self.finance)
+        self.assertFalse(created)
+        self.assertEqual(repeated.pk, liability.pk)
+        self.assertEqual(RefundLiability.objects.filter(folio=folio).count(), 1)
+        self.assertEqual(repeated.remaining_amount, Decimal("50.00"))
+
+    def test_cross_property_liability_registration_is_rejected(self):
+        reservation, folio = self._booking_with_outstanding()
+        other_property = Property.objects.create(
+            code="BC-OTHER-PROPERTY", name="其他物业")
+        from apps.billing.liabilities import register_refund_liability
+        with self.assertRaisesRegex(ValueError, "当前物业和同一预订"):
+            register_refund_liability(
+                property_obj=other_property, reservation=reservation,
+                folio=folio, amount=Decimal("10.00"), created_by=self.finance)
+        self.assertFalse(RefundLiability.objects.filter(folio=folio).exists())
+
+    def test_failed_refund_execution_does_not_post_or_reduce_liability(self):
+        _reservation, folio, payment, liability = self._liability_with_payment("FAIL")
+        approver = self._make_staff("rfl_fail_approver", "财务")
+        executor = self._make_staff("rfl_fail_executor", "财务")
+        refund, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount=Decimal("25.00"), reason="退款失败不减少负债",
+            requested_by=self.finance,
+            idempotency_key="bc-rfl-failed-request",
+            refund_liability_id=liability.pk)
+        self.assertTrue(created)
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=refund.pk,
+            approved_by=approver)
+        with self.assertRaisesRegex(ValueError, "必须确认退款已经实际支付"):
+            BillingService.execute_refund(
+                property_obj=self.property, refund_id=refund.pk,
+                executed_by=executor, confirm_refund_paid=False,
+                execution_reference="BANK-NOT-PAID",
+                idempotency_key="bc-rfl-failed-execution")
+        liability.refresh_from_db()
+        refund.refresh_from_db()
+        self.assertEqual(refund.status, Refund.Status.APPROVED)
+        self.assertEqual(liability.remaining_amount, Decimal("50.00"))
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
