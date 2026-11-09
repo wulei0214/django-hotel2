@@ -572,3 +572,34 @@
 - 最新 main SHA `c7f12247b527c3c1f41446f7c51ddad3defbc24d` 仅进一步加强触发器定义检查，Django CI 和 MySQL tests 正在重跑，最终仍以该 SHA 的完成结果为准。
 - 用户本地 MySQL 账号/Host 授权错误、生产库触发器部署、操作系统定时任务部署、浏览器 E2E、DEC-16 财务指标签署仍未关闭。
 
+
+
+---
+
+## 2026-11-09 追加：最新 main 双引擎回归与全链路测试工具白盒复核
+
+**审查基线：** main@8e310b5a8491f31dd91b5461160fd6dfc1f22e06。
+
+### 自动化回归
+
+- SQLite GitHub Actions：887 tests，OK。
+- MySQL 8.0.46 GitHub Actions：887 tests，OK；MySQL append-only guards 安装与校验成功。
+- OpenAPI：102 paths / 104 operations；79 verified / 25 partial。
+- 本次 CI 未运行 scripts/e2e_full_chain.py，因此不得把 887 项单元/API 测试通过等同于 36 项真实 HTTP 串测通过。
+
+### 新增白盒发现（测试工具，不等同于业务运行时代码缺陷）
+
+| 等级 | 文件/位置 | 问题 | 验收风险 | 关闭条件 |
+|---|---|---|---|---|
+| P1 | scripts/e2e_full_chain.py imports | date/timedelta/re/json 未导入 | 脚本不能可靠启动 | py_compile + 启动自检通过 |
+| P1 | PWD 常量 | 测试密码硬编码在公开仓库 | 测试账号凭据暴露 | 轮换测试账号密码，改用安全注入 |
+| P1 | _reset_baseline | 仅 DEBUG + DJANGO_ENV=dev，不校验 host/name allowlist 和显式清库确认 | 可能清空错误数据库 | 本机 host、专用测试库名、显式允许变量、备份门禁 |
+| P1 | F1/F2 | 通知断言含 or True；审计只断言 len>=0 | 空数据也能 PASS | 按 booking/entity/action/actor 断言真实记录 |
+| P1 | E4 | 退款职责分离反例允许 HTTP 200 | 值班经理若错误地成功执行退款，测试仍可能 PASS | 无执行权账号必须严格 403，且无账本副作用 |
+| P1 | D2 | 未结清退房允许 200/201/409 多种状态 | 欠款仍可退房的缺陷可能漏报 | 按当前测试数据严格断言 409 |
+| P2 | 日期窗口 | 注释称 2 晚但结束日为开始日 +3 天 | 夜审次数和房费预期不一致 | 日期和晚数统一 |
+| P2 | 角色覆盖 | 只调用 5 个 ACTIVE 账号，未覆盖 4 个 PLANNED 账号 | 九角色登录/权限验收不完整 | 九账号认证矩阵 + PLANNED 默认拒绝断言 |
+
+### 处置
+
+以上问题先登记，不把脚本声明 36/36 当作验收证据。修复后必须在隔离 MySQL 测试库重新执行，并保存请求/响应、数据库前后状态、审计记录、执行 SHA 和原始日志。不得在真实业务库或生产库运行含清库步骤的串测脚本。
