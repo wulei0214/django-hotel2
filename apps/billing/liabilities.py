@@ -22,6 +22,13 @@ def register_refund_liability(*, property_obj, reservation, folio, amount,
         raise ValueError("待退款负债金额无效。") from exc
     if not liability_amount.is_finite() or liability_amount <= 0:
         raise ValueError("待退款负债金额必须大于零。")
+    # 先锁 Reservation，再锁 Folio，最后锁 Payment；退房登记与财务退款
+    # 使用一致的父记录优先顺序，MySQL 下同一账单的重复/并发登记会串行化。
+    from apps.reservations.models import Reservation
+    from apps.billing.models import Folio
+    reservation = Reservation.objects.select_for_update().select_related(
+        "property").get(pk=reservation.pk)
+    folio = Folio.objects.select_for_update().get(pk=folio.pk)
     if (reservation.property_id != property_obj.pk
             or folio.property_id != property_obj.pk
             or folio.reservation_id != reservation.pk):
@@ -29,7 +36,7 @@ def register_refund_liability(*, property_obj, reservation, folio, amount,
     if folio.currency != reservation.currency:
         raise ValueError("待退款负债币种必须与预订和账单一致。")
 
-    payment_candidates = Payment.objects.filter(
+    payment_candidates = Payment.objects.select_for_update().filter(
         property=property_obj, reservation=reservation, folio=folio,
         status__in=(
             Payment.Status.SUCCEEDED,
