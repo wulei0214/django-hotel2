@@ -97,6 +97,7 @@ urlpatterns = [
     path("billing/ledger", billing_center.ledger_entry_list, name="billing_ledger"),
     path("billing/payments", billing_center.billing_payments, name="billing_payments"),
     path("billing/refunds", billing_center.billing_refunds, name="billing_refunds"),
+    path("billing/refund-liabilities", billing_center.refund_liability_list, name="billing_refund_liabilities"),
     path("billing/refunds/<int:refund_id>/approve", billing_center.approve_refund_api, name="billing_refund_approve"),
     path("billing/refunds/<int:refund_id>/reject", billing_center.reject_refund_api, name="billing_refund_reject"),
     path("billing/refunds/<int:refund_id>/execute", billing_center.execute_refund_api, name="billing_refund_execute"),
