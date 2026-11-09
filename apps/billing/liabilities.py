@@ -37,15 +37,23 @@ def register_refund_liability(*, property_obj, reservation, folio, amount,
             Payment.Status.PARTIALLY_REFUNDED,
         ),
     ).order_by("pk")
-    # 只有同时存在对应 PAYMENT 账本凭证的支付，才能成为负债的原支付候选。
-    candidates = [
-        payment for payment in payment_candidates
+    # 只有同时存在对应收款账本凭证的支付，才能成为负债的原支付候选。
+    # 普通收款使用 PAYMENT/payment:；前台押金使用 DEPOSIT/deposit:。
+    # 两类都属于真实资金来源，不能因凭证类型不同而漏掉押金退款。
+    candidates = []
+    for payment in payment_candidates:
+        if payment.provider == "frontdesk_deposit":
+            entry_type = LedgerEntry.EntryType.DEPOSIT
+            reference = f"deposit:{payment.provider_ref}"
+        else:
+            entry_type = LedgerEntry.EntryType.PAYMENT
+            reference = f"payment:{payment.provider_ref}"
         if LedgerEntry.objects.filter(
             property=property_obj, folio=folio,
-            entry_type=LedgerEntry.EntryType.PAYMENT,
-            reference=f"payment:{payment.provider_ref}",
-        ).exists()
-    ]
+            entry_type=entry_type,
+            reference=reference,
+        ).exists():
+            candidates.append(payment)
     if not candidates:
         raise ValueError("存在负余额，但未找到同时具有支付流水和对应收款账本凭证的原支付，不能登记待退款负债。")
 
