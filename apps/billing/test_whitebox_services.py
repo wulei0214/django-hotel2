@@ -27,7 +27,7 @@ from django.db.models import Model as DjangoModel
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.billing.models import (ApprovalRecord, CashierShift, CashierShiftMovement, Folio, LedgerEntry, Payment, Refund)
+from apps.billing.models import (ApprovalRecord, CashierShift, CashierShiftMovement, Folio, LedgerEntry, Payment, Refund, RefundLiability)
 from apps.billing.services_v2 import ApprovalService, BillingService
 from apps.core.models import Property
 from apps.guests.models import Guest
@@ -613,6 +613,74 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.PARTIALLY_REFUNDED)
 
+
+    def test_refund_liability_is_reduced_only_after_successful_refund_execution(self):
+        reservation = self._make_reservation("WBBRFDLIABILITY01", total="100.00")
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref="WBB-LIABILITY-PAY-001",
+            method="CARD", amount=Decimal("100.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        liability = RefundLiability.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            amount=Decimal("80.00"), remaining_amount=Decimal("80.00"),
+            currency="CNY", status=RefundLiability.Status.OPEN,
+            idempotency_key="wbb-liability-80")
+        liability.source_payments.add(payment)
+
+        first, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="30.00", reason="待退款负债部分退款",
+            requested_by=self.operator, idempotency_key="wbb-liability-refund-1",
+            refund_liability_id=liability.pk)
+        self.assertTrue(created)
+        self.assertEqual(first.refund_liability_id, liability.pk)
+        liability.refresh_from_db()
+        self.assertEqual(liability.remaining_amount, Decimal("80.00"))
+
+        approver = User.objects.create_user(username="wbb-liability-approver")
+        executor = User.objects.create_user(username="wbb-liability-executor")
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=first.pk, approved_by=approver)
+        BillingService.execute_refund(
+            property_obj=self.property, refund_id=first.pk,
+            executed_by=executor, confirm_refund_paid=True,
+            execution_reference="BANK-LIABILITY-REF-1",
+            idempotency_key="wbb-liability-exec-1")
+        liability.refresh_from_db()
+        self.assertEqual(liability.remaining_amount, Decimal("50.00"))
+        self.assertEqual(liability.status, RefundLiability.Status.PARTIALLY_SETTLED)
+
+        second, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="50.00", reason="待退款负债结清",
+            requested_by=self.operator, idempotency_key="wbb-liability-refund-2",
+            refund_liability_id=liability.pk)
+        self.assertTrue(created)
+        second_approver = User.objects.create_user(username="wbb-liability-approver-2")
+        second_executor = User.objects.create_user(username="wbb-liability-executor-2")
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=second.pk,
+            approved_by=second_approver)
+        executed, changed = BillingService.execute_refund(
+            property_obj=self.property, refund_id=second.pk,
+            executed_by=second_executor, confirm_refund_paid=True,
+            execution_reference="BANK-LIABILITY-REF-2",
+            idempotency_key="wbb-liability-exec-2")
+        self.assertTrue(changed)
+        liability.refresh_from_db()
+        self.assertEqual(liability.remaining_amount, Decimal("0.00"))
+        self.assertEqual(liability.status, RefundLiability.Status.SETTLED)
+        self.assertIsNotNone(liability.settled_at)
+
+        replay, replay_created = BillingService.execute_refund(
+            property_obj=self.property, refund_id=second.pk,
+            executed_by=second_executor, confirm_refund_paid=True,
+            execution_reference="BANK-LIABILITY-REF-2",
+            idempotency_key="wbb-liability-exec-2")
+        self.assertFalse(replay_created)
+        liability.refresh_from_db()
+        self.assertEqual(liability.remaining_amount, Decimal("0.00"))
 
     def test_multiple_partial_refunds_keep_payment_pending_until_all_resolved(self):
         reservation = self._make_reservation("WBBRFDMULTI001")
