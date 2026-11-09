@@ -3,8 +3,8 @@
 
 ⚠️ 危险操作：脚本会 TRUNCATE 全部交易表（保留主数据/员工账号）并复位库存与房态。
 仅允许本机 DEBUG dev 环境和白名单测试数据库。必须设置 E2E_ALLOW_RESET=1、
-PMS_E2E_PASSWORD，并传入 --yes；数据库主机必须为 loopback，库名须在白名单或以
-_dev 结尾。严禁指向生产/共享开发数据库。
+PMS_E2E_PASSWORD，并传入 --yes；数据库主机必须为 loopback，库名必须显式列入白名单且以
+_e2e 或 _test 结尾，并与 Django 实际连接配置完全一致。严禁指向生产/共享开发数据库。
 运行前确认数据库身份，再执行：E2E_ALLOW_RESET=1 python scripts/e2e_full_chain.py --yes
 
 链路：公开预订 → （另一单）模拟支付 → 前台开班 → 押金（PENDING 收款即确认）
