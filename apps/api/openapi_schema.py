@@ -1482,7 +1482,9 @@ op("/billing/refund-liabilities", "get", "财务", "待退款负债列表及候�
    ok=(( "200", "待退款负债及候选原支付流水数组"),),
    data=s_arr(s_obj({
        "id": s_int(), "reservation_id": s_int(), "booking_no": s_str(),
-       "folio_id": s_int(), "amount": s_str(), "remaining_amount": s_str(),
+       "folio_id": s_int(), "amount": s_str(),
+       "refunded_amount": s_str("已成功执行并形成退款账本凭证的累计退款金额。"),
+       "remaining_amount": s_str("当前待处理负债余额。"),
        "currency": s_str(), "status": s_str(), "status_label": s_str(),
        "candidate_payments": s_arr(s_obj({
            "payment_id": s_int(), "provider_ref": s_str(), "method": s_str(),
