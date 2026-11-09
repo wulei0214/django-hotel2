@@ -373,9 +373,19 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
             f"账单尚有应收余额 {balance:.2f} {folio.currency}，请先完成收款。"
         )
     if balance < 0 and final_room_checkout:
-        raise FrontDeskOperationError(
-            f"最后一间房退房后仍有客人余额 {abs(balance):.2f} {folio.currency}，需先处理退款或余额结转。"
-        )
+        # DEC-02：允许客人先离店，但必须在同一事务内登记待退款负债。
+        # 只记录候选原支付流水，不自动分配退款金额，也不自动创建 Refund。
+        try:
+            from apps.billing.liabilities import register_refund_liability
+            register_refund_liability(
+                property_obj=property_obj,
+                reservation=reservation,
+                folio=folio,
+                amount=abs(balance),
+                created_by=checked_out_by,
+            )
+        except ValueError as exc:
+            raise FrontDeskOperationError(str(exc)) from exc
 
     now = timezone.now()
     StayRoomSegment.objects.filter(stay=stay, ended_at__isnull=True).update(
