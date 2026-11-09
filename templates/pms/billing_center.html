@@ -97,6 +97,25 @@
       </dl>
     </section>
 
+    <section class="pms-panel" aria-label="待退款负债">
+      <div class="pms-tools">
+        <strong>待退款负债</strong>
+        <button id="fin-refund-liability-reload" type="button">刷新</button>
+        <span class="pms-meta" id="fin-refund-liability-meta">正在读取待退款负债…</span>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr>
+            <th>预订编号</th><th>原始负债</th><th>待处理余额</th>
+            <th>原支付候选</th><th>状态</th><th>操作</th>
+          </tr></thead>
+          <tbody id="fin-refund-liability-body">
+            <tr><td colspan="6" class="pms-state">正在读取待退款负债…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="pms-panel" aria-label="账单列表">
       <div class="pms-tools">
         <select id="fin-folio-status" aria-label="账单状态筛选">
@@ -283,6 +302,95 @@
     } catch (error) {
       metaEl.textContent = error.message;
     }
+  }
+
+  /* ---------- 待退款负债 ---------- */
+  async function loadRefundLiabilities() {
+    const target = document.getElementById("fin-refund-liability-body");
+    const state = document.getElementById("fin-refund-liability-meta");
+    target.replaceChildren();
+    try {
+      const payload = await fetchJson("/api/v1/billing/refund-liabilities?page=1&page_size=100");
+      const items = Array.isArray(payload.data) ? payload.data : [];
+      state.textContent = "当前显示 " + items.length + " 条；候选支付仅供财务核对，不代表自动分配。";
+      if (!items.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 6; td.className = "pms-state";
+        td.textContent = "暂无待退款负债。";
+        tr.appendChild(td); target.appendChild(tr); return;
+      }
+      items.forEach(function(item) {
+        const tr = document.createElement("tr");
+        [item.booking_no, value(item.amount) + " " + value(item.currency),
+         value(item.remaining_amount) + " " + value(item.currency)].forEach(function(text) {
+          const td = document.createElement("td"); td.textContent = text; tr.appendChild(td);
+        });
+        const candidatesCell = document.createElement("td");
+        const candidates = Array.isArray(item.candidate_payments) ? item.candidate_payments : [];
+        candidatesCell.textContent = candidates.map(function(p) {
+          return "#" + p.payment_id + " " + value(p.provider_ref) + "（" +
+              value(p.amount) + " " + value(p.currency) + "）";
+        }).join("；") || "无候选原支付";
+        tr.appendChild(candidatesCell);
+        const statusCell = document.createElement("td");
+        statusCell.textContent = item.status_label || item.status;
+        tr.appendChild(statusCell);
+        const actionCell = document.createElement("td");
+        if (canRefund && item.status !== "SETTLED" && candidates.length) {
+          const select = document.createElement("select");
+          select.setAttribute("aria-label", "选择待退款负债原支付");
+          candidates.forEach(function(payment) {
+            const option = document.createElement("option");
+            option.value = String(payment.payment_id);
+            option.textContent = "#" + payment.payment_id + " · " +
+                value(payment.provider_ref) + " · " + value(payment.amount);
+            select.appendChild(option);
+          });
+          const button = document.createElement("button");
+          button.type = "button"; button.className = "pms-row-btn";
+          button.textContent = "发起退款申请";
+          button.addEventListener("click", function() {
+            const selected = candidates.find(function(p) {
+              return String(p.payment_id) === select.value;
+            });
+            if (!selected) return;
+            openLiabilityRefund(item, Object.assign({id: selected.payment_id}, selected));
+          });
+          actionCell.appendChild(select); actionCell.appendChild(button);
+        } else {
+          actionCell.textContent = item.status === "SETTLED" ? "已处理" :
+              (canRefund ? "缺少候选支付" : "无退款申请权限");
+        }
+        tr.appendChild(actionCell);
+        target.appendChild(tr);
+      });
+    } catch (error) {
+      state.textContent = "读取失败：" + error.message;
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 6; td.className = "pms-state"; td.textContent = error.message;
+      tr.appendChild(td); target.appendChild(tr);
+    }
+  }
+  document.getElementById("fin-refund-liability-reload").addEventListener(
+      "click", loadRefundLiabilities);
+
+  function openLiabilityRefund(liability, payment) {
+    drawerTitle.textContent = "待退款负债 · " + liability.booking_no;
+    drawerBody.replaceChildren();
+    drawerBody.appendChild(kvTable([
+      ["id", "负债编号"], ["booking_no", "预订编号"], ["folio_id", "账单编号"],
+      ["amount", "原始负债"], ["remaining_amount", "待处理余额"],
+      ["currency", "币种"], ["status_label", "状态"]
+    ], liability));
+    const title = document.createElement("h3");
+    title.textContent = "选择原支付并提交退款申请";
+    drawerBody.appendChild(title);
+    drawerBody.appendChild(notify(
+      "系统不会自动分配多笔支付的退款金额。请核对原支付流水，并按实际退款金额提交；审批与执行仍由不同员工完成。"));
+    drawerBody.appendChild(refundForm(payment, liability.id));
+    drawer.classList.add("is-open"); drawerMask.classList.add("is-open");
   }
 
   /* ---------- 账单列表 ---------- */
@@ -541,7 +649,7 @@
         const d = payload.data || {};
         form.replaceWith(notify("收款成功：" + d.amount + " " + d.currency +
             "（参考号 " + d.provider_ref + "）", true));
-        await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger()]);
+        await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadRefundLiabilities()]);
       } catch (error) {
         note.textContent = error.message;
         submitButton.disabled = false;
@@ -549,7 +657,7 @@
     });
     return form;
   }
-  function refundForm(payment) {
+  function refundForm(payment, refundLiabilityId) {
     const form = document.createElement("form");
     form.className = "fin-form";
     let requestKey = "";
@@ -573,12 +681,16 @@
       const note = notify("提交中…");
       form.appendChild(note);
       try {
-        const payload = await postJson("/api/v1/billing/refunds", {
+        const requestBody = {
           payment_id: payment.id,
           amount: amount,
           reason: reason,
           idempotency_key: key,
-        }, key);
+        };
+        if (refundLiabilityId !== null && refundLiabilityId !== undefined) {
+          requestBody.refund_liability_id = refundLiabilityId;
+        }
+        const payload = await postJson("/api/v1/billing/refunds", requestBody, key);
         const d = payload.data || {};
         form.replaceWith(notify("退款申请已提交（状态 " + d.status + "），等待第二人审批。", true));
         await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger()]);
@@ -968,6 +1080,7 @@
   loadSummary();
   loadFolios(1);
   loadLedger();
+  loadRefundLiabilities();
   loadShifts();
 })();
 </script>
