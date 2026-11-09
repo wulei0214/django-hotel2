@@ -17,6 +17,7 @@
 import json
 import re
 import uuid
+import unittest
 from unittest.mock import patch
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
@@ -916,6 +917,7 @@ class BillingRefundThreePartyApiTests(BillingCenterTestBase):
         item = listed.json()["data"][0]
         self.assertEqual(item["id"], liability.pk)
         self.assertEqual(item["remaining_amount"], "50.00")
+        self.assertEqual(item["refunded_amount"], "0.00")
         self.assertEqual(item["candidate_payments"][0]["payment_id"], payment.pk)
 
         requested = _post_json(
