@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from apps.core.models import Property
 from apps.guests.models import Guest
-from apps.billing.models import Folio, LedgerEntry, Payment, Refund
+from apps.billing.models import Folio, LedgerEntry, Payment, Refund, RefundLiability
 from apps.inventory.models import DailyRate, RatePlan, Room, RoomType, RoomTypeInventory
 from apps.inventory.services import InventoryUnavailable
 from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
@@ -395,6 +395,72 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         self.assertFalse(changed_again)
 
 
+
+    def test_final_checkout_registers_refund_liability_without_creating_refund(self):
+        assign_room(
+            property_obj=self.property,
+            reservation_room_id=self.line.pk,
+            room_id=self.room.pk,
+            assigned_by=self.operator,
+        )
+        stay, _ = check_in_stay(
+            property_obj=self.property,
+            reservation_room_id=self.line.pk,
+            checked_in_by=self.operator,
+        )
+        payment = Payment.objects.create(
+            property=self.property,
+            reservation=self.reservation,
+            folio=self.folio,
+            provider="test",
+            provider_ref="REFUND-LIABILITY-SOURCE-001",
+            method="CARD",
+            amount=Decimal("700.00"),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
+        LedgerEntry.objects.create(
+            property=self.property,
+            folio=self.folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+            amount=Decimal("-700.00"),
+            currency="CNY",
+            business_date=self.today,
+            reference=f"payment:{payment.provider_ref}",
+            description="超额预收款，退房后形成待退款负债",
+            posted_by=self.operator,
+        )
+
+        checked_out, changed = check_out_stay(
+            property_obj=self.property,
+            stay_id=stay.pk,
+            checked_out_by=self.operator,
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(checked_out.status, Stay.Status.CHECKED_OUT)
+        liability = RefundLiability.objects.get(folio=self.folio)
+        self.assertEqual(liability.amount, Decimal("100.00"))
+        self.assertEqual(liability.remaining_amount, Decimal("100.00"))
+        self.assertEqual(liability.status, RefundLiability.Status.OPEN)
+        self.assertQuerySetEqual(
+            liability.source_payments.order_by("pk"),
+            [payment],
+        )
+        self.assertFalse(Refund.objects.filter(
+            payment=payment, refund_liability=liability).exists())
+        self.folio.refresh_from_db()
+        self.assertEqual(self.folio.status, Folio.Status.CLOSED)
+
+        replay, changed_again = check_out_stay(
+            property_obj=self.property,
+            stay_id=stay.pk,
+            checked_out_by=self.operator,
+        )
+        self.assertFalse(changed_again)
+        self.assertEqual(replay.pk, stay.pk)
+        self.assertEqual(RefundLiability.objects.filter(folio=self.folio).count(), 1)
 
     def test_partial_checkout_keeps_prepaid_credit_for_other_room(self):
         self.reservation.room_count = 2
