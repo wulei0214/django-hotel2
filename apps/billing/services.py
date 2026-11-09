@@ -33,6 +33,24 @@ def verify_mock_callback(raw_body, signature):
     return hmac.compare_digest(expected, signature)
 
 
+def cancel_open_payment_intents_for_reservation(reservation):
+    """订单已确认/取消/过期时关闭尚未成功的本地支付意图。
+
+    调用方必须先持有 Reservation 行锁，以保持 Reservation -> Payment 锁顺序。
+    渠道迟到 SUCCESS 仍由回调处理为成功资金事实并进入补偿流程。
+    """
+    cancelled = 0
+    payments = Payment.objects.select_for_update().filter(
+        reservation=reservation,
+        status__in=(Payment.Status.CREATED, Payment.Status.PENDING),
+    ).order_by("pk")
+    for payment in payments:
+        payment.status = Payment.Status.CANCELLED
+        payment.save(update_fields=("status", "updated_at"))
+        cancelled += 1
+    return cancelled
+
+
 def create_mock_payment_intent(reservation):
     with transaction.atomic():
         reservation = Reservation.objects.select_for_update().select_related(
