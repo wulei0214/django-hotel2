@@ -33,6 +33,8 @@ class Command(BaseCommand):
                     release_inventory_hold(reservation)
                     reservation.status = Reservation.Status.EXPIRED
                     reservation.save(update_fields=("status", "updated_at"))
+                    from apps.billing.services import cancel_open_payment_intents_for_reservation
+                    cancel_open_payment_intents_for_reservation(reservation)
                     expired += 1
             except InventoryUnavailable as exc:
                 self.stderr.write(
