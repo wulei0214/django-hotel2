@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from django.db.models import Sum
 
-from apps.billing.models import Payment, Refund, RefundLiability
+from apps.billing.models import LedgerEntry, Payment, Refund, RefundLiability
 from apps.core.models import AuditEvent
 
 
@@ -29,16 +29,25 @@ def register_refund_liability(*, property_obj, reservation, folio, amount,
     if folio.currency != reservation.currency:
         raise ValueError("待退款负债币种必须与预订和账单一致。")
 
-    candidates = list(Payment.objects.filter(
+    payment_candidates = Payment.objects.filter(
         property=property_obj, reservation=reservation, folio=folio,
         status__in=(
             Payment.Status.SUCCEEDED,
             Payment.Status.REFUND_PENDING,
             Payment.Status.PARTIALLY_REFUNDED,
         ),
-    ).order_by("pk"))
+    ).order_by("pk")
+    # 只有同时存在对应 PAYMENT 账本凭证的支付，才能成为负债的原支付候选。
+    candidates = [
+        payment for payment in payment_candidates
+        if LedgerEntry.objects.filter(
+            property=property_obj, folio=folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+            reference=f"payment:{payment.provider_ref}",
+        ).exists()
+    ]
     if not candidates:
-        raise ValueError("存在负余额，但未找到可追溯的成功原支付流水，不能登记待退款负债。")
+        raise ValueError("存在负余额，但未找到同时具有支付流水和对应收款账本凭证的原支付，不能登记待退款负债。")
 
     available_total = Decimal("0.00")
     for payment in candidates:
