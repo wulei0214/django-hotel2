@@ -487,8 +487,28 @@ def hold_inventory_for_reservation(reservation):
 
 
 @transaction.atomic
+@transaction.atomic
 def confirm_inventory_for_reservation(reservation):
-    """支付成功时将 held 转为 sold；调用方需锁定预订记录。"""
+    """幂等确认库存：只允许 PENDING -> CONFIRMED 路径消耗 Hold。
+
+    本服务自行锁 Reservation，再锁每日库存行；调用方随后才可迁移预订状态。
+    已确认/已入住/已退房预订重放返回 False，不重复增加 sold。
+    """
+    from apps.reservations.models import Reservation
+
+    reservation = (
+        Reservation.objects.select_for_update()
+        .select_related("property")
+        .get(pk=reservation.pk)
+    )
+    if reservation.status in (
+            Reservation.Status.CONFIRMED,
+            Reservation.Status.CHECKED_IN,
+            Reservation.Status.CHECKED_OUT):
+        return False
+    if reservation.status != Reservation.Status.PENDING:
+        raise InventoryUnavailable("当前预订状态不允许确认库存。")
+
     quantities = _group_reservation_room_quantities(reservation)
 
     for (room_type_id, check_in, check_out), quantity in sorted(
@@ -511,6 +531,7 @@ def confirm_inventory_for_reservation(reservation):
             row.sold += quantity
             row.version += 1
             row.save(update_fields=("held", "sold", "version", "updated_at"))
+    return True
 
 
 @transaction.atomic
