@@ -29,7 +29,7 @@ from decimal import Decimal
 from django.db.models import Prefetch, Q, Sum
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.billing.models import ApprovalRecord, CashierShift, Folio, LedgerEntry, Payment, Refund
+from apps.billing.models import ApprovalRecord, CashierShift, Folio, LedgerEntry, Payment, Refund, RefundLiability
 from apps.billing.services_v2 import BillingService
 from apps.core import labels as L
 from apps.core.api_contract import (
@@ -427,6 +427,7 @@ def refund_list(request):
     data = [{
         "id": refund.pk,
         "payment_id": refund.payment_id,
+        "refund_liability_id": refund.refund_liability_id,
         "folio_id": refund.payment.folio_id if refund.payment_id else None,
         "amount": _money_str(refund.amount),
         "currency": refund.currency,
@@ -447,6 +448,47 @@ def refund_list(request):
         "processed_at": (refund.processed_at.isoformat()
                          if refund.processed_at else None),
     } for refund in items]
+    return api_response(request, data, pagination=pagination)
+
+
+@require_GET
+@api_view
+def refund_liability_list(request):
+    """GET /api/v1/billing/refund-liabilities — 财务待退款负债及候选原支付。"""
+    property_obj = _require_finance_access(request)
+    qs = RefundLiability.objects.filter(property=property_obj).select_related(
+        "reservation", "folio").prefetch_related("source_payments")
+    status_filter = request.GET.get("status", "").strip().upper()
+    if status_filter:
+        if status_filter not in RefundLiability.Status.values:
+            raise ApiError("VALIDATION_ERROR", "status 取值不合法。")
+        qs = qs.filter(status=status_filter)
+    items, pagination = paginate(qs.order_by("-created_at"), request)
+    data = [{
+        "id": item.pk,
+        "reservation_id": item.reservation_id,
+        "booking_no": item.reservation.booking_no,
+        "folio_id": item.folio_id,
+        "amount": _money_str(item.amount),
+        "remaining_amount": _money_str(item.remaining_amount),
+        "currency": item.currency,
+        "status": item.status,
+        "status_label": {
+            RefundLiability.Status.OPEN: "待处理",
+            RefundLiability.Status.PARTIALLY_SETTLED: "部分处理",
+            RefundLiability.Status.SETTLED: "已处理",
+        }.get(item.status, item.status),
+        "candidate_payments": [{
+            "payment_id": payment.pk,
+            "provider_ref": payment.provider_ref,
+            "method": payment.method,
+            "amount": _money_str(payment.amount),
+            "currency": payment.currency,
+            "status": payment.status,
+        } for payment in item.source_payments.all()],
+        "created_at": item.created_at.isoformat(),
+        "settled_at": item.settled_at.isoformat() if item.settled_at else None,
+    } for item in items]
     return api_response(request, data, pagination=pagination)
 
 
@@ -588,6 +630,12 @@ def request_refund_api(request):
     payment = Payment.objects.filter(pk=payment_id, property=property_obj).first()
     if payment is None:
         raise ApiError("RESOURCE_NOT_FOUND", "支付流水不存在或不属于当前物业。")
+    raw_liability_id = body.get("refund_liability_id")
+    try:
+        refund_liability_id = (
+            int(str(raw_liability_id)) if raw_liability_id not in (None, "") else None)
+    except (TypeError, ValueError):
+        raise ApiError("VALIDATION_ERROR", "refund_liability_id 必须是整数。")
     idempotency_key = str(body.get("idempotency_key")
                           or request.headers.get("Idempotency-Key", "")).strip()
     try:
@@ -595,13 +643,14 @@ def request_refund_api(request):
             property_obj=property_obj, payment_id=payment.pk,
             amount=body.get("amount"), reason=body.get("reason"),
             requested_by=request.user, idempotency_key=idempotency_key,
-            request=request)
+            request=request, refund_liability_id=refund_liability_id)
     except ValueError as exc:
         raise ApiError("VALIDATION_ERROR", str(exc))
     return api_response(request, {
         "id": refund.pk,
         "refund_id": refund.pk,
         "payment_id": refund.payment_id,
+        "refund_liability_id": refund.refund_liability_id,
         "amount": _money_str(refund.amount),
         "currency": refund.currency,
         "reason": refund.reason,
