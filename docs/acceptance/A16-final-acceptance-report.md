@@ -49,7 +49,7 @@ security.W002 XFrameOptions / W004 HSTS / W008 SSL_REDIRECT / W010 SESSION_COOKI
 | A02 | 业务中心验收报告 | docs/audit/phase0/40-five-centers-closure.md |
 | A03 | 业务闭环报告 | apps/api/test_e2e_flows.py + test_five_centers_closure.py |
 | A04 | 数据库验收报告 | 本报告数据库节 + makemigrations --check 无漂移 |
-| A05 | API 验收报告 | apps/api/test_openapi_schema.py（97 paths 契约）+ test_pagination_contract |
+| A05 | API 验收报告 | apps/api/test_openapi_schema.py（当前静态快照 102 paths / 104 operations；79 verified / 25 partial）+ test_pagination_contract |
 | A06 | 九角色权限报告 | hotelapp/tests.py 角色矩阵测试 + docs/角色权限验证指南.md |
 | A07 | 安全验收报告 | apps/api/test_auth_hardening.py + test_cookie_isolation.py + test_security.py |
 | A08 | 自动化测试报告 | 本报告测试节（SHA/命令/数字）；时区缺陷修复为本报告后新 commit |
