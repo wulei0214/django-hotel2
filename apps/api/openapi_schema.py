@@ -467,6 +467,7 @@ COMPONENTS = {
         "id": s_int(), "amount": s_str(), "reason": s_str(),
         "status": s_str(), "status_label": s_str(),
         "provider_ref": s_nullable(s_str()),
+        "refund_liability_id": s_nullable(s_int()),
     }),
     "FolioPaymentDto": s_obj({
         "id": s_int(), "provider": s_str(), "provider_ref": s_nullable(s_str()),
@@ -1462,8 +1463,8 @@ op("/billing/refunds", "get", "财务", "退款列表（申请/审批/执行状�
    permission=FIN_READ_PERM,
    ok=(("200", "退款行数组（含审批记录状态）"),),
    data=s_arr(s_obj({
-       "id": s_int(), "payment_id": s_int(), "folio_id": s_int(),
-       "amount": s_str(), "currency": s_str(), "reason": s_str(),
+       "id": s_int(), "payment_id": s_int(), "refund_liability_id": s_nullable(s_int()),
+       "folio_id": s_int(), "amount": s_str(), "currency": s_str(), "reason": s_str(),
        "status": s_str(), "status_label": s_str(), "provider_ref": s_str(),
        "requested_by": s_nullable(s_str()), "approved_by": s_nullable(s_str()),
        "executed_by": s_nullable(s_str()), "executed_at": s_nullable(s_str("", format="date-time")),
@@ -1474,6 +1475,25 @@ op("/billing/refunds", "get", "财务", "退款列表（申请/审批/执行状�
        "processed_at": s_nullable(s_str("", format="date-time")),
    })), errors=E_STAFF)
 
+op("/billing/refund-liabilities", "get", "财务", "待退款负债列表及候选原支付",
+   status="partial",
+   query=[Q("status", "负债状态筛选 OPEN/PARTIALLY_SETTLED/SETTLED。"), *PQ()],
+   permission=FIN_READ_PERM,
+   ok=(( "200", "待退款负债及候选原支付流水数组"),),
+   data=s_arr(s_obj({
+       "id": s_int(), "reservation_id": s_int(), "booking_no": s_str(),
+       "folio_id": s_int(), "amount": s_str(), "remaining_amount": s_str(),
+       "currency": s_str(), "status": s_str(), "status_label": s_str(),
+       "candidate_payments": s_arr(s_obj({
+           "payment_id": s_int(), "provider_ref": s_str(), "method": s_str(),
+           "amount": s_str(), "currency": s_str(), "status": s_str(),
+       })),
+       "created_at": s_str("", format="date-time"),
+       "settled_at": s_nullable(s_str("", format="date-time")),
+   })), errors=E_STAFF,
+   notes="仅财务可见；candidate_payments 是核对候选集合，不代表自动分配退款金额。")
+
+
 op("/billing/refunds", "post", "财务", "退款申请（双人审批 SoD 第一环）",
    status="verified",
    body=s_obj({
@@ -1481,6 +1501,7 @@ op("/billing/refunds", "post", "财务", "退款申请（双人审批 SoD 第一
        "amount": s_str("退款金额（>0，累计不超过原支付金额）。"),
        "reason": s_str("退款原因，1-240 字符（服务强校验）。"),
        "idempotency_key": s_str("幂等键 1-64 字符；缺省取 Idempotency-Key 头。"),
+       "refund_liability_id": s_nullable(s_int("可选：关联待退款负债 ID；必须匹配所选原支付。")),
    }, required=["payment_id", "amount", "reason"]),
    permission="有效员工 + hotelapp.finance_access + billing.refund_request"
               "（SoD：申请人≠审批人，审批权 billing.refund_approve 另行持有）",
@@ -1489,6 +1510,7 @@ op("/billing/refunds", "post", "财务", "退款申请（双人审批 SoD 第一
                "+ 审计 billing.refund_request")),
    data=s_obj({
        "id": s_int(), "refund_id": s_int(), "payment_id": s_int(),
+       "refund_liability_id": s_nullable(s_int()),
        "amount": s_str(), "currency": s_str(), "reason": s_str(),
        "status": s_str(), "provider_ref": s_str(),
        "approval_record_id": s_int(),
