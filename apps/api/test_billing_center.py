@@ -1443,6 +1443,57 @@ class RefundLiabilityIntegrityRegressionTests(BillingCenterTestBase):
                 folio=folio, amount=Decimal("10.00"), created_by=self.finance)
         self.assertFalse(RefundLiability.objects.filter(folio=folio).exists())
 
+    def test_finance_liability_list_excludes_other_property_records(self):
+        other_property = Property.objects.create(
+            code="BC-LIABILITY-OTHER", name="负债隔离测试物业")
+        from apps.inventory.models import RatePlan, RoomType
+        today = timezone.localdate()
+        room_type = RoomType.objects.create(
+            property=other_property, code="BC-OTHER-ROOM",
+            name="其他物业测试房型", capacity=2)
+        rate_plan = RatePlan.objects.create(
+            property=other_property, code="BC-OTHER-RATE",
+            name="其他物业测试房价", valid_from=today - timedelta(days=1))
+        guest = Guest.objects.create(
+            property=other_property, full_name="其他物业住客",
+            phone="13900008882")
+        reservation = Reservation.objects.create(
+            property=other_property, guest=guest,
+            booking_no="BCOTHER0001", status=Reservation.Status.CHECKED_IN,
+            check_in=today, check_out=today + timedelta(days=1),
+            total_amount=Decimal("100.00"), currency="CNY")
+        ReservationRoom.objects.create(
+            property=other_property, reservation=reservation,
+            room_type=room_type, rate_plan=rate_plan,
+            check_in=today, check_out=today + timedelta(days=1),
+            nightly_rates={str(today): 100.0}, amount=Decimal("100.00"))
+        folio = Folio.objects.create(
+            property=other_property, reservation=reservation,
+            folio_type=Folio.FolioType.MASTER, guest=guest,
+            status=Folio.Status.OPEN, currency="CNY")
+        payment = Payment.objects.create(
+            property=other_property, reservation=reservation, folio=folio,
+            provider="frontdesk_manual", provider_ref="BC-OTHER-PAY-001",
+            method="CARD", amount=Decimal("100.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        BillingService.post_entry(
+            property_obj=other_property, folio=folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+            amount=Decimal("-100.00"),
+            reference=f"payment:{payment.provider_ref}",
+            description="其他物业原支付", posted_by=None)
+        from apps.billing.liabilities import register_refund_liability
+        other_liability, created = register_refund_liability(
+            property_obj=other_property, reservation=reservation,
+            folio=folio, amount=Decimal("20.00"), created_by=None)
+        self.assertTrue(created)
+
+        self._login(self.finance)
+        response = self.client.get("/api/v1/billing/refund-liabilities")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertNotIn(
+            other_liability.pk, {item["id"] for item in response.json()["data"]})
+
     def test_failed_refund_execution_does_not_post_or_reduce_liability(self):
         _reservation, folio, payment, liability = self._liability_with_payment("FAIL")
         approver = self._make_staff("rfl_fail_approver", "财务")
