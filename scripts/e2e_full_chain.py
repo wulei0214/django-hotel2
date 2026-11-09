@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """全链路业务串测脚本（清库重建 → 真实 HTTP 接口驱动 → 36 项断言）。
 
-⚠️ 危险操作：脚本开头会 TRUNCATE 全部交易表（保留主数据/员工账号）并复位
-库存计数器与房态。仅允许本机 DEBUG 开发环境运行；生产环境直接拒绝。
-运行：python scripts/e2e_full_chain.py  （需先 source .env）
+⚠️ 危险操作：脚本会 TRUNCATE 全部交易表（保留主数据/员工账号）并复位库存与房态。
+仅允许本机 DEBUG dev 环境和白名单测试数据库。必须设置 E2E_ALLOW_RESET=1、
+PMS_E2E_PASSWORD，并传入 --yes；数据库主机必须为 loopback，库名须在白名单或以
+_dev 结尾。严禁指向生产/共享开发数据库。
+运行前确认数据库身份，再执行：E2E_ALLOW_RESET=1 python scripts/e2e_full_chain.py --yes
 
 链路：公开预订 → （另一单）模拟支付 → 前台开班 → 押金（PENDING 收款即确认）
 → 排房 → 入住 → 在住现金收款 → 夜审过账关账 → 退房（拒绝未结清→补收→两讫）
