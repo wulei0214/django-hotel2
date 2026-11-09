@@ -1,0 +1,257 @@
+/* ============================================================
+   顾客预订页 · 希尔顿风格（深海军蓝 + 白 + 灰，衬线大标题，全屏山景 hero）
+   ============================================================ */
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    background: #fff;
+    color: var(--color-text-primary, #303133);
+    font-family: "PingFang SC", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+}
+a { color: inherit; }
+
+/* ---------- 顶部导航（覆盖在 hero 上的透明深色条） ---------- */
+.hl-nav {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 34px;
+    padding: 18px 40px;
+    background: linear-gradient(180deg, rgba(20,32,44,.55), rgba(20,32,44,0));
+}
+.hl-logo { display: flex; align-items: center; gap: 10px; color: #fff; }
+.hl-logo-mark {
+    display: inline-block; padding: 3px 10px;
+    border: 1.5px solid #fff; border-radius: 3px;
+    font-size: 18px; letter-spacing: 2px;
+}
+.hl-logo-text { font-size: 15px; letter-spacing: 1px; display: flex; flex-direction: column; line-height: 1.2; }
+.hl-logo-text small { font-size: 9px; letter-spacing: 3px; color: rgba(255,255,255,.7); }
+.hl-menu { display: flex; gap: 30px; margin-left: 30px; flex: 1; }
+.hl-menu a {
+    color: rgba(255,255,255,.92); text-decoration: none; font-size: 14px;
+    padding: 6px 2px; border-bottom: 2px solid transparent; transition: background-color .2s, border-color .2s, color .2s;
+}
+.hl-menu a:hover { color: #fff; border-bottom-color: #c9a45c; }
+.hl-login { color: #fff; text-decoration: none; font-size: 14px; border: 1px solid rgba(255,255,255,.6); padding: 7px 16px; border-radius: 3px; transition: background-color .2s, border-color .2s, color .2s; }
+.hl-login:hover { background: rgba(255,255,255,.14); }
+
+/* ---------- 全屏山景 Hero ---------- */
+.hl-hero { position: relative; height: 100vh; min-height: 620px; overflow: hidden; }
+.hl-scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.hl-hero-shade {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(16,28,40,.42) 0%, rgba(16,28,40,.05) 45%, rgba(16,28,40,.35) 100%);
+}
+.hl-hero-text { position: absolute; top: 34%; right: 10%; text-align: left; z-index: 5; }
+.hl-hero-text h1 {
+    margin: 0;
+    font-family: "STSongti-SC", "SimSun", "Songti SC", "Noto Serif SC", serif;
+    font-size: 64px;
+    line-height: 1.35;
+    letter-spacing: 10px;
+    color: #ffffff;
+    text-shadow: 0 2px 24px rgba(10, 25, 40, .55);
+    font-weight: 600;
+}
+
+/* ---------- 悬浮搜索条（hero 底部） ---------- */
+.hl-search {
+    position: absolute;
+    left: 50%; bottom: 34px;
+    transform: translateX(-50%);
+    z-index: 20;
+    width: min(1020px, 92%);
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 14px 44px rgba(10, 25, 40, .30);
+    display: flex;
+    align-items: stretch;
+    padding: 14px 18px;
+}
+.hl-search .seg { flex: 1; padding: 2px 22px; border-right: 1px solid #e6e9ed; display: flex; flex-direction: column; justify-content: center; }
+.hl-search .seg:first-child { padding-left: 8px; }
+.hl-search label { font-size: 12px; color: #9aa3ad; margin-bottom: 5px; letter-spacing: 1px; }
+.hl-search select, .hl-search input[type="date"] {
+    border: none; outline: none; font-size: 16px; font-weight: 600;
+    color: var(--color-text-primary, #303133); background: transparent; width: 100%;
+    font-family: inherit;
+}
+.hl-btn {
+    align-self: center;
+    background: #14417b;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 16px 40px;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    cursor: pointer;
+    margin-left: 10px;
+    transition: background .2s;
+}
+.hl-btn:hover { background: #1b5aa8; }
+
+/* ---------- 欢迎区 + 服务图标条 ---------- */
+.hl-welcome {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 44px 20px 10px;
+    display: flex;
+    gap: 40px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+.hl-welcome-left { flex: 1.2; min-width: 300px; }
+.hl-welcome-left h2 { font-size: 24px; margin: 0 0 8px; letter-spacing: 1px; }
+.wl-sub { color: var(--color-text-muted, #909399); font-size: 14px; margin: 0 0 18px; }
+.wl-sub a { color: #14417b; }
+.hl-promo {
+    background: #14417b;
+    color: #fff;
+    border-radius: 6px;
+    padding: 16px 22px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.hl-promo a { color: #ffd88a; font-weight: 600; }
+.hl-icons { flex: 1; min-width: 320px; display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 8px; }
+.hl-icon-item { text-align: center; color: var(--color-text-primary, #303133); width: 110px; }
+.hl-icon-item svg { width: 44px; height: 44px; color: var(--color-text-primary, #303133); display: block; margin: 0 auto 8px; }
+.hl-icon-item span { font-size: 13px; color: var(--color-text-secondary, #606266); }
+
+/* ---------- 精选房型 ---------- */
+.hl-rooms, .hl-bookform { max-width: 1180px; margin: 0 auto; padding: 34px 20px 10px; }
+.hl-sec-title {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 20px; color: var(--color-text-primary, #303133); margin: 0 0 20px; letter-spacing: 1px;
+}
+.hl-sec-title::before { content: ""; width: 4px; height: 20px; background: #14417b; border-radius: 2px; }
+.hl-room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 22px; }
+.hl-room-card {
+    background: #fff; border: 1px solid #e6e9ed; border-radius: 10px;
+    overflow: hidden; transition: transform .18s, box-shadow .18s;
+}
+.hl-room-card:hover { transform: translateY(-4px); box-shadow: 0 12px 30px rgba(10,25,40,.12); }
+.hl-room-photo {
+    height: 150px;
+    background:
+        linear-gradient(180deg, rgba(20,65,123,0) 60%, rgba(20,65,123,.22) 100%),
+        linear-gradient(135deg, #dfe7ee 0%, #c4d3e2 50%, #9fb3c8 100%);
+}
+.hl-room-body { padding: 18px 22px 20px; }
+.hl-room-name { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+.hl-room-price { color: #14417b; font-size: 13px; }
+.hl-room-price span { font-size: 24px; font-weight: 700; }
+.hl-room-count { color: #9aa3ad; font-size: 12px; margin: 4px 0 12px; }
+.hl-pick {
+    background: #fff; color: #14417b; border: 1px solid #14417b;
+    border-radius: 4px; padding: 8px 18px; font-size: 13px; cursor: pointer; transition: background-color .2s, border-color .2s, color .2s;
+}
+.hl-pick:hover { background: #14417b; color: #fff; }
+
+/* ---------- 预订表单 ---------- */
+.hl-success {
+    background: var(--color-success-bg, #f0f9eb); border: 1px solid var(--color-success-border, #e1f3d8); color: var(--color-success-solid, #67c23a);
+    border-radius: 6px; padding: 14px 18px; text-align: center; margin-bottom: 16px;
+}
+.hl-error {
+    background: var(--color-danger-bg, #fef0f0); border: 1px solid var(--color-danger-border, #fde2e2); color: var(--color-danger-solid, #f56c6c);
+    border-radius: 6px; padding: 14px 18px; text-align: center; margin-bottom: 16px;
+}
+.hl-form { background: #f7f8fa; border: 1px solid #e6e9ed; border-radius: 10px; padding: 26px 30px 30px; }
+.hl-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 30px; }
+.hl-form p { margin: 14px 0; }
+.hl-form label { display: inline-block; width: 88px; color: var(--color-text-secondary, #606266); font-size: 14px; }
+.hl-form input, .hl-form select {
+    width: calc(100% - 96px); height: 40px;
+    border: 1px solid #d6dade; border-radius: 4px;
+    padding: 0 12px; font-size: 14px; outline: none;
+    background: #fff; vertical-align: middle;
+}
+.hl-form input:focus, .hl-form select:focus { border-color: #14417b; box-shadow: 0 0 0 2px rgba(20,65,123,.12); }
+.hl-submit-p { text-align: center; }
+.hl-submit {
+    background: #14417b; color: #fff; border: none; border-radius: 6px;
+    padding: 14px 60px; font-size: 16px; font-weight: 600; letter-spacing: 4px;
+    cursor: pointer; transition: background .2s;
+}
+.hl-submit:hover { background: #1b5aa8; }
+.bk-hint { color: #9aa3ad; font-size: 12px; text-align: center; margin-top: 14px !important; }
+
+.bk-foot { text-align: center; color: #9aa3ad; font-size: 12px; padding: 26px 0 30px; }
+
+@media (max-width: 860px) {
+    .hl-menu { display: none; }
+    .hl-hero-text h1 { font-size: 42px; letter-spacing: 6px; }
+    .hl-form-grid { grid-template-columns: 1fr; }
+    .hl-search { flex-direction: column; gap: 12px; }
+    .hl-search .seg { border-right: none; border-bottom: 1px solid #e6e9ed; padding: 8px; }
+    .hl-btn { width: 100%; margin-left: 0; }
+}
+
+
+/* ---------- Hero 轮播 ---------- */
+.hl-slides { position: absolute; inset: 0; }
+.hl-scene {
+    position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+    opacity: 0; transition: opacity .9s ease;
+}
+.hl-scene.active { opacity: 1; }
+.hl-arrow {
+    position: absolute; top: 50%; transform: translateY(-50%); z-index: 15;
+    width: 46px; height: 46px; border-radius: 50%;
+    background: rgba(255,255,255,.16); color: #fff;
+    border: 1px solid rgba(255,255,255,.5);
+    font-size: 26px; line-height: 1; cursor: pointer;
+    transition: background .2s;
+}
+.hl-arrow:hover { background: rgba(255,255,255,.32); }
+.hl-prev { left: 26px; }
+.hl-next { right: 26px; }
+.hl-counter {
+    position: absolute; bottom: 150px; right: 96px; z-index: 15;
+    color: rgba(255,255,255,.9); font-size: 14px; letter-spacing: 2px;
+    background: rgba(20,32,44,.35); border-radius: 14px; padding: 4px 14px;
+}
+
+/* ---------- 服务条滑动 ---------- */
+.hl-icons-wrap { flex: 1; min-width: 320px; display: flex; align-items: center; gap: 8px; }
+.hl-icons-track {
+    flex: 1; overflow-x: auto; scroll-behavior: smooth;
+    display: flex; gap: 6px; scrollbar-width: none; -ms-overflow-style: none;
+    scroll-snap-type: x mandatory;
+}
+.hl-icons-track::-webkit-scrollbar { display: none; }
+.hl-icons-track .hl-icon-item {
+    flex: 0 0 148px; scroll-snap-align: start;
+    background: #f7f8fa; border: 1px solid #eef0f3; border-radius: 8px;
+    padding: 14px 6px 12px;
+}
+.hl-ic-arrow {
+    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+    background: #fff; color: var(--color-text-primary, #303133);
+    border: 1px solid #d6dade; font-size: 20px; line-height: 1;
+    cursor: pointer; transition: background-color .2s, border-color .2s, color .2s;
+}
+.hl-ic-arrow:hover { background: #14417b; color: #fff; border-color: #14417b; }
+.hl-strip-dots { width: 100%; text-align: center; margin-top: 12px; }
+.hl-strip-dots span {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: #d6dade; margin: 0 4px; transition: background .2s;
+}
+.hl-strip-dots span.on { background: #14417b; }
+
+/* ---------- 房型卡片照片位（多彩渐变） ---------- */
+.hl-room-photo.ph1 { background: linear-gradient(135deg, #dfe7ee 0%, #c4d3e2 50%, #9fb3c8 100%); }
+.hl-room-photo.ph2 { background: linear-gradient(135deg, #f2e2cf 0%, #e0c6a6 55%, #c3a379 100%); }
+.hl-room-photo.ph3 { background: linear-gradient(135deg, #d9e8e2 0%, #b8d3c8 55%, #8fb6a6 100%); }
+.hl-room-photo.ph4 { background: linear-gradient(135deg, #f4dede 0%, #e3bcbc 55%, #c69595 100%); }
+.hl-room-photo.ph5 { background: linear-gradient(135deg, #e2dcf0 0%, #c5bae0 55%, #9f92c6 100%); }

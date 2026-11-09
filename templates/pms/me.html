@@ -1,0 +1,66 @@
+{% comment %} PMS 员工个人页（§6.1 拆分自 system.html）：仅本人信息 + 自助改密。
+平台环境信息已迁至平台管理面 /platform/system/（admin_sessionid 会话域），
+员工通过本页无法查看任何平台级配置或他人信息。 {% endcomment %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>个人中心 - 酒店管理系统</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=14">
+    <link rel="stylesheet" href="/static/css/system.css?v=1">
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main">
+    <div class="sys-welcome">
+        <h2>欢迎回来，{{ full_name }}</h2>
+        <div class="sys-badges">
+            <span class="badge-role">{{ role }}</span>
+            <span class="badge-item">账号: {{ user.username }}</span>
+            <span class="badge-item">本人最后登录: {{ login_at }}</span>
+        </div>
+    </div>
+
+    <div class="sys-cols">
+        <div class="dash-card">
+            <h4>我的账号信息</h4>
+            <table class="info-table">
+                <tr><th>账号编号</th><td>{{ admin_no }}</td></tr>
+                <tr><th>姓名</th><td>{{ full_name }}</td></tr>
+                <tr><th>登录账号</th><td>{{ user.username }}</td></tr>
+                <tr><th>岗位角色</th><td>{{ role }}</td></tr>
+                <tr><th>任职物业</th><td>{{ property_label }}</td></tr>
+                <tr><th>工号</th><td>{{ employee_no|default:"-" }}</td></tr>
+                <tr><th>任职状态</th><td>
+                    {% if membership_status == "ACTIVE" %}<span class="badge-ok">在职有效</span>
+                    {% else %}{{ membership_status_label|default:membership_status }}{% endif %}
+                </td></tr>
+                <tr><th>账号状态</th><td>{% if user.is_active %}<span class="badge-ok">启用</span>{% else %}停用{% endif %}</td></tr>
+            </table>
+        </div>
+        <div class="dash-card">
+            <h4>我的会话</h4>
+            <table class="info-table">
+                <tr><th>本人最后登录</th><td>{{ login_at }}</td></tr>
+                <tr><th>会话过期时间</th><td>{{ expire_at }}</td></tr>
+                <tr><th>会话剩余有效期</th><td>{{ remain }}</td></tr>
+            </table>
+        </div>
+        <div class="dash-card">
+            <h4>修改我的密码</h4>
+            {% if password_error %}<p class="me-error">{{ password_error }}</p>{% endif %}
+            <form method="post" action="/system/">
+                {% csrf_token %}
+                <table class="info-table">
+                    <tr><th>新密码</th><td><input type="password" name="new_password1" minlength="6" required class="me-input" autocomplete="new-password"></td></tr>
+                    <tr><th>确认新密码</th><td><input type="password" name="new_password2" minlength="6" required class="me-input" autocomplete="new-password"></td></tr>
+                </table>
+                <p class="me-hint">修改成功后当前会话保持登录，其他已登录会话将失效。</p>
+                <button type="submit" class="me-btn">修改密码</button>
+            </form>
+        </div>
+    </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!-- 会员信息管理：录入（手机号唯一且 11 位，失焦查重）/ 展示 / 查询 / 行内编辑删除 -->
+<!DOCTYPE html>
+{% load pms_filters %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>酒店信息管理系统</title>
+    <link rel="shortcut icon" href="favicon.ico">
+
+<link rel="stylesheet" href="/static/css/site.css?v=14">
+</head>
+<body>
+{% if messages %}
+<div class="toast-box">
+    {% for m in messages %}<div class="toast {{ m.tags }}">{{ m }}</div>{% endfor %}
+</div>
+{% endif %}
+<div class="page">
+{% include "_sidebar.html" %}
+
+    <div class="list-head">
+        <h2>会员信息管理</h2>
+        <div class="toolbar">
+            <button class="tb-btn" onclick="location.reload()">⟳ 刷新数据</button>
+            <a class="tb-btn" href="/export/vip/">⬇ 导出数据</a>
+            {% if perms.hotelapp.add_vip %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加</button>{% endif %}
+        </div>
+    </div>
+<div class="card card-hidden" id="form-card">
+<div class="center-block">
+    <!--<a href="/insert/">-->
+    <div class="logo">
+					<h2>会员信息录入</h2>
+    </div></div>
+
+{% if perms.hotelapp.add_vip %}<form action="/insert_vip/" method="post" class="form-inset">
+    {% csrf_token %}
+    {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
+
+    <p><label>会员编号&nbsp;:&nbsp;&nbsp;</label><input type="text" name="id" value="{{ form.id }}" maxlength="10" pattern="\d{1,10}" title="会员编号必须是1-10位数字，留空则自动分配" placeholder="1-10位数字，留空自动分配" class="input"/></p>
+    <p><label>会员姓名&nbsp;:&nbsp;&nbsp;</label><input type="text" name="name" value="{{ form.name }}" required minlength="2" maxlength="10" pattern="[\u4e00-\u9fa5A-Za-z·]{2,10}" title="姓名必须是2-10位中英文" placeholder="2-10位中英文" class="input"/></p>
+      <p><label>会员等级&nbsp;:&nbsp;&nbsp;</label><select name="rank">
+        <option value="普通会员">普通会员</option>
+        <option value="高级会员">高级会员</option>
+      </select></p>
+    <p><label>联系方式&nbsp;:&nbsp;&nbsp;</label><input type="text" name="tel" value="{{ form.tel }}" data-unique="vip:联系方式" required maxlength="11" pattern="1\d{10}" title="联系方式必须是11位手机号（1开头）" placeholder="11位手机号" class="input"/></p>
+        <input type="submit" value="提交">
+
+<datalist id="rank-list">
+        <option value="普通会员"></option>
+        <option value="高级会员"></option>
+    </datalist>
+</form>{% endif %}
+</div><div class="card list-card">
+    <div class="list-toolbar">
+        <form action="/search_vip/#list" method="post" class="inline-filter">
+            {% csrf_token %}
+            <select name="columns">
+                        <option value="会员编号">会员编号</option>
+                        <option value="姓名">姓名</option>
+                        <option value="会员等级">会员等级</option>
+                                          </select>
+            <input type="text" name="value" placeholder="输入查询内容" class="input input-w200">
+            <button type="submit" class="tb-btn tb-primary">查询</button>
+            {% if searched %}<a href="/show_vip/" class="tb-btn">显示全部</a>{% endif %}
+        </form>
+        {% if searched %}<span class="search-note">查询结果 {{ people_list|length }} 条{% if not people_list %} · 未查询到相关记录，请重新核对信息{% endif %}</span>{% endif %}
+    </div>
+    <table class="data-table">
+    <tr>
+        <th>会员编号</th>
+        <th>姓名</th>
+        <th>会员等级</th>
+        <th>联系方式</th>
+        <th colspan="2">操作</th>
+    </tr>
+    {% for line in people_list %}
+    <tr>
+        <td class="id">{{line.会员编号}}</td>
+        <td>{{line.姓名}}</td>
+        <td>{{line.会员等级}}</td>
+        <td class="pii-cell">{{line.联系方式|mask_tel}}</td>
+        {% if perms.hotelapp.delete_vip %}<td class="td-center"><button class="btn btn-primary delete">删除</button></td>{% endif %}
+        {% if perms.hotelapp.change_vip %}<td class="td-center"><button class="btn btn-primary update">修改</button></td>{% endif %}
+    </tr>
+    {% empty %}
+    <tr><td colspan="6" class="empty-row">未查询到相关记录，请重新核对信息</td></tr>
+    {% endfor %}
+    </table>
+    <div class="page-bar">
+            <span>共 {{ page_obj.paginator.count }} 条记录</span>
+            <span class="page-nums">
+                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">‹</a>{% endif %}
+                <span class="page-cur">{{ page_obj.number }}</span>
+                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">›</a>{% endif %}
+            </span>
+            <span>15 条/页</span>
+        </div>
+</div>
+<script>
+    // 图5 工具栏：添加按钮展开录入表单卡
+    document.addEventListener('click', function (e) {
+        if (e.target.id === 'btn-add') {
+            var fc = document.getElementById('form-card');
+            if (fc) { fc.classList.toggle('card-hidden'); }
+        }
+    });
+</script>
+
+</div>
+</body>
+<script src="/static/js/jquery-2.1.4.min.js"></script>
+<script src="/static/js/app.js?v=2"></script>
+
+<script>
+    $(".delete").click(function () {
+        var id = $(this).closest('tr').find('.id').text();
+        askConfirm('确定删除该条记录吗？删除后不可恢复。', function () {
+        $.post('/delete_vip/', {'id': id, 'csrfmiddlewaretoken': getCookie('csrftoken')}).done(function () { showToast('删除成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { showToast(xhr.responseText || '操作失败', 'error'); });
+        });
+    });
+</script>
+<script>
+    $(".update").click(function () {
+        var ID = $(this).closest('tr').find('.id');
+        if ($(this).text() == "修改") {
+            $(this).text("完成");
+            var rank0 = ID.next().next().text();
+            // 联系方式列表为遮罩值（V2 P1-1）；编辑态经 reveal 接口取完整值（服务端审计）
+            ID.next().next().html('<input type=\"text\" class=\"rank\" maxlength=\"4\" list=\"rank-list\" value=\"' + rank0 + '\"/>');
+            var idCell = ID.text();
+            var telInput = ID.next().next().next();
+            telInput.html('<input type=\"text\" class=\"tel\" maxlength=\"11\" placeholder=\"加载中...\"/>');
+            $.post('/vip/reveal_tel/', {'id': idCell, csrfmiddlewaretoken: getCookie('csrftoken')})
+                .done(function (res) { telInput.children().val(res.tel); })
+                .fail(function (xhr) { showToast(xhr.responseText || '无法读取联系方式完整值', 'error'); });
+        }
+        else{
+            var id = ID.html();
+            var rank = ID.next().next().children().val();
+            var tel = ID.next().next().next().children().val();
+            if (vbad(rank, VPAT.viprank) || vbad(tel, VPAT.tel)) {
+                showToast('会员等级必须是普通会员或高级会员；联系方式为11位手机号', 'error');
+                return;
+            }
+            var vip = {'id':id, 'rank':rank, 'tel': tel};
+            $.post('/update_vip/', vip).done(function () { showToast('修改成功'); setTimeout(function () { location.reload(); }, 600); }).fail(function (xhr) { showToast(xhr.responseText || '操作失败', 'error'); });
+        }
+    });
+</script>
+</html>

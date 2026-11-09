@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{{ title }} - PMS2</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=14">
+    <style>
+        .pms-center{padding:24px;max-width:1500px;margin:0 auto}
+        .pms-center-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px}
+        .pms-center-head h1{margin:0 0 6px;font-size:24px;color:var(--color-text-primary,#243247)}
+        .pms-center-sub{color:var(--color-text-muted,#778397);margin:0}
+        .pms-panel{background:var(--color-bg-surface,#fff);border:1px solid var(--color-border-separator,#e7ebf1);border-radius:var(--radius-lg,12px);padding:18px;margin-bottom:18px}
+        .pms-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+        .pms-tools input,.pms-tools select{min-width:160px;padding:10px 12px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:var(--radius-md,8px)}
+        .pms-tools button{padding:10px 16px;border:0;border-radius:var(--radius-md,8px);background:var(--color-accent-solid,#263a55);color:#fff;cursor:pointer}
+        .pms-tools button:disabled{opacity:.5;cursor:not-allowed}
+        .pms-tools .na-primary{background:var(--color-danger-solid,#c0392b,#b34a4a)}
+        .pms-meta{margin-left:auto;color:var(--color-text-muted,#778397);font-size:13px}
+        .pms-table-wrap{overflow:auto}
+        .pms-table{width:100%;border-collapse:collapse;white-space:nowrap}
+        .pms-table th,.pms-table td{padding:12px 14px;border-bottom:1px solid var(--color-border-separator,#edf0f4);text-align:left;font-size:13px}
+        .pms-table th{background:var(--color-bg-subtle,#f7f9fc);color:var(--color-text-secondary,#637188);font-weight:600}
+        .pms-table tbody tr:hover{background:var(--color-bg-subtle,#f7f9fc)}
+        .pms-state{padding:24px;text-align:center;color:var(--color-text-muted,#8290a3)}
+        .pms-pager{display:flex;justify-content:space-between;align-items:center;padding-top:14px;color:var(--color-text-muted,#778397);font-size:13px}
+        .pms-row-btn{padding:6px 12px;border:1px solid var(--color-accent-solid,#2b74c9);background:transparent;color:var(--color-accent-solid,#2b74c9);border-radius:var(--radius-md,6px);cursor:pointer;font-size:12px}
+        .pms-row-btn:hover{background:var(--color-accent-bg,#ecf5ff)}
+        .pms-row-btn:focus-visible{outline:2px solid var(--color-accent-solid,#2b74c9);outline-offset:2px}
+        .pms-row-btn.na-danger{border-color:var(--color-danger-text,#b34a4a);color:var(--color-danger-text,#b34a4a)}
+        .pms-row-btn.na-danger:hover{background:var(--color-danger-bg,#fef0f0)}
+        /* 汇总卡（§4.2 过租/未到/异常汇总） */
+        .na-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+        .na-card{background:var(--color-bg-surface,#fff);border:1px solid var(--color-border-separator,#e7ebf1);border-radius:var(--radius-lg,12px);padding:14px 16px}
+        .na-card dt{margin:0 0 6px;color:var(--color-text-secondary,#637188);font-size:12px}
+        .na-card dd{margin:0;font-size:20px;color:var(--color-text-primary,#243247);font-variant-numeric:tabular-nums}
+        .na-card .na-unit{font-size:12px;color:var(--color-text-muted,#909399);margin-left:4px}
+        /* 状态徽标（沿用 site.css 语义色令牌） */
+        .na-badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;line-height:1.6}
+        .na-badge.b-open{background:var(--color-warning-bg,#fdf6ec);color:var(--color-warning-text,#b8860b)}
+        .na-badge.b-closed{background:var(--color-success-bg,#f0f9eb);color:var(--color-success-text,#3d7a1e)}
+        .na-badge.b-info{background:var(--color-accent-bg,#ecf5ff);color:var(--color-accent-text,#1f6fd0)}
+        .na-badge.b-danger{background:var(--color-danger-bg,#fef0f0);color:var(--color-danger-text,#b34a4a)}
+        .na-badge.b-muted{background:var(--color-bg-subtle,#f5f7fa);color:var(--color-text-muted,#909399)}
+        /* 详情抽屉 */
+        .pms-drawer-mask{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:60;opacity:0;pointer-events:none;transition:opacity .2s}
+        .pms-drawer-mask.is-open{opacity:1;pointer-events:auto}
+        .pms-drawer{position:fixed;top:0;right:0;width:640px;max-width:94vw;height:100vh;background:var(--color-bg-surface,#fff);z-index:61;box-shadow:var(--shadow-pop,0 4px 16px rgba(0,0,0,.14));transform:translateX(105%);transition:transform .25s ease-out;display:flex;flex-direction:column}
+        .pms-drawer.is-open{transform:translateX(0)}
+        .pms-drawer-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--color-border-separator,#e7ebf1)}
+        .pms-drawer-head h2{margin:0;font-size:16px;color:var(--color-text-primary,#243247)}
+        .pms-drawer-close{border:1px solid var(--color-border-default,#dcdfe6);background:transparent;color:var(--color-text-secondary,#606266);border-radius:var(--radius-md,6px);padding:6px 14px;cursor:pointer;font-size:13px}
+        .pms-drawer-close:hover{background:var(--color-bg-subtle,#f5f7fa)}
+        .pms-drawer-body{flex:1;overflow:auto;padding:16px 20px}
+        .pms-drawer-state{padding:32px 0;text-align:center;color:var(--color-text-muted,#8290a3);font-size:13px}
+        .pms-drawer-err{padding:12px 14px;background:var(--color-danger-bg,#fef0f0);border:1px solid var(--color-danger-border,#fde2e2);color:var(--color-danger-text,#b34a4a);border-radius:var(--radius-md,6px);font-size:13px;margin-top:10px}
+        .pms-drawer-ok{padding:12px 14px;background:var(--color-success-bg,#f0f9eb);border:1px solid var(--color-success-border,#e1f3d8);color:var(--color-success-text,#3d7a1e);border-radius:var(--radius-md,6px);font-size:13px;margin-top:10px}
+        .pms-kv{width:100%;border-collapse:collapse;margin-bottom:20px}
+        .pms-kv th{width:118px;text-align:left;padding:8px 10px;color:var(--color-text-secondary,#637188);font-weight:600;font-size:13px;background:var(--color-bg-subtle,#f7f9fc);border-bottom:1px solid var(--color-border-separator,#edf0f4);vertical-align:top}
+        .pms-kv td{padding:8px 10px;font-size:13px;border-bottom:1px solid var(--color-border-separator,#edf0f4);color:var(--color-text-primary,#243247);font-variant-numeric:tabular-nums;word-break:break-all}
+        .pms-drawer-body h3{margin:20px 0 8px;font-size:14px;color:var(--color-text-primary,#243247)}
+        .pms-mini{width:100%;border-collapse:collapse}
+        .pms-mini th,.pms-mini td{padding:7px 10px;border-bottom:1px solid var(--color-border-separator,#edf0f4);font-size:12px;text-align:left;font-variant-numeric:tabular-nums}
+        .pms-mini th{background:var(--color-bg-subtle,#f7f9fc);color:var(--color-text-secondary,#637188);font-weight:600}
+        .na-fail{color:var(--color-danger-text,#b34a4a);white-space:normal;word-break:break-all;max-width:420px;display:inline-block}
+        /* 操作表单（夜审执行/重开申请/break-glass，提交到 NightAuditService API） */
+        .na-form{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;padding:12px;background:var(--color-bg-inset,#f8f9fb);border:1px solid var(--color-border-separator,#e7ebf1);border-radius:var(--radius-md,8px)}
+        .na-form label{font-size:12px;color:var(--color-text-secondary,#637188);display:block;margin-bottom:4px}
+        .na-form input,.na-form select{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:var(--radius-md,6px);font-size:13px}
+        .na-form .na-form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;align-items:center}
+        .na-form button{padding:8px 18px;border:0;border-radius:var(--radius-md,6px);background:var(--color-accent-solid,#2b74c9);color:#fff;cursor:pointer;font-size:13px}
+        .na-form button[type=button]{background:transparent;color:var(--color-text-secondary,#606266);border:1px solid var(--color-border-default,#dcdfe6)}
+        .na-form .na-span2{grid-column:1/-1}
+        @media(max-width:720px){.pms-center{padding:14px}.pms-panel{padding:10px}.pms-tools input{min-width:0;width:100%}}
+        @media (prefers-reduced-motion: reduce){
+            .pms-drawer-mask,.pms-drawer{transition:none}
+        }
+    </style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main">
+  <div class="pms-center">
+    <div class="pms-center-head">
+      <div>
+        <h1>{{ title }}</h1>
+        <p class="pms-center-sub">{{ property_name }} · {{ subtitle }}</p>
+      </div>
+      <a href="/checkin/">返回前台接待</a>
+    </div>
+
+    {# ── 汇总卡：当前营业日 + 夜审预览（过租/未到）+ 异常房态 ── #}
+    <section class="pms-panel" aria-label="当前营业日与夜审汇总">
+      <div class="pms-tools">
+        <strong>当前营业日</strong>
+        <span id="na-current-badge" class="na-badge b-muted">读取中…</span>
+        <span class="pms-meta" id="na-current-meta"></span>
+      </div>
+      <dl class="na-cards">
+        <div class="na-card"><dt>营业日期（物业时区）</dt><dd id="na-current-date">—</dd></div>
+        <div class="na-card"><dt>在住 &lt;Stay&gt;</dt><dd id="na-stay-count">—</dd></div>
+        <div class="na-card"><dt>待过账房费</dt><dd id="na-charge-count">—</dd></div>
+        <div class="na-card"><dt>待过账合计</dt><dd id="na-charge-total">—</dd></div>
+        <div class="na-card"><dt>未到处理候选</dt><dd id="na-noshow">—</dd><span class="na-unit">只列示，需按政策人工处理</span></div>
+        <div class="na-card"><dt>维修停用/停售房</dt><dd id="na-abnormal-rooms">—</dd></div>
+      </dl>
+      <div class="pms-drawer-err" id="na-summary-error" hidden></div>
+    </section>
+
+    {# ── 夜审执行：预览 → 确认 → 执行（两步） ── #}
+    <section class="pms-panel" aria-label="夜审执行">
+      <div class="pms-tools">
+        <strong>夜审执行（预览 → 确认执行两步）</strong>
+        {% if can_run_night_audit %}
+        <button id="na-preview-btn" type="button">① 生成夜审预览</button>
+        <button id="na-run-btn" type="button" class="na-primary" disabled>② 执行夜审并关账</button>
+        {% endif %}
+        <span class="pms-meta" id="na-preview-meta">执行后写入当日房费过租凭证并关闭营业日。</span>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr>
+            <th>预订编号</th><th>房间</th><th>币种</th><th>待过账金额</th><th>是否已过账</th><th>幂等引用</th>
+          </tr></thead>
+          <tbody id="na-preview-body"><tr><td class="pms-state" colspan="6">尚未生成预览；夜审前请先处理未结账与异常房态。</td></tr></tbody>
+        </table>
+      </div>
+      <div id="na-run-result"></div>
+    </section>
+
+    {# ── 营业日历（状态筛选 + 分页） ── #}
+    <section class="pms-panel" aria-label="营业日历">
+      <div class="pms-tools">
+        <strong>营业日历</strong>
+        <select id="na-bd-status" aria-label="营业日状态筛选">
+          <option value="">全部状态</option>
+          <option value="OPEN">营业中</option>
+          <option value="CLOSED">已关账</option>
+          <option value="REOPENED">已重开</option>
+        </select>
+        <button id="na-bd-reload" type="button">查询</button>
+        <span class="pms-meta" id="na-bd-meta">正在读取营业日…</span>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr>
+            <th>营业日期</th><th>状态</th><th>最近夜审</th><th>开启时间</th><th>关账时间</th><th>重开原因</th><th>操作</th>
+          </tr></thead>
+          <tbody id="na-bd-body"><tr><td class="pms-state" colspan="7">正在读取真实业务数据…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pms-pager">
+        <span>点击「详情」查看运行历史 / 重开审批 / 过租与异常房态汇总。</span>
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label for="na-bd-page-size">每页</label>
+          <select id="na-bd-page-size" aria-label="营业日每页条数"><option value="10" selected>10 条</option><option value="20">20 条</option><option value="50">50 条</option></select>
+          <button id="na-bd-prev" type="button" disabled>上一页</button>
+          <span id="na-bd-page"></span>
+          <label for="na-bd-goto">跳至</label><input id="na-bd-goto" type="number" min="1" value="1" style="width:72px" aria-label="营业日跳转页码">
+          <button id="na-bd-goto-btn" type="button">跳转</button>
+          <button id="na-bd-next" type="button" disabled>下一页</button>
+        </span>
+      </div>
+    </section>
+
+    {# ── 重开申请（双人审批的第一步） ── #}
+    {% if can_reopen_business_date %}
+    <section class="pms-panel" aria-label="营业日重开申请">
+      <div class="pms-tools"><strong>营业日重开申请</strong>
+        <span class="pms-meta">仅已关账营业日；须另一名审批人批准后生效（申请人≠审批人）。</span>
+      </div>
+      <form class="na-form" id="na-reopen-form">
+        <div><label for="na-reopen-bd">目标营业日（已关账）</label>
+          <select id="na-reopen-bd" required><option value="">载入中…</option></select></div>
+        <div><label for="na-reopen-reason">重开原因（1-240 字符）</label>
+          <input id="na-reopen-reason" maxlength="240" placeholder="例如：夜审后发现漏记房费需要补记凭证" required></div>
+        <div class="na-form-actions"><button type="submit">提交重开申请</button></div>
+      </form>
+      <div id="na-reopen-result"></div>
+    </section>
+    {% endif %}
+
+    {# ── 夜审历史（运行状态 + 失败告警） ── #}
+    <section class="pms-panel" aria-label="夜审历史">
+      <div class="pms-tools">
+        <strong>夜审历史</strong>
+        <select id="na-run-status" aria-label="夜审运行状态筛选">
+          <option value="">全部状态</option>
+          <option value="RUNNING">执行中</option>
+          <option value="SUCCESS">成功</option>
+          <option value="FAILED">失败</option>
+        </select>
+        <button id="na-run-reload" type="button">查询</button>
+        <span class="pms-meta" id="na-runs-meta">正在读取夜审历史…</span>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr>
+            <th>运行 ID</th><th>营业日期</th><th>状态</th><th>开始时间</th><th>耗时(秒)</th><th>执行人</th><th>失败原因</th><th>操作</th>
+          </tr></thead>
+          <tbody id="na-runs-body"><tr><td class="pms-state" colspan="8">正在读取…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pms-pager">
+        <span>失败告警：FAILED 行以红色标注失败原因；重跑前请先解决阻挡项。</span>
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label for="na-runs-page-size">每页</label>
+          <select id="na-runs-page-size" aria-label="夜审历史每页条数"><option value="10" selected>10 条</option><option value="20">20 条</option><option value="50">50 条</option></select>
+          <button id="na-runs-prev" type="button" disabled>上一页</button>
+          <span id="na-runs-page"></span>
+          <label for="na-runs-goto">跳至</label><input id="na-runs-goto" type="number" min="1" value="1" style="width:72px" aria-label="夜审历史跳转页码">
+          <button id="na-runs-goto-btn" type="button">跳转</button>
+          <button id="na-runs-next" type="button" disabled>下一页</button>
+        </span>
+      </div>
+    </section>
+
+    {# ── break-glass 记录（列表 + 状态筛选 + 复核入口） ── #}
+    <section class="pms-panel" aria-label="紧急重开记录">
+      <div class="pms-tools">
+        <strong>紧急重开（break-glass）记录</strong>
+        <select id="na-bg-status" aria-label="紧急授权状态筛选">
+          <option value="">全部状态</option>
+          <option value="GRANTED">已授权待执行</option>
+          <option value="USED">已执行待复核</option>
+          <option value="EXPIRED">已过期</option>
+          <option value="REVIEWED">已完成复核</option>
+        </select>
+        <button id="na-bg-reload" type="button">查询</button>
+        <span class="pms-meta" id="na-bg-meta">正在读取…</span>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr>
+            <th>记录 ID</th><th>营业日期</th><th>状态</th><th>申请人</th><th>申请时间</th><th>失效时间</th><th>复核结论</th><th>操作</th>
+          </tr></thead>
+          <tbody id="na-bg-body"><tr><td class="pms-state" colspan="8">正在读取…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pms-pager">
+        <span> USED（已执行待复核）行须由另一名授权经理完成事后复核。</span>
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label for="na-bg-page-size">每页</label>
+          <select id="na-bg-page-size" aria-label="紧急授权每页条数"><option value="10" selected>10 条</option><option value="20">20 条</option><option value="50">50 条</option></select>
+          <button id="na-bg-prev" type="button" disabled>上一页</button>
+          <span id="na-bg-page"></span>
+          <label for="na-bg-goto">跳至</label><input id="na-bg-goto" type="number" min="1" value="1" style="width:72px" aria-label="紧急授权跳转页码">
+          <button id="na-bg-goto-btn" type="button">跳转</button>
+          <button id="na-bg-next" type="button" disabled>下一页</button>
+        </span>
+      </div>
+      {% if can_reopen_business_date %}
+      <form class="na-form" id="na-bg-form">
+        <div><label for="na-bg-bd">目标营业日（已关账）</label>
+          <select id="na-bg-bd" required><option value="">载入中…</option></select></div>
+        <div><label for="na-bg-password">登录密码（二次验证）</label>
+          <input id="na-bg-password" type="password" autocomplete="current-password" required></div>
+        <div class="na-span2"><label for="na-bg-reason">紧急原因（8-240 字符；仅单一有效经理账号可申请）</label>
+          <input id="na-bg-reason" maxlength="240" placeholder="例如：唯一值班经理确认系统日切错误需立即修正" required></div>
+        <div class="na-form-actions"><button type="submit">申请十分钟紧急授权</button></div>
+      </form>
+      <div id="na-bg-result"></div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<div class="pms-drawer-mask" id="na-drawer-mask"></div>
+<aside class="pms-drawer" id="na-drawer" role="dialog" aria-modal="true" aria-labelledby="na-drawer-title">
+  <div class="pms-drawer-head">
+    <h2 id="na-drawer-title">营业日详情</h2>
+    <button type="button" class="pms-drawer-close" id="na-drawer-close">关闭</button>
+  </div>
+  <div class="pms-drawer-body" id="na-drawer-body"></div>
+</aside>
+
+<form id="pms-csrf-token" hidden>{% csrf_token %}</form>
+<script>
+(function () {
+  "use strict";
+  const csrfInput = document.querySelector('#pms-csrf-token input[name="csrfmiddlewaretoken"]');
+  const CSRF = csrfInput ? csrfInput.value : "";
+  const canReopen = {{ can_reopen_business_date|yesno:"true,false" }};
+  const canReview = {{ can_review_break_glass|yesno:"true,false" }};
+
+  const BD_BADGES = {OPEN: "b-open", CLOSED: "b-closed", REOPENED: "b-info"};
+  const RUN_BADGES = {RUNNING: "b-info", SUCCESS: "b-closed", FAILED: "b-danger"};
+  const BG_BADGES = {GRANTED: "b-open", USED: "b-info", EXPIRED: "b-muted", REVIEWED: "b-closed"};
+
+  function el(tag, cls, text) {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined && text !== null) {
+      if (text instanceof Node) node.appendChild(text);
+      else node.textContent = String(text);
+    }
+    return node;
+  }
+  function value(v) {
+    if (v === null || v === undefined || v === "") return "—";
+    if (typeof v === "boolean") return v ? "是" : "否";
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  }
+  function badge(map, status, label) {
+    return el("span", "na-badge " + (map[status] || "b-muted"),
+              label || status || "—");
+  }
+  async function api(url, options) {
+    options = options || {};
+    const response = await fetch(url, Object.assign({
+      credentials: "same-origin", headers: Object.assign(
+          {"Accept": "application/json"}, options.headers || {}),
+    }, options));
+    let payload = null;
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.toLowerCase().includes("json")) {
+      try { payload = await response.json(); } catch (parseError) { payload = null; }
+    }
+    if (!payload) {
+      throw new Error("服务器返回非 JSON 响应（HTTP " + response.status + "），请检查登录状态、CSRF 令牌和服务端日志。");
+    }
+    if (!response.ok) {
+      throw new Error(payload && payload.error && payload.error.message
+          || ("请求失败（HTTP " + response.status + "）"));
+    }
+    return payload;
+  }
+  async function postJson(url, payload) {
+    return api(url, {method: "POST",
+      headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF},
+      body: JSON.stringify(payload)});
+  }
+  function alertBox(target, cls, message) {
+    target.replaceChildren();
+    target.hidden = false;
+    target.className = cls;
+    target.textContent = message;
+  }
+
+  /* ---------- 汇总卡：当前营业日 + 夜审预览 ---------- */
+  let previewReady = false;
+  async function loadSummary() {
+    const errBox = document.getElementById("na-summary-error");
+    errBox.hidden = true;
+    try {
+      const current = (await api("/api/v1/night-audit/business-dates/current")).data;
+      const badgeNode = document.getElementById("na-current-badge");
+      badgeNode.className = "na-badge " + (BD_BADGES[current.status] || "b-muted");
+      badgeNode.textContent = current.status_label;
+      document.getElementById("na-current-date").textContent = current.business_date;
+      document.getElementById("na-current-meta").textContent =
+          (current.exists ? "营业日记录 #" + current.id : "当日尚未建立营业日记录（按 OPEN 口径）");
+      await loadPreview(current.business_date);
+    } catch (error) {
+      alertBox(errBox, "pms-drawer-err", error.message);
+    }
+  }
+  async function loadPreview(day) {
+    const meta = document.getElementById("na-preview-meta");
+    const body = document.getElementById("na-preview-body");
+    const runBtn = document.getElementById("na-run-btn");
+    body.replaceChildren();
+    body.appendChild(el("tr", "", el("td", "pms-state", "正在生成夜审预览…")));
+    try {
+      const data = (await api("/api/v1/night-audit/preview?date=" + encodeURIComponent(day))).data;
+      document.getElementById("na-stay-count").textContent = data.stay_count;
+      document.getElementById("na-charge-count").textContent = data.charge_count;
+      document.getElementById("na-charge-total").textContent =
+          data.charge_total + " " + data.currency;
+      document.getElementById("na-noshow").textContent = data.no_show_review_candidates;
+      body.replaceChildren();
+      if (!data.stays.length) {
+        body.appendChild(el("tr", "", el("td", "pms-state", "当日无在住房费行。")));
+      }
+      data.stays.forEach(function (row) {
+        const tr = el("tr");
+        tr.appendChild(el("td", "", row.booking_no));
+        tr.appendChild(el("td", "", row.room_number));
+        tr.appendChild(el("td", "", row.currency));
+        tr.appendChild(el("td", "", row.amount));
+        tr.appendChild(el("td", "", row.already_posted ? "是" : "否"));
+        tr.appendChild(el("td", "", row.reference));
+        body.appendChild(tr);
+      });
+      const rawBlockers = Array.isArray(data.blockers) ? data.blockers : [];
+      const seenBlockers = {};
+      const blockers = rawBlockers.filter(function (item) {
+        const key = (item.code || "") + "|" + ((item.entity && item.entity.id) || "") + "|" + (item.message || "");
+        if (seenBlockers[key]) return false;
+        seenBlockers[key] = true;
+        return true;
+      });
+      blockers.forEach(function (item) {
+        const tr = el("tr", "na-fail");
+        const td = el("td", "pms-state");
+        td.colSpan = 6;
+        td.textContent = "[" + (item.severity || "warning") + "] " +
+            (item.message || item.code || "存在未解决阻断") +
+            (item.suggested_action ? " 处理建议：" + item.suggested_action : "");
+        tr.appendChild(td);
+        body.appendChild(tr);
+      });
+      meta.textContent = blockers.length
+          ? "预览完成但存在 " + blockers.length + " 项阻断，夜审不可执行。"
+          : "预览完成：在住 " + data.stay_count + " · 待过账 "
+              + data.charge_count + " 笔合计 " + data.charge_total + " " + data.currency;
+      previewReady = blockers.length === 0 && data.can_run !== false;
+      runBtn.disabled = !previewReady;
+      runBtn.dataset.date = data.business_date;
+      runBtn.dataset.total = data.charge_total + " " + data.currency;
+      runBtn.dataset.count = data.charge_count;
+    } catch (error) {
+      body.replaceChildren();
+      body.appendChild(el("tr", "", el("td", "pms-state na-fail", error.message)));
+      meta.textContent = "夜审预览被阻挡：请先处理上方错误。";
+      previewReady = false;
+      runBtn.disabled = true;
+    }
+  }
+
+  /* ---------- 夜审执行（两步确认） ---------- */
+  const runBtn = document.getElementById("na-run-btn");
+  runBtn.addEventListener("click", async function () {
+    if (!previewReady) return;
+    const day = runBtn.dataset.date;
+    const confirmed = window.confirm(
+        "确认执行 " + day + " 夜审？\n\n将写入 " + runBtn.dataset.count
+        + " 笔房费过租凭证（合计 " + runBtn.dataset.total
+        + "）并关闭该营业日。执行后新入住将被拒绝，重开须走双人审批。");
+    if (!confirmed) return;
+    runBtn.disabled = true;
+    try {
+      const payload = await postJson("/api/v1/night-audit/run", {"date": day});
+      const data = payload.data;
+      alertBox(document.getElementById("na-run-result"), "pms-drawer-ok",
+          "夜审" + (data.created ? "执行成功" : "幂等重放（该营业日已夜审）")
+          + "：run_id=" + data.run_id + "，状态=" + data.status);
+      await Promise.all([loadSummary(), loadBusinessDates(bdPage, true, true), loadRuns(runsPage, runsStatus, true, true)]);
+    } catch (error) {
+      alertBox(document.getElementById("na-run-result"), "pms-drawer-err", error.message);
+      runBtn.disabled = false;
+    }
+  });
+  document.getElementById("na-preview-btn").addEventListener("click", function () {
+    const day = document.getElementById("na-current-date").textContent;
+    if (day && day !== "—") loadPreview(day);
+  });
+
+  /* ---------- 营业日历 ---------- */
+  let bdPage = 1, bdPageSize = 10, bdTotalPages = 1, bdStatus = "";
+  let lastBdQuery = null;
+  async function loadBusinessDates(page, keepStatus, forceLoad) {
+    var target = keepStatus ? bdPage : Math.max(1, page || 1);
+    var probe = new URLSearchParams({page: String(target), page_size: String(bdPageSize)});
+    if (bdStatus) probe.set("status", bdStatus);
+    var query = probe.toString();
+    if (!forceLoad && lastBdQuery !== null && query === lastBdQuery) return;
+    lastBdQuery = query;
+    if (!keepStatus) bdPage = target;
+    const meta = document.getElementById("na-bd-meta");
+    const body = document.getElementById("na-bd-body");
+    meta.textContent = "读取中…";
+    try {
+      const payload = await api("/api/v1/night-audit/business-dates?" + query);
+      const pageInfo = payload.meta.pagination;
+      body.replaceChildren();
+      if (!payload.data.length) {
+        body.appendChild(el("tr", "", el("td", "pms-state", "当前物业暂无匹配营业日")));
+      }
+      payload.data.forEach(function (bd) {
+        const tr = el("tr");
+        tr.appendChild(el("td", "", bd.business_date));
+        const statusTd = el("td");
+        statusTd.appendChild(badge(BD_BADGES, bd.status, bd.status_label));
+        tr.appendChild(statusTd);
+        tr.appendChild(el("td", "", bd.latest_run ? bd.latest_run.status_label : "—"));
+        tr.appendChild(el("td", "", bd.opened_at ? bd.opened_at.replace("T", " ") : "—"));
+        tr.appendChild(el("td", "", bd.closed_at ? bd.closed_at.replace("T", " ") : "—"));
+        tr.appendChild(el("td", "", bd.reopen_reason || "—"));
+        const actionTd = el("td");
+        const btn = el("button", "pms-row-btn", "详情");
+        btn.type = "button";
+        btn.addEventListener("click", function () { openBdDetail(bd.id); });
+        actionTd.appendChild(btn);
+        tr.appendChild(actionTd);
+        body.appendChild(tr);
+      });
+      bdTotalPages = Math.max(1, Math.ceil(pageInfo.total / pageInfo.page_size));
+      document.getElementById("na-bd-page").textContent =
+          "第 " + pageInfo.page + " 页 / 共 " + bdTotalPages + " 页";
+      document.getElementById("na-bd-goto").max = String(bdTotalPages);
+      document.getElementById("na-bd-goto").value = String(pageInfo.page);
+      document.getElementById("na-bd-prev").disabled = !pageInfo.has_previous;
+      document.getElementById("na-bd-next").disabled = !pageInfo.has_next;
+      meta.textContent = "共 " + pageInfo.total + " 个营业日";
+    } catch (error) {
+      body.replaceChildren();
+      body.appendChild(el("tr", "", el("td", "pms-state na-fail", error.message)));
+      meta.textContent = "读取失败";
+    }
+  }
+  document.getElementById("na-bd-status").addEventListener("change", function (e) {
+    bdStatus = e.target.value; loadBusinessDates(1);
+  });
+  document.getElementById("na-bd-reload").addEventListener("click", function () { loadBusinessDates(1); });
+  document.getElementById("na-bd-prev").addEventListener("click", function () { loadBusinessDates(bdPage - 1); });
+  document.getElementById("na-bd-next").addEventListener("click", function () { loadBusinessDates(bdPage + 1); });
+  document.getElementById("na-bd-page-size").addEventListener("change", function () {
+    const n = Number.parseInt(this.value, 10); if ([10,20,50].includes(n)) { bdPageSize = n; loadBusinessDates(1); }
+  });
+  function gotoBusinessDatePage() {
+    const input = document.getElementById("na-bd-goto"), n = Number.parseInt(input.value, 10);
+    if (!Number.isInteger(n) || n < 1 || n > bdTotalPages) { input.setCustomValidity("请输入 1 至 " + bdTotalPages + " 之间的页码。"); input.reportValidity(); return; }
+    input.setCustomValidity(""); loadBusinessDates(n);
+  }
+  document.getElementById("na-bd-goto-btn").addEventListener("click", gotoBusinessDatePage);
+  document.getElementById("na-bd-goto").addEventListener("keydown", function(e){if(e.key==="Enter")gotoBusinessDatePage();});
+
+  /* ---------- 重开申请 + 紧急授权：已关账营业日下拉 ---------- */
+  async function fillClosedBusinessDates() {
+    if (!canReopen) return;
+    try {
+      const allDates = [];
+      let page = 1;
+      let hasNext = true;
+      const maxRows = 5000;
+      while (hasNext) {
+        const payload = await api("/api/v1/night-audit/business-dates?status=CLOSED&page=" +
+            page + "&page_size=100");
+        if (!payload.meta || !payload.meta.pagination || !Array.isArray(payload.data)) {
+          throw new Error("营业日列表分页响应不完整。");
+        }
+        allDates.push.apply(allDates, payload.data);
+        hasNext = Boolean(payload.meta.pagination.has_next);
+        if (allDates.length > maxRows) {
+          throw new Error("已关账营业日超过 5000 条，请联系管理员按日期范围查询。");
+        }
+        page += 1;
+      }
+      for (const selectId of ["na-reopen-bd", "na-bg-bd"]) {
+        const select = document.getElementById(selectId);
+        if (!select) continue;
+        const previousValue = select.value;
+        select.replaceChildren();
+        if (!allDates.length) {
+          select.appendChild(el("option", "", "（暂无已关账营业日）"));
+          select.value = "";
+          continue;
+        }
+        allDates.forEach(function (bd) {
+          const option = el("option", "", bd.business_date + "（#" + bd.id + "）");
+          option.value = bd.id;
+          select.appendChild(option);
+        });
+        if (allDates.some(function (bd) { return String(bd.id) === previousValue; })) {
+          select.value = previousValue;
+        }
+      }
+    } catch (error) {
+      for (const selectId of ["na-reopen-bd", "na-bg-bd"]) {
+        const select = document.getElementById(selectId);
+        if (!select) continue;
+        select.replaceChildren(el("option", "", "加载失败：" + error.message));
+        select.value = "";
+      }
+    }
+  }
+  const reopenForm = document.getElementById("na-reopen-form");
+  if (reopenForm) {
+    reopenForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      const bdId = document.getElementById("na-reopen-bd").value;
+      const reason = document.getElementById("na-reopen-reason").value.trim();
+      const target = document.getElementById("na-reopen-result");
+      if (!bdId) { alertBox(target, "pms-drawer-err", "请选择已关账营业日。"); return; }
+      try {
+        const payload = await postJson(
+            "/api/v1/night-audit/business-dates/" + bdId + "/reopen-request",
+            {"reason": reason});
+        alertBox(target, "pms-drawer-ok",
+            "重开申请已提交（审批 #" + payload.data.approval_id + "，状态 "
+            + payload.data.status + "）；请由另一名审批人处理。");
+        await loadBusinessDates(bdPage, true, true);
+      } catch (error) { alertBox(target, "pms-drawer-err", error.message); }
+    });
+  }
+
+  /* ---------- 夜审历史 ---------- */
+  let runsPage = 1, runsPageSize = 10, runsTotalPages = 1, runsStatus = "";
+  let lastRunsQuery = null;
+  async function loadRuns(page, status, keepPage, forceLoad) {
+    if (status !== undefined) runsStatus = status;
+    var target = keepPage ? runsPage : Math.max(1, page || 1);
+    var probe = new URLSearchParams({page: String(runsPage), page_size: String(runsPageSize)});
+    if (runsStatus) probe.set("status", runsStatus);
+    var query = probe.toString();
+    if (!forceLoad && lastRunsQuery !== null && query === lastRunsQuery) return;
+    lastRunsQuery = query;
+    if (!keepPage) runsPage = target;
+    const meta = document.getElementById("na-runs-meta");
+    const body = document.getElementById("na-runs-body");
+    meta.textContent = "读取中…";
+    try {
+      const payload = await api("/api/v1/night-audit/runs?" + query);
+      const pageInfo = payload.meta.pagination;
+      body.replaceChildren();
+      if (!payload.data.length) {
+        body.appendChild(el("tr", "", el("td", "pms-state", "当前物业暂无夜审运行记录")));
+      }
+      payload.data.forEach(function (run) {
+        const tr = el("tr");
+        tr.appendChild(el("td", "", run.id));
+        tr.appendChild(el("td", "", run.business_date));
+        const statusTd = el("td");
+        statusTd.appendChild(badge(RUN_BADGES, run.status, run.status_label));
+        tr.appendChild(statusTd);
+        tr.appendChild(el("td", "", run.started_at ? run.started_at.replace("T", " ") : "—"));
+        tr.appendChild(el("td", "", run.duration_seconds === null ? "—" : run.duration_seconds));
+        tr.appendChild(el("td", "", run.executed_by_id === null ? "系统" : run.executed_by_id));
+        const failTd = el("td");
+        if (run.status === "FAILED" && run.error_message) {
+          failTd.appendChild(el("span", "na-fail", run.error_message));
+        } else { failTd.textContent = "—"; }
+        tr.appendChild(failTd);
+        const actionTd = el("td");
+        const btn = el("button", "pms-row-btn", "详情");
+        btn.type = "button";
+        btn.addEventListener("click", function () { openRunDetail(run.id); });
+        actionTd.appendChild(btn);
+        tr.appendChild(actionTd);
+        body.appendChild(tr);
+      });
+      runsTotalPages = Math.max(1, Math.ceil(pageInfo.total / pageInfo.page_size));
+      document.getElementById("na-runs-page").textContent =
+          "第 " + pageInfo.page + " 页 / 共 " + runsTotalPages + " 页";
+      document.getElementById("na-runs-goto").max = String(runsTotalPages);
+      document.getElementById("na-runs-goto").value = String(pageInfo.page);
+      document.getElementById("na-runs-prev").disabled = !pageInfo.has_previous;
+      document.getElementById("na-runs-next").disabled = !pageInfo.has_next;
+      meta.textContent = "共 " + pageInfo.total + " 次运行";
+    } catch (error) {
+      body.replaceChildren();
+      body.appendChild(el("tr", "", el("td", "pms-state na-fail", error.message)));
+      meta.textContent = "读取失败";
+    }
+  }
+  document.getElementById("na-run-status").addEventListener("change", function (e) {
+    loadRuns(1, e.target.value);
+  });
+  document.getElementById("na-run-reload").addEventListener("click", function () { loadRuns(1, runsStatus); });
+  document.getElementById("na-runs-prev").addEventListener("click", function () { loadRuns(runsPage - 1, undefined, true); });
+  document.getElementById("na-runs-next").addEventListener("click", function () { loadRuns(runsPage + 1, undefined, true); });
+  document.getElementById("na-runs-page-size").addEventListener("change", function () {
+    const n = Number.parseInt(this.value, 10); if ([10,20,50].includes(n)) { runsPageSize = n; loadRuns(1); }
+  });
+  function gotoRunsPage() {
+    const input = document.getElementById("na-runs-goto"), n = Number.parseInt(input.value, 10);
+    if (!Number.isInteger(n) || n < 1 || n > runsTotalPages) { input.setCustomValidity("请输入 1 至 " + runsTotalPages + " 之间的页码。"); input.reportValidity(); return; }
+    input.setCustomValidity(""); loadRuns(n);
+  }
+  document.getElementById("na-runs-goto-btn").addEventListener("click", gotoRunsPage);
+  document.getElementById("na-runs-goto").addEventListener("keydown", function(e){if(e.key==="Enter")gotoRunsPage();});
+
+  /* ---------- break-glass 记录 ---------- */
+  let bgPage = 1, bgPageSize = 10, bgTotalPages = 1, bgStatus = "";
+  async function loadBreakGlass(page, status, keepPage) {
+    if (status !== undefined) bgStatus = status;
+    if (!keepPage) bgPage = Math.max(1, page || 1);
+    const meta = document.getElementById("na-bg-meta");
+    const body = document.getElementById("na-bg-body");
+    const params = new URLSearchParams({page: String(bgPage), page_size: String(bgPageSize)});
+    if (bgStatus) params.set("status", bgStatus);
+    meta.textContent = "读取中…";
+    try {
+      const payload = await api("/api/v1/night-audit/break-glass?" + params.toString());
+      const pageInfo = payload.meta.pagination;
+      body.replaceChildren();
+      if (!payload.data.length) {
+        body.appendChild(el("tr", "", el("td", "pms-state", "当前物业暂无紧急重开记录")));
+      }
+      payload.data.forEach(function (record) {
+        const tr = el("tr");
+        tr.appendChild(el("td", "", record.id));
+        tr.appendChild(el("td", "", record.business_date));
+        const statusTd = el("td");
+        statusTd.appendChild(badge(BG_BADGES, record.status, record.status_label));
+        tr.appendChild(statusTd);
+        tr.appendChild(el("td", "", record.requested_by_id));
+        tr.appendChild(el("td", "", record.created_at ? record.created_at.replace("T", " ") : "—"));
+        tr.appendChild(el("td", "", record.expires_at ? record.expires_at.replace("T", " ") : "—"));
+        tr.appendChild(el("td", "", record.review_decision
+            ? record.review_decision_label + "（复核人 " + (record.reviewed_by_id || "—") + "）" : "—"));
+        const actionTd = el("td");
+        if (canReview && record.review_pending) {
+          const btn = el("button", "pms-row-btn na-danger", "事后复核");
+          btn.type = "button";
+          btn.addEventListener("click", function () { openBreakGlassReview(record); });
+          actionTd.appendChild(btn);
+        } else {
+          actionTd.textContent = "—";
+        }
+        tr.appendChild(actionTd);
+        body.appendChild(tr);
+      });
+      bgTotalPages = Math.max(1, Math.ceil(pageInfo.total / pageInfo.page_size));
+      document.getElementById("na-bg-page").textContent =
+          "第 " + pageInfo.page + " 页 / 共 " + bgTotalPages + " 页";
+      document.getElementById("na-bg-goto").max = String(bgTotalPages);
+      document.getElementById("na-bg-goto").value = String(pageInfo.page);
+      document.getElementById("na-bg-prev").disabled = !pageInfo.has_previous;
+      document.getElementById("na-bg-next").disabled = !pageInfo.has_next;
+      meta.textContent = "共 " + pageInfo.total + " 条记录";
+    } catch (error) {
+      body.replaceChildren();
+      body.appendChild(el("tr", "", el("td", "pms-state na-fail", error.message)));
+      meta.textContent = "读取失败";
+    }
+  }
+  document.getElementById("na-bg-status").addEventListener("change", function (e) {
+    loadBreakGlass(1, e.target.value);
+  });
+  document.getElementById("na-bg-reload").addEventListener("click", function () { loadBreakGlass(1, bgStatus); });
+  document.getElementById("na-bg-prev").addEventListener("click", function () { loadBreakGlass(bgPage - 1, undefined, true); });
+  document.getElementById("na-bg-next").addEventListener("click", function () { loadBreakGlass(bgPage + 1, undefined, true); });
+  document.getElementById("na-bg-page-size").addEventListener("change", function () {
+    const n = Number.parseInt(this.value, 10); if ([10,20,50].includes(n)) { bgPageSize = n; loadBreakGlass(1); }
+  });
+  function gotoBreakGlassPage() {
+    const input = document.getElementById("na-bg-goto"), n = Number.parseInt(input.value, 10);
+    if (!Number.isInteger(n) || n < 1 || n > bgTotalPages) { input.setCustomValidity("请输入 1 至 " + bgTotalPages + " 之间的页码。"); input.reportValidity(); return; }
+    input.setCustomValidity(""); loadBreakGlass(n);
+  }
+  document.getElementById("na-bg-goto-btn").addEventListener("click", gotoBreakGlassPage);
+  document.getElementById("na-bg-goto").addEventListener("keydown", function(e){if(e.key==="Enter")gotoBreakGlassPage();});
+
+  const bgForm = document.getElementById("na-bg-form");
+  if (bgForm) {
+    bgForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      const bdId = document.getElementById("na-bg-bd").value;
+      const password = document.getElementById("na-bg-password").value;
+      const reason = document.getElementById("na-bg-reason").value.trim();
+      const target = document.getElementById("na-bg-result");
+      if (!bdId) { alertBox(target, "pms-drawer-err", "请选择已关账营业日。"); return; }
+      try {
+        const payload = await postJson(
+            "/api/v1/night-audit/business-dates/" + bdId + "/break-glass",
+            {"password": password, "reason": reason});
+        alertBox(target, "pms-drawer-ok", payload.data.message);
+        bgForm.reset();
+        await loadBreakGlass(1, bgStatus);
+      } catch (error) { alertBox(target, "pms-drawer-err", error.message); }
+    });
+  }
+
+  function breakGlassReviewForm(record) {
+    const form = document.createElement("form");
+    form.className = "na-form";
+    form.innerHTML =
+        '<div class="na-span2"><label>复核说明（8-240 字符）</label>' +
+        '<input name="reason" maxlength="240" required></div>' +
+        '<div><label>复核结论</label><select name="decision">' +
+        '<option value="CONFIRMED">复核确认</option>' +
+        '<option value="REJECTED">复核有异议</option></select></div>' +
+        '<div class="na-form-actions"><button type="submit">提交复核结论</button></div>';
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      try {
+        const payload = await postJson(
+            "/api/v1/night-audit/break-glass/" + record.id + "/review", {
+              "decision": form.elements.decision.value,
+              "reason": form.elements.reason.value.trim(),
+            });
+        alertBox(form, "pms-drawer-ok", "复核结论已记录：" + payload.data.review_decision);
+        await loadBreakGlass(bgPage, undefined, true);
+      } catch (error) { alertBox(form, "pms-drawer-err", error.message); }
+    });
+    return form;
+  }
+  function openBreakGlassReview(record) {
+    const drawer = document.getElementById("na-drawer");
+    const body = document.getElementById("na-drawer-body");
+    document.getElementById("na-drawer-title").textContent =
+        "紧急重开事后复核 #" + record.id;
+    body.replaceChildren();
+    const kv = document.createElement("table");
+    kv.className = "pms-kv";
+    [["营业日期", record.business_date], ["申请人", record.requested_by_id],
+     ["紧急原因", record.reason], ["申请时间", record.created_at],
+     ["执行时间", record.used_at], ["授权失效", record.expires_at]]
+        .forEach(function (pair) {
+          const tr = el("tr");
+          tr.appendChild(el("th", "", pair[0]));
+          tr.appendChild(el("td", "", value(pair[1])));
+          kv.appendChild(tr);
+        });
+    body.appendChild(kv);
+    body.appendChild(el("h3", "", "独立复核要求：复核账号必须不同于紧急操作账号。"));
+    body.appendChild(breakGlassReviewForm(record));
+    drawer.classList.add("is-open");
+    document.getElementById("na-drawer-mask").classList.add("is-open");
+  }
+
+  /* ---------- 详情抽屉：营业日 / 夜审运行 ---------- */
+  function closeDrawer() {
+    document.getElementById("na-drawer").classList.remove("is-open");
+    document.getElementById("na-drawer-mask").classList.remove("is-open");
+  }
+  document.getElementById("na-drawer-mask").addEventListener("click", closeDrawer);
+  document.getElementById("na-drawer-close").addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeDrawer(); });
+
+  function kvTable(pairs) {
+    const table = el("table", "pms-kv");
+    pairs.forEach(function (pair) {
+      if (pair[1] === null || pair[1] === undefined || pair[1] === "") return;
+      const tr = el("tr");
+      tr.appendChild(el("th", "", pair[0]));
+      tr.appendChild(el("td", "", value(pair[1])));
+      table.appendChild(tr);
+    });
+    return table;
+  }
+  function miniTable(titleText, columns, rows) {
+    const wrap = el("div", "pms-table-wrap");
+    const table = el("table", "pms-mini");
+    const head = el("tr");
+    columns.forEach(function (col) { head.appendChild(el("th", "", col[1])); });
+    const thead = el("thead"); thead.appendChild(head); table.appendChild(thead);
+    const tbody = el("tbody");
+    if (!rows.length) {
+      const tr = el("tr");
+      const td = el("td", "pms-state", "无记录");
+      td.colSpan = columns.length;
+      tr.appendChild(td); tbody.appendChild(tr);
+    }
+    rows.forEach(function (row) {
+      const tr = el("tr");
+      columns.forEach(function (col) { tr.appendChild(el("td", "", value(row[col[0]]))); });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody); wrap.appendChild(table);
+    const section = el("div");
+    section.appendChild(el("h3", "", titleText));
+    section.appendChild(wrap);
+    return section;
+  }
+  async function openBdDetail(id) {
+    const drawer = document.getElementById("na-drawer");
+    const body = document.getElementById("na-drawer-body");
+    document.getElementById("na-drawer-title").textContent = "营业日详情 #" + id;
+    body.replaceChildren();
+    body.appendChild(el("div", "pms-drawer-state", "读取中…"));
+    drawer.classList.add("is-open");
+    document.getElementById("na-drawer-mask").classList.add("is-open");
+    try {
+      const data = (await api("/api/v1/night-audit/business-dates/" + id)).data;
+      body.replaceChildren();
+      body.appendChild(kvTable([
+        ["营业日期", data.business_date], ["状态", data.status_label],
+        ["开启时间", data.opened_at], ["关账时间", data.closed_at],
+        ["关账人", data.closed_by_id], ["重开时间", data.reopened_at],
+        ["重开人", data.reopened_by_id], ["重开原因", data.reopen_reason],
+        ["未到处理候选", data.no_show_review_candidates],
+      ]));
+      const summary = data.latest_success_summary;
+      if (summary) {
+        body.appendChild(kvTable([
+          ["过租凭证", summary.charge_count + " 笔（已过账 " + summary.already_posted_count + "）"],
+          ["过租合计", summary.charge_total + " " + summary.currency],
+          ["在住数", summary.stay_count],
+          ["未到候选", summary.no_show_review_candidates],
+        ]));
+      }
+      const currencies = data.ledger && data.ledger.currencies || {};
+      const currencyRows = Object.keys(currencies).map(function (code) {
+        return Object.assign({currency: code}, currencies[code]);
+      });
+      body.appendChild(miniTable("该营业日已入账凭证（过租核对）", [
+        ["currency", "币种"], ["entry_count", "凭证数"],
+        ["charge_total", "借方合计"], ["credit_total", "贷方合计"]], currencyRows));
+      const roomSummary = data.room_status_summary || {};
+      body.appendChild(kvTable([
+        ["房间总数", roomSummary.total_rooms],
+        ["在住/空闲", value(roomSummary.occupancy)],
+        ["清洁状态", value(roomSummary.housekeeping)],
+        ["维修状态", value(roomSummary.maintenance)],
+      ]));
+      body.appendChild(miniTable("异常房态（维修停用/停售）", [
+        ["maintenance_status", "状态"], ["room_count", "房间数"]],
+        roomSummary.abnormal || []));
+      body.appendChild(miniTable("夜审运行历史", [
+        ["id", "运行"], ["status_label", "状态"],
+        ["started_at", "开始"], ["duration_seconds", "耗时(秒)"],
+        ["error_message", "失败原因"]], data.runs || []));
+      body.appendChild(miniTable("重开审批记录", [
+        ["id", "审批"], ["status", "状态"], ["requested_by_id", "申请人"],
+        ["approved_by_id", "审批人"], ["reason", "原因"]], data.approvals || []));
+    } catch (error) {
+      body.replaceChildren();
+      body.appendChild(el("div", "pms-drawer-err", error.message));
+    }
+  }
+  async function openRunDetail(id) {
+    const drawer = document.getElementById("na-drawer");
+    const body = document.getElementById("na-drawer-body");
+    document.getElementById("na-drawer-title").textContent = "夜审运行详情 #" + id;
+    body.replaceChildren();
+    body.appendChild(el("div", "pms-drawer-state", "读取中…"));
+    drawer.classList.add("is-open");
+    document.getElementById("na-drawer-mask").classList.add("is-open");
+    try {
+      const data = (await api("/api/v1/night-audit/runs/" + id)).data;
+      body.replaceChildren();
+      body.appendChild(kvTable([
+        ["营业日期", data.business_date], ["运行状态", data.status_label],
+        ["开始时间", data.started_at], ["完成时间", data.finished_at],
+        ["耗时(秒)", data.duration_seconds], ["执行人", data.executed_by_id],
+        ["失败原因", data.error_message || "—"],
+      ]));
+      const summary = data.summary;
+      if (summary) {
+        body.appendChild(el("h3", "", "执行摘要"));
+        body.appendChild(kvTable([
+          ["在住数", summary.stay_count],
+          ["过租凭证", summary.charge_count],
+          ["已过账", summary.already_posted_count],
+          ["过租合计", summary.charge_total + " " + summary.currency],
+          ["未到候选", summary.no_show_review_candidates],
+        ]));
+      }
+    } catch (error) {
+      body.replaceChildren();
+      body.appendChild(el("div", "pms-drawer-err", error.message));
+    }
+  }
+
+  /* ---------- 初始化 ---------- */
+  loadSummary();
+  loadBusinessDates(1);
+  fillClosedBusinessDates();
+  loadRuns(1);
+  loadBreakGlass(1);
+})();
+</script>
+</body>
+</html>

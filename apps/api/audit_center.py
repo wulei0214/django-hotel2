@@ -1,0 +1,423 @@
+# -*- coding: utf-8 -*-
+"""审计与合规中心 API（基线 2.0 §4.4）。
+
+只读端点，全部以 ``core.audit_view`` 为唯一读取门禁（P0-04 定版；
+migration core.0010 已授予店长/值班经理）。与既有
+apps/api/reservation_center.py::audit_timeline 并存，共享同一门禁与
+物业过滤口径（QuerySet 强制当前物业），不改既有端点。
+
+PII 防泄露口径：
+  * 列表端点绝不回传 before_json/after_json——审计事件可能包含揭示类
+    记录，列表只给摘要（action/entity/actor/时间/reason）；
+  * 变更载荷（before/after）只在详情端点对同一 audit_view 持有者展示；
+  * 明文 PII 不落审计是写入侧纪律（guest_center / guests.services 的
+    揭示事件只存 masked 值），本模块不做二次改写，由回归测试锁定
+    "证件明文/手机明文/Session Key 不出现在任何响应"。
+
+留存（§4.4 权限与留存）：
+  * AuditEvent 模型层只追加（save/delete 防护），生产库由
+    apps/core/sql/audit_immutability.sql 触发器兜底（P0-06）；
+  * 保留期限为待法务/业务负责人确认项——响应 meta 统一携带
+    RETENTION_NOTE 常量说明，不虚构年限；归档/备份策略见该 SQL 附注。
+"""
+from datetime import timedelta
+
+from django.db.models import Count, Q
+from django.utils import timezone
+from zoneinfo import ZoneInfo
+
+from django.views.decorators.http import require_GET
+
+from apps.core.api_contract import ApiError, api_view, api_response, paginate
+from apps.core.models import AuditEvent
+from apps.identity.authorization import AuthorizationService
+from .report_center import _parse_day, _property_tz_bounds  # 时间口径唯一权威（§6）
+
+# ---------------------------------------------------------------------------
+# 常量
+# ---------------------------------------------------------------------------
+
+# §4.4：保留期限待业务/法务确认，不虚构年限；随每个响应 meta 下发。
+RETENTION_NOTE = (
+    "审计事件为只追加存储：模型层禁改禁删，生产库另有数据库触发器兜底"
+    "（apps/core/sql/audit_immutability.sql）；保留期限为待法务/业务负责人"
+    "确认项，当前不设定固定年限，归档与备份恢复策略见该 SQL 文件附注。"
+)
+
+# SPECIAL_PERMISSIONS（apps/identity/registry.py，14 个高危/敏感专项权限点）
+# 在本仓库已落 AuditEvent 的对应动作清单，供 summary 敏感动作单独计数与
+# 列表/字典敏感标记。映射关系（权限点 → 审计动作）：
+#   guest_document_reveal / guest_phone_reveal → guest.pii_reveal(.document/.phone)、
+#     guest.document_reveal、guest.phone_reveal（揭示审计只存脱敏值）
+#   refund_request / refund_approve → billing.refund_request、billing.refund_completed
+#   红字冲销（reverse_entry 语义，PMS2 action_code=billing.reverse_entry）→ 同名
+#   no_show_handle → frontdesk.no_show_processed
+#   night_audit_execute → night_audit.run
+#   business_date_reopen / breakglass_review → night_audit.reopen、night_audit.break_glass_*
+#   export_pii / export_approve → privacy.export_staff
+#   manage_rates → inventory.daily_rate_adjust
+#   staff_manage → permissions.matrix_saved、identity.role_assign/role_end/
+#     password_reset/account_provision
+SENSITIVE_ACTIONS = frozenset({
+    "guest.pii_reveal", "guest.pii_reveal.document", "guest.pii_reveal.phone",
+    "guest.document_reveal", "guest.phone_reveal",
+    "billing.refund_request", "billing.refund_completed", "billing.reverse_entry",
+    "frontdesk.no_show_processed",
+    "night_audit.run", "night_audit.reopen",
+    "night_audit.break_glass_requested", "night_audit.break_glass_executed",
+    "night_audit.break_glass_reviewed", "night_audit.break_glass_expired",
+    "privacy.export_staff",
+    "inventory.daily_rate_adjust",
+    "permissions.matrix_saved",
+    "identity.role_assign", "identity.role_end",
+    "identity.password_reset", "identity.account_provision",
+})
+
+# summary Top 操作者条数（§4.4 高危事件视图的运营口径，固定小窗口）
+TOP_ACTORS_LIMIT = 5
+
+# 面向中文一线运营人员的审计展示字典；原始代码字段仍保留用于检索与追溯。
+ACTION_LABELS = {
+    # ── 公开面 / 安全 ──
+    "public.reservation_created": "顾客创建预订",
+    "public.reservation_blocked": "拦截可疑预订",
+    "public.reservation_expired": "预订超时释放库存",
+    "public.rate_limited": "触发接口限流",
+    "public.invitation_activate": "员工邀请激活",
+    "security.permission_denied": "权限校验拒绝操作",
+    "security.platform_denied": "平台越权访问拒绝",
+    "security.property_context_denied": "跨物业访问拒绝",
+    "auth.login_success": "登录成功",
+    "auth.login_failure": "登录失败",
+    # ── 财务 ──
+    "billing.payment_collected": "登记收款",
+    "billing.collect": "登记收款",
+    "billing.deposit_collect": "登记押金",
+    "billing.ledger_post": "记入账务凭证",
+    "billing.refund_request": "提交退款申请",
+    "billing.refund_approved": "退款审批通过",
+    "billing.refund_completed": "退款完成",
+    "billing.refund_executed": "退款执行完成",
+    "billing.refund_rejected": "退款已驳回",
+    "billing.refund_expired": "退款审批过期",
+    "billing.reverse_entry": "账务冲销",
+    "billing.shift_open": "收银班次开班",
+    "billing.shift_close": "收银班次关班",
+    "billing.shift_cash_movement": "班次现金调拨",
+    "billing.approval_view": "查看审批记录",
+    # ── 前台履约 ──
+    "frontdesk.reservation_created": "创建预订",
+    "frontdesk.reservation_cancelled": "取消预订",
+    "frontdesk.check_in": "办理入住",
+    "frontdesk.checked_in": "办理入住",
+    "frontdesk.checked_out": "办理退房",
+    "frontdesk.check_out": "办理退房",
+    "frontdesk.stay_extended": "办理续住",
+    "frontdesk.stay_room_changed": "办理换房",
+    "frontdesk.room_changed": "办理换房",
+    "frontdesk.no_show_processed": "登记未到",
+    "frontdesk.room_assigned": "分配房间",
+    "frontdesk.booking_access_viewed": "查询订单（令牌）",
+    "frontdesk.booking_access_denied": "订单查询被拒",
+    # ── 客人 / PII ──
+    "guest.create": "创建客人档案",
+    "guest.update": "更新客人档案",
+    "guest.document_register": "登记客人证件",
+    "guest.document_reveal": "查看客人证件信息",
+    "guest.phone_add": "登记客人电话",
+    "guest.phone_reveal": "查看客人完整手机号",
+    "guest.pii_reveal": "查看客人敏感信息",
+    "guest.pii_reveal.document": "查看客人证件信息",
+    "guest.pii_reveal.phone": "查看客人完整手机号",
+    "guest.booking_access_viewed": "客人查询订单",
+    "guest.booking_access_denied": "客人查询被拒",
+    "guest.booking_cancelled": "客人取消订单",
+    # ── 员工 / 身份 ──
+    "identity.employee_create": "建立员工档案",
+    "identity.employment_status": "变更员工状态",
+    "identity.role_assign": "授予员工角色",
+    "identity.role_end": "结束员工角色授权",
+    "identity.password_reset": "重置员工密码",
+    "identity.password_changed": "员工自助改密",
+    "identity.account_provision": "开通员工账号",
+    "identity.invitation_created": "创建员工邀请",
+    "identity.invitation_resent": "重发员工邀请",
+    "identity.invitation_revoked": "撤销员工邀请",
+    "identity.invitation_accepted": "员工接受邀请",
+    "identity.legacy_direct_groups_cleared": "清理历史直接授权",
+    "identity.orphan_account_disabled": "停用孤儿账号",
+    "identity.test_direct_groups_cleared": "测试清理直接授权",
+    "identity.test_role_assignment_closed": "测试结束岗位授权",
+    "staff.profile_update": "更新员工档案字段",
+    "staff.salary_initial_set": "设定初始薪酬",
+    "identity.audit_view": "查看审计时间线",
+    # ── 房态 / 库存 / 夜审 ──
+    "housekeeping.status_changed": "清洁状态流转",
+    "room.maintenance_changed": "维修状态登记",
+    "inventory.daily_rate_adjust": "调整每日房价",
+    "night_audit.run": "执行夜审",
+    "night_audit.reopen": "重新开启营业日",
+    "night_audit.break_glass_requested": "申请紧急重开",
+    "night_audit.break_glass_executed": "执行紧急重开",
+    "night_audit.break_glass_reviewed": "复核紧急重开",
+    "night_audit.break_glass_expired": "紧急重开授权过期",
+    # ── 权限 / 审批 / 导出 / 通知 ──
+    "permissions.matrix_saved": "保存角色权限矩阵",
+    "approval.request": "提交审批申请",
+    "approval.approve": "审批通过",
+    "approval.reject": "审批驳回",
+    "approval.expire": "审批过期",
+    "privacy.export_staff": "导出员工敏感数据",
+    "export.module_csv": "导出模块 CSV",
+    "legacy.export": "历史数据导出",
+    "notification.refresh": "刷新待办清单",
+}
+
+
+ENTITY_TYPE_LABELS = {
+    "Guest": "客人档案", "GuestDocument": "客人证件",
+    "GuestPhone": "客人联系方式", "Reservation": "预订订单",
+    "ReservationRoom": "预订房间明细",
+    "Stay": "入住记录",
+    "StayRoomSegment": "房间住宿段", "Folio": "账单",
+    "LedgerEntry": "账务凭证", "Payment": "收款记录",
+    "CashierShift": "收银班次",
+    "Refund": "退款记录", "Room": "客房",
+    "RoomType": "房型", "DailyRate": "每日房价",
+    "RoomTypeInventory": "房型库存", "Property": "物业",
+    "StaffProfile": "员工档案",
+    "PropertyStaffMembership": "员工物业任职",
+    "StaffRoleAssignment": "员工岗位授权",
+    "BusinessDate": "营业日", "NightAuditRun": "夜审运行记录",
+    "BreakGlassRecord": "紧急重开记录", "HousekeepingTask": "清洁任务",
+    "MaintenanceTicket": "维修工单", "RoomInspection": "客房检查记录",
+    "AuditEvent": "审计事件", "ApprovalRecord": "审批记录",
+    "Notification": "通知待办",
+}
+
+
+def _action_label(action):
+    return ACTION_LABELS.get(action, "其他操作（%s）" % action)
+
+
+def _entity_type_label(entity_type):
+    return ENTITY_TYPE_LABELS.get(entity_type, "其他实体（%s）" % entity_type)
+
+
+def _context(request):
+    """统一门禁：登录 → DEFAULT 物业上下文 → core.audit_view（唯一读取门禁）。"""
+    user = request.user
+    if not user.is_authenticated or not user.is_active:
+        raise ApiError("AUTHENTICATION_REQUIRED", "请先登录员工账号。")
+    property_obj = getattr(request, "property", None)
+    if property_obj is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
+    if not AuthorizationService.has_permission(user, property_obj, "core.audit_view"):
+        raise ApiError("PERMISSION_DENIED", "缺少审计查看权限。")
+    return property_obj
+
+
+def _actor_label(actor):
+    """展示员工姓名和登录账号；系统操作统一显示系统。"""
+    if actor is None:
+        return "系统"
+    profile = getattr(actor, "staff_profile", None)
+    full_name = getattr(profile, "full_name", "") if profile else ""
+    return "%s（%s）" % (full_name, actor.username) if full_name else actor.username
+
+
+def _sensitive_flag(action):
+    return action in SENSITIVE_ACTIONS
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/audit/events —— 分页检索（列表只给摘要，不含 before/after）
+# ---------------------------------------------------------------------------
+@require_GET
+@api_view
+def audit_events(request):
+    """审计事件分页列表（§4.4 审计检索）。
+
+    筛选：action（精确，供字典下拉）/entity_type/entity_id/actor（用户名）/
+    date_from + date_to（created_at 自然日闭区间）。排序沿用模型稳定排序
+    -created_at,-id（P0-03 ensure_stable_ordering 校验通过）。
+    """
+    property_obj = _context(request)
+    qs = AuditEvent.objects.filter(property=property_obj).select_related("actor", "actor__staff_profile")
+
+    action = (request.GET.get("action") or "").strip()
+    if action:
+        qs = qs.filter(action=action)
+    entity_type = (request.GET.get("entity_type") or "").strip()
+    if entity_type:
+        qs = qs.filter(entity_type=entity_type)
+    entity_id = (request.GET.get("entity_id") or "").strip()
+    if entity_id:
+        qs = qs.filter(entity_id=entity_id)
+    actor = (request.GET.get("actor") or "").strip()
+    if actor:
+        qs = qs.filter(actor__username=actor)
+
+    raw_from, raw_to = request.GET.get("date_from"), request.GET.get("date_to")
+    if raw_from and raw_to and _parse_day(raw_from, "date_from") > _parse_day(
+            raw_to, "date_to"):
+        raise ApiError("VALIDATION_ERROR", "date_from 不能晚于 date_to。")
+    # P0 验收缺陷修复：日期边界按物业时区换算（跨日时段不再漏数据）
+    if raw_from or raw_to:
+        _today = timezone.localdate(timezone.now(), ZoneInfo(
+            getattr(property_obj, "timezone", None) or "Asia/Shanghai"))
+        _tz_start, _tz_end = _property_tz_bounds(
+            property_obj,
+            _parse_day(raw_from, "date_from") if raw_from else _today,
+            _parse_day(raw_to, "date_to") if raw_to else _today)
+        if raw_from:
+            qs = qs.filter(created_at__gte=_tz_start)
+        if raw_to:
+            qs = qs.filter(created_at__lte=_tz_end)
+
+    items, pagination = paginate(qs, request)
+    # 列表摘要：action/entity/actor/时间/reason + 敏感标记；
+    # before/after 一律不下发（§4.4 PII 最小化，详情端点才展示）。
+    data = [{
+        "id": event.pk,
+        "action": event.action,
+        "action_label": _action_label(event.action),
+        "entity_type": event.entity_type,
+        "entity_type_label": _entity_type_label(event.entity_type),
+        "entity_id": event.entity_id,
+        "actor": event.actor.username if event.actor else None,
+        "actor_label": _actor_label(event.actor),
+        "reason": event.reason or None,
+        "is_sensitive": _sensitive_flag(event.action),
+        "created_at": event.created_at.isoformat(),
+    } for event in items]
+    return api_response(request, data, pagination=pagination,
+                        extra_meta={"retention_note": RETENTION_NOTE})
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/audit/events/<id> —— 单事件详情（before/after 完整展示）
+# ---------------------------------------------------------------------------
+@require_GET
+@api_view
+def audit_event_detail(request, event_id):
+    """审计事件详情：before/after JSON、原因、请求链路、IP/UA 全量字段。
+
+    访问者即 audit_view 持有者（同一门禁）；跨物业事件一律 404，
+    与列表物业过滤同口径。明文 PII 不泄露依赖写入侧脱敏纪律
+    （揭示类事件只存 masked），回归测试锁定。
+    """
+    property_obj = _context(request)
+    event = (AuditEvent.objects.filter(pk=event_id)
+             .select_related("actor", "actor__staff_profile", "property").first())
+    if event is None or event.property_id != property_obj.pk:
+        raise ApiError("RESOURCE_NOT_FOUND", "审计事件不存在。")
+    data = {
+        "id": event.pk,
+        "action": event.action,
+        "action_label": _action_label(event.action),
+        "entity_type": event.entity_type,
+        "entity_type_label": _entity_type_label(event.entity_type),
+        "entity_id": event.entity_id,
+        "actor": event.actor.username if event.actor else None,
+        "actor_label": _actor_label(event.actor),
+        "reason": event.reason or None,
+        "before": event.before_json,
+        "after": event.after_json,
+        "request_id": event.request_id or None,
+        "ip": event.ip,
+        "user_agent": event.user_agent or None,
+        "is_sensitive": _sensitive_flag(event.action),
+        "created_at": event.created_at.isoformat(),
+        "property": {"code": event.property.code, "name": event.property.name}
+        if event.property else None,
+    }
+    return api_response(request, data,
+                        extra_meta={"retention_note": RETENTION_NOTE})
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/audit/summary —— 审计统计（近 7 天/30 天、Top 操作者、敏感动作）
+# ---------------------------------------------------------------------------
+@require_GET
+@api_view
+def audit_summary(request):
+    """审计统计：按 action 分组近 7 天/30 天计数、Top 操作者、敏感动作单独计数。
+
+    单查询双窗口：30 天窗口内用条件聚合 Count(filter=created_at>=now-7d)
+    拆出 7 天计数；敏感动作为 SENSITIVE_ACTIONS（SPECIAL_PERMISSIONS 相关
+    动作）子集统计。
+    """
+    property_obj = _context(request)
+    now = timezone.now()
+    start_7d = now - timedelta(days=7)
+    start_30d = now - timedelta(days=30)
+    recent_7d = Q(created_at__gte=start_7d)
+
+    base = AuditEvent.objects.filter(
+        property=property_obj, created_at__gte=start_30d)
+    by_action = [{
+        "action": row["action"],
+        "count_7d": row["recent"],
+        "count_30d": row["total"],
+    } for row in base.values("action").annotate(
+        total=Count("id"), recent=Count("id", filter=recent_7d),
+    ).order_by("-total", "action")]
+    top_actors = [{
+        # actor 为空（系统操作）统一标 system（同 audit_timeline 口径）
+        "actor": row["actor__username"] or "系统",
+        "count_7d": row["recent"],
+        "count_30d": row["total"],
+    } for row in base.values("actor__username").annotate(
+        total=Count("id"), recent=Count("id", filter=recent_7d),
+    ).order_by("-total", "actor__username")[:TOP_ACTORS_LIMIT]]
+
+    sensitive_rows = base.filter(action__in=SENSITIVE_ACTIONS)
+    sensitive = {
+        "count_7d": sensitive_rows.filter(recent_7d).count(),
+        "count_30d": sensitive_rows.count(),
+        "by_action": [{
+            "action": row["action"],
+            "count_7d": row["recent"],
+            "count_30d": row["total"],
+        } for row in sensitive_rows.values("action").annotate(
+            total=Count("id"), recent=Count("id", filter=recent_7d),
+        ).order_by("-total", "action")],
+    }
+    data = {
+        "window": {
+            "now": now.isoformat(),
+            "start_7d": start_7d.isoformat(),
+            "start_30d": start_30d.isoformat(),
+        },
+        "total_7d": base.filter(recent_7d).count(),
+        "total_30d": base.count(),
+        "by_action": by_action,
+        "top_actors": top_actors,
+        "sensitive": sensitive,
+        "sensitive_actions_catalog": sorted(SENSITIVE_ACTIONS),
+        "property": {"code": property_obj.code, "name": property_obj.name},
+    }
+    return api_response(request, data,
+                        extra_meta={"retention_note": RETENTION_NOTE})
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/audit/actions —— action 字典（去重清单 + 计数，供筛选下拉）
+# ---------------------------------------------------------------------------
+@require_GET
+@api_view
+def audit_actions(request):
+    """当前物业出现过的 action 去重清单 + 事件计数（供筛选下拉）。"""
+    property_obj = _context(request)
+    rows = (AuditEvent.objects.filter(property=property_obj)
+            .values("action").annotate(total=Count("id"))
+            .order_by("-total", "action"))
+    data = [{
+        "action": row["action"],
+        "action_label": _action_label(row["action"]),
+        "count": row["total"],
+        "is_sensitive": _sensitive_flag(row["action"]),
+    } for row in rows]
+    return api_response(request, data,
+                        extra_meta={"retention_note": RETENTION_NOTE})

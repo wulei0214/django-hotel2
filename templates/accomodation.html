@@ -1,0 +1,124 @@
+<!-- 客房订单管理：录入（日期选择器，顾客/客房编号须存在）/ 展示 / 按顾客查入住 / 删除 -->
+<!DOCTYPE html>
+{% load pms_filters %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>酒店管理系统</title>
+    <link rel="shortcut icon" href="favicon.ico">
+
+<link rel="stylesheet" href="/static/css/site.css?v=14">
+</head>
+<body>
+{% if messages %}
+<div class="toast-box">
+    {% for m in messages %}<div class="toast {{ m.tags }}">{{ m }}</div>{% endfor %}
+</div>
+{% endif %}
+<div class="page">
+{% include "_sidebar.html" %}
+
+    <div class="list-head">
+        <h2>客房订单管理</h2>
+        <div class="toolbar">
+            <button class="tb-btn" onclick="location.reload()">⟳ 刷新数据</button>
+            <a class="tb-btn" href="/export/accommodation/">⬇ 导出数据</a>
+            {% if pms_perms.hotelapp.add_accommodation %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加</button>{% endif %}
+        </div>
+    </div>
+<div class="card card-hidden" id="form-card">
+<div class="center-block">
+
+    <div class="logo">
+					<h2>客房订单信息录入</h2>
+    </div>
+</div>
+{% if pms_perms.hotelapp.add_accommodation %}<form action="/insert_accomodation/" method="post" class="form-inset">
+    {% csrf_token %}
+    {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
+
+         <p><label>订单编号&nbsp;:&nbsp;&nbsp;</label><input type="text" name="id" value="{{ form.id }}" required maxlength="10" pattern="\d{1,10}" title="订单编号必须是1-10位数字" placeholder="1-10位数字" class="input"/></p>
+         <p><label>顾客编号&nbsp;:&nbsp;&nbsp;</label><input type="text" name="client" value="{{ form.client }}" required maxlength="10" pattern="\d{1,10}" title="顾客编号必须是1-10位数字" placeholder="顾客的编号" class="input"/></p>
+         <p><label>客房编号&nbsp;:&nbsp;&nbsp;</label><input type="text" name="room" value="{{ form.room }}" required maxlength="10" pattern="\d{1,10}" title="客房编号必须是1-10位数字" placeholder="客房的房间号" class="input"/></p>
+         <p><label>入住时间&nbsp;:&nbsp;&nbsp;</label><input type="date" name="time" value="{{ form.time }}" required title="请选择入住日期" class="input"/></p>
+        <input type="submit" value="提交">
+
+</form>{% endif %}
+</div><div class="card list-card">
+    <div class="list-toolbar">
+        <form action="/search_accommodation/#list" method="post" class="inline-filter">
+            {% csrf_token %}
+            <input type="text" name="value" placeholder="按顾客编号查询" class="input input-w200">
+            <button type="submit" class="tb-btn tb-primary">查询</button>
+            {% if searched %}<a href="/show_accomodation/" class="tb-btn">显示全部</a>{% endif %}
+        </form>
+        {% if searched %}<span class="search-note">查询结果 {{ people_list|length }} 条{% if not people_list %} · 未查询到相关记录，请重新核对信息{% endif %}</span>{% endif %}
+    </div>
+    <table class="data-table">
+    <tr>
+        <th>编号</th>
+        <th>顾客编号</th>
+        <th>联系电话</th>
+        <th>客房编号</th>
+        <th>状态</th>
+        <th>入住时间</th>
+        <th>退房时间</th>
+        <th>收款金额</th>
+        <th>冲账操作</th>
+    </tr>
+    {% for line in people_list %}
+    {% if line.状态 == "已冲账" %}<tr class="voided-row"><td class="id">{{line.id}}</td>{% else %}<tr><td class="id">{{line.id}}</td>{% endif %}
+        <td>{{line.顾客id.顾客id}}</td>
+        <td>{{line.客房编号.房间号}}</td>
+        <td class="pii-cell">{{line.联系电话|mask_tel}}</td>
+        <td>{% if line.状态 == '已冲账' %}<span class="badge void-badge">已冲账</span>{% else %}<span class="badge info-badge">{{ line.状态|default:'预订' }}</span>{% endif %}</td>
+        <td>{{line.入住时间}}</td>
+        <td>{{line.退房时间|default:'—'}}</td>
+        <td>{{line.收款金额}}</td>
+        {% if pms_perms.hotelapp.delete_accommodation %}<td>{% if line.状态 == '已冲账' %}<button class="btn btn-primary" disabled title="该订单已冲账，不可重复操作">已冲账</button>{% else %}<button class="btn btn-primary delete">冲账</button>{% endif %}</td>{% endif %}
+        <!--<td><button class="btn btn-primary update">修改</button></td>-->
+    </tr>
+    {% empty %}
+    <tr><td colspan="7" class="empty-row">未查询到相关记录，请重新核对信息</td></tr>
+    {% endfor %}
+    </table>
+    <div class="page-bar">
+            <span>共 {{ page_obj.paginator.count }} 条记录</span>
+            <span class="page-nums">
+                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">‹</a>{% endif %}
+                <span class="page-cur">{{ page_obj.number }}</span>
+                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">›</a>{% endif %}
+            </span>
+            <span>15 条/页</span>
+        </div>
+</div>
+</div>
+
+<script>
+    // 图5 工具栏：添加按钮展开录入表单卡
+    document.addEventListener('click', function (e) {
+        if (e.target.id === 'btn-add') {
+            var fc = document.getElementById('form-card');
+            if (fc) { fc.classList.toggle('card-hidden'); }
+        }
+    });
+</script>
+
+</body>
+<script src="/static/js/jquery-2.1.4.min.js"></script>
+<script src="/static/js/app.js?v=2"></script>
+
+<script>
+    // 冲账：样式化输入对话框，原因必填（服务端强制留痕，缺失直接 400）；
+    // 已冲账行按钮已置灰不可点（服务端亦有重复冲账/夜审结转/新客入住三重守卫）
+    $(".delete").click(function () {
+        var id = $(this).closest('tr').find('.id').text();
+        askPrompt('冲账为高危操作：冲账后该记录不再计入统计，且不可恢复。请填写冲账原因（必填，将写入审计日志）：', function (reason) {
+            $.post('/delete_accomodation/', {'id': id, 'reason': reason, 'csrfmiddlewaretoken': getCookie('csrftoken')}).done(function () {
+                showToast('已冲账');
+                setTimeout(function () { location.reload(); }, 600);
+            }).fail(function (xhr) { showToast(xhr.responseText || '冲账失败', 'error'); });
+        }, { placeholder: '如：日期录入错误 / 重复订单', okText: '确认冲账', required: true });
+    });
+</script>
+</html>

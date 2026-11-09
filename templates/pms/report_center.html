@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{{ title }} - PMS2</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=14">
+    <style>
+        .pms-center{padding:24px;max-width:1500px;margin:0 auto}
+        .pms-center-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px}
+        .pms-center-head h1{margin:0 0 6px;font-size:24px;color:var(--color-text-primary,#243247)}
+        .pms-center-sub{color:var(--color-text-muted,#778397);margin:0}
+        .pms-panel{background:var(--color-bg-surface,#fff);border:1px solid var(--color-border-separator,#e7ebf1);border-radius:var(--radius-lg,12px);padding:18px;margin-bottom:18px}
+        .pms-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+        .pms-tools input,.pms-tools select{min-width:140px;padding:10px 12px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:var(--radius-md,8px)}
+        .pms-tools button{padding:10px 16px;border:0;border-radius:var(--radius-md,8px);background:var(--color-accent-solid,#263a55);color:#fff;cursor:pointer}
+        .pms-meta{margin-left:auto;color:var(--color-text-muted,#778397);font-size:13px}
+        .pms-state{padding:24px;text-align:center;color:var(--color-text-muted,#8290a3)}
+        .pms-drawer-err{padding:12px 14px;background:var(--color-danger-bg,#fef0f0);border:1px solid var(--color-danger-border,#fde2e2);color:var(--color-danger-text,#b34a4a);border-radius:var(--radius-md,6px);font-size:13px;margin-top:10px}
+        /* 报表选择卡 */
+        .rp-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+        .rp-card{border:1px solid var(--color-border-separator,#e7ebf1);border-radius:var(--radius-lg,10px);padding:14px 16px;cursor:pointer;background:var(--color-bg-surface,#fff);text-align:left}
+        .rp-card:focus-visible{outline:2px solid var(--color-accent-solid,#2b74c9);outline-offset:2px}
+        .rp-card.rp-active{border-color:var(--color-accent-solid,#2b74c9);background:var(--color-accent-bg,#ecf5ff)}
+        .rp-card h3{margin:0 0 4px;font-size:15px;color:var(--color-text-primary,#243247)}
+        .rp-card p{margin:0;font-size:12px;color:var(--color-text-muted,#909399)}
+        .rp-card .rp-gate{display:inline-block;margin-top:8px;padding:1px 8px;border-radius:999px;font-size:11px;background:var(--color-bg-subtle,#f5f7fa);color:var(--color-text-secondary,#637188)}
+        /* 汇总卡 */
+        .rp-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:14px}
+        .rp-summary .rp-card-static{background:var(--color-bg-inset,#f8f9fb);border:1px solid var(--color-border-separator,#e7ebf1);border-radius:var(--radius-lg,10px);padding:12px 14px}
+        .rp-card-static dt{margin:0 0 6px;color:var(--color-text-secondary,#637188);font-size:12px}
+        .rp-card-static dd{margin:0;font-size:20px;color:var(--color-text-primary,#243247);font-variant-numeric:tabular-nums}
+        /* 结果表 */
+        .rp-table{width:100%;border-collapse:collapse;margin-top:14px;font-variant-numeric:tabular-nums}
+        .rp-table th{background:var(--color-bg-subtle,#f7f9fc);padding:9px 10px;text-align:left;font-size:13px;color:var(--color-text-secondary,#637188);border-bottom:1px solid var(--color-border-separator,#edf0f4);white-space:nowrap}
+        .rp-table td{padding:9px 10px;font-size:13px;border-bottom:1px solid var(--color-border-separator,#edf0f4);color:var(--color-text-primary,#243247);white-space:nowrap}
+        .rp-table td.num,.rp-table th.num{text-align:right}
+        .rp-table td.na{color:var(--color-text-muted,#a0a8b5)}
+        .rp-table-scroll{overflow-x:auto}
+        /* 口径说明区 */
+        .rp-basis{margin-top:14px;border-top:1px dashed var(--color-border-separator,#e7ebf1);padding-top:12px}
+        .rp-basis h4{margin:0 0 8px;font-size:13px;color:var(--color-text-secondary,#637188)}
+        .rp-basis ul{margin:0;padding-left:18px;font-size:12px;color:var(--color-text-muted,#778397);line-height:1.9}
+        @media(max-width:720px){.pms-center{padding:14px}.pms-panel{padding:10px}.pms-tools input,.pms-tools select{min-width:0}}
+    </style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main">
+  <div class="pms-center">
+    <div class="pms-center-head">
+      <div>
+        <h1>{{ title }}</h1>
+        <p class="pms-center-sub">{{ property_name }} · {{ subtitle }}</p>
+      </div>
+      <a href="/home/">返回工作台</a>
+    </div>
+
+    {# ── 报表选择卡 ── #}
+    <section class="pms-panel" aria-label="报表选择">
+      <div class="rp-cards" id="rp-cards" role="tablist" aria-label="报表类型"></div>
+    </section>
+
+    {# ── 日期区间表单 + 结果 ── #}
+    <section class="pms-panel" aria-label="报表结果">
+      <form class="pms-tools" id="rp-form">
+        <strong id="rp-report-title">入住率报表</strong>
+        <label for="rp-from" style="font-size:13px;color:var(--color-text-secondary,#637188)">开始</label>
+        <input type="date" id="rp-from" required>
+        <label for="rp-to" style="font-size:13px;color:var(--color-text-secondary,#637188)">结束</label>
+        <input type="date" id="rp-to" required>
+        <select id="rp-group-by" hidden aria-label="收入分组维度">
+          <option value="day">按营业日</option>
+          <option value="type">按凭证类型</option>
+        </select>
+        <button type="submit">查询</button>
+        <span class="pms-meta">区间最长 92 天</span>
+      </form>
+      <div id="rp-error" class="pms-drawer-err" hidden></div>
+      <div class="rp-summary" id="rp-summary"></div>
+      <div class="rp-table-scroll" id="rp-table-wrap"></div>
+      <div class="rp-basis" id="rp-basis" hidden>
+        <h4>统计口径说明（随响应 meta 下发）</h4>
+        <ul id="rp-basis-list"></ul>
+      </div>
+    </section>
+  </div>
+</div>
+{{ report_permissions|json_script:"rp-permissions" }}
+
+<script>
+(function () {
+  "use strict";
+  /* 报表注册表：端点 / 名称 / 说明 / 权限档（展示用，服务端逐请求复核） /
+     汇总卡 / 列定义（path 支持点路径；num=数字右对齐 tabular-nums）。 */
+  const REPORTS = {
+    occupancy: {
+      name: "入住率报表", gate: "view_accommodation",
+      description: "按日：可售房数 / 已售间夜 / 入住率%（库存快照口径）",
+      summary: [["sellable_room_nights", "可售间夜"], ["sold_room_nights", "已售间夜"],
+                ["occupancy_pct", "期间入住率%"]],
+      columns: [
+        {path: "date", label: "住宿日"},
+        {path: "total_rooms", label: "可售房数(总)", num: true},
+        {path: "out_of_service", label: "停用", num: true},
+        {path: "held", label: "冻结", num: true},
+        {path: "sellable_room_nights", label: "可售间夜", num: true},
+        {path: "sold_room_nights", label: "已售间夜", num: true},
+        {path: "occupancy_pct", label: "入住率%", num: true}],
+    },
+    adr: {
+      name: "ADR 报表", gate: "finance_access",
+      description: "按日：房费收入 / 已售间夜 / ADR（账本 ROOM_CHARGE 口径）",
+      summary: [["room_revenue", "房费收入"], ["sold_room_nights", "已售间夜"],
+                ["adr", "期间 ADR"], ["currency", "币种"]],
+      columns: [
+        {path: "date", label: "营业日"},
+        {path: "room_revenue", label: "房费收入", num: true},
+        {path: "sold_room_nights", label: "已售间夜", num: true},
+        {path: "adr", label: "ADR", num: true}],
+    },
+    revenue: {
+      name: "收入报表", gate: "finance_access", groupBy: true,
+      description: "收入 / 支出 / 净额，按营业日或凭证类型分组（LedgerEntry 口径）",
+      summary: [["total_revenue", "收入合计"], ["total_expense", "支出合计"],
+                ["net", "净额"], ["entries", "凭证数"], ["currency", "币种"]],
+      columnsBy: {
+        day: [
+          {path: "business_date", label: "营业日"},
+          {path: "revenue", label: "收入", num: true},
+          {path: "expense", label: "支出", num: true},
+          {path: "net", label: "净额", num: true},
+          {path: "entries", label: "凭证数", num: true}],
+        type: [
+          {path: "entry_type_label", label: "凭证类型"},
+          {path: "entry_type", label: "代码"},
+          {path: "revenue", label: "收入", num: true},
+          {path: "expense", label: "支出", num: true},
+          {path: "net", label: "净额", num: true},
+          {path: "entries", label: "凭证数", num: true}],
+      },
+    },
+    guests: {
+      name: "客源报表", gate: "view_accommodation",
+      description: "新客 / 回头客计数 + 预订来源分布（仅聚合计数，无 PII）",
+      summary: [["new_guests", "期间新客"], ["returning_guests", "回头客(≥2单)"],
+                ["reservations", "期间预订"], ["unique_guests", "去重住客"]],
+      columns: [
+        {path: "source_label", label: "预订来源"},
+        {path: "source", label: "代码"},
+        {path: "reservations", label: "预订数", num: true}],
+    },
+    housekeeping: {
+      name: "清洁效率报表", gate: "view_accommodation",
+      description: "housekeeping.status_changed 审计事件按日计数（事件口径）",
+      summary: [["total_changes", "期间流转次数"], ["rooms_involved", "涉及房间数"],
+                ["avg_changes_per_day", "日均流转"]],
+      columns: [
+        {path: "date", label: "自然日"},
+        {path: "status_changes", label: "状态流转次数", num: true}],
+    },
+  };
+  const GROUPABLE = new Set(["revenue"]);
+  const SUMMARY_TEXT = new Set(["currency"]);
+
+  function el(tag, cls, text) {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined && text !== null) node.textContent = String(text);
+    return node;
+  }
+  function getPath(obj, path) {
+    return path.split(".").reduce((acc, key) => (acc == null ? acc : acc[key]), obj);
+  }
+  async function api(url) {
+    const response = await fetch(url, {credentials: "same-origin",
+      headers: {"Accept": "application/json"}});
+    const raw = await response.text();
+    let payload = null;
+    if (raw) {
+      try { payload = JSON.parse(raw); } catch (error) { payload = null; }
+    }
+    if (!response.ok) {
+      throw new Error(payload && payload.error && payload.error.message
+          || ("请求失败（HTTP " + response.status + "）"));
+    }
+    if (!payload || typeof payload !== "object") {
+      throw new Error("服务器返回非 JSON 响应（HTTP " + response.status +
+          "），请检查登录状态、服务端日志或接口响应。");
+    }
+    return payload;
+  }
+
+  /* ---------- 按当前岗位权限过滤报表卡；API 仍做独立授权复核 ---------- */
+  const reportPermissions = JSON.parse(
+    document.getElementById("rp-permissions").textContent || "{}");
+  const visibleReports = Object.fromEntries(
+    Object.entries(REPORTS).filter(function (entry) {
+      return reportPermissions[entry[1].gate] === true;
+    }));
+  let current = Object.keys(visibleReports)[0] || null;
+  const cards = document.getElementById("rp-cards");
+  Object.entries(visibleReports).forEach(function (entry) {
+    const key = entry[0], spec = entry[1];
+    const card = el("button", "rp-card" + (key === current ? " rp-active" : ""));
+    card.type = "button";
+    card.setAttribute("role", "tab");
+    card.setAttribute("aria-selected", key === current ? "true" : "false");
+    card.appendChild(el("h3", "", spec.name));
+    card.appendChild(el("p", "", spec.description));
+    card.appendChild(el("span", "rp-gate", "门禁：" + spec.gate));
+    card.addEventListener("click", function () { selectReport(key); });
+    card.dataset.report = key;
+    cards.appendChild(card);
+  });
+  function selectReport(key) {
+    current = key;
+    document.querySelectorAll(".rp-card").forEach(function (node) {
+      const active = node.dataset.report === key;
+      node.classList.toggle("rp-active", active);
+      node.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    document.getElementById("rp-report-title").textContent = REPORTS[key].name;
+    document.getElementById("rp-group-by").hidden = !GROUPABLE.has(key);
+    document.getElementById("rp-table-wrap").replaceChildren();
+    document.getElementById("rp-summary").replaceChildren();
+    document.getElementById("rp-basis").hidden = true;
+  }
+  if (current) selectReport(current);
+
+  /* ---------- 日期区间（缺省最近 7 天） ---------- */
+  function initDates() {
+    const to = new Date();
+    const from = new Date(to.getTime() - 6 * 86400000);
+    document.getElementById("rp-to").value = to.toISOString().slice(0, 10);
+    document.getElementById("rp-from").value = from.toISOString().slice(0, 10);
+  }
+
+  /* ---------- 查询与渲染 ---------- */
+  function renderSummary(summary, keys) {
+    const box = document.getElementById("rp-summary");
+    box.replaceChildren();
+    keys.forEach(function (pair) {
+      const value = getPath(summary, pair[0]);
+      const item = el("div", "rp-card-static");
+      item.appendChild(el("dt", "", pair[1]));
+      const dd = el("dd", "", (value === null || value === undefined || value === "")
+          ? "—" : value);
+      if (!SUMMARY_TEXT.has(pair[0])) dd.style.fontVariantNumeric = "tabular-nums";
+      item.appendChild(dd);
+      box.appendChild(item);
+    });
+  }
+  function renderTable(rows, columns) {
+    const wrap = document.getElementById("rp-table-wrap");
+    wrap.replaceChildren();
+    if (!rows.length) {
+      wrap.appendChild(el("div", "pms-state", "所选区间暂无数据（空序列）"));
+      return;
+    }
+    const table = el("table", "rp-table");
+    const thead = el("thead"), tr = el("tr");
+    columns.forEach(function (col) {
+      const th = el("th", col.num ? "num" : "", col.label);
+      tr.appendChild(th);
+    });
+    thead.appendChild(tr);
+    table.appendChild(thead);
+    const tbody = el("tbody");
+    rows.forEach(function (row) {
+      const rowTr = el("tr");
+      columns.forEach(function (col) {
+        const value = getPath(row, col.path);
+        const td = el("td", (col.num ? "num" : "") +
+            (value === null || value === undefined ? " na" : ""),
+            value === null || value === undefined ? "—" : value);
+        rowTr.appendChild(td);
+      });
+      tbody.appendChild(rowTr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+  }
+  function renderBasis(metadata) {
+    const box = document.getElementById("rp-basis");
+    const list = document.getElementById("rp-basis-list");
+    list.replaceChildren();
+    const lines = [];
+    lines.push("物业：" + metadata.property.name + "（" + metadata.property.code
+        + "）· 期间：" + metadata.period.start + " 至 " + metadata.period.end
+        + "（" + metadata.period.days + " 天）· 币种：" + metadata.currency);
+    Object.entries(metadata.date_basis || {}).forEach(function (pair) {
+      lines.push("日期口径 · " + pair[0] + "：" + pair[1]);
+    });
+    Object.entries(metadata.status_scope || {}).forEach(function (pair) {
+      lines.push("状态范围 · " + pair[0] + "：" + pair[1]);
+    });
+    lines.push("生成时间：" + metadata.generated_at);
+    lines.forEach(function (line) { list.appendChild(el("li", "", line)); });
+    box.hidden = false;
+  }
+  async function load() {
+    const errBox = document.getElementById("rp-error");
+    errBox.hidden = true;
+    const spec = REPORTS[current];
+    const params = new URLSearchParams({
+      from: document.getElementById("rp-from").value,
+      to: document.getElementById("rp-to").value,
+    });
+    if (spec.groupBy) {
+      params.set("group_by", document.getElementById("rp-group-by").value);
+    }
+    try {
+      const data = (await api("/api/v1/reports/" + current + "?" + params.toString())).data;
+      renderSummary(data.summary, spec.summary);
+      const columns = spec.columns || spec.columnsBy[document.getElementById("rp-group-by").value];
+      renderTable(data.series, columns);
+      renderBasis(data.metadata);
+    } catch (error) {
+      errBox.textContent = error.message;
+      errBox.hidden = false;
+    }
+  }
+  document.getElementById("rp-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    load();
+  });
+  document.getElementById("rp-group-by").addEventListener("change", load);
+
+  initDates();
+  load();
+})();
+</script>
+</body>
+</html>

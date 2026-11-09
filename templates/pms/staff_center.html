@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>员工中心 - PMS2</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=14">
+    <link rel="stylesheet" href="/static/css/staff_center.css?v=1">
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main">
+  <div class="pms-center">
+    {# ---------- 1. 页面标题区（§2） ---------- #}
+    <div class="pms-center-head">
+      <div>
+        <h1>员工中心</h1>
+        <p class="pms-center-sub">{{ property_name }} · 员工生命周期工作台：建档 → 开通账号 → 角色授权 → 任职管理</p>
+      </div>
+      <a class="pms-backlink" href="/checkin/">返回前台接待</a>
+    </div>
+
+    {# ---------- 2. 新增员工卡片（默认收起；§2.1 三区表单） ---------- #}
+    <section class="pms-panel">
+      <div class="pms-tools">
+        <h2 class="pms-panel-title">新增员工</h2>
+        <button type="button" class="sc-toggle-btn" id="sc-create-toggle" aria-expanded="false" aria-controls="sc-create-form">展开表单</button>
+        <span class="pms-meta">建档 + DEFAULT 任职；登录账号可稍后为员工单独开通</span>
+      </div>
+      <form id="sc-create-form" class="sc-form sc-hidden" autocomplete="off">
+        {% csrf_token %}
+        {# —— A. 员工身份信息（§2.1-A）—— #}
+        <fieldset class="sc-fieldset">
+          <legend>A. 员工身份信息</legend>
+          <p class="sc-zone-hint">员工档案记录“这个人是谁”；登录账号与系统角色是另外两个独立概念，分别在 B、C 区开通/授予，不会因建档自动创建。</p>
+          <div class="sc-grid">
+            <label class="sc-field">姓名<span class="sc-req" aria-hidden="true">*</span>
+              <input type="text" name="full_name" required maxlength="20" placeholder="员工真实姓名，如 张晓雨"></label>
+            <label class="sc-field">物业工号<span class="sc-req" aria-hidden="true">*</span>
+              <input type="text" name="employee_no" required maxlength="32" placeholder="同物业唯一，如 F-0012"></label>
+            <label class="sc-field">岗位代码（选填）
+              <input type="text" name="position_code" maxlength="32" placeholder="描述工作岗位，如 FO / HK"></label>
+            <label class="sc-field">手机号（选填）
+              <input type="text" name="phone" maxlength="11" placeholder="11 位手机号"></label>
+            <label class="sc-field">关联旧员工记录（选填）
+              <select name="legacy_staff">
+                <option value="">（不关联）</option>
+                {% for s in unmapped_staff %}<option value="{{ s.员工id }}">{{ s.员工id }} - {{ s.姓名 }}</option>{% endfor %}
+              </select></label>
+          </div>
+        </fieldset>
+        {# —— B. 登录账号（§2.1-B）—— #}
+        <fieldset class="sc-fieldset">
+          <legend>B. 登录账号</legend>
+          <label class="sc-check"><input type="checkbox" id="sc-open-account"> 同时开通登录账号</label>
+          <div class="sc-grid sc-hidden" id="sc-account-fields">
+            <label class="sc-field">登录账号
+              <input type="text" name="username" maxlength="30" placeholder="3-30 位字母/数字，如 fo_wang"></label>
+            <label class="sc-field">初始密码（留空则系统生成）
+              <input type="text" name="password" maxlength="30" autocomplete="new-password" placeholder="仅本次显示，请线下交付本人"></label>
+          </div>
+          <p class="sc-hint sc-hidden" id="sc-account-note">初始密码如由系统生成，将仅在保存结果中显示一次（仅本次显示）；开通后员工首次登录将强制修改密码，请立即安全交付本人。</p>
+        </fieldset>
+        {# —— C. 初始角色授权（§2.1-C）—— #}
+        <fieldset class="sc-fieldset">
+          <legend>C. 初始角色授权</legend>
+          <p class="sc-zone-hint">岗位代码（A 区）描述工作岗位；系统角色决定系统权限。二者视觉与语义分离，授予角色将记入审计。</p>
+          <div class="sc-roles">
+            {% for r in workbench_roles %}<label class="sc-check sc-role-chip"><input type="checkbox" name="roles" value="{{ r }}"> {{ r }}</label>{% endfor %}
+          </div>
+        </fieldset>
+        <div class="sc-actions">
+          <button type="submit" class="sc-btn">保存员工</button>
+          <span class="sc-hint">开通账号后首次登录将强制修改密码；操作记入审计。</span>
+        </div>
+        <div id="sc-create-result" class="sc-result" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+
+    {# ---------- 3. 员工列表卡片（读 /api/v1/staff；§2.2 三态 + 分页） ---------- #}
+    <section class="pms-panel">
+      <div class="pms-tools">
+        <input id="sc-search" type="search" placeholder="按姓名 / 物业工号搜索" aria-label="按姓名或物业工号搜索员工">
+        <button id="sc-reload" type="button">查询</button>
+        <span class="pms-meta" id="sc-meta" role="status" aria-live="polite">正在加载员工数据…</span>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr>
+            <th scope="col">姓名</th><th scope="col">物业工号</th><th scope="col">岗位</th><th scope="col">联系电话</th>
+            <th scope="col">任职状态</th><th scope="col">账号</th><th scope="col">有效角色</th><th scope="col">操作</th>
+          </tr></thead>
+          <tbody id="sc-body"><tr><td class="pms-state pms-state--loading" colspan="8">正在加载员工数据…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pms-pager">
+        <span id="sc-count">共 ? 名员工</span>
+        <span class="pms-page-nav">
+          <button id="sc-prev" type="button" disabled>上一页</button>
+          <span id="sc-page"></span>
+          <button id="sc-next" type="button" disabled>下一页</button>
+        </span>
+      </div>
+    </section>
+  </div>
+</div>
+
+{# ---------- 4. 员工操作抽屉（§2.3 五分区：档案/任职/账号与安全/角色授权与历史/状态操作） ---------- #}
+<div class="pms-drawer-mask" id="sc-drawer-mask"></div>
+<aside class="pms-drawer" id="sc-drawer" role="dialog" aria-modal="true" aria-labelledby="sc-drawer-title" tabindex="-1">
+  <div class="pms-drawer-head">
+    <h2 id="sc-drawer-title">员工操作面板</h2>
+    <button type="button" class="pms-drawer-close" id="sc-drawer-close">关闭</button>
+  </div>
+  <div class="pms-drawer-body" id="sc-drawer-body"></div>
+</aside>
+
+{{ workbench_roles|json_script:"sc-roles" }}
+<script>
+(function () {
+  "use strict";
+  const LIST_ENDPOINT = "/api/v1/staff";
+  const DETAIL_ENDPOINT = "/api/v1/staff/{id}";
+  const CREATE_URL = "/manage/staff/actions/create/";
+  const roles = JSON.parse(document.getElementById("sc-roles").textContent);
+  const csrfToken = document.querySelector("#sc-create-form [name=csrfmiddlewaretoken]").value;
+
+  const body = document.getElementById("sc-body");
+  const meta = document.getElementById("sc-meta");
+  const countLabel = document.getElementById("sc-count");
+  const search = document.getElementById("sc-search");
+  const pageLabel = document.getElementById("sc-page");
+  const prevButton = document.getElementById("sc-prev");
+  const nextButton = document.getElementById("sc-next");
+  const drawer = document.getElementById("sc-drawer");
+  const drawerMask = document.getElementById("sc-drawer-mask");
+  const drawerTitle = document.getElementById("sc-drawer-title");
+  const drawerBody = document.getElementById("sc-drawer-body");
+  let currentPage = 1;
+  let lastTrigger = null;
+
+  /* ---------- 公共请求与提示 ---------- */
+  function apiFetch(url, options) {
+    const opts = Object.assign({credentials: "same-origin"}, options || {});
+    opts.headers = Object.assign({"Accept": "application/json",
+                                  "X-CSRFToken": csrfToken}, opts.headers || {});
+    return fetch(url, opts).then(function (r) {
+      return r.json().then(function (payload) { return {ok: r.ok, status: r.status, payload: payload}; });
+    });
+  }
+  function messageOf(res) {
+    return (res.payload && res.payload.error && res.payload.error.message)
+        || (res.payload && res.payload.data && res.payload.data.message)
+        || "请求失败（HTTP " + res.status + "）";
+  }
+  function setResult(el, text, isError) {
+    el.className = "sc-result " + (isError ? "is-err" : "is-ok");
+    el.textContent = text;
+  }
+  function bannerInDrawer(text, isError) {
+    const div = document.createElement("div");
+    div.className = isError ? "pms-drawer-err" : "pms-drawer-ok";
+    div.textContent = text;
+    return div;
+  }
+
+  /* ---------- 状态标签（颜色一律配合文字，§3.2） ---------- */
+  function badge(text, tone) {
+    const span = document.createElement("span");
+    span.className = "sc-badge" + (tone ? " sc-badge--" + tone : "");
+    span.textContent = text;
+    return span;
+  }
+  /* 四种状态相互独立（§8.1）：雇用状态 / 任职状态 / 账号状态 / 岗位授权状态 */
+  function employmentTone(status) {
+    if (status === "ACTIVE") return "ok";
+    if (status === "TERMINATED") return "danger";
+    return "muted";               /* 停用 → 中性灰（§3.2） */
+  }
+  function membershipTone(status) {
+    if (status === "ACTIVE") return "ok";
+    if (status === "SUSPENDED") return "warn";
+    if (status === "TERMINATED") return "danger";
+    return "muted";
+  }
+  function accountState(account) {
+    /* 返回 [文案, 色调]：账号未开通/待激活/启用/停用与任职状态分开表达 */
+    if (!account) return ["未开通", "muted"];
+    if (account.password_pending) return ["待激活", "warn"];
+    if (account.is_active) return ["启用", "ok"];
+    return ["停用", "muted"];
+  }
+
+  /* ---------- 新增员工表单（三区） ---------- */
+  const createForm = document.getElementById("sc-create-form");
+  const createResult = document.getElementById("sc-create-result");
+  const createToggle = document.getElementById("sc-create-toggle");
+  createToggle.addEventListener("click", function () {
+    const hidden = createForm.classList.toggle("sc-hidden");
+    this.textContent = hidden ? "展开表单" : "收起表单";
+    this.setAttribute("aria-expanded", hidden ? "false" : "true");
+  });
+  document.getElementById("sc-open-account").addEventListener("change", function () {
+    document.getElementById("sc-account-fields").classList.toggle("sc-hidden", !this.checked);
+    document.getElementById("sc-account-note").classList.toggle("sc-hidden", !this.checked);
+  });
+  createForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const submitBtn = createForm.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+    setResult(createResult, "正在保存…", false);
+    apiFetch(CREATE_URL, {method: "POST", body: new FormData(createForm)}).then(function (res) {
+      if (submitBtn) submitBtn.disabled = false;
+      if (!res.ok) { setResult(createResult, "创建失败：" + messageOf(res), true); return; }
+      const data = res.payload.data || {};
+      let text = data.message || "已创建";
+      if (data.initial_password) {
+        text += "。初始密码（仅本次显示）：" + data.initial_password
+              + "；首次登录将强制修改密码，请立即线下告知本人。";
+      }
+      setResult(createResult, text, false);
+      createForm.reset();
+      document.getElementById("sc-account-fields").classList.add("sc-hidden");
+      document.getElementById("sc-account-note").classList.add("sc-hidden");
+      loadList(1);
+      if (data.profile_id) openPanel(data.profile_id);
+    }).catch(function () {
+      if (submitBtn) submitBtn.disabled = false;
+      setResult(createResult, "网络错误，请稍后重试。", true);
+    });
+  });
+
+  /* ---------- 员工列表：三态 + 分页 ---------- */
+  function cellText(v) {
+    if (v === null || v === undefined || v === "") return "—";
+    if (Array.isArray(v)) return v.join("、") || "—";
+    return String(v);
+  }
+  function listStateRow(kind, mainText, hintText, withRetry) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 8;
+    td.className = "pms-state pms-state--" + kind;
+    const p = document.createElement("p");
+    p.className = "pms-state-main";
+    p.textContent = mainText;
+    td.appendChild(p);
+    if (hintText) {
+      const hint = document.createElement("p");
+      hint.className = "pms-state-hint";
+      hint.textContent = hintText;
+      td.appendChild(hint);
+    }
+    if (withRetry) {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "pms-state-retry";
+      retry.textContent = "重试";
+      retry.addEventListener("click", function () { loadList(currentPage); });
+      td.appendChild(retry);
+    }
+    tr.appendChild(td);
+    return tr;
+  }
+  function rowOf(item) {
+    const tr = document.createElement("tr");
+    function textCell(v, cls) {
+      const td = document.createElement("td");
+      if (cls) td.className = cls;
+      td.textContent = cellText(v);
+      return td;
+    }
+    tr.appendChild(textCell(item.full_name));
+    tr.appendChild(textCell(item.employee_no, "cell-account"));
+    tr.appendChild(textCell(item.position_code));
+    tr.appendChild(textCell(item.phone_masked, "cell-account"));   /* 默认掩码展示（§2.2） */
+    /* 任职状态（Membership）：与账号状态分列两个维度 */
+    const tdMs = document.createElement("td");
+    const msLabel = item.membership_status_label || (item.membership_status ? item.membership_status : "无任职");
+    tdMs.appendChild(badge(msLabel, membershipTone(item.membership_status)));
+    tr.appendChild(tdMs);
+    /* 账号（User.is_active）：未开通/待激活/启用/停用 */
+    const tdAcc = document.createElement("td");
+    tdAcc.className = "cell-account";
+    const accState = accountState(item.account);
+    tdAcc.appendChild(badge(accState[0], accState[1]));
+    if (item.account && item.account.username) {
+      tdAcc.appendChild(document.createTextNode(item.account.username));
+    }
+    tr.appendChild(tdAcc);
+    const tdRoles = document.createElement("td");
+    tdRoles.textContent = cellText(item.active_roles);
+    tr.appendChild(tdRoles);
+    const tdOp = document.createElement("td");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pms-row-btn";
+    btn.textContent = "管理";
+    btn.setAttribute("aria-label", "管理员工 " + (item.full_name || item.employee_no || item.id));
+    btn.addEventListener("click", function () { openPanel(item.id); });
+    tdOp.appendChild(btn);
+    tr.appendChild(tdOp);
+    return tr;
+  }
+  var lastListQuery = null;
+
+  function listQueryChanged() {
+    var params = new URLSearchParams({page: "1", page_size: "20"});
+    if (search.value.trim()) params.set("q", search.value.trim());
+    return params.toString() !== lastListQuery;
+  }
+
+  function loadList(page) {
+    /* 查询条件未变化时跳过重新加载（避免无意义刷新与滚动跳动） */
+    if (page === 1 && lastListQuery !== null && !listQueryChanged()) return;
+    currentPage = Math.max(1, page || 1);
+    meta.textContent = "读取中…";
+    prevButton.disabled = true; nextButton.disabled = true;
+    body.replaceChildren();
+    body.appendChild(listStateRow("loading", "正在加载员工数据…", null, false));
+    const params = new URLSearchParams({page: String(currentPage), page_size: "20"});
+    if (search.value.trim()) params.set("q", search.value.trim());
+    var canonical = new URLSearchParams({page: "1", page_size: "20"});
+    if (search.value.trim()) canonical.set("q", search.value.trim());
+    lastListQuery = canonical.toString();
+    apiFetch(LIST_ENDPOINT + "?" + params.toString()).then(function (res) {
+      if (!res.ok) throw new Error(messageOf(res));
+      const data = Array.isArray(res.payload.data) ? res.payload.data : [];
+      body.replaceChildren();
+      if (!data.length) {
+        body.appendChild(listStateRow("empty", "当前物业暂无匹配员工",
+            "可调整搜索关键词，或展开上方“新增员工”表单建档。", false));
+        meta.textContent = "共 0 名员工";
+        countLabel.textContent = "共 0 名员工";
+        pageLabel.textContent = "";
+        return;
+      }
+      data.forEach(function (item) { body.appendChild(rowOf(item)); });
+      const pageInfo = res.payload.meta && res.payload.meta.pagination;
+      if (pageInfo) {
+        currentPage = pageInfo.page;
+        pageLabel.textContent = "第 " + pageInfo.page + " 页 / 共 "
+            + Math.max(1, Math.ceil(pageInfo.total / pageInfo.page_size)) + " 页";
+        prevButton.disabled = !pageInfo.has_previous;
+        nextButton.disabled = !pageInfo.has_next;
+        meta.textContent = "共 " + pageInfo.total + " 名员工";
+        countLabel.textContent = "共 " + pageInfo.total + " 名员工";
+      } else { pageLabel.textContent = ""; meta.textContent = "已载入"; }
+    }).catch(function (error) {
+      /* 错误态不得显示成“暂无数据”（§3.5） */
+      body.replaceChildren();
+      body.appendChild(listStateRow("error", "员工数据读取失败",
+          error.message || "网络异常，请稍后重试。", true));
+      meta.textContent = "数据读取失败";
+    });
+  }
+  document.getElementById("sc-reload").addEventListener("click", function () { loadList(1); });
+  prevButton.addEventListener("click", function () { loadList(currentPage - 1); });
+  nextButton.addEventListener("click", function () { loadList(currentPage + 1); });
+  search.addEventListener("keydown", function (e) { if (e.key === "Enter") loadList(1); });
+
+  /* ---------- 员工操作抽屉：焦点管理（§2.3） ---------- */
+  function openDrawer() {
+    lastTrigger = document.activeElement;
+    drawer.classList.add("is-open");
+    drawerMask.classList.add("is-open");
+    drawer.focus();
+  }
+  function closeDrawer() {
+    if (!drawer.classList.contains("is-open")) return;
+    drawer.classList.remove("is-open");
+    drawerMask.classList.remove("is-open");
+    if (lastTrigger && typeof lastTrigger.focus === "function") lastTrigger.focus();
+    lastTrigger = null;
+  }
+  drawerMask.addEventListener("click", closeDrawer);
+  document.getElementById("sc-drawer-close").addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", function (e) {
+    if (!drawer.classList.contains("is-open")) return;
+    if (e.key === "Escape") { closeDrawer(); return; }
+    /* 焦点圈闭：Tab / Shift+Tab 不逃出抽屉 */
+    if (e.key !== "Tab") return;
+    const focusables = drawer.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])');
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === drawer)) {
+      last.focus(); e.preventDefault();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      first.focus(); e.preventDefault();
+    }
+  });
+
+  /* ---------- 抽屉内小部件 ---------- */
+  function drawerSection(no, title) {
+    const sec = document.createElement("section");
+    sec.className = "sc-drawer-section";
+    const h = document.createElement("h3");
+    const num = document.createElement("span");
+    num.className = "sc-section-no";
+    num.textContent = no;
+    num.setAttribute("aria-hidden", "true");
+    h.appendChild(num);
+    h.appendChild(document.createTextNode(title));
+    sec.appendChild(h);
+    return sec;
+  }
+  function labeledInput(labelText, attrs) {
+    const label = document.createElement("label");
+    label.className = "sc-field";
+    const span = document.createElement("span");
+    span.textContent = labelText;
+    const input = document.createElement("input");
+    Object.keys(attrs || {}).forEach(function (k) { input.setAttribute(k, attrs[k]); });
+    label.appendChild(span);
+    label.appendChild(input);
+    return label;
+  }
+  function resultDiv() {
+    const div = document.createElement("div");
+    div.className = "sc-result";
+    div.setAttribute("role", "status");
+    div.setAttribute("aria-live", "polite");
+    return div;
+  }
+  function statusChip(labelText, badgeText, tone) {
+    const div = document.createElement("div");
+    div.className = "sc-status";
+    const lab = document.createElement("span");
+    lab.className = "sc-status-label";
+    lab.textContent = labelText;
+    div.appendChild(lab);
+    div.appendChild(badge(badgeText, tone));
+    return div;
+  }
+  function noteP(text) {
+    const p = document.createElement("p");
+    p.className = "sc-note";
+    p.textContent = text;
+    return p;
+  }
+  /* 危险操作二次确认（§2.3）：首次点击进入待确认态（红色 + 说明文案），再次点击才提交 */
+  function armDanger(btn, confirmText, noteText) {
+    let note = null;
+    let timer = null;
+    function disarm() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (btn.dataset.armed !== "1") return;
+      delete btn.dataset.armed;
+      btn.classList.remove("is-arming");
+      if (btn.dataset.origText) btn.textContent = btn.dataset.origText;
+      if (note && note.parentNode) note.parentNode.removeChild(note);
+      note = null;
+    }
+    btn.addEventListener("click", function (e) {
+      if (btn.dataset.armed === "1") return;   /* 第二次点击放行提交 */
+      e.preventDefault();
+      btn.dataset.armed = "1";
+      btn.dataset.origText = btn.textContent;
+      btn.textContent = confirmText;
+      btn.classList.add("is-arming");
+      note = document.createElement("p");
+      note.className = "sc-confirm-note";
+      note.setAttribute("role", "alert");
+      note.textContent = noteText;
+      const row = btn.closest(".sc-inline") || btn.parentElement;
+      if (row && row.parentNode) row.parentNode.insertBefore(note, row.nextSibling);
+      else if (btn.parentNode) btn.parentNode.appendChild(note);
+      timer = setTimeout(disarm, 8000);
+    });
+  }
+  function bindActionForm(form, url, onDone) {
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      /* 黑盒 BUG 修复：多提交按钮表单（如状态操作的 暂停/离职/恢复）
+         依赖 submit 按钮的 name=value 携带动作语义，但 preventDefault +
+         手工 FormData 不会包含被点击的按钮——用 e.submitter 回填。 */
+      const submitter = e.submitter
+          || (document.activeElement && document.activeElement.type === "submit"
+              ? document.activeElement : null);
+      const submitBtn = submitter || form.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+      const busy = form.querySelector(".sc-result");
+      if (busy) busy.textContent = "正在提交…";
+      const formData = new FormData(form);
+      if (submitter && submitter.name) formData.append(submitter.name, submitter.value);
+      apiFetch(url, {method: "POST", body: formData}).then(function (res) {
+        if (submitBtn) submitBtn.disabled = false;
+        if (!res.ok) {
+          if (busy) { setResult(busy, messageOf(res), true); }
+          else { drawerBody.prepend(bannerInDrawer(messageOf(res), true)); }
+          return;
+        }
+        const data = res.payload.data || {};
+        let text = data.message || "操作成功";
+        if (data.initial_password) {
+          const span = document.createElement("span");
+          text += "。初始密码（仅本次显示）：";
+          span.className = "sc-secret";
+          span.textContent = data.initial_password;
+          if (busy) { setResult(busy, text, false); busy.appendChild(span); }
+          else { drawerBody.prepend(bannerInDrawer(text, false)); }
+          text = null;
+        }
+        if (text !== null) {
+          if (busy) setResult(busy, text, false);
+          else drawerBody.prepend(bannerInDrawer(text, false));
+        }
+        loadList(currentPage);
+        if (typeof onDone === "function") onDone();
+      }).catch(function () {
+        if (submitBtn) submitBtn.disabled = false;
+        if (busy) setResult(busy, "网络错误，请稍后重试。", true);
+      });
+    });
+  }
+  /* AUTH-17：展示一次性邀请链接（仅本次显示；文案不含“发送成功”） */
+  function showInviteResult(resultEl, data) {
+    resultEl.className = "sc-result is-ok";
+    resultEl.replaceChildren();
+    const msg = document.createElement("div");
+    msg.textContent = data.message || "邀请链接已生成，请复制并人工发送";
+    resultEl.appendChild(msg);
+    if (data.invite_url) {
+      const wrap = document.createElement("div");
+      wrap.className = "sc-inline";
+      const url = document.createElement("input");
+      url.type = "text"; url.readOnly = true; url.value = data.invite_url;
+      url.className = "sc-secret";
+      url.setAttribute("aria-label", "一次性邀请链接（仅本次显示）");
+      const copy = document.createElement("button");
+      copy.type = "button"; copy.className = "pms-row-btn";
+      copy.textContent = "复制链接";
+      copy.addEventListener("click", function () {
+        url.select();
+        const done = function () { copy.textContent = "已复制"; };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url.value).then(done);
+        } else { document.execCommand("copy"); done(); }
+      });
+      wrap.appendChild(url); wrap.appendChild(copy);
+      resultEl.appendChild(wrap);
+      const note = document.createElement("div");
+      note.className = "sc-hint";
+      note.textContent = "链接仅本次显示，请立即复制并人工发送给本人。";
+      resultEl.appendChild(note);
+    }
+  }
+  function csrfHidden() {
+    return Object.assign(document.createElement("input"),
+        {type: "hidden", name: "csrfmiddlewaretoken", value: csrfToken});
+  }
+
+  function openPanel(id) {
+    drawerTitle.textContent = "员工操作面板";
+    drawerBody.replaceChildren();
+    const loading = document.createElement("div");
+    loading.className = "pms-drawer-state";
+    loading.textContent = "读取中…";
+    drawerBody.appendChild(loading);
+    openDrawer();
+    apiFetch(DETAIL_ENDPOINT.replace("{id}", encodeURIComponent(String(id)))).then(function (res) {
+      drawerBody.replaceChildren();
+      if (!res.ok) {
+        drawerBody.appendChild(bannerInDrawer(messageOf(res), true));
+        return;
+      }
+      renderPanel(res.payload.data);
+    }).catch(function () {
+      drawerBody.replaceChildren();
+      drawerBody.appendChild(bannerInDrawer("网络错误，请稍后重试。", true));
+    });
+  }
+
+  function renderPanel(item) {
+    drawerTitle.textContent = "员工操作面板 · " + (item.full_name || item.id);
+    const profileId = item.id;
+    const account = item.account || null;
+    const accState = accountState(account);
+    const activeRoleCount = Array.isArray(item.active_roles) ? item.active_roles.length : 0;
+    drawerBody.appendChild(noteP(
+        "以下操作由服务端员工生命周期服务执行并记入审计；四种状态相互独立，请分别确认后操作。"));
+
+    /* ========== 分区①：档案（员工身份概览 + 四种状态区分展示） ========== */
+    const secProfile = drawerSection("①", "员工档案");
+    const kv = document.createElement("table"); kv.className = "pms-kv";
+    [["full_name", "姓名"], ["phone_masked", "联系电话"], ["account.username", "登录账号"],
+     ["account.last_login", "最后登录"]].forEach(function (pair) {
+      const v = pair[0].split(".").reduce(function (o, k) { return o == null ? null : o[k]; }, item);
+      if (v === null || v === undefined || v === "") return;
+      const tr = document.createElement("tr");
+      const th = document.createElement("th"); th.textContent = pair[1];
+      const td = document.createElement("td"); td.textContent = cellText(v);
+      tr.appendChild(th); tr.appendChild(td); kv.appendChild(tr);
+    });
+    secProfile.appendChild(kv);
+    const statusGrid = document.createElement("div");
+    statusGrid.className = "sc-status-grid";
+    statusGrid.appendChild(statusChip("雇用状态（员工档案）",
+        item.employment_status_label || item.employment_status || "—",
+        employmentTone(item.employment_status)));
+    statusGrid.appendChild(statusChip("任职状态（本物业任职）",
+        item.membership_status_label || (item.membership_status || "无任职"),
+        membershipTone(item.membership_status)));
+    statusGrid.appendChild(statusChip("账号状态（登录账号）",
+        accState[0], accState[1]));
+    statusGrid.appendChild(statusChip("岗位授权状态（系统角色）",
+        activeRoleCount ? activeRoleCount + " 项生效" : "无生效授权",
+        activeRoleCount ? "ok" : "muted"));
+    secProfile.appendChild(statusGrid);
+    secProfile.appendChild(noteP(
+        "雇用/任职状态由任职管理维护，账号状态指登录账号可用性，岗位授权指生效中的系统角色——四者互不等同。"));
+    drawerBody.appendChild(secProfile);
+
+    /* ========== 分区②：任职（本物业任职信息） ========== */
+    const secMembership = drawerSection("②", "任职信息");
+    const kv2 = document.createElement("table"); kv2.className = "pms-kv";
+    [["employee_no", "物业工号"], ["position_code", "岗位代码"],
+     ["membership_status_label", "任职状态"], ["employment_status_label", "雇用状态"]]
+        .forEach(function (pair) {
+          const v = item[pair[0]];
+          if (v === null || v === undefined || v === "") return;
+          const tr = document.createElement("tr");
+          const th = document.createElement("th"); th.textContent = pair[1];
+          const td = document.createElement("td"); td.textContent = cellText(v);
+          tr.appendChild(th); tr.appendChild(td); kv2.appendChild(tr);
+        });
+    secMembership.appendChild(kv2);
+    secMembership.appendChild(noteP(
+        "任职状态描述其在本物业的任职关系（在职/暂停/已离职）；雇用状态是员工档案层面的在岗标记，由服务层随任职状态联动。暂停、离职等变更操作见分区⑤。"));
+    drawerBody.appendChild(secMembership);
+
+    /* ========== 分区③：账号与安全（邀请激活 / 开通账号 / 重置密码） ========== */
+    const secAccount = drawerSection("③", "账号与安全");
+    const invitation = item.invitation || null;
+    const accountPending = !!(account && account.password_pending);
+    if (account) {
+      const accLine = document.createElement("p");
+      accLine.className = "sc-inline";
+      accLine.appendChild(badge(accState[0], accState[1]));
+      accLine.appendChild(document.createTextNode("登录账号：" + cellText(account.username)));
+      secAccount.appendChild(accLine);
+    }
+    if (!account) {
+      /* 未开通账号：邀请激活（AUTH-17）或直接开通（§10.1 b） */
+      secAccount.appendChild(noteP("该员工尚未开通登录账号。可选择邀请激活（员工自行设置密码），或由管理员直接开通。"));
+      const inviteHead = document.createElement("p");
+      inviteHead.className = "sc-zone-hint";
+      inviteHead.textContent = "方式一：邀请激活——员工经一次性链接自行设置密码，激活前不可登录。";
+      secAccount.appendChild(inviteHead);
+      const inviteForm = document.createElement("form");
+      inviteForm.className = "sc-form";
+      inviteForm.appendChild(csrfHidden());
+      inviteForm.appendChild(labeledInput("登录账号（激活时使用，创建后可更正一次）",
+          {name: "username", required: "required", maxlength: "30",
+           placeholder: "3-30 位字母/数字，如 fo_wang"}));
+      const inviteBtn = document.createElement("button");
+      inviteBtn.type = "submit"; inviteBtn.className = "sc-btn";
+      inviteBtn.textContent = "生成邀请链接";
+      inviteForm.appendChild(inviteBtn);
+      const inviteResult = resultDiv();
+      inviteForm.appendChild(inviteResult);
+      inviteForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        setResult(inviteResult, "正在生成…", false);
+        apiFetch("/manage/staff/actions/" + profileId + "/invite/",
+                 {method: "POST", body: new FormData(inviteForm)})
+            .then(function (res) {
+              if (!res.ok) { setResult(inviteResult, messageOf(res), true); return; }
+              showInviteResult(inviteResult, res.payload.data || {});
+              inviteForm.reset();
+              loadList(currentPage);
+            })
+            .catch(function () { setResult(inviteResult, "网络错误，请稍后重试。", true); });
+      });
+      secAccount.appendChild(inviteForm);
+      secAccount.appendChild(noteP(
+          "邀请链接需人工复制发送给员工；链接仅可使用一次并限时有效，激活后员工自行设置密码。"));
+
+      const provisionHead = document.createElement("p");
+      provisionHead.className = "sc-zone-hint";
+      provisionHead.style.marginTop = "12px";
+      provisionHead.textContent = "方式二：直接开通——管理员设置初始密码（留空则系统生成，仅本次显示）。";
+      secAccount.appendChild(provisionHead);
+      const provisionForm = document.createElement("form");
+      provisionForm.className = "sc-form";
+      provisionForm.appendChild(csrfHidden());
+      provisionForm.appendChild(labeledInput("登录账号",
+          {name: "username", required: "required", maxlength: "30", placeholder: "3-30 位字母/数字"}));
+      provisionForm.appendChild(labeledInput("初始密码（留空则系统生成）",
+          {name: "password", maxlength: "30", autocomplete: "new-password", placeholder: "仅本次显示"}));
+      const provisionBtn = document.createElement("button");
+      provisionBtn.type = "submit"; provisionBtn.className = "sc-btn";
+      provisionBtn.textContent = "开通账号";
+      provisionForm.appendChild(provisionBtn);
+      const provisionResult = resultDiv();
+      provisionForm.appendChild(provisionResult);
+      bindActionForm(provisionForm,
+          "/manage/staff/actions/" + profileId + "/provision/",
+          function () { openPanel(profileId); });
+      secAccount.appendChild(provisionForm);
+    } else {
+      if (invitation && invitation.status !== "ACCEPTED") {
+        /* 待激活账号：撤销（仅 PENDING）/ 重发（旧 token 全部失效） */
+        const invNote = document.createElement("p");
+        invNote.className = "sc-note";
+        let invText = "当前邀请：" + invitation.status_label;
+        if (invitation.status === "PENDING") {
+          invText += "，有效期至 " + cellText(invitation.expires_at).replace("T", " ").slice(0, 16);
+        }
+        if (invitation.resend_count > 0) invText += "（已重发 " + invitation.resend_count + " 次）";
+        invNote.textContent = invText;
+        secAccount.appendChild(invNote);
+        const invRow = document.createElement("div"); invRow.className = "sc-inline";
+        if (invitation.status === "PENDING") {
+          const revokeForm = document.createElement("form");
+          revokeForm.className = "sc-inline";
+          revokeForm.appendChild(csrfHidden());
+          const revokeBtn = document.createElement("button");
+          revokeBtn.type = "submit"; revokeBtn.className = "pms-row-btn";
+          revokeBtn.textContent = "撤销邀请";
+          revokeForm.appendChild(revokeBtn);
+          const revokeResult = resultDiv();
+          revokeForm.appendChild(revokeResult);
+          bindActionForm(revokeForm,
+              "/manage/staff/actions/" + profileId + "/invite/revoke/",
+              function () { openPanel(profileId); });
+          invRow.appendChild(revokeForm);
+        }
+        const resendForm = document.createElement("form");
+        resendForm.className = "sc-inline";
+        resendForm.appendChild(csrfHidden());
+        const resendBtn = document.createElement("button");
+        resendBtn.type = "submit"; resendBtn.className = "pms-row-btn";
+        resendBtn.textContent = "重发邀请（换新链接）";
+        resendForm.appendChild(resendBtn);
+        const resendResult = resultDiv();
+        resendForm.appendChild(resendResult);
+        resendForm.addEventListener("submit", function (e) {
+          e.preventDefault();
+          setResult(resendResult, "正在生成…", false);
+          apiFetch("/manage/staff/actions/" + profileId + "/invite/resend/",
+                   {method: "POST", body: new FormData(resendForm)})
+              .then(function (res) {
+                if (!res.ok) { setResult(resendResult, messageOf(res), true); return; }
+                showInviteResult(resendResult, res.payload.data || {});
+                loadList(currentPage);
+              })
+              .catch(function () { setResult(resendResult, "网络错误，请稍后重试。", true); });
+        });
+        invRow.appendChild(resendForm);
+        secAccount.appendChild(invRow);
+      }
+      /* 重置登录密码（§10.1 f）——离职/停用员工置灰不可用（用户报告优化） */
+      const employeeTerminated = item.employment_status === "TERMINATED";
+      const accountDeactivated = account && account.is_active === false;
+      const resetHead = document.createElement("p");
+      resetHead.className = "sc-zone-hint";
+      if (invitation && invitation.status !== "ACCEPTED") resetHead.style.marginTop = "12px";
+      if (employeeTerminated || accountDeactivated) {
+        resetHead.textContent = "该员工已离职（账号已停用），不能重置密码；如需重新入职请先在分区⑤恢复在职状态。";
+        resetHead.style.color = "var(--color-text-muted, #909399)";
+        secAccount.appendChild(resetHead);
+      } else {
+        resetHead.textContent = "重置登录密码——新密码留空则由系统生成；重置后该账号下次登录将强制修改密码。";
+        secAccount.appendChild(resetHead);
+      const accountForm = document.createElement("form");
+      accountForm.className = "sc-form";
+      accountForm.appendChild(csrfHidden());
+      accountForm.appendChild(labeledInput("新密码（留空则系统生成）",
+          {name: "password", maxlength: "30", autocomplete: "new-password", placeholder: "仅本次显示"}));
+      const accBtn = document.createElement("button");
+      accBtn.type = "submit"; accBtn.className = "sc-btn";
+      accBtn.textContent = "重置密码";
+      accountForm.appendChild(accBtn);
+      const accResult = resultDiv();
+      accountForm.appendChild(accResult);
+      bindActionForm(accountForm,
+          "/manage/staff/actions/" + profileId + "/reset_password/",
+          function () { loadList(currentPage); });
+      secAccount.appendChild(accountForm);
+      }
+    }
+    drawerBody.appendChild(secAccount);
+
+    /* ========== 分区④：角色授权与授权历史（历史保留，无删除操作） ========== */
+    const secRole = drawerSection("④", "角色授权与授权历史");
+    secRole.appendChild(noteP(
+        "岗位代码描述工作岗位（见分区②）；系统角色决定系统权限。临时兼岗请设置结束时间，留空即长期授权（长期有效会明确标注，不显示为缺失数据）。"));
+    const roleForm = document.createElement("form");
+    roleForm.className = "sc-form";
+    roleForm.appendChild(csrfHidden());
+    const roleGrid = document.createElement("div"); roleGrid.className = "sc-grid";
+    const roleLabel = document.createElement("label");
+    roleLabel.className = "sc-field";
+    const roleSpan = document.createElement("span"); roleSpan.textContent = "角色";
+    const roleSelect = document.createElement("select"); roleSelect.name = "role";
+    roles.forEach(function (r) {
+      const opt = document.createElement("option"); opt.value = r; opt.textContent = r;
+      roleSelect.appendChild(opt);
+    });
+    roleLabel.appendChild(roleSpan); roleLabel.appendChild(roleSelect);
+    roleGrid.appendChild(roleLabel);
+    roleGrid.appendChild(labeledInput("结束时间（留空=长期授权）",
+        {type: "datetime-local", name: "ends_at"}));
+    roleGrid.appendChild(labeledInput("授权原因（记入审计）",
+        {name: "reason", maxlength: "200", placeholder: "如 客房支援（临时）"}));
+    roleForm.appendChild(roleGrid);
+    const roleBtn = document.createElement("button");
+    roleBtn.type = "submit"; roleBtn.className = "sc-btn"; roleBtn.textContent = "授予角色";
+    roleForm.appendChild(roleBtn);
+    const roleResult = resultDiv();
+    roleForm.appendChild(roleResult);
+    bindActionForm(roleForm, "/manage/staff/actions/" + profileId + "/assign_role/",
+        function () { openPanel(profileId); });
+    secRole.appendChild(roleForm);
+
+    const historyHead = document.createElement("p");
+    historyHead.className = "sc-zone-hint";
+    historyHead.style.marginTop = "12px";
+    historyHead.textContent = "授权历史（只读保留，不提供删除；结束授权为危险操作，需二次确认）。";
+    secRole.appendChild(historyHead);
+    const assignments = Array.isArray(item.assignments) ? item.assignments : [];
+    if (!assignments.length) {
+      secRole.appendChild(noteP("暂无授权记录——员工尚未分配任何角色。"));
+    } else {
+      const wrap = document.createElement("div"); wrap.className = "pms-table-wrap";
+      const table = document.createElement("table"); table.className = "pms-mini";
+      const thead = document.createElement("thead"), trh = document.createElement("tr");
+      ["角色", "开始", "结束", "状态", "操作"].forEach(function (t) {
+        const th = document.createElement("th"); th.scope = "col"; th.textContent = t; trh.appendChild(th);
+      });
+      thead.appendChild(trh);
+      const tbody = document.createElement("tbody");
+      assignments.forEach(function (a) {
+        const tr = document.createElement("tr");
+        [a.role, cellText(a.starts_at).replace("T", " ").slice(0, 16),
+         a.ends_at ? cellText(a.ends_at).replace("T", " ").slice(0, 16) : "长期（有效）"]
+            .forEach(function (v) {
+              const td = document.createElement("td"); td.textContent = v; tr.appendChild(td);
+            });
+        const tdState = document.createElement("td");
+        tdState.appendChild(badge(a.active ? "生效中" : "已结束", a.active ? "ok" : "muted"));
+        tr.appendChild(tdState);
+        const tdOp = document.createElement("td");
+        if (a.active && a.id) {
+          const endForm = document.createElement("form");
+          endForm.className = "sc-inline";
+          endForm.appendChild(csrfHidden());
+          endForm.appendChild(Object.assign(document.createElement("input"),
+              {type: "hidden", name: "reason", value: "手动结束"}));
+          const endBtn = document.createElement("button");
+          endBtn.type = "submit"; endBtn.className = "pms-row-btn pms-row-btn--danger";
+          endBtn.textContent = "结束授权";
+          endForm.appendChild(endBtn);
+          const endResult = resultDiv();
+          endForm.appendChild(endResult);
+          bindActionForm(endForm,
+              "/manage/staff/actions/" + profileId + "/end_assignment/" + a.id + "/",
+              function () { openPanel(profileId); });
+          armDanger(endBtn, "确认结束授权？",
+              "结束后该角色立即失效；授权历史保留、不可删除。请再次点击确认。");
+          tdOp.appendChild(endForm);
+        } else { tdOp.textContent = "—"; }
+        tr.appendChild(tdOp);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(thead); table.appendChild(tbody);
+      wrap.appendChild(table); secRole.appendChild(wrap);
+    }
+    drawerBody.appendChild(secRole);
+
+    /* ========== 分区⑤：状态操作（暂停/恢复/离职——危险操作红色 + 二次确认） ========== */
+    const secStatus = drawerSection("⑤", "状态操作");
+    secStatus.appendChild(noteP(
+        "变更任职状态：暂停任职后员工暂不可用，可恢复；办理离职将终止其全部角色授权并停用登录账号，且不可在本物业继续操作。所有状态变更记入审计。"));
+    const statusForm = document.createElement("form");
+    statusForm.className = "sc-form";
+    statusForm.appendChild(csrfHidden());
+    statusForm.appendChild(labeledInput("原因（选填，记入审计）",
+        {name: "reason", maxlength: "200", placeholder: "如 停职检查 / 调往他店"}));
+    const statusRow = document.createElement("div"); statusRow.className = "sc-inline";
+    function statusButton(value, text, danger) {
+      const btn = document.createElement("button");
+      btn.type = "submit";
+      btn.className = "sc-btn" + (danger ? " sc-btn--danger" : "");
+      btn.name = "status"; btn.value = value; btn.textContent = text;
+      return btn;
+    }
+    if (item.employment_status === "ACTIVE") {
+      const suspendBtn = statusButton("SUSPENDED", "暂停任职", true);
+      statusRow.appendChild(suspendBtn);
+      armDanger(suspendBtn, "确认暂停任职？",
+          "暂停后该员工将无法以本任职使用 PMS；可随时恢复在职。请再次点击确认。");
+      const terminateBtn = statusButton("TERMINATED", "办理离职", true);
+      statusRow.appendChild(terminateBtn);
+      armDanger(terminateBtn, "确认办理离职？",
+          "离职后：全部角色授权终止、登录账号停用，历史保留不可删除。请再次点击确认。");
+    } else {
+      statusRow.appendChild(statusButton("ACTIVE", "恢复在职", false));
+    }
+    statusForm.appendChild(statusRow);
+    const statusResult = resultDiv();
+    statusForm.appendChild(statusResult);
+    bindActionForm(statusForm, "/manage/staff/actions/" + profileId + "/set_status/",
+        function () { openPanel(profileId); });
+    secStatus.appendChild(statusForm);
+    drawerBody.appendChild(secStatus);
+
+    drawerBody.scrollTop = 0;
+  }
+
+  /* 支持从旧只读页带 ?emp=<id> 直达该员工操作面板 */
+  const empParam = new URLSearchParams(window.location.search).get("emp");
+  loadList(1);
+  if (empParam && /^\d+$/.test(empParam)) openPanel(parseInt(empParam, 10));
+})();
+</script>
+</body>
+</html>

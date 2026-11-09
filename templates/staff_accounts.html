@@ -1,0 +1,71 @@
+<!-- 员工与账号管理（只读存档页）：写操作已迁移至员工中心 /manage/staff/（§10.1） -->
+{% load pms_filters %}
+<!DOCTYPE html>
+{% load pms_filters %}
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>员工与账号管理（只读存档） - 酒店管理系统</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=14">
+</head>
+<body>
+<div class="page">
+{% include "_sidebar.html" %}
+<div class="main">
+    <div class="list-head">
+        <h2>员工与账号管理（只读存档）</h2>
+        <div class="toolbar">
+            <button class="tb-btn" onclick="location.reload()">⟳ 刷新</button>
+            <a class="tb-btn tb-primary" href="/manage/staff/">前往员工中心（写操作）</a>
+        </div>
+    </div>
+    <div class="card wb-note" role="status">
+        ⚠ 本页已于 §10.1 迁移：新增员工 / 开通账号 / 角色分配 / 结束授权 / 任职状态 / 密码重置
+        等写操作统一在 <a href="/manage/staff/">员工中心 /manage/staff/</a> 执行；
+        本页仅保留只读查询，旧写入口自动 302 跳转到员工中心。
+    </div>
+
+    <div class="card list-card">
+        <div class="list-toolbar">
+            <form method="get" class="inline-filter">
+                <input type="text" name="q" value="{{ q }}" placeholder="按姓名/工号搜索" class="input input-w220">
+                <button type="submit" class="tb-btn tb-primary">查询</button>
+                {% if q %}<a href="/staff_accounts/" class="tb-btn">显示全部</a>{% endif %}
+            </form>
+        </div>
+        <table class="data-table">
+            <tr>
+                <th>姓名</th><th>工号</th><th>岗位代码</th><th>在职状态</th>
+                <th>账号状态</th><th>当前角色</th><th>最后登录</th><th>操作</th>
+            </tr>
+            {% for row in rows %}
+            <tr>
+                <td>{{ row.profile.full_name }}</td>
+                <td>{{ row.membership.employee_no|default:'—' }}</td>
+                <td>{{ row.membership.position_code|default:'—' }}</td>
+                <td><span class="badge {% if row.profile.employment_status == 'ACTIVE' %}ok-badge{% else %}void-badge{% endif %}">{{ row.profile.get_employment_status_display }}</span></td>
+                <td><span class="badge {% if row.account_state == '正常' %}ok-badge{% elif row.account_state == '未开通' %}warn-badge{% else %}void-badge{% endif %}">{{ row.account_state }}</span></td>
+                <td>{% for r in row.active_roles %}<span class="badge info-badge">{{ r }}</span> {% empty %}<span class="warn-info">尚未分配角色</span>{% endfor %}</td>
+                <td>{{ row.user.last_login|date:'Y-m-d H:i'|default:'—' }}</td>
+                <td><a class="tb-btn" href="/staff_accounts/{{ row.profile.pk }}/">详情</a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="empty-row">未查询到员工记录</td></tr>
+            {% endfor %}
+        </table>
+        <div class="page-bar">
+            <span>共 {{ page_obj.paginator.count }} 条记录</span>
+            <span class="page-nums">
+                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">‹</a>{% endif %}
+                <span class="page-cur">{{ page_obj.number }}</span>
+                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">‹</a>{% endif %}
+            </span>
+            <span>15 条/页</span>
+        </div>
+    </div>
+</div>
+</div>
+<script src="/static/js/jquery-2.1.4.min.js"></script>
+<script src="/static/js/app.js?v=2"></script>
+</body>
+</html>

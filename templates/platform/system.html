@@ -1,0 +1,47 @@
+{% extends "platform/base.html" %}
+{% block title %}平台运行与安全{% endblock %}
+{% block content %}
+<div class="pf-heading">
+    <h2>平台运行与安全</h2>
+    <p>只读配置摘要；展示的是当前 Django 配置值，不代表外部网络探测结果。</p>
+</div>
+<div class="pf-system-grid">
+    <section class="pf-system-card">
+        <h3>部署</h3>
+        <dl class="pf-info-list">
+            <div><dt>平台版本</dt><dd>{{ version }}</dd></div>
+            <div><dt>运行环境</dt><dd>{{ run_mode|upper }}</dd></div>
+            <div><dt>时区</dt><dd>{{ tz }}</dd></div>
+            <div><dt>系统语言</dt><dd>{{ sys_lang }}</dd></div>
+        </dl>
+    </section>
+    <section class="pf-system-card">
+        <h3>运行</h3>
+        <dl class="pf-info-list">
+            <div><dt>DEBUG</dt><dd>{% if debug %}<span class="pf-status pf-status-danger">开启 · 风险</span>{% else %}<span class="pf-status pf-status-ok">关闭</span>{% endif %}</dd></div>
+        </dl>
+        {% if debug %}
+        <p class="pf-risk-note">DEBUG 当前处于开启状态。正式生产环境必须关闭 DEBUG。</p>
+        {% else %}
+        <p class="pf-muted-note">DEBUG 已关闭。</p>
+        {% endif %}
+    </section>
+    <section class="pf-system-card">
+        <h3>安全</h3>
+        <dl class="pf-info-list">
+            <div><dt>HTTPS 强制跳转配置</dt><dd>{% if https_redirect %}<span class="pf-status pf-status-ok">已启用</span>{% else %}<span class="pf-status pf-status-warn">未启用</span>{% endif %}</dd></div>
+            <div><dt>Session 安全 Cookie</dt><dd>{% if session_cookie_secure %}<span class="pf-status pf-status-ok">已启用</span>{% else %}<span class="pf-status pf-status-danger">未启用</span>{% endif %}</dd></div>
+            <div><dt>CSRF 安全 Cookie</dt><dd>{% if csrf_cookie_secure %}<span class="pf-status pf-status-ok">已启用</span>{% else %}<span class="pf-status pf-status-danger">未启用</span>{% endif %}</dd></div>
+            <div><dt>HSTS</dt><dd>{% if hsts_enabled %}<span class="pf-status pf-status-ok">已配置 {{ hsts_seconds }} 秒</span>{% else %}<span class="pf-status pf-status-warn">未配置</span>{% endif %}</dd></div>
+        </dl>
+    </section>
+    <section class="pf-system-card">
+        <h3>会话</h3>
+        <dl class="pf-info-list">
+            <div><dt>会话有效期</dt><dd>{{ session_age_hours }} 小时</dd></div>
+            <div><dt>浏览器关闭即过期</dt><dd>{% if session_expire_at_browser_close %}是{% else %}否{% endif %}</dd></div>
+            <div><dt>CSRF 存于 Session</dt><dd>{% if csrf_use_sessions %}是{% else %}否{% endif %}</dd></div>
+        </dl>
+    </section>
+</div>
+{% endblock %}

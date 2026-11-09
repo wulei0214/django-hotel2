@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 虚拟环境
+venv/
+.venv/
+
+# 日志（运行时自动生成）
+logs/
+
+# IDE
+.idea/
+.vscode/
+_idea/
+
+# 前端构建缓存
+static/_sass-cache/
+
+# 系统文件
+Thumbs.db
+.DS_Store
+
+# 备份文件
+*.bak
+*~
+
+# ZCode 会话数据
+.zcode/
+
+# 环境变量（本地密钥，禁止提交）
+.env
+
+# P0 遗留实现（hotelapp/api.py 与 hotelapp/services/）已于 2026-11-07 从磁盘删除：
+# 零活引用、git 历史 2aab3cd 有归档。迁移 0010/0011 已在版本控制中（0012 依赖 0011）。
+
+# === P0 安全护栏：禁止入库 SQL 备份（含密码哈希/PII） ===
+*.sql
+!docs/schema_only/*.sql
+staticfiles/
+docs/acceptance/evidence/hotel-backup-*.sql

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>前台接待工作台 - 酒店管理系统</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=14">
+    <link rel="stylesheet" href="/static/css/frontdesk.css?v=5">
+</head>
+<body class="fd-body">
+{% include "_sidebar.html" %}
+<main class="main fd-main" id="front-desk" data-api-root="/api/v1/front-desk/" data-can-operate="{{ pms_perms.hotelapp.change_accommodation|yesno:'true,false' }}">
+    <header class="fd-header">
+        <div>
+            <div class="fd-eyebrow">FRONT DESK</div>
+            <h1>前台接待工作台</h1>
+            <p class="fd-subtitle">
+                <span>{{ request.property.name|default:"酒店运营中心" }}</span>
+                <span class="fd-dot">·</span>
+                <span>物业 {{ request.property.code|default:"DEFAULT" }}</span>
+                <span class="fd-dot">·</span>
+                <span>当前岗位 {{ role|default:"员工" }}</span>
+                <span class="fd-dot">·</span>
+                <span id="fd-business-date">正在读取营业日…</span>
+            </p>
+        </div>
+        <div class="fd-header-actions">
+            <button type="button" class="fd-btn fd-btn-secondary fd-nav-toggle" id="fd-nav-toggle" aria-label="打开业务导航菜单" aria-expanded="false">
+                <span aria-hidden="true">☰</span> 导航
+            </button>
+            <button type="button" class="fd-btn fd-btn-secondary" id="fd-refresh">
+                <span aria-hidden="true">↻</span> 刷新数据
+            </button>
+            <div class="fd-shift-controls" id="fd-cashier-shift">
+                <span id="fd-cashier-shift-status" role="status">正在读取收银班次…</span>
+                <button type="button" class="fd-btn fd-btn-secondary" id="fd-shift-open">开班</button>
+                <button type="button" class="fd-btn fd-btn-secondary" id="fd-shift-close" hidden>关班</button>
+            </div>
+        </div>
+    </header>
+
+    <section class="fd-searchbar" aria-label="入住管理搜索">
+        <div class="fd-search-input">
+            <span class="fd-search-icon" aria-hidden="true">⌕</span>
+            <input id="fd-search" type="search" maxlength="80" placeholder="搜索订单号、住客姓名、手机号或房间号">
+            <kbd>Enter</kbd>
+        </div>
+        <label class="fd-date-filter">
+            <span>营业日期</span>
+            <input type="date" id="fd-date">
+        </label>
+        <button type="button" class="fd-btn fd-btn-primary" id="fd-search-submit">搜索</button>
+    </section>
+
+    <section class="fd-kpis" aria-label="今日运营概况">
+        <button class="fd-kpi fd-kpi-blue" type="button" data-kpi-tab="arrivals">
+            <span class="fd-kpi-label">今日应到</span>
+            <strong id="kpi-arrivals">—</strong>
+            <small>抵店房间明细</small>
+        </button>
+        <button class="fd-kpi fd-kpi-amber" type="button" data-kpi-tab="arrivals" data-kpi-filter="unassigned">
+            <span class="fd-kpi-label">待排房</span>
+            <strong id="kpi-unassigned">—</strong>
+            <small>等待分配房间</small>
+        </button>
+        <button class="fd-kpi fd-kpi-blue" type="button" data-kpi-tab="departures">
+            <span class="fd-kpi-label">今日离店</span>
+            <strong id="kpi-departures">—</strong>
+            <small>计划今日离店</small>
+        </button>
+        <button class="fd-kpi fd-kpi-green" type="button" data-kpi-tab="in-house">
+            <span class="fd-kpi-label">当前在住</span>
+            <strong id="kpi-in-house">—</strong>
+            <small>实际 Stay 数量</small>
+        </button>
+        <button class="fd-kpi fd-kpi-green" type="button" data-kpi-tab="rooms" data-kpi-filter="READY">
+            <span class="fd-kpi-label">可入住净房</span>
+            <strong id="kpi-ready">—</strong>
+            <small>空闲 · 净房 · 正常</small>
+        </button>
+        <button class="fd-kpi fd-kpi-red" type="button" data-kpi-tab="rooms" data-kpi-filter="INSPECTING">
+            <span class="fd-kpi-label">待管理者放行</span>
+            <strong id="kpi-inspecting">—</strong>
+            <small>客房待检查</small>
+        </button>
+    </section>
+
+    <nav class="fd-tabs" aria-label="入住业务分类">
+        <button type="button" class="fd-tab is-active" data-tab="workbench">工作台</button>
+        <button type="button" class="fd-tab" data-tab="arrivals">今日抵店</button>
+        <button type="button" class="fd-tab" data-tab="departures">今日离店</button>
+        <button type="button" class="fd-tab" data-tab="in-house">在住客人</button>
+        <button type="button" class="fd-tab" data-tab="reservations">订单查询</button>
+        <button type="button" class="fd-tab" data-tab="legacy">历史订单</button>
+        <button type="button" class="fd-tab" data-tab="rooms">房间视图</button>
+        <div class="fd-tabs-spacer"></div>
+        <span class="fd-data-source"><i></i> PMS 2.0 / 历史订单只读</span>
+    </nav>
+
+    <div class="fd-layout">
+        <section class="fd-panel fd-list-panel">
+            <div class="fd-panel-heading">
+                <div>
+                    <h2 id="fd-list-title">今日抵店任务</h2>
+                    <p id="fd-list-subtitle">查看今日预抵订单、房间分配情况和账单摘要</p>
+                </div>
+                <div class="fd-list-controls">
+                    <select id="fd-assigned-filter" aria-label="排房状态筛选">
+                        <option value="all">全部排房状态</option>
+                        <option value="no">待排房</option>
+                        <option value="yes">已分配</option>
+                    </select>
+                    <select id="fd-page-size" aria-label="每页条数">
+                        <option value="20">每页 20 条</option>
+                        <option value="50">每页 50 条</option>
+                        <option value="100">每页 100 条</option>
+                    </select>
+                </div>
+            </div>
+            <div class="fd-table-wrap">
+                <table class="fd-table">
+                    <thead id="fd-table-head">
+                        <tr>
+                            <th>订单 / 住客</th>
+                            <th>房型 / 房间</th>
+                            <th>入住 · 离店</th>
+                            <th>账务摘要</th>
+                            <th>状态</th>
+                            <th class="fd-th-action">详情</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fd-table-body">
+                        <tr><td colspan="6" class="fd-table-loading">正在加载前台数据…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <footer class="fd-pagination">
+                <span id="fd-page-info">—</span>
+                <div>
+                    <button type="button" id="fd-page-prev" class="fd-page-btn" disabled>上一页</button>
+                    <button type="button" id="fd-page-next" class="fd-page-btn" disabled>下一页</button>
+                </div>
+            </footer>
+        </section>
+
+        <aside class="fd-side-column">
+            <section class="fd-panel fd-room-panel">
+                <div class="fd-panel-heading">
+                    <div>
+                        <h2>房间准备情况</h2>
+                        <p>来自客房模块的实时状态</p>
+                    </div>
+                    <a href="/manage/rooms/" class="fd-text-link">房态与库存中心 →</a>
+                </div>
+                <div class="fd-room-stat">
+                    <span><i class="fd-state-dot is-green"></i>可入住净房</span>
+                    <strong id="room-ready-count">—</strong>
+                </div>
+                <div class="fd-room-stat">
+                    <span><i class="fd-state-dot is-blue"></i>清洁中 / 脏房</span>
+                    <strong id="room-cleaning-count">—</strong>
+                </div>
+                <div class="fd-room-stat">
+                    <span><i class="fd-state-dot is-amber"></i>待检查放行</span>
+                    <strong id="room-inspecting-count">—</strong>
+                </div>
+                <div class="fd-room-stat">
+                    <span><i class="fd-state-dot is-red"></i>维修停用 / 售停</span>
+                    <strong id="room-maintenance-count">—</strong>
+                </div>
+                <div class="fd-room-note" id="room-readiness-note">房间状态按占用、清洁、维修三个维度分别展示。</div>
+            </section>
+
+            <section class="fd-panel fd-exception-panel">
+                <div class="fd-panel-heading">
+                    <div>
+                        <h2>待办与异常</h2>
+                        <p>需要前台或管理者跟进的事项</p>
+                    </div>
+                </div>
+                <button type="button" class="fd-exception-row" data-tab="arrivals" data-filter="unassigned">
+                    <span class="fd-exception-icon is-amber">!</span>
+                    <span><b>待排房订单</b><small>预抵订单尚未分配房间</small></span>
+                    <strong id="exception-unassigned">—</strong>
+                </button>
+                <button type="button" class="fd-exception-row" data-tab="rooms" data-filter="INSPECTING">
+                    <span class="fd-exception-icon is-amber">!</span>
+                    <span><b>净房待放行</b><small>需要值班经理 / 店长确认</small></span>
+                    <strong id="exception-inspecting">—</strong>
+                </button>
+                <button type="button" class="fd-exception-row" data-tab="rooms" data-filter="MAINTENANCE">
+                    <span class="fd-exception-icon is-red">!</span>
+                    <span><b>维修或停售房间</b><small>不可分配给抵店客人</small></span>
+                    <strong id="exception-maintenance">—</strong>
+                </button>
+                <p class="fd-exception-footnote">仅展示当前登录员工有权限查看的业务摘要。</p>
+            </section>
+        </aside>
+    </div>
+</main>
+
+<aside class="fd-drawer" id="fd-drawer" aria-hidden="true">
+    <div class="fd-drawer-backdrop" data-drawer-close></div>
+    <section class="fd-drawer-card" role="dialog" aria-modal="true" aria-labelledby="fd-drawer-title">
+        <header class="fd-drawer-header">
+            <div>
+                <span class="fd-eyebrow">RESERVATION DETAILS</span>
+                <h2 id="fd-drawer-title">订单详情</h2>
+                <p id="fd-drawer-booking">—</p>
+            </div>
+            <button type="button" class="fd-drawer-close" data-drawer-close aria-label="关闭">×</button>
+        </header>
+        <div class="fd-drawer-body">
+            <div class="fd-detail-section">
+                <h3>住客信息</h3>
+                <div class="fd-detail-grid">
+                    <div><span>住客姓名</span><b id="detail-guest-name">—</b></div>
+                    <div><span>联系电话</span><b id="detail-guest-phone">—</b></div>
+                    <div><span>预订来源</span><b id="detail-source">—</b></div>
+                    <div><span>预订状态</span><b id="detail-status">—</b></div>
+                </div>
+            </div>
+            <div class="fd-detail-section">
+                <h3>预订信息</h3>
+                <div class="fd-detail-grid">
+                    <div><span>入住日期</span><b id="detail-checkin">—</b></div>
+                    <div><span>离店日期</span><b id="detail-checkout">—</b></div>
+                    <div><span>房间数量</span><b id="detail-room-count">—</b></div>
+                    <div><span>入住人数</span><b id="detail-guests">—</b></div>
+                </div>
+                <div id="detail-rooms" class="fd-detail-room-list"></div>
+            </div>
+            <div class="fd-detail-section" id="fd-operations-section" hidden>
+                <h3>入住操作</h3>
+                <p id="fd-operations-note" class="fd-operation-note"></p>
+                <div id="detail-operations" class="fd-operations"></div>
+            </div>
+            <div class="fd-detail-section">
+                <div class="fd-detail-title-row">
+                    <h3>账单摘要</h3>
+                    <button type="button" class="fd-text-link" id="fd-view-folio">查看账单明细 →</button>
+                </div>
+                <div class="fd-folio-summary">
+                    <div><span>应收 / 消费</span><b id="detail-charges">¥0.00</b></div>
+                    <div><span>已收 / 抵扣</span><b id="detail-credits">¥0.00</b></div>
+                    <div class="is-balance"><span>当前余额</span><b id="detail-balance">¥0.00</b></div>
+                </div>
+                <div id="detail-folio-entries" class="fd-folio-entries"></div>
+            </div>
+            <div class="fd-detail-section">
+                <h3>记录时间</h3>
+                <div class="fd-timeline-item"><i></i><span>订单创建</span><b id="detail-created">—</b></div>
+                <div class="fd-timeline-item"><i></i><span>最近更新</span><b id="detail-updated">—</b></div>
+            </div>
+        </div>
+        <footer class="fd-drawer-footer">
+            <span>操作权限由服务端按当前物业和员工岗位实时校验；线下收款仅登记已实际收到的款项。</span>
+        </footer>
+    </section>
+</aside>
+
+<div class="fd-toast" id="fd-toast" role="status" aria-live="polite"></div>
+<form id="fd-csrf-token-container" hidden>{% csrf_token %}</form>
+<script src="/static/js/frontdesk.js?v=5"></script>
+</body>
+</html>

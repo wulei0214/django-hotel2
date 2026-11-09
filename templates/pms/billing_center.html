@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{{ title }} - PMS2</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=14">
+    <style>
+        .pms-center{padding:24px;max-width:1500px;margin:0 auto}
+        .pms-center-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px}
+        .pms-center-head h1{margin:0 0 6px;font-size:24px;color:var(--color-text-primary,#243247)}
+        .pms-center-sub{color:var(--color-text-muted,#778397);margin:0}
+        .pms-panel{background:var(--color-bg-surface,#fff);border:1px solid var(--color-border-separator,#e7ebf1);border-radius:var(--radius-lg,12px);padding:18px;margin-bottom:18px}
+        .pms-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+        .pms-tools input,.pms-tools select{min-width:160px;padding:10px 12px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:var(--radius-md,8px)}
+        .pms-tools button{padding:10px 16px;border:0;border-radius:var(--radius-md,8px);background:var(--color-accent-solid,#263a55);color:#fff;cursor:pointer}
+        .pms-meta{margin-left:auto;color:var(--color-text-muted,#778397);font-size:13px}
+        .pms-table-wrap{overflow:auto}
+        .pms-table{width:100%;border-collapse:collapse;white-space:nowrap}
+        .pms-table th,.pms-table td{padding:12px 14px;border-bottom:1px solid var(--color-border-separator,#edf0f4);text-align:left;font-size:13px}
+        .pms-table th{background:var(--color-bg-subtle,#f7f9fc);color:var(--color-text-secondary,#637188);font-weight:600}
+        .pms-table tbody tr:hover{background:var(--color-bg-subtle,#f7f9fc)}
+        .pms-state{padding:24px;text-align:center;color:var(--color-text-muted,#8290a3)}
+        .pms-pager{display:flex;justify-content:space-between;align-items:center;padding-top:14px;color:var(--color-text-muted,#778397);font-size:13px}
+        .pms-row-btn{padding:6px 12px;border:1px solid var(--color-accent-solid,#2b74c9);background:transparent;color:var(--color-accent-solid,#2b74c9);border-radius:var(--radius-md,6px);cursor:pointer;font-size:12px}
+        .pms-row-btn:hover{background:var(--color-accent-bg,#ecf5ff)}
+        .pms-row-btn:focus-visible{outline:2px solid var(--color-accent-solid,#2b74c9);outline-offset:2px}
+        /* 汇总卡（§4.1 财务总览） */
+        .fin-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+        .fin-card{background:var(--color-bg-surface,#fff);border:1px solid var(--color-border-separator,#e7ebf1);border-radius:var(--radius-lg,12px);padding:14px 16px}
+        .fin-card dt{margin:0 0 6px;color:var(--color-text-secondary,#637188);font-size:12px}
+        .fin-card dd{margin:0;font-size:20px;color:var(--color-text-primary,#243247);font-variant-numeric:tabular-nums}
+        .fin-card .fin-unit{font-size:12px;color:var(--color-text-muted,#909399);margin-left:4px}
+        /* 状态徽标 */
+        .fin-badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;line-height:1.6}
+        .fin-badge.b-open{background:var(--color-warning-bg,#fdf6ec);color:var(--color-warning-text,#b8860b)}
+        .fin-badge.b-closed{background:var(--color-success-bg,#f0f9eb);color:var(--color-success-text,#3d7a1e)}
+        .fin-badge.b-voided{background:var(--color-bg-subtle,#f5f7fa);color:var(--color-text-muted,#909399)}
+        .fin-badge.b-info{background:var(--color-accent-bg,#ecf5ff);color:var(--color-accent-text,#1f6fd0)}
+        /* 详情抽屉 */
+        .pms-drawer-mask{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:60;opacity:0;pointer-events:none;transition:opacity .2s}
+        .pms-drawer-mask.is-open{opacity:1;pointer-events:auto}
+        .pms-drawer{position:fixed;top:0;right:0;width:640px;max-width:94vw;height:100vh;background:var(--color-bg-surface,#fff);z-index:61;box-shadow:var(--shadow-pop,0 4px 16px rgba(0,0,0,.14));transform:translateX(105%);transition:transform .25s ease-out;display:flex;flex-direction:column}
+        .pms-drawer.is-open{transform:translateX(0)}
+        .pms-drawer-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--color-border-separator,#e7ebf1)}
+        .pms-drawer-head h2{margin:0;font-size:16px;color:var(--color-text-primary,#243247)}
+        .pms-drawer-close{border:1px solid var(--color-border-default,#dcdfe6);background:transparent;color:var(--color-text-secondary,#606266);border-radius:var(--radius-md,6px);padding:6px 14px;cursor:pointer;font-size:13px}
+        .pms-drawer-close:hover{background:var(--color-bg-subtle,#f5f7fa)}
+        .pms-drawer-body{flex:1;overflow:auto;padding:16px 20px}
+        .pms-drawer-state{padding:32px 0;text-align:center;color:var(--color-text-muted,#8290a3);font-size:13px}
+        .pms-drawer-err{padding:12px 14px;background:var(--color-danger-bg,#fef0f0);border:1px solid var(--color-danger-border,#fde2e2);color:var(--color-danger-text,#b34a4a);border-radius:var(--radius-md,6px);font-size:13px}
+        .pms-drawer-ok{padding:12px 14px;background:var(--color-success-bg,#f0f9eb);border:1px solid var(--color-success-border,#e1f3d8);color:var(--color-success-text,#3d7a1e);border-radius:var(--radius-md,6px);font-size:13px;margin-top:10px}
+        .pms-kv{width:100%;border-collapse:collapse;margin-bottom:20px}
+        .pms-kv th{width:118px;text-align:left;padding:8px 10px;color:var(--color-text-secondary,#637188);font-weight:600;font-size:13px;background:var(--color-bg-subtle,#f7f9fc);border-bottom:1px solid var(--color-border-separator,#edf0f4);vertical-align:top}
+        .pms-kv td{padding:8px 10px;font-size:13px;border-bottom:1px solid var(--color-border-separator,#edf0f4);color:var(--color-text-primary,#243247);font-variant-numeric:tabular-nums;word-break:break-all}
+        .pms-drawer-body h3{margin:20px 0 8px;font-size:14px;color:var(--color-text-primary,#243247)}
+        .pms-mini{width:100%;border-collapse:collapse}
+        .pms-mini th,.pms-mini td{padding:7px 10px;border-bottom:1px solid var(--color-border-separator,#edf0f4);font-size:12px;text-align:left;font-variant-numeric:tabular-nums}
+        .pms-mini th{background:var(--color-bg-subtle,#f7f9fc);color:var(--color-text-secondary,#637188);font-weight:600}
+        /* 操作表单（收款/退款，提交到 BillingService API） */
+        .fin-form{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;padding:12px;background:var(--color-bg-inset,#f8f9fb);border:1px solid var(--color-border-separator,#e7ebf1);border-radius:var(--radius-md,8px)}
+        .fin-form label{font-size:12px;color:var(--color-text-secondary,#637188);display:block;margin-bottom:4px}
+        .fin-form input,.fin-form select{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:var(--radius-md,6px);font-size:13px}
+        .fin-form .fin-form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px}
+        .fin-form button{padding:8px 18px;border:0;border-radius:var(--radius-md,6px);background:var(--color-accent-solid,#2b74c9);color:#fff;cursor:pointer;font-size:13px}
+        .fin-form button[type=button]{background:transparent;color:var(--color-text-secondary,#606266);border:1px solid var(--color-border-default,#dcdfe6)}
+        @media(max-width:720px){.pms-center{padding:14px}.pms-panel{padding:10px}.pms-tools input{min-width:0;width:100%}}
+        @media (prefers-reduced-motion: reduce){
+            .pms-drawer-mask,.pms-drawer{transition:none}
+        }
+    </style>
+</head>
+<body>
+{% include "_sidebar.html" %}
+<div class="main">
+  <div class="pms-center">
+    <div class="pms-center-head">
+      <div>
+        <h1>{{ title }}</h1>
+        <p class="pms-center-sub">{{ property_name }} · {{ subtitle }}</p>
+      </div>
+
+    </div>
+
+    <section class="pms-panel" aria-label="今日汇总">
+      <div class="pms-tools">
+        <strong>今日汇总</strong>
+        <span class="pms-meta" id="fin-summary-meta">正在读取汇总…</span>
+      </div>
+      <dl class="fin-cards" id="fin-cards">
+        <div class="fin-card"><dt>营业收入（贷方）</dt><dd id="fin-revenue">—</dd></div>
+        <div class="fin-card"><dt>冲抵（借方）</dt><dd id="fin-expense">—</dd></div>
+        <div class="fin-card"><dt>净额</dt><dd id="fin-net">—</dd></div>
+        <div class="fin-card"><dt>收款</dt><dd id="fin-payments">—</dd></div>
+        <div class="fin-card"><dt>退款</dt><dd id="fin-refunds">—</dd></div>
+        <div class="fin-card"><dt>凭证数</dt><dd id="fin-entries">—</dd></div>
+      </dl>
+    </section>
+
+    <section class="pms-panel" aria-label="待退款负债">
+      <div class="pms-tools">
+        <strong>待退款负债</strong>
+        <button id="fin-refund-liability-reload" type="button">刷新</button>
+        <span class="pms-meta" id="fin-refund-liability-meta">正在读取待退款负债…</span>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr>
+            <th>预订编号</th><th>原始负债</th><th>已退款</th><th>待处理余额</th>
+            <th>原支付候选</th><th>状态</th><th>操作</th>
+          </tr></thead>
+          <tbody id="fin-refund-liability-body">
+            <tr><td colspan="7" class="pms-state">正在读取待退款负债…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="pms-panel" aria-label="账务调整">
+      <div class="pms-tools">
+        <strong>账务调整 / 抵扣（DEC-02-A1）</strong>
+        <button id="fin-adjustment-reload" type="button">刷新</button>
+        <span class="pms-meta" id="fin-adjustment-meta">原始负债冻结；调整独立记录，净额可重建。</span>
+      </div>
+      <div class="pms-tools" id="fin-adjustment-form">
+        <input id="fin-adj-folio" type="number" placeholder="账单 ID" style="width:90px">
+        <select id="fin-adj-type">
+          <option value="CHARGE_ADD">费用补记（抵扣）</option>
+          <option value="CHARGE_REVERSE">费用冲销（增应退）</option>
+          <option value="REFUND_INCREASE">新增应退款事项</option>
+        </select>
+        <input id="fin-adj-amount" type="number" step="0.01" min="0.01" placeholder="金额" style="width:110px">
+        <input id="fin-adj-reason" type="text" maxlength="240" placeholder="调整原因（必填）" style="width:200px">
+        <input id="fin-adj-evidence" type="text" maxlength="500" placeholder="证据/备注" style="width:180px">
+        <button id="fin-adj-submit" type="button">财务发起调整</button>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr>
+            <th>预订编号</th><th>类型</th><th>金额</th><th>状态</th>
+            <th>发起人</th><th>审批人</th><th>操作</th>
+          </tr></thead>
+          <tbody id="fin-adjustment-body">
+            <tr><td colspan="7" class="pms-state">正在读取账务调整…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="pms-panel" aria-label="待财务核查">
+      <div class="pms-tools">
+        <strong>退房异常放行 · 待财务核查（DEC-02-B2）</strong>
+        <button id="fin-exception-reload" type="button">刷新</button>
+        <span class="pms-meta" id="fin-exception-meta">异常放行不是退款负债；核查通过才受控转正式负债。</span>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr>
+            <th>预订编号</th><th>原因</th><th>金额</th><th>状态</th>
+            <th>申请人</th><th>审批人</th><th>核查结论</th><th>操作</th>
+          </tr></thead>
+          <tbody id="fin-exception-body">
+            <tr><td colspan="8" class="pms-state">正在读取待财务核查记录…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+
+    <section class="pms-panel" aria-label="账单列表">
+      <div class="pms-tools">
+        <select id="fin-folio-status" aria-label="账单状态筛选">
+          <option value="">全部状态</option>
+          <option value="OPEN">未结</option>
+          <option value="CLOSED">已结</option>
+          <option value="VOIDED">已作废</option>
+        </select>
+        <input id="fin-search" type="search" placeholder="预订号 / 住客姓名">
+        <button id="fin-reload" type="button">查询</button>
+        <span class="pms-meta" id="fin-folio-meta">正在读取账单…</span>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr id="fin-head"></tr></thead>
+          <tbody id="fin-body"><tr><td class="pms-state">正在读取真实账务数据…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pms-pager">
+        <span id="fin-folio-note">点击「查看」打开账单详情抽屉（流水 / 支付 / 退款）。</span>
+        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label for="fin-page-size">每页</label>
+          <select id="fin-page-size" aria-label="账单每页条数">
+            <option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option>
+          </select>
+          <button id="fin-prev" type="button" disabled>上一页</button>
+          <span id="fin-page"></span>
+          <label for="fin-goto-page">跳至</label>
+          <input id="fin-goto-page" type="number" min="1" step="1" value="1" aria-label="账单跳转页码" style="width:72px">
+          <button id="fin-goto-btn" type="button">跳转</button>
+          <button id="fin-next" type="button" disabled>下一页</button>
+        </span>
+      </div>
+    </section>
+
+    <section class="pms-panel" aria-label="最近流水">
+      <div class="pms-tools"><strong>最近流水（不可变账本）</strong>
+        <span class="pms-meta" id="fin-ledger-meta"></span></div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr id="fin-ledger-head"></tr></thead>
+          <tbody id="fin-ledger-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="pms-panel" aria-label="收银班次">
+      <div class="pms-tools"><strong>收银班次</strong>
+        <span class="pms-meta" id="fin-shift-meta"></span></div>
+      {% if can_manage_cashier_shift %}
+      <div id="fin-current-shift-state" class="pms-state" style="padding:10px 0">正在读取本人班次…</div>
+      <div class="fin-form" id="fin-shift-open-wrap">
+        <div><label for="fin-shift-opening-cash">开班备用金</label>
+          <input id="fin-shift-opening-cash" inputmode="decimal" value="0.00" required></div>
+        <div class="fin-form-actions"><button type="button" id="fin-shift-open">开班</button></div>
+      </div>
+      <div class="fin-form" id="fin-shift-close-wrap" hidden>
+        <div><label for="fin-shift-actual-cash">实盘现金</label>
+          <input id="fin-shift-actual-cash" inputmode="decimal" placeholder="0.00" required></div>
+        <div><label for="fin-shift-variance-reason">差异说明（差异非零必填）</label>
+          <input id="fin-shift-variance-reason" maxlength="240" placeholder="如无差异可留空"></div>
+        <div class="fin-form-actions"><button type="button" id="fin-shift-close">关班并对账</button></div>
+      </div>
+      {% if can_manage_cash_movement %}
+      <form class="fin-form" id="fin-shift-movement-form" hidden>
+        <div><label for="fin-shift-movement-direction">现金变动</label>
+          <select id="fin-shift-movement-direction" name="direction">
+            <option value="IN">现金补入</option><option value="OUT">现金支出/取出</option>
+          </select></div>
+        <div><label for="fin-shift-movement-amount">金额</label>
+          <input id="fin-shift-movement-amount" name="amount" inputmode="decimal" required></div>
+        <div style="grid-column:1/-1"><label for="fin-shift-movement-reason">原因</label>
+          <input id="fin-shift-movement-reason" name="reason" maxlength="240" required></div>
+        <div class="fin-form-actions"><button type="submit">登记现金变动</button></div>
+      </form>
+      {% endif %}
+      {% endif %}
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr id="fin-shift-head"></tr></thead>
+          <tbody id="fin-shift-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="pms-drawer-mask" id="pms-drawer-mask"></div>
+<aside class="pms-drawer" id="pms-drawer" role="dialog" aria-modal="true" aria-labelledby="pms-drawer-title">
+  <div class="pms-drawer-head">
+    <h2 id="pms-drawer-title">账单详情</h2>
+    <button type="button" class="pms-drawer-close" id="pms-drawer-close">关闭</button>
+  </div>
+  <div class="pms-drawer-body" id="pms-drawer-body"></div>
+</aside>
+
+{{ columns|json_script:"fin-columns" }}
+{{ detail_config|json_script:"fin-detail" }}
+{{ can_collect_payment|json_script:"fin-can-collect" }}
+{{ can_refund_request|json_script:"fin-can-refund" }}
+{{ can_reverse_entry|json_script:"fin-can-reverse" }}
+{{ can_approve_refund|json_script:"fin-can-approve-refund" }}
+{{ can_execute_refund|json_script:"fin-can-execute-refund" }}
+{{ can_manage_cashier_shift|json_script:"fin-can-manage-shift" }}
+{{ can_manage_cash_movement|json_script:"fin-can-manage-cash-movement" }}
+{{ current_user_id|json_script:"fin-current-user-id" }}
+<form id="pms-csrf-token" hidden>{% csrf_token %}</form>
+<script>
+(function () {
+  "use strict";
+  const csrfInput = document.querySelector('#pms-csrf-token input[name="csrfmiddlewaretoken"]');
+  const CSRF = csrfInput ? csrfInput.value : "";
+  const columns = JSON.parse(document.getElementById("fin-columns").textContent);
+  const detail = JSON.parse(document.getElementById("fin-detail").textContent);
+  const canCollect = JSON.parse(document.getElementById("fin-can-collect").textContent) === true;
+  const canRefund = JSON.parse(document.getElementById("fin-can-refund").textContent) === true;
+  const canReverse = JSON.parse(document.getElementById("fin-can-reverse").textContent) === true;
+  const canApproveRefund = JSON.parse(document.getElementById("fin-can-approve-refund").textContent) === true;
+  const canExecuteRefund = JSON.parse(document.getElementById("fin-can-execute-refund").textContent) === true;
+  const canManageShift = JSON.parse(document.getElementById("fin-can-manage-shift").textContent) === true;
+  const canManageCashMovement = JSON.parse(document.getElementById("fin-can-manage-cash-movement").textContent) === true;
+  const currentUserId = Number(JSON.parse(document.getElementById("fin-current-user-id").textContent));
+  let activeShiftId = null;
+  const head = document.getElementById("fin-head");
+  const body = document.getElementById("fin-body");
+  const meta = document.getElementById("fin-folio-meta");
+  const search = document.getElementById("fin-search");
+  const statusSelect = document.getElementById("fin-folio-status");
+  const pageLabel = document.getElementById("fin-page");
+  const prevButton = document.getElementById("fin-prev");
+  const nextButton = document.getElementById("fin-next");
+  const pageSizeSelect = document.getElementById("fin-page-size");
+  const gotoPageInput = document.getElementById("fin-goto-page");
+  const drawer = document.getElementById("pms-drawer");
+  const drawerMask = document.getElementById("pms-drawer-mask");
+  const drawerTitle = document.getElementById("pms-drawer-title");
+  const drawerBody = document.getElementById("pms-drawer-body");
+  let currentPage = 1;
+  let currentPageSize = 20;
+  let totalPages = 1;
+  let currentReservationId = null;
+
+  function at(item, path) {
+    return path.split(".").reduce(function(v,k){return v == null ? null : v[k];},item);
+  }
+  function value(v) {
+    if (v === null || v === undefined || v === "") return "—";
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  }
+  function badge(status) {
+    const span = document.createElement("span");
+    span.className = "fin-badge b-" + String(status || "").toLowerCase();
+    span.textContent = value(status);
+    return span;
+  }
+  function apiError(payload, fallback) {
+    return (payload && payload.error && payload.error.message) || fallback;
+  }
+  async function fetchJson(url, options) {
+    const response = await fetch(url, Object.assign(
+        {credentials: "same-origin", headers: {"Accept": "application/json"}}, options || {}));
+    let payload = null;
+    try { payload = await response.json(); } catch (e) { payload = null; }
+    if (!response.ok) throw new Error(apiError(payload, "请求失败（HTTP " + response.status + "）"));
+    return payload;
+  }
+
+  /* ---------- 今日汇总卡 ---------- */
+  async function loadSummary() {
+    const metaEl = document.getElementById("fin-summary-meta");
+    try {
+      const payload = await fetchJson("/api/v1/billing/summary");
+      const d = payload.data || {};
+      document.getElementById("fin-revenue").textContent = value(d.total_revenue);
+      document.getElementById("fin-expense").textContent = value(d.total_expense);
+      document.getElementById("fin-net").textContent = value(d.net);
+      document.getElementById("fin-payments").textContent =
+          value(d.payment_count) + " 笔 / " + value(d.payment_total);
+      document.getElementById("fin-refunds").textContent =
+          value(d.refund_count) + " 笔 / " + value(d.refund_total);
+      document.getElementById("fin-entries").textContent = value(d.entry_count);
+      metaEl.textContent = "营业日口径：" + (d.period ? d.period.start + " ~ " + d.period.end : "—");
+    } catch (error) {
+      metaEl.textContent = error.message;
+    }
+  }
+
+  /* ---------- DEC-02-A1 账务调整 ---------- */
+  async function loadAdjustments() {
+    const target = document.getElementById("fin-adjustment-body");
+    const state = document.getElementById("fin-adjustment-meta");
+    target.replaceChildren();
+    try {
+      const payload = await fetchJson("/api/v1/billing/adjustments?page=1&page_size=50");
+      const items = Array.isArray(payload.data) ? payload.data : [];
+      state.textContent = "当前显示 " + items.length + " 条；未审批调整不影响可退款净额。";
+      if (!items.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 7; td.className = "pms-state";
+        td.textContent = "暂无账务调整记录。";
+        tr.appendChild(td); target.appendChild(tr); return;
+      }
+      items.forEach(function(item) {
+        const tr = document.createElement("tr");
+        [item.booking_no, item.adjustment_type_label,
+         value(item.amount) + " " + value(item.currency),
+         item.status_label, value(item.requested_by),
+         value(item.approved_by)].forEach(function(text) {
+          const td = document.createElement("td"); td.textContent = text; tr.appendChild(td);
+        });
+        const opCell = document.createElement("td");
+        const actions = [];
+        if (item.status === "REQUESTED") actions.push(["approve", "批准"], ["reject", "驳回"]);
+        if (item.status === "APPROVED") actions.push(["execute", "执行"]);
+        if (!actions.length) { opCell.textContent = "—"; tr.appendChild(opCell); }
+        else {
+          actions.forEach(function(pair) {
+            const btn = document.createElement("button");
+            btn.type = "button"; btn.textContent = pair[1];
+            btn.dataset.adjId = item.id; btn.dataset.adjAction = pair[0];
+            opCell.appendChild(btn);
+          });
+          tr.appendChild(opCell);
+        }
+        if (item.net) {
+          tr.title = "原始 " + item.net.original_amount + " / 已退 " + item.net.refunded_amount
+            + " / 抵扣 " + item.net.deducted_amount + " / 增加 " + item.net.increased_amount
+            + " → 净额 " + item.net.net_refundable;
+        }
+        target.appendChild(tr);
+      });
+    } catch (error) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 7; td.className = "pms-state na-fail";
+      td.textContent = error.message;
+      tr.appendChild(td); target.appendChild(tr);
+    }
+  }
+
+  async function postDec02(url, payload) {
+    return fetchJson(url, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF},
+      body: JSON.stringify(payload || {}),
+    });
+  }
+
+  document.getElementById("fin-adjustment-reload").addEventListener("click", loadAdjustments);
+  document.getElementById("fin-adjustment-body").addEventListener("click", async function (event) {
+    const btn = event.target.closest("button[data-adj-action]");
+    if (!btn) return;
+    const id = btn.dataset.adjId, action = btn.dataset.adjAction;
+    if (!window.confirm("确认对调整 #" + id + " 执行「" + btn.textContent + "」？")) return;
+    btn.disabled = true;
+    try {
+      await postDec02("/api/v1/billing/adjustments/" + id + "/" + action,
+                      action === "reject" ? {reason: "财务复核驳回"} : {comment: ""});
+      await loadAdjustments();
+      await loadRefundLiabilities();
+    } catch (error) {
+      window.alert(error.message);
+      btn.disabled = false;
+    }
+  });
+  document.getElementById("fin-adj-submit").addEventListener("click", async function () {
+    const btn = this;
+    const payload = {
+      folio_id: document.getElementById("fin-adj-folio").value.trim(),
+      adjustment_type: document.getElementById("fin-adj-type").value,
+      amount: document.getElementById("fin-adj-amount").value.trim(),
+      reason: document.getElementById("fin-adj-reason").value.trim(),
+      evidence_note: document.getElementById("fin-adj-evidence").value.trim(),
+    };
+    if (!payload.folio_id || !payload.amount || !payload.reason) {
+      window.alert("账单 ID、金额与调整原因必填。"); return;
+    }
+    btn.disabled = true;
+    try {
+      await postDec02("/api/v1/billing/adjustments/request", payload);
+      document.getElementById("fin-adj-reason").value = "";
+      await loadAdjustments();
+    } catch (error) {
+      window.alert(error.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* ---------- DEC-02-B2 待财务核查 ---------- */
+  async function loadExceptionReleases() {
+    const target = document.getElementById("fin-exception-body");
+    const state = document.getElementById("fin-exception-meta");
+    target.replaceChildren();
+    try {
+      const payload = await fetchJson("/api/v1/billing/exception-releases?page=1&page_size=50");
+      const items = Array.isArray(payload.data) ? payload.data : [];
+      state.textContent = "当前显示 " + items.length + " 条；异常放行不是退款负债，核查通过才受控转正式负债。";
+      if (!items.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 8; td.className = "pms-state";
+        td.textContent = "暂无待财务核查记录。";
+        tr.appendChild(td); target.appendChild(tr); return;
+      }
+      items.forEach(function(item) {
+        const tr = document.createElement("tr");
+        [item.booking_no, item.reason_code_label,
+         value(item.amount) + " " + value(item.currency),
+         item.status_label, value(item.requested_by),
+         value(item.approved_by), value(item.verify_note) || "—"].forEach(function(text) {
+          const td = document.createElement("td"); td.textContent = text; tr.appendChild(td);
+        });
+        const opCell = document.createElement("td");
+        const actions = [];
+        if (item.status === "REQUESTED") actions.push(["approve", "批准"], ["reject", "驳回"]);
+        if (item.status === "RELEASED") actions.push(["settle-liability", "转正式负债"],
+                                                    ["settle-close", "核查无需退款"]);
+        if (!actions.length) { opCell.textContent = "—"; tr.appendChild(opCell); }
+        else {
+          actions.forEach(function(pair) {
+            const btn = document.createElement("button");
+            btn.type = "button"; btn.textContent = pair[1];
+            btn.dataset.relId = item.id; btn.dataset.relAction = pair[0];
+            opCell.appendChild(btn);
+          });
+          tr.appendChild(opCell);
+        }
+        target.appendChild(tr);
+      });
+    } catch (error) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 8; td.className = "pms-state na-fail";
+      td.textContent = error.message;
+      tr.appendChild(td); target.appendChild(tr);
+    }
+  }
+
+  document.getElementById("fin-exception-reload").addEventListener("click", loadExceptionReleases);
+  document.getElementById("fin-exception-body").addEventListener("click", async function (event) {
+    const btn = event.target.closest("button[data-rel-action]");
+    if (!btn) return;
+    const id = btn.dataset.relId, action = btn.dataset.relAction;
+    const labels = {"approve": "批准异常放行", "reject": "驳回异常放行",
+                    "settle-liability": "核查通过并转正式负债", "settle-close": "核查无需退款关闭"};
+    let payload = {};
+    if (action.indexOf("settle") === 0) {
+      const note = window.prompt("请填写财务核查结论（必填）：");
+      if (!note) return;
+      payload = {verify_note: note,
+                 outcome: action === "settle-liability" ? "CONVERT_LIABILITY" : "CLOSE_NO_REFUND"};
+    } else if (!window.confirm("确认对记录 #" + id + " 执行「" + labels[action] + "」？")) {
+      return;
+    }
+    btn.disabled = true;
+    try {
+      await postDec02("/api/v1/billing/exception-releases/" + id + "/" + action, payload);
+      await loadExceptionReleases();
+    } catch (error) {
+      window.alert(error.message);
+      btn.disabled = false;
+    }
+  });
+
+  /* ---------- 待退款负债 ---------- */
+  async function loadRefundLiabilities() {
+    const target = document.getElementById("fin-refund-liability-body");
+    const state = document.getElementById("fin-refund-liability-meta");
+    target.replaceChildren();
+    try {
+      const payload = await fetchJson("/api/v1/billing/refund-liabilities?page=1&page_size=100");
+      const items = Array.isArray(payload.data) ? payload.data : [];
+      state.textContent = "当前显示 " + items.length + " 条；候选支付仅供财务核对，不代表自动分配。";
+      if (!items.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 7; td.className = "pms-state";
+        td.textContent = "暂无待退款负债。";
+        tr.appendChild(td); target.appendChild(tr); return;
+      }
+      items.forEach(function(item) {
+        const tr = document.createElement("tr");
+        [item.booking_no, value(item.amount) + " " + value(item.currency),
+         value(item.refunded_amount) + " " + value(item.currency),
+         value(item.remaining_amount) + " " + value(item.currency)].forEach(function(text) {
+          const td = document.createElement("td"); td.textContent = text; tr.appendChild(td);
+        });
+        const candidatesCell = document.createElement("td");
+        const candidates = Array.isArray(item.candidate_payments) ? item.candidate_payments : [];
+        candidatesCell.textContent = candidates.map(function(p) {
+          return "#" + p.payment_id + " " + value(p.provider_ref) + "（" +
+              value(p.amount) + " " + value(p.currency) + "）";
+        }).join("；") || "无候选原支付";
+        tr.appendChild(candidatesCell);
+        const statusCell = document.createElement("td");
+        statusCell.textContent = item.status_label || item.status;
+        tr.appendChild(statusCell);
+        const actionCell = document.createElement("td");
+        if (canRefund && item.status !== "SETTLED" && candidates.length) {
+          const select = document.createElement("select");
+          select.setAttribute("aria-label", "选择待退款负债原支付");
+          candidates.forEach(function(payment) {
+            const option = document.createElement("option");
+            option.value = String(payment.payment_id);
+            option.textContent = "#" + payment.payment_id + " · " +
+                value(payment.provider_ref) + " · " + value(payment.amount);
+            select.appendChild(option);
+          });
+          const button = document.createElement("button");
+          button.type = "button"; button.className = "pms-row-btn";
+          button.textContent = "发起退款申请";
+          button.addEventListener("click", function() {
+            const selected = candidates.find(function(p) {
+              return String(p.payment_id) === select.value;
+            });
+            if (!selected) return;
+            openLiabilityRefund(item, Object.assign({id: selected.payment_id}, selected));
+          });
+          actionCell.appendChild(select); actionCell.appendChild(button);
+        } else {
+          actionCell.textContent = item.status === "SETTLED" ? "已处理" :
+              (canRefund ? "缺少候选支付" : "无退款申请权限");
+        }
+        tr.appendChild(actionCell);
+        target.appendChild(tr);
+      });
+    } catch (error) {
+      state.textContent = "读取失败：" + error.message;
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 6; td.className = "pms-state"; td.textContent = error.message;
+      tr.appendChild(td); target.appendChild(tr);
+    }
+  }
+  document.getElementById("fin-refund-liability-reload").addEventListener(
+      "click", loadRefundLiabilities);
+
+  function openLiabilityRefund(liability, payment) {
+    drawerTitle.textContent = "待退款负债 · " + liability.booking_no;
+    drawerBody.replaceChildren();
+    drawerBody.appendChild(kvTable([
+      ["id", "负债编号"], ["booking_no", "预订编号"], ["folio_id", "账单编号"],
+      ["amount", "原始负债"], ["remaining_amount", "待处理余额"],
+      ["currency", "币种"], ["status_label", "状态"]
+    ], liability));
+    const title = document.createElement("h3");
+    title.textContent = "选择原支付并提交退款申请";
+    drawerBody.appendChild(title);
+    drawerBody.appendChild(notify(
+      "系统不会自动分配多笔支付的退款金额。请核对原支付流水，并按实际退款金额提交；审批与执行仍由不同员工完成。"));
+    drawerBody.appendChild(refundForm(payment, liability.id));
+    drawer.classList.add("is-open"); drawerMask.classList.add("is-open");
+  }
+
+  /* ---------- 账单列表 ---------- */
+  function buildHead() {
+    head.replaceChildren();
+    columns.forEach(function(c){const th=document.createElement("th");th.textContent=c.label;head.appendChild(th);});
+    const action = document.createElement("th"); action.textContent = "操作"; head.appendChild(action);
+  }
+  function renderRows(data) {
+    body.replaceChildren();
+    if (!data.length) {
+      const tr=document.createElement("tr"),td=document.createElement("td");
+      td.colSpan=columns.length+1;td.className="pms-state";td.textContent="当前物业暂无匹配账单";
+      tr.appendChild(td);body.appendChild(tr);return;
+    }
+    data.forEach(function(item){
+      const tr=document.createElement("tr");
+      columns.forEach(function(c){
+        const td=document.createElement("td");
+        if (c.badge === "status") { td.appendChild(badge(at(item,c.path))); }
+        else { td.textContent = value(at(item,c.path)); }
+        tr.appendChild(td);
+      });
+      const td=document.createElement("td");
+      const btn=document.createElement("button");
+      btn.type="button";btn.className="pms-row-btn";btn.textContent="查看";
+      btn.addEventListener("click",function(){openDetail(item.id);});
+      td.appendChild(btn);tr.appendChild(td);
+      body.appendChild(tr);
+    });
+  }
+  let lastFoliosQuery = null;
+  async function loadFolios(page, force) {
+    const target = Math.max(1, page || 1);
+    const probe = new URLSearchParams({page: String(target), page_size: String(currentPageSize)});
+    if (statusSelect.value) probe.set("status", statusSelect.value);
+    if (search.value.trim()) probe.set("q", search.value.trim());
+    const query = probe.toString();
+    /* 查询条件与页码均未变化时跳过（用户报告：空条件点查询不应刷新） */
+    if (!force && lastFoliosQuery !== null && query === lastFoliosQuery) return;
+    lastFoliosQuery = query;
+    currentPage = target;
+    meta.textContent = "读取中…";
+    prevButton.disabled = true; nextButton.disabled = true;
+    const params = new URLSearchParams(query);
+    try {
+      const payload = await fetchJson("/api/v1/billing/folios?" + params.toString());
+      renderRows(Array.isArray(payload.data) ? payload.data : []);
+      const info = payload.meta && payload.meta.pagination;
+      const summary = info && info.summary;
+      if (summary) {
+        document.getElementById("fin-folio-note").textContent =
+            "未结账单 " + summary.open_folios + " 张 · 账本口径未结余额 " + summary.open_balance;
+      }
+      if (info) {
+        currentPage = info.page;
+        totalPages = Math.max(1, Math.ceil(info.total / info.page_size));
+        pageLabel.textContent = "第 " + info.page + " 页 / 共 " + totalPages + " 页";
+        gotoPageInput.max = String(totalPages);
+        gotoPageInput.value = String(info.page);
+        prevButton.disabled = !info.has_previous;
+        nextButton.disabled = !info.has_next;
+        meta.textContent = "共 " + info.total + " 张账单";
+      }
+    } catch (error) {
+      body.replaceChildren();
+      const tr=document.createElement("tr"),td=document.createElement("td");
+      td.colSpan=columns.length+1;td.className="pms-state";td.textContent=error.message;
+      tr.appendChild(td);body.appendChild(tr);
+      meta.textContent = "账单读取失败";
+    }
+  }
+
+  /* ---------- 最近流水 / 班次 ---------- */
+  function simpleTable(headId, bodyId, cols, rows) {
+    const thead = document.getElementById(headId);
+    thead.replaceChildren();
+    cols.forEach(function(c){const th=document.createElement("th");th.textContent=c.label;thead.appendChild(th);});
+    const tbody = document.getElementById(bodyId);
+    tbody.replaceChildren();
+    if (!rows.length) {
+      const tr=document.createElement("tr"),td=document.createElement("td");
+      td.colSpan=cols.length;td.className="pms-state";td.textContent="暂无记录";
+      tr.appendChild(td);tbody.appendChild(tr);return;
+    }
+    rows.forEach(function(item){
+      const tr=document.createElement("tr");
+      cols.forEach(function(c){
+        const td=document.createElement("td");
+        td.textContent=value(at(item,c.path));
+        if (c.titlePath) td.title = value(at(item,c.titlePath)) || "";
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+  /* 凭证号中文展示（用户报告：stay-room-charge/FD/deposit 等前缀不直观）；
+     原始凭证号保留在悬停提示与账单明细中，账本权威记录不变。 */
+  function referenceLabel(ref){
+    if (!ref) return "—";
+    if (ref.indexOf("stay-room-charge:") === 0) return "房费入账 · 入住单 #" + ref.slice("stay-room-charge:".length);
+    if (/^FD\d+-/.test(ref)) return "前台人工收款";
+    if (ref.indexOf("MOCK-") === 0) return "本地模拟支付";
+    if (ref.indexOf("deposit:") === 0) return "押金入账";
+    if (ref.indexOf("payment:") === 0) return "收款入账";
+    if (ref.indexOf("refund:") === 0) return "退款出账";
+    if (ref.indexOf("reversal:") === 0) return "红字冲销";
+    if (ref.indexOf("night-audit:") === 0) return "夜审过账";
+    return ref;
+  }
+  async function loadLedger() {
+    try {
+      const payload = await fetchJson("/api/v1/billing/ledger?page=1&page_size=8");
+      simpleTable("fin-ledger-head","fin-ledger-body",[
+        {label:"凭证号",path:"reference_label",titlePath:"reference"},{label:"类型",path:"entry_type_label"},
+        {label:"金额",path:"amount"},{label:"币种",path:"currency"},
+        {label:"营业日",path:"business_date"},{label:"摘要",path:"description"},
+        {label:"冲销关联",path:"void_of_id"}],
+        (Array.isArray(payload.data) ? payload.data : []).map(function(r){
+          return Object.assign({}, r, {reference_label: referenceLabel(r.reference)});
+        }));
+      const info = payload.meta && payload.meta.pagination;
+      document.getElementById("fin-ledger-meta").textContent = info ? ("共 " + info.total + " 条") : "";
+    } catch (error) {
+      document.getElementById("fin-ledger-meta").textContent = error.message;
+    }
+  }
+  async function loadShifts() {
+    try {
+      const payload = await fetchJson("/api/v1/billing/shifts?page=1&page_size=5");
+      const rows = Array.isArray(payload.data) ? payload.data : [];
+      simpleTable("fin-shift-head","fin-shift-body",[
+        {label:"收银员",path:"cashier"},{label:"关班人",path:"closed_by"},
+        {label:"状态",path:"status_label"},{label:"开班时间",path:"opened_at"},
+        {label:"关班时间",path:"closed_at"},{label:"备用金",path:"opening_cash"},
+        {label:"应有现金",path:"expected_cash"},{label:"实盘现金",path:"actual_cash"},
+        {label:"差异",path:"variance"}], rows);
+      const info = payload.meta && payload.meta.pagination;
+      document.getElementById("fin-shift-meta").textContent = info ? ("共 " + info.total + " 个班次") : "";
+      if (canManageShift) {
+        const openPayload = await fetchJson("/api/v1/billing/shifts?status=OPEN&page=1&page_size=100");
+        const openRows = Array.isArray(openPayload.data) ? openPayload.data : [];
+        const mine = openRows.find(function(row){return Number(row.cashier_id) === currentUserId;});
+        activeShiftId = mine ? mine.id : null;
+        const state = document.getElementById("fin-current-shift-state");
+        const openWrap = document.getElementById("fin-shift-open-wrap");
+        const closeWrap = document.getElementById("fin-shift-close-wrap");
+        if (state) state.textContent = mine
+          ? ("当前班次 #" + mine.id + " · 开班备用金 " + mine.opening_cash + " · 已开班，可登记现金收款")
+          : "当前没有开放的本人班次；现金收款前必须先开班。";
+        if (openWrap) openWrap.hidden = !!mine;
+        if (closeWrap) closeWrap.hidden = !mine;
+        const movement = document.getElementById("fin-shift-movement-form");
+        if (movement) movement.hidden = !mine;
+      }
+    } catch (error) {
+      document.getElementById("fin-shift-meta").textContent = error.message;
+      const state = document.getElementById("fin-current-shift-state");
+      if (state) state.textContent = "班次读取失败：" + error.message;
+    }
+  }
+
+  /* ---------- 账单详情抽屉（entries/payments/refunds + 收款/退款表单） ---------- */
+  function closeDrawer() {
+    drawer.classList.remove("is-open");
+    drawerMask.classList.remove("is-open");
+  }
+  drawerMask.addEventListener("click", closeDrawer);
+  document.getElementById("pms-drawer-close").addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", function(e){ if(e.key==="Escape") closeDrawer(); });
+  function kvTable(fields, item) {
+    const table=document.createElement("table");table.className="pms-kv";
+    fields.forEach(function(pair){
+      const v=at(item,pair[0]);
+      if(v===null||v===undefined||v==="") return;
+      const tr=document.createElement("tr");
+      const th=document.createElement("th");th.textContent=pair[1];
+      const td=document.createElement("td");td.textContent=value(v);
+      tr.appendChild(th);tr.appendChild(td);table.appendChild(tr);
+    });
+    return table;
+  }
+  function miniTable(cols, rows) {
+    const wrap=document.createElement("div");wrap.className="pms-table-wrap";
+    const table=document.createElement("table");table.className="pms-mini";
+    const thead=document.createElement("thead"),trh=document.createElement("tr");
+    cols.forEach(function(c){const th=document.createElement("th");th.textContent=c[1];trh.appendChild(th);});
+    thead.appendChild(trh);
+    const tbody=document.createElement("tbody");
+    rows.forEach(function(rowItem){
+      const tr=document.createElement("tr");
+      cols.forEach(function(c){const td=document.createElement("td");td.textContent=value(at(rowItem,c[0]));tr.appendChild(td);});
+      tbody.appendChild(tr);
+    });
+    table.appendChild(thead);table.appendChild(tbody);wrap.appendChild(table);
+    return wrap;
+  }
+  function notify(message, ok) {
+    const el = document.createElement("div");
+    el.className = ok ? "pms-drawer-ok" : "pms-drawer-err";
+    el.textContent = message;
+    return el;
+  }
+  async function postJson(url, payload, idempotencyKey) {
+    const headers = {"Content-Type": "application/json", "X-CSRFToken": CSRF,
+                     "Accept": "application/json"};
+    if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+    return fetchJson(url, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(payload),
+    });
+  }
+  function collectForm() {
+    const form = document.createElement("form");
+    form.className = "fin-form";
+    let generatedReference = "";
+    form.innerHTML =
+        '<div><label for="fin-collect-amount">收款金额</label>' +
+        '<input id="fin-collect-amount" name="amount" inputmode="decimal" placeholder="0.00" required></div>' +
+        '<div><label for="fin-collect-method">支付方式</label>' +
+        '<select id="fin-collect-method" name="method">' +
+        '<option value="CASH">现金</option><option value="CARD">刷卡</option>' +
+        '<option value="TRANSFER">转账</option></select></div>' +
+        '<div style="grid-column:1/-1"><label for="fin-collect-ref">参考号（可选，幂等键）</label>' +
+        '<input id="fin-collect-ref" name="reference" placeholder="留空自动生成"></div>' +
+        '<div class="fin-form-actions"><button type="button" class="fin-cancel">取消</button>' +
+        '<button type="submit">确认收款</button></div>';
+    form.querySelector('[name="amount"]').addEventListener("input", function(){ generatedReference = ""; });
+    form.querySelector('[name="method"]').addEventListener("change", function(){ generatedReference = ""; });
+    form.addEventListener("submit", async function(event){
+      event.preventDefault();
+      // 必须在表单仍连接 DOM 时读取字段；自动参考号在网络重试期间保持不变。
+      const amount = form.querySelector('[name="amount"]').value.trim();
+      const method = form.querySelector('[name="method"]').value;
+      const enteredReference = form.querySelector('[name="reference"]').value.trim();
+      const reference = enteredReference || generatedReference ||
+          (generatedReference = "PMS2-COLLECT-" + Date.now().toString(36) + "-" +
+            Math.random().toString(36).slice(2,10));
+      const submitButton = form.querySelector('button[type="submit"]');
+      if (method === "CASH" && !activeShiftId) {
+        const shiftState = document.getElementById("fin-current-shift-state");
+        if (shiftState) shiftState.textContent = "请先在收银班次区域开班，再登记现金收款。";
+        return;
+      }
+      submitButton.disabled = true;
+      const note = notify("提交中…");
+      form.appendChild(note);
+      try {
+        const payload = await postJson("/api/v1/billing/payments", {
+          reservation_id: currentReservationId,
+          amount: amount,
+          method: method,
+          reference: reference,
+        }, reference);
+        const d = payload.data || {};
+        form.replaceWith(notify("收款成功：" + d.amount + " " + d.currency +
+            "（参考号 " + d.provider_ref + "）", true));
+        await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadRefundLiabilities()]);
+      } catch (error) {
+        note.textContent = error.message;
+        submitButton.disabled = false;
+      }
+    });
+    return form;
+  }
+  function refundForm(payment, refundLiabilityId) {
+    const form = document.createElement("form");
+    form.className = "fin-form";
+    let requestKey = "";
+    form.innerHTML =
+        '<div><label for="fin-refund-amount">退款金额（原支付 ' + value(payment.amount) + '）</label>' +
+        '<input id="fin-refund-amount" name="amount" inputmode="decimal" placeholder="0.00" required></div>' +
+        '<div><label for="fin-refund-reason">退款原因（必填）</label>' +
+        '<input id="fin-refund-reason" name="reason" maxlength="240" required></div>' +
+        '<div class="fin-form-actions"><button type="button" class="fin-cancel">取消</button>' +
+        '<button type="submit">提交退款申请</button></div>';
+    form.addEventListener("input", function(){ if (requestKey) requestKey = ""; });
+    form.addEventListener("submit", async function(event){
+      event.preventDefault();
+      // 同一表单的网络重试复用幂等键；修改输入后才生成新键。
+      const amount = form.querySelector('[name="amount"]').value.trim();
+      const reason = form.querySelector('[name="reason"]').value.trim();
+      const key = requestKey || (requestKey = "PMS2-REFUND-" + Date.now().toString(36) +
+          "-" + Math.random().toString(36).slice(2,10));
+      const submitButton = form.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
+      const note = notify("提交中…");
+      form.appendChild(note);
+      try {
+        const requestBody = {
+          payment_id: payment.id,
+          amount: amount,
+          reason: reason,
+          idempotency_key: key,
+        };
+        if (refundLiabilityId !== null && refundLiabilityId !== undefined) {
+          requestBody.refund_liability_id = refundLiabilityId;
+        }
+        const payload = await postJson("/api/v1/billing/refunds", requestBody, key);
+        const d = payload.data || {};
+        form.replaceWith(notify("退款申请已提交（状态 " + d.status + "），等待第二人审批。", true));
+        await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadRefundLiabilities()]);
+      } catch (error) {
+        note.textContent = error.message;
+        submitButton.disabled = false;
+      }
+    });
+    return form;
+  }
+  function openDetail(id) {
+    if (id === null || id === undefined || id === "") return;
+    drawerTitle.textContent = "账单详情";
+    drawerBody.replaceChildren();
+    const loading = document.createElement("div");
+    loading.className = "pms-drawer-state"; loading.textContent = "读取中…";
+    drawerBody.appendChild(loading);
+    drawer.classList.add("is-open"); drawerMask.classList.add("is-open");
+    fetchJson(detail.endpoint.replace("{id}", encodeURIComponent(String(id))))
+      .then(function(payload){ renderDetail(payload.data); })
+      .catch(function(error){
+        drawerBody.replaceChildren();
+        drawerBody.appendChild(notify(error.message));
+      });
+  }
+  function renderDetail(item) {
+    drawerBody.replaceChildren();
+    currentReservationId = item.reservation ? item.reservation.id : null;
+    drawerTitle.textContent = "账单 #" + item.id + "（" + value(item.status_label) + "）";
+    drawerBody.appendChild(kvTable(detail.overview || [], item));
+    drawerBody.appendChild(document.createElement("h3")).textContent = "账本流水（不可变）";
+    const entries = item.entries || [];
+    if (entries.length) {
+      const entryCols = [["entry_type_label","类型"],["amount","金额"],["currency","币种"],
+                         ["business_date","营业日"],["reference","凭证号"],["description","摘要"],
+                         ["void_of_id","冲销关联"]];
+      const wrap = miniTable(entryCols, entries);
+      if (canReverse) {
+        wrap.querySelectorAll("tbody tr").forEach(function(tr, index){
+          const td = document.createElement("td");
+          const entry = entries[index];
+          if (!entry.void_of_id) {
+            const btn = document.createElement("button");
+            btn.type = "button"; btn.className = "pms-row-btn"; btn.textContent = "冲销";
+            btn.addEventListener("click", function(){ showReverseForm(entry); });
+            td.appendChild(btn);
+          }
+          tr.appendChild(td);
+        });
+        const thRow = wrap.querySelector("thead tr");
+        const th = document.createElement("th"); th.textContent = "操作"; thRow.appendChild(th);
+      }
+      drawerBody.appendChild(wrap);
+    } else {
+      drawerBody.appendChild(notify("该账单暂无账本流水。"));
+    }
+    drawerBody.appendChild(document.createElement("h3")).textContent = "支付与退款";
+    const payments = item.payments || [];
+    if (payments.length) {
+      payments.forEach(function(payment){
+        const head4 = document.createElement("h4");
+        head4.textContent = payment.provider_ref + " · " + value(payment.method) + " · " +
+            value(payment.amount) + " " + value(payment.currency) + " · " + value(payment.status_label);
+        head4.style.cssText = "margin:10px 0 4px;font-size:13px;color:#243247";
+        drawerBody.appendChild(head4);
+        if (payment.refunds && payment.refunds.length) {
+          drawerBody.appendChild(miniTable([
+            ["amount","金额"],["status_label","状态"],["reason","原因"],
+            ["requested_by","申请人"],["approved_by","审批人"],
+            ["executed_by","执行人"],["executed_at","执行时间"],
+            ["execution_reference","执行凭据"],["created_at","申请时间"]], payment.refunds));
+          payment.refunds.forEach(function(refund){
+            if (refund.legacy_workflow) {
+              drawerBody.appendChild(notify(
+                "历史退款记录：无法证明申请、审批、执行三方分离；该记录只读，不作为新流程执行凭据。"));
+            }
+            const actions = document.createElement("div");
+            actions.className = "pms-tools";
+            actions.style.margin = "6px 0 12px";
+            if (canApproveRefund && refund.status === "PENDING") {
+              const approveButton = document.createElement("button");
+              approveButton.type = "button"; approveButton.className = "pms-row-btn";
+              approveButton.textContent = "审批通过";
+              const approveKey = "PMS2-REFUND-APPROVE-" + Date.now().toString(36) +
+                  "-" + Math.random().toString(36).slice(2,10);
+              approveButton.addEventListener("click", async function(){
+                approveButton.disabled = true;
+                try {
+                  await postJson("/api/v1/billing/refunds/" + refund.id + "/approve", {}, approveKey);
+                  await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadRefundLiabilities(), loadShifts()]);
+                  openDetail(item.id);
+                } catch (error) {
+                  approveButton.disabled = false;
+                  actions.appendChild(notify(error.message));
+                }
+              });
+              actions.appendChild(approveButton);
+              const rejectButton = document.createElement("button");
+              rejectButton.type = "button"; rejectButton.className = "pms-row-btn";
+              rejectButton.textContent = "驳回申请";
+              let rejectReason = null;
+              let rejectKey = "";
+              rejectButton.addEventListener("click", async function(){
+                if (rejectReason === null) {
+                  rejectReason = window.prompt("请输入驳回原因");
+                  if (!rejectReason || !rejectReason.trim()) {
+                    rejectReason = null;
+                    return;
+                  }
+                }
+                rejectKey = rejectKey || ("PMS2-REFUND-REJECT-" + Date.now().toString(36) +
+                    "-" + Math.random().toString(36).slice(2,10));
+                rejectButton.disabled = true;
+                try {
+                  await postJson("/api/v1/billing/refunds/" + refund.id + "/reject",
+                      {reason: rejectReason.trim()}, rejectKey);
+                  await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadRefundLiabilities()]);
+                  openDetail(item.id);
+                } catch (error) {
+                  rejectButton.disabled = false;
+                  actions.appendChild(notify(error.message));
+                }
+              });
+              actions.appendChild(rejectButton);
+            }
+            if (canExecuteRefund && refund.status === "APPROVED") {
+              const executeButton = document.createElement("button");
+              executeButton.type = "button"; executeButton.className = "pms-row-btn";
+              executeButton.textContent = "执行退款";
+              let executionReference = null;
+              let executionKey = "";
+              executeButton.addEventListener("click", async function(){
+                if (payment.method === "CASH" && !activeShiftId) {
+                  actions.appendChild(notify("现金退款执行前，请先开立本人收银班次。"));
+                  return;
+                }
+                if (payment.method !== "CASH" && executionReference === null) {
+                  executionReference = window.prompt("请输入银行卡/转账渠道退款参考号（必填）") || "";
+                  if (!executionReference.trim()) {
+                    executionReference = null;
+                    actions.appendChild(notify("非现金退款必须填写渠道退款参考号。"));
+                    return;
+                  }
+                }
+                if (!window.confirm("请确认退款已经实际支付给住客；确认后系统将追加退款凭证。")) return;
+                executeButton.disabled = true;
+                executionKey = executionKey || ("PMS2-REFUND-EXEC-" + Date.now().toString(36) +
+                    "-" + Math.random().toString(36).slice(2,10));
+                try {
+                  await postJson("/api/v1/billing/refunds/" + refund.id + "/execute", {
+                    confirm_refund_paid: true,
+                    execution_reference: (executionReference || "").trim(),
+                    idempotency_key: executionKey
+                  }, executionKey);
+                  await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadRefundLiabilities(), loadShifts()]);
+                  openDetail(item.id);
+                } catch (error) {
+                  executeButton.disabled = false;
+                  actions.appendChild(notify(error.message));
+                }
+              });
+              actions.appendChild(executeButton);
+            }
+            if (actions.childNodes.length) drawerBody.appendChild(actions);
+          });
+        }
+        if (canRefund && currentReservationId &&
+            (payment.status === "SUCCEEDED" || payment.status === "PARTIALLY_REFUNDED")) {
+          const btn = document.createElement("button");
+          btn.type = "button"; btn.className = "pms-row-btn"; btn.textContent = "申请退款";
+          btn.addEventListener("click", function(){ btn.replaceWith(refundForm(payment)); });
+          drawerBody.appendChild(btn);
+        }
+      });
+    } else {
+      drawerBody.appendChild(notify("该账单暂无支付记录。"));
+    }
+    if (canCollect && currentReservationId && item.status === "OPEN") {
+      drawerBody.appendChild(document.createElement("h3")).textContent = "收款";
+      const hint = document.createElement("p");
+      hint.style.cssText = "font-size:12px;color:#909399;margin:4px 0";
+      hint.textContent = "提交到 POST /api/v1/billing/payments（BillingService.collect_payment：校验账单未关闭、金额、方式与应收余额）";
+      drawerBody.appendChild(hint);
+      drawerBody.appendChild(collectForm());
+    }
+  }
+  function showReverseForm(entry) {
+    drawerBody.querySelectorAll(".fin-form").forEach(function(el){el.remove();});
+    const form = document.createElement("form");
+    form.className = "fin-form";
+    form.innerHTML =
+        '<div style="grid-column:1/-1"><label for="fin-reverse-reason">冲销原因（必填；需先由值班经理/店长审批）</label>' +
+        '<input id="fin-reverse-reason" name="reason" maxlength="240" required></div>' +
+        '<div class="fin-form-actions"><button type="button" class="fin-cancel">取消</button>' +
+        '<button type="submit">提交冲销审批申请</button></div>' +
+        '<div class="fin-form-actions" style="grid-column:1/-1"><span class="fin-state" data-reversal-state>正在检查审批状态…</span></div>';
+    const state = form.querySelector("[data-reversal-state]");
+    let approvalId = null;
+    let approvedReason = "";
+    function renderExecutionButton(record) {
+      approvalId = record.id;
+      approvedReason = record.reason || "";
+      state.textContent = "审批单 #" + record.id + "：" + record.status +
+        (record.approved_by ? "（审批人 " + record.approved_by + "）" : "");
+      form.querySelectorAll("[data-reversal-execute]").forEach(function(el){el.remove();});
+      if (record.execution_status === "EXECUTED") {
+        state.textContent = "审批单 #" + record.id + "：已批准并执行" +
+          (record.executed_by ? "（执行人 " + record.executed_by + "）" : "");
+        return;
+      }
+      if (record.status === "APPROVED") {
+        const execute = document.createElement("button");
+        execute.type = "button";
+        execute.dataset.reversalExecute = "1";
+        execute.textContent = "执行已批准冲销";
+        execute.addEventListener("click", async function(){
+          execute.disabled = true;
+          try {
+            const result = await postJson("/api/v1/billing/reversals", {
+              entry_id: entry.id, approval_id: approvalId
+            });
+            const d = result.data || {};
+            state.textContent = "已追加红字凭证 " + d.reference +
+              "（" + d.amount + " " + d.currency + "）";
+            await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadRefundLiabilities()]);
+            await refreshApprovalStatus();
+          } catch (error) {
+            state.textContent = error.message;
+            execute.disabled = false;
+          }
+        });
+        form.querySelector(".fin-form-actions:last-of-type").appendChild(execute);
+      } else if (record.status === "PENDING") {
+        state.textContent = "审批单 #" + record.id + "：等待值班经理/店长审批；审批完成后点击刷新。";
+      }
+    }
+    async function refreshApprovalStatus() {
+      state.textContent = "正在检查审批状态…";
+      try {
+        const query = new URLSearchParams({
+          action_code: "billing.reversal",
+          entity_type: "LedgerEntry",
+          entity_id: String(entry.id),
+          page_size: "20"
+        });
+        const payload = await fetchJson("/api/v1/approvals?" + query.toString());
+        const rows = payload.data || [];
+        if (!rows.length) {
+          state.textContent = "尚无冲销审批申请。";
+          return;
+        }
+        renderExecutionButton(rows[0]);
+      } catch (error) {
+        state.textContent = error.message;
+      }
+    }
+    const refreshButton = document.createElement("button");
+    refreshButton.type = "button";
+    refreshButton.textContent = "刷新审批状态";
+    refreshButton.addEventListener("click", refreshApprovalStatus);
+    form.querySelector(".fin-form-actions:last-of-type").appendChild(refreshButton);
+    form.addEventListener("submit", async function(event){
+      event.preventDefault();
+      const reason = form.querySelector('[name="reason"]').value.trim();
+      if (!reason) return;
+      const submitButton = form.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
+      try {
+        const result = await postJson("/api/v1/approvals/request", {
+          action_code: "billing.reversal",
+          entity_type: "LedgerEntry",
+          entity_id: String(entry.id),
+          reason: reason,
+          payload: {}
+        });
+        const record = result.data || {};
+        renderExecutionButton({
+          id: record.id, status: record.status,
+          requested_by: record.requested_by, reason: reason
+        });
+        state.textContent = "冲销审批申请已提交（审批单 #" + record.id +
+          "）。请值班经理/店长审批，批准后由财务刷新状态并执行。";
+        form.querySelector('[name="reason"]').disabled = true;
+        submitButton.disabled = true;
+      } catch (error) {
+        state.textContent = error.message;
+        submitButton.disabled = false;
+      }
+    });
+    drawerBody.appendChild(form);
+    refreshApprovalStatus();
+  }
+
+  buildHead();
+  if (canManageShift) {
+    let openShiftKey = "";
+    let closeShiftKey = "";
+    const openingCashInput = document.getElementById("fin-shift-opening-cash");
+    const actualCashInput = document.getElementById("fin-shift-actual-cash");
+    const varianceReasonInput = document.getElementById("fin-shift-variance-reason");
+    openingCashInput.addEventListener("input", function(){ if (openShiftKey) openShiftKey = ""; });
+    actualCashInput.addEventListener("input", function(){ if (closeShiftKey) closeShiftKey = ""; });
+    varianceReasonInput.addEventListener("input", function(){ if (closeShiftKey) closeShiftKey = ""; });
+    document.getElementById("fin-shift-open").addEventListener("click", async function(){
+      const button = this;
+      button.disabled = true;
+      const openingCash = openingCashInput.value.trim();
+      openShiftKey = openShiftKey || ("PMS2-SHIFT-OPEN-" + Date.now().toString(36) +
+          "-" + Math.random().toString(36).slice(2,10));
+      try {
+        await postJson("/api/v1/billing/shifts/open", {
+          opening_cash: openingCash
+        }, openShiftKey);
+        await loadShifts();
+        openShiftKey = "";
+      } catch (error) {
+        document.getElementById("fin-current-shift-state").textContent = error.message;
+      } finally { button.disabled = false; }
+    });
+    document.getElementById("fin-shift-close").addEventListener("click", async function(){
+      if (!activeShiftId) return;
+      const button = this;
+      button.disabled = true;
+      const closePayload = {
+        actual_cash: actualCashInput.value.trim(),
+        variance_reason: varianceReasonInput.value.trim()
+      };
+      closeShiftKey = closeShiftKey || ("PMS2-SHIFT-CLOSE-" + Date.now().toString(36) +
+          "-" + Math.random().toString(36).slice(2,10));
+      try {
+        await postJson("/api/v1/billing/shifts/" + activeShiftId + "/close",
+            closePayload, closeShiftKey);
+        await loadShifts();
+        closeShiftKey = "";
+      } catch (error) {
+        document.getElementById("fin-current-shift-state").textContent = error.message;
+      } finally { button.disabled = false; }
+    });
+  }
+  if (canManageCashMovement) {
+    const movementForm = document.getElementById("fin-shift-movement-form");
+    let movementKey = "";
+    movementForm.addEventListener("input", function(){ if (movementKey) movementKey = ""; });
+    movementForm.addEventListener("submit", async function(event){
+      event.preventDefault();
+      if (!activeShiftId) return;
+      const direction = movementForm.querySelector('[name="direction"]').value;
+      const amount = movementForm.querySelector('[name="amount"]').value.trim();
+      const reason = movementForm.querySelector('[name="reason"]').value.trim();
+      const button = movementForm.querySelector('button[type="submit"]');
+      button.disabled = true;
+      try {
+        const key = movementKey || (movementKey = "PMS2-CASH-MOVE-" + Date.now().toString(36) +
+            "-" + Math.random().toString(36).slice(2,10));
+        await postJson("/api/v1/billing/shifts/" + activeShiftId + "/movements", {
+          direction: direction, amount: amount, reason: reason, idempotency_key: key
+        }, key);
+        await loadShifts();
+        movementKey = "";
+        movementForm.reset();
+      } catch (error) {
+        document.getElementById("fin-current-shift-state").textContent = error.message;
+      } finally { button.disabled = false; }
+    });
+  }
+  document.getElementById("fin-reload").addEventListener("click", function(){loadFolios(1);});
+  prevButton.addEventListener("click", function(){loadFolios(currentPage-1);});
+  nextButton.addEventListener("click", function(){loadFolios(currentPage+1);});
+  pageSizeSelect.addEventListener("change", function(){
+    const parsed = Number.parseInt(pageSizeSelect.value, 10);
+    if ([20, 50, 100].includes(parsed)) { currentPageSize = parsed; loadFolios(1); }
+  });
+  function gotoFolioPage() {
+    const target = Number.parseInt(gotoPageInput.value, 10);
+    if (!Number.isInteger(target) || target < 1 || target > totalPages) {
+      gotoPageInput.setCustomValidity("请输入 1 至 " + totalPages + " 之间的页码。");
+      gotoPageInput.reportValidity();
+      return;
+    }
+    gotoPageInput.setCustomValidity("");
+    loadFolios(target);
+  }
+  document.getElementById("fin-goto-btn").addEventListener("click", gotoFolioPage);
+  gotoPageInput.addEventListener("keydown", function(event){if(event.key==="Enter")gotoFolioPage();});
+  statusSelect.addEventListener("change", function(){loadFolios(1);});
+  search.addEventListener("keydown", function(e){if(e.key==="Enter")loadFolios(1);});
+  loadSummary();
+  loadFolios(1);
+  loadLedger();
+  loadRefundLiabilities();
+  loadAdjustments();
+  loadExceptionReleases();
+  loadShifts();
+})();
+</script>
+</body>
+</html>

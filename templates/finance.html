@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>财务管理 - 酒店管理系统</title>
+    <link rel="stylesheet" href="/static/css/site.css?v=14">
+<script src="/static/js/app.js?v=2"></script>
+</head>
+<body>
+{% if messages %}
+<div class="toast-box">
+    {% for m in messages %}<div class="toast {{ m.tags }}">{{ m }}</div>{% endfor %}
+</div>
+{% endif %}
+{% include "_sidebar.html" %}
+<div class="main">
+    <div class="page-head">
+        <h2>财务管理</h2>
+        <span class="page-sub">账务流水 · 收支管理 · 报表分析（已冲账单据不计入）</span>
+    </div>
+
+    <div class="stat-row">
+        <div class="stat-card"><div class="stat-num">{{ total_in }}</div><div class="stat-label">累计收入（元）</div></div>
+        <div class="stat-card"><div class="stat-num">{{ total_out }}</div><div class="stat-label">累计支出（元）</div></div>
+        <div class="stat-card"><div class="stat-num">{{ total }}</div><div class="stat-label">结余（元）</div></div>
+        <div class="stat-card"><div class="stat-num">{{ room_rev }}</div><div class="stat-label">客房收入（元）</div></div>
+        <div class="stat-card"><div class="stat-num">{{ food_rev }}</div><div class="stat-label">餐饮收入（元）</div></div>
+        <div class="stat-card"><div class="stat-num">{{ occupancy }}</div><div class="stat-label">当前入住率</div></div>
+        <div class="stat-card"><div class="stat-num">{{ revpar }}</div><div class="stat-label">RevPAR（元）</div></div>
+    </div>
+
+    {% if can_add %}
+    <div class="card">
+        <h2>新增收支记录</h2>
+        <form action="/finance_add/" method="post" class="finance-form">
+            {% csrf_token %}
+            {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
+            <p>
+                <label>类型：</label>
+                <select name="type"><option value="收入" {% if form.type == "收入" %}selected{% endif %}>收入</option><option value="支出" {% if form.type == "支出" %}selected{% endif %}>支出</option></select>
+                &nbsp;&nbsp;
+                <label>金额（元）：</label><input type="text" name="amount" value="{{ form.amount }}" required maxlength="11" placeholder="如 1288 或 1288.50" class="input input-amount"/>
+                &nbsp;&nbsp;
+                <label>日期：</label><input type="date" name="date" required value="{% if form.date %}{{ form.date }}{% else %}{{ today }}{% endif %}"/>
+            </p>
+            <p>
+                <label>事由：</label><input type="text" name="reason" value="{{ form.reason }}" required maxlength="100" placeholder="如 餐饮收入 / 维修支出 / 采购支出" class="input input-reason"/>
+                <button type="submit" class="tb-btn tb-primary">保存</button>
+            </p>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <h2>报表分析：按日汇总（元）</h2>
+        <table class="data-table">
+            <tr><th>日期</th><th>收入</th><th>支出</th><th>结余</th></tr>
+            {% for d in day_rows %}
+            <tr><td>{{ d.日期 }}</td><td>{{ d.收入 }}</td><td>{{ d.支出 }}</td><td>{{ d.结余 }}</td></tr>
+            {% empty %}
+            <tr><td colspan="4" class="empty-row">暂无流水数据</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>账务流水（{{ records|length }} 条）</h2>
+        <table class="data-table">
+            <tr><th>#</th><th>类型</th><th>金额（元）</th><th>事由</th><th>关联订单</th><th>日期</th><th>经手人</th></tr>
+            {% for r in records %}
+            <tr>
+                <td>{{ r.id }}</td>
+                <td>{% if r.类型 == '收入' %}<span class="badge ok-badge">收入</span>{% else %}<span class="badge void-badge">支出</span>{% endif %}</td>
+                <td>{{ r.金额 }}</td>
+                <td>{{ r.事由 }}</td>
+                <td>{{ r.关联订单 }}</td>
+                <td>{{ r.日期 }}</td>
+                <td>{{ r.经手人 }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="empty-row">暂无流水数据</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+</body>
+</html>

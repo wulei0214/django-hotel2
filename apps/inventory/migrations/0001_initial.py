@@ -1,0 +1,107 @@
+import django.db.models.deletion
+from django.db import migrations, models
+from django.db.models import F, Q
+
+
+class Migration(migrations.Migration):
+    initial = True
+    dependencies = [("core", "0001_initial")]
+    operations = [
+        migrations.CreateModel(
+            name="RoomType",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("code", models.CharField(max_length=32)),
+                ("name", models.CharField(max_length=80)),
+                ("capacity", models.PositiveSmallIntegerField(default=2)),
+                ("bed_type", models.CharField(blank=True, max_length=40)),
+                ("amenities", models.JSONField(blank=True, default=list)),
+                ("is_active", models.BooleanField(default=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("property", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="room_types", to="core.property")),
+            ],
+            options={"verbose_name": "房型", "verbose_name_plural": "房型", "ordering": ("code",)},
+        ),
+        migrations.CreateModel(
+            name="Room",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("number", models.CharField(max_length=16)),
+                ("floor", models.CharField(blank=True, max_length=16)),
+                ("occupancy_status", models.CharField(choices=[("VACANT", "空闲"), ("OCCUPIED", "在住")], default="VACANT", max_length=16)),
+                ("housekeeping_status", models.CharField(choices=[("CLEAN", "净房"), ("DIRTY", "脏房"), ("CLEANING", "清洁中"), ("INSPECTING", "待检查")], default="CLEAN", max_length=16)),
+                ("maintenance_status", models.CharField(choices=[("NORMAL", "正常"), ("OUT_OF_ORDER", "维修停用"), ("OUT_OF_SERVICE", "停售")], default="NORMAL", max_length=20)),
+                ("is_active", models.BooleanField(default=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("property", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="rooms", to="core.property")),
+                ("room_type", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="rooms", to="inventory.roomtype")),
+            ],
+            options={"verbose_name": "物理客房", "verbose_name_plural": "物理客房", "ordering": ("number",)},
+        ),
+        migrations.CreateModel(
+            name="RatePlan",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("code", models.CharField(max_length=32)),
+                ("name", models.CharField(max_length=80)),
+                ("valid_from", models.DateField()),
+                ("valid_to", models.DateField(blank=True, null=True)),
+                ("cancellation_policy", models.TextField(blank=True)),
+                ("deposit_policy", models.TextField(blank=True)),
+                ("is_active", models.BooleanField(default=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("property", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="rate_plans", to="core.property")),
+            ],
+            options={"verbose_name": "房价计划", "verbose_name_plural": "房价计划", "ordering": ("code",)},
+        ),
+        migrations.CreateModel(
+            name="DailyRate",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("stay_date", models.DateField()),
+                ("price", models.DecimalField(decimal_places=2, max_digits=12)),
+                ("currency", models.CharField(default="CNY", max_length=3)),
+                ("closed", models.BooleanField(default=False)),
+                ("min_stay", models.PositiveSmallIntegerField(default=1)),
+                ("max_stay", models.PositiveSmallIntegerField(blank=True, null=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("property", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="daily_rates", to="core.property")),
+                ("rate_plan", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="daily_rates", to="inventory.rateplan")),
+                ("room_type", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="daily_rates", to="inventory.roomtype")),
+            ],
+            options={"verbose_name": "每日房价", "verbose_name_plural": "每日房价", "ordering": ("stay_date",)},
+        ),
+        migrations.CreateModel(
+            name="RoomTypeInventory",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("stay_date", models.DateField()),
+                ("total_rooms", models.PositiveIntegerField(default=0)),
+                ("held", models.PositiveIntegerField(default=0)),
+                ("sold", models.PositiveIntegerField(default=0)),
+                ("out_of_service", models.PositiveIntegerField(default=0)),
+                ("stop_sell", models.BooleanField(default=False)),
+                ("version", models.PositiveIntegerField(default=0)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("property", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="room_type_inventory", to="core.property")),
+                ("room_type", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="daily_inventory", to="inventory.roomtype")),
+            ],
+            options={"verbose_name": "房型每日库存", "verbose_name_plural": "房型每日库存", "ordering": ("stay_date",)},
+        ),
+        migrations.AddConstraint(model_name="roomtype", constraint=models.UniqueConstraint(fields=("property", "code"), name="uq_room_type_property_code")),
+        migrations.AddConstraint(model_name="roomtype", constraint=models.CheckConstraint(check=Q(capacity__gte=1), name="ck_room_type_capacity_positive")),
+        migrations.AddConstraint(model_name="room", constraint=models.UniqueConstraint(fields=("property", "number"), name="uq_room_property_number")),
+        migrations.AddConstraint(model_name="rateplan", constraint=models.UniqueConstraint(fields=("property", "code"), name="uq_rate_plan_property_code")),
+        migrations.AddConstraint(model_name="rateplan", constraint=models.CheckConstraint(check=Q(valid_to__isnull=True) | Q(valid_to__gte=F("valid_from")), name="ck_rate_plan_valid_dates")),
+        migrations.AddConstraint(model_name="dailyrate", constraint=models.UniqueConstraint(fields=("rate_plan", "room_type", "stay_date"), name="uq_daily_rate_plan_room_date")),
+        migrations.AddConstraint(model_name="dailyrate", constraint=models.CheckConstraint(check=Q(price__gte=0), name="ck_daily_rate_nonnegative")),
+        migrations.AddConstraint(model_name="roomtypeinventory", constraint=models.UniqueConstraint(fields=("property", "room_type", "stay_date"), name="uq_inventory_property_type_date")),
+        migrations.AddConstraint(model_name="roomtypeinventory", constraint=models.CheckConstraint(check=Q(total_rooms__gte=F("held") + F("sold") + F("out_of_service")), name="ck_inventory_capacity_not_exceeded")),
+        migrations.AddIndex(model_name="room", index=models.Index(fields=["property", "occupancy_status", "housekeeping_status"], name="idx_room_prop_occ_clean")),
+        migrations.AddIndex(model_name="dailyrate", index=models.Index(fields=["property", "room_type", "stay_date"], name="idx_rate_prop_type_date")),
+        migrations.AddIndex(model_name="roomtypeinventory", index=models.Index(fields=["property", "room_type", "stay_date"], name="idx_inv_prop_type_date")),
+    ]
