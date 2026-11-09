@@ -444,8 +444,8 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         self.assertEqual(liability.amount, Decimal("100.00"))
         self.assertEqual(liability.remaining_amount, Decimal("100.00"))
         self.assertEqual(liability.status, RefundLiability.Status.OPEN)
-        self.assertQuerySetEqual(
-            liability.source_payments.order_by("pk"),
+        self.assertEqual(
+            list(liability.source_payments.order_by("pk")),
             [payment],
         )
         self.assertFalse(Refund.objects.filter(
