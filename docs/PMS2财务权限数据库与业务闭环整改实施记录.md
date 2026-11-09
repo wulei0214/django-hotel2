@@ -2,7 +2,7 @@
 
 > 版本：2026-11-06（实施补充）
 > 代码基线：GitHub `wulei0214/django-hotel2` 的 `main`
-> 状态：代码整改持续集成中；本文件不替代 MySQL 生产部署与真实页面验收。
+> 状态：财务/权限/数据库核心代码已有双引擎 887 项 CI 证据；本文件不替代九角色真实登录、真实浏览器、生产部署和独立验收。最新业务代码核对基线：main@8e310b5a8491f31dd91b5461160fd6dfc1f22e06。
 
 ## 一、整改结论
 
@@ -297,3 +297,27 @@ SQLite CI 仍负责 Django system check、migration drift 和完整测试，但�
 ### 10.4 合法通用审批兼容边界
 
 Django CI 的既有回归测试发现，通用审批入口允许员工为本人待处理退款补建审批记录，审批原因可与原退款原因不同（它是独立审批说明）。已调整关联校验：保留物业、动作、实体、申请人和 payment_id/amount/currency 快照校验；不再要求两种原因文本相等。错链到夜审/冲销等其他动作仍然 fail closed。修复提交：`fe89cf0`。
+
+
+---
+
+## 十一、2026-11-09 最新 main 回归补充
+
+### 11.1 自动化测试证据
+
+- SQLite CI：887 项 OK。
+- MySQL 8.0.46 CI：887 项 OK，迁移与 MySQL append-only guards 安装/校验通过。
+- 对应 Actions 运行与白盒审查报告见《PMS2最新代码单元测试与白盒全链路审查报告_2026-11-09.md》。
+
+### 11.2 用户指定业务主链路
+
+未预付 Reservation=PENDING → 前台收取押金成功 → 库存确认、订单自动 CONFIRMED → 排房入住 → 夜审按营业日过账 → 退房只补本 Stay 未入账房费并结清 → 清洁流转与净房放行 → 退款申请/审批/执行三权分立。
+
+- PENDING 押金：receive_manual_deposit → BillingService.record_deposit；押金 Payment 与 DEPOSIT LedgerEntry 同事务写入；成功后确认库存和 Reservation。
+- 退房房费：check_out_stay 汇总本 Stay 已由夜审入账的 ROOM_CHARGE，只补差额，不重复计入兄弟房间或重复记整单合同额。
+- 退款：test_front 申请、test_duty 审批、test_finance 执行；申请人、审批人、执行人三账号必须不同。审批阶段不产生 REFUND LedgerEntry，执行成功才产生。
+- 现金退款必须由执行人本人有效班次承担，并满足班次现金余额要求。
+
+### 11.3 尚待独立验收
+
+scripts/e2e_full_chain.py 当前存在导入缺失、硬编码凭据、清库安全边界不足和空断言；未纳入 CI。36 项 HTTP 串测不得标记通过。九角色真实账号登录、浏览器 E2E、目标环境触发器部署和 G14 独立签署仍分别保留为验收门禁。
