@@ -281,6 +281,8 @@ def collect_manual_payment(
             raise FrontDeskOperationError(str(exc)) from exc
         reservation.status = Reservation.Status.CONFIRMED
         reservation.save(update_fields=("status", "updated_at"))
+        from apps.billing.services import cancel_open_payment_intents_for_reservation
+        cancel_open_payment_intents_for_reservation(reservation)
         AuditEvent.record(
             action="reservation.confirmed_at_frontdesk",
             entity_type="Reservation", entity_id=reservation.booking_no,
