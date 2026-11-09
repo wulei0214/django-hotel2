@@ -11310,7 +11310,7 @@
           "财务"
         ],
         "summary": "待退款负债列表及候选原支付",
-        "description": "仅财务可见；candidate_payments 是核对候选集合，不代表自动分配退款金额。\n\n权限要求：有效员工（DEFAULT 有效任职）+ hotelapp.finance_access；QuerySet 强制当前物业过滤，金额一律 Decimal→str，账本只读展示。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "仅财务可见；API 测试覆盖负债列表与候选原支付；candidate_payments 是核对候选集合，不代表自动分配退款金额。浏览器完整流程仍需端到端验收。\n\n权限要求：有效员工（DEFAULT 有效任职）+ hotelapp.finance_access；QuerySet 强制当前物业过滤，金额一律 Decimal→str，账本只读展示。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_billing_refund_liabilities",
         "responses": {
           "200": {
@@ -11494,7 +11494,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工（DEFAULT 有效任职）+ hotelapp.finance_access；QuerySet 强制当前物业过滤，金额一律 Decimal→str，账本只读展示",
         "parameters": [
