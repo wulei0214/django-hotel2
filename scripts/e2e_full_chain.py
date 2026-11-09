@@ -10,26 +10,63 @@
 → 清洁 DIRTY→CLEANING→INSPECTING→放行 → 退款三权分立（申请/审批/执行+SoD 反例）
 → 互通断言（审计/报表/顾客侧令牌状态同步）。
 """
+import argparse
+import json
 import os
+import re
 import sys
+from datetime import date, timedelta
+from urllib.parse import urlparse
 
-import django
+# 清库脚本必须由操作者显式双重授权，且仅允许本机测试数据库。
+_parser = argparse.ArgumentParser(description="PMS 全链路 HTTP E2E（会清空指定测试库交易数据）")
+_parser.add_argument("--yes", action="store_true", help="确认清空已校验的本地测试数据库")
+_ARGS = _parser.parse_args()
+
+if os.environ.get("E2E_ALLOW_RESET") != "1" or not _ARGS.yes:
+    print("拒绝执行：必须同时设置 E2E_ALLOW_RESET=1 并传入 --yes。")
+    sys.exit(2)
+
+_DB_HOST = os.environ.get("DJANGO_DB_HOST", "127.0.0.1").strip().lower()
+_DB_NAME = os.environ.get("DJANGO_DB_NAME", "").strip()
+_ALLOWED_DB_NAMES = {
+    item.strip() for item in os.environ.get("PMS_E2E_ALLOWED_DB_NAMES", "hotel").split(",")
+    if item.strip()
+}
+if _DB_HOST not in {"127.0.0.1", "localhost", "::1"}:
+    print("拒绝执行：E2E 清库只允许连接本机数据库主机。")
+    sys.exit(2)
+if not _DB_NAME or not (_DB_NAME in _ALLOWED_DB_NAMES or _DB_NAME.endswith("_dev")):
+    print("拒绝执行：数据库名不在 PMS_E2E_ALLOWED_DB_NAMES 白名单且不是 *_dev。")
+    sys.exit(2)
+for _required in ("DJANGO_DB_USER", "DJANGO_DB_PASSWORD"):
+    if not os.environ.get(_required):
+        print(f"拒绝执行：缺少数据库环境变量 {_required}。")
+        sys.exit(2)
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hotel.settings")
+import django
 django.setup()
 
 from django.conf import settings  # noqa: E402
 
 if not settings.DEBUG or getattr(settings, "DJANGO_ENV", "dev") != "dev":
-    print("拒绝执行：全链路串测（含清库）仅允许本机 DEBUG 开发环境。")
+    print("拒绝执行：全链路串测（含清库）仅允许本机 DEBUG dev 环境。")
     sys.exit(2)
 
 import requests
 
-BASE = "http://127.0.0.1:8000"
-PWD = "Abc123456"
+BASE = os.environ.get("PMS_E2E_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+_parsed_base = urlparse(BASE)
+if _parsed_base.hostname not in {"127.0.0.1", "localhost", "::1"}:
+    print("拒绝执行：PMS_E2E_BASE_URL 必须指向本机服务。")
+    sys.exit(2)
+PWD = os.environ.get("PMS_E2E_PASSWORD", "")
+if not PWD:
+    print("拒绝执行：请通过 PMS_E2E_PASSWORD 提供测试账号密码，不得写入脚本。")
+    sys.exit(2)
 CHECK_IN = str(date.today())  # 当天到店，允许立即办理入住
-CHECK_OUT = str(date.today() + timedelta(days=3))  # 2 晚
+CHECK_OUT = str(date.today() + timedelta(days=3))  # 3 晚
 RESULTS = []
 
 
@@ -242,7 +279,7 @@ def main():
 
     code, d = api(front, "POST", f"/api/v1/front-desk/stays/{stay_id}/check-out", {})
     out_ok = code in (200, 201)
-    step("D2 退房（未结清应被拒或补收后成功）", code in (200, 201, 409),
+    step("D2 未结清退房必须明确拒绝", code == 409,
          str(d.get("error", {}).get("message", d.get("data", {}).get("status", "")))[:100])
 
     if code == 409:
@@ -307,16 +344,20 @@ def main():
     code, d = api(duty, "POST", f"/api/v1/billing/refunds/{refund_id}/execute",
                   {"confirm_refund_paid": True, "execution_reference": "E2E-REFUND-002",
                    "idempotency_key": "e2e-refund-002"})
-    step("E4 重复执行被权限/状态机拒绝（SoD 生效）", code in (200, 403, 409), f"HTTP {code}")
+    step("E4 非财务执行人必须被权限层拒绝（SoD 生效）", code == 403, f"HTTP {code} {str(d)[:120]}")
 
     # ---------------------------------------------------------------- F 数据互通断言
     code, d = api(front, "GET", "/api/v1/notifications")
     notif = json.dumps(d.get("data", d), ensure_ascii=False)
-    step("F1 通知中心有本单相关工作项", code == 200 and booking_no[:8] in notif or "夜审" in notif or "待办" in notif or True,
-         f"通知条数 {len(d.get('data', []))}")
+    notif_items = d.get("data", [])
+    step("F1 通知中心存在可验证的业务工作项",
+         code == 200 and isinstance(notif_items, list) and len(notif_items) > 0
+         and (booking_no[:8] in notif or "夜审" in notif),
+         f"通知条数 {len(notif_items) if isinstance(notif_items, list) else '响应结构异常'}")
 
     code, d = api(login("test_owner"), "GET", "/api/v1/audit/events?action=night.audit_run&page_size=5")
-    audit_ok = code == 200 and len(d.get("data", [])) >= 0
+    audit_items = d.get("data", [])
+    audit_ok = code == 200 and isinstance(audit_items, list) and len(audit_items) >= 1
     step("F2 审计中心可查询夜审审计", audit_ok, str(code))
 
     code, d = api(login("test_owner"), "GET", f"/api/v1/reports/occupancy?from={CHECK_IN}&to={CHECK_OUT}")
