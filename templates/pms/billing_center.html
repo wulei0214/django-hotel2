@@ -693,7 +693,7 @@
         const payload = await postJson("/api/v1/billing/refunds", requestBody, key);
         const d = payload.data || {};
         form.replaceWith(notify("退款申请已提交（状态 " + d.status + "），等待第二人审批。", true));
-        await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger()]);
+        await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadRefundLiabilities()]);
       } catch (error) {
         note.textContent = error.message;
         submitButton.disabled = false;
@@ -780,7 +780,7 @@
                 approveButton.disabled = true;
                 try {
                   await postJson("/api/v1/billing/refunds/" + refund.id + "/approve", {}, approveKey);
-                  await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadShifts()]);
+                  await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadRefundLiabilities(), loadShifts()]);
                   openDetail(item.id);
                 } catch (error) {
                   approveButton.disabled = false;
@@ -807,7 +807,7 @@
                 try {
                   await postJson("/api/v1/billing/refunds/" + refund.id + "/reject",
                       {reason: rejectReason.trim()}, rejectKey);
-                  await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger()]);
+                  await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadRefundLiabilities()]);
                   openDetail(item.id);
                 } catch (error) {
                   rejectButton.disabled = false;
@@ -845,7 +845,7 @@
                     execution_reference: (executionReference || "").trim(),
                     idempotency_key: executionKey
                   }, executionKey);
-                  await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadShifts()]);
+                  await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadRefundLiabilities(), loadShifts()]);
                   openDetail(item.id);
                 } catch (error) {
                   executeButton.disabled = false;
@@ -915,7 +915,7 @@
             const d = result.data || {};
             state.textContent = "已追加红字凭证 " + d.reference +
               "（" + d.amount + " " + d.currency + "）";
-            await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger()]);
+            await Promise.all([loadFolios(currentPage, true), loadSummary(), loadLedger(), loadRefundLiabilities()]);
             await refreshApprovalStatus();
           } catch (error) {
             state.textContent = error.message;
