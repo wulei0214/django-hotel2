@@ -7,9 +7,9 @@
 > | 验收版本 / commit SHA | 最新业务代码核对基线 `8e310b5a8491f31dd91b5461160fd6dfc1f22e06`；历史证据 SHA 仍按各 A 项保留 |
 > | 验收环境 | 本地开发机（Windows 10 22631 / Python 3.9.0 / Django 4.1） |
 > | MySQL | 8.x（hotel@localhost，UTF8MB4） |
-> | Redis | 未部署（P0-05 已实现 env 配置化；部署验证属 G09 待办） |
+> | Redis | Redis 5.0.14 已部署；G09 双 worker 共享/TTL/故障降级已有 95 号证据；生产拓扑仍待部署验收 |
 > | 数据规模 | 演示数据（30 客人/20 房/30 预订）；正式容量冻结待负责人 |
-> | 执行日期 | 2026-11-06 |
+> | 执行日期 | 2026-11-09（最新证据追加） |
 > | 开发负责人 | AI 开发流（多子智能体） |
 > | 独立验收负责人 | **待指派** |
 
@@ -21,7 +21,7 @@
 | 业务中心 | 通过（申报） | A02 | 11 中心实现；批次 5 逐中心闭环对照（40-five-centers-closure.md） |
 | 端到端闭环 | 通过（申报） | A03 | test_e2e_flows 18 项 + test_five_centers_closure 20 项 |
 | 数据库 | **通过（机器证据）** | A04 | 2026-11-07：空库全量迁移 97 迁移全过/无漂移 + 升级库（备份还原）74 表行数零差异 + Folio 余额重算零差异（原"DBA 授权"阻塞经 test_hotel 库级权限绕过）；见 95 号报告 §2 |
-| API | 通过（申报） | A05 | OpenAPI 97 paths 契约同步；P0-01/02/03 加固测试在位 |
+| API | 通过（申报） | A05 | 最新静态 OpenAPI 102 paths / 104 operations；79 verified / 25 partial，partial 仍待逐项真实执行 |
 | 身份与权限 | 通过（申报） | A06 | 九角色授权链测试在位；demo_owner/测试账号走真实 StaffRoleAssignment 链 |
 | 安全合规 | 通过（申报） | A07 | §8.3 零容忍项有负向测试；check --deploy 5 WARN 为部署前置条件（见下） |
 | 自动化测试 | **通过** | A08 | **最新 main Actions：MySQL 8.0.46 887 项 OK + SQLite 887 项 OK**（2026-11-09 更新；历史"SQLite+MySQL 双 729"实为 MySQL 运行，引擎标注更正见 95 号报告 §1） |
@@ -56,7 +56,7 @@ security.W002 XFrameOptions / W004 HSTS / W008 SSL_REDIRECT / W010 SESSION_COOKI
 | A09 | MySQL 8 报告 | 双引擎回归 + 空库迁移**待用户以管理员账号执行**（SQL 无需变更，纯权限） |
 | A10 | Redis 报告 | **已部署验证**（Redis 5.0.14 @ 6379）：多进程共享（A 写 B 读）、TTL 过期、故障连接捕获、Django 内置 RedisCache 集成读写；探针脚本 _cachecheck.py |
 | A11 | 性能容量报告 | **已执行**（压测脚本 _loadtest.py，waitress 16 线程，数据集 4000+ 预订/4002 账本行）：6 场景 P50/P95/P99 + 错误率 0；压测发现并修复 2 个 P1 性能缺陷（guests current_stay 深链 N+1 → current_stay_map 批量预取，P50 1063→180ms；billing summary 全表聚合 → Redis 60s 缓存，P95 2077→344ms） |
-| A12 | 部署与恢复报告 | deploy_notes.md（定时任务/cron）；备份恢复演练待用户本地执行 |
+| A12 | 部署与恢复报告 | deploy_notes.md；95 号报告已记录 scratch 库备份还原与 74 表行数/Folio 余额核对，生产部署仍待验收 |
 | A13 | 旧入口退役报告 | docs/audit/phase0/30-phase5-gates-pii.md + test_module_gates.py |
 | A14 | 文档一致性报告 | docs/PMS2文档全目录审查与一致性校准报告_2026-11-05.md |
 | A15 | Git 版本审计报告 | 提交链（本报告 SHA 起）+ CI 记录 |
