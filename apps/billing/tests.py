@@ -158,6 +158,30 @@ class MockPaymentTests(TestCase):
             [(0, 0), (0, 0)],
         )
 
+    def test_late_success_after_local_cancellation_preserves_channel_payment_fact(self):
+        from apps.inventory.services import release_inventory_hold
+
+        release_inventory_hold(self.reservation)
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            status=Reservation.Status.CANCELLED
+        )
+        self.reservation.refresh_from_db()
+        self.payment.status = Payment.Status.CANCELLED
+        self.payment.save(update_fields=("status", "updated_at"))
+
+        response = self._callback()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["compensation_required"])
+        self.payment.refresh_from_db()
+        self.reservation.refresh_from_db()
+        self.assertEqual(self.payment.status, Payment.Status.SUCCEEDED)
+        self.assertEqual(self.reservation.status, Reservation.Status.CANCELLED)
+        self.assertEqual(LedgerEntry.objects.count(), 1)
+        self.assertEqual(
+            list(RoomTypeInventory.objects.order_by("stay_date").values_list("held", "sold")),
+            [(0, 0), (0, 0)],
+        )
+
     def test_mock_callback_is_not_available_in_production(self):
         with override_settings(DEBUG=False, DJANGO_ENV="prod"):
             raw = b'{}'
