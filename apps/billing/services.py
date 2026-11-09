@@ -154,6 +154,25 @@ def process_mock_payment_callback(*, provider_ref, amount, status):
         # 取消/过期等终态订单不再恢复库存，成功支付进入补偿处理。
         compensation_required = True
 
+    if compensation_required:
+        from apps.core.models import AuditEvent
+        AuditEvent.record(
+            action="billing.payment_late_success_requires_reconciliation",
+            entity_type="Payment",
+            entity_id=str(payment.pk),
+            property_obj=payment.property,
+            after={
+                "payment_id": payment.pk,
+                "reservation_id": reservation.pk,
+                "payment_status": payment.status,
+                "reservation_status": reservation.status,
+                "provider_ref": payment.provider_ref,
+                "amount": str(payment.amount),
+                "currency": payment.currency,
+            },
+            reason="渠道已确认支付成功，但原预订已终态或库存 Hold 无法确认；必须人工/自动补偿核对。",
+        )
+
     from apps.billing.services_v2 import BillingService
     BillingService.post_entry(
         property_obj=payment.property,
