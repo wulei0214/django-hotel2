@@ -115,14 +115,44 @@ class MockPaymentTests(TestCase):
         )
         self.assertEqual(response.status_code, 401)
 
-    def test_expired_reservation_releases_held_stock(self):
+    def test_late_success_at_expiry_boundary_preserves_payment_and_reuses_held_inventory(self):
         Reservation.objects.filter(pk=self.reservation.pk).update(
             expires_at=timezone.now() - timedelta(minutes=1)
         )
         response = self._callback()
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["expired"])
-        self.assertEqual(LedgerEntry.objects.count(), 0)
+        self.assertTrue(response.json()["reservation_confirmed"])
+        self.assertFalse(response.json()["compensation_required"])
+        self.reservation.refresh_from_db()
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.status, Payment.Status.SUCCEEDED)
+        self.assertEqual(self.reservation.status, Reservation.Status.CONFIRMED)
+        self.assertEqual(LedgerEntry.objects.count(), 1)
+        self.assertEqual(LedgerEntry.objects.get().amount, Decimal("-800.00"))
+        self.assertEqual(
+            list(RoomTypeInventory.objects.order_by("stay_date").values_list("held", "sold")),
+            [(0, 1), (0, 1)],
+        )
+
+    def test_late_success_after_hold_release_preserves_payment_and_marks_compensation(self):
+        from apps.inventory.services import release_inventory_hold
+
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            expires_at=timezone.now() - timedelta(minutes=1)
+        )
+        release_inventory_hold(self.reservation)
+        response = self._callback()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["expired"])
+        self.assertFalse(response.json()["reservation_confirmed"])
+        self.assertTrue(response.json()["compensation_required"])
+        self.reservation.refresh_from_db()
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.status, Payment.Status.SUCCEEDED)
+        self.assertEqual(self.reservation.status, Reservation.Status.EXPIRED)
+        self.assertEqual(LedgerEntry.objects.count(), 1)
+        self.assertEqual(LedgerEntry.objects.get().amount, Decimal("-800.00"))
         self.assertEqual(
             list(RoomTypeInventory.objects.order_by("stay_date").values_list("held", "sold")),
             [(0, 0), (0, 0)],
