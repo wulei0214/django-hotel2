@@ -457,7 +457,12 @@ def refund_liability_list(request):
     """GET /api/v1/billing/refund-liabilities — 财务待退款负债及候选原支付。"""
     property_obj = _require_finance_access(request)
     qs = RefundLiability.objects.filter(property=property_obj).select_related(
-        "reservation", "folio").prefetch_related("source_payments")
+        "reservation", "folio").prefetch_related("source_payments").annotate(
+            refunded_amount_total=Sum(
+                "refunds__amount",
+                filter=Q(refunds__status=Refund.Status.SUCCEEDED),
+            )
+        )
     status_filter = request.GET.get("status", "").strip().upper()
     if status_filter:
         if status_filter not in RefundLiability.Status.values:
@@ -470,12 +475,7 @@ def refund_liability_list(request):
         "booking_no": item.reservation.booking_no,
         "folio_id": item.folio_id,
         "amount": _money_str(item.amount),
-        "refunded_amount": _money_str(
-            Refund.objects.filter(
-                refund_liability=item,
-                status=Refund.Status.SUCCEEDED,
-            ).aggregate(total=Sum("amount"))["total"] or ZERO
-        ),
+        "refunded_amount": _money_str(item.refunded_amount_total or ZERO),
         "remaining_amount": _money_str(item.remaining_amount),
         "currency": item.currency,
         "status": item.status,
