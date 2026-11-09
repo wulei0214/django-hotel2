@@ -514,6 +514,11 @@ class Refund(models.Model):
         Payment, on_delete=models.PROTECT, related_name="refunds",
         verbose_name="原支付流水",
     )
+    refund_liability = models.ForeignKey(
+        "RefundLiability", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="refunds", verbose_name="关联待退款负债",
+        help_text="仅用于财务后续主动发起退款时关联待退款负债；不自动发起退款。",
+    )
     amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="退款金额")
     currency = models.CharField(max_length=3, default="CNY", verbose_name="币种")
     reason = models.CharField(max_length=240, verbose_name="退款原因")
@@ -621,6 +626,15 @@ class Refund(models.Model):
             raise ValidationError("退款与原支付必须属于同一物业。")
         if self.payment_id and self.currency != self.payment.currency:
             raise ValidationError("退款币种必须与原支付币种一致。")
+        if self.refund_liability_id:
+            liability = self.refund_liability
+            if (liability.property_id != self.property_id
+                    or liability.reservation_id != self.payment.reservation_id
+                    or liability.folio_id != self.payment.folio_id
+                    or liability.currency != self.currency):
+                raise ValidationError("退款、待退款负债与原支付必须属于同一物业、预订、账单和币种。")
+            if not liability.source_payments.filter(pk=self.payment_id).exists():
+                raise ValidationError("退款原支付必须属于该待退款负债登记的候选支付流水。")
         if not self.legacy_workflow and self.status == self.Status.SUCCEEDED:
             if self.payment.method == "CASH":
                 if not self.execution_shift_id:
@@ -641,7 +655,7 @@ class Refund(models.Model):
                 raise ValidationError("退款必须从待审批申请开始，不能直接创建已审批/已执行记录。")
         else:
             previous = type(self).objects.filter(pk=self.pk).values(
-                "payment_id", "property_id", "requested_by_id", "amount",
+                "payment_id", "refund_liability_id", "property_id", "requested_by_id", "amount",
                 "currency", "reason", "idempotency_key", "provider_ref",
                 "approval_record_id", "approved_by_id", "executed_by_id",
                 "executed_at", "execution_reference", "execution_idempotency_key",
@@ -649,7 +663,7 @@ class Refund(models.Model):
                 "legacy_workflow").first()
             if previous:
                 immutable_request = (
-                    "payment_id", "property_id", "requested_by_id", "amount",
+                    "payment_id", "refund_liability_id", "property_id", "requested_by_id", "amount",
                     "currency", "reason", "idempotency_key", "provider_ref",
                     "legacy_workflow")
                 if any(previous[field] != getattr(self, field)
@@ -726,6 +740,98 @@ class Refund(models.Model):
 
     def __str__(self):
         return f"{self.provider_ref} / {self.status}"
+
+
+class RefundLiability(models.Model):
+    """退房后待财务处理的退款负债；登记负债不等于申请或执行退款。"""
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "待处理"
+        PARTIALLY_SETTLED = "PARTIALLY_SETTLED", "部分处理"
+        SETTLED = "SETTLED", "已处理"
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT,
+        related_name="refund_liabilities", verbose_name="所属酒店")
+    reservation = models.ForeignKey(
+        "reservations.Reservation", on_delete=models.PROTECT,
+        related_name="refund_liabilities", verbose_name="预订主单")
+    folio = models.OneToOneField(
+        Folio, on_delete=models.PROTECT, related_name="refund_liability",
+        verbose_name="来源账单")
+    source_payments = models.ManyToManyField(
+        Payment, blank=True, related_name="candidate_refund_liabilities",
+        verbose_name="候选原支付流水",
+        help_text="仅记录可供财务核对的原支付候选，不代表系统已分配退款金额。")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="负债原始金额")
+    remaining_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, verbose_name="待处理余额")
+    currency = models.CharField(max_length=3, default="CNY", verbose_name="币种")
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.OPEN,
+        verbose_name="负债状态")
+    idempotency_key = models.CharField(max_length=96, unique=True, verbose_name="幂等键")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="created_refund_liabilities", verbose_name="登记人")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="登记时间")
+    settled_at = models.DateTimeField(null=True, blank=True, verbose_name="结清时间")
+
+    class Meta:
+        verbose_name = "待退款负债"
+        verbose_name_plural = "待退款负债"
+        ordering = ("-created_at",)
+        constraints = [
+            models.CheckConstraint(check=Q(amount__gt=0), name="ck_refund_liability_amount_positive"),
+            models.CheckConstraint(
+                check=Q(remaining_amount__gte=0) & Q(remaining_amount__lte=F("amount")),
+                name="ck_refund_liability_remaining_range"),
+            models.CheckConstraint(
+                check=(Q(status="OPEN", remaining_amount=F("amount"), settled_at__isnull=True)
+                       | Q(status="PARTIALLY_SETTLED", remaining_amount__gt=0,
+                           remaining_amount__lt=F("amount"), settled_at__isnull=True)
+                       | Q(status="SETTLED", remaining_amount=0, settled_at__isnull=False)),
+                name="ck_refund_liability_status_balance"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.folio_id:
+            folio = self.folio
+            if (folio.property_id != self.property_id
+                    or folio.reservation_id != self.reservation_id):
+                raise ValidationError("待退款负债、账单与预订必须属于同一物业和预订。")
+            if folio.currency != self.currency:
+                raise ValidationError("待退款负债币种必须与来源账单一致。")
+        if self.amount is None or self.amount <= 0:
+            raise ValidationError("待退款负债金额必须大于零。")
+        if (self.remaining_amount is None or self.remaining_amount < 0
+                or self.remaining_amount > self.amount):
+            raise ValidationError("待退款负债余额必须在零与原始金额之间。")
+        expected = (
+            self.Status.OPEN if self.remaining_amount == self.amount
+            else self.Status.SETTLED if self.remaining_amount == 0
+            else self.Status.PARTIALLY_SETTLED
+        )
+        if self.status != expected:
+            raise ValidationError("待退款负债状态必须与剩余金额一致。")
+        if (self.status == self.Status.SETTLED) != bool(self.settled_at):
+            raise ValidationError("待退款负债结清时间必须与结清状态一致。")
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "property_id", "reservation_id", "folio_id", "amount",
+                "currency", "idempotency_key", "created_by_id").first()
+            if previous:
+                immutable = ("property_id", "reservation_id", "folio_id",
+                             "amount", "currency", "idempotency_key", "created_by_id")
+                if any(previous[field] != getattr(self, field) for field in immutable):
+                    raise ValidationError("待退款负债来源、原始金额和登记事实不可修改。")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("待退款负债是财务追踪事实，禁止物理删除。")
+
+    def __str__(self):
+        return f"{self.folio_id} / {self.remaining_amount} {self.currency} / {self.status}"
 
 
 def _current_refund_facts(**filters):
