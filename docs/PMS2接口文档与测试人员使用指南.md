@@ -441,7 +441,7 @@ pytest -q --junitxml=reports/api-test-results.xml
 | `GET /reserve/` | GET | 匿名 | 返回官网预订页 | 已实现 |
 | `GET /api/v1/availability` | GET | 匿名 | query: check_in、check_out、rooms、room_type_id；返回物业、日期、间数、房型可售数据 | 已实现 |
 | `POST /api/v1/reservations` | POST | 匿名 | JSON: full_name、phone、room_type_id、可选 rate_plan_id、check_in、check_out、rooms、adults、children；支持 Idempotency-Key | 已实现 |
-| `GET /api/v1/reservations/{booking_no}` | GET | 匿名凭据校验 | 通过 X-Booking-Token 请求头或 token 查询参数校验 | 已实现；高风险安全待整改 |
+| `GET /api/v1/reservations/{booking_no}` | GET | 匿名凭据校验 | 只接受 X-Booking-Token 请求头；URL query token 拒绝 | 已实现；需在目标环境复测安全回归 |
 | `POST /api/v1/reservations/{booking_no}/cancel` | POST | 匿名凭据校验 | JSON token；取消待支付预订 | 已实现；高风险安全待整改 |
 | `POST /api/v1/payments/intents` | POST | 匿名凭据校验 | JSON booking_no、token；返回模拟支付意图 | 仅 dev/test 模拟支付 |
 | `POST /api/v1/payments/callback` | POST | 回调签名 | JSON provider_ref、amount、status；X-Signature | dev/test only |
