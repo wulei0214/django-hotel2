@@ -18,11 +18,14 @@ import json
 import re
 import uuid
 from unittest.mock import patch
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import Group, Permission, User
-from django.test import Client, TestCase
+from django.db import close_old_connections, connection
+from django.test import Client, TestCase, TransactionTestCase
 from django.utils import timezone
 
 from apps.billing.models import (
@@ -1508,3 +1511,75 @@ class RefundLiabilityIntegrityRegressionTests(BillingCenterTestBase):
         self.assertEqual(liability.remaining_amount, Decimal("25.00"))
         self.assertEqual(LedgerEntry.objects.filter(
             reference=f"refund:{refund.provider_ref}").count(), 1)
+
+
+@unittest.skipUnless(connection.vendor == "mysql", "并发行锁验收仅在 MySQL/InnoDB 执行")
+class RefundLiabilityConcurrentRegistrationTests(TransactionTestCase):
+    """真实 MySQL 并发请求验证同一 Folio 只登记一笔负债。"""
+
+    reset_sequences = True
+
+    def setUp(self):
+        self.property = Property.objects.get(code="DEFAULT")
+        today = timezone.localdate()
+        room_type = __import__(
+            "apps.inventory.models", fromlist=["RoomType"]).RoomType.objects.create(
+                property=self.property, code="RFL-CONCURRENT",
+                name="负债并发测试房型", capacity=2)
+        rate_plan = __import__(
+            "apps.inventory.models", fromlist=["RatePlan"]).RatePlan.objects.create(
+                property=self.property, code="RFL-CONCURRENT",
+                name="负债并发测试房价", valid_from=today - timedelta(days=1))
+        guest = Guest.objects.create(
+            property=self.property, full_name="负债并发测试住客",
+            phone="13900009991")
+        self.reservation = Reservation.objects.create(
+            property=self.property, guest=guest, booking_no="RFL-CONCURRENT-001",
+            status=Reservation.Status.CHECKED_IN,
+            check_in=today, check_out=today + timedelta(days=1),
+            total_amount=Decimal("200.00"), currency="CNY")
+        ReservationRoom.objects.create(
+            property=self.property, reservation=self.reservation,
+            room_type=room_type, rate_plan=rate_plan,
+            check_in=today, check_out=today + timedelta(days=1),
+            nightly_rates={str(today): 200.0}, amount=Decimal("200.00"))
+        self.folio = Folio.objects.create(
+            property=self.property, reservation=self.reservation,
+            folio_type=Folio.FolioType.MASTER, guest=guest,
+            status=Folio.Status.OPEN, currency="CNY")
+        payment = Payment.objects.create(
+            property=self.property, reservation=self.reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref="RFL-CONCURRENT-PAY",
+            method="CARD", amount=Decimal("200.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        BillingService.post_entry(
+            property_obj=self.property, folio=self.folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+            amount=Decimal("-200.00"),
+            reference=f"payment:{payment.provider_ref}",
+            description="并发负债原支付", posted_by=None)
+
+    def test_parallel_registration_creates_one_liability(self):
+        barrier = Barrier(2)
+
+        def register_once():
+            close_old_connections()
+            try:
+                property_obj = Property.objects.get(pk=self.property.pk)
+                reservation = Reservation.objects.get(pk=self.reservation.pk)
+                folio = Folio.objects.get(pk=self.folio.pk)
+                barrier.wait(timeout=10)
+                from apps.billing.liabilities import register_refund_liability
+                item, created = register_refund_liability(
+                    property_obj=property_obj, reservation=reservation,
+                    folio=folio, amount=Decimal("50.00"), created_by=None)
+                return item.pk, created
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _n: register_once(), range(2)))
+        self.assertEqual(len({item_id for item_id, _created in results}), 1)
+        self.assertEqual(sum(1 for _item_id, created in results if created), 1)
+        self.assertEqual(
+            RefundLiability.objects.filter(folio_id=self.folio.pk).count(), 1)
