@@ -924,6 +924,39 @@ class BillingRefundThreePartyApiTests(BillingCenterTestBase):
         liability.refresh_from_db()
         self.assertEqual(liability.remaining_amount, Decimal("50.00"))
 
+    def test_liability_keeps_multiple_payment_candidates_without_allocation(self):
+        """多笔原支付只登记候选关系，不按顺序自动分配负债金额。"""
+        reservation, folio = self._booking_with_outstanding()
+        payments = []
+        for index, provider, entry_type, prefix in (
+            (1, "frontdesk_manual", LedgerEntry.EntryType.PAYMENT, "payment"),
+            (2, "frontdesk_deposit", LedgerEntry.EntryType.DEPOSIT, "deposit"),
+        ):
+            payment = Payment.objects.create(
+                property=self.property, reservation=reservation, folio=folio,
+                provider=provider, provider_ref=f"BC-MULTI-LIABILITY-{index}",
+                method="CARD", amount=Decimal("200.00"), currency="CNY",
+                status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            BillingService.post_entry(
+                property_obj=self.property, folio=folio,
+                entry_type=entry_type, amount=Decimal("-200.00"),
+                reference=f"{prefix}:{payment.provider_ref}",
+                description="多支付候选登记测试", posted_by=self.finance)
+            payments.append(payment)
+
+        from apps.billing.liabilities import register_refund_liability
+        liability, created = register_refund_liability(
+            property_obj=self.property, reservation=reservation,
+            folio=folio, amount=Decimal("50.00"), created_by=self.finance)
+
+        self.assertTrue(created)
+        self.assertEqual(
+            list(liability.source_payments.order_by("pk").values_list("pk", flat=True)),
+            [payment.pk for payment in payments])
+        self.assertEqual(liability.amount, Decimal("50.00"))
+        self.assertEqual(liability.remaining_amount, Decimal("50.00"))
+        self.assertFalse(Refund.objects.filter(refund_liability=liability).exists())
+
     def test_deposit_payment_is_a_refund_liability_candidate(self):
         """前台押金凭证为 DEPOSIT/deposit:，仍须进入待退款原支付候选。"""
         reservation, folio = self._booking_with_outstanding()
