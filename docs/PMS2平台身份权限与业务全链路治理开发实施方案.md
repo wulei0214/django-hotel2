@@ -801,3 +801,16 @@ Apifox 导入必须覆盖实际 API 路由。对 HTML 页面流程（登录、�
 - **Pytest + Requests 真实 HTTP 冒烟套件**：api_tests/（9 用例：公开面/预订幂等/令牌查询取消/员工登录/权限拒绝/旧路由退役/OpenAPI 契约），JUnit 报告 api_tests/reports/junit-p0.xml；运行方式见 docs/PMS2接口文档与测试人员使用指南.md §5.1
 - **Apifox 交付物**：docs/接口文档/openapi.json（60 paths 快照含 servers）+ apifox-env-template.json 环境变量模板（无真实密钥）
 - Django 层 JUnit 收集（unittest-xml-reporting）为运维可选项，未纳入 CI（记录待办）
+
+
+---
+
+## 2026-11-09 最新 main 实施状态校准
+
+> 本方案的历史阶段记录保留原样；当前完成状态以 main 最新代码、CI 和独立验收文件为准。
+
+- 当前业务代码核对基线：main@8e310b5a8491f31dd91b5461160fd6dfc1f22e06。
+- 跨 App RBAC 以 apps/identity/registry.py 和 AuthorizationService 为权威；九角色中五个 ACTIVE、四个 PLANNED 空组。
+- PENDING 公开预订可由前台押金/人工收款成功后自动确认；夜审/退房房费按 Stay 维度防止重复过账；退款申请/审批/执行三方分离。
+- SQLite/MySQL 8.0.46 CI 各 887 项通过；OpenAPI 静态快照 102 paths / 104 operations，79 verified / 25 partial。
+- 浏览器 E2E、九角色真实登录、Apifox partial 关闭、G14 独立验收仍未完成。当前 E2E 脚本问题见 2026-11-09 白盒报告。
