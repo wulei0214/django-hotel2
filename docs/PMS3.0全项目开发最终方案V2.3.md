@@ -2328,7 +2328,11 @@ V2.2 的 §9.3 使用“唯一执行任务归属”作为表头，但部分行�
 | Reservation Hold 过期 | BIZ-INV-03 | — | SVC-03（库存与 Hold 领域行为）；SVC-10（调度运行能力） | DB-13、SVC-05 支付事实查询 | QA-04、QA-06：已确认订单保护、支付回调竞态、重复释放 |
 | Reservation 过期 | BIZ-RSV-07 | — | SVC-04（预订生命周期）；SVC-10（任务运行能力） | DB-06、SVC-05、ProviderTransaction 查询 | QA-04、QA-06：过期与成功回调并发 |
 | No-show 处理 | BIZ-RSV-07 | — | SVC-04；旧入口收口按 MIG-06/API-08 执行 | 营业日配置、DEC-12、唯一命令入口 | QA-04、QA-06：营业日边界、重复运行、旧入口封禁 |
-| 夜审调度 | BIZ-AUD-08 | — | SVC-06；SVC-10 提供统一运行能力 | DB-18、DEC-12/13、账务锁与唯一凭证 | QA-04、QA-06：多 worker 互斥、失败续跑、禁止重复过账 |
+| 夜审调度 | BIZ-AUD-08 | — | SVC-06；SVC-10 提供统一运行能力 | DB-11（BusinessDate/NightAudit 运行约束）、DEC-12/13、账务锁与唯一凭证 | QA-04、QA-06：多 worker 互斥、失败续跑、禁止重复过账 |
+| payment_unknown_reconcile | BIZ-RSV-16/18 | — | SVC-05（支付事实/渠道查询）；SVC-10 提供任务运行能力 | DB-09、DB-14、DEC-25/31、渠道交易查询能力 | QA-04、QA-06：UNKNOWN 查询、迟到成功、禁止重复扣款、查询失败退避 |
+| refund_reconcile | BIZ-FIN-02 | — | SVC-05（退款状态/渠道查询）；SVC-10 提供任务运行能力 | DB-07、DB-08、DB-09、渠道退款查询能力 | QA-04、QA-06、QA-08：渠道成功补记、渠道失败、幂等重试、禁止重复退款 |
+| retention_anonymize | BIZ-CMP-05 | — | SVC-12（留存/匿名化治理）；SVC-10 提供任务运行能力 | DB-20、DEC-05、法律保留标记与数据分类策略 | QA-08、QA-09：保留例外、匿名化审计、批次续跑与不可逆性验证 |
+| inventory_diff_scan | BIZ-INV-09 | — | SVC-03（库存一致性/差异扫描）；SVC-10 提供任务运行能力 | DB-13、库存状态机、库存事实来源与差异阈值 | QA-04、QA-06、QA-10：重复扫描、超卖风险告警、差异人工处置 |
 | 清洁/维修 SLA | BIZ-HK-06 | — | SVC-07；SVC-10 提供任务运行能力 | 房态/工单状态、员工任职与权限 | QA-04、QA-06：超时升级、转交、重复触发 |
 | Outbox 投递 | BIZ-WN-04 | — | SVC-10（Outbox/任务框架）；SVC-08（通知消费） | Outbox 表、事件目录、DEC-27 | QA-06：重复投递、死信、重放、消费者中断 |
 | 通知投递 | BIZ-WN-04 | — | SVC-08（通知业务）；SVC-10（运行能力） | Outbox、通知去重键、收件人权限 | QA-06：重复通知、延迟投递、失败重试 |
