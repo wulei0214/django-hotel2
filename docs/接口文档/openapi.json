@@ -11348,9 +11348,13 @@
                             "type": "string",
                             "description": ""
                           },
+                          "refunded_amount": {
+                            "type": "string",
+                            "description": "已成功执行并形成退款账本凭证的累计退款金额。"
+                          },
                           "remaining_amount": {
                             "type": "string",
-                            "description": ""
+                            "description": "当前待处理负债余额。"
                           },
                           "currency": {
                             "type": "string",
