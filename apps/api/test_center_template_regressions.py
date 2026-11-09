@@ -70,6 +70,16 @@ class CenterTemplateRegressionTests(SimpleTestCase):
         self.assertIn("canApproveRefund", source)
         self.assertIn("canExecuteRefund", source)
 
+    def test_billing_center_exposes_refund_liabilities_and_manual_source_selection(self):
+        source = self.read_template("billing_center.html")
+        self.assertIn('aria-label="待退款负债"', source)
+        self.assertIn('id="fin-refund-liability-body"', source)
+        self.assertIn('/api/v1/billing/refund-liabilities?page=1&page_size=100', source)
+        self.assertIn('function refundForm(payment, refundLiabilityId)', source)
+        self.assertIn('requestBody.refund_liability_id = refundLiabilityId', source)
+        self.assertIn('openLiabilityRefund(item, Object.assign({id: selected.payment_id}, selected))', source)
+        self.assertIn("候选支付仅供财务核对，不代表自动分配", source)
+
     def test_billing_refund_ui_requires_non_cash_reference_and_marks_legacy(self):
         source = self.read_template("billing_center.html")
         self.assertIn('payment.method !== "CASH"', source)
