@@ -158,6 +158,24 @@ class MockPaymentTests(TestCase):
             [(0, 0), (0, 0)],
         )
 
+    def test_frontdesk_deposit_confirmation_cancels_older_pending_payment_intents(self):
+        from apps.billing.services_v2 import BillingService
+
+        deposit, created = BillingService.record_deposit(
+            property_obj=self.property,
+            reservation=self.reservation,
+            amount=Decimal("200.00"),
+            method="CARD",
+            idempotency_key="deposit-close-old-intent",
+            received_by=None,
+        )
+        self.assertTrue(created)
+        self.assertEqual(deposit.status, Payment.Status.SUCCEEDED)
+        self.payment.refresh_from_db()
+        self.reservation.refresh_from_db()
+        self.assertEqual(self.payment.status, Payment.Status.CANCELLED)
+        self.assertEqual(self.reservation.status, Reservation.Status.CONFIRMED)
+
     def test_late_success_after_local_cancellation_preserves_channel_payment_fact(self):
         from apps.reservations.services import cancel_pending_reservation
 
