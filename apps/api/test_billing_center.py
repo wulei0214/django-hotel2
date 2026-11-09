@@ -181,6 +181,7 @@ class BillingCenterTestBase(TestCase):
         "/api/v1/billing/ledger",
         "/api/v1/billing/payments",
         "/api/v1/billing/refunds",
+        "/api/v1/billing/refund-liabilities",
         "/api/v1/billing/shifts",
         "/api/v1/billing/summary",
     )
@@ -883,6 +884,45 @@ class BillingSummaryCacheInvalidationTests(BillingCenterTestBase):
 
 class BillingRefundThreePartyApiTests(BillingCenterTestBase):
     """API 层验证申请、审批、执行独立账号及仅执行时落账。"""
+
+    def test_refund_liability_api_lists_candidates_and_links_finance_request(self):
+        reservation, folio = self._booking_with_outstanding()
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=folio,
+            provider="frontdesk_manual", provider_ref="BC-LIABILITY-PAY-001",
+            method="CARD", amount=Decimal("350.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        BillingService.post_entry(
+            property_obj=self.property, folio=folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+            amount=Decimal("-350.00"),
+            reference=f"payment:{payment.provider_ref}",
+            description="待退款负债 API 测试原支付",
+            posted_by=self.finance)
+        from apps.billing.liabilities import register_refund_liability
+        liability, created = register_refund_liability(
+            property_obj=self.property, reservation=reservation,
+            folio=folio, amount=Decimal("50.00"), created_by=self.finance)
+        self.assertTrue(created)
+
+        self._login(self.finance)
+        listed = self.client.get("/api/v1/billing/refund-liabilities")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        item = listed.json()["data"][0]
+        self.assertEqual(item["id"], liability.pk)
+        self.assertEqual(item["remaining_amount"], "50.00")
+        self.assertEqual(item["candidate_payments"][0]["payment_id"], payment.pk)
+
+        requested = _post_json(
+            self.client, "/api/v1/billing/refunds",
+            {"payment_id": payment.pk, "refund_liability_id": liability.pk,
+             "amount": "25.00", "reason": "财务关联待退款负债",
+             "idempotency_key": "bc-liability-refund-request-001"})
+        self.assertEqual(requested.status_code, 201, requested.content)
+        refund = Refund.objects.get(pk=requested.json()["data"]["refund_id"])
+        self.assertEqual(refund.refund_liability_id, liability.pk)
+        liability.refresh_from_db()
+        self.assertEqual(liability.remaining_amount, Decimal("50.00"))
 
     def test_refund_api_requires_three_distinct_people_and_posts_once(self):
         reservation, _folio = self._booking_with_outstanding()
