@@ -97,27 +97,39 @@ def process_mock_payment_callback(*, provider_ref, amount, status):
     if status not in {"SUCCESS", "FAILED"}:
         raise PaymentConflict("不支持的模拟支付结果。")
 
+    # 全局锁顺序必须为 Reservation -> Payment -> Inventory Hold。
+    # 先做无锁关联读取取得 reservation_id，再锁预订，最后锁支付行并复核关联；
+    # 不得先锁 Payment 再锁 Reservation，否则会与取消/过期路径形成反向死锁。
+    payment_probe = Payment.objects.filter(
+        provider_ref=provider_ref
+    ).values("reservation_id").first()
+    if payment_probe is None:
+        raise PaymentConflict("支付流水不存在。")
+    try:
+        reservation = Reservation.objects.select_for_update().get(
+            pk=payment_probe["reservation_id"]
+        )
+    except Reservation.DoesNotExist as exc:
+        raise PaymentConflict("支付流水关联的预订不存在。") from exc
     try:
         payment = (
             Payment.objects.select_for_update()
-            .select_related("reservation", "folio", "property")
-            .get(provider_ref=provider_ref)
+            .select_related("folio", "property")
+            .get(provider_ref=provider_ref, reservation=reservation)
         )
     except Payment.DoesNotExist as exc:
-        raise PaymentConflict("支付流水不存在。") from exc
+        # 关联在无锁探测与加锁之间发生变化时，拒绝继续处理。
+        raise PaymentConflict("支付流水不存在或关联预订已变化。") from exc
 
     if amount != payment.amount:
         raise PaymentConflict("回调金额与支付流水金额不一致。")
     if payment.status == Payment.Status.SUCCEEDED:
-        return {"duplicate": True, "payment": payment, "reservation": payment.reservation}
+        return {"duplicate": True, "payment": payment, "reservation": reservation}
     if payment.status != Payment.Status.PENDING and not (
             status == "SUCCESS" and payment.status in (
                 Payment.Status.FAILED, Payment.Status.CANCELLED)):
         raise PaymentConflict("当前支付流水状态不接受该回调结果。")
 
-    reservation = Reservation.objects.select_for_update().get(
-        pk=payment.reservation_id
-    )
     if status == "FAILED":
         payment.status = Payment.Status.FAILED
         payment.save(update_fields=("status", "updated_at"))
