@@ -106,11 +106,11 @@
       <div class="pms-table-wrap">
         <table class="pms-table">
           <thead><tr>
-            <th>预订编号</th><th>原始负债</th><th>待处理余额</th>
+            <th>预订编号</th><th>原始负债</th><th>已退款</th><th>待处理余额</th>
             <th>原支付候选</th><th>状态</th><th>操作</th>
           </tr></thead>
           <tbody id="fin-refund-liability-body">
-            <tr><td colspan="6" class="pms-state">正在读取待退款负债…</td></tr>
+            <tr><td colspan="7" class="pms-state">正在读取待退款负债…</td></tr>
           </tbody>
         </table>
       </div>
@@ -316,13 +316,14 @@
       if (!items.length) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
-        td.colSpan = 6; td.className = "pms-state";
+        td.colSpan = 7; td.className = "pms-state";
         td.textContent = "暂无待退款负债。";
         tr.appendChild(td); target.appendChild(tr); return;
       }
       items.forEach(function(item) {
         const tr = document.createElement("tr");
         [item.booking_no, value(item.amount) + " " + value(item.currency),
+         value(item.refunded_amount) + " " + value(item.currency),
          value(item.remaining_amount) + " " + value(item.currency)].forEach(function(text) {
           const td = document.createElement("td"); td.textContent = text; tr.appendChild(td);
         });
