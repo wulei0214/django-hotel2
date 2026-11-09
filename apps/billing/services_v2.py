@@ -626,7 +626,8 @@ class BillingService:
                 property=property_obj, idempotency_key=key).first()
             if raced is not None:
                 if (raced.payment_id != payment.pk
-                        or raced.amount != amount or raced.reason != reason):
+                        or raced.amount != amount or raced.reason != reason
+                        or raced.refund_liability_id != (liability.pk if liability else None)):
                     raise ValueError("该幂等键已用于不同退款申请。")
                 return raced, False
             raise
