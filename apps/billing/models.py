@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models, transaction
 from django.db.models import F, Q
+from django.db.models.signals import m2m_changed
 
 
 class ImmutableFinancialFactQuerySet(models.QuerySet):
@@ -844,6 +845,41 @@ class RefundLiability(models.Model):
     def __str__(self):
         return f"{self.folio_id} / {self.remaining_amount} {self.currency} / {self.status}"
 
+
+
+def _validate_refund_liability_payment_candidates(sender, instance, action,
+                                                   reverse, pk_set, **kwargs):
+    """候选原支付只能属于负债相同的物业、预订、账单和币种。"""
+    if action != "pre_add" or not pk_set:
+        return
+    if reverse:
+        payments = [instance]
+        liabilities = RefundLiability.objects.filter(pk__in=pk_set).values(
+            "property_id", "reservation_id", "folio_id", "currency")
+        payment = payments[0]
+        for liability in liabilities:
+            if (payment.property_id != liability["property_id"]
+                    or payment.reservation_id != liability["reservation_id"]
+                    or payment.folio_id != liability["folio_id"]
+                    or payment.currency != liability["currency"]):
+                raise ValidationError("候选原支付必须与待退款负债属于同一物业、预订、账单和币种。")
+        return
+
+    payments = Payment.objects.filter(pk__in=pk_set).values(
+        "property_id", "reservation_id", "folio_id", "currency")
+    for payment in payments:
+        if (payment["property_id"] != instance.property_id
+                or payment["reservation_id"] != instance.reservation_id
+                or payment["folio_id"] != instance.folio_id
+                or payment["currency"] != instance.currency):
+            raise ValidationError("候选原支付必须与待退款负债属于同一物业、预订、账单和币种。")
+
+
+m2m_changed.connect(
+    _validate_refund_liability_payment_candidates,
+    sender=RefundLiability.source_payments.through,
+    dispatch_uid="billing.validate_refund_liability_payment_candidates",
+)
 
 def _current_refund_facts(**filters):
     """支付状态机校验读取退款事实必须基于“当前读”。
