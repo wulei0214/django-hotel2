@@ -92,8 +92,10 @@ def process_mock_payment_callback(*, provider_ref, amount, status):
         raise PaymentConflict("回调金额与支付流水金额不一致。")
     if payment.status == Payment.Status.SUCCEEDED:
         return {"duplicate": True, "payment": payment, "reservation": payment.reservation}
-    if payment.status != Payment.Status.PENDING:
-        raise PaymentConflict("当前支付流水不处于待支付状态。")
+    if payment.status != Payment.Status.PENDING and not (
+            status == "SUCCESS" and payment.status in (
+                Payment.Status.FAILED, Payment.Status.CANCELLED)):
+        raise PaymentConflict("当前支付流水状态不接受该回调结果。")
 
     reservation = Reservation.objects.select_for_update().get(
         pk=payment.reservation_id
