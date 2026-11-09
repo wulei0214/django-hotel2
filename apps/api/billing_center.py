@@ -470,6 +470,12 @@ def refund_liability_list(request):
         "booking_no": item.reservation.booking_no,
         "folio_id": item.folio_id,
         "amount": _money_str(item.amount),
+        "refunded_amount": _money_str(
+            Refund.objects.filter(
+                refund_liability=item,
+                status=Refund.Status.SUCCEEDED,
+            ).aggregate(total=Sum("amount"))["total"] or ZERO
+        ),
         "remaining_amount": _money_str(item.remaining_amount),
         "currency": item.currency,
         "status": item.status,
