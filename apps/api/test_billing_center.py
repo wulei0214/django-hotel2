@@ -1564,6 +1564,12 @@ class RefundLiabilityIntegrityRegressionTests(BillingCenterTestBase):
         self.assertEqual(liability.remaining_amount, Decimal("25.00"))
         self.assertEqual(LedgerEntry.objects.filter(
             reference=f"refund:{refund.provider_ref}").count(), 1)
+        self._login(self.finance)
+        liability_rows = self.client.get(
+            "/api/v1/billing/refund-liabilities").json()["data"]
+        liability_row = next(item for item in liability_rows if item["id"] == liability.pk)
+        self.assertEqual(liability_row["refunded_amount"], "25.00")
+        self.assertEqual(liability_row["remaining_amount"], "25.00")
 
 
 @unittest.skipUnless(connection.vendor == "mysql", "并发行锁验收仅在 MySQL/InnoDB 执行")
