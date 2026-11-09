@@ -745,6 +745,8 @@ class Refund(models.Model):
 class RefundLiability(models.Model):
     """退房后待财务处理的退款负债；登记负债不等于申请或执行退款。"""
 
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
+
     class Status(models.TextChoices):
         OPEN = "OPEN", "待处理"
         PARTIALLY_SETTLED = "PARTIALLY_SETTLED", "部分处理"
@@ -798,8 +800,10 @@ class RefundLiability(models.Model):
         if self.folio_id:
             folio = self.folio
             if (folio.property_id != self.property_id
-                    or folio.reservation_id != self.reservation_id):
-                raise ValidationError("待退款负债、账单与预订必须属于同一物业和预订。")
+                    or folio.reservation_id != self.reservation_id
+                    or self.reservation.property_id != self.property_id
+                    or self.reservation.currency != self.currency):
+                raise ValidationError("待退款负债、账单与预订必须属于同一物业、预订和币种。")
             if folio.currency != self.currency:
                 raise ValidationError("待退款负债币种必须与来源账单一致。")
         if self.amount is None or self.amount <= 0:
@@ -825,6 +829,12 @@ class RefundLiability(models.Model):
                              "amount", "currency", "idempotency_key", "created_by_id")
                 if any(previous[field] != getattr(self, field) for field in immutable):
                     raise ValidationError("待退款负债来源、原始金额和登记事实不可修改。")
+                if self.remaining_amount > previous["remaining_amount"]:
+                    raise ValidationError("待退款负债余额只能因退款成功而减少，不得回增。")
+                if previous["status"] == self.Status.SETTLED and (
+                        self.status != self.Status.SETTLED
+                        or self.settled_at != previous["settled_at"]):
+                    raise ValidationError("已结清待退款负债不可重新打开或修改结清时间。")
         return super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
