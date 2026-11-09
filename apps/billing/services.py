@@ -124,7 +124,29 @@ def process_mock_payment_callback(*, provider_ref, amount, status):
     if amount != payment.amount:
         raise PaymentConflict("回调金额与支付流水金额不一致。")
     if payment.status == Payment.Status.SUCCEEDED:
-        return {"duplicate": True, "payment": payment, "reservation": reservation}
+        # 幂等重放必须返回与首次处理一致的业务结果，不能把此前已进入补偿
+        # 的迟到成功错误报告成“无需补偿”。
+        from apps.core.models import AuditEvent
+        compensation_required = AuditEvent.objects.filter(
+            action="billing.payment_late_success_requires_reconciliation",
+            entity_type="Payment",
+            entity_id=str(payment.pk),
+        ).exists()
+        reservation_confirmed = reservation.status in (
+            Reservation.Status.CONFIRMED,
+            Reservation.Status.CHECKED_IN,
+            Reservation.Status.CHECKED_OUT,
+        )
+        return {
+            "duplicate": True,
+            "expired": bool(
+                reservation.expires_at and reservation.expires_at <= timezone.now()
+            ),
+            "compensation_required": compensation_required,
+            "reservation_confirmed": reservation_confirmed,
+            "payment": payment,
+            "reservation": reservation,
+        }
     if payment.status != Payment.Status.PENDING and not (
             status == "SUCCESS" and payment.status in (
                 Payment.Status.FAILED, Payment.Status.CANCELLED)):
