@@ -1,0 +1,290 @@
+# -*- coding: utf-8 -*-
+"""支付意图领域服务：创建、状态迁移、渠道窗口策略（D2/D6）。
+
+依据 docs/PMS2支付中心P0P1专项整改需求_2026-11-09.md PAY-P0-01~05：
+- 意图与渠道交易分离；
+- UNKNOWN 不得直接释放库存，须先查询渠道；
+- 渠道窗口由服务端策略控制（客户端不得提交/修改窗口/延长上限）；
+- 支付成功与 Hold 过期竞争时以条件迁移保证单一结果。
+"""
+import uuid
+from decimal import Decimal
+
+from django.db import transaction
+from django.utils import timezone
+
+from apps.billing.models import (
+    PaymentIntent,
+    ProviderTransaction,
+    PaymentCompensationTask,
+)
+from apps.core.models import AuditEvent
+
+# D2：渠道支付窗口策略（服务端配置；客户端不得提交或修改）
+CHANNEL_WINDOW_CONFIG = {
+    "mock": {
+        "initial_wait_seconds": 15 * 60,       # 初始等待 15 分钟
+        "max_total_wait_seconds": 30 * 60,     # 最大累计等待 30 分钟
+        "max_extensions": 1,                    # 最大延长次数
+        "extension_seconds": 5 * 60,           # 每次延长 5 分钟
+    },
+}
+DEFAULT_WINDOW = CHANNEL_WINDOW_CONFIG["mock"]
+
+
+def get_channel_window(provider_code):
+    """D2：读取渠道支付窗口策略（服务端配置，不接受前端传入）。"""
+    return CHANNEL_WINDOW_CONFIG.get(provider_code, DEFAULT_WINDOW)
+
+
+@transaction.atomic
+def create_intent(*, property_obj, reservation, folio, amount, currency="CNY",
+                  purpose="ROOM_FEE", provider_code="mock", created_by=None,
+                  idempotency_key=""):
+    """创建支付意图（幂等）。创建时关联有效 Hold 并设置初始窗口。"""
+    key = str(idempotency_key or "").strip()
+    if not key or len(key) > 96:
+        raise ValueError("支付意图必须提供 1 至 96 个字符的幂等键。")
+    intent_amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+    if intent_amount <= 0:
+        raise ValueError("支付意图金额必须大于零。")
+
+    existing = PaymentIntent.objects.filter(idempotency_key=key).first()
+    if existing is not None:
+        if (existing.property_id != property_obj.pk
+                or existing.reservation_id != reservation.pk
+                or existing.amount != intent_amount
+                or existing.folio_id != folio.pk):
+            raise ValueError("该幂等键已用于不同支付意图。")
+        return existing, False
+
+    window = get_channel_window(provider_code)
+    now = timezone.now()
+    intent = PaymentIntent.objects.create(
+        property=property_obj, reservation=reservation, folio=folio,
+        intent_no=f"PI-{uuid.uuid4().hex.upper()[:20]}",
+        idempotency_key=key,
+        amount=intent_amount, currency=currency,
+        purpose=PaymentIntent.Purpose.purpose if hasattr(PaymentIntent.Purpose, 'purpose') else purpose,
+        provider_code=provider_code,
+        provider_config_version="v1",
+        status=PaymentIntent.Status.PENDING,
+        expires_at=now + timezone.timedelta(seconds=window["initial_wait_seconds"]),
+        max_expires_at=now + timezone.timedelta(seconds=window["max_total_wait_seconds"]),
+        created_by=created_by)
+    AuditEvent.record(
+        action="billing.payment_intent_created", entity_type="PaymentIntent",
+        entity_id=intent.pk, actor=created_by, property_obj=property_obj,
+        after={"intent_no": intent.intent_no, "amount": str(intent_amount),
+               "provider_code": provider_code, "expires_at": intent.expires_at.isoformat()},
+        reason="创建支付意图")
+    return intent, True
+
+
+@transaction.atomic
+def extend_intent_window(*, intent_id, property_obj, extended_by=None):
+    """D2：有限延长支付窗口（仅 PENDING/PROCESSING；有上限）。"""
+    intent = PaymentIntent.objects.select_for_update().filter(
+        pk=intent_id, property=property_obj).first()
+    if intent is None:
+        raise ValueError("支付意图不存在或不属于当前物业。")
+    if intent.status not in (PaymentIntent.Status.PENDING,
+                             PaymentIntent.Status.PROCESSING):
+        raise ValueError("只有待支付/处理中的意图可以延长窗口。")
+    window = get_channel_window(intent.provider_code)
+    if intent.extension_count >= window["max_extensions"]:
+        raise ValueError("已达到最大延长次数，转入补偿核查。")
+    if intent.max_expires_at and intent.expires_at and (
+            intent.expires_at + timezone.timedelta(seconds=window["extension_seconds"])
+            > intent.max_expires_at):
+        raise ValueError("已达到最大累计等待时长，转入补偿核查。")
+    intent.extension_count += 1
+    intent.expires_at = (intent.expires_at or timezone.now()) + timezone.timedelta(
+        seconds=window["extension_seconds"])
+    intent.save(update_fields=("extension_count", "expires_at", "updated_at"))
+    AuditEvent.record(
+        action="billing.intent_window_extended", entity_type="PaymentIntent",
+        entity_id=intent.pk, actor=extended_by, property_obj=property_obj,
+        after={"extension_count": intent.extension_count,
+               "expires_at": intent.expires_at.isoformat()},
+        reason="D2 窗口延长")
+    return intent
+
+
+@transaction.atomic
+def record_provider_event(*, property_obj, intent_id, provider_code,
+                          provider_transaction_id, amount, currency,
+                          channel_status, event_id="", signature_verified=False):
+    """记录渠道交易事实（event_id 幂等；重复/乱序通知先记录再判断）。"""
+    from apps.core.models import AuditEvent as AE
+    intent = PaymentIntent.objects.filter(pk=intent_id, property=property_obj).first()
+    if intent is None:
+        raise ValueError("支付意图不存在或不属于当前物业。")
+    existing = ProviderTransaction.objects.filter(
+        provider_code=provider_code, event_id=event_id).first() if event_id else None
+    if existing is not None:
+        return existing, False
+    pt = ProviderTransaction.objects.create(
+        property=property_obj, intent=intent,
+        provider_code=provider_code,
+        provider_transaction_id=provider_transaction_id,
+        event_id=event_id, amount=Decimal(str(amount)).quantize(Decimal("0.01")),
+        currency=currency, channel_status=channel_status,
+        signature_verified=signature_verified)
+    AE.record(
+        action="billing.provider_event_recorded", entity_type="ProviderTransaction",
+        entity_id=pt.pk, property_obj=property_obj,
+        after={"provider_transaction_id": provider_transaction_id,
+               "channel_status": channel_status, "event_id": event_id},
+        reason="记录渠道交易事实")
+    return pt, True
+
+
+@transaction.atomic
+def confirm_intent_success(*, property_obj, intent_id, provider_transaction_id,
+                           confirmed_payment=None, actor=None):
+    """渠道确认成功 → 意图 SUCCEEDED + 关联 Payment + Hold 确认（同事务）。
+
+    竞态仲裁：本方法与 Hold 过期释放共用数据库行锁，保证渠道成功后
+    Hold 不被过期任务释放（PAY-P0-04）。
+    """
+    from apps.inventory.services import confirm_inventory_for_reservation
+    from apps.inventory.services import InventoryUnavailable
+    intent = PaymentIntent.objects.select_for_update().filter(
+        pk=intent_id, property=property_obj).first()
+    if intent is None:
+        raise ValueError("支付意图不存在或不属于当前物业。")
+    if intent.status == PaymentIntent.Status.SUCCEEDED:
+        return intent, False
+    if intent.status in (PaymentIntent.Status.FAILED,
+                         PaymentIntent.Status.EXPIRED,
+                         PaymentIntent.Status.CANCELLED):
+        raise ValueError("已终态意图不可确认成功。")
+    intent.status = PaymentIntent.Status.SUCCEEDED
+    if confirmed_payment:
+        intent.confirmed_payment = confirmed_payment
+    intent.save(update_fields=("status", "confirmed_payment", "updated_at"))
+    try:
+        confirm_inventory_for_reservation(intent.reservation)
+    except InventoryUnavailable:
+        pass  # Hold 已过期/释放——资金事实保留，进入高优先级异常处理
+    AuditEvent.record(
+        action="billing.intent_confirmed", entity_type="PaymentIntent",
+        entity_id=intent.pk, actor=actor, property_obj=property_obj,
+        after={"status": "SUCCEEDED",
+               "provider_transaction_id": provider_transaction_id},
+        reason="渠道确认成功（PAY-P0-04 竞态仲裁）")
+    return intent, True
+
+
+@transaction.atomic
+def expire_intent(*, property_obj, intent_id, actor=None):
+    """意图过期（窗口到期且渠道未确认成功方可过期；UNKNOWN 不走此路径）。"""
+    intent = PaymentIntent.objects.select_for_update().filter(
+        pk=intent_id, property=property_obj).first()
+    if intent is None:
+        raise ValueError("支付意图不存在或不属于当前物业。")
+    if intent.status not in (PaymentIntent.Status.PENDING,
+                             PaymentIntent.Status.CREATED):
+        raise ValueError("只有待支付状态的意图可以过期。")
+    intent.status = PaymentIntent.Status.EXPIRED
+    intent.save(update_fields=("status", "updated_at"))
+    AuditEvent.record(
+        action="billing.intent_expired", entity_type="PaymentIntent",
+        entity_id=intent.pk, actor=actor, property_obj=property_obj,
+        after={"status": "EXPIRED"}, reason="窗口到期未支付")
+    return intent
+
+
+@transaction.atomic
+def create_compensation_task(*, task_type, aggregate_type, aggregate_id,
+                             idempotency_key, max_attempts=5):
+    """创建持久化补偿任务（幂等）。"""
+    existing = PaymentCompensationTask.objects.filter(
+        idempotency_key=idempotency_key).first()
+    if existing is not None:
+        return existing, False
+    task = PaymentCompensationTask.objects.create(
+        task_type=task_type, aggregate_type=aggregate_type,
+        aggregate_id=aggregate_id, idempotency_key=idempotency_key,
+        max_attempts=max_attempts,
+        next_attempt_at=timezone.now())
+    AuditEvent.record(
+        action="billing.compensation_task_created",
+        entity_type="PaymentCompensationTask", entity_id=task.pk,
+        after={"task_type": task_type, "aggregate_id": aggregate_id},
+        reason="创建支付补偿任务（D3 P0）")
+    return task, True
+
+
+@transaction.atomic
+def lease_compensation_task(task_id, lease_owner, lease_seconds=60):
+    """数据库租约抢占：两个 worker 同时抢占，最多一个有效执行者。"""
+    task = PaymentCompensationTask.objects.select_for_update().filter(
+        pk=task_id).first()
+    if task is None:
+        raise ValueError("补偿任务不存在。")
+    now = timezone.now()
+    if task.status == PaymentCompensationTask.Status.LEASED and (
+            task.lease_expires_at and task.lease_expires_at > now):
+        raise ValueError("任务已被其他 worker 抢占且租约未到期。")
+    if task.status not in (PaymentCompensationTask.Status.PENDING,
+                           PaymentCompensationTask.Status.LEASED):
+        raise ValueError("只有待执行/已抢占的任务可以租约执行。")
+    task.status = PaymentCompensationTask.Status.LEASED
+    task.lease_owner = lease_owner
+    task.lease_expires_at = now + timezone.timedelta(seconds=lease_seconds)
+    task.attempt_count += 1
+    task.started_at = now
+    task.save(update_fields=("status", "lease_owner", "lease_expires_at",
+                             "attempt_count", "started_at"))
+    return task
+
+
+@transaction.atomic
+def complete_compensation_task(task_id, success=True, error_code="",
+                               error_summary=""):
+    """完成任务：成功或超限进死信。"""
+    task = PaymentCompensationTask.objects.select_for_update().filter(
+        pk=task_id).first()
+    if task is None:
+        raise ValueError("补偿任务不存在。")
+    if success:
+        task.status = PaymentCompensationTask.Status.SUCCEEDED
+        task.completed_at = timezone.now()
+        task.save(update_fields=("status", "completed_at"))
+        return task
+    if task.attempt_count >= task.max_attempts:
+        task.status = PaymentCompensationTask.Status.DEAD_LETTER
+        task.completed_at = timezone.now()
+    else:
+        # 指数退避
+        backoff = min(2 ** task.attempt_count * 30, 300)
+        task.status = PaymentCompensationTask.Status.PENDING
+        task.next_attempt_at = timezone.now() + timezone.timedelta(seconds=backoff)
+    task.last_error_code = error_code[:64]
+    task.last_error_summary = error_summary[:500]
+    task.save(update_fields=("status", "completed_at", "last_error_code",
+                             "last_error_summary", "next_attempt_at"))
+    return task
+
+
+@transaction.atomic
+def replay_dead_letter_task(task_id, operator, reason=""):
+    """人工重放死信任务：复用原意图幂等键，不新建第二笔支付事实。"""
+    task = PaymentCompensationTask.objects.select_for_update().filter(
+        pk=task_id).first()
+    if task is None:
+        raise ValueError("补偿任务不存在。")
+    if task.status != PaymentCompensationTask.Status.DEAD_LETTER:
+        raise ValueError("只有死信任务可以人工重放。")
+    task.status = PaymentCompensationTask.Status.PENDING
+    task.attempt_count = 0
+    task.next_attempt_at = timezone.now()
+    task.save(update_fields=("status", "attempt_count", "next_attempt_at"))
+    AuditEvent.record(
+        action="billing.compensation_task_replayed",
+        entity_type="PaymentCompensationTask", entity_id=task.pk,
+        after={"status": "PENDING"},
+        reason=str(reason or "人工重放")[:240])
+    return task

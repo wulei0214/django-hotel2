@@ -1301,3 +1301,181 @@ class CheckoutExceptionRelease(models.Model):
 
     def __str__(self):
         return f"{self.reason_code} {self.amount} {self.currency} [{self.status}]"
+
+
+class PaymentIntent(models.Model):
+    """支付意图：PMS 发起的一次支付请求，不代表渠道已扣款。
+
+    状态机：CREATED→PENDING→PROCESSING→SUCCEEDED/FAILED/EXPIRED/CANCELLED
+    PENDING/PROCESSING→UNKNOWN（非终态需查询）；SUCCEEDED 不可回退。
+    FAILED/EXPIRED/CANCELLED 后重新支付创建新意图。
+    """
+
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
+
+    class Status(models.TextChoices):
+        CREATED = "CREATED", "已创建"
+        PENDING = "PENDING", "待支付"
+        PROCESSING = "PROCESSING", "处理中"
+        SUCCEEDED = "SUCCEEDED", "成功"
+        FAILED = "FAILED", "失败"
+        EXPIRED = "EXPIRED", "已过期"
+        CANCELLED = "CANCELLED", "已取消"
+        UNKNOWN = "UNKNOWN", "未知（需查询）"
+
+    class Purpose(models.TextChoices):
+        ROOM_FEE = "ROOM_FEE", "房费"
+        DEPOSIT = "DEPOSIT", "押金"
+        OTHER = "OTHER", "其他"
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT,
+        related_name="payment_intents", verbose_name="所属酒店")
+    reservation = models.ForeignKey(
+        "reservations.Reservation", on_delete=models.PROTECT,
+        related_name="payment_intents", verbose_name="预订主单")
+    folio = models.ForeignKey(
+        Folio, on_delete=models.PROTECT,
+        related_name="payment_intents", verbose_name="来源账单")
+    intent_no = models.CharField(max_length=64, unique=True, verbose_name="意图编号")
+    idempotency_key = models.CharField(max_length=96, unique=True, verbose_name="幂等键")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="金额")
+    currency = models.CharField(max_length=3, default="CNY", verbose_name="币种")
+    purpose = models.CharField(
+        max_length=16, choices=Purpose.choices, default=Purpose.ROOM_FEE,
+        verbose_name="用途")
+    provider_code = models.CharField(max_length=32, default="mock", verbose_name="渠道代码")
+    provider_config_version = models.CharField(
+        max_length=32, blank=True, default="", verbose_name="渠道配置版本")
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.CREATED,
+        verbose_name="状态")
+    expires_at = models.DateTimeField(null=True, blank=True, verbose_name="过期时间")
+    max_expires_at = models.DateTimeField(null=True, blank=True, verbose_name="最大过期时间")
+    extension_count = models.PositiveSmallIntegerField(default=0, verbose_name="延长次数")
+    confirmed_payment = models.ForeignKey(
+        Payment, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="payment_intents", verbose_name="确认后的收款事实")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="created_payment_intents", verbose_name="创建人")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "支付意图"
+        verbose_name_plural = "支付意图"
+        ordering = ("-created_at",)
+        constraints = [
+            models.CheckConstraint(check=Q(amount__gt=0), name="ck_pi_amt_pos"),
+            models.Index(fields=("property", "reservation", "status"),
+                         name="idx_pi_prop_resv_status"),
+        ]
+
+    def __str__(self):
+        return f"{self.intent_no} [{self.status}] {self.amount} {self.currency}"
+
+
+class ProviderTransaction(models.Model):
+    """渠道交易事实：渠道返回或查询到的数据，与 PaymentIntent 分离。
+
+    同一渠道交易号只归属一个意图；同一成功交易最多一笔有效 Payment。
+    重复或乱序通知先记录事件（event_id 幂等），再由状态机判断推进。
+    """
+
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT,
+        related_name="provider_transactions", verbose_name="所属酒店")
+    intent = models.ForeignKey(
+        PaymentIntent, on_delete=models.PROTECT,
+        related_name="provider_transactions", verbose_name="关联支付意图")
+    provider_code = models.CharField(max_length=32, verbose_name="渠道代码")
+    provider_transaction_id = models.CharField(max_length=128, verbose_name="渠道交易号")
+    event_id = models.CharField(
+        max_length=128, blank=True, default="", verbose_name="渠道事件 ID")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="交易金额")
+    currency = models.CharField(max_length=3, verbose_name="币种")
+    channel_status = models.CharField(max_length=32, verbose_name="渠道状态")
+    signature_verified = models.BooleanField(default=False, verbose_name="验签通过")
+    occurred_at = models.DateTimeField(null=True, blank=True, verbose_name="交易发生时间")
+    provider_confirmed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="渠道确认时间")
+    received_at = models.DateTimeField(auto_now_add=True, verbose_name="PMS 接收时间")
+    last_queried_at = models.DateTimeField(null=True, blank=True, verbose_name="最后查询时间")
+    query_count = models.PositiveSmallIntegerField(default=0, verbose_name="查询次数")
+    payload_hash = models.CharField(max_length=64, blank=True, default="", verbose_name="报文摘要")
+
+    class Meta:
+        verbose_name = "渠道交易事实"
+        verbose_name_plural = "渠道交易事实"
+        ordering = ("-received_at",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=("provider_code", "provider_transaction_id"),
+                name="uq_pt_provider_txn"),
+            models.UniqueConstraint(
+                fields=("provider_code", "event_id"),
+                condition=~Q(event_id=""),
+                name="uq_pt_provider_event"),
+        ]
+
+    def __str__(self):
+        return f"{self.provider_code}:{self.provider_transaction_id} [{self.channel_status}]"
+
+
+class PaymentCompensationTask(models.Model):
+    """D3 P0：持久化支付补偿任务。
+
+    数据库租约/条件更新抢占；多 worker 不重复执行有效任务；
+    超最大重试进 DEAD_LETTER；人工重放复用原意图幂等键。
+    """
+
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
+
+    class TaskType(models.TextChoices):
+        CHANNEL_QUERY = "CHANNEL_QUERY", "渠道查询"
+        CALLBACK_CONFIRM_RETRY = "CALLBACK_CONFIRM_RETRY", "回调确认重试"
+        PAYMENT_LEDGER_REPAIR = "PAYMENT_LEDGER_REPAIR", "支付账本修复"
+        HOLD_COORDINATION = "HOLD_COORDINATION", "Hold 状态协调"
+        RECONCILIATION_DIFF = "RECONCILIATION_DIFF", "对账差异处理"
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "待执行"
+        LEASED = "LEASED", "已抢占"
+        SUCCEEDED = "SUCCEEDED", "成功"
+        DEAD_LETTER = "DEAD_LETTER", "死信"
+        CANCELLED = "CANCELLED", "已取消"
+
+    task_type = models.CharField(
+        max_length=32, choices=TaskType.choices, verbose_name="任务类型")
+    aggregate_type = models.CharField(max_length=64, verbose_name="关联实体类型")
+    aggregate_id = models.BigIntegerField(verbose_name="关联实体 ID")
+    idempotency_key = models.CharField(max_length=96, unique=True, verbose_name="幂等键")
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.PENDING,
+        verbose_name="状态")
+    attempt_count = models.PositiveSmallIntegerField(default=0, verbose_name="已尝试次数")
+    max_attempts = models.PositiveSmallIntegerField(default=5, verbose_name="最大尝试次数")
+    next_attempt_at = models.DateTimeField(null=True, blank=True, verbose_name="下次执行时间")
+    lease_owner = models.CharField(max_length=128, blank=True, default="", verbose_name="租约持有者")
+    lease_expires_at = models.DateTimeField(null=True, blank=True, verbose_name="租约到期时间")
+    last_error_code = models.CharField(max_length=64, blank=True, default="", verbose_name="最后错误代码")
+    last_error_summary = models.CharField(
+        max_length=500, blank=True, default="", verbose_name="最后错误摘要")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    started_at = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
+    completed_at = models.DateTimeField(null=True, blank=True, verbose_name="完成时间")
+
+    class Meta:
+        verbose_name = "支付补偿任务"
+        verbose_name_plural = "支付补偿任务"
+        ordering = ("next_attempt_at", "created_at")
+        indexes = [
+            models.Index(fields=("task_type", "status", "next_attempt_at"),
+                         name="idx_pct_type_status_next"),
+        ]
+
+    def __str__(self):
+        return f"{self.task_type}:{self.aggregate_type}:{self.aggregate_id} [{self.status}]"
