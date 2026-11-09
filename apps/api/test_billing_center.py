@@ -17,6 +17,7 @@
 import json
 import re
 import uuid
+from unittest.mock import patch
 from datetime import timedelta
 from decimal import Decimal
 
@@ -30,6 +31,7 @@ from apps.billing.models import (
     LedgerEntry,
     Payment,
     Refund,
+    RefundLiability,
 )
 from apps.billing.services_v2 import BillingService
 from apps.core.models import AuditEvent, Property
@@ -1462,3 +1464,47 @@ class RefundLiabilityIntegrityRegressionTests(BillingCenterTestBase):
         self.assertEqual(liability.remaining_amount, Decimal("50.00"))
         self.assertFalse(LedgerEntry.objects.filter(
             reference=f"refund:{refund.provider_ref}").exists())
+
+    def test_refund_execution_ledger_and_liability_are_atomic(self):
+        _reservation, _folio, payment, liability = self._liability_with_payment("ATOMIC")
+        approver = self._make_staff("rfl_atomic_approver", "财务")
+        executor = self._make_staff("rfl_atomic_executor", "财务")
+        refund, _ = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount=Decimal("25.00"), reason="账本和负债必须原子提交",
+            requested_by=self.finance,
+            idempotency_key="bc-rfl-atomic-request",
+            refund_liability_id=liability.pk)
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=refund.pk,
+            approved_by=approver)
+
+        # 在账本已追加、退款已改为成功后，故意令负债保存失败；
+        # 外层 execute_refund 原子事务必须回滚全部前序写入。
+        with patch.object(RefundLiability, "save",
+                          side_effect=RuntimeError("模拟负债写入故障")):
+            with self.assertRaisesRegex(RuntimeError, "模拟负债写入故障"):
+                BillingService.execute_refund(
+                    property_obj=self.property, refund_id=refund.pk,
+                    executed_by=executor, confirm_refund_paid=True,
+                    execution_reference="BANK-ATOMIC-ROLLBACK",
+                    idempotency_key="bc-rfl-atomic-failed")
+
+        refund.refresh_from_db()
+        liability.refresh_from_db()
+        self.assertEqual(refund.status, Refund.Status.APPROVED)
+        self.assertEqual(liability.remaining_amount, Decimal("50.00"))
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
+
+        BillingService.execute_refund(
+            property_obj=self.property, refund_id=refund.pk,
+            executed_by=executor, confirm_refund_paid=True,
+            execution_reference="BANK-ATOMIC-SUCCESS",
+            idempotency_key="bc-rfl-atomic-success")
+        refund.refresh_from_db()
+        liability.refresh_from_db()
+        self.assertEqual(refund.status, Refund.Status.SUCCEEDED)
+        self.assertEqual(liability.remaining_amount, Decimal("25.00"))
+        self.assertEqual(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").count(), 1)
