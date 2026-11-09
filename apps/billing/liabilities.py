@@ -1,0 +1,99 @@
+"""待退款负债登记服务。只登记负债，不创建退款申请或执行退款。"""
+from decimal import Decimal
+
+from django.db import IntegrityError, transaction
+from django.db.models import Sum
+
+from apps.billing.models import Payment, Refund, RefundLiability
+from apps.core.models import AuditEvent
+
+
+@transaction.atomic
+def register_refund_liability(*, property_obj, reservation, folio, amount,
+                              created_by=None):
+    """将最后退房时的负余额登记为待退款负债，并关联候选原支付流水。
+
+    source_payments 仅是财务核对候选集合，不分配退款金额。具体一笔/多笔
+    Payment 的金额分配须遵循后续 DEC-02 参数，不能在此处按顺序自动分配。
+    """
+    try:
+        liability_amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+    except Exception as exc:
+        raise ValueError("待退款负债金额无效。") from exc
+    if not liability_amount.is_finite() or liability_amount <= 0:
+        raise ValueError("待退款负债金额必须大于零。")
+    if (reservation.property_id != property_obj.pk
+            or folio.property_id != property_obj.pk
+            or folio.reservation_id != reservation.pk):
+        raise ValueError("待退款负债、预订与账单必须属于当前物业和同一预订。")
+    if folio.currency != reservation.currency:
+        raise ValueError("待退款负债币种必须与预订和账单一致。")
+
+    candidates = list(Payment.objects.filter(
+        property=property_obj, reservation=reservation, folio=folio,
+        status__in=(
+            Payment.Status.SUCCEEDED,
+            Payment.Status.REFUND_PENDING,
+            Payment.Status.PARTIALLY_REFUNDED,
+        ),
+    ).order_by("pk"))
+    if not candidates:
+        raise ValueError("存在负余额，但未找到可追溯的成功原支付流水，不能登记待退款负债。")
+
+    available_total = Decimal("0.00")
+    for payment in candidates:
+        reserved = Refund.objects.filter(
+            payment=payment,
+            status__in=(Refund.Status.PENDING, Refund.Status.APPROVED,
+                        Refund.Status.SUCCEEDED),
+        ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+        available_total += max(payment.amount - reserved, Decimal("0.00"))
+    if liability_amount > available_total:
+        raise ValueError("待退款负债超过候选原支付的可退款余额，需先核对账务来源。")
+
+    key = f"refund-liability:folio:{folio.pk}"
+    existing = RefundLiability.objects.filter(folio=folio).first()
+    if existing:
+        if (existing.amount != liability_amount
+                or existing.reservation_id != reservation.pk
+                or existing.property_id != property_obj.pk):
+            raise ValueError("该账单已登记不同金额的待退款负债，禁止覆盖原始负债事实。")
+        existing.source_payments.add(*candidates)
+        return existing, False
+
+    try:
+        liability = RefundLiability.objects.create(
+            property=property_obj,
+            reservation=reservation,
+            folio=folio,
+            amount=liability_amount,
+            remaining_amount=liability_amount,
+            currency=folio.currency,
+            status=RefundLiability.Status.OPEN,
+            idempotency_key=key,
+            created_by=created_by,
+        )
+    except IntegrityError:
+        liability = RefundLiability.objects.select_for_update().get(folio=folio)
+        if liability.amount != liability_amount:
+            raise ValueError("并发请求已登记不同金额的待退款负债。")
+        liability.source_payments.add(*candidates)
+        return liability, False
+
+    liability.source_payments.set(candidates)
+    AuditEvent.record(
+        action="billing.refund_liability_registered",
+        entity_type="RefundLiability",
+        entity_id=liability.pk,
+        actor=created_by,
+        property_obj=property_obj,
+        after={
+            "reservation_id": reservation.pk,
+            "folio_id": folio.pk,
+            "amount": str(liability.amount),
+            "currency": liability.currency,
+            "candidate_payment_ids": [payment.pk for payment in candidates],
+        },
+        reason="最后一间房退房时登记待退款负债；财务后续主动发起退款",
+    )
+    return liability, True
