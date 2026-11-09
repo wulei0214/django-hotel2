@@ -159,15 +159,16 @@ class MockPaymentTests(TestCase):
         )
 
     def test_late_success_after_local_cancellation_preserves_channel_payment_fact(self):
-        from apps.inventory.services import release_inventory_hold
+        from apps.reservations.services import cancel_pending_reservation
 
-        release_inventory_hold(self.reservation)
-        Reservation.objects.filter(pk=self.reservation.pk).update(
-            status=Reservation.Status.CANCELLED
+        cancel_pending_reservation(
+            property_obj=self.property,
+            booking_no=self.reservation.booking_no,
+            reservation_pk=self.reservation.pk,
         )
         self.reservation.refresh_from_db()
-        self.payment.status = Payment.Status.CANCELLED
-        self.payment.save(update_fields=("status", "updated_at"))
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.status, Payment.Status.CANCELLED)
 
         response = self._callback()
         self.assertEqual(response.status_code, 200)
