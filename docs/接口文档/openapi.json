@@ -11304,6 +11304,1989 @@
         ]
       }
     },
+    "/api/v1/billing/adjustments": {
+      "get": {
+        "tags": [
+          "财务"
+        ],
+        "summary": "账务调整列表（含净额重建，DEC-02-A1）",
+        "description": "DEC-02-A1：原始负债冻结；净额由原始负债、已执行调整与已成功退款完整重建；未审批调整不影响净额。\n\n权限要求：有效员工（DEFAULT 有效任职）+ hotelapp.finance_access；QuerySet 强制当前物业过滤，金额一律 Decimal→str，账本只读展示。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "get_billing_adjustments",
+        "responses": {
+          "200": {
+            "description": "账务调整数组；关联负债时附净额重建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "description": "",
+                      "items": {
+                        "type": "object",
+                        "description": "",
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "description": ""
+                          },
+                          "booking_no": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "folio_id": {
+                            "type": "integer",
+                            "description": ""
+                          },
+                          "refund_liability_id": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "description": ""
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "adjustment_type": {
+                            "type": "string",
+                            "description": "CHARGE_ADD/CHARGE_REVERSE/REFUND_INCREASE"
+                          },
+                          "adjustment_type_label": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "amount": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "currency": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "reason": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "evidence_note": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "status": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "status_label": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "requested_by": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": ""
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "approved_by": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": ""
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "executed_by": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": ""
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requested_at": {
+                            "type": "string",
+                            "description": "",
+                            "format": "date-time"
+                          },
+                          "net": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "description": "",
+                                "properties": {
+                                  "original_amount": {
+                                    "type": "string",
+                                    "description": ""
+                                  },
+                                  "refunded_amount": {
+                                    "type": "string",
+                                    "description": ""
+                                  },
+                                  "pending_refund_amount": {
+                                    "type": "string",
+                                    "description": ""
+                                  },
+                                  "deducted_amount": {
+                                    "type": "string",
+                                    "description": ""
+                                  },
+                                  "increased_amount": {
+                                    "type": "string",
+                                    "description": ""
+                                  },
+                                  "net_refundable": {
+                                    "type": "string",
+                                    "description": ""
+                                  }
+                                },
+                                "additionalProperties": true
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工（DEFAULT 有效任职）+ hotelapp.finance_access；QuerySet 强制当前物业过滤，金额一律 Decimal→str，账本只读展示",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "状态筛选 REQUESTED/APPROVED/EXECUTED/REJECTED。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "页码，从 1 开始，默认 1。",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "每页数量，默认 20，最大 100。",
+            "schema": {
+              "type": "integer",
+              "example": 20
+            }
+          }
+        ],
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/adjustments/request": {
+      "post": {
+        "tags": [
+          "财务"
+        ],
+        "summary": "财务发起账务调整（SoD 第一环）",
+        "description": "仅适用于已关闭账单；CHARGE_ADD/REFUND_INCREASE 必须存在关联负债；同键不同事实拒绝。\n\n权限要求：有效员工 + hotelapp.finance_access + billing.refund_request（审批权 billing.refund_approve 由值班经理另行持有；申请人≠审批人）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "post_billing_adjustments_request",
+        "responses": {
+          "200": {
+            "description": "同幂等键重放",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "booking_no": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "folio_id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "refund_liability_id": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "description": ""
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "adjustment_type": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "amount": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": ""
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "调整申请创建 REQUESTED + 审计",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "booking_no": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "folio_id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "refund_liability_id": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "description": ""
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "adjustment_type": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "amount": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": ""
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工 + hotelapp.finance_access + billing.refund_request（审批权 billing.refund_approve 由值班经理另行持有；申请人≠审批人）",
+        "parameters": [
+          {
+            "name": "X-CSRFToken",
+            "in": "header",
+            "required": true,
+            "description": "Django CSRF 令牌（CSRF_USE_SESSIONS=True）；所有 Session/公开写操作必须携带。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "",
+                "properties": {
+                  "folio_id": {
+                    "type": "integer",
+                    "description": "已关闭账单 ID。"
+                  },
+                  "adjustment_type": {
+                    "type": "string",
+                    "description": "CHARGE_ADD（抵扣）/CHARGE_REVERSE（冲销增应退）/REFUND_INCREASE（新增应退）。"
+                  },
+                  "amount": {
+                    "type": "string",
+                    "description": "调整金额 >0。"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "调整原因 1-240 字符。"
+                  },
+                  "evidence_note": {
+                    "type": "string",
+                    "description": "证据/备注，≤500 字符。"
+                  },
+                  "idempotency_key": {
+                    "type": "string",
+                    "description": "幂等键 1-96 字符；缺省取 Idempotency-Key 头。"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "folio_id",
+                  "adjustment_type",
+                  "amount",
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/adjustments/{adjustment_id}/approve": {
+      "post": {
+        "tags": [
+          "财务"
+        ],
+        "summary": "审批账务调整（SoD 第二环，值班经理）",
+        "description": "重复审批/自批按状态机与职责分离拒绝（409）。\n\n权限要求：有效员工 + hotelapp.finance_access + billing.refund_approve；申请人不得自批。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "post_billing_adjustments_adjustment_id_approve",
+        "responses": {
+          "200": {
+            "description": "状态 REQUESTED→APPROVED + 审计",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": ""
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工 + hotelapp.finance_access + billing.refund_approve；申请人不得自批",
+        "parameters": [
+          {
+            "name": "adjustment_id",
+            "in": "path",
+            "required": true,
+            "description": "调整记录 ID。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "X-CSRFToken",
+            "in": "header",
+            "required": true,
+            "description": "Django CSRF 令牌（CSRF_USE_SESSIONS=True）；所有 Session/公开写操作必须携带。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "",
+                "properties": {
+                  "comment": {
+                    "type": "string",
+                    "description": "审批意见。"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/adjustments/{adjustment_id}/reject": {
+      "post": {
+        "tags": [
+          "财务"
+        ],
+        "summary": "驳回账务调整",
+        "description": "驳回不影响负债与净额。\n\n权限要求：有效员工 + hotelapp.finance_access + billing.refund_approve；申请人不得自驳。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "post_billing_adjustments_adjustment_id_reject",
+        "responses": {
+          "200": {
+            "description": "状态 REQUESTED→REJECTED + 审计",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": ""
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工 + hotelapp.finance_access + billing.refund_approve；申请人不得自驳",
+        "parameters": [
+          {
+            "name": "adjustment_id",
+            "in": "path",
+            "required": true,
+            "description": "调整记录 ID。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "X-CSRFToken",
+            "in": "header",
+            "required": true,
+            "description": "Django CSRF 令牌（CSRF_USE_SESSIONS=True）；所有 Session/公开写操作必须携带。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "description": "驳回原因。"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/adjustments/{adjustment_id}/execute": {
+      "post": {
+        "tags": [
+          "财务"
+        ],
+        "summary": "执行账务调整（生成独立凭证 + 同事务更新负债净额）",
+        "description": "抵扣不得使净额为负（超额拒绝）；执行与退款共用负债行锁，不重复占用余额；失败整体回滚。\n\n权限要求：有效员工 + hotelapp.finance_access + billing.refund_execute。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "post_billing_adjustments_adjustment_id_execute",
+        "responses": {
+          "200": {
+            "description": "状态 APPROVED→EXECUTED；CHARGE_ADD/CHARGE_REVERSE 生成 ADJUSTMENT 凭证；负债余额同事务更新 + 审计",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "ledger_entry_id": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "description": ""
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "net": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "description": "",
+                              "properties": {
+                                "original_amount": {
+                                  "type": "string",
+                                  "description": ""
+                                },
+                                "refunded_amount": {
+                                  "type": "string",
+                                  "description": ""
+                                },
+                                "deducted_amount": {
+                                  "type": "string",
+                                  "description": ""
+                                },
+                                "increased_amount": {
+                                  "type": "string",
+                                  "description": ""
+                                },
+                                "net_refundable": {
+                                  "type": "string",
+                                  "description": ""
+                                }
+                              },
+                              "additionalProperties": true
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工 + hotelapp.finance_access + billing.refund_execute",
+        "parameters": [
+          {
+            "name": "adjustment_id",
+            "in": "path",
+            "required": true,
+            "description": "调整记录 ID。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "X-CSRFToken",
+            "in": "header",
+            "required": true,
+            "description": "Django CSRF 令牌（CSRF_USE_SESSIONS=True）；所有 Session/公开写操作必须携带。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-no-request-body": true,
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/exception-releases": {
+      "get": {
+        "tags": [
+          "财务"
+        ],
+        "summary": "退房异常放行 / 待财务核查列表（DEC-02-B2）",
+        "description": "异常放行记录不是退款负债，不进入退款申请入口；与正式负债在页面上明确区分。\n\n权限要求：有效员工（DEFAULT 有效任职）+ hotelapp.finance_access；QuerySet 强制当前物业过滤，金额一律 Decimal→str，账本只读展示。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "get_billing_exception_releases",
+        "responses": {
+          "200": {
+            "description": "异常放行记录数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "description": "",
+                      "items": {
+                        "type": "object",
+                        "description": "",
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "description": ""
+                          },
+                          "booking_no": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "folio_id": {
+                            "type": "integer",
+                            "description": ""
+                          },
+                          "stay_id": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "description": ""
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "amount": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "currency": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "reason_code": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "reason_code_label": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "reason_text": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "status": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "status_label": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "requested_by": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": ""
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "approved_by": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": ""
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "verified_by": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": ""
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "verify_note": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "refund_liability_id": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "description": ""
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requested_at": {
+                            "type": "string",
+                            "description": "",
+                            "format": "date-time"
+                          },
+                          "released_at": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": "",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工（DEFAULT 有效任职）+ hotelapp.finance_access；QuerySet 强制当前物业过滤，金额一律 Decimal→str，账本只读展示",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "状态筛选 REQUESTED/APPROVED/RELEASED/CONVERTED_LIABILITY/CLOSED_NO_REFUND/REJECTED。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "页码，从 1 开始，默认 1。",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "每页数量，默认 20，最大 100。",
+            "schema": {
+              "type": "integer",
+              "example": 20
+            }
+          }
+        ],
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/exception-releases/{release_id}/approve": {
+      "post": {
+        "tags": [
+          "财务"
+        ],
+        "summary": "审批异常放行（值班经理；申请人不得自批）",
+        "description": "并发放行由行锁+状态机防护；放行退房在同一事务创建/消费记录。\n\n权限要求：有效员工 + hotelapp.finance_access + billing.refund_approve。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "post_billing_exception_releases_release_id_approve",
+        "responses": {
+          "200": {
+            "description": "状态 REQUESTED→APPROVED + 审计",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": ""
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工 + hotelapp.finance_access + billing.refund_approve",
+        "parameters": [
+          {
+            "name": "release_id",
+            "in": "path",
+            "required": true,
+            "description": "异常放行记录 ID。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "X-CSRFToken",
+            "in": "header",
+            "required": true,
+            "description": "Django CSRF 令牌（CSRF_USE_SESSIONS=True）；所有 Session/公开写操作必须携带。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "",
+                "properties": {
+                  "comment": {
+                    "type": "string",
+                    "description": "审批意见。"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/exception-releases/{release_id}/reject": {
+      "post": {
+        "tags": [
+          "财务"
+        ],
+        "summary": "驳回异常放行",
+        "description": "驳回后客人不可离店（退房仍按正常负债规则阻断）。\n\n权限要求：有效员工 + hotelapp.finance_access + billing.refund_approve。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "post_billing_exception_releases_release_id_reject",
+        "responses": {
+          "200": {
+            "description": "状态 REQUESTED→REJECTED + 审计",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": ""
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工 + hotelapp.finance_access + billing.refund_approve",
+        "parameters": [
+          {
+            "name": "release_id",
+            "in": "path",
+            "required": true,
+            "description": "异常放行记录 ID。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "X-CSRFToken",
+            "in": "header",
+            "required": true,
+            "description": "Django CSRF 令牌（CSRF_USE_SESSIONS=True）；所有 Session/公开写操作必须携带。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "description": "驳回原因。"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/exception-releases/{release_id}/settle": {
+      "post": {
+        "tags": [
+          "财务"
+        ],
+        "summary": "财务核查结案：受控转正式负债 或 核查无需退款关闭",
+        "description": "不能仅凭人工点击把异常记录变成退款负债：CONVERT_LIABILITY 走 register_refund_liability 全量重验；记录不可删除。\n\n权限要求：有效员工 + hotelapp.finance_access + billing.refund_execute。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "post_billing_exception_releases_release_id_settle",
+        "responses": {
+          "200": {
+            "description": "RELEASED→CONVERTED_LIABILITY（重新验证原支付/账本/金额/币种后登记）或 CLOSED_NO_REFUND + 审计",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "refund_liability_id": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "description": ""
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工 + hotelapp.finance_access + billing.refund_execute",
+        "parameters": [
+          {
+            "name": "release_id",
+            "in": "path",
+            "required": true,
+            "description": "异常放行记录 ID。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "X-CSRFToken",
+            "in": "header",
+            "required": true,
+            "description": "Django CSRF 令牌（CSRF_USE_SESSIONS=True）；所有 Session/公开写操作必须携带。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "",
+                "properties": {
+                  "outcome": {
+                    "type": "string",
+                    "description": "CONVERT_LIABILITY（受控转正式负债）/CLOSE_NO_REFUND（按审批关闭）。"
+                  },
+                  "verify_note": {
+                    "type": "string",
+                    "description": "财务核查结论，必填 ≤500 字符。"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "outcome",
+                  "verify_note"
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/front-desk/folios/{booking_no}/exception-release-request": {
+      "post": {
+        "tags": [
+          "前台接待"
+        ],
+        "summary": "前台发起退房异常放行申请（DEC-02-B2 第一环）",
+        "description": "同一账单仅一笔在途申请；申请人不得自批；审批通过后再次退房即放行并转待财务核查。\n\n权限要求：前台岗位 billing.refund_request（与退款申请同权限面）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "post_front_desk_folios_booking_no_exception_release_request",
+        "responses": {
+          "200": {
+            "description": "同幂等键重放",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "release_id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "reason_code": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "amount": {
+                          "type": "string",
+                          "description": ""
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "申请创建 REQUESTED + 审计",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "release_id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "reason_code": {
+                          "type": "string",
+                          "description": ""
+                        },
+                        "amount": {
+                          "type": "string",
+                          "description": ""
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "前台岗位 billing.refund_request（与退款申请同权限面）",
+        "parameters": [
+          {
+            "name": "booking_no",
+            "in": "path",
+            "required": true,
+            "description": "预订编号。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRFToken",
+            "in": "header",
+            "required": true,
+            "description": "Django CSRF 令牌（CSRF_USE_SESSIONS=True）；所有 Session/公开写操作必须携带。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "",
+                "properties": {
+                  "reason_code": {
+                    "type": "string",
+                    "description": "NO_PAYMENT_SOURCE/LEDGER_MISSING/INSUFFICIENT_CANDIDATE/INCONSISTENT_RELATION/OTHER。"
+                  },
+                  "reason_text": {
+                    "type": "string",
+                    "description": "结构化异常说明，1-500 字符。"
+                  },
+                  "amount": {
+                    "type": "string",
+                    "description": "涉及金额（≥0，默认 0）。"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "reason_code",
+                  "reason_text"
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
     "/api/v1/billing/refund-liabilities": {
       "get": {
         "tags": [

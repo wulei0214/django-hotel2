@@ -115,6 +115,56 @@
         </table>
       </div>
     </section>
+    <section class="pms-panel" aria-label="账务调整">
+      <div class="pms-tools">
+        <strong>账务调整 / 抵扣（DEC-02-A1）</strong>
+        <button id="fin-adjustment-reload" type="button">刷新</button>
+        <span class="pms-meta" id="fin-adjustment-meta">原始负债冻结；调整独立记录，净额可重建。</span>
+      </div>
+      <div class="pms-tools" id="fin-adjustment-form">
+        <input id="fin-adj-folio" type="number" placeholder="账单 ID" style="width:90px">
+        <select id="fin-adj-type">
+          <option value="CHARGE_ADD">费用补记（抵扣）</option>
+          <option value="CHARGE_REVERSE">费用冲销（增应退）</option>
+          <option value="REFUND_INCREASE">新增应退款事项</option>
+        </select>
+        <input id="fin-adj-amount" type="number" step="0.01" min="0.01" placeholder="金额" style="width:110px">
+        <input id="fin-adj-reason" type="text" maxlength="240" placeholder="调整原因（必填）" style="width:200px">
+        <input id="fin-adj-evidence" type="text" maxlength="500" placeholder="证据/备注" style="width:180px">
+        <button id="fin-adj-submit" type="button">财务发起调整</button>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr>
+            <th>预订编号</th><th>类型</th><th>金额</th><th>状态</th>
+            <th>发起人</th><th>审批人</th><th>操作</th>
+          </tr></thead>
+          <tbody id="fin-adjustment-body">
+            <tr><td colspan="7" class="pms-state">正在读取账务调整…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="pms-panel" aria-label="待财务核查">
+      <div class="pms-tools">
+        <strong>退房异常放行 · 待财务核查（DEC-02-B2）</strong>
+        <button id="fin-exception-reload" type="button">刷新</button>
+        <span class="pms-meta" id="fin-exception-meta">异常放行不是退款负债；核查通过才受控转正式负债。</span>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table">
+          <thead><tr>
+            <th>预订编号</th><th>原因</th><th>金额</th><th>状态</th>
+            <th>申请人</th><th>审批人</th><th>核查结论</th><th>操作</th>
+          </tr></thead>
+          <tbody id="fin-exception-body">
+            <tr><td colspan="8" class="pms-state">正在读取待财务核查记录…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
 
     <section class="pms-panel" aria-label="账单列表">
       <div class="pms-tools">
@@ -303,6 +353,185 @@
       metaEl.textContent = error.message;
     }
   }
+
+  /* ---------- DEC-02-A1 账务调整 ---------- */
+  async function loadAdjustments() {
+    const target = document.getElementById("fin-adjustment-body");
+    const state = document.getElementById("fin-adjustment-meta");
+    target.replaceChildren();
+    try {
+      const payload = await fetchJson("/api/v1/billing/adjustments?page=1&page_size=50");
+      const items = Array.isArray(payload.data) ? payload.data : [];
+      state.textContent = "当前显示 " + items.length + " 条；未审批调整不影响可退款净额。";
+      if (!items.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 7; td.className = "pms-state";
+        td.textContent = "暂无账务调整记录。";
+        tr.appendChild(td); target.appendChild(tr); return;
+      }
+      items.forEach(function(item) {
+        const tr = document.createElement("tr");
+        [item.booking_no, item.adjustment_type_label,
+         value(item.amount) + " " + value(item.currency),
+         item.status_label, value(item.requested_by),
+         value(item.approved_by)].forEach(function(text) {
+          const td = document.createElement("td"); td.textContent = text; tr.appendChild(td);
+        });
+        const opCell = document.createElement("td");
+        const actions = [];
+        if (item.status === "REQUESTED") actions.push(["approve", "批准"], ["reject", "驳回"]);
+        if (item.status === "APPROVED") actions.push(["execute", "执行"]);
+        if (!actions.length) { opCell.textContent = "—"; tr.appendChild(opCell); }
+        else {
+          actions.forEach(function(pair) {
+            const btn = document.createElement("button");
+            btn.type = "button"; btn.textContent = pair[1];
+            btn.dataset.adjId = item.id; btn.dataset.adjAction = pair[0];
+            opCell.appendChild(btn);
+          });
+          tr.appendChild(opCell);
+        }
+        if (item.net) {
+          tr.title = "原始 " + item.net.original_amount + " / 已退 " + item.net.refunded_amount
+            + " / 抵扣 " + item.net.deducted_amount + " / 增加 " + item.net.increased_amount
+            + " → 净额 " + item.net.net_refundable;
+        }
+        target.appendChild(tr);
+      });
+    } catch (error) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 7; td.className = "pms-state na-fail";
+      td.textContent = error.message;
+      tr.appendChild(td); target.appendChild(tr);
+    }
+  }
+
+  async function postDec02(url, payload) {
+    return fetchJson(url, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF},
+      body: JSON.stringify(payload || {}),
+    });
+  }
+
+  document.getElementById("fin-adjustment-reload").addEventListener("click", loadAdjustments);
+  document.getElementById("fin-adjustment-body").addEventListener("click", async function (event) {
+    const btn = event.target.closest("button[data-adj-action]");
+    if (!btn) return;
+    const id = btn.dataset.adjId, action = btn.dataset.adjAction;
+    if (!window.confirm("确认对调整 #" + id + " 执行「" + btn.textContent + "」？")) return;
+    btn.disabled = true;
+    try {
+      await postDec02("/api/v1/billing/adjustments/" + id + "/" + action,
+                      action === "reject" ? {reason: "财务复核驳回"} : {comment: ""});
+      await loadAdjustments();
+      await loadRefundLiabilities();
+    } catch (error) {
+      window.alert(error.message);
+      btn.disabled = false;
+    }
+  });
+  document.getElementById("fin-adj-submit").addEventListener("click", async function () {
+    const btn = this;
+    const payload = {
+      folio_id: document.getElementById("fin-adj-folio").value.trim(),
+      adjustment_type: document.getElementById("fin-adj-type").value,
+      amount: document.getElementById("fin-adj-amount").value.trim(),
+      reason: document.getElementById("fin-adj-reason").value.trim(),
+      evidence_note: document.getElementById("fin-adj-evidence").value.trim(),
+    };
+    if (!payload.folio_id || !payload.amount || !payload.reason) {
+      window.alert("账单 ID、金额与调整原因必填。"); return;
+    }
+    btn.disabled = true;
+    try {
+      await postDec02("/api/v1/billing/adjustments/request", payload);
+      document.getElementById("fin-adj-reason").value = "";
+      await loadAdjustments();
+    } catch (error) {
+      window.alert(error.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* ---------- DEC-02-B2 待财务核查 ---------- */
+  async function loadExceptionReleases() {
+    const target = document.getElementById("fin-exception-body");
+    const state = document.getElementById("fin-exception-meta");
+    target.replaceChildren();
+    try {
+      const payload = await fetchJson("/api/v1/billing/exception-releases?page=1&page_size=50");
+      const items = Array.isArray(payload.data) ? payload.data : [];
+      state.textContent = "当前显示 " + items.length + " 条；异常放行不是退款负债，核查通过才受控转正式负债。";
+      if (!items.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 8; td.className = "pms-state";
+        td.textContent = "暂无待财务核查记录。";
+        tr.appendChild(td); target.appendChild(tr); return;
+      }
+      items.forEach(function(item) {
+        const tr = document.createElement("tr");
+        [item.booking_no, item.reason_code_label,
+         value(item.amount) + " " + value(item.currency),
+         item.status_label, value(item.requested_by),
+         value(item.approved_by), value(item.verify_note) || "—"].forEach(function(text) {
+          const td = document.createElement("td"); td.textContent = text; tr.appendChild(td);
+        });
+        const opCell = document.createElement("td");
+        const actions = [];
+        if (item.status === "REQUESTED") actions.push(["approve", "批准"], ["reject", "驳回"]);
+        if (item.status === "RELEASED") actions.push(["settle-liability", "转正式负债"],
+                                                    ["settle-close", "核查无需退款"]);
+        if (!actions.length) { opCell.textContent = "—"; tr.appendChild(opCell); }
+        else {
+          actions.forEach(function(pair) {
+            const btn = document.createElement("button");
+            btn.type = "button"; btn.textContent = pair[1];
+            btn.dataset.relId = item.id; btn.dataset.relAction = pair[0];
+            opCell.appendChild(btn);
+          });
+          tr.appendChild(opCell);
+        }
+        target.appendChild(tr);
+      });
+    } catch (error) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 8; td.className = "pms-state na-fail";
+      td.textContent = error.message;
+      tr.appendChild(td); target.appendChild(tr);
+    }
+  }
+
+  document.getElementById("fin-exception-reload").addEventListener("click", loadExceptionReleases);
+  document.getElementById("fin-exception-body").addEventListener("click", async function (event) {
+    const btn = event.target.closest("button[data-rel-action]");
+    if (!btn) return;
+    const id = btn.dataset.relId, action = btn.dataset.relAction;
+    const labels = {"approve": "批准异常放行", "reject": "驳回异常放行",
+                    "settle-liability": "核查通过并转正式负债", "settle-close": "核查无需退款关闭"};
+    let payload = {};
+    if (action.indexOf("settle") === 0) {
+      const note = window.prompt("请填写财务核查结论（必填）：");
+      if (!note) return;
+      payload = {verify_note: note,
+                 outcome: action === "settle-liability" ? "CONVERT_LIABILITY" : "CLOSE_NO_REFUND"};
+    } else if (!window.confirm("确认对记录 #" + id + " 执行「" + labels[action] + "」？")) {
+      return;
+    }
+    btn.disabled = true;
+    try {
+      await postDec02("/api/v1/billing/exception-releases/" + id + "/" + action, payload);
+      await loadExceptionReleases();
+    } catch (error) {
+      window.alert(error.message);
+      btn.disabled = false;
+    }
+  });
 
   /* ---------- 待退款负债 ---------- */
   async function loadRefundLiabilities() {
@@ -1082,6 +1311,8 @@
   loadFolios(1);
   loadLedger();
   loadRefundLiabilities();
+  loadAdjustments();
+  loadExceptionReleases();
   loadShifts();
 })();
 </script>

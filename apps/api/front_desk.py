@@ -1144,3 +1144,46 @@ def reject_refund_api(request, refund_id):
         "approved_by": refund.approved_by_id,
         "changed": changed,
     }})
+
+
+@api_guard
+@require_POST
+@_front_desk_action_required("billing.refund_request")
+def exception_release_request(request, booking_no):
+    """POST /api/v1/front-desk/folios/{booking_no}/exception-release-request
+    — 前台发起退房异常放行申请（DEC-02-B2），待值班经理审批。"""
+    try:
+        body = _body(request)
+        reservation = Reservation.objects.select_for_update().filter(
+            property=request.front_desk_property, booking_no=booking_no).first()
+        if reservation is None:
+            return _response({"error": {"code": "RESOURCE_NOT_FOUND",
+                                        "message": "未找到该物业下的预订。"}}, 404)
+        from apps.billing.models import Folio
+        folio = Folio.objects.filter(
+            property=request.front_desk_property, reservation=reservation,
+            folio_type=Folio.FolioType.MASTER).first()
+        if folio is None:
+            return _response({"error": {"code": "RESOURCE_NOT_FOUND",
+                                        "message": "未找到该预订的主账单。"}}, 404)
+        from apps.billing.dec02 import request_exception_release
+        release, created = request_exception_release(
+            property_obj=request.front_desk_property,
+            reservation=reservation, folio=folio,
+            amount=body.get("amount", "0"),
+            reason_code=str(body.get("reason_code") or ""),
+            reason_text=str(body.get("reason_text") or ""),
+            requested_by=request.user,
+            idempotency_key=request.headers.get("Idempotency-Key", ""))
+    except LifecycleOperationError as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT",
+                                    "message": str(exc)}}, 409)
+    except ValueError as exc:
+        return _response({"error": {"code": "VALIDATION_ERROR",
+                                    "message": str(exc)}}, 400)
+    return _response({"data": {
+        "release_id": release.pk, "status": release.status,
+        "status_label": release.get_status_display(),
+        "reason_code": release.reason_code,
+        "amount": str(release.amount),
+    }, "created": created}, 201 if created else 200)

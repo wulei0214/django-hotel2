@@ -98,6 +98,18 @@ urlpatterns = [
     path("billing/payments", billing_center.billing_payments, name="billing_payments"),
     path("billing/refunds", billing_center.billing_refunds, name="billing_refunds"),
     path("billing/refund-liabilities", billing_center.refund_liability_list, name="billing_refund_liabilities"),
+    # DEC-02-A1：账务调整 / 抵扣（财务发起、值班经理审批、执行生凭证）
+    path("billing/adjustments", billing_center.adjustment_list, name="billing_adjustments"),
+    path("billing/adjustments/request", billing_center.adjustment_request, name="billing_adjustment_request"),
+    path("billing/adjustments/<int:adjustment_id>/approve", billing_center.adjustment_approve, name="billing_adjustment_approve"),
+    path("billing/adjustments/<int:adjustment_id>/reject", billing_center.adjustment_reject, name="billing_adjustment_reject"),
+    path("billing/adjustments/<int:adjustment_id>/execute", billing_center.adjustment_execute, name="billing_adjustment_execute"),
+    # DEC-02-B2：退房异常放行与待财务核查
+    path("billing/exception-releases", billing_center.exception_release_list, name="billing_exception_releases"),
+    path("billing/exception-releases/<int:release_id>/approve", billing_center.exception_release_approve, name="billing_exception_approve"),
+    path("billing/exception-releases/<int:release_id>/reject", billing_center.exception_release_reject, name="billing_exception_reject"),
+    path("billing/exception-releases/<int:release_id>/settle", billing_center.exception_release_settle, name="billing_exception_settle"),
+    path("front-desk/folios/<str:booking_no>/exception-release-request", front_desk.exception_release_request, name="front_desk_exception_request"),
     path("billing/refunds/<int:refund_id>/approve", billing_center.approve_refund_api, name="billing_refund_approve"),
     path("billing/refunds/<int:refund_id>/reject", billing_center.reject_refund_api, name="billing_refund_reject"),
     path("billing/refunds/<int:refund_id>/execute", billing_center.execute_refund_api, name="billing_refund_execute"),

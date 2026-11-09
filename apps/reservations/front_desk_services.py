@@ -375,6 +375,9 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
     if balance < 0 and final_room_checkout:
         # DEC-02：允许客人先离店，但必须在同一事务内登记待退款负债。
         # 只记录候选原支付流水，不自动分配退款金额，也不自动创建 Refund。
+        # DEC-02-B2：无可靠原支付来源/候选余额不足时，若存在已批准的异常
+        # 放行申请，则在同一事务内消费放行并建立"待财务核查"记录（不创建
+        # 正式负债）；无已批准放行则维持阻断并给出申请指引。
         try:
             from apps.billing.liabilities import register_refund_liability
             register_refund_liability(
@@ -385,7 +388,14 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
                 created_by=checked_out_by,
             )
         except ValueError as exc:
-            raise FrontDeskOperationError(str(exc)) from exc
+            from apps.billing.dec02 import consume_approved_exception_release
+            release = consume_approved_exception_release(
+                property_obj=property_obj, folio=folio, stay=stay,
+                amount=abs(balance), actor=checked_out_by,
+                trigger_reason=str(exc))
+            if release is None:
+                raise FrontDeskOperationError(
+                    f"{exc} 如需让客人先离店，请发起异常放行申请并由值班经理审批。") from exc
 
     now = timezone.now()
     StayRoomSegment.objects.filter(stay=stay, ended_at__isnull=True).update(

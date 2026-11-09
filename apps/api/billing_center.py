@@ -29,7 +29,11 @@ from decimal import Decimal
 from django.db.models import Prefetch, Q, Sum
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.billing.models import ApprovalRecord, CashierShift, Folio, LedgerEntry, Payment, Refund, RefundLiability
+from apps.billing import dec02
+from apps.billing.models import (ApprovalRecord, BillingAdjustment,
+                                 CashierShift, CheckoutExceptionRelease,
+                                 Folio, LedgerEntry, Payment, Refund,
+                                 RefundLiability)
 from apps.billing.services_v2 import BillingService
 from apps.core import labels as L
 from apps.core.api_contract import (
@@ -906,3 +910,230 @@ def reverse_entry_api(request):
         "entry_type": reversal.entry_type,
         "approval_id": reversal.approval_record_id,
     }, status=201 if created else 200)
+
+
+# ---------------------------------------------------------------------------
+# DEC-02-A1：账务调整 / 抵扣（财务发起、值班经理审批、执行生凭证）
+# ---------------------------------------------------------------------------
+def _adjustment_dto(adjustment, net=None):
+    data = {
+        "id": adjustment.pk,
+        "booking_no": adjustment.reservation.booking_no,
+        "folio_id": adjustment.folio_id,
+        "refund_liability_id": adjustment.refund_liability_id,
+        "adjustment_type": adjustment.adjustment_type,
+        "adjustment_type_label": adjustment.get_adjustment_type_display(),
+        "amount": _money_str(adjustment.amount),
+        "currency": adjustment.currency,
+        "reason": adjustment.reason,
+        "evidence_note": adjustment.evidence_note,
+        "status": adjustment.status,
+        "status_label": adjustment.get_status_display(),
+        "requested_by": getattr(adjustment.requested_by, "username", None),
+        "approved_by": getattr(adjustment.approved_by, "username", None),
+        "executed_by": getattr(adjustment.executed_by, "username", None),
+        "requested_at": adjustment.requested_at.isoformat(),
+        "approved_at": adjustment.approved_at.isoformat() if adjustment.approved_at else None,
+        "executed_at": adjustment.executed_at.isoformat() if adjustment.executed_at else None,
+        "ledger_entry_id": adjustment.ledger_entry_id,
+    }
+    if net is not None:
+        data["net"] = {k: _money_str(v) if isinstance(v, Decimal) else v
+                       for k, v in net.items()}
+    return data
+
+
+@require_GET
+@api_view
+def adjustment_list(request):
+    """GET /api/v1/billing/adjustments?status= — 账务调整列表（含净额重建）。"""
+    property_obj = _require_finance_access(request)
+    qs = BillingAdjustment.objects.filter(
+        property=property_obj).select_related(
+        "reservation", "folio", "refund_liability",
+        "requested_by", "approved_by", "executed_by").order_by("-requested_at")
+    status_filter = request.GET.get("status", "").strip().upper()
+    if status_filter:
+        if status_filter not in BillingAdjustment.Status.values:
+            raise ApiError("VALIDATION_ERROR", "status 取值不合法。")
+        qs = qs.filter(status=status_filter)
+    items, pagination = paginate(qs, request)
+    data = []
+    for adjustment in items:
+        net = None
+        if adjustment.refund_liability_id:
+            net = dec02.liability_net_snapshot(adjustment.refund_liability)
+        data.append(_adjustment_dto(adjustment, net=net))
+    return api_response(request, data, pagination=pagination)
+
+
+@require_POST
+@api_view
+def adjustment_request(request):
+    """POST /api/v1/billing/adjustments/request — 财务发起账务调整。"""
+    property_obj = _require_finance_access(
+        request, extra_permission="billing.refund_request")
+    body = _json_body(request)
+    folio_id = body.get("folio_id")
+    if folio_id is None:
+        raise ApiError("VALIDATION_ERROR", "folio_id 必填。")
+    try:
+        adjustment, created = dec02.request_adjustment(
+            property_obj=property_obj, folio_id=int(folio_id),
+            adjustment_type=str(body.get("adjustment_type") or ""),
+            amount=body.get("amount"), reason=body.get("reason"),
+            requested_by=request.user,
+            evidence_note=body.get("evidence_note", ""),
+            idempotency_key=request.headers.get(
+                "Idempotency-Key", body.get("idempotency_key", "")))
+    except (ValueError, TypeError) as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    return api_response(request, _adjustment_dto(adjustment),
+                        status=201 if created else 200)
+
+
+@require_POST
+@api_view
+def adjustment_approve(request, adjustment_id):
+    """POST /api/v1/billing/adjustments/{id}/approve — 值班经理审批。"""
+    property_obj = _require_finance_access(
+        request, extra_permission="billing.refund_approve")
+    body = _json_body(request)
+    try:
+        adjustment = dec02.approve_adjustment(
+            property_obj=property_obj, adjustment_id=adjustment_id,
+            approved_by=request.user, comment=str(body.get("comment") or ""))
+    except ValueError as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    return api_response(request, _adjustment_dto(adjustment))
+
+
+@require_POST
+@api_view
+def adjustment_reject(request, adjustment_id):
+    """POST /api/v1/billing/adjustments/{id}/reject — 值班经理驳回。"""
+    property_obj = _require_finance_access(
+        request, extra_permission="billing.refund_approve")
+    body = _json_body(request)
+    try:
+        adjustment = dec02.reject_adjustment(
+            property_obj=property_obj, adjustment_id=adjustment_id,
+            rejected_by=request.user, reason=str(body.get("reason") or ""))
+    except ValueError as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    return api_response(request, _adjustment_dto(adjustment))
+
+
+@require_POST
+@api_view
+def adjustment_execute(request, adjustment_id):
+    """POST /api/v1/billing/adjustments/{id}/execute — 执行调整并生成凭证。"""
+    property_obj = _require_finance_access(
+        request, extra_permission="billing.refund_execute")
+    try:
+        adjustment = dec02.execute_adjustment(
+            property_obj=property_obj, adjustment_id=adjustment_id,
+            executed_by=request.user)
+    except ValueError as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    net = None
+    if adjustment.refund_liability_id:
+        net = dec02.liability_net_snapshot(adjustment.refund_liability)
+    return api_response(request, _adjustment_dto(adjustment, net=net))
+
+
+# ---------------------------------------------------------------------------
+# DEC-02-B2：退房异常放行与待财务核查
+# ---------------------------------------------------------------------------
+def _exception_release_dto(release):
+    return {
+        "id": release.pk,
+        "booking_no": release.reservation.booking_no,
+        "folio_id": release.folio_id,
+        "stay_id": release.stay_id,
+        "amount": _money_str(release.amount),
+        "currency": release.currency,
+        "reason_code": release.reason_code,
+        "reason_code_label": release.get_reason_code_display(),
+        "reason_text": release.reason_text,
+        "status": release.status,
+        "status_label": release.get_status_display(),
+        "requested_by": getattr(release.requested_by, "username", None),
+        "approved_by": getattr(release.approved_by, "username", None),
+        "verified_by": getattr(release.verified_by, "username", None),
+        "requested_at": release.requested_at.isoformat(),
+        "approved_at": release.approved_at.isoformat() if release.approved_at else None,
+        "released_at": release.released_at.isoformat() if release.released_at else None,
+        "verified_at": release.verified_at.isoformat() if release.verified_at else None,
+        "verify_note": release.verify_note,
+        "refund_liability_id": release.refund_liability_id,
+    }
+
+
+@require_GET
+@api_view
+def exception_release_list(request):
+    """GET /api/v1/billing/exception-releases?status= — 待财务核查异常列表。"""
+    property_obj = _require_finance_access(request)
+    qs = CheckoutExceptionRelease.objects.filter(
+        property=property_obj).select_related(
+        "reservation", "folio", "requested_by", "approved_by",
+        "verified_by").order_by("-requested_at")
+    status_filter = request.GET.get("status", "").strip().upper()
+    if status_filter:
+        if status_filter not in CheckoutExceptionRelease.Status.values:
+            raise ApiError("VALIDATION_ERROR", "status 取值不合法。")
+        qs = qs.filter(status=status_filter)
+    items, pagination = paginate(qs, request)
+    return api_response(request, [_exception_release_dto(x) for x in items],
+                        pagination=pagination)
+
+
+@require_POST
+@api_view
+def exception_release_approve(request, release_id):
+    """POST /api/v1/billing/exception-releases/{id}/approve — 值班经理审批。"""
+    property_obj = _require_finance_access(
+        request, extra_permission="billing.refund_approve")
+    body = _json_body(request)
+    try:
+        release = dec02.approve_exception_release(
+            property_obj=property_obj, release_id=release_id,
+            approved_by=request.user, comment=str(body.get("comment") or ""))
+    except ValueError as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    return api_response(request, _exception_release_dto(release))
+
+
+@require_POST
+@api_view
+def exception_release_reject(request, release_id):
+    """POST /api/v1/billing/exception-releases/{id}/reject — 值班经理驳回。"""
+    property_obj = _require_finance_access(
+        request, extra_permission="billing.refund_approve")
+    body = _json_body(request)
+    try:
+        release = dec02.reject_exception_release(
+            property_obj=property_obj, release_id=release_id,
+            rejected_by=request.user, reason=str(body.get("reason") or ""))
+    except ValueError as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    return api_response(request, _exception_release_dto(release))
+
+
+@require_POST
+@api_view
+def exception_release_settle(request, release_id):
+    """POST /api/v1/billing/exception-releases/{id}/settle — 财务核查结案。"""
+    property_obj = _require_finance_access(
+        request, extra_permission="billing.refund_execute")
+    body = _json_body(request)
+    try:
+        release = dec02.settle_exception_release(
+            property_obj=property_obj, release_id=release_id,
+            settled_by=request.user,
+            outcome=str(body.get("outcome") or ""),
+            verify_note=str(body.get("verify_note") or ""))
+    except ValueError as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    return api_response(request, _exception_release_dto(release))

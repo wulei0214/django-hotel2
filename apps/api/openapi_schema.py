@@ -1475,6 +1475,155 @@ op("/billing/refunds", "get", "财务", "退款列表（申请/审批/执行状�
        "processed_at": s_nullable(s_str("", format="date-time")),
    })), errors=E_STAFF)
 
+op("/billing/adjustments", "get", "财务", "账务调整列表（含净额重建，DEC-02-A1）",
+   status="verified",
+   query=[Q("status", "状态筛选 REQUESTED/APPROVED/EXECUTED/REJECTED。"), *PQ()],
+   permission=FIN_READ_PERM,
+   ok=(("200", "账务调整数组；关联负债时附净额重建"),),
+   data=s_arr(s_obj({
+       "id": s_int(), "booking_no": s_str(), "folio_id": s_int(),
+       "refund_liability_id": s_nullable(s_int()),
+       "adjustment_type": s_str("CHARGE_ADD/CHARGE_REVERSE/REFUND_INCREASE"),
+       "adjustment_type_label": s_str(), "amount": s_str(), "currency": s_str(),
+       "reason": s_str(), "evidence_note": s_str(),
+       "status": s_str(), "status_label": s_str(),
+       "requested_by": s_nullable(s_str()), "approved_by": s_nullable(s_str()),
+       "executed_by": s_nullable(s_str()),
+       "requested_at": s_str("", format="date-time"),
+       "net": s_nullable(s_obj({
+           "original_amount": s_str(), "refunded_amount": s_str(),
+           "pending_refund_amount": s_str(), "deducted_amount": s_str(),
+           "increased_amount": s_str(), "net_refundable": s_str()})),
+   })), errors=E_STAFF,
+   notes="DEC-02-A1：原始负债冻结；净额由原始负债、已执行调整与已成功退款完整重建；未审批调整不影响净额。")
+
+
+op("/billing/adjustments/request", "post", "财务", "财务发起账务调整（SoD 第一环）",
+   status="verified",
+   body=s_obj({
+       "folio_id": s_int("已关闭账单 ID。"),
+       "adjustment_type": s_str("CHARGE_ADD（抵扣）/CHARGE_REVERSE（冲销增应退）/REFUND_INCREASE（新增应退）。"),
+       "amount": s_str("调整金额 >0。"),
+       "reason": s_str("调整原因 1-240 字符。"),
+       "evidence_note": s_str("证据/备注，≤500 字符。"),
+       "idempotency_key": s_str("幂等键 1-96 字符；缺省取 Idempotency-Key 头。"),
+   }, required=["folio_id", "adjustment_type", "amount", "reason"]),
+   permission="有效员工 + hotelapp.finance_access + billing.refund_request"
+              "（审批权 billing.refund_approve 由值班经理另行持有；申请人≠审批人）",
+   ok=(("200", "同幂等键重放"), ("201", "调整申请创建 REQUESTED + 审计")),
+   data=s_obj({"id": s_int(), "booking_no": s_str(), "folio_id": s_int(),
+               "refund_liability_id": s_nullable(s_int()),
+               "adjustment_type": s_str(), "amount": s_str(),
+               "status": s_str()}), errors=E_STAFF,
+   notes="仅适用于已关闭账单；CHARGE_ADD/REFUND_INCREASE 必须存在关联负债；同键不同事实拒绝。")
+
+
+op("/billing/adjustments/{adjustment_id}/approve", "post", "财务",
+   "审批账务调整（SoD 第二环，值班经理）",
+   status="verified",
+   path_params=[("adjustment_id", "调整记录 ID。")],
+   body=s_obj({"comment": s_str("审批意见。")}),
+   permission="有效员工 + hotelapp.finance_access + billing.refund_approve；申请人不得自批",
+   ok=(("200", "状态 REQUESTED→APPROVED + 审计"),), data=s_obj({"id": s_int(), "status": s_str()}),
+   errors=E_STAFF, notes="重复审批/自批按状态机与职责分离拒绝（409）。")
+
+
+op("/billing/adjustments/{adjustment_id}/reject", "post", "财务", "驳回账务调整",
+   status="verified",
+   path_params=[("adjustment_id", "调整记录 ID。")],
+   body=s_obj({"reason": s_str("驳回原因。")}),
+   permission="有效员工 + hotelapp.finance_access + billing.refund_approve；申请人不得自驳",
+   ok=(("200", "状态 REQUESTED→REJECTED + 审计"),), data=s_obj({"id": s_int(), "status": s_str()}),
+   errors=E_STAFF, notes="驳回不影响负债与净额。")
+
+
+op("/billing/adjustments/{adjustment_id}/execute", "post", "财务",
+   "执行账务调整（生成独立凭证 + 同事务更新负债净额）",
+   status="verified",
+   path_params=[("adjustment_id", "调整记录 ID。")], no_body=True,
+   permission="有效员工 + hotelapp.finance_access + billing.refund_execute",
+   ok=(("200", "状态 APPROVED→EXECUTED；CHARGE_ADD/CHARGE_REVERSE 生成 ADJUSTMENT 凭证；负债余额同事务更新 + 审计"),),
+   data=s_obj({"id": s_int(), "status": s_str(), "ledger_entry_id": s_nullable(s_int()),
+               "net": s_nullable(s_obj({
+                   "original_amount": s_str(), "refunded_amount": s_str(),
+                   "deducted_amount": s_str(), "increased_amount": s_str(),
+                   "net_refundable": s_str()}))}),
+   errors=E_STAFF,
+   notes="抵扣不得使净额为负（超额拒绝）；执行与退款共用负债行锁，不重复占用余额；失败整体回滚。")
+
+
+op("/billing/exception-releases", "get", "财务",
+   "退房异常放行 / 待财务核查列表（DEC-02-B2）",
+   status="verified",
+   query=[Q("status", "状态筛选 REQUESTED/APPROVED/RELEASED/CONVERTED_LIABILITY/CLOSED_NO_REFUND/REJECTED。"), *PQ()],
+   permission=FIN_READ_PERM,
+   ok=(("200", "异常放行记录数组"),),
+   data=s_arr(s_obj({
+       "id": s_int(), "booking_no": s_str(), "folio_id": s_int(),
+       "stay_id": s_nullable(s_int()), "amount": s_str(), "currency": s_str(),
+       "reason_code": s_str(), "reason_code_label": s_str(), "reason_text": s_str(),
+       "status": s_str(), "status_label": s_str(),
+       "requested_by": s_nullable(s_str()), "approved_by": s_nullable(s_str()),
+       "verified_by": s_nullable(s_str()),
+       "verify_note": s_str(""),
+       "refund_liability_id": s_nullable(s_int()),
+       "requested_at": s_str("", format="date-time"),
+       "released_at": s_nullable(s_str("", format="date-time")),
+   })), errors=E_STAFF,
+   notes="异常放行记录不是退款负债，不进入退款申请入口；与正式负债在页面上明确区分。")
+
+
+op("/billing/exception-releases/{release_id}/approve", "post", "财务",
+   "审批异常放行（值班经理；申请人不得自批）",
+   status="verified",
+   path_params=[("release_id", "异常放行记录 ID。")],
+   body=s_obj({"comment": s_str("审批意见。")}),
+   permission="有效员工 + hotelapp.finance_access + billing.refund_approve",
+   ok=(("200", "状态 REQUESTED→APPROVED + 审计"),), data=s_obj({"id": s_int(), "status": s_str()}),
+   errors=E_STAFF, notes="并发放行由行锁+状态机防护；放行退房在同一事务创建/消费记录。")
+
+
+op("/billing/exception-releases/{release_id}/reject", "post", "财务", "驳回异常放行",
+   status="verified",
+   path_params=[("release_id", "异常放行记录 ID。")],
+   body=s_obj({"reason": s_str("驳回原因。")}),
+   permission="有效员工 + hotelapp.finance_access + billing.refund_approve",
+   ok=(("200", "状态 REQUESTED→REJECTED + 审计"),), data=s_obj({"id": s_int(), "status": s_str()}),
+   errors=E_STAFF, notes="驳回后客人不可离店（退房仍按正常负债规则阻断）。")
+
+
+op("/billing/exception-releases/{release_id}/settle", "post", "财务",
+   "财务核查结案：受控转正式负债 或 核查无需退款关闭",
+   status="verified",
+   path_params=[("release_id", "异常放行记录 ID。")],
+   body=s_obj({
+       "outcome": s_str("CONVERT_LIABILITY（受控转正式负债）/CLOSE_NO_REFUND（按审批关闭）。"),
+       "verify_note": s_str("财务核查结论，必填 ≤500 字符。"),
+   }, required=["outcome", "verify_note"]),
+   permission="有效员工 + hotelapp.finance_access + billing.refund_execute",
+   ok=(("200", "RELEASED→CONVERTED_LIABILITY（重新验证原支付/账本/金额/币种后登记）或 CLOSED_NO_REFUND + 审计"),),
+   data=s_obj({"id": s_int(), "status": s_str(), "refund_liability_id": s_nullable(s_int())}),
+   errors=E_STAFF,
+   notes="不能仅凭人工点击把异常记录变成退款负债：CONVERT_LIABILITY 走 register_refund_liability 全量重验；记录不可删除。")
+
+
+op("/front-desk/folios/{booking_no}/exception-release-request", "post", "前台接待",
+   "前台发起退房异常放行申请（DEC-02-B2 第一环）",
+   status="verified",
+   path_params=[("booking_no", "预订编号。")],
+   body=s_obj({
+       "reason_code": s_str("NO_PAYMENT_SOURCE/LEDGER_MISSING/INSUFFICIENT_CANDIDATE/INCONSISTENT_RELATION/OTHER。"),
+       "reason_text": s_str("结构化异常说明，1-500 字符。"),
+       "amount": s_str("涉及金额（≥0，默认 0）。"),
+   }, required=["reason_code", "reason_text"]),
+   permission="前台岗位 billing.refund_request（与退款申请同权限面）",
+   ok=(("200", "同幂等键重放"), ("201", "申请创建 REQUESTED + 审计")),
+   data=s_obj({"release_id": s_int(), "status": s_str(), "reason_code": s_str(),
+               "amount": s_str()}),
+   errors=E_STAFF,
+   notes="同一账单仅一笔在途申请；申请人不得自批；审批通过后再次退房即放行并转待财务核查。")
+
+
 op("/billing/refund-liabilities", "get", "财务", "待退款负债列表及候选原支付",
    status="verified",
    query=[Q("status", "负债状态筛选 OPEN/PARTIALLY_SETTLED/SETTLED。"), *PQ()],

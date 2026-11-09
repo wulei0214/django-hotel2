@@ -787,13 +787,20 @@ class RefundLiability(models.Model):
         constraints = [
             models.CheckConstraint(check=Q(amount__gt=0), name="ck_rfl_amt_pos"),
             models.CheckConstraint(
-                check=Q(remaining_amount__gte=0) & Q(remaining_amount__lte=F("amount")),
-                name="ck_rfl_rem_rng"),
+                # DEC-02-A1：经批准执行的账务调整可增加应退净额（remaining_amount
+                # 允许超过原始登记额），数据库只保留非负下限。
+                check=Q(remaining_amount__gte=0),
+                name="ck_rfl_rem_nonneg"),
             models.CheckConstraint(
-                check=(Q(status="OPEN", remaining_amount=F("amount"), settled_at__isnull=True)
-                       | Q(status="PARTIALLY_SETTLED", remaining_amount__gt=0,
-                           remaining_amount__lt=F("amount"), settled_at__isnull=True)
-                       | Q(status="SETTLED", remaining_amount=0, settled_at__isnull=False)),
+                # DEC-02-A1：经批准调整执行后 remaining_amount 可不等于原始额
+                # （冲销/新增应退会增大、抵扣会减小），状态由服务层同步维护。
+                check=(Q(status="OPEN", remaining_amount=F("amount"),
+                         settled_at__isnull=True)
+                       | Q(status="PARTIALLY_SETTLED", settled_at__isnull=True,
+                           remaining_amount__gt=0)
+                       & ~Q(remaining_amount=F("amount"))
+                       | Q(status="SETTLED", remaining_amount=0,
+                           settled_at__isnull=False)),
                 name="ck_rfl_status"),
         ]
 
@@ -809,9 +816,11 @@ class RefundLiability(models.Model):
                 raise ValidationError("待退款负债币种必须与来源账单一致。")
         if self.amount is None or self.amount <= 0:
             raise ValidationError("待退款负债金额必须大于零。")
-        if (self.remaining_amount is None or self.remaining_amount < 0
-                or self.remaining_amount > self.amount):
-            raise ValidationError("待退款负债余额必须在零与原始金额之间。")
+        # DEC-02-A1：经批准执行的冲销/新增应退调整可增加应退净额，
+        # remaining_amount 允许超过原始登记额；下限仍为 0（禁止负余额）。
+        # 上限保护由服务层承担：仅"已批准调整执行"与"退款执行"可变动余额。
+        if self.remaining_amount is None or self.remaining_amount < 0:
+            raise ValidationError("待退款负债余额不能为负数。")
         expected = (
             self.Status.OPEN if self.remaining_amount == self.amount
             else self.Status.SETTLED if self.remaining_amount == 0
@@ -831,12 +840,20 @@ class RefundLiability(models.Model):
                              "amount", "currency", "idempotency_key", "created_by_id")
                 if any(previous[field] != getattr(self, field) for field in immutable):
                     raise ValidationError("待退款负债来源、原始金额和登记事实不可修改。")
+                # DEC-02-A1：回增仅允许"已批准账务调整执行"这一受控通道
+                # （调用方必须显式传 sanctioned_increase=True，并同事务落审计），
+                # 普通编辑回增仍然禁止。
+                sanctioned = bool(kwargs.pop("sanctioned_increase", False))
                 if self.remaining_amount > previous["remaining_amount"]:
-                    raise ValidationError("待退款负债余额只能因退款成功而减少，不得回增。")
+                    if not sanctioned:
+                        raise ValidationError(
+                            "待退款负债余额只能因退款成功而减少；回增必须经"
+                            "已批准账务调整执行通道（DEC-02-A1）。")
                 if previous["status"] == self.Status.SETTLED and (
                         self.status != self.Status.SETTLED
                         or self.settled_at != previous["settled_at"]):
-                    raise ValidationError("已结清待退款负债不可重新打开或修改结清时间。")
+                    if not sanctioned:
+                        raise ValidationError("已结清待退款负债不可重新打开或修改结清时间。")
         return super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
@@ -1129,3 +1146,158 @@ class TaxLine(models.Model):
 
     def __str__(self):
         return f"{self.charge_line_id}:{self.tax_code} {self.tax_amount}"
+
+
+class BillingAdjustment(models.Model):
+    """DEC-02-A1：退房后账务调整/抵扣独立记录（财务发起、值班经理审批）。
+
+    原始 RefundLiability.amount 冻结不改写；经批准并执行的调整通过独立
+    凭证与负债余额变化体现，净额可从原始负债、已执行调整与已成功退款
+    完整重建。记录不可物理删除或改写。
+    """
+
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
+
+    class AdjustmentType(models.TextChoices):
+        CHARGE_ADD = "CHARGE_ADD", "费用补记（形成抵扣，减少应退净额）"
+        CHARGE_REVERSE = "CHARGE_REVERSE", "费用冲销（增加应退净额）"
+        REFUND_INCREASE = "REFUND_INCREASE", "新增应退款事项（增加应退净额）"
+
+    class Status(models.TextChoices):
+        REQUESTED = "REQUESTED", "待审批"
+        APPROVED = "APPROVED", "已批准待执行"
+        EXECUTED = "EXECUTED", "已执行"
+        REJECTED = "REJECTED", "已驳回"
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT,
+        related_name="billing_adjustments", verbose_name="所属酒店")
+    reservation = models.ForeignKey(
+        "reservations.Reservation", on_delete=models.PROTECT,
+        related_name="billing_adjustments", verbose_name="预订主单")
+    folio = models.ForeignKey(
+        Folio, on_delete=models.PROTECT,
+        related_name="billing_adjustments", verbose_name="来源账单")
+    refund_liability = models.ForeignKey(
+        RefundLiability, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="billing_adjustments", verbose_name="关联待退款负债")
+    adjustment_type = models.CharField(
+        max_length=20, choices=AdjustmentType.choices, verbose_name="调整类型")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="调整金额")
+    currency = models.CharField(max_length=3, default="CNY", verbose_name="币种")
+    reason = models.CharField(max_length=240, verbose_name="调整原因")
+    evidence_note = models.CharField(
+        max_length=500, blank=True, default="", verbose_name="证据/备注")
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.REQUESTED,
+        verbose_name="状态")
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="requested_billing_adjustments",
+        verbose_name="财务发起人")
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="approved_billing_adjustments",
+        verbose_name="审批人")
+    executed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="executed_billing_adjustments",
+        verbose_name="执行人")
+    requested_at = models.DateTimeField(auto_now_add=True, verbose_name="发起时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    approved_at = models.DateTimeField(null=True, blank=True, verbose_name="审批时间")
+    executed_at = models.DateTimeField(null=True, blank=True, verbose_name="执行时间")
+    ledger_entry = models.ForeignKey(
+        LedgerEntry, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="billing_adjustments", verbose_name="调整凭证")
+    idempotency_key = models.CharField(max_length=96, unique=True, verbose_name="幂等键")
+
+    class Meta:
+        verbose_name = "账务调整（DEC-02-A1）"
+        verbose_name_plural = "账务调整（DEC-02-A1）"
+        ordering = ("-requested_at",)
+        constraints = [
+            models.CheckConstraint(check=Q(amount__gt=0), name="ck_adj_amt_pos"),
+        ]
+
+    def __str__(self):
+        return f"{self.adjustment_type} {self.amount} {self.currency} [{self.status}]"
+
+
+class CheckoutExceptionRelease(models.Model):
+    """DEC-02-B2：退房异常放行与待财务核查记录。
+
+    不是退款负债：不进入退款申请入口，不作为可退款余额。仅当财务核查
+    证据补齐并通过受控流程后，才转登记正式 RefundLiability 或按审批关闭。
+    """
+
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
+
+    class ReasonCode(models.TextChoices):
+        NO_PAYMENT_SOURCE = "NO_PAYMENT_SOURCE", "无可用原支付来源"
+        LEDGER_MISSING = "LEDGER_MISSING", "收款账本凭证缺失"
+        INSUFFICIENT_CANDIDATE = "INSUFFICIENT_CANDIDATE", "候选原支付可退余额不足"
+        INCONSISTENT_RELATION = "INCONSISTENT_RELATION", "支付/凭证/关联关系不一致"
+        OTHER = "OTHER", "其他需财务核查情形"
+
+    class Status(models.TextChoices):
+        REQUESTED = "REQUESTED", "待审批"
+        APPROVED = "APPROVED", "已批准待放行"
+        RELEASED = "RELEASED", "已放行待财务核查"
+        CONVERTED_LIABILITY = "CONVERTED_LIABILITY", "已转正式退款负债"
+        CLOSED_NO_REFUND = "CLOSED_NO_REFUND", "核查无需退款已关闭"
+        REJECTED = "REJECTED", "已驳回"
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT,
+        related_name="checkout_exception_releases", verbose_name="所属酒店")
+    reservation = models.ForeignKey(
+        "reservations.Reservation", on_delete=models.PROTECT,
+        related_name="checkout_exception_releases", verbose_name="预订主单")
+    folio = models.ForeignKey(
+        Folio, on_delete=models.PROTECT,
+        related_name="checkout_exception_releases", verbose_name="来源账单")
+    stay = models.ForeignKey(
+        "reservations.Stay", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="checkout_exception_releases", verbose_name="放行的最后入住单")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="涉及金额")
+    currency = models.CharField(max_length=3, default="CNY", verbose_name="币种")
+    reason_code = models.CharField(
+        max_length=32, choices=ReasonCode.choices, verbose_name="异常原因代码")
+    reason_text = models.CharField(max_length=500, verbose_name="异常说明")
+    status = models.CharField(
+        max_length=24, choices=Status.choices, default=Status.REQUESTED,
+        verbose_name="状态")
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="requested_checkout_releases",
+        verbose_name="前台申请人")
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="approved_checkout_releases",
+        verbose_name="值班经理审批人")
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="verified_checkout_releases",
+        verbose_name="财务核查人")
+    requested_at = models.DateTimeField(auto_now_add=True, verbose_name="申请时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    approved_at = models.DateTimeField(null=True, blank=True, verbose_name="审批时间")
+    released_at = models.DateTimeField(null=True, blank=True, verbose_name="放行时间")
+    verified_at = models.DateTimeField(null=True, blank=True, verbose_name="核查时间")
+    verify_note = models.CharField(max_length=500, blank=True, default="", verbose_name="核查结论")
+    refund_liability = models.ForeignKey(
+        RefundLiability, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="checkout_exception_releases", verbose_name="转出的正式负债")
+    idempotency_key = models.CharField(max_length=96, unique=True, verbose_name="幂等键")
+
+    class Meta:
+        verbose_name = "退房异常放行（DEC-02-B2）"
+        verbose_name_plural = "退房异常放行（DEC-02-B2）"
+        ordering = ("-requested_at",)
+        constraints = [
+            models.CheckConstraint(check=Q(amount__gte=0), name="ck_cxr_amt_nonneg"),
+        ]
+
+    def __str__(self):
+        return f"{self.reason_code} {self.amount} {self.currency} [{self.status}]"

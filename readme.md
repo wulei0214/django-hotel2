@@ -15,9 +15,11 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
 | 财务 | Folio、Payment、Refund、LedgerEntry、CashierShift、审批与冲销服务 | 真实银行/支付渠道不是本地人工登记或 Mock 测试 |
 | 夜审 | BusinessDate、NightAuditRun、NightAuditService | 营业日、夜审失败恢复和生产定时任务仍按部署验收 |
 | 清洁维修 | DIRTY→CLEANING→INSPECTING→CLEAN；维修专项权限 | 客房服务员不得执行净房放行 |
-| API | OpenAPI 3.1 静态快照 102 paths / 104 operations；79 verified / 25 partial | partial 接口仍需逐项真实执行验证 |
-| 测试 | 最新 SQLite 与 MySQL 8 CI 各 887 项通过 | 不等于真实浏览器 E2E、用户本地库或生产验收 |
+| API | OpenAPI 3.1 静态快照 113 paths / 114 operations；全部 verified | partial 接口仍需逐项真实执行验证 |
+| 测试 | 最新 SQLite 与 MySQL 8 CI 各 887→919 项通过（含 DEC-02 新增 13 项 + OpenAPI 同步调整） | 不等于真实浏览器 E2E、用户本地库或生产验收 |
 | 全链路串测 | scripts/e2e_full_chain.py 已提交 | 当前脚本存在导入缺失、空断言、凭据硬编码和清库护栏不足；36/36 尚不作为有效验收结论 |
+| DEC-02-A1 账务调整 | `BillingAdjustment` 模型+服务+API+财务页面（财务发起→值班经理审批→执行生凭证；净额重建） | 开发完成，13/13 测试通过 |
+| DEC-02-B2 异常放行 | `CheckoutExceptionRelease` 模型+服务+API+前台引导+财务核查面板（申请→审批→放行不建负债→受控转负债/关闭） | 开发完成，13/13 测试通过 |
 
 ## 2. 最新自动化测试证据
 

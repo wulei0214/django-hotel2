@@ -631,6 +631,25 @@
                     } catch (error) {
                         showToast(error.message, true);
                         checkoutButton.disabled = false;
+                        /* DEC-02-B2：最后退房被"预付余额无法确认来源"阻断时，
+                           提供异常放行申请入口（前台发起 → 值班经理审批）。 */
+                        if (error.message && error.message.indexOf("异常放行") >= 0) {
+                            var reasonCode = window.prompt("异常放行原因代码：\n1) NO_PAYMENT_SOURCE 无可用原支付来源\n2) LEDGER_MISSING 收款账本凭证缺失\n3) INSUFFICIENT_CANDIDATE 候选原支付可退余额不足\n4) INCONSISTENT_RELATION 关联关系不一致\n5) OTHER 其他\n请输入代码（1-5）：", "1");
+                            if (!reasonCode) return;
+                            var codeMap = {"1": "NO_PAYMENT_SOURCE", "2": "LEDGER_MISSING",
+                                           "3": "INSUFFICIENT_CANDIDATE", "4": "INCONSISTENT_RELATION",
+                                           "5": "OTHER"};
+                            var note = window.prompt("请填写结构化异常说明（必填，将进入待财务核查记录）：", "");
+                            if (!note || !note.trim()) return;
+                            postApi("folios/" + encodeURIComponent(item.booking_no) + "/exception-release-request",
+                                    {reason_code: codeMap[reasonCode] || "OTHER",
+                                     reason_text: note.trim(),
+                                     amount: Math.abs(parseFloat((error.message.match(/客人余额 ([0-9.]+)/) || [0, "0"])[1])) || 0})
+                                .then(function () {
+                                    showToast("异常放行申请已提交，待值班经理审批；审批通过后可再次办理退房。");
+                                })
+                                .catch(function (e2) { showToast(e2.message, true); });
+                        }
                     }
                 });
                 actionRow.appendChild(checkoutButton);
