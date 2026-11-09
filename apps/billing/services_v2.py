@@ -558,7 +558,8 @@ class BillingService:
     @staticmethod
     @transaction.atomic
     def request_refund(*, property_obj, payment_id, amount, reason,
-                       requested_by, idempotency_key="", request=None):
+                       requested_by, idempotency_key="", request=None,
+                       refund_liability_id=None):
         """退款申请唯一入口：校验金额、幂等并建立双人审批记录。"""
         from apps.billing.models import Payment, Refund
         amount = BillingService._money(amount)
@@ -578,9 +579,27 @@ class BillingService:
             property=property_obj, idempotency_key=key).first()
         if existing is not None:
             if (existing.payment_id != payment.pk
-                    or existing.amount != amount or existing.reason != reason):
+                    or existing.amount != amount or existing.reason != reason
+                    or existing.refund_liability_id != refund_liability_id):
                 raise ValueError("该幂等键已用于不同退款申请。")
             return existing, False
+        liability = None
+        if refund_liability_id is not None:
+            from apps.billing.models import RefundLiability
+            liability = RefundLiability.objects.select_for_update().filter(
+                pk=refund_liability_id, property=property_obj,
+                reservation_id=payment.reservation_id, folio_id=payment.folio_id,
+            ).first()
+            if liability is None:
+                raise ValueError("待退款负债不存在，或与当前支付不属于同一物业、预订和账单。")
+            if not liability.source_payments.filter(pk=payment.pk).exists():
+                raise ValueError("所选原支付流水不属于该待退款负债的候选支付集合。")
+            liability_reserved = Refund.objects.filter(
+                refund_liability=liability,
+                status__in=(Refund.Status.PENDING, Refund.Status.APPROVED),
+            ).aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
+            if liability_reserved + amount > liability.remaining_amount:
+                raise ValueError("该待退款负债的未处理余额不足。")
         if payment.status not in (
                 Payment.Status.SUCCEEDED, Payment.Status.PARTIALLY_REFUNDED,
                 Payment.Status.REFUND_PENDING):
@@ -596,7 +615,8 @@ class BillingService:
         try:
             with transaction.atomic():
                 refund = Refund.objects.create(
-                    property=property_obj, payment=payment, amount=amount,
+                    property=property_obj, payment=payment,
+                    refund_liability=liability, amount=amount,
                     currency=payment.currency, reason=reason,
                     status=Refund.Status.PENDING, requested_by=requested_by,
                     provider_ref=f"RFD-{uuid.uuid4().hex.upper()[:16]}",
@@ -615,7 +635,8 @@ class BillingService:
             entity_type="Refund", entity_id=refund.pk,
             requested_by=requested_by, reason=reason,
             payload={"payment_id": payment.pk, "amount": str(amount),
-                     "currency": payment.currency})
+                     "currency": payment.currency,
+                     "refund_liability_id": liability.pk if liability else None})
         refund.approval_record = approval
         refund.save(update_fields=("approval_record",))
         # 支付流水状态反映存在待处理退款；多笔部分退款可并行排队申请，
@@ -626,7 +647,8 @@ class BillingService:
         AuditEvent.record(
             action="billing.refund_request", entity_type="Refund",
             entity_id=refund.pk, actor=requested_by, property_obj=property_obj,
-            after={"amount": str(amount), "payment_id": payment.pk},
+            after={"amount": str(amount), "payment_id": payment.pk,
+                   "refund_liability_id": liability.pk if liability else None},
             reason=reason, request=request)
         return refund, True
 
@@ -980,6 +1002,25 @@ class BillingService:
             if key_owner is not None:
                 raise ValueError("该退款执行幂等键已被其他退款使用。")
             raise
+        liability = None
+        if refund.refund_liability_id:
+            from apps.billing.models import RefundLiability
+            liability = RefundLiability.objects.select_for_update().filter(
+                pk=refund.refund_liability_id, property=property_obj,
+                reservation_id=payment.reservation_id, folio_id=payment.folio_id,
+            ).first()
+            if liability is None or not liability.source_payments.filter(pk=payment.pk).exists():
+                raise ValueError("退款关联的待退款负债或原支付候选关系不存在。")
+            if liability.remaining_amount < refund.amount:
+                raise ValueError("待退款负债余额不足，不能完成该笔退款。")
+            liability.remaining_amount -= refund.amount
+            if liability.remaining_amount == 0:
+                liability.status = RefundLiability.Status.SETTLED
+                liability.settled_at = timezone.now()
+            else:
+                liability.status = RefundLiability.Status.PARTIALLY_SETTLED
+            liability.save(update_fields=("remaining_amount", "status", "settled_at"))
+
         # 与申请/驳回一致：状态汇总必须用当前读。probe 在等待 Payment 锁前
         # 已建立 MySQL RR 快照，普通读会漏掉等待期间提交的退款事实，
         # 把 REFUND_PENDING/已退款终态误写成 PARTIALLY_REFUNDED。
@@ -1013,7 +1054,10 @@ class BillingService:
             after={"amount": str(refund.amount), "status": refund.status,
                    "approved_by_id": refund.approved_by_id,
                    "executed_by_id": executed_by.pk,
-                   "execution_shift_id": refund.execution_shift_id},
+                   "execution_shift_id": refund.execution_shift_id,
+                   "refund_liability_id": liability.pk if liability else None,
+                   "liability_remaining_amount": (
+                       str(liability.remaining_amount) if liability else None)},
             reason=refund.reason)
         return refund, True
 
