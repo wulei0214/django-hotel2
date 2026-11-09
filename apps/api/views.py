@@ -390,6 +390,10 @@ def payment_callback(request):
         "ok": True,
         "duplicate": result.get("duplicate", False),
         "expired": result.get("expired", False),
+        # 服务层已区分“渠道资金成功”与“预订库存是否成功确认”。
+        # 这两个字段必须透传，供调用方进入履约或补偿处理，不能在 API 层丢失。
+        "reservation_confirmed": result.get("reservation_confirmed", False),
+        "compensation_required": result.get("compensation_required", False),
         "payment_status": result["payment"].status,
         "booking_no": reservation.booking_no,
         "reservation_status": reservation.status,
