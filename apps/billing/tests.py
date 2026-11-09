@@ -115,6 +115,8 @@ class MockPaymentTests(TestCase):
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
         self.assertTrue(second.json()["duplicate"])
+        self.assertTrue(second.json()["reservation_confirmed"])
+        self.assertFalse(second.json()["compensation_required"])
         self.assertEqual(LedgerEntry.objects.count(), 1)
 
     def test_invalid_signature_is_rejected(self):
@@ -212,6 +214,11 @@ class MockPaymentTests(TestCase):
             list(RoomTypeInventory.objects.order_by("stay_date").values_list("held", "sold")),
             [(0, 0), (0, 0)],
         )
+        replay = self._callback()
+        self.assertEqual(replay.status_code, 200)
+        self.assertTrue(replay.json()["duplicate"])
+        self.assertTrue(replay.json()["compensation_required"])
+        self.assertFalse(replay.json()["reservation_confirmed"])
 
     def test_mock_callback_is_not_available_in_production(self):
         with override_settings(DEBUG=False, DJANGO_ENV="prod"):
