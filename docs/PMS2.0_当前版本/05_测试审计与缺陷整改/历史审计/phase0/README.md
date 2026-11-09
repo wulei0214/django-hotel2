@@ -9,14 +9,14 @@
 
 | 文件 | 工作流 | 内容 |
 |---|---|---|
-| [00-baseline.md](00-baseline.md) | A | 基线冻结（SHA/环境/版本） |
-| [10-routes.md](10-routes.md) | B | 全量路由清单：337 条（Admin 191 / API 60 / PMS 页面 28 / 公开面 13 / 旧只读 15 / 410 退役 35） |
-| [11-permissions.md](11-permissions.md) | C | 全量权限点：263 个（自定义 15 / hotelapp CRUD 44 / PMS2 CRUD 180 / 内建 24），逐点定义/授予/执行位置 |
-| [12-roles.md](12-roles.md) | D | 九角色授权快照与四层漂移分析（DB 权限零漂移；矩阵页只覆盖 hotelapp 域 41 点） |
-| [13-identity-sessions.md](13-identity-sessions.md) | F | 账号七分类（26 个）、超管三项不变量核查（0 违规）、双会话边界 |
-| [14-dataflows.md](14-dataflows.md) | E | 11 条业务数据流追踪（事务边界/写表顺序/审计点/缺口） |
-| [15-audit-coverage.md](15-audit-coverage.md) | G | 审计事件覆盖：50 个已埋点 action vs §16.1 要求（7 覆盖/6 部分/5 缺失） |
-| [20-findings-register.md](20-findings-register.md) | H | 缺口登记册：P0×4 / P1×7 / P2×3，含处置归属映射 |
+| [00-baseline_2026-11-10.md](00-baseline_2026-11-10.md) | A | 基线冻结（SHA/环境/版本） |
+| [10-routes_2026-11-10.md](10-routes_2026-11-10.md) | B | 全量路由清单：337 条（Admin 191 / API 60 / PMS 页面 28 / 公开面 13 / 旧只读 15 / 410 退役 35） |
+| [11-permissions_2026-11-10.md](11-permissions_2026-11-10.md) | C | 全量权限点：263 个（自定义 15 / hotelapp CRUD 44 / PMS2 CRUD 180 / 内建 24），逐点定义/授予/执行位置 |
+| [12-roles_2026-11-10.md](12-roles_2026-11-10.md) | D | 九角色授权快照与四层漂移分析（DB 权限零漂移；矩阵页只覆盖 hotelapp 域 41 点） |
+| [13-identity-sessions_2026-11-10.md](13-identity-sessions_2026-11-10.md) | F | 账号七分类（26 个）、超管三项不变量核查（0 违规）、双会话边界 |
+| [14-dataflows_2026-11-10.md](14-dataflows_2026-11-10.md) | E | 11 条业务数据流追踪（事务边界/写表顺序/审计点/缺口） |
+| [15-audit-coverage_2026-11-10.md](15-audit-coverage_2026-11-10.md) | G | 审计事件覆盖：50 个已埋点 action vs §16.1 要求（7 覆盖/6 部分/5 缺失） |
+| [20-findings-register_2026-11-10.md](20-findings-register_2026-11-10.md) | H | 缺口登记册：P0×4 / P1×7 / P2×3，含处置归属映射 |
 
 ## 关键结论
 
