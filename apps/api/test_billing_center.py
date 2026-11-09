@@ -1443,6 +1443,21 @@ class RefundLiabilityIntegrityRegressionTests(BillingCenterTestBase):
                 folio=folio, amount=Decimal("10.00"), created_by=self.finance)
         self.assertFalse(RefundLiability.objects.filter(folio=folio).exists())
 
+    def test_foreign_property_payment_cannot_be_added_as_liability_candidate(self):
+        reservation, folio, _payment, liability = self._liability_with_payment("M2M-ISOLATION")
+        other_property = Property.objects.create(
+            code="BC-CANDIDATE-OTHER", name="候选支付隔离物业")
+        foreign_payment = Payment.objects.create(
+            property=other_property, reservation=reservation, folio=folio,
+            provider="frontdesk_manual", provider_ref="BC-FOREIGN-CANDIDATE",
+            method="CARD", amount=Decimal("20.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        from django.core.exceptions import ValidationError
+        with self.assertRaisesRegex(ValidationError, "同一物业、预订、账单和币种"):
+            liability.source_payments.add(foreign_payment)
+        self.assertFalse(
+            liability.source_payments.filter(pk=foreign_payment.pk).exists())
+
     def test_finance_liability_list_excludes_other_property_records(self):
         other_property = Property.objects.create(
             code="BC-LIABILITY-OTHER", name="负债隔离测试物业")
