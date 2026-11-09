@@ -1476,7 +1476,7 @@ op("/billing/refunds", "get", "财务", "退款列表（申请/审批/执行状�
    })), errors=E_STAFF)
 
 op("/billing/refund-liabilities", "get", "财务", "待退款负债列表及候选原支付",
-   status="partial",
+   status="verified",
    query=[Q("status", "负债状态筛选 OPEN/PARTIALLY_SETTLED/SETTLED。"), *PQ()],
    permission=FIN_READ_PERM,
    ok=(( "200", "待退款负债及候选原支付流水数组"),),
@@ -1491,7 +1491,7 @@ op("/billing/refund-liabilities", "get", "财务", "待退款负债列表及候�
        "created_at": s_str("", format="date-time"),
        "settled_at": s_nullable(s_str("", format="date-time")),
    })), errors=E_STAFF,
-   notes="仅财务可见；candidate_payments 是核对候选集合，不代表自动分配退款金额。")
+   notes="仅财务可见；API 测试覆盖负债列表与候选原支付；candidate_payments 是核对候选集合，不代表自动分配退款金额。浏览器完整流程仍需端到端验收。")
 
 
 op("/billing/refunds", "post", "财务", "退款申请（双人审批 SoD 第一环）",
