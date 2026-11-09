@@ -10746,6 +10746,17 @@
                             "type": "integer",
                             "description": ""
                           },
+                          "refund_liability_id": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "description": ""
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "folio_id": {
                             "type": "integer",
                             "description": ""
@@ -11023,6 +11034,17 @@
                           "type": "integer",
                           "description": ""
                         },
+                        "refund_liability_id": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "description": ""
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "amount": {
                           "type": "string",
                           "description": ""
@@ -11086,6 +11108,17 @@
                         "payment_id": {
                           "type": "integer",
                           "description": ""
+                        },
+                        "refund_liability_id": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "description": ""
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "amount": {
                           "type": "string",
@@ -11241,6 +11274,17 @@
                   "idempotency_key": {
                     "type": "string",
                     "description": "幂等键 1-64 字符；缺省取 Idempotency-Key 头。"
+                  },
+                  "refund_liability_id": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "description": "可选：关联待退款负债 ID；必须匹配所选原支付。"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "additionalProperties": true,
@@ -11253,6 +11297,237 @@
             }
           }
         },
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/refund-liabilities": {
+      "get": {
+        "tags": [
+          "财务"
+        ],
+        "summary": "待退款负债列表及候选原支付",
+        "description": "仅财务可见；candidate_payments 是核对候选集合，不代表自动分配退款金额。\n\n权限要求：有效员工（DEFAULT 有效任职）+ hotelapp.finance_access；QuerySet 强制当前物业过滤，金额一律 Decimal→str，账本只读展示。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "operationId": "get_billing_refund_liabilities",
+        "responses": {
+          "200": {
+            "description": "待退款负债及候选原支付流水数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "description": "",
+                      "items": {
+                        "type": "object",
+                        "description": "",
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "description": ""
+                          },
+                          "reservation_id": {
+                            "type": "integer",
+                            "description": ""
+                          },
+                          "booking_no": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "folio_id": {
+                            "type": "integer",
+                            "description": ""
+                          },
+                          "amount": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "remaining_amount": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "currency": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "status": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "status_label": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "candidate_payments": {
+                            "type": "array",
+                            "description": "",
+                            "items": {
+                              "type": "object",
+                              "description": "",
+                              "properties": {
+                                "payment_id": {
+                                  "type": "integer",
+                                  "description": ""
+                                },
+                                "provider_ref": {
+                                  "type": "string",
+                                  "description": ""
+                                },
+                                "method": {
+                                  "type": "string",
+                                  "description": ""
+                                },
+                                "amount": {
+                                  "type": "string",
+                                  "description": ""
+                                },
+                                "currency": {
+                                  "type": "string",
+                                  "description": ""
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "description": ""
+                                }
+                              },
+                              "additionalProperties": true
+                            }
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "description": "",
+                            "format": "date-time"
+                          },
+                          "settled_at": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": "",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "partial",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工（DEFAULT 有效任职）+ hotelapp.finance_access；QuerySet 强制当前物业过滤，金额一律 Decimal→str，账本只读展示",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "负债状态筛选 OPEN/PARTIALLY_SETTLED/SETTLED。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "页码，从 1 开始，默认 1。",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "每页数量，默认 20，最大 100。",
+            "schema": {
+              "type": "integer",
+              "example": 20
+            }
+          }
+        ],
         "security": [
           {
             "PMS2Session": []
@@ -21419,6 +21694,17 @@
             "anyOf": [
               {
                 "type": "string",
+                "description": ""
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "refund_liability_id": {
+            "anyOf": [
+              {
+                "type": "integer",
                 "description": ""
               },
               {
