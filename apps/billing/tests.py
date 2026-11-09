@@ -66,6 +66,18 @@ class MockPaymentTests(TestCase):
         )
         self.payment = create_mock_payment_intent(self.reservation)
 
+    def test_inventory_confirmation_is_idempotent_after_reservation_confirmed(self):
+        from apps.inventory.services import confirm_inventory_for_reservation
+
+        self.assertTrue(confirm_inventory_for_reservation(self.reservation))
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            status=Reservation.Status.CONFIRMED)
+        self.assertFalse(confirm_inventory_for_reservation(self.reservation))
+        self.assertEqual(
+            list(RoomTypeInventory.objects.order_by("stay_date").values_list("held", "sold")),
+            [(0, 1), (0, 1)],
+        )
+
     def _callback(self):
         payload = {
             "provider_ref": self.payment.provider_ref,
