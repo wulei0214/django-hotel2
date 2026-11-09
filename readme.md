@@ -24,6 +24,8 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
 | PAY-P0 渠道交易 | `ProviderTransaction` 模型（渠道交易号/事件 ID 唯一约束+验签标志） | 开发完成 |
 | PAY-P0 补偿队列 | `PaymentCompensationTask` 模型+服务（租约抢占/指数退避/死信/人工重放） | 开发完成，10/10 测试通过 |
 | D2 渠道窗口 | 服务端 `CHANNEL_WINDOW_CONFIG`（客户端不可提交/修改窗口或延长上限） | 开发完成 |
+| D4 库存差异 | `InventoryReconciliationRun/InventoryDiscrepancy` 模型+`reconciliation.py` 服务（扫描→申请→审批→执行修复→再次对账；SoD 自批拒绝） | 开发完成，6/6 测试通过 |
+| FIN-P0 账务对账 | `FolioReconciliationRun/FolioReconciliationDiff` 模型+`reconciliation.py` 服务（Payment↔凭证/Deposit↔凭证/Refund↔凭证/孤儿化检测） | 开发完成，6/6 测试通过 |
 
 ## 2. 最新自动化测试证据
 

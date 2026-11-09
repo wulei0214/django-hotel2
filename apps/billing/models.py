@@ -1479,3 +1479,62 @@ class PaymentCompensationTask(models.Model):
 
     def __str__(self):
         return f"{self.task_type}:{self.aggregate_type}:{self.aggregate_id} [{self.status}]"
+
+
+class FolioReconciliationRun(models.Model):
+    """FIN-P0：账务对账运行（差异扫描批次）。"""
+
+    objects = models.Manager()
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT,
+        related_name="folio_reconciliation_runs", verbose_name="所属酒店")
+    scanned_at = models.DateTimeField(auto_now_add=True, verbose_name="扫描时间")
+    scanned_folios = models.PositiveIntegerField(default=0, verbose_name="扫描账单数")
+    diff_count = models.PositiveIntegerField(default=0, verbose_name="差异数")
+    checked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="folio_reconciliation_runs", verbose_name="扫描人")
+
+    class Meta:
+        verbose_name = "账务对账运行"
+        verbose_name_plural = "账务对账运行"
+        ordering = ("-scanned_at",)
+
+    def __str__(self):
+        return f"账务对账 {self.property_id} 差异 {self.diff_count}"
+
+
+class FolioReconciliationDiff(models.Model):
+    """FIN-P0：单条账务差异记录（只读报告，不自动改写账本）。"""
+
+    objects = models.Manager()
+
+    class DiffType(models.TextChoices):
+        PAYMENT_NO_ENTRY = "PAYMENT_NO_ENTRY", "收款 Payment 缺对应 PAYMENT 凭证"
+        ENTRY_NO_PAYMENT = "ENTRY_NO_PAYMENT", "PAYMENT 凭证缺对应 Payment"
+        DEPOSIT_NO_ENTRY = "DEPOSIT_NO_ENTRY", "押金 Payment 缺对应 DEPOSIT 凭证"
+        REFUND_NO_ENTRY = "REFUND_NO_ENTRY", "退款 Refund 缺对应 REFUND 凭证"
+        BALANCE_MISMATCH = "BALANCE_MISMATCH", "Folio 余额与账本合计不一致"
+        LIABILITY_NET_MISMATCH = "LIABILITY_NET_MISMATCH", "负债剩余额与重建净额不一致"
+
+    run = models.ForeignKey(
+        FolioReconciliationRun, on_delete=models.PROTECT,
+        related_name="diffs", verbose_name="对账运行")
+    folio = models.ForeignKey(
+        Folio, on_delete=models.PROTECT, related_name="reconciliation_diffs",
+        verbose_name="关联账单")
+    diff_type = models.CharField(
+        max_length=32, choices=DiffType.choices, verbose_name="差异类型")
+    entity_type = models.CharField(max_length=64, verbose_name="关联实体类型")
+    entity_id = models.BigIntegerField(verbose_name="关联实体 ID")
+    detail = models.CharField(max_length=500, verbose_name="差异描述")
+
+    class Meta:
+        verbose_name = "账务差异记录"
+        verbose_name_plural = "账务差异记录"
+        ordering = ("-id",)
+
+    def __str__(self):
+        return f"{self.diff_type} folio={self.folio_id}"
+

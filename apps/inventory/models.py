@@ -425,3 +425,102 @@ class RoomInspection(models.Model):
 
     def __str__(self):
         return f"{self.room_id} {self.result} @ {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class InventoryReconciliationRun(models.Model):
+    """D4 库存对账运行（差异扫描批次）。"""
+
+    objects = models.Manager.from_queryset(models.QuerySet)
+
+    class Status(models.TextChoices):
+        COMPLETED = "COMPLETED", "已完成"
+        IN_PROGRESS = "IN_PROGRESS", "进行中"
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT,
+        related_name="inventory_reconciliation_runs", verbose_name="所属酒店")
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.COMPLETED,
+        verbose_name="状态")
+    scan_time = models.DateTimeField(auto_now_add=True, verbose_name="扫描时间")
+    scanned_dates = models.PositiveIntegerField(default=0, verbose_name="扫描天数")
+    scanned_types = models.PositiveIntegerField(default=0, verbose_name="扫描房型数")
+    diff_count = models.PositiveIntegerField(default=0, verbose_name="差异数")
+    checked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="inventory_reconciliation_runs", verbose_name="扫描人")
+
+    class Meta:
+        verbose_name = "库存对账运行"
+        verbose_name_plural = "库存对账运行"
+        ordering = ("-scan_time",)
+
+    def __str__(self):
+        return f"对账 {self.property_id} {self.scan_time:%Y-%m-%d %H:%M} 差异 {self.diff_count}"
+
+
+class InventoryDiscrepancy(models.Model):
+    """D4 单条库存差异记录。"""
+
+    objects = models.Manager.from_queryset(models.QuerySet)
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "待处理"
+        FIX_REQUESTED = "FIX_REQUESTED", "修复申请中"
+        FIX_APPROVED = "FIX_APPROVED", "修复已批准"
+        FIXED = "FIXED", "已修复"
+        DISMISSED = "DISMISSED", "已关闭（无差异）"
+
+    run = models.ForeignKey(
+        InventoryReconciliationRun, on_delete=models.PROTECT,
+        related_name="discrepancies", verbose_name="对账运行")
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT,
+        related_name="inventory_discrepancies", verbose_name="所属酒店")
+    room_type = models.ForeignKey(
+        RoomType, on_delete=models.PROTECT, related_name="inventory_discrepancies",
+        verbose_name="房型")
+    stay_date = models.DateField(verbose_name="住宿日期")
+    current_total = models.PositiveIntegerField(verbose_name="当前库存总数")
+    recomputed_total = models.PositiveIntegerField(verbose_name="重算应有总数")
+    diff = models.IntegerField(verbose_name="差额（当前-应有）")
+    held_count = models.PositiveIntegerField(default=0, verbose_name="有效 Hold 数")
+    sold_count = models.PositiveIntegerField(default=0, verbose_name="已确认占用数")
+    oos_count = models.PositiveIntegerField(default=0, verbose_name="维修/停用数")
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.OPEN,
+        verbose_name="状态")
+    fix_reason = models.CharField(
+        max_length=500, blank=True, default="", verbose_name="修复原因")
+    fix_evidence = models.CharField(
+        max_length=500, blank=True, default="", verbose_name="修复证据")
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="requested_inventory_fixes", verbose_name="修复申请人")
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="approved_inventory_fixes", verbose_name="修复审批人")
+    executed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="executed_inventory_fixes", verbose_name="修复执行人")
+    requested_at = models.DateTimeField(null=True, blank=True, verbose_name="申请时间")
+    approved_at = models.DateTimeField(null=True, blank=True, verbose_name="审批时间")
+    fixed_at = models.DateTimeField(null=True, blank=True, verbose_name="修复时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "库存差异记录"
+        verbose_name_plural = "库存差异记录"
+        ordering = ("-stay_date",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=("run", "room_type", "stay_date"),
+                name="uq_inv_disc_run_type_date"),
+        ]
+
+    def __str__(self):
+        return (f"{self.room_type_id}/{self.stay_date} "
+                f"当前 {self.current_total} vs 重算 {self.recomputed_total}")
+
+
+
