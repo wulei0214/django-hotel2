@@ -168,7 +168,7 @@ class ApprovalActionRegistry:
             request_permission="billing.refund_request",
             approve_permission="billing.refund_approve",
             executor="apps.billing.services_v2.BillingService.execute_refund",
-            payload_fields={"payment_id": 20, "amount": 16, "currency": 3},
+            payload_fields={"payment_id": 20, "amount": 16, "currency": 3, "refund_liability_id": 20},
             validate_entity=validate_refund_entity,
         ),
         # 红字冲销：财务申请并执行，值班经理/店长单独审批；执行时关联审批事实。
