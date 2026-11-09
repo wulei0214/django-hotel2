@@ -3,8 +3,8 @@
 > 文档类型：接口现状目录 + 测试规范  
 > 适用项目：django-hotel2 / PMS2  
 > 核对分支：main  
-> 核对日期：2026-11-04  
-> 状态：Swagger/OpenAPI 3.1 已实施；运行时规范覆盖 97 条 API 路由。仓库静态快照当前仅 74 条，属于待同步文件，Apifox 应优先导入运行时 `/api/v1/openapi.json`。字段级 DTO 与权限细节仍需分批核验。  
+> 核对日期：2026-11-09；业务代码基线：main@8e310b5a8491f31dd91b5461160fd6dfc1f22e06  
+> 状态：Swagger/OpenAPI 3.1 已实施；仓库静态快照为 102 paths / 104 operations（79 verified / 25 partial）；运行时规范以 /api/v1/openapi.json 为准。字段级 DTO 与权限细节仍需分批核验。  
 > 重要：本文描述当前代码可见的接口，不代表所有接口均已完成业务验收。
 
 ## 1. 结论：当前是否已有 API 文档
@@ -13,7 +13,7 @@
 
 - 本地地址：`http://127.0.0.1:8000/api/v1/openapi.json`
 - 作用：向 Apifox 等工具提供 OpenAPI 文档导入源。
-- 当前运行时 OpenAPI 规范覆盖 97 个 JSON API 路径（以当前 main 的运行时生成结果为准）；仓库静态文件 `docs/接口文档/openapi.json` 只有 74 个 paths，不能当作完整导入源，需在具备运行环境时重新生成并加入 CI 漂移检查。
+- 当前仓库静态 OpenAPI 快照包含 102 个 paths、104 个 operations（79 verified / 25 partial）。仍须在测试环境请求运行时 /api/v1/openapi.json，比较生成结果与静态快照并执行契约差异检查。
 - 覆盖路径不等于字段级契约全部完成：请求/响应 DTO、字段约束、权限码、物业范围、错误码和示例仍需按 operation 的 `x-contract-status` 逐项核验。
 - HTML 页面流程（如登录、强制改密）不应伪装为 JSON API；Apifox 导入后仍需在隔离测试环境验证 Cookie、CSRF 和真实业务副作用。
 
@@ -53,8 +53,8 @@
 |---|---|---|
 | `GET /availability` | 查询房型库存和价格 | 日期、间数等参数；匿名公开 |
 | `POST /reservations` | 创建预订 | JSON；支持幂等键路径 |
-| `GET /reservations/{booking_no}` | 查询预订详情 | 当前使用 Booking Access Token（X-Booking-Token 请求头或 token 查询参数） |
-| `POST /reservations/{booking_no}/cancel` | 取消待支付预订 | 请求体使用 Booking Access Token，不使用手机号作为凭据 |
+| `GET /reservations/{booking_no}` | 查询预订详情 | 当前只接受 Booking Access Token 请求头 X-Booking-Token；禁止 token 查询参数 |
+| `POST /reservations/{booking_no}/cancel` | 取消待支付预订 | 订单查询令牌仅允许 X-Booking-Token 请求头，不使用手机号或 URL query 作为凭据 |
 | `POST /payments/intents` | 创建支付意图 | 当前为本地模拟支付路径，必须确认环境门禁 |
 | `POST /payments/callback` | 模拟支付回调 | 仅允许 dev/test，不可用于真实支付 |
 
@@ -749,3 +749,13 @@ OpenAPI operation 扩展字段 `x-contract-status=implemented-route-field-contra
 ### 4. 历史记录与数据库约束
 
 新冲销凭证必须关联 `LedgerEntry.approval_record`，数据库约束 `ck_ledger_reversal_approval_link` 强制执行。迁移前无法证明审批关联的历史冲销以 `legacy_workflow=true` 标记，只读保留，不伪造审批记录。
+
+
+## 8. 2026-11-09 测试与契约状态补充
+
+- 最新 CI：SQLite 887 项 OK；MySQL 8.0.46 887 项 OK；运行链接见《PMS2最新代码单元测试与白盒全链路审查报告_2026-11-09.md》。
+- 当前 OpenAPI 快照 102 paths / 104 operations；79 verified、25 partial。导入 Apifox 不是执行验收；partial 接口必须补认证、权限、成功/错误响应、幂等、审计和数据库副作用核对。
+- Booking Access Token 的订单查询仅使用 X-Booking-Token 请求头；禁止放入 URL query、浏览器历史、Referer、日志和埋点。
+- 前台押金端点允许 PENDING 预订收取押金；成功后库存确认、订单自动转 CONFIRMED。对应服务 receive_manual_deposit → BillingService.record_deposit。
+- 前台人工收款端点同样允许 PENDING 订单；成功收款后执行库存确认和订单自动确认。
+- 当前 36 项 HTTP 串测脚本存在导入缺失和断言问题，未进入 CI；不能用提交标题替代真实运行报告。
