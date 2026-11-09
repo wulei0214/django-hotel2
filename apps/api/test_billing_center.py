@@ -1453,8 +1453,12 @@ class RefundLiabilityIntegrityRegressionTests(BillingCenterTestBase):
             method="CARD", amount=Decimal("20.00"), currency="CNY",
             status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
         from django.core.exceptions import ValidationError
+        # M2M manager uses atomic(savepoint=False); isolate the expected signal
+        # exception in an outer savepoint so TestCase's transaction remains usable.
+        from django.db import transaction
         with self.assertRaisesRegex(ValidationError, "同一物业、预订、账单和币种"):
-            liability.source_payments.add(foreign_payment)
+            with transaction.atomic():
+                liability.source_payments.add(foreign_payment)
         self.assertFalse(
             liability.source_payments.filter(pk=foreign_payment.pk).exists())
 
