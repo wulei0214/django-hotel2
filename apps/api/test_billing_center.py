@@ -947,8 +947,9 @@ class BillingRefundThreePartyApiTests(BillingCenterTestBase):
 
         self.assertTrue(created)
         self.assertEqual(liability.remaining_amount, Decimal("50.00"))
-        self.assertQuerySetEqual(
-            liability.source_payments.order_by("pk"), [payment], transform=lambda x: x)
+        self.assertEqual(
+            list(liability.source_payments.order_by("pk").values_list("pk", flat=True)),
+            [payment.pk])
 
     def test_refund_api_requires_three_distinct_people_and_posts_once(self):
         reservation, _folio = self._booking_with_outstanding()
