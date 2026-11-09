@@ -1496,7 +1496,6 @@ class RefundLiabilityIntegrityRegressionTests(BillingCenterTestBase):
 
     def test_duplicate_liability_refund_application_is_idempotent_and_cannot_overreserve(self):
         _reservation, _folio, payment, liability = self._liability_with_payment("DUP-REQUEST")
-        approver = self._make_staff("rfl_dup_approver", "财务")
         first, created = BillingService.request_refund(
             property_obj=self.property, payment_id=payment.pk,
             amount=Decimal("30.00"), reason="待退款负债重复申请幂等",
