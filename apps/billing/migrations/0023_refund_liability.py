@@ -62,12 +62,12 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name="refundliability",
-            constraint=models.CheckConstraint(check=Q(amount__gt=0), name="ck_refund_liability_amount_positive")),
+            constraint=models.CheckConstraint(check=Q(amount__gt=0), name="ck_rfl_amt_pos")),
         migrations.AddConstraint(
             model_name="refundliability",
             constraint=models.CheckConstraint(
                 check=Q(remaining_amount__gte=0) & Q(remaining_amount__lte=F("amount")),
-                name="ck_refund_liability_remaining_range")),
+                name="ck_rfl_rem_rng")),
         migrations.AddConstraint(
             model_name="refundliability",
             constraint=models.CheckConstraint(
@@ -75,5 +75,5 @@ class Migration(migrations.Migration):
                        | Q(status="PARTIALLY_SETTLED", remaining_amount__gt=0,
                            remaining_amount__lt=F("amount"), settled_at__isnull=True)
                        | Q(status="SETTLED", remaining_amount=0, settled_at__isnull=False)),
-                name="ck_refund_liability_status_balance")),
+                name="ck_rfl_status")),
     ]
