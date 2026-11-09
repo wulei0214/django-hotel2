@@ -104,38 +104,55 @@ def process_mock_payment_callback(*, provider_ref, amount, status):
         return {"duplicate": False, "payment": payment, "reservation": reservation}
 
     now = timezone.now()
-    if reservation.status != Reservation.Status.PENDING:
-        raise PaymentConflict("预订状态已变化，不能确认支付。")
-    if reservation.expires_at and reservation.expires_at <= now:
-        release_inventory_hold(reservation)
-        reservation.status = Reservation.Status.EXPIRED
-        reservation.save(update_fields=("status", "updated_at"))
-        payment.status = Payment.Status.FAILED
-        payment.save(update_fields=("status", "updated_at"))
-        return {"duplicate": False, "expired": True, "payment": payment, "reservation": reservation}
 
-    try:
-        confirm_inventory_for_reservation(reservation)
-    except InventoryUnavailable as exc:
-        raise PaymentConflict(str(exc)) from exc
-
-    reservation.status = Reservation.Status.CONFIRMED
-    reservation.save(update_fields=("status", "updated_at"))
+    # 外部渠道已确认 SUCCESS 后，Payment 是不可逆的资金事实。
+    # 即使订单已过期/取消，也不得把成功支付改写为 FAILED。
     payment.status = Payment.Status.SUCCEEDED
     payment.paid_at = now
     payment.save(update_fields=("status", "paid_at", "updated_at"))
 
-    LedgerEntry.objects.create(
-        property=payment.property,
+    expired = bool(reservation.expires_at and reservation.expires_at <= now)
+    reservation_confirmed = False
+    compensation_required = False
+
+    if reservation.status == Reservation.Status.PENDING:
+        try:
+            # 过期边界先尝试使用仍有效的 Hold 完成确认；若 Hold 已释放，
+            # 不得抢占其他订单库存，保留成功支付事实并标记待补偿。
+            confirm_inventory_for_reservation(reservation)
+            reservation.status = Reservation.Status.CONFIRMED
+            reservation.save(update_fields=("status", "updated_at"))
+            reservation_confirmed = True
+        except InventoryUnavailable:
+            if not expired:
+                raise PaymentConflict("支付成功但库存 Hold 已失效，需进入支付补偿处理。")
+            reservation.status = Reservation.Status.EXPIRED
+            reservation.save(update_fields=("status", "updated_at"))
+            compensation_required = True
+    else:
+        # 取消/过期等终态订单不再恢复库存，成功支付进入补偿处理。
+        compensation_required = True
+
+    from apps.billing.services_v2 import BillingService
+    BillingService.post_entry(
+        property_obj=payment.property,
         folio=payment.folio,
         entry_type=LedgerEntry.EntryType.PAYMENT,
         amount=-payment.amount,
         currency=payment.currency,
-        business_date=timezone.localdate(),
+        business_date=BillingService._business_date(payment.property),
         reference=f"payment:{payment.provider_ref}",
-        description="本地模拟支付成功",
+        description="渠道支付成功回调入账",
+        posted_by=None,
     )
-    return {"duplicate": False, "payment": payment, "reservation": reservation}
+    return {
+        "duplicate": False,
+        "expired": expired,
+        "compensation_required": compensation_required,
+        "reservation_confirmed": reservation_confirmed,
+        "payment": payment,
+        "reservation": reservation,
+    }
 
 
 
