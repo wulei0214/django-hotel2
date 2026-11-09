@@ -1024,3 +1024,17 @@ Guest 重复档案的业务合并政策仍按第 8 节执行，不允许用“�
 ### 21.3 浏览器端到端验证
 
 /reserve/ 页面全流程：创建订单（CSRF+token 返回）→ 错 token 查询 404（guest.booking_access_denied 落审计）→ 页面取消按钮 token 取消成功（guest.booking_cancelled 落审计）。AuditEvent 数据库取证确认。
+
+
+---
+
+## 2026-11-09 最新 main 实施与测试状态补充
+
+> 本文件继续作为身份认证、员工账号和住客公共访问的正式规则基线；本节仅更新代码/测试现状，不改变原有账号政策。
+
+- 最新业务代码核对基线：main@8e310b5a8491f31dd91b5461160fd6dfc1f22e06。
+- 九角色测试账号由 seed_role_test_accounts 命令准备；每个账号独立 User、StaffProfile、PropertyStaffMembership、StaffRoleAssignment，不通过 User.groups 直接授权。
+- 当前五个 ACTIVE 角色为前台、值班经理、财务、店长、客房服务员；夜审员、餐饮服务员、餐饮主管、停车安保四个角色为 PLANNED 空组、0 权限。四个 PLANNED 角色不得被临时扩权以满足业务测试。
+- 初始化命令使用 getpass 隐藏输入和 Django 密码校验器；密码不写入仓库、日志或文档。
+- 最新 SQLite 与 MySQL 8.0.46 CI 各 887 项通过；但九角色真实口令登录、真实浏览器 E2E 和 G14 独立验收仍待完成。
+- 全链路脚本 scripts/e2e_full_chain.py 的白盒缺陷和安全限制见《PMS2最新代码单元测试与白盒全链路审查报告_2026-11-09.md》。
