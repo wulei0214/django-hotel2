@@ -7,7 +7,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from apps.inventory.services import InventoryUnavailable, confirm_inventory_for_reservation, release_inventory_hold
+from apps.inventory.services import InventoryUnavailable, confirm_inventory_for_reservation
 from apps.reservations.models import Reservation
 from .models import LedgerEntry, Payment
 
@@ -124,10 +124,11 @@ def process_mock_payment_callback(*, provider_ref, amount, status):
             reservation.save(update_fields=("status", "updated_at"))
             reservation_confirmed = True
         except InventoryUnavailable:
-            if not expired:
-                raise PaymentConflict("支付成功但库存 Hold 已失效，需进入支付补偿处理。")
-            reservation.status = Reservation.Status.EXPIRED
-            reservation.save(update_fields=("status", "updated_at"))
+            if expired:
+                reservation.status = Reservation.Status.EXPIRED
+                reservation.save(update_fields=("status", "updated_at"))
+            # 未过期但 Hold 已丢失同样不能回滚渠道 SUCCESS；
+            # 保留订单原状态并标记补偿，避免伪造支付失败。
             compensation_required = True
     else:
         # 取消/过期等终态订单不再恢复库存，成功支付进入补偿处理。
