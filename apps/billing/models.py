@@ -823,6 +823,7 @@ class RefundLiability(models.Model):
         if self.pk:
             previous = type(self).objects.filter(pk=self.pk).values(
                 "property_id", "reservation_id", "folio_id", "amount",
+                "remaining_amount", "status", "settled_at",
                 "currency", "idempotency_key", "created_by_id").first()
             if previous:
                 immutable = ("property_id", "reservation_id", "folio_id",

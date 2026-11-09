@@ -59,7 +59,7 @@ class ApprovalRegistryCatalogTests(TestCase):
         self.assertEqual(
             reopen.approve_permission, "hotelapp.business_date_reopen")
         self.assertEqual(
-            set(refund.payload_fields), {"payment_id", "amount", "currency"})
+            set(refund.payload_fields), {"payment_id", "amount", "currency", "refund_liability_id"})
 
     def test_sensitive_key_and_value_detectors(self):
         for key in ("password", "api_key", "id_card", "支付密钥", "idCard"):
