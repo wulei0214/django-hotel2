@@ -112,8 +112,8 @@ class Migration(migrations.Migration):
             model_name='paymentintent',
             constraint=models.CheckConstraint(check=models.Q(('amount__gt', 0)), name='ck_pi_amt_pos'),
         ),
-        migrations.AddConstraint(
+        migrations.AddIndex(
             model_name='paymentintent',
-            constraint=models.Index(fields=['property', 'reservation', 'status'], name='idx_pi_prop_resv_status'),
+            index=models.Index(fields=['property', 'reservation', 'status'], name='idx_pi_prop_resv_status'),
         ),
     ]
