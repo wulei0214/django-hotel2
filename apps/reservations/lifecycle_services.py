@@ -73,7 +73,8 @@ def extend_stay(*, property_obj, stay_id, new_check_out, reason, extended_by=Non
     )
     if reservation.status != Reservation.Status.CHECKED_IN:
         raise LifecycleOperationError("只有部分或全部已办理入住的预订可以续住。")
-    _folio_for_update(property_obj, reservation)
+    # WB-084：接管主账单锁定实例，续住房费凭证挂该 folio（同事务）。
+    folio = _folio_for_update(property_obj, reservation)
     old_check_out = line.check_out
     if new_check_out == old_check_out:
         return stay, line, Decimal("0.00")
@@ -81,6 +82,16 @@ def extend_stay(*, property_obj, stay_id, new_check_out, reason, extended_by=Non
         raise LifecycleOperationError("新的离店日期不能早于当前离店日期。")
     if old_check_out < _property_today(property_obj):
         raise LifecycleOperationError("原离店日期已过，不能直接续住，请先走异常入住处理。")
+    # WB-085：冲突检查前先对当前物理房行 select_for_update()。锁序与
+    # assign_room 对齐（预订明细 → 预订 → 房间，见
+    # front_desk_services.assign_room；check_out_stay 亦为
+    # stay→明细→预订→账单→房间同序），防止续住与排房/退房并发时
+    # 对同一 Room 行形成 ABBA 死锁窗口。
+    current_room = Room.objects.select_for_update().filter(
+        pk=stay.room_id, property=property_obj
+    ).first()
+    if current_room is None:
+        raise LifecycleOperationError("当前入住房间不存在或不属于当前酒店。")
     room_conflict = ReservationRoom.objects.filter(
         property=property_obj,
         assigned_room_id=stay.room_id,
@@ -170,6 +181,30 @@ def extend_stay(*, property_obj, stay_id, new_check_out, reason, extended_by=Non
     reservation.check_out = max(item[0] for item in line_summaries)
     reservation.total_amount = sum((item[1] for item in line_summaries), Decimal("0.00"))
     reservation.save(update_fields=("check_out", "total_amount", "updated_at"))
+
+    # WB-084：续住房费同事务生成应收凭证，挂当前主账单。每新增一晚一张
+    # ROOM_CHARGE 凭证（合计=extension_amount），reference 内嵌 stay 与
+    # 新晚日期，全局唯一；幂等由 post_entry 的 reference 唯一约束保证，
+    # 同目标日重放在上方 no-op 早退，不会重复入账。退房侧
+    # check_out_stay 归集 stay-extension:* 凭证，避免重复计费。
+    from apps.billing.models import LedgerEntry
+    from apps.billing.services_v2 import BillingService
+    for item in rates:
+        if Decimal(str(item.price)) <= 0:
+            # 0 元晚不产生应收（post_entry 拒绝零金额凭证）
+            continue
+        try:
+            BillingService.post_entry(
+                property_obj=property_obj, folio=folio, stay=stay,
+                entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+                amount=item.price, currency=folio.currency,
+                business_date=_property_today(property_obj),
+                reference=f"stay-extension:{stay.pk}:{item.stay_date.isoformat()}",
+                description=f"续住房费（{item.stay_date.isoformat()}）",
+                posted_by=extended_by)
+        except ValueError as exc:
+            # 营业日关账守卫等账务校验失败统一转为生命周期业务冲突
+            raise LifecycleOperationError(str(exc)) from exc
 
     AuditEvent.record(
         action="frontdesk.stay_extended", entity_type="Stay",

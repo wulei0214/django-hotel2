@@ -976,3 +976,173 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         self.assertEqual(replay_amount, Decimal("0.00"))
         self.assertEqual(line.amount, Decimal("1250.00"))
         self.assertEqual(inventory.sold, 1)
+
+    def test_extension_posts_room_charge_and_replay_does_not_duplicate(self):
+        """WB-084：续住同事务生成应收凭证；同目标日重放不重复记账。"""
+        first_extension = self.tomorrow
+        second_extension = self.tomorrow + timedelta(days=1)
+        DailyRate.objects.create(
+            property=self.property, rate_plan=self.rate_plan,
+            room_type=self.room_type, stay_date=first_extension,
+            price=Decimal("650.00"),
+        )
+        DailyRate.objects.create(
+            property=self.property, rate_plan=self.rate_plan,
+            room_type=self.room_type, stay_date=second_extension,
+            price=Decimal("700.00"),
+        )
+        RoomTypeInventory.objects.create(
+            property=self.property, room_type=self.room_type,
+            stay_date=first_extension, total_rooms=2,
+        )
+        RoomTypeInventory.objects.create(
+            property=self.property, room_type=self.room_type,
+            stay_date=second_extension, total_rooms=2,
+        )
+        assign_room(
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            room_id=self.room.pk, assigned_by=self.operator,
+        )
+        stay, _ = check_in_stay(
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            checked_in_by=self.operator,
+        )
+
+        _, line, extension_amount = extend_stay(
+            property_obj=self.property, stay_id=stay.pk,
+            new_check_out=first_extension + timedelta(days=1),
+            reason="客人申请延住一晚", extended_by=self.operator,
+        )
+        self.assertEqual(extension_amount, Decimal("650.00"))
+        entry = LedgerEntry.objects.get(
+            reference=f"stay-extension:{stay.pk}:{first_extension.isoformat()}")
+        self.assertEqual(entry.entry_type, LedgerEntry.EntryType.ROOM_CHARGE)
+        self.assertEqual(entry.amount, Decimal("650.00"))
+        self.assertEqual(entry.currency, "CNY")
+        self.assertEqual(entry.folio_id, self.folio.pk)
+        self.assertEqual(entry.stay_id, stay.pk)
+        self.assertEqual(entry.posted_by_id, self.operator.pk)
+        # 续住后 folio 应收余额增加 extension_amount
+        self.assertEqual(
+            sum(self.folio.entries.values_list("amount", flat=True),
+                Decimal("0.00")),
+            Decimal("650.00"),
+        )
+
+        # 重复提交同一目标日：no-op，不重复记账
+        _, line, replay_amount = extend_stay(
+            property_obj=self.property, stay_id=stay.pk,
+            new_check_out=first_extension + timedelta(days=1),
+            reason="重复提交续住", extended_by=self.operator,
+        )
+        self.assertEqual(replay_amount, Decimal("0.00"))
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference__startswith=f"stay-extension:{stay.pk}:").count(),
+            1,
+        )
+        self.assertEqual(
+            sum(self.folio.entries.values_list("amount", flat=True),
+                Decimal("0.00")),
+            Decimal("650.00"),
+        )
+
+        # 再续一晚：新增一晚一张凭证，应收余额按晚累计
+        _, line, second_amount = extend_stay(
+            property_obj=self.property, stay_id=stay.pk,
+            new_check_out=second_extension + timedelta(days=1),
+            reason="客人再延住一晚", extended_by=self.operator,
+        )
+        self.assertEqual(second_amount, Decimal("700.00"))
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference__startswith=f"stay-extension:{stay.pk}:").count(),
+            2,
+        )
+        self.assertEqual(
+            sum(self.folio.entries.values_list("amount", flat=True),
+                Decimal("0.00")),
+            Decimal("1350.00"),
+        )
+        self.assertEqual(line.amount, Decimal("1950.00"))
+
+    def test_early_checkout_releases_sold_inventory_for_unused_nights(self):
+        """WB-086：5 晚预订第 3 日提前退房——已住 2 晚 sold 保持，
+        实际离店日（含）至原 check_out（不含）的 3 晚 sold 归还。"""
+        check_in = self.today - timedelta(days=2)
+        check_out = self.today + timedelta(days=3)
+        nightly = [
+            {"date": (check_in + timedelta(days=offset)).isoformat(),
+             "price": "300.00", "currency": "CNY"}
+            for offset in range(5)
+        ]
+        reservation = Reservation.objects.create(
+            property=self.property, booking_no="RSTAY-EARLY-DEP-001",
+            guest=self.guest, status=Reservation.Status.CONFIRMED,
+            check_in=check_in, check_out=check_out, room_count=1,
+            adult_count=1, child_count=0,
+            total_amount=Decimal("1500.00"), currency="CNY",
+        )
+        line = ReservationRoom.objects.create(
+            property=self.property, reservation=reservation,
+            room_type=self.room_type, rate_plan=self.rate_plan,
+            check_in=check_in, check_out=check_out,
+            nightly_rates=nightly, amount=Decimal("1500.00"),
+        )
+        Folio.objects.create(
+            property=self.property, reservation=reservation,
+            guest=self.guest, currency="CNY",
+        )
+        stocks = {}
+        for offset in range(5):
+            day = check_in + timedelta(days=offset)
+            stocks[day] = RoomTypeInventory.objects.create(
+                property=self.property, room_type=self.room_type,
+                stay_date=day, total_rooms=3, sold=1,
+            )
+        assign_room(
+            property_obj=self.property, reservation_room_id=line.pk,
+            room_id=self.room.pk, assigned_by=self.operator,
+        )
+        stay, _ = check_in_stay(
+            property_obj=self.property, reservation_room_id=line.pk,
+            checked_in_by=self.operator,
+        )
+        collect_manual_payment(
+            property_obj=self.property, booking_no=reservation.booking_no,
+            amount="1500.00", method="CASH",
+            idempotency_key="early-dep-payment-001",
+            received_by=self.operator,
+        )
+
+        checked_out, changed = check_out_stay(
+            property_obj=self.property, stay_id=stay.pk,
+            checked_out_by=self.operator,
+        )
+        self.assertTrue(changed)
+        self.assertEqual(checked_out.status, Stay.Status.CHECKED_OUT)
+
+        for offset in range(5):
+            day = check_in + timedelta(days=offset)
+            stocks[day].refresh_from_db()
+            if day < self.today:
+                self.assertEqual(
+                    stocks[day].sold, 1, f"{day.isoformat()} 已住晚 sold 应保持")
+                self.assertEqual(stocks[day].version, 0)
+            else:
+                self.assertEqual(
+                    stocks[day].sold, 0, f"{day.isoformat()} 未住晚 sold 应归还")
+                self.assertEqual(stocks[day].version, 1)
+
+        event = AuditEvent.objects.filter(
+            action="frontdesk.checked_out", entity_id=str(stay.pk)).first()
+        self.assertIsNotNone(event)
+        self.assertEqual(
+            event.after_json["early_departure_released_nights"], 3)
+        self.assertEqual(
+            event.after_json["early_departure_release_from"],
+            self.today.isoformat())
+        self.assertEqual(
+            event.after_json["early_departure_release_to_exclusive"],
+            check_out.isoformat())
+        self.assertIn("提前离店", event.reason)

@@ -1,15 +1,28 @@
 import json
 from datetime import date, timedelta
 from decimal import Decimal
+from io import StringIO
 
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from apps.billing.models import LedgerEntry, Payment
+from apps.billing.models import (
+    LedgerEntry,
+    Payment,
+    PaymentCompensationTask,
+    PaymentIntent,
+    ProviderTransaction,
+)
+from apps.billing.payment_intents import (
+    create_compensation_task,
+    replay_dead_letter_task,
+)
 from apps.billing.services import create_mock_payment_intent, sign_mock_callback
 from apps.core.models import Property
 from apps.inventory.models import DailyRate, RatePlan, RoomType, RoomTypeInventory
+from apps.inventory.services import release_inventory_hold
 from apps.reservations.models import Reservation
 from apps.reservations.services import create_reservation
 
@@ -19,7 +32,9 @@ from apps.reservations.services import create_reservation
     DJANGO_ENV="test",
     PAYMENT_WEBHOOK_SECRET="unit-test-webhook-secret",
 )
-class MockPaymentTests(TestCase):
+class MockPaymentFixtureMixin(TestCase):
+    """Mock 支付链路公共夹具：库存日历 + 预订 + 本地支付单 + 签名回调助手。"""
+
     def setUp(self):
         # 日期动态取今天，避免硬编码日期随时间过期（入住校验要求不早于今天）
         self.today = date.today()
@@ -59,29 +74,18 @@ class MockPaymentTests(TestCase):
             "adults": 2,
             "children": 0,
         }
-        self.reservation, _, _tk = create_reservation(
+        self.reservation, _, self.access_token = create_reservation(
             property_obj=self.property,
             payload=payload,
             idempotency_key="payment-test-reservation",
         )
         self.payment = create_mock_payment_intent(self.reservation)
 
-    def test_inventory_confirmation_is_idempotent_after_reservation_confirmed(self):
-        from apps.inventory.services import confirm_inventory_for_reservation
-
-        self.assertTrue(confirm_inventory_for_reservation(self.reservation))
-        Reservation.objects.filter(pk=self.reservation.pk).update(
-            status=Reservation.Status.CONFIRMED)
-        self.assertFalse(confirm_inventory_for_reservation(self.reservation))
-        self.assertEqual(
-            list(RoomTypeInventory.objects.order_by("stay_date").values_list("held", "sold")),
-            [(0, 1), (0, 1)],
-        )
-
-    def _callback(self):
+    def _callback(self, payment=None):
+        payment = payment or self.payment
         payload = {
-            "provider_ref": self.payment.provider_ref,
-            "amount": str(self.payment.amount),
+            "provider_ref": payment.provider_ref,
+            "amount": str(payment.amount),
             "status": "SUCCESS",
         }
         raw = json.dumps(
@@ -93,6 +97,22 @@ class MockPaymentTests(TestCase):
             data=raw,
             content_type="application/json",
             HTTP_X_SIGNATURE=signature,
+        )
+
+
+class MockPaymentTests(MockPaymentFixtureMixin):
+    """渠道回调契约回归：既有断言保持不变，另补 WB-087/088 用例。"""
+
+    def test_inventory_confirmation_is_idempotent_after_reservation_confirmed(self):
+        from apps.inventory.services import confirm_inventory_for_reservation
+
+        self.assertTrue(confirm_inventory_for_reservation(self.reservation))
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            status=Reservation.Status.CONFIRMED)
+        self.assertFalse(confirm_inventory_for_reservation(self.reservation))
+        self.assertEqual(
+            list(RoomTypeInventory.objects.order_by("stay_date").values_list("held", "sold")),
+            [(0, 1), (0, 1)],
         )
 
     def test_signed_success_callback_confirms_reservation_and_posts_once(self):
@@ -219,6 +239,147 @@ class MockPaymentTests(TestCase):
         self.assertTrue(replay.json()["duplicate"])
         self.assertTrue(replay.json()["compensation_required"])
         self.assertFalse(replay.json()["reservation_confirmed"])
+
+    def _create_public_reservation(self, idempotency_key):
+        """再下一单公开预订（消耗库存第 2 个单位），返回 (reservation, token)。"""
+        reservation, _, token = create_reservation(
+            property_obj=self.property,
+            payload={
+                "full_name": "公开支付测试住客",
+                "phone": "13800000002",
+                "room_type_id": self.room_type.pk,
+                "rate_plan_id": self.rate_plan.pk,
+                "check_in": self.today,
+                "check_out": self.today + timedelta(days=2),
+                "rooms": 1,
+                "adults": 2,
+                "children": 0,
+            },
+            idempotency_key=idempotency_key,
+        )
+        return reservation, token
+
+    def test_late_success_creates_persistent_compensation_task_idempotently(self):
+        """WB-087：迟到成功除审计外，还须同事务落持久化补偿任务，重放不重复。"""
+        from apps.core.models import AuditEvent
+
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            expires_at=timezone.now() - timedelta(minutes=1)
+        )
+        release_inventory_hold(self.reservation)
+        response = self._callback()
+        self.assertEqual(response.status_code, 200)
+        # 既有审计与响应契约保持不变
+        self.assertTrue(response.json()["compensation_required"])
+        self.assertTrue(AuditEvent.objects.filter(
+            action="billing.payment_late_success_requires_reconciliation",
+            entity_type="Payment",
+            entity_id=str(self.payment.pk),
+        ).exists())
+        # 同事务持久化补偿任务：HOLD_COORDINATION，聚合到本笔 Payment
+        task = PaymentCompensationTask.objects.get(
+            idempotency_key=f"late-success:payment:{self.payment.pk}")
+        self.assertEqual(
+            task.task_type, PaymentCompensationTask.TaskType.HOLD_COORDINATION)
+        self.assertEqual(task.aggregate_type, "Payment")
+        self.assertEqual(task.aggregate_id, self.payment.pk)
+        self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
+        self.assertEqual(
+            task.last_error_code, "LATE_SUCCESS_REQUIRES_RECONCILIATION")
+        self.assertIn("迟到成功需库存/预订协调", task.last_error_summary)
+        # 渠道重放回调：不得重复建任务
+        replay = self._callback()
+        self.assertEqual(replay.status_code, 200)
+        self.assertTrue(replay.json()["duplicate"])
+        self.assertEqual(PaymentCompensationTask.objects.filter(
+            idempotency_key=f"late-success:payment:{self.payment.pk}").count(), 1)
+
+    @override_settings(DEFAULT_PROPERTY_CODE="PAY")
+    def test_public_intent_endpoint_creates_intent_and_channel_facts(self):
+        """WB-088：公开支付入口同事务产生 PaymentIntent，回调推进状态机。"""
+        reservation, token = self._create_public_reservation("wb088-endpoint-resv")
+        response = self.client.post(
+            "/api/v1/payments/intents",
+            data=json.dumps({"booking_no": reservation.booking_no, "token": token}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+        # 旧响应契约字段不变
+        self.assertEqual(body["provider"], "mock")
+        self.assertEqual(body["status"], Payment.Status.PENDING)
+        self.assertEqual(body["amount"], str(reservation.total_amount))
+        self.assertEqual(body["currency"], reservation.currency)
+        payment = Payment.objects.get(provider_ref=body["provider_ref"])
+        intent = PaymentIntent.objects.get(idempotency_key=body["provider_ref"])
+        # 意图与 Payment 的物业/预订/账单/金额/币种完全一致（WB-072 前提）
+        self.assertEqual(intent.reservation_id, reservation.pk)
+        self.assertEqual(intent.folio_id, payment.folio_id)
+        self.assertEqual(intent.amount, payment.amount)
+        self.assertEqual(intent.currency, payment.currency)
+        self.assertEqual(intent.provider_code, "mock")
+        self.assertEqual(intent.status, PaymentIntent.Status.PENDING)
+        self.assertIsNone(intent.confirmed_payment_id)
+        # 渠道回调：同一事务记录渠道事实并把意图推进到 SUCCEEDED
+        callback = self._callback(payment)
+        self.assertEqual(callback.status_code, 200)
+        self.assertTrue(callback.json()["reservation_confirmed"])
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, PaymentIntent.Status.SUCCEEDED)
+        self.assertEqual(intent.confirmed_payment_id, payment.pk)
+        provider_txn = ProviderTransaction.objects.get(
+            provider_code="mock", provider_transaction_id=payment.provider_ref)
+        self.assertEqual(provider_txn.channel_status, "SUCCESS")
+        self.assertTrue(provider_txn.signature_verified)
+        self.assertEqual(provider_txn.intent_id, intent.pk)
+        self.assertEqual(
+            provider_txn.event_id, f"mock-callback:{payment.provider_ref}")
+
+    @override_settings(DEFAULT_PROPERTY_CODE="PAY")
+    def test_public_intent_endpoint_replay_is_idempotent(self):
+        """WB-088：重复 POST 返回同一笔支付单，不重复创建意图。"""
+        payload = json.dumps(
+            {"booking_no": self.reservation.booking_no,
+             "token": self.access_token})
+        first = self.client.post(
+            "/api/v1/payments/intents", data=payload,
+            content_type="application/json")
+        second = self.client.post(
+            "/api/v1/payments/intents", data=payload,
+            content_type="application/json")
+        self.assertEqual(first.status_code, 201, first.content)
+        self.assertEqual(second.status_code, 201, second.content)
+        self.assertEqual(
+            second.json()["provider_ref"], first.json()["provider_ref"])
+        self.assertEqual(Payment.objects.count(), 1)
+        self.assertEqual(PaymentIntent.objects.count(), 1)
+
+    @override_settings(DEFAULT_PROPERTY_CODE="PAY")
+    def test_public_intent_endpoint_honors_request_idempotency_key(self):
+        """WB-088：带请求幂等键时意图幂等键取请求值，重放复用同一意图。"""
+        reservation, token = self._create_public_reservation("wb088-header-resv")
+        payload = json.dumps({"booking_no": reservation.booking_no, "token": token})
+        first = self.client.post(
+            "/api/v1/payments/intents", data=payload,
+            content_type="application/json", HTTP_IDEMPOTENCY_KEY="wb088-key-1")
+        self.assertEqual(first.status_code, 201, first.content)
+        intent = PaymentIntent.objects.get(idempotency_key="wb088-key-1")
+        self.assertEqual(intent.reservation_id, reservation.pk)
+        self.assertEqual(intent.provider_code, "mock")
+        second = self.client.post(
+            "/api/v1/payments/intents", data=payload,
+            content_type="application/json", HTTP_IDEMPOTENCY_KEY="wb088-key-1")
+        self.assertEqual(second.status_code, 201, second.content)
+        self.assertEqual(
+            second.json()["provider_ref"], first.json()["provider_ref"])
+        self.assertEqual(
+            PaymentIntent.objects.filter(idempotency_key="wb088-key-1").count(), 1)
+        # 请求幂等键创建的意图同样会在回调时被推进
+        callback = self._callback(
+            Payment.objects.get(provider_ref=first.json()["provider_ref"]))
+        self.assertEqual(callback.status_code, 200)
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, PaymentIntent.Status.SUCCEEDED)
 
     def test_mock_callback_is_not_available_in_production(self):
         with override_settings(DEBUG=False, DJANGO_ENV="prod"):
@@ -449,3 +610,89 @@ class BillingServiceManualCollectionTests(TestCase):
             entry_type=LedgerEntry.EntryType.PAYMENT).count(), 1)
         self.assertEqual(LedgerEntry.objects.get(
             property=self.property, folio=self.folio).amount, Decimal("-300.00"))
+
+
+class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
+    """WB-070/078：补偿 Worker 的租约消费、退避与死信重放路径。"""
+
+    def _run_worker(self):
+        out = StringIO()
+        call_command("payment_compensation_worker", "--once", stdout=out)
+        return out.getvalue()
+
+    def test_worker_consumes_due_hold_task_and_completes_it(self):
+        """空转安静；到期 HOLD_COORDINATION 任务被租约消费并成功收尾。"""
+        # 空转：无到期任务时保持安静
+        self.assertEqual(self._run_worker(), "")
+        task, created = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.HOLD_COORDINATION,
+            aggregate_type="Payment",
+            aggregate_id=self.payment.pk,
+            idempotency_key="worker-hold-coordination-ok",
+        )
+        self.assertTrue(created)
+        output = self._run_worker()
+        self.assertIn("扫描 1", output)
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.SUCCEEDED)
+        self.assertIsNotNone(task.completed_at)
+        self.assertEqual(task.attempt_count, 1)
+        self.assertTrue(task.lease_owner.startswith("worker:"))
+        # 已成功任务不再被扫描（继续空转安静）
+        self.assertEqual(self._run_worker(), "")
+
+    def test_worker_backs_off_when_inventory_hold_cannot_confirm(self):
+        """迟到成功补偿任务在 Hold 失效时执行失败：退避计数增加、不再立即重试。"""
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            expires_at=timezone.now() - timedelta(minutes=1)
+        )
+        release_inventory_hold(self.reservation)
+        response = self._callback()
+        self.assertTrue(response.json()["compensation_required"])
+        task = PaymentCompensationTask.objects.get(
+            idempotency_key=f"late-success:payment:{self.payment.pk}")
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
+        self.assertEqual(task.attempt_count, 1)
+        self.assertEqual(
+            task.last_error_code, "INVENTORY_CONFIRM_UNAVAILABLE")
+        self.assertIsNotNone(task.next_attempt_at)
+        self.assertGreater(task.next_attempt_at, timezone.now())
+        # 退避期内不得被再次抢占执行
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.attempt_count, 1)
+
+    def test_dead_letter_task_can_be_replayed_manually(self):
+        """超过尝试上限转死信；replay_dead_letter_task 重放后可再次消费。"""
+        task, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.CHANNEL_QUERY,
+            aggregate_type="Payment",
+            aggregate_id=self.payment.pk,
+            idempotency_key="worker-dead-letter-replay",
+            max_attempts=2,
+        )
+        # 第 1 次执行：类型暂无自动执行器 → 失败退避
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
+        self.assertEqual(task.attempt_count, 1)
+        self.assertEqual(task.last_error_code, "UNSUPPORTED_TASK_TYPE")
+        # 人为把退避时间拨回，模拟到期后的第 2 次执行 → 达到上限转死信
+        task.next_attempt_at = timezone.now() - timedelta(seconds=1)
+        task.save(update_fields=("next_attempt_at",))
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.DEAD_LETTER)
+        self.assertIsNotNone(task.completed_at)
+        # 人工重放：回到 PENDING、清零尝试，可再次被 worker 租约消费
+        replayed = replay_dead_letter_task(
+            task.pk, operator=None, reason="人工核查渠道后重放")
+        self.assertEqual(replayed.status, PaymentCompensationTask.Status.PENDING)
+        self.assertEqual(replayed.attempt_count, 0)
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
+        self.assertEqual(task.attempt_count, 1)
+        self.assertEqual(task.last_error_code, "UNSUPPORTED_TASK_TYPE")

@@ -21,7 +21,9 @@ from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+import unittest
+
+from django.db import IntegrityError, transaction, connection
 from django.db.models import QuerySet
 from django.db.models import Model as DjangoModel
 from django.test import TestCase
@@ -730,6 +732,151 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
                 reference=f"refund:{first.provider_ref}").count(), 1)
         self.assertFalse(LedgerEntry.objects.filter(
             reference=f"refund:{second.provider_ref}").exists())
+
+
+class RefundExecutionReferenceUniquenessTests(WhiteboxBillingBase):
+    """WB-091-旧：非现金退款渠道执行参考号物业内唯一。
+
+    同一笔渠道退款凭据（如银行回单号）不得登记到两笔退款事实；
+    现金退款无渠道参考号（execution_reference 为空）不受约束。
+    """
+
+    def _make_card_payment(self, booking_no, amount="100.00"):
+        reservation = self._make_reservation(booking_no, total="300.00")
+        return Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref=booking_no + "-PAY",
+            method="CARD", amount=Decimal(amount), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+
+    def _approve_first_refund(self, payment):
+        """审批人账号在两笔退款间复用（审批人只需 ≠ 申请人/执行人）。"""
+        return User.objects.create_user(username="wbb-rfref-approver")
+
+    def test_same_execution_reference_on_second_refund_rejected(self):
+        """同物业两笔不同退款用同一 BANK-123：第二笔被拒（中文报错）。"""
+        payment = self._make_card_payment("WBBRFRREF01")
+        approver = self._approve_first_refund(payment)
+        executor = User.objects.create_user(username="wbb-rfref-executor")
+
+        first, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="40.00", reason="第一笔退款",
+            requested_by=self.operator, idempotency_key="wbb-rfref-r1")
+        self.assertTrue(created)
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=first.pk,
+            approved_by=approver)
+        executed, _ = BillingService.execute_refund(
+            property_obj=self.property, refund_id=first.pk,
+            executed_by=executor, confirm_refund_paid=True,
+            execution_reference="BANK-123",
+            idempotency_key="wbb-rfref-exec-1")
+        self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
+
+        second, created = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="30.00", reason="第二笔退款",
+            requested_by=self.operator, idempotency_key="wbb-rfref-r2")
+        self.assertTrue(created)
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=second.pk,
+            approved_by=approver)
+        with self.assertRaises(ValueError) as ctx:
+            BillingService.execute_refund(
+                property_obj=self.property, refund_id=second.pk,
+                executed_by=executor, confirm_refund_paid=True,
+                execution_reference="BANK-123",
+                idempotency_key="wbb-rfref-exec-2")
+        self.assertIn("参考号", str(ctx.exception))
+        second.refresh_from_db()
+        self.assertEqual(second.status, Refund.Status.APPROVED,
+                         "被拒后退款停留在已批准状态，无部分执行")
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{second.provider_ref}").exists())
+
+        # 换用未占用的参考号即可正常执行
+        executed2, created2 = BillingService.execute_refund(
+            property_obj=self.property, refund_id=second.pk,
+            executed_by=executor, confirm_refund_paid=True,
+            execution_reference="BANK-124",
+            idempotency_key="wbb-rfref-exec-2")
+        self.assertTrue(created2)
+        self.assertEqual(executed2.execution_reference, "BANK-124")
+
+    @unittest.skipUnless(
+        connection.features.supports_partial_indexes,
+        "部分唯一索引（condition UniqueConstraint）MySQL 8 后端不生效"
+        "（P0-06 §13.4 已知限制，MySQL 需生成列+唯一索引方案）；"
+        "统一标记 expectedFailure 会让 SQLite 出现 unexpected success，故按数据库能力区分。"
+        "服务层查重（test_same_execution_reference_on_second_refund_rejected）双库必跑。")
+    def test_execution_reference_uniqueness_is_database_enforced(self):
+        """绕过服务层直写也要被数据库部分唯一约束拦截。"""
+        payment = self._make_card_payment("WBBRFRREF02")
+        approver = self._approve_first_refund(payment)
+        executor = User.objects.create_user(username="wbb-rfref-executor-2")
+        first, _ = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="40.00", reason="第一笔退款（DB 约束）",
+            requested_by=self.operator, idempotency_key="wbb-rfref-db-r1")
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=first.pk,
+            approved_by=approver)
+        BillingService.execute_refund(
+            property_obj=self.property, refund_id=first.pk,
+            executed_by=executor, confirm_refund_paid=True,
+            execution_reference="BANK-DB-001",
+            idempotency_key="wbb-rfref-db-exec-1")
+        second, _ = BillingService.request_refund(
+            property_obj=self.property, payment_id=payment.pk,
+            amount="30.00", reason="第二笔退款（DB 约束）",
+            requested_by=self.operator, idempotency_key="wbb-rfref-db-r2")
+        BillingService.approve_refund(
+            property_obj=self.property, refund_id=second.pk,
+            approved_by=approver)
+        # 构造满足所有 CHECK 约束的"已执行"行，仅复用渠道参考号——
+        # 让 IntegrityError 只能来自 uq_refund_property_execution_reference。
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                QuerySet.update(
+                    Refund.objects.filter(pk=second.pk),
+                    status=Refund.Status.SUCCEEDED,
+                    executed_by=executor.pk,
+                    executed_at=timezone.now(),
+                    processed_at=timezone.now(),
+                    execution_idempotency_key="wbb-rfref-db-bypass-exec-2",
+                    execution_reference="BANK-DB-001")
+
+    def test_empty_execution_reference_cash_refunds_not_constrained(self):
+        """现金退款 execution_reference 为空，多笔并存不受唯一约束影响。"""
+        reservation = self._make_reservation("WBBRFRREF03", total="300.00")
+        payment = Payment.objects.create(
+            property=self.property, reservation=reservation, folio=self.folio,
+            provider="frontdesk_manual", provider_ref="WBBRFRREF03-PAY",
+            method="CASH", amount=Decimal("100.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        approver = User.objects.create_user(username="wbb-rfref-approver-3")
+        executor = User.objects.create_user(username="wbb-rfref-executor-3")
+        # 现金退款必须由执行人本人 OPEN 班次执行；备用金覆盖两笔退款合计。
+        BillingService.open_shift(
+            property_obj=self.property, cashier=executor,
+            opening_cash=Decimal("100.00"))
+        for index, amount in enumerate(("20.00", "30.00"), start=1):
+            refund, created = BillingService.request_refund(
+                property_obj=self.property, payment_id=payment.pk,
+                amount=amount, reason=f"现金退款第 {index} 笔",
+                requested_by=self.operator,
+                idempotency_key=f"wbb-rfref-cash-r{index}")
+            self.assertTrue(created)
+            BillingService.approve_refund(
+                property_obj=self.property, refund_id=refund.pk,
+                approved_by=approver)
+            executed, executed_created = BillingService.execute_refund(
+                property_obj=self.property, refund_id=refund.pk,
+                executed_by=executor, confirm_refund_paid=True,
+                idempotency_key=f"wbb-rfref-cash-exec-{index}")
+            self.assertTrue(executed_created)
+            self.assertEqual(executed.execution_reference, "")
 
 
 class CashShiftReconciliationTests(WhiteboxBillingBase):

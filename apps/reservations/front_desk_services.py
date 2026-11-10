@@ -63,6 +63,44 @@ def _check_room_assignment_conflict(line, room):
         raise FrontDeskOperationError("该房间在预订住宿日期内已有其他有效预订占用。")
 
 
+def _release_sold_inventory_for_early_departure(line, *, from_date):
+    """WB-086：提前离店按明细行释放 [from_date, line.check_out) 的已售库存。
+
+    与 No-Show 的 release_sold_inventory_for_room_line 相比口径差异（退房
+    语义不同，不能直接复用其 fail-closed 实现）：
+      * No-Show 是预订未履行，库存日历不完整/已售不足必须整体失败；
+        退房是既成事实（客人已在住），日历缺行或该晚 sold=0 的 legacy
+        数据按 ≥0 保护保守跳过，不阻断退房；
+      * 历史已住晚数（stay_date < from_date）保持 sold 不变；
+      * 行锁逐行递减 sold、version+1，与 no-show/夜审库存写路径同序。
+    返回实际释放的晚数。
+    """
+    from apps.inventory.models import RoomTypeInventory
+    from apps.inventory.services import stay_dates
+    if line.check_out <= from_date:
+        return 0
+    dates = list(stay_dates(from_date, line.check_out))
+    rows = {
+        row.stay_date: row
+        for row in RoomTypeInventory.objects.select_for_update().filter(
+            property=line.property,
+            room_type_id=line.room_type_id,
+            stay_date__in=dates,
+        ).order_by("stay_date")
+    }
+    released = 0
+    for stay_date in dates:
+        row = rows.get(stay_date)
+        if row is None or row.sold < 1:
+            # 日历缺行或无已售计数：≥0 保护，跳过且不 bump version
+            continue
+        row.sold -= 1
+        row.version = (row.version or 0) + 1
+        row.save(update_fields=("sold", "version", "updated_at"))
+        released += 1
+    return released
+
+
 @transaction.atomic
 def assign_room(*, property_obj, reservation_room_id, room_id, assigned_by=None):
     """将已确认预订的一间房分配到同物业、同房型且可售的物理客房。"""
@@ -321,9 +359,20 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
     if folio is None or folio.status != Folio.Status.OPEN:
         raise FrontDeskOperationError("账单不存在或已关闭，不能办理退房。")
 
+    # WB-075：逐晚房价快照缺失时拒绝自动结算退房房费（与夜审
+    # NIGHTLY_RATE_MISSING critical 阻断同口径——没有价格依据不得入账）。
+    # 注意语义边界：本守卫只拦截"缺数据"；有快照时 NONE 政策=合同全额
+    # （calculate_early_departure 基线语义）不受影响。
+    if not (line.nightly_rates or []):
+        raise FrontDeskOperationError(
+            "缺少逐晚房价快照，无法自动结算退房房费；"
+            "请先补录快照或走异常放行流程")
+
     # 退房房费按净额入账（用户全链路串测发现双记风险）：夜审已按晚过账
     # 的部分（night-audit:*:stay:{pk} 凭证）不得在退房时以整单金额重复入账。
     # 归集口径=本入住单（多房预订共用一本 Folio，不能把兄弟房间的房费算进来）。
+    # WB-084：续住凭证（stay-extension:{stay.pk}:{日期}）同属本间已入账
+    # 房费，一并归集，避免退房时对续住晚重复计费。
     # 待补房费 = 本间合同房费 − 本间已入账房费；为 0 则不再生成凭证。
     charge_reference = f"stay-room-charge:{stay.pk}"
     posted_for_stay = (
@@ -336,6 +385,12 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
         folio.entries.filter(
             entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
             reference__endswith=f":stay:{stay.pk}",
+        ).aggregate(total=Sum("amount"))["total"]
+        or Decimal("0.00")
+    ) + (
+        folio.entries.filter(
+            entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+            reference__startswith=f"stay-extension:{stay.pk}:",
         ).aggregate(total=Sum("amount"))["total"]
         or Decimal("0.00")
     )
@@ -430,6 +485,13 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
                 raise FrontDeskOperationError(
                     f"{exc} 如需让客人先离店，请发起异常放行申请并由值班经理审批。") from exc
 
+    # WB-086：提前离店同事务释放剩余住宿日已售库存。实际离店日（含，=物业
+    # 时区当日）至 line.check_out（不含）的每个 stay_date 行锁递减 sold；
+    # 历史已住晚数保持 sold 不变。
+    release_from = max(line.check_in, _property_today(property_obj))
+    released_nights = _release_sold_inventory_for_early_departure(
+        line, from_date=release_from)
+
     now = timezone.now()
     StayRoomSegment.objects.filter(stay=stay, ended_at__isnull=True).update(
         ended_at=now, active_stay_key=None)
@@ -486,10 +548,25 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
         stay.pk,
         room.number,
     )
+    # WB-086：审计 reason 说明提前离店库存释放区间（含起点、不含终点）。
+    checkout_reason = "前台办理退房"
+    checkout_after = {
+        "booking_no": reservation.booking_no, "room": room.number,
+        "status": stay.status,
+    }
+    if released_nights:
+        checkout_after.update({
+            "early_departure_released_nights": released_nights,
+            "early_departure_release_from": release_from.isoformat(),
+            "early_departure_release_to_exclusive": line.check_out.isoformat(),
+        })
+        checkout_reason = (
+            f"前台办理退房（提前离店，释放 {release_from.isoformat()} 至 "
+            f"{line.check_out.isoformat()}（不含）区间已售库存 "
+            f"{released_nights} 晚）")
     AuditEvent.record(
         action="frontdesk.checked_out", entity_type="Stay",
         entity_id=str(stay.pk), actor=checked_out_by, property_obj=property_obj,
-        after={"booking_no": reservation.booking_no, "room": room.number,
-               "status": stay.status},
-        reason="前台办理退房")
+        after=checkout_after,
+        reason=checkout_reason)
     return stay, True

@@ -314,6 +314,30 @@ class BillingService:
             if not BillingService._entry_facts_match(existing, **facts):
                 raise ValueError("账本凭证号已用于不同账务事实，拒绝覆盖。")
             return existing, False
+        # WB-079：营业日关账守卫。目标 (property, business_date) 的 BusinessDate
+        # 存在且状态为 CLOSED 时，禁止新增账务凭证；补记/冲账必须走
+        # 营业日重开审批（ApprovalService / Break-glass）授权流程。
+        # 守卫放在幂等重放判定之后：同事实重放不产生任何新写入，不属于
+        # "新增凭证"，保持强幂等契约（关账后重试不误报）。
+        # 夜审 run() 的过租凭证写入发生在同一事务内 bd 置 CLOSED 之前
+        # （见 night_audit.run 注释），因此本守卫不阻断合法夜审链路。
+        # 豁免（合法链路）：渠道支付回调（posted_by=None 且 PAYMENT）代表
+        # 外部资金事实的实时到达——回调可能在夜审关账后才到达（深夜支付），
+        # "Payment 是不可逆的资金事实"不可拒绝也不可延迟；其真实经济时点
+        # 由 Payment.paid_at 保留。员工发起的入账（posted_by 非空）一律拦截。
+        from apps.core.models import BusinessDate
+        is_channel_payment_fact = (
+            entry_type == LedgerEntry.EntryType.PAYMENT
+            and posted_by is None)
+        if not is_channel_payment_fact:
+            closed_day = BusinessDate.objects.filter(
+                property=property_obj, business_date=business_date,
+                status=BusinessDate.Status.CLOSED,
+            ).only("pk").first()
+            if closed_day is not None:
+                raise ValueError(
+                    f"营业日 {business_date.isoformat()} 已关账，禁止新增账务凭证；"
+                    "补记/冲账须走授权流程。")
         if entry_type == LedgerEntry.EntryType.REVERSAL:
             reason = str(void_reason or "").strip()
             if void_of is None or not reason:
@@ -966,6 +990,16 @@ class BillingService:
             raise ValueError("该退款已经执行，不能使用其他幂等键重复执行。")
         if refund.status != Refund.Status.APPROVED:
             raise ValueError("只有已审批退款可以执行。")
+        # WB-091-旧：非现金退款的渠道执行参考号在物业内唯一（数据库约束
+        # uq_refund_property_execution_reference 兜底）；重复参考号说明同一
+        # 笔渠道退款凭据被登记到两笔退款事实，必须明确拒绝而不是静默通过。
+        # 幂等重放（同一退款同一 key）已在上方提前返回，不会走到这里。
+        if execution_reference and Refund.objects.filter(
+                property=property_obj,
+                execution_reference=execution_reference,
+        ).exclude(pk=refund.pk).exists():
+            raise ValueError(
+                "该退款执行参考号已被本物业其他退款使用，禁止重复登记。")
         if not refund.approved_by_id:
             raise ValueError("退款缺少审批人，禁止执行。")
         BillingService._validate_refund_approval_link(

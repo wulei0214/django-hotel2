@@ -43,15 +43,23 @@ def _release_blocked_amount(folio):
 
 
 def _sync_liability_status(liability, now):
-    """按 DEC-02-A1 语义同步负债状态（SETTLED/OPEN/PARTIALLY_SETTLED）。"""
+    """按 DEC-02-A1 语义同步负债状态（SETTLED/OPEN/PARTIALLY_SETTLED）。
+
+    WB-093：模型校验（ck_rfl_status 与 save 一致性检查）要求 OPEN/
+    PARTIALLY_SETTLED 必须没有 settled_at；余额经批准回增重新 >0 时
+    必须清空结清时间，否则保存被拒。原结清时间不丢失——由调用方
+    （execute_adjustment）在审计 after.prior_settled_at 中保留。
+    """
     if liability.remaining_amount == 0:
         liability.status = RefundLiability.Status.SETTLED
         if liability.settled_at is None:
             liability.settled_at = now
     elif liability.remaining_amount != liability.amount:
         liability.status = RefundLiability.Status.PARTIALLY_SETTLED
+        liability.settled_at = None
     else:
         liability.status = RefundLiability.Status.OPEN
+        liability.settled_at = None
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +194,9 @@ def execute_adjustment(*, property_obj, adjustment_id, executed_by):
             pk=adjustment.refund_liability_id)
 
     now = timezone.now()
+    # WB-093：原结清时间在余额被批准回增重新打开时会被清空（模型校验要求
+    # OPEN/PARTIALLY_SETTLED 无 settled_at）；结清事实经审计 after 保留。
+    prior_settled_at = liability.settled_at if liability is not None else None
     ledger_entry = None
     increase = False
     if adjustment.adjustment_type == BillingAdjustment.AdjustmentType.CHARGE_ADD:
@@ -203,7 +214,18 @@ def execute_adjustment(*, property_obj, adjustment_id, executed_by):
         _sync_liability_status(liability, now)
         liability.save(update_fields=("remaining_amount", "status",
                                       "settled_at"))
-    elif adjustment.adjustment_type == BillingAdjustment.AdjustmentType.CHARGE_REVERSE:
+    elif adjustment.adjustment_type in (
+            BillingAdjustment.AdjustmentType.CHARGE_REVERSE,
+            BillingAdjustment.AdjustmentType.REFUND_INCREASE):
+        # WB-091：回增（费用冲销/新增应退）与抵扣同构——执行即生成独立
+        # 负向调整凭证（语义=补偿/增加应退），reference=adjustment:{幂等键}，
+        # 并回填 adjustment.ledger_entry；否则负债净额与账本脱钩，对账
+        # 无法重建（FIN-P0/WB-092）。sanctioned_increase 受控通道与
+        # remaining_amount 递增语义保持不变。
+        if (adjustment.adjustment_type
+                == BillingAdjustment.AdjustmentType.REFUND_INCREASE
+                and liability is None):
+            raise ValueError("增加应退调整必须关联待退款负债。")
         ledger_entry, _ = _post_adjustment_entry(
             property_obj=property_obj, folio=adjustment.folio,
             adjustment=adjustment, amount=-adjustment.amount,
@@ -215,15 +237,6 @@ def execute_adjustment(*, property_obj, adjustment_id, executed_by):
             liability.save(update_fields=("remaining_amount", "status",
                                           "settled_at"),
                            sanctioned_increase=increase)
-    else:  # REFUND_INCREASE：新增应退款事项，无独立账本凭证
-        if liability is None:
-            raise ValueError("增加应退调整必须关联待退款负债。")
-        liability.remaining_amount += adjustment.amount
-        increase = True
-        _sync_liability_status(liability, now)
-        liability.save(update_fields=("remaining_amount", "status",
-                                      "settled_at"),
-                       sanctioned_increase=increase)
 
     adjustment.status = BillingAdjustment.Status.EXECUTED
     adjustment.executed_by = executed_by
@@ -238,7 +251,9 @@ def execute_adjustment(*, property_obj, adjustment_id, executed_by):
                "amount": str(adjustment.amount),
                "ledger_entry_id": ledger_entry.pk if ledger_entry else None,
                "liability_remaining": (
-                   str(liability.remaining_amount) if liability else None)},
+                   str(liability.remaining_amount) if liability else None),
+               "prior_settled_at": (
+                   prior_settled_at.isoformat() if prior_settled_at else None)},
         reason="执行账务调整（DEC-02-A1）")
     return adjustment
 

@@ -41,6 +41,14 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
   - **WB-049~051 异常放行金额绑定**：申请金额必须>0 且≤当前负余额（杜绝超额放行）；审批审计绑定放行金额+审批时点余额快照；放行消费不覆盖已批金额（受阻金额超过已批额维持阻断）；财务转负债按核查时点实际负余额建账，超过已批额拒绝。
   - **WB-022~026 库存对账口径修正**：扫描窗口按物业时区取日；sold 重算按明细行计数（多房预订不再按 distinct 预订低估）；排除已未到明细行；判定口径修正——held/sold 不一致必报（运算符优先级 bug）、total_rooms 按容量语义判超卖（不再与占用和做相等比较）。
   - 回归证据：`docs/acceptance/evidence/test-mysql-wb-batch2.log`。
+- 【2026-11-11】白盒整改第三批（审查方第 14~22 轮 WB-067~096，5 路并行子代理修复，测试 960→1020 项）：
+  - **支付意图域加固**：WB-067 补偿任务完成强制校验租约所有权+有效期（空值不再绕过）；WB-069/071 create_intent 幂等指纹补齐 currency/purpose/provider_code 且币种必须与 Folio/预订一致；WB-072 confirm_intent_success 校验 Payment 完整归属（物业/预订/账单/金额/币种/状态/未被占用）；WB-073 库存确认失败同事务创建 HOLD_COORDINATION 补偿任务；WB-076/089 渠道事件首次写入校验渠道/金额/币种/验签；WB-077/090 过期服务校验窗口到期。
+  - **补偿 Worker 与公开支付接入**：WB-070/078 新增 `payment_compensation_worker` 管理命令（租约领取→分派→完成→退避→死信重放）；WB-087 迟到成功同事务创建持久化补偿任务；WB-088 公开支付意图/回调同事务接入 PaymentIntent+ProviderTransaction（响应契约零改动）。
+  - **夜审与账本写入守卫**：WB-079 post_entry 拒写已关账营业日（渠道资金事实豁免，posted_by=None 且 PAYMENT）；WB-080 夜审仅限当前营业日，拒绝未来/历史/任意日期；WB-081 stay_count 按过租窗口同口径；WB-082 already_posted 升级为内容一致校验（folio/stay/金额/币种/营业日不符→critical 阻断）；WB-083 LedgerEntry 实例级 save() 只追加守卫。
+  - **续住与退房闭环**：WB-074 walk-in 占位号按幂等键确定性派生（uuid5）+ 房间查询物业隔离 + 幂等重放短路；WB-075 缺逐晚房价快照禁止自动结算（与夜审 critical 同口径，NONE=合同全额基线不动）；WB-084 续住同事务逐晚过账房费凭证（退房归集口径补第三项防双记）；WB-085 续住锁物理房间行（锁序与排房一致）；WB-086 提前退房释放未住晚 sold 库存（历史已住晚保留）。
+  - **财务凭证/对账/班次**：WB-091 REFUND_INCREASE 补独立调整凭证（不再只有负债变更无凭证）；WB-093 负债回增清空 settled_at（审计保留原结清时间）；WB-092/096 对账补齐——原始收款凭证覆盖退款中/部分退/全退状态、已关闭 Folio 余额重建、负债净额重建、调整缺凭证检测（新差异类型 ADJUSTMENT_NO_ENTRY）；WB-091-旧 执行参考号物业内唯一（服务层查重双库生效+DB 部分唯一索引）；WB-092-旧 班次现金支出模型层余额校验；WB-095 移除不可达 RECONCILED 状态。
+  - **双 CI 漂移修复**：rehire 条件约束与退款参考号 DB 约束测试改 `skipUnless(supports_partial_indexes)`（SQLite 必跑、MySQL 按能力跳过，替代统一 expectedFailure 造成 SQLite unexpected success 假失败）。
+  - 迁移：billing.0027（班次状态 choices/对账差异类型/退款参考号部分唯一约束）。回归证据：`docs/acceptance/evidence/test-mysql-wb-batch3.log`。
 
 **注意：** 两条 CI 没有执行 scripts/e2e_full_chain.py。在脚本修复并于隔离 MySQL 数据库重新运行前，不得把提交标题中的 36/36 当成已验证结果。
 

@@ -7,6 +7,7 @@ import unittest
 from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.db import connection
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -98,11 +99,13 @@ class DecEmp01RehireTests(TestCase):
             property=self.prop, staff_profile=profile).count(), 2)
 
     @override_settings(DEBUG=True, DJANGO_ENV="test")
-    @unittest.expectedFailure
+    @unittest.skipUnless(
+        connection.features.supports_partial_indexes,
+        "条件唯一约束依赖 partial index：SQLite 支持必跑；MySQL 8 后端不支持，"
+        "需改用生成列+唯一索引方案（P0-06 §13.4）——统一标记 expectedFailure "
+        "会让 SQLite 侧出现 unexpected success 导致 Django CI 假失败，故按数据库能力区分。")
     def test_active_duplicate_blocked(self):
-        """同一时点两条 ACTIVE 任职应被阻止。
-        MySQL backend 不支持 partial unique index（P0-06 §13.4 已知限制），
-        条件唯一约束仅在 SQLite 生效；MySQL 需改用生成列+唯一索引方案。"""
+        """同一时点两条 ACTIVE 任职应被阻止。"""
         profile = self._make_profile("rehire_t2", "FO-9103")
         PropertyStaffMembership.objects.create(
             property=self.prop, staff_profile=profile, employee_no="FO-9103",

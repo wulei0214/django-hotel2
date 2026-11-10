@@ -214,6 +214,61 @@ class Dec02A1AdjustmentTests(Dec02TestBase):
         liability.refresh_from_db()
         # 增加应退可突破原始登记额（约束已放宽为非负）
         self.assertEqual(liability.remaining_amount, Decimal("750.00"))
+        # WB-091：增加应退与冲销同构——执行必须生成独立负向调整凭证
+        # （语义=补偿/增加应退），并回填 adjustment.ledger_entry。
+        entry = LedgerEntry.objects.get(reference="adjustment:dec02-adj-004")
+        self.assertEqual(entry.entry_type, LedgerEntry.EntryType.ADJUSTMENT)
+        self.assertEqual(entry.amount, Decimal("-150.00"))
+        self.assertEqual(entry.folio_id, self.folio.pk)
+        adj.refresh_from_db()
+        self.assertEqual(adj.ledger_entry_id, entry.pk)
+        net = liability_net_snapshot(liability)
+        self.assertEqual(net["net_refundable"], Decimal("750.00"))
+
+    def test_a1_charge_reverse_reopens_settled_liability_and_keeps_prior_settled_at(self):
+        """WB-093：结清负债经批准回增重新打开——settled_at 必须清空，
+        原结清时间通过审计 after.prior_settled_at 保留。"""
+        from apps.billing.services_v2 import BillingService
+        liability = self._checkout_all_and_register_liability()
+        # 先结清：全额退款执行成功
+        refund, created = BillingService.request_refund(
+            property_obj=self.prop, payment_id=self.prepaid.pk,
+            amount="600.00", reason="全额退款结清负债",
+            requested_by=self.front, idempotency_key="dec02-settle-rfd-001",
+            refund_liability_id=liability.pk)
+        self.assertTrue(created)
+        BillingService.approve_refund(
+            property_obj=self.prop, refund_id=refund.pk, approved_by=self.duty)
+        BillingService.execute_refund(
+            property_obj=self.prop, refund_id=refund.pk,
+            executed_by=self.finance, confirm_refund_paid=True,
+            execution_reference="BANK-DEC02-SETTLE-1",
+            idempotency_key="dec02-settle-exec-001")
+        liability.refresh_from_db()
+        self.assertEqual(liability.status, RefundLiability.Status.SETTLED)
+        prior_settled_at = liability.settled_at
+        self.assertIsNotNone(prior_settled_at)
+        # 冲销回增 → 余额重新 >0，负债重新打开
+        adj, _ = request_adjustment(
+            property_obj=self.prop, folio_id=self.folio.pk,
+            adjustment_type=BillingAdjustment.AdjustmentType.CHARGE_REVERSE,
+            amount="80.00", reason="重复计费冲销（重新打开负债）",
+            requested_by=self.finance, idempotency_key="dec02-adj-reopen-001")
+        approve_adjustment(property_obj=self.prop, adjustment_id=adj.pk,
+                           approved_by=self.duty)
+        execute_adjustment(property_obj=self.prop, adjustment_id=adj.pk,
+                           executed_by=self.finance)
+        liability.refresh_from_db()
+        self.assertEqual(liability.remaining_amount, Decimal("80.00"))
+        self.assertEqual(liability.status,
+                         RefundLiability.Status.PARTIALLY_SETTLED)
+        self.assertIsNone(liability.settled_at,
+                          "重新打开的负债不得残留旧结清时间")
+        event = AuditEvent.objects.filter(
+            action="billing.adjustment_executed",
+            entity_id=adj.pk).latest("pk")
+        self.assertEqual(event.after_json["prior_settled_at"],
+                         prior_settled_at.isoformat())
 
     def test_a1_deduction_exceeding_net_rejected(self):
         liability = self._checkout_all_and_register_liability()

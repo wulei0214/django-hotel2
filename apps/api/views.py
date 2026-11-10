@@ -331,7 +331,12 @@ def payment_intent_create(request):
     if not rate_limit.check(request, "public.payment_intent", booking_no=booking_no):
         return _throttle_deny(request, "public.payment_intent")
     try:
-        payment = create_mock_payment_intent(reservation)
+        # WB-088：旧 Payment 创建保留的同时，同事务创建配套 PaymentIntent；
+        # 幂等键取请求 Idempotency-Key，缺省回落渠道流水号 provider_ref。
+        payment = create_mock_payment_intent(
+            reservation,
+            idempotency_key=request.headers.get("Idempotency-Key", ""),
+        )
     except PaymentConflict as exc:
         return JsonResponse({"error": str(exc)}, status=409)
     except ValueError as exc:
@@ -371,7 +376,11 @@ def payment_callback(request):
     if not settings.DEBUG or getattr(settings, "DJANGO_ENV", "dev") not in {"dev", "test"}:
         return JsonResponse({"error": "模拟支付回调仅允许在本地开发和测试环境使用。"}, status=404)
 
-    if not verify_mock_callback(request.body, request.headers.get("X-Signature", "")):
+    # WB-088：HMAC 验签结果即 mock 渠道验签事实，透传给服务层——
+    # 渠道 SUCCESS 事实落 ProviderTransaction 必须带验签标记（WB-076）。
+    signature_verified = verify_mock_callback(
+        request.body, request.headers.get("X-Signature", ""))
+    if not signature_verified:
         return JsonResponse({"error": "模拟支付回调签名验证失败。"}, status=401)
 
     try:
@@ -380,6 +389,7 @@ def payment_callback(request):
             provider_ref=str(body.get("provider_ref") or ""),
             amount=body.get("amount"),
             status=str(body.get("status") or "").upper(),
+            signature_verified=signature_verified,
         )
     except PaymentConflict as exc:
         return JsonResponse({"error": str(exc)}, status=409)

@@ -9,7 +9,13 @@ from django.utils import timezone
 
 from apps.inventory.services import InventoryUnavailable, confirm_inventory_for_reservation
 from apps.reservations.models import Reservation
-from .models import LedgerEntry, Payment
+from .models import LedgerEntry, Payment, PaymentCompensationTask, PaymentIntent
+from .payment_intents import (
+    confirm_intent_success,
+    create_compensation_task,
+    create_intent,
+    record_provider_event,
+)
 
 
 class PaymentConflict(Exception):
@@ -51,7 +57,81 @@ def cancel_open_payment_intents_for_reservation(reservation):
     return cancelled
 
 
-def create_mock_payment_intent(reservation):
+def _ensure_payment_intent_for_payment(payment, *, idempotency_key=""):
+    """WB-088：为 mock Payment 同事务创建/复用配套 PaymentIntent。
+
+    幂等键优先取调用方幂等键（请求 Idempotency-Key），缺省回落渠道流水号
+    provider_ref。意图的物业/预订/账单/金额/币种必须与 Payment 完全一致，
+    以满足 confirm_intent_success 的 WB-072 归属校验。
+    """
+    key = str(idempotency_key or "").strip() or str(payment.provider_ref)
+    intent, _created = create_intent(
+        property_obj=payment.property,
+        reservation=payment.reservation,
+        folio=payment.folio,
+        amount=payment.amount,
+        currency=payment.currency,
+        purpose=PaymentIntent.Purpose.ROOM_FEE,
+        provider_code=payment.provider or "mock",
+        created_by=None,
+        idempotency_key=key,
+    )
+    return intent
+
+
+def _promote_payment_intent_on_channel_success(payment, *, signature_verified):
+    """WB-088：渠道 SUCCESS 回调在同一事务内推进 PaymentIntent 状态机。
+
+    - record_provider_event：把 mock 渠道 SUCCESS 记成渠道交易事实
+      （event_id 幂等，绑定渠道流水号）；
+    - confirm_intent_success：意图 → SUCCEEDED 并绑定 confirmed_payment=
+      本笔收款；其内部会再做库存确认，Hold 已失效时由该服务创建
+      HOLD_COORDINATION 补偿任务（WB-073 路径）。
+    - 未验签的 SUCCESS 不推进（WB-076：成功事实必须验签，正常由视图
+      门禁先行拦截，这里是服务层防御）；意图缺失（历史 Payment/服务
+      直连创建）时跳过，不阻断回调主流程。
+    """
+    from apps.core.models import AuditEvent
+
+    intent = PaymentIntent.objects.filter(
+        reservation_id=payment.reservation_id,
+        folio_id=payment.folio_id,
+        amount=payment.amount,
+        currency=payment.currency,
+        provider_code=payment.provider or "mock",
+        status__in=(PaymentIntent.Status.PENDING, PaymentIntent.Status.PROCESSING),
+    ).order_by("pk").first()
+    if intent is None:
+        return
+    if not signature_verified:
+        AuditEvent.record(
+            action="billing.mock_callback_intent_skipped_unsigned",
+            entity_type="Payment", entity_id=str(payment.pk),
+            property_obj=payment.property,
+            after={"intent_id": intent.pk, "provider_ref": payment.provider_ref},
+            reason="渠道回调未验签，跳过支付意图推进（成功事实必须验签）")
+        return
+    record_provider_event(
+        property_obj=payment.property,
+        intent_id=intent.pk,
+        provider_code=intent.provider_code,
+        provider_transaction_id=payment.provider_ref,
+        amount=payment.amount,
+        currency=payment.currency,
+        channel_status="SUCCESS",
+        event_id=f"mock-callback:{payment.provider_ref}",
+        signature_verified=bool(signature_verified),
+    )
+    confirm_intent_success(
+        property_obj=payment.property,
+        intent_id=intent.pk,
+        provider_transaction_id=payment.provider_ref,
+        confirmed_payment=payment,
+        actor=None,
+    )
+
+
+def create_mock_payment_intent(reservation, idempotency_key=""):
     with transaction.atomic():
         reservation = Reservation.objects.select_for_update().select_related(
             "property"
@@ -72,24 +152,28 @@ def create_mock_payment_intent(reservation):
             .first()
         )
         if pending_payment is not None:
-            return pending_payment
-
-        payment = Payment.objects.create(
-            property=reservation.property,
-            reservation=reservation,
-            folio=reservation.get_master_folio(),
-            provider="mock",
-            provider_ref="MOCK-" + uuid.uuid4().hex.upper(),
-            method="MOCK",
-            amount=reservation.total_amount,
-            currency=reservation.currency,
-            status=Payment.Status.PENDING,
-        )
+            payment = pending_payment
+        else:
+            payment = Payment.objects.create(
+                property=reservation.property,
+                reservation=reservation,
+                folio=reservation.get_master_folio(),
+                provider="mock",
+                provider_ref="MOCK-" + uuid.uuid4().hex.upper(),
+                method="MOCK",
+                amount=reservation.total_amount,
+                currency=reservation.currency,
+                status=Payment.Status.PENDING,
+            )
+        # WB-088：保留旧 Payment 创建的同时，同一事务内创建/复用支付意图，
+        # 使公开支付入口真正产生 PaymentIntent/ProviderTransaction 事实。
+        _ensure_payment_intent_for_payment(payment, idempotency_key=idempotency_key)
         return payment
 
 
 @transaction.atomic
-def process_mock_payment_callback(*, provider_ref, amount, status):
+def process_mock_payment_callback(*, provider_ref, amount, status,
+                                  signature_verified=False):
     try:
         amount = Decimal(str(amount))
     except (InvalidOperation, TypeError, ValueError) as exc:
@@ -206,6 +290,26 @@ def process_mock_payment_callback(*, provider_ref, amount, status):
             },
             reason="渠道已确认支付成功，但原预订已终态或库存 Hold 无法确认；必须人工/自动补偿核对。",
         )
+        # WB-087 修复：迟到成功不能只写审计——必须在同一事务内落一条持久化
+        # 补偿任务，由 payment_compensation_worker 消费做库存/预订协调；
+        # 幂等键绑定 Payment，渠道重放回调不会重复建任务。
+        task, task_created = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.HOLD_COORDINATION,
+            aggregate_type="Payment",
+            aggregate_id=payment.pk,
+            idempotency_key=f"late-success:payment:{payment.pk}",
+        )
+        if task_created:
+            # 模型无独立 payload 字段：触发原因与定位信息写入错误摘要，
+            # 由 worker 按聚合标识（Payment）解析预订后协调库存。
+            task.last_error_code = "LATE_SUCCESS_REQUIRES_RECONCILIATION"
+            task.last_error_summary = (
+                "迟到成功需库存/预订协调：渠道已确认支付成功，但原预订已终态"
+                f"或库存 Hold 无法确认；payment={payment.provider_ref} "
+                f"reservation={reservation.pk} "
+                f"reservation_status={reservation.status}。"
+            )
+            task.save(update_fields=("last_error_code", "last_error_summary"))
 
     from apps.billing.services_v2 import BillingService
     BillingService.post_entry(
@@ -219,6 +323,10 @@ def process_mock_payment_callback(*, provider_ref, amount, status):
         description="渠道支付成功回调入账",
         posted_by=None,
     )
+    # WB-088：渠道成功事实同步推进 PaymentIntent 状态机（同一事务），
+    # 保证公开入口创建的意图与 Payment/渠道交易事实不再脱节。
+    _promote_payment_intent_on_channel_success(
+        payment, signature_verified=signature_verified)
     return {
         "duplicate": False,
         "expired": expired,

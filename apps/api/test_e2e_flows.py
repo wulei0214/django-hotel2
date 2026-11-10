@@ -474,8 +474,9 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         booking_no, _, _, stay_id = self._booking_with_outstanding()
         self.client.force_login(self.fd)
         folio = self._folio(booking_no)
-        # 预付一晚（模拟支付 -300 贷方），续住一晚后应收 300
-        self.assertEqual(self._folio_balance(folio), Decimal("-300.00"))
+        # 预付一晚（模拟支付 -300 贷方）；续住一晚按 WB-084 同事务入账
+        # +300 房费凭证（stay-extension），账单余额归零、应收已凭证化。
+        self.assertEqual(self._folio_balance(folio), Decimal("0.00"))
 
         response = self._collect_payment(booking_no, "300.00", "e2e-pay-001")
         self.assertEqual(response.status_code, 201, response.content)
@@ -499,7 +500,8 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(entry.currency, "CNY")
         self.assertEqual(entry.folio_id, folio.pk)
         folio = self._folio(booking_no)
-        self.assertEqual(self._folio_balance(folio), Decimal("-600.00"))
+        # WB-084 后余额口径：0（预付-300+续住+300）- 300（本次收款）= -300
+        self.assertEqual(self._folio_balance(folio), Decimal("-300.00"))
         self.assertTrue(self._audit_exists(
             "billing.collect", entity_id=payment.pk, property_obj=self.property))
 
@@ -706,7 +708,8 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         payment_obj = Payment.objects.get(pk=payment_id)
         self.assertEqual(payment_obj.status, Payment.Status.PARTIALLY_REFUNDED)
         folio = self._folio(booking_no)
-        self.assertEqual(self._folio_balance(folio), Decimal("-500.00"))
+        # WB-084 后余额口径：-300 预付 +300 续住凭证 -300 收款 +100 退款 = -200
+        self.assertEqual(self._folio_balance(folio), Decimal("-200.00"))
         self.assertTrue(self._audit_exists(
             "approval.approve", entity_id=refund_id, property_obj=self.property))
         self.assertTrue(self._audit_exists(
@@ -806,7 +809,8 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.client.force_login(self.fd)
         self._collect_payment(booking_no, "300.00", "e2e-pay-rev")
         folio = self._folio(booking_no)
-        self.assertEqual(self._folio_balance(folio), Decimal("-600.00"))
+        # WB-084 后余额口径：-300 预付 +300 续住凭证 -300 收款 = -300
+        self.assertEqual(self._folio_balance(folio), Decimal("-300.00"))
         original = LedgerEntry.objects.get(
             reference=f"payment:FD{self.property.pk}-e2e-pay-rev")
         self.client.logout()
@@ -835,7 +839,8 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         original.refresh_from_db()
         self.assertEqual(original.amount, Decimal("-300.00"), "原凭证不可修改")
         folio = self._folio(booking_no)
-        self.assertEqual(self._folio_balance(folio), Decimal("-300.00"))
+        # WB-084 后余额口径：冲销 +300 后 0（-300 预付 +300 续住 -300 收款 +300 冲销）
+        self.assertEqual(self._folio_balance(folio), Decimal("0.00"))
         self.assertTrue(self._audit_exists(
             "billing.reverse_entry", entity_id=original.pk,
             property_obj=self.property))

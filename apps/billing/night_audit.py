@@ -32,16 +32,46 @@ class NightAuditService:
 
     @staticmethod
     def _resolve_date(property_obj, business_date=None):
+        """解析并校验夜审目标营业日（WB-080）。
+
+        只允许与"当前物业唯一 OPEN/REOPENED 营业日"一致的日期：
+          * 已有 OPEN/REOPENED 记录 → 目标日期必须等于该记录的营业日；
+          * 无 OPEN/REOPENED 记录（首夜审/全部已关账）→ 只允许物业当前
+            营业日（此时 run() 才会 get_or_create 建立当日记录）。
+        未来日期、历史日期、无记录日期一律拒绝，不再自动创建 BusinessDate。
+        若未来确有"补审历史营业日"需求，必须先设计独立授权入口（走
+        营业日重开审批）与快照重算机制，当前按需求登记 TODO 不实现。
+        """
         if business_date is None:
-            return property_date(property_obj)
-        if isinstance(business_date, str):
-            try:
-                return date.fromisoformat(business_date)
-            except ValueError as exc:
-                raise NightAuditError("营业日期必须是 YYYY-MM-DD。") from exc
-        if not isinstance(business_date, date):
-            raise NightAuditError("营业日期无效。")
-        return business_date
+            day = property_date(property_obj)
+        else:
+            if isinstance(business_date, str):
+                try:
+                    day = date.fromisoformat(business_date)
+                except ValueError as exc:
+                    raise NightAuditError("营业日期必须是 YYYY-MM-DD。") from exc
+            elif isinstance(business_date, date):
+                day = business_date
+            else:
+                raise NightAuditError("营业日期无效。")
+        current = BusinessDate.objects.filter(
+            property=property_obj,
+            status__in=(BusinessDate.Status.OPEN, BusinessDate.Status.REOPENED),
+        ).order_by("-business_date").first()
+        if current is not None:
+            if day != current.business_date:
+                raise NightAuditError(
+                    f"只允许审计当前营业日：物业当前的 {current.status} 营业日是 "
+                    f"{current.business_date.isoformat()}，日期 "
+                    f"{day.isoformat()} 与其不符，拒绝夜审；"
+                    "补记历史凭证请走营业日重开授权流程。")
+            return day
+        today = property_date(property_obj)
+        if day != today:
+            raise NightAuditError(
+                f"只允许审计当前营业日 {today.isoformat()}；日期 "
+                f"{day.isoformat()} 无对应的 OPEN/REOPENED 营业日记录，拒绝夜审。")
+        return day
 
     @classmethod
     def preview(cls, *, property_obj, business_date=None):
@@ -55,6 +85,9 @@ class NightAuditService:
         rows = []
         blockers = []
         total = Decimal("0.00")
+        # WB-081：stay_count 与过租过滤同口径——只统计房价窗口覆盖目标
+        # 营业日（check_in <= day < check_out）的在住 Stay。
+        stay_count = 0
         for stay in stays:
             line = stay.reservation_room
             booking_no = line.reservation.booking_no
@@ -64,6 +97,7 @@ class NightAuditService:
             # 与下方 no-show 候选查询的 check_in__lte=day / check_out__gt=day 同口径。
             if not (line.check_in <= day < line.check_out):
                 continue
+            stay_count += 1
             nightly = next(
                 (item for item in (line.nightly_rates or [])
                  if str(item.get("date")) == day.isoformat()),
@@ -124,9 +158,58 @@ class NightAuditService:
                 })
                 continue
             reference = f"night-audit:{property_obj.pk}:{day.isoformat()}:stay:{stay.pk}"
-            already_posted = LedgerEntry.objects.filter(
+            # WB-082：already_posted 从"同物业同 reference 存在"升级为内容一致：
+            # 同 folio、stay 关联（reference 内嵌 stay id 即本 stay，由
+            # entry.stay_id == stay.pk 校验兜底）、ROOM_CHARGE、金额等于当晚
+            # 房价、币种、营业日等于目标日。任一不符记为账务冲突 blocker，
+            # 不得按"已过租"跳过。执行阶段 post_entry 的 _entry_facts_match
+            # 失败路径保持不变（同一事实口径兜底并发窗口）。
+            existing_entry = LedgerEntry.objects.filter(
                 property=property_obj, reference=reference
-            ).exists()
+            ).only("folio_id", "stay_id", "entry_type", "amount",
+                   "currency", "business_date").first()
+            already_posted = False
+            if existing_entry is not None:
+                differences = []
+                if existing_entry.folio_id != folio.pk:
+                    differences.append(
+                        f"主账单（账本 folio {existing_entry.folio_id} ≠ "
+                        f"本次 folio {folio.pk}）")
+                if existing_entry.stay_id != stay.pk:
+                    differences.append(
+                        f"关联住客（账本 stay {existing_entry.stay_id} ≠ "
+                        f"本次 stay {stay.pk}）")
+                if existing_entry.entry_type != LedgerEntry.EntryType.ROOM_CHARGE:
+                    differences.append(
+                        f"凭证类型（账本 {existing_entry.entry_type} ≠ "
+                        f"{LedgerEntry.EntryType.ROOM_CHARGE}）")
+                if existing_entry.amount != amount:
+                    differences.append(
+                        f"金额（账本 {existing_entry.amount} ≠ 当晚房价 {amount}）")
+                if existing_entry.currency != line.reservation.currency:
+                    differences.append(
+                        f"币种（账本 {existing_entry.currency} ≠ "
+                        f"{line.reservation.currency}）")
+                if existing_entry.business_date != day:
+                    differences.append(
+                        f"营业日（账本 {existing_entry.business_date.isoformat()} ≠ "
+                        f"目标日 {day.isoformat()}）")
+                if differences:
+                    blockers.append({
+                        "code": "ALREADY_POSTED_CONFLICT",
+                        "severity": "critical",
+                        "entity": {"type": "Stay", "id": stay.pk,
+                                   "booking_no": booking_no},
+                        "message": (
+                            f"预订 {booking_no} 已存在同引用凭证 {reference}，"
+                            f"但账务事实不一致（{'；'.join(differences)}），"
+                            "不得跳过过租，须人工核销错账后重审。"),
+                        "suggested_action": (
+                            "核对账本凭证与房价快照；错账必须走红字冲销"
+                            "（需审批），禁止直接修改或删除凭证。"),
+                    })
+                    continue
+                already_posted = True
             rows.append({
                 "stay_id": stay.pk,
                 "booking_no": booking_no,
@@ -156,7 +239,7 @@ class NightAuditService:
             "business_date": day.isoformat(),
             "business_date_status": bd.status if bd else BusinessDate.Status.OPEN,
             "stays": rows,
-            "stay_count": len(stays),
+            "stay_count": stay_count,
             "charge_count": sum(1 for row in rows if not row["already_posted"]),
             "already_posted_count": sum(1 for row in rows if row["already_posted"]),
             "charge_total": str(total.quantize(Decimal("0.01"))),
@@ -241,6 +324,10 @@ class NightAuditService:
                             f"预订 {row['booking_no']} 没有有效主账单，夜审已整体回滚。"
                         )
                     stay = Stay.objects.get(pk=row["stay_id"], property=property_obj)
+                    # WB-079 顺序不变量：过租凭证写入必须发生在营业日置
+                    # CLOSED 之前（同一事务内，先 post_entry 后关账）——
+                    # post_entry 的营业日关账守卫依赖该顺序，否则会阻断
+                    # 合法夜审链路。关账后本事务内不再有任何账本写入。
                     BillingService.post_entry(
                         property_obj=property_obj, folio=folio, stay=stay,
                         entry_type=LedgerEntry.EntryType.ROOM_CHARGE,

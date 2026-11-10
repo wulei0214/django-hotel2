@@ -8,6 +8,8 @@ WB-002 修复：补齐 assign_room/check_in_stay 导入。
 WB-003 修复：不再单独创建 Guest（create_reservation 内部统一创建）；
            无手机号时使用确定性占位号（基于 idempotency_key 而非 hash()）。
 WB-004/065 修复：calculate_early_departure 按日期顺序取 nightly_rates（不排序金额）。
+WB-074 修复：占位号升级为 uuid5（幂等键派生，同键重放恒定）；房间查询限定
+           当前物业；同幂等键重放不再重复排房/入住（走幂等返回既有 Stay）。
 """
 import uuid
 from decimal import Decimal
@@ -96,8 +98,11 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
     WB-003 修复：不再单独创建 Guest；create_reservation 内部统一创建，
     避免重复住客档案。无手机号时使用确定性占位号。
     """
-    from apps.billing.models import Folio
     from apps.billing.services_v2 import BillingService
+    from apps.inventory.services import (
+        InventoryUnavailable,
+        confirm_inventory_for_reservation,
+    )
     from apps.reservations.front_desk_services import assign_room, check_in_stay
     from apps.reservations.services import create_reservation
 
@@ -107,11 +112,13 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
     if not key or len(key) > 128:
         raise ValueError("Walk-in 必须提供 1 至 128 字符的幂等键。")
 
-    # WB-003 修复：无手机号时使用基于 idempotency_key 的确定性占位号
-    # （不使用 Python hash()，跨进程不稳定）
+    # WB-074 修复：无手机号时占位号由幂等键确定性派生（uuid5，同一物业同一
+    # 幂等键恒得到同一占位号）。占位号进入 create_reservation 的
+    # request_fingerprint，确定性是同键重放能命中幂等路径的前提；
+    # 不使用 hash()/uuid4 等非确定性来源。
     phone_normalized = str(phone or "").strip()
     if not phone_normalized:
-        phone_normalized = f"0000{uuid.uuid4().hex[:8]}"
+        phone_normalized = f"0000{uuid.uuid5(uuid.NAMESPACE_URL, f'walkin:{property_obj.pk}:{key}').hex[:8]}"
 
     # create_reservation 统一创建 Guest + GuestPhone + Reservation + Folio + Hold
     payload = {
@@ -124,14 +131,41 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
     }
     reservation, created, token = create_reservation(
         property_obj=property_obj, payload=payload, idempotency_key=key)
-    reservation.source = Reservation.Source.WALK_IN
-    reservation.save(update_fields=("source", "updated_at"))
+    # Reservation.source 是普通 CharField（无枚举类），WALK_IN 取值见字段 help_text。
+    if reservation.source != "WALK_IN":
+        reservation.source = "WALK_IN"
+        reservation.save(update_fields=("source", "updated_at"))
+
+    if not created:
+        # WB-074 修复：同幂等键重放 → create_reservation 幂等返回既有订单，
+        # 不重复创建 Guest/Reservation/Stay，也不重复排房/入住/收款；
+        # 直接返回首次请求已落库的入住事实（与预订幂等重放同口径，无新增写入）。
+        line = reservation.reservation_rooms.first()
+        stay = Stay.objects.filter(
+            reservation_room=line, property=property_obj).first()
+        if stay is None:
+            raise ValueError(
+                "Walk-in 幂等重放异常：首次请求未完成入住，请联系前台核对。")
+        return {"reservation": reservation, "stay": stay, "room": stay.room,
+                "booking_no": reservation.booking_no}
 
     line = reservation.reservation_rooms.first()
 
-    # 排房 + 入住（同事务）；WB-002 修复：assign_room/check_in_stay 已导入
+    # Walk-in 客人已到店：与前台收款确认同口径——先确认库存（Hold→Sold）
+    # 再迁移 PENDING → CONFIRMED，否则排房/入住会被预订状态门禁拒绝。
+    try:
+        confirm_inventory_for_reservation(reservation)
+    except InventoryUnavailable as exc:
+        raise ValueError(str(exc)) from exc
+    reservation.status = Reservation.Status.CONFIRMED
+    reservation.save(update_fields=("status", "updated_at"))
+
+    # 排房 + 入住（同事务）；WB-002 修复：assign_room/check_in_stay 已导入。
+    # WB-074 修复：房间查询限定当前物业（room_type 已由 create_reservation
+    # 校验属于本物业），杜绝多物业同房型时跨物业占用他店客房。
     from apps.inventory.models import Room
     target_room = Room.objects.filter(
+        property=property_obj,
         room_type_id=room_type_id,
         occupancy_status=Room.OccupancyStatus.VACANT,
         housekeeping_status=Room.HousekeepingStatus.CLEAN,

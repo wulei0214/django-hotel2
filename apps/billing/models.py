@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError
 from decimal import Decimal
 from django.conf import settings
 from django.db import models, transaction
-from django.db.models import F, Q
+from django.db.models import F, Q, Sum
 from django.db.models.signals import m2m_changed
 
 
@@ -340,6 +340,20 @@ class LedgerEntry(models.Model):
     def __str__(self):
         return f"{self.reference}: {self.amount} {self.currency}"
 
+    def save(self, *args, **kwargs):
+        # WB-083：仿 AuditEvent.save() 的只追加模式——账本凭证只允许新建。
+        # 实例已存在（self.pk 且库中已有该行）时拒绝保存，禁止通过
+        # 实例 save() 修改任何账务事实；错账必须走红字冲销
+        # （BillingService.reverse_entry）新增等额反向凭证表达。
+        # 批量旁路（update/bulk_update/bulk_create/delete）由
+        # ImmutableLedgerEntryQuerySet 守卫拦截，两处守卫互补。
+        if self.pk is not None and (
+                not self._state.adding
+                or LedgerEntry.objects.filter(pk=self.pk).exists()):
+            raise ValueError(
+                "账本凭证不可变，禁止修改已存在的账务凭证；错账请创建红字冲销凭证。")
+        super().save(*args, **kwargs)
+
     def delete(self, *args, **kwargs):
         raise RuntimeError("LedgerEntry 不允许物理删除；请创建红字冲销凭证。")
 
@@ -615,6 +629,13 @@ class Refund(models.Model):
                 check=(Q(legacy_workflow=True) | Q(status="SUCCEEDED")
                        | Q(execution_reference="")),
                 name="ck_refund_execution_reference_state"),
+            # WB-091-旧：非现金退款的渠道执行参考号在物业内唯一。现金退款
+            # 不产生渠道参考号（execution_reference 为空，不强制）；同一笔
+            # 渠道退款凭据不得被两笔退款事实重复登记。
+            models.UniqueConstraint(
+                fields=("property", "execution_reference"),
+                condition=~Q(execution_reference=""),
+                name="uq_refund_property_execution_reference"),
         ]
         permissions = (
             ("refund_request", "可以登记退款申请"),
@@ -919,9 +940,11 @@ class CashierShift(models.Model):
     objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
 
     class ShiftStatus(models.TextChoices):
+        # WB-095：RECONCILED 是不可达状态——班次只能从 OPEN 创建并只能
+        # 关账为 CLOSED（save 状态机），关班即完成对账，全代码库无任何
+        # 写入/引用，故删除该未使用状态（迁移 0027 同步 choices）。
         OPEN = "OPEN", "开班中"
         CLOSED = "CLOSED", "已关班"
-        RECONCILED = "RECONCILED", "已对账"
 
     property = models.ForeignKey(
         "core.Property", on_delete=models.PROTECT, related_name="cashier_shifts",
@@ -1070,13 +1093,45 @@ class CashierShiftMovement(models.Model):
     def save(self, *args, **kwargs):
         if self._state.adding:
             shift = CashierShift.objects.filter(pk=self.shift_id).values(
-                "status", "cashier_id").first()
+                "status", "cashier_id", "opening_cash").first()
             if shift is None:
                 raise ValidationError("现金变动必须关联有效收银班次。")
             if shift["status"] != CashierShift.ShiftStatus.OPEN:
                 raise ValidationError("已关班的收银班次不得新增现金变动。")
             if shift["cashier_id"] != self.created_by_id:
                 raise ValidationError("现金变动登记人必须是该班次收银员。")
+            # WB-092-旧：模型层兜底（服务层 record_shift_movement 之外的
+            # 直写路径也必须受控）——OUT 不得超过班次当时可用现金。口径与
+            # BillingService.cash_shift_breakdown 一致：开班备用金 + 现金收入
+            # − 现金退款 + IN 合计 − OUT 合计（不含本条；本条尚未入库）。
+            if self.direction == CashierShiftMovement.Direction.OUT:
+                cash_income = Payment.objects.filter(
+                    cashier_shift_id=self.shift_id, method="CASH",
+                    status__in=(Payment.Status.SUCCEEDED,
+                                Payment.Status.REFUND_PENDING,
+                                Payment.Status.PARTIALLY_REFUNDED,
+                                Payment.Status.REFUNDED),
+                ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+                cash_refunds = Refund.objects.filter(
+                    execution_shift_id=self.shift_id,
+                    payment__method="CASH",
+                    status=Refund.Status.SUCCEEDED,
+                ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+                cash_in = CashierShiftMovement.objects.filter(
+                    shift_id=self.shift_id,
+                    direction=CashierShiftMovement.Direction.IN,
+                ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+                cash_out = CashierShiftMovement.objects.filter(
+                    shift_id=self.shift_id,
+                    direction=CashierShiftMovement.Direction.OUT,
+                ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+                available_cash = (
+                    shift["opening_cash"] + cash_income - cash_refunds
+                    + cash_in - cash_out)
+                if self.amount is not None and self.amount > available_cash:
+                    raise ValidationError(
+                        f"班次现金余额不足：当前应有 {available_cash}，"
+                        f"本次支出 {self.amount}。")
         elif self.pk and type(self).objects.filter(pk=self.pk).exists():
             raise ValidationError("班次现金变动是不可变财务事实，禁止修改。")
         return super().save(*args, **kwargs)
@@ -1517,6 +1572,7 @@ class FolioReconciliationDiff(models.Model):
         ENTRY_NO_PAYMENT = "ENTRY_NO_PAYMENT", "PAYMENT 凭证缺对应 Payment"
         DEPOSIT_NO_ENTRY = "DEPOSIT_NO_ENTRY", "押金 Payment 缺对应 DEPOSIT 凭证"
         REFUND_NO_ENTRY = "REFUND_NO_ENTRY", "退款 Refund 缺对应 REFUND 凭证"
+        ADJUSTMENT_NO_ENTRY = "ADJUSTMENT_NO_ENTRY", "已执行调整缺对应 ADJUSTMENT 凭证"
         BALANCE_MISMATCH = "BALANCE_MISMATCH", "Folio 余额与账本合计不一致"
         LIABILITY_NET_MISMATCH = "LIABILITY_NET_MISMATCH", "负债剩余额与重建净额不一致"
 

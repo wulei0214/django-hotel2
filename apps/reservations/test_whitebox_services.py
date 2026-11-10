@@ -4,8 +4,11 @@
 覆盖 45-whitebox-services.md 登记缺陷的针对性回归：
   * WB-06 check_out_stay 账单选择未限定主账单（可能结错账单）；
   * WB-07 lifecycle._folio_for_update 未限定主账单（续住/换房门禁失真）；
-  * WB-01 前台/生命周期 _money 对超大有限金额抛未捕获 InvalidOperation。
+  * WB-01 前台/生命周期 _money 对超大有限金额抛未捕获 InvalidOperation；
+  * WB-074 Walk-in 占位号确定性/幂等重放/跨物业房间隔离；
+  * WB-075 退房缺少逐晚房价快照时阻断自动结算。
 """
+import uuid
 from datetime import timedelta
 from decimal import Decimal
 from datetime import date
@@ -15,7 +18,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.billing.models import Folio, LedgerEntry
-from apps.core.models import Property
+from apps.core.models import AuditEvent, Property
 from apps.guests.models import Guest
 from apps.inventory.models import DailyRate, RatePlan, Room, RoomType, RoomTypeInventory
 from apps.reservations.front_desk_services import (
@@ -30,6 +33,7 @@ from apps.reservations.lifecycle_services import (
     extend_stay,
 )
 from apps.reservations.models import Reservation, ReservationRoom, Stay
+from apps.reservations.walkin import create_walk_in
 
 
 class FrontDeskFlowBase(TestCase):
@@ -200,3 +204,128 @@ class ExtendStayBoundaryTests(FrontDeskFlowBase):
                 property_obj=self.property, stay_id=stay.pk,
                 new_check_out=line.check_out - timedelta(days=1),
                 reason="白盒提前离店拒绝", extended_by=self.operator)
+
+
+class WalkInDeterminismTests(FrontDeskFlowBase):
+    """WB-074：Walk-in 占位号确定性、幂等重放与跨物业房间隔离。"""
+
+    def _walkin_inventory(self):
+        DailyRate.objects.create(
+            property=self.property, rate_plan=self.rate_plan,
+            room_type=self.room_type, stay_date=self.today,
+            price=Decimal("300.00"))
+        RoomTypeInventory.objects.create(
+            property=self.property, room_type=self.room_type,
+            stay_date=self.today, total_rooms=3)
+
+    def _walk_in(self, key, full_name="白盒散客", phone=""):
+        return create_walk_in(
+            property_obj=self.property, full_name=full_name, phone=phone,
+            room_type_id=self.room_type.pk, rate_plan_id=self.rate_plan.pk,
+            nights=1, created_by=self.operator, idempotency_key=key)
+
+    def test_same_idempotency_key_replays_without_duplicate_records(self):
+        self._walkin_inventory()
+        key = "walkin-wb074-replay-001"
+        first = self._walk_in(key)
+        second = self._walk_in(key)
+
+        self.assertEqual(second["reservation"].pk, first["reservation"].pk)
+        self.assertEqual(second["stay"].pk, first["stay"].pk)
+        self.assertEqual(second["room"].pk, first["room"].pk)
+        self.assertEqual(second["booking_no"], first["booking_no"])
+        # 幂等重放：不重复建 Guest/Reservation/Folio/Stay
+        self.assertEqual(Guest.objects.filter(full_name="白盒散客").count(), 1)
+        self.assertEqual(Reservation.objects.count(), 1)
+        self.assertEqual(Folio.objects.count(), 1)
+        self.assertEqual(Stay.objects.count(), 1)
+        # 占位号确定性：由物业 + 幂等键经 uuid5 派生，两次调用一致
+        expected = "0000" + uuid.uuid5(
+            uuid.NAMESPACE_URL, f"walkin:{self.property.pk}:{key}").hex[:8]
+        guest = first["reservation"].guest
+        self.assertEqual(guest.phone, expected)
+        self.assertEqual(
+            guest.phone_normalized,
+            "".join(char for char in expected if char.isdigit()))
+        # 重放无新增事实：walk_in_created 审计只落一次
+        self.assertEqual(AuditEvent.objects.filter(
+            action="reservation.walk_in_created",
+            entity_id=str(first["reservation"].pk)).count(), 1)
+
+    def test_walkin_room_search_is_scoped_to_current_property(self):
+        # 另一物业存在被错误挂到本物业房型下的净房（数据完整性被破坏时
+        # 的纵深防御场景），房号排序在主物业房间之前：
+        # 未限定 property 的房间查询会跨物业占用他店客房。
+        other = Property.objects.create(code="WBRO", name="白盒他物业酒店")
+        other_room = Room.objects.create(
+            property=other, room_type=self.room_type, number="AAA-0001",
+            floor="1", occupancy_status=Room.OccupancyStatus.VACANT,
+            housekeeping_status=Room.HousekeepingStatus.CLEAN,
+            maintenance_status=Room.MaintenanceStatus.NORMAL)
+        self._walkin_inventory()
+
+        result = self._walk_in("walkin-wb074-prop-001", phone="13900000001")
+
+        self.assertEqual(result["room"].pk, self.room.pk)
+        self.assertEqual(result["room"].property_id, self.property.pk)
+        self.assertEqual(result["stay"].room_id, self.room.pk)
+        other_room.refresh_from_db()
+        self.assertEqual(other_room.occupancy_status,
+                         Room.OccupancyStatus.VACANT)
+        self.assertFalse(Stay.objects.filter(room=other_room).exists())
+
+
+class CheckOutNightlyRatesGuardTests(FrontDeskFlowBase):
+    """WB-075：退房缺少逐晚房价快照时阻断自动结算（缺数据分支）。
+
+    语义边界：NONE 政策=合同全额的基线行为不变；本守卫只拦截
+    nightly_rates 为空的"缺数据"分支（与夜审 NIGHTLY_RATE_MISSING
+    critical 阻断同口径）。
+    """
+
+    def test_checkout_without_nightly_rates_snapshot_is_blocked(self):
+        reservation, line, folio = self._make_confirmed_reservation(
+            "WBRCO0002", amount="300.00")
+        ReservationRoom.objects.filter(pk=line.pk).update(nightly_rates=[])
+        line.refresh_from_db()
+        assign_room(property_obj=self.property, reservation_room_id=line.pk,
+                    room_id=self.room.pk, assigned_by=self.operator)
+        stay, created = check_in_stay(
+            property_obj=self.property, reservation_room_id=line.pk,
+            checked_in_by=self.operator)
+        self.assertTrue(created)
+
+        with self.assertRaises(FrontDeskOperationError) as ctx:
+            check_out_stay(property_obj=self.property, stay_id=stay.pk,
+                           checked_out_by=self.operator)
+        self.assertIn("缺少逐晚房价快照", str(ctx.exception))
+
+        # 阻断不得有部分写入：stay 仍在住、无房费凭证、账单未关闭
+        stay.refresh_from_db()
+        self.assertEqual(stay.status, Stay.Status.IN_HOUSE)
+        self.assertIsNone(stay.actual_check_out)
+        self.assertFalse(LedgerEntry.objects.filter(folio=folio).exists())
+        folio.refresh_from_db()
+        self.assertEqual(folio.status, Folio.Status.OPEN)
+
+    def test_checkout_with_nightly_rates_snapshot_still_settles_full_amount(self):
+        """基线语义回归：有快照 + NONE 政策 → 仍按合同全额结算。"""
+        reservation, line, folio = self._make_confirmed_reservation(
+            "WBRCO0003", amount="300.00")
+        assign_room(property_obj=self.property, reservation_room_id=line.pk,
+                    room_id=self.room.pk, assigned_by=self.operator)
+        stay, _ = check_in_stay(
+            property_obj=self.property, reservation_room_id=line.pk,
+            checked_in_by=self.operator)
+        LedgerEntry.objects.create(
+            property=self.property, folio=folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+            amount=Decimal("-300.00"), currency="CNY",
+            business_date=self.today, reference="WBR-PREPAID-075",
+            description="预付房费")
+        checked_out, changed = check_out_stay(
+            property_obj=self.property, stay_id=stay.pk,
+            checked_out_by=self.operator)
+        self.assertTrue(changed)
+        charge = LedgerEntry.objects.get(reference=f"stay-room-charge:{stay.pk}")
+        self.assertEqual(charge.amount, Decimal("300.00"))

@@ -760,8 +760,9 @@ class ReconciliationConsistencyTests(E2EFlowTestBase):
         paid, refunded, charges_posted = cash_flow_totals(folio)
         # 一致 2：业务现金流恒等式
         #   账本余额 = 已入账房费(ROOM_CHARGE) - 成功收款 + 已执行退款
-        #   （此时房费尚未夜审/退房入账 → charges_posted = 0）
-        self.assertEqual(charges_posted, Decimal("0.00"))
+        #   （WB-084 起续住晚房费在续住时即同事务入账 stay-extension 凭证，
+        #    故此处 charges_posted = 300 而非旧口径的 0；退房/夜审房费仍 0）
+        self.assertEqual(charges_posted, Decimal("300.00"))
         self.assertEqual(ledger_sum, charges_posted - paid + refunded)
         # 一致 3：账本正负分项自洽（正项合计 - 负项合计 == 余额）
         positive = sum((e.amount for e in entries if e.amount > 0),
