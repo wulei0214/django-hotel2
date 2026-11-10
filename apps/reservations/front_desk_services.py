@@ -339,7 +339,21 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
         ).aggregate(total=Sum("amount"))["total"]
         or Decimal("0.00")
     )
-    remaining_room_charge = (line.amount or Decimal("0.00")) - posted_for_stay
+    # DEC-ED-01：提前离店时按实际入住晚数重算应收房费（而非合同额）。
+    # calculate_early_departure 读 nightly_rates 快照 + EarlyDeparturePolicy，
+    # 返回实际住宿房费和违约金；无政策/无快照时按 NONE（不产生罚金）。
+    # 夜审已过账部分从实际应收中扣减，避免重复入账。
+    from apps.reservations.models import EarlyDeparturePolicy
+    ed_policy = EarlyDeparturePolicy.objects.filter(
+        rate_plan_id=line.rate_plan_id, is_active=True).order_by("-created_at").first()
+    if ed_policy is not None:
+        from apps.reservations.walkin import calculate_early_departure
+        ed = calculate_early_departure(
+            line=line, actual_check_out=timezone.now())
+        target_room_charge = ed["actual_room_charge"]
+    else:
+        target_room_charge = line.amount or Decimal("0.00")
+    remaining_room_charge = target_room_charge - posted_for_stay
     if remaining_room_charge > 0 and not folio.entries.filter(
         reference=charge_reference
     ).exists():

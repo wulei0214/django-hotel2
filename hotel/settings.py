@@ -301,3 +301,21 @@ SIMPLEUI_CONFIG = {
         },
     ],
 }
+
+# Q7 production startup validation (PMS2 quality baseline 2026-11-10)
+if DJANGO_ENV == 'prod':
+    _prod_errors = []
+    if DEBUG:
+        _prod_errors.append('DEBUG must be False')
+    _sk = os.environ.get('DJANGO_SECRET_KEY', '')
+    if not _sk or len(_sk) < 32 or 'django-insecure' in _sk:
+        _prod_errors.append('DJANGO_SECRET_KEY must be >=32 chars strong random')
+    _pii = os.environ.get('DJANGO_PII_KEY', '')
+    if not _pii or len(_pii) < 32:
+        _prod_errors.append('DJANGO_PII_KEY must be >=32 chars independent PII key')
+    _hosts = os.environ.get('DJANGO_ALLOWED_HOSTS', '')
+    if not _hosts or '*' in _hosts:
+        _prod_errors.append('DJANGO_ALLOWED_HOSTS must not use wildcard')
+    if _prod_errors:
+        raise ImproperlyConfigured(
+            'Q7 production validation failed: ' + '; '.join(_prod_errors))

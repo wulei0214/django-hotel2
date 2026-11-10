@@ -380,6 +380,7 @@ class IdempotencyRecord(models.Model):
         max_length=12, choices=RecordStatus.choices, default=RecordStatus.PROCESSING,
         verbose_name="记录状态")
     expires_at = models.DateTimeField(null=True, blank=True, verbose_name="过期时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
 
     class Meta:

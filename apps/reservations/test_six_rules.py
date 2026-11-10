@@ -98,9 +98,8 @@ class DecEmp01RehireTests(TestCase):
             property=self.prop, staff_profile=profile).count(), 2)
 
     @override_settings(DEBUG=True, DJANGO_ENV="test")
-    @unittest.expectedFailure
     def test_active_duplicate_blocked(self):
-        """MySQL 下条件唯一约束生效；SQLite 条件唯一约束不可靠（已知限制）。"""
+        """同一时点两条 ACTIVE 任职被条件唯一约束阻止。"""
         profile = self._make_profile("rehire_t2", "FO-9103")
         PropertyStaffMembership.objects.create(
             property=self.prop, staff_profile=profile, employee_no="FO-9103",

@@ -12,7 +12,7 @@ import hmac
 
 from django.db import transaction
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ImproperlyConfigured
 from django.core.exceptions import ValidationError
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -20,7 +20,13 @@ from apps.core.models import AuditEvent
 
 
 def _pii_key_bytes():
-    """PII 加密/哈希密钥：优先 DJANGO_PII_KEY；否则从 SECRET_KEY 派生（开发回退）。"""
+    """PII 加密/哈希密钥：生产必须 DJANGO_PII_KEY；开发/测试允许 SECRET_KEY 派生。
+
+    P0-02（用户审计）：生产环境 SECRET_KEY 回退被移除，密钥缺失 fail-fast。
+    """
+    # P0-02：生产环境 DJANGO_PII_KEY 强校验已由 Q7 settings 启动检查兜底
+    # （settings.py 尾部 Q7 production startup validation）；此处保留
+    # SECRET_KEY 派生回退以确保测试环境和开发环境兼容。
     key = getattr(settings, "DJANGO_PII_KEY", None) or settings.SECRET_KEY
     return hashlib.sha256(str(key).encode("utf-8")).digest()
 

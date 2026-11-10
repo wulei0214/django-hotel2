@@ -236,6 +236,20 @@ def idempotent(view):
                 return JsonResponse(record.response_body or {},
                                     status=record.response_status or 200,
                                     json_dumps_params={"ensure_ascii": False})
+            # P0-03：同键并发请求在首个请求 PROCESSING 期间返回 425 冲突，
+            # 不得同时进入业务写逻辑；超时（5 分钟）后允许重试恢复。
+            if record.status == IdempotencyRecord.RecordStatus.PROCESSING:
+                _proc_timeout = timezone.timedelta(minutes=5)
+                _proc_age = timezone.now() - (record.updated_at or record.created_at)
+                if _proc_age < _proc_timeout:
+                    return JsonResponse(
+                        {"error": {"code": "IDEMPOTENCY_PROCESSING",
+                                   "message": "相同幂等键的请求正在处理中，请稍后重试。",
+                                   "field_errors": {}, "retryable": True}},
+                        status=425, json_dumps_params={"ensure_ascii": False})
+                # PROCESSING 超时 → 标记 FAILED 允许重试恢复
+                record.status = IdempotencyRecord.RecordStatus.FAILED
+                record.save(update_fields=("status", "updated_at"))
         try:
             response = view(request, *args, **kwargs)
         except Exception:
