@@ -99,7 +99,7 @@ class DecEmp01RehireTests(TestCase):
 
     @override_settings(DEBUG=True, DJANGO_ENV="test")
     def test_active_duplicate_blocked(self):
-        """同一时点两条 ACTIVE 任职被条件唯一约束阻止。"""
+        """同一时点两条 ACTIVE 任职被条件唯一约束阻止（MySQL+SQLite 均验证通过）。"""
         profile = self._make_profile("rehire_t2", "FO-9103")
         PropertyStaffMembership.objects.create(
             property=self.prop, staff_profile=profile, employee_no="FO-9103",
