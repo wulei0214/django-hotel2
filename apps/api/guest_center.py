@@ -26,6 +26,7 @@ from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import (
     DailyRate, Room, RoomType, RoomTypeInventory,
 )
+from apps.inventory.services import _property_today
 from apps.reservations.models import Reservation, Stay
 from apps.billing.models import Folio, LedgerEntry, Payment, Refund
 from apps.core.models import LegacyRecordLink
@@ -524,8 +525,6 @@ def _subcollection_page(queryset, request, prefix, default_size=20):
 
 @require_GET
 @api_view
-@require_GET
-@api_view
 def rate_calendar(request):
     """房价日历：按日期展示房型每日价格与库存（双集合服务端分页 + 搜索）。"""
     user = request.user
@@ -537,7 +536,7 @@ def rate_calendar(request):
         raise ApiError("PERMISSION_DENIED", "缺少客房查看权限。")
 
     from datetime import date, timedelta
-    start = request.GET.get("start") or str(date.today())
+    start = request.GET.get("start") or str(_property_today(property_obj))
     try:
         days = min(30, max(1, int(request.GET.get("days", "14"))))
     except (TypeError, ValueError):
@@ -775,7 +774,7 @@ def financial_summary_api(request):
     from datetime import date, timedelta
     from apps.billing.models import LedgerEntry
     from apps.billing.services_v2 import BillingService
-    end = date.today()
+    end = _property_today(property_obj)
     start = end - timedelta(days=7)
     summary = BillingService.financial_summary(
         property_obj=property_obj, start_date=start, end_date=end)
