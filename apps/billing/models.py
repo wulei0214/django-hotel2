@@ -1368,6 +1368,8 @@ class PaymentIntent(models.Model):
         ordering = ("-created_at",)
         constraints = [
             models.CheckConstraint(check=Q(amount__gt=0), name="ck_pi_amt_pos"),
+        ]
+        indexes = [
             models.Index(fields=("property", "reservation", "status"),
                          name="idx_pi_prop_resv_status"),
         ]
