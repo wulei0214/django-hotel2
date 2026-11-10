@@ -8,13 +8,19 @@
 
 | 项 | 实现 | 位置 |
 |---|---|---|
-| 缓存策略 | Django 缓存框架（LocMemCache），身份证/手机号/菜名/车牌查重结果缓存 60 秒，减少重复查库 | `hotel/settings.py` CACHES、`hotelapp/views.py` check_unique |
+| 缓存策略 | 开发默认 LocMemCache；生产必须 Redis（Django 内置 RedisCache）；查重缓存 60 秒，缓存不可用时回退数据库，不影响权威查询 | `hotel/settings.py` CACHES、`hotelapp/views.py` check_unique |
 | 数据库长连接 | `CONN_MAX_AGE = 60`，避免每个请求重建 MySQL 连接 | `hotel/settings.py` DATABASES |
 | 模板渲染 | 开发环境关闭模板缓存（即改即生效）；上生产改回默认缓存即可 | `hotel/settings.py` TEMPLATES |
 
-> **升级到 Redis**：`pip install django-redis` 并安装 Redis 服务后，把 CACHES 的
-> `BACKEND` 改为 `django_redis.cache.RedisCache`、`LOCATION` 改为
-> `redis://127.0.0.1:6379/1` 即可，业务代码零改动（已按 Django 缓存 API 编写）。
+> **Redis 配置（当前代码口径）**：项目使用 Django 内置
+> `django.core.cache.backends.redis.RedisCache`，不需要 `django-redis`。
+> `requirements.txt` 已声明 `redis>=4.3,<6`。开发环境默认 LocMemCache；
+> 生产环境必须配置 `DJANGO_CACHE_BACKEND=redis` 和
+> `DJANGO_REDIS_URL=redis://<Redis主机>:6379/1`，否则 Django 启动配置校验失败。
+> `.env.example` 提供本地示例值；生产密码/凭据应由部署环境注入，不应提交到仓库。
+>
+> 查重与摘要缓存均为非权威数据。Redis 短暂不可用时，查重直接回退数据库；
+> 缓存失效/写入失败只记录日志，不得把已经完成的数据库业务操作伪装成 500。
 
 ### 安全
 
@@ -24,6 +30,30 @@
 | 权限管理（RBAC） | 基于 Django 内置权限体系：只有 `is_staff`（后台员工）账号可进入前台；进一步细分可在后台「认证和授权 → 组」里按模块建组配权限，代码层用 `user.has_perm('hotelapp.xxx')` 扩展 | Django auth |
 | 日志记录与审计 | ① 操作审计：所有 POST 写操作与删除请求记录「时间 / 方法 / 路径 / 结果状态 / 操作人」到 `logs/audit.log`（1MB 轮转，保留 5 份）；② 请求错误日志 `logs/request.log`；③ 后台 CRUD 自带 django_admin_log 审计 | `hotelapp/audit_middleware.py`、`hotel/settings.py` LOGGING |
 | 输入安全 | 全字段白名单正则校验、查询字段白名单、CSRF 保护、模板自动转义 | `hotelapp/views.py` |
+
+## 一点五、MySQL 不可变审计/账务事实保护（生产必做）
+
+MySQL 触发器是数据库层保护，不是 Django 模型约定，也不是 Migration 自动安装。
+当前仓库提供两个管理命令：
+
+- `python manage.py install_mysql_append_only_guards`：在当前连接的 MySQL 数据库安装 6 条只追加保护触发器，以及 1 条现金流水必须属于本人 OPEN 收银班次的 INSERT 保护触发器。
+- `python manage.py check_mysql_append_only_guards`：读取当前数据库的 `information_schema.TRIGGERS`，核对触发器名称、表、事件、时机和关键 SQL 定义。
+
+**每个环境的首次部署、数据库重建或迁移到新 MySQL 实例后，都必须显式执行并留存结果：**
+
+```bash
+python manage.py migrate --noinput
+python manage.py install_mysql_append_only_guards
+python manage.py check_mysql_append_only_guards
+```
+
+注意事项：
+
+1. 以上命令必须连接目标环境实际使用的 MySQL 数据库；SQLite 检查不能替代生产验收。
+2. 安装账号必须拥有目标 schema 的 TRIGGER 权限；应用运行账号不应因此获得任意 DDL 权限。
+3. 安装命令会按固定名称重建本项目管理的触发器；应在受控部署窗口执行。
+4. CI 的 MySQL 工作流会在测试数据库迁移后安装并校验触发器，但 CI 通过不代表开发、预发布或生产数据库已安装。
+5. 发布验收必须保存 `check_mysql_append_only_guards` 的成功输出，并在目标库再次执行校验；不能仅凭代码文件或 CI 记录认定目标环境已受保护。
 
 ## 二、生产部署升级路线（按需实施）
 
