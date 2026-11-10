@@ -193,17 +193,9 @@ def _error_context(request, efield):
     return {"error": None, "form": form}
 
 
-@staff_required
-def check_unique(request):
-    """唯一字段查重接口：/check_unique/?model=client&value=xxx（结果缓存 60 秒）"""
-    info = UNIQUE_FIELDS.get(request.GET.get("model"))
-    value = (request.GET.get("value") or "").strip()
-    if not info or not value:
-        return JsonResponse({"exists": False})
-    field, model = info
+def _unique_field_exists(model, field, value):
+    """查重缓存是可选加速层；缓存故障时必须回退数据库权威查询。"""
     key = f"uq:{model.__name__}:{field}:{value}"
-    # 查重缓存仅是性能优化，不能成为唯一性判断的可用性依赖。
-    # Redis 读取/写入故障时退化为数据库查询；数据库仍是权威来源。
     try:
         exists = cache.get(key)
     except Exception:
@@ -217,7 +209,18 @@ def check_unique(request):
         except Exception:
             logger.warning("check_unique cache write failed; returning DB result",
                            exc_info=True, extra={"cache_key": key})
-    return JsonResponse({"exists": exists})
+    return exists
+
+
+@staff_required
+def check_unique(request):
+    """唯一字段查重接口：/check_unique/?model=client&value=xxx（结果缓存 60 秒）"""
+    info = UNIQUE_FIELDS.get(request.GET.get("model"))
+    value = (request.GET.get("value") or "").strip()
+    if not info or not value:
+        return JsonResponse({"exists": False})
+    field, model = info
+    return JsonResponse({"exists": _unique_field_exists(model, field, value)})
 
 
 def _get_staff(sid, job):

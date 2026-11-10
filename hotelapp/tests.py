@@ -1575,3 +1575,25 @@ class SeedHotelDataEnvironmentGuardTests(TestCase):
             with self.assertRaises(CommandError):
                 call_command("seed_hotel_data", stdout=StringIO())
         self.assertEqual(Property.objects.count(), before)
+
+
+class UniqueCheckCacheResilienceTests(TestCase):
+    """查重缓存故障不得让失焦校验接口返回 500。"""
+
+    def test_cache_read_and_write_failures_fall_back_to_database(self):
+        from hotelapp.views import _unique_field_exists
+        queryset = Mock()
+        queryset.exists.return_value = True
+        with patch("hotelapp.views.cache.get", side_effect=RuntimeError("Redis unavailable")), \
+             patch("hotelapp.views.cache.set", side_effect=RuntimeError("Redis unavailable")), \
+             patch.object(Client.objects, "filter", return_value=queryset) as db_filter:
+            self.assertTrue(_unique_field_exists(Client, "身份证号", "TEST-ID"))
+        db_filter.assert_called_once_with(**{"身份证号": "TEST-ID"})
+        queryset.exists.assert_called_once_with()
+
+    def test_cache_hit_does_not_query_database(self):
+        from hotelapp.views import _unique_field_exists
+        with patch("hotelapp.views.cache.get", return_value=True), \
+             patch.object(Client.objects, "filter") as db_filter:
+            self.assertTrue(_unique_field_exists(Client, "身份证号", "TEST-ID"))
+        db_filter.assert_not_called()
