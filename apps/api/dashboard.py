@@ -13,13 +13,14 @@ from django.utils import timezone
 from apps.billing.models import LedgerEntry, Payment, Refund
 from apps.guests.models import Guest, GuestMembership
 from apps.inventory.models import Room, RoomType
+from apps.inventory.services import _property_today
 from apps.reservations.models import Reservation, Stay
 
 
 def dashboard_data(property_obj, today=None):
     """PMS2 权威仪表盘聚合（前台 + 后台共用同一数据服务）。"""
     if today is None:
-        today = timezone.localdate()
+        today = _property_today(property_obj)
 
     # --- 预订 ---
     res_qs = Reservation.objects.filter(property=property_obj)
@@ -114,7 +115,7 @@ def dashboard_charts(property_obj, today=None):
     from apps.inventory.models import Room, RoomType
 
     if today is None:
-        today = timezone.localdate()
+        today = _property_today(property_obj)
     maps = {
         "occ": choice_labels(Room.OccupancyStatus),
         "hk": choice_labels(Room.HousekeepingStatus),
@@ -185,7 +186,7 @@ def dashboard_charts(property_obj, today=None):
 def dashboard_warnings(property_obj, today=None):
     """预约预警（PMS2）：过期未入住 + 今日预抵。"""
     if today is None:
-        today = timezone.localdate()
+        today = _property_today(property_obj)
     overdue = Reservation.objects.filter(
         property=property_obj,
         status__in=(Reservation.Status.PENDING, Reservation.Status.CONFIRMED),
@@ -203,7 +204,7 @@ def dashboard_finance(property_obj, today=None):
     """主界面消费统计（PMS2 Ledger/Payment；仅财务/管理岗可见）。"""
     from apps.billing.models import LedgerEntry, Payment
     if today is None:
-        today = timezone.localdate()
+        today = _property_today(property_obj)
     week_start = today - timedelta(days=today.weekday())
     year_start = today.replace(month=1, day=1)
 
