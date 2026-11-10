@@ -5,7 +5,7 @@
 from django.contrib.auth.models import Group, User
 from django.test import TestCase
 from datetime import date, timedelta
-from datetime import timedelta
+from unittest.mock import Mock, patch
 from django.utils import timezone
 
 from apps.core.models import Property
