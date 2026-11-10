@@ -32,6 +32,15 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
 - [Django CI / SQLite（run #900）](https://github.com/wulei0214/django-hotel2/actions/runs/42500994999)：887 tests，OK；System Check 和 migration drift check 成功。
 - [tests CI / MySQL 8（run #874）](https://github.com/wulei0214/django-hotel2/actions/runs/42500995030)：MySQL 8.0.46，887 tests，OK；迁移和 MySQL append-only guards 安装/校验成功。
 - MySQL 本地记录保留一次 1 error 的首次运行和随后 887 OK 的复跑，不删除失败证据。
+- 【2026-11-11】白盒修复回归（MySQL 8 本地，948 tests）：第一轮 12 failures + 5 errors（证据保留 `docs/acceptance/evidence/test-mysql-wb-fix.log`）；定位三类根因并修复——①`calculate_early_departure` 无政策/NONE 语义改为按合同金额全额结算（同日退房也必须入账房费，与退房/负债基线一致）；②押金 30% 强制策略的 3 个旧测试期望同步（180=600×30%、CR-04 退款额 90、e2e 上限改由第 4 笔触发）；③WB-011 测试补传 `confirmed_payment`。复跑 7 个受影响模块 139 项 OK 后全量复跑 **948 tests OK（expected failures=1）**（`docs/acceptance/evidence/test-mysql-wb-fix3.log`）；中间轮 2 errors 系本机跑套件漏带 `DJANGO_ENV=test`（runner 强制 DEBUG=False 导致 reconcile_test_users 守卫拒绝测试库），非代码缺陷（`test-mysql-wb-fix2.log` 留证）。
+- 【2026-11-11】白盒整改第二批（6 项功能修复 + 对账口径修正，测试 948→960 项）：
+  - **WB-037 工号自动编号接入**：`create_employee` 空工号时按部门代码（FO/HK/FIN/MG/ENG）走 DEC-EMP-02 原子编号；员工中心表单新增部门代码选择；岗位代码恰为受控部门代码时自动映射。
+  - **WB-044 旧未到入口退役**：`/no_show_one/` 直写入口改 410 Gone（AR-01 收口），统一走 `POST /api/v1/front-desk/reservation-rooms/<id>/no-show`。
+  - **WB-055 退房自动生成清洁任务**：退房同事务创建 DEPARTURE 清洁任务（此前 HousekeepingTask 模型无创建方，房态置 DIRTY 但任务断链）+ `housekeeping.task_created` 审计；重复退房幂等。
+  - **WB-056 清洁任务与房态链闭环**：净房放行（→CLEAN）联动 DONE→INSPECTED（记录检查人）、未开工任务→CANCELLED；检查返工（INSPECTING→DIRTY）联动 DONE→REJECTED；各落审计。
+  - **WB-049~051 异常放行金额绑定**：申请金额必须>0 且≤当前负余额（杜绝超额放行）；审批审计绑定放行金额+审批时点余额快照；放行消费不覆盖已批金额（受阻金额超过已批额维持阻断）；财务转负债按核查时点实际负余额建账，超过已批额拒绝。
+  - **WB-022~026 库存对账口径修正**：扫描窗口按物业时区取日；sold 重算按明细行计数（多房预订不再按 distinct 预订低估）；排除已未到明细行；判定口径修正——held/sold 不一致必报（运算符优先级 bug）、total_rooms 按容量语义判超卖（不再与占用和做相等比较）。
+  - 回归证据：`docs/acceptance/evidence/test-mysql-wb-batch2.log`。
 
 **注意：** 两条 CI 没有执行 scripts/e2e_full_chain.py。在脚本修复并于隔离 MySQL 数据库重新运行前，不得把提交标题中的 36/36 当成已验证结果。
 

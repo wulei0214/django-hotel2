@@ -61,13 +61,16 @@ class EmployeeLifecycleService:
     # ---------- 新增员工（STAFF-01：允许只建档不开账号） ----------
     @classmethod
     @transaction.atomic
-    def create_employee(cls, *, property_obj, full_name, employee_no,
+    def create_employee(cls, *, property_obj, full_name, employee_no="",
                         position_code="UNASSIGNED", phone="", started_at=None,
                         legacy_staff=None, account_username="", account_password="",
-                        role_groups=None, granted_by=None):
+                        role_groups=None, granted_by=None, department_code=""):
         """在服务端明确指定的物业内建档；可选开通账号并分配初始角色。
 
         查重（STAFF-06）：同店工号唯一、同手机号唯一、同账号名唯一。
+        WB-037：employee_no 留空时由 DEC-EMP-02 自动编号服务分配
+        （部门代码 + 四位流水号；department_code 显式传入，或岗位代码
+        恰为受控部门代码 FO/HK/FIN/MG/ENG 时自动映射）。
         返回 (profile, membership, user_or_None)。
         """
         User = get_user_model()
@@ -79,7 +82,20 @@ class EmployeeLifecycleService:
         if not full_name:
             raise EmployeeLifecycleError("员工姓名不能为空")
         if not employee_no:
-            raise EmployeeLifecycleError("店内工号不能为空")
+            # WB-037：主创建路径接入工号自动编号（此前生成服务无调用方，死代码）
+            from apps.identity.employee_number import (
+                DEPARTMENT_CODES, generate_employee_no)
+            dept = (department_code or "").strip().upper()
+            if not dept:
+                candidate = (position_code or "").strip().upper()
+                if candidate in DEPARTMENT_CODES:
+                    dept = candidate
+            if not dept:
+                raise EmployeeLifecycleError(
+                    "未提供工号时必须指定部门代码（FO/HK/FIN/MG/ENG），"
+                    "或岗位代码恰为受控部门代码以便自动编号")
+            employee_no = generate_employee_no(
+                property_obj=property_obj, department_code=dept)
         if PropertyStaffMembership.objects.filter(
                 property=property_obj, employee_no=employee_no).exists():
             raise EmployeeLifecycleError(f"工号 {employee_no} 已存在，不能重复建档")

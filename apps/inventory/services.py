@@ -137,6 +137,62 @@ def change_housekeeping_status(*, property_obj, room_id, target_status,
                "is_sellable_now": room.is_sellable_now},
         reason=str(notes or "")[:240], request=request,
     )
+
+    # WB-056：清洁任务与房态链闭环（此前任务实体无任何状态联动）。
+    #   净房放行（→CLEAN）：DONE→INSPECTED（记录检查人/时间）；未开工任务
+    #   （PENDING/IN_PROGRESS）→ CANCELLED，避免放行后任务永久悬挂。
+    #   检查返工（INSPECTING→DIRTY）：DONE→REJECTED（检查退回）。
+    from .models import HousekeepingTask
+    open_tasks = list(
+        HousekeepingTask.objects.select_for_update()
+        .filter(
+            property=property_obj, room=room,
+            status__in=(HousekeepingTask.TaskStatus.PENDING,
+                        HousekeepingTask.TaskStatus.IN_PROGRESS,
+                        HousekeepingTask.TaskStatus.DONE),
+        )
+        .order_by("pk")
+    )
+    now = timezone.now()
+    if target_status == Room.HousekeepingStatus.CLEAN and open_tasks:
+        for task in open_tasks:
+            was_done = task.status == HousekeepingTask.TaskStatus.DONE
+            before_status = task.status
+            task.status = (
+                HousekeepingTask.TaskStatus.INSPECTED if was_done
+                else HousekeepingTask.TaskStatus.CANCELLED)
+            task.inspected_by = changed_by if was_done else None
+            task.inspected_at = now if was_done else None
+            if task.completed_at is None:
+                task.completed_at = now
+            task.save(update_fields=(
+                "status", "inspected_by", "inspected_at",
+                "completed_at", "updated_at"))
+            AuditEvent.record(
+                action="housekeeping.task_released",
+                entity_type="HousekeepingTask", entity_id=str(task.pk),
+                actor=changed_by, property_obj=property_obj,
+                before={"status": before_status, "room_id": room.pk},
+                after={"status": task.status,
+                       "inspected": bool(was_done)},
+                reason="净房放行联动关闭清洁任务（WB-056）",
+                request=request,
+            )
+    elif (target_status == Room.HousekeepingStatus.DIRTY
+            and current == Room.HousekeepingStatus.INSPECTING):
+        for task in open_tasks:
+            if task.status != HousekeepingTask.TaskStatus.DONE:
+                continue
+            task.status = HousekeepingTask.TaskStatus.REJECTED
+            task.save(update_fields=("status", "updated_at"))
+            AuditEvent.record(
+                action="housekeeping.task_rejected",
+                entity_type="HousekeepingTask", entity_id=str(task.pk),
+                actor=changed_by, property_obj=property_obj,
+                after={"status": "REJECTED", "room_id": room.pk},
+                reason="检查返工联动退回清洁任务（WB-056）",
+                request=request,
+            )
     return room, True
 
 

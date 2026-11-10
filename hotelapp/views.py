@@ -1373,24 +1373,18 @@ def walkin_create(request):
 
 @staff_required
 def no_show_one(request):
-    """单独标记未到：过期未确认订单 → 未到，释放房间（需「未到处理」权限）"""
-    if request.method == "POST":
-        if not _has_permission(request, "hotelapp.no_show_handle"):
-            return HttpResponse("处理未到订单需要值班经理/店长授权", status=403)
-        try:
-            with transaction.atomic():
-                item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"))
-                if item.状态 not in ("待确认", "已确认"):
-                    return HttpResponse("只有待确认/已确认订单可以标记未到", status=400)
-                if not (item.入住时间 or "") < _today():
-                    return HttpResponse("未超过入住日期，不能标记未到", status=400)
-                events.publish("no_show", order_id=item.id, room_no=item.客房编号.房间号)
-                state_machine.require_order_transition(item, "未到")
-                item.save()
-        except ValueError as e:
-            return HttpResponse(str(e), status=400)
-        return JsonResponse({"ok": True})
-    return HttpResponse("非法请求", status=400)
+    """WB-044 退役（AR-01 收口）：旧版单独标记未到的直写入口已停用。
+
+    未到处理必须走 PMS2 服务链路（状态机 + 库存释放 + 审计 + 幂等）：
+    POST /api/v1/front-desk/reservation-rooms/<id>/no-show
+    （apps/reservations/front_desk_services.mark_reservation_room_no_show）。
+    本视图保留 URL 注册返回 410，防止旧客户端静默失败难排查。
+    """
+    return HttpResponse(
+        "旧版未到处理入口已退役（410 Gone）；请使用前台履约 API："
+        "POST /api/v1/front-desk/reservation-rooms/<id>/no-show",
+        status=410,
+    )
 
 
 @staff_required

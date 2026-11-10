@@ -156,6 +156,35 @@ class StaffCenterWriteTests(TestCase):
             full_name__in=["工号占用甲", "工号占用乙"]).count(), 1,
             "失败的重复建档不得留下第二条档案")
 
+    def test_create_employee_auto_number_when_left_blank(self):
+        """WB-037：工号留空 + 部门代码 → DEC-EMP-02 自动编号（FO-0001 起递增）。"""
+        response = self.client.post("/manage/staff/actions/create/", {
+            "full_name": "自动编号员工一", "employee_no": "",
+            "department_code": "FO", "position_code": "FO",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["employee_no"], "FO-0001")
+        # 同部门第二名员工流水号原子递增
+        response2 = self.client.post("/manage/staff/actions/create/", {
+            "full_name": "自动编号员工二", "employee_no": "",
+            "department_code": "FO",
+        })
+        self.assertEqual(response2.status_code, 200)
+        self.assertEqual(response2.json()["data"]["employee_no"], "FO-0002")
+        membership = PropertyStaffMembership.objects.get(
+            staff_profile=StaffProfile.objects.get(full_name="自动编号员工二"),
+            property=self.property_obj)
+        self.assertEqual(membership.employee_no, "FO-0002")
+        # 工号与部门代码都缺失且岗位不可映射 → 400 中文提示
+        response3 = self.client.post("/manage/staff/actions/create/", {
+            "full_name": "无部门员工", "employee_no": "",
+            "position_code": "UNASSIGNED",
+        })
+        self.assertEqual(response3.status_code, 400)
+        self.assertIn("部门代码", response3.json()["error"]["message"])
+        self.assertFalse(StaffProfile.objects.filter(
+            full_name="无部门员工").exists())
+
     def test_provision_account_success_must_change_and_audit(self):
         """b. 开通账号：账号可认证 + must_change_password=True + identity.account_provision 审计。"""
         profile, _, _ = _make_target_employee("F-8804", with_account=False)

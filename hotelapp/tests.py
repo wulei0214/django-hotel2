@@ -118,6 +118,19 @@ class HighRiskActionPermissionTests(TestCase):
         self.client.force_login(self.dm)
         self.assertEqual(self.client.post("/uncheckout/", {"id": 999999}).status_code, 410)
 
+    def test_no_show_one_retired(self):
+        """WB-044/AR-01：旧版单独标记未到的直写入口已退役（410）。
+
+        未到处理统一走 PMS2 服务链路：
+        POST /api/v1/front-desk/reservation-rooms/<id>/no-show。"""
+        self.client.force_login(self.fd)
+        self.assertEqual(
+            self.client.post("/no_show_one/", {"id": 1}).status_code, 410)
+        self.client.force_login(self.dm)
+        self.assertEqual(
+            self.client.post("/no_show_one/", {"id": 1}).status_code, 410,
+            "旧未到入口对有权限员工同样 410，防止绕过 PMS2 状态机/审计")
+
 
 class ReverseExecutionRightTests(TestCase):
     """决策 2：冲账执行权归财务（+值班经理/店长复核），前台不再持有。

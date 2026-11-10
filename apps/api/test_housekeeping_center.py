@@ -23,7 +23,7 @@ from apps.identity.registry import (
     MODULE_REGISTRY_V2, SPECIAL_PERMISSIONS, get_special, registry_errors,
     validate_registry,
 )
-from apps.inventory.models import Room
+from apps.inventory.models import HousekeepingTask, Room
 from apps.inventory.services import (
     HousekeepingOperationError, change_housekeeping_status,
     )
@@ -332,6 +332,56 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
         self.assertEqual(AuditEvent.objects.filter(
             action="housekeeping.status_changed",
             entity_id=str(room.pk)).count(), 1)
+
+    def test_release_closes_departure_task_with_inspector(self):
+        """WB-056：净房放行联动关闭清洁任务——DONE→INSPECTED（检查人=放行人），
+        未开工任务→CANCELLED（不悬挂）；各落 housekeeping.task_released 审计。"""
+        room = self._make_dirty_room("HK-8411")
+        done_task = HousekeepingTask.objects.create(
+            property=self.property, room=room,
+            task_type=HousekeepingTask.TaskType.DEPARTURE,
+            status=HousekeepingTask.TaskStatus.DONE)
+        pending_task = HousekeepingTask.objects.create(
+            property=self.property, room=room,
+            task_type=HousekeepingTask.TaskType.STAYOVER,
+            status=HousekeepingTask.TaskStatus.PENDING)
+        room.housekeeping_status = Room.HousekeepingStatus.INSPECTING
+        room.save(update_fields=("housekeeping_status",))
+        self.client.force_login(self.dm)
+        response = self._flow(room, "CLEAN", user=self.dm)
+        self.assertEqual(response.status_code, 200, response.content)
+        done_task.refresh_from_db()
+        pending_task.refresh_from_db()
+        self.assertEqual(done_task.status, HousekeepingTask.TaskStatus.INSPECTED)
+        self.assertEqual(done_task.inspected_by_id, self.dm.pk)
+        self.assertIsNotNone(done_task.inspected_at)
+        self.assertIsNotNone(done_task.completed_at)
+        self.assertEqual(pending_task.status, HousekeepingTask.TaskStatus.CANCELLED)
+        self.assertIsNone(pending_task.inspected_by_id)
+        self.assertTrue(AuditEvent.objects.filter(
+            action="housekeeping.task_released",
+            entity_id=str(done_task.pk), actor=self.dm).exists())
+        self.assertTrue(AuditEvent.objects.filter(
+            action="housekeeping.task_released",
+            entity_id=str(pending_task.pk)).exists())
+
+    def test_rework_rejects_done_tasks(self):
+        """WB-056：检查返工（INSPECTING→DIRTY）联动 DONE→REJECTED。"""
+        room = self._make_dirty_room("HK-8412")
+        done_task = HousekeepingTask.objects.create(
+            property=self.property, room=room,
+            task_type=HousekeepingTask.TaskType.DEPARTURE,
+            status=HousekeepingTask.TaskStatus.DONE)
+        room.housekeeping_status = Room.HousekeepingStatus.INSPECTING
+        room.save(update_fields=("housekeeping_status",))
+        self.client.force_login(self.hk)
+        response = self._flow(room, "DIRTY", user=self.hk)
+        self.assertEqual(response.status_code, 200, response.content)
+        done_task.refresh_from_db()
+        self.assertEqual(done_task.status, HousekeepingTask.TaskStatus.REJECTED)
+        self.assertTrue(AuditEvent.objects.filter(
+            action="housekeeping.task_rejected",
+            entity_id=str(done_task.pk), actor=self.hk).exists())
 
     def test_release_on_occupied_room_stays_not_sellable(self):
         """净房放行不改占用：在住房间放行为 CLEAN 后仍不可售（语义核对）。"""

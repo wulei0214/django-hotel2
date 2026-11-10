@@ -6,10 +6,12 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.core.models import Property
+from apps.core.models import AuditEvent, Property
 from apps.guests.models import Guest
 from apps.billing.models import Folio, LedgerEntry, Payment, Refund, RefundLiability
-from apps.inventory.models import DailyRate, RatePlan, Room, RoomType, RoomTypeInventory
+from apps.inventory.models import (
+    DailyRate, HousekeepingTask, RatePlan, Room, RoomType, RoomTypeInventory,
+)
 from apps.inventory.services import InventoryUnavailable
 from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
 from .services import ReservationConflict, create_reservation
@@ -393,6 +395,55 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             checked_out_by=self.operator,
         )
         self.assertFalse(changed_again)
+
+    def test_checkout_creates_departure_housekeeping_task_once(self):
+        """WB-055：退房自动生成退房清洁任务（同事务），重复退房不重复生成。"""
+        assign_room(
+            property_obj=self.property,
+            reservation_room_id=self.line.pk,
+            room_id=self.room.pk,
+            assigned_by=self.operator,
+        )
+        stay, _ = check_in_stay(
+            property_obj=self.property,
+            reservation_room_id=self.line.pk,
+            checked_in_by=self.operator,
+        )
+        collect_manual_payment(
+            property_obj=self.property,
+            booking_no=self.reservation.booking_no,
+            amount="600.00",
+            method="CARD",
+            idempotency_key="hk-task-payment-001",
+            received_by=self.operator,
+        )
+        checked_out, changed = check_out_stay(
+            property_obj=self.property,
+            stay_id=stay.pk,
+            checked_out_by=self.operator,
+        )
+        self.assertTrue(changed)
+        tasks = HousekeepingTask.objects.filter(
+            property=self.property, room=self.room,
+            task_type=HousekeepingTask.TaskType.DEPARTURE)
+        self.assertEqual(tasks.count(), 1)
+        task = tasks.first()
+        self.assertEqual(task.status, HousekeepingTask.TaskStatus.PENDING)
+        self.assertIn(f"stay {stay.pk}", task.notes)
+        self.assertTrue(AuditEvent.objects.filter(
+            action="housekeeping.task_created",
+            entity_id=task.pk, actor=self.operator).exists())
+        self.room.refresh_from_db()
+        self.assertEqual(self.room.housekeeping_status,
+                         Room.HousekeepingStatus.DIRTY)
+        # 重复退房幂等：不重复生成任务
+        _, changed_again = check_out_stay(
+            property_obj=self.property,
+            stay_id=stay.pk,
+            checked_out_by=self.operator,
+        )
+        self.assertFalse(changed_again)
+        self.assertEqual(tasks.count(), 1)
 
 
 

@@ -36,8 +36,17 @@
           <div class="sc-grid">
             <label class="sc-field">姓名<span class="sc-req" aria-hidden="true">*</span>
               <input type="text" name="full_name" required maxlength="20" placeholder="员工真实姓名，如 张晓雨"></label>
-            <label class="sc-field">物业工号<span class="sc-req" aria-hidden="true">*</span>
-              <input type="text" name="employee_no" required maxlength="32" placeholder="同物业唯一，如 F-0012"></label>
+            <label class="sc-field">物业工号（留空则按部门自动编号）
+              <input type="text" name="employee_no" maxlength="32" placeholder="同物业唯一，如 FO-0001；留空自动分配"></label>
+            <label class="sc-field">部门代码（工号留空时必填）
+              <select name="department_code">
+                <option value="">（不自动编号）</option>
+                <option value="FO">FO — 前台</option>
+                <option value="HK">HK — 客房</option>
+                <option value="FIN">FIN — 财务</option>
+                <option value="MG">MG — 管理</option>
+                <option value="ENG">ENG — 工程</option>
+              </select></label>
             <label class="sc-field">岗位代码（选填）
               <input type="text" name="position_code" maxlength="32" placeholder="描述工作岗位，如 FO / HK"></label>
             <label class="sc-field">手机号（选填）

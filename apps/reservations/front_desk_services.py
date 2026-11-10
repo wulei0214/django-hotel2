@@ -7,7 +7,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from apps.billing.models import Folio, LedgerEntry, Payment
-from apps.inventory.models import Room
+from apps.inventory.models import HousekeepingTask, Room
 from apps.inventory.services import _property_today
 from apps.core.models import AuditEvent
 from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
@@ -445,6 +445,30 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
     room.save(update_fields=(
         "occupancy_status", "housekeeping_status", "updated_at"
     ))
+
+    # WB-055：退房自动生成退房清洁任务（V1.1 M-06 P0；模型此前无创建方，
+    # 房态置 DIRTY 但任务断链）。同事务创建；幂等键=该房未关闭的 DEPARTURE
+    # 任务唯一（重复退房在入口按 stay 状态早退，不会走到这里）。
+    if not HousekeepingTask.objects.filter(
+        property=property_obj, room=room,
+        task_type=HousekeepingTask.TaskType.DEPARTURE,
+        status__in=(HousekeepingTask.TaskStatus.PENDING,
+                    HousekeepingTask.TaskStatus.IN_PROGRESS,
+                    HousekeepingTask.TaskStatus.DONE),
+    ).exists():
+        hk_task = HousekeepingTask.objects.create(
+            property=property_obj, room=room,
+            task_type=HousekeepingTask.TaskType.DEPARTURE,
+            status=HousekeepingTask.TaskStatus.PENDING,
+            notes=f"退房自动生成（stay {stay.pk}，房号 {room.number}）")
+        AuditEvent.record(
+            action="housekeeping.task_created", entity_type="HousekeepingTask",
+            entity_id=hk_task.pk, actor=checked_out_by,
+            property_obj=property_obj,
+            after={"task_type": "DEPARTURE", "room_id": room.pk,
+                   "room_number": room.number, "stay_id": stay.pk,
+                   "status": "PENDING"},
+            reason="退房自动生成清洁任务（WB-055）")
 
     if final_room_checkout:
         reservation.status = Reservation.Status.CHECKED_OUT

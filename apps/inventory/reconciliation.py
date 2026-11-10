@@ -22,6 +22,7 @@ from apps.inventory.models import (
     RoomType,
     RoomTypeInventory,
 )
+from apps.inventory.services import _property_today
 from apps.reservations.models import (
     InventoryHold,
     Reservation,
@@ -35,9 +36,18 @@ def scan_inventory_discrepancies(*, property_obj, days_back=30, checked_by=None)
 
     重算口径：total_rooms 应等于 out_of_service + held + sold（数据库约束保证）。
     差异来源：预订 Hold 行数 vs 库存行 held 计数、确认占用行数 vs sold 计数。
+
+    WB-022~026 修正：
+      * 扫描窗口按物业时区取"今天"（此前用服务器本地日期，跨时区物业
+        窗口漂移一天）；
+      * sold 重算按 ReservationRoom 明细行计数（此前按 distinct 预订计数，
+        多房预订 2 间同房型只算 1 间，sold 被低估）；
+      * sold 重算排除已标记未到的明细行（未到释放库存，不得再占 sold）；
+      * 差异判定口径修正：held/sold 不一致必须报（运算符优先级此前只约束
+        total_rooms 一项）；total_rooms 按容量语义判定超卖（< 占用合计），
+        不再与占用和做相等比较（所有未满房行误报）。
     """
-    from django.contrib.auth.models import User  # noqa: F401
-    today = timezone.localdate()
+    today = _property_today(property_obj)
     start = today - timezone.timedelta(days=days_back)
     end = today + timezone.timedelta(days=30)
 
@@ -64,23 +74,29 @@ def scan_inventory_discrepancies(*, property_obj, days_back=30, checked_by=None)
             actual_held = InventoryHold.objects.filter(
                 room_type=rt, stay_date=row.stay_date,
                 status=InventoryHold.HoldStatus.HELD).count()
+            # WB-023：sold 按明细行计数（多房预订每间占一个库存单位）；
+            # WB-024：排除已标记未到的明细行（库存已释放，不再占 sold）。
             actual_sold = ReservationRoom.objects.filter(
-                room_type=rt,
+                property=property_obj, room_type=rt,
                 check_in__lte=row.stay_date,
                 check_out__gt=row.stay_date,
                 reservation__status__in=(
                     Reservation.Status.CONFIRMED,
                     Reservation.Status.CHECKED_IN,
                     Reservation.Status.CHECKED_OUT),
-            ).values("reservation_id").distinct().count()
+            ).exclude(no_show_record__isnull=False).count()
 
             recomputed_oos = row.out_of_service
             recomputed_total = (recomputed_oos + actual_held + actual_sold)
 
+            # WB-026：判定口径修正——①held/sold 与真值不一致必须报差异
+            # （此前 `and recomputed_total > 0` 因运算符优先级只约束
+            # total_rooms 一项）；②total_rooms 是物理容量（≥ 占用合计），
+            # 重算占用超过容量即为超卖，报差异（此前"!= 重算和"把容量
+            # 误当占用和，所有未满房行都会误报）。
             if (row.held != actual_held
                     or row.sold != actual_sold
-                    or row.total_rooms != recomputed_total
-                    and recomputed_total > 0):
+                    or row.total_rooms < recomputed_total):
                 diff = row.total_rooms - recomputed_total
                 InventoryDiscrepancy.objects.create(
                     run=run, property=property_obj, room_type=rt,

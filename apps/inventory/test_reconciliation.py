@@ -130,6 +130,64 @@ class InventoryReconciliationTests(TestCase):
         self.assertTrue(AuditEvent.objects.filter(
             action="inventory.fix_executed").exists())
 
+    def test_scan_multi_room_counts_each_line_sold(self):
+        """WB-023：多房预订同房型两间 → sold 重算按明细行计数（=2）。"""
+        from apps.guests.models import Guest
+        row = self._create_inventory_row(total=4, held=0, sold=2)
+        guest = Guest.objects.create(property=self.prop, full_name="多房测试")
+        res = Reservation.objects.create(
+            property=self.prop, guest=guest, booking_no="REC-MULTI-001",
+            status=Reservation.Status.CONFIRMED,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            room_count=2, total_amount=Decimal("400.00"), currency="CNY")
+        for _ in range(2):
+            ReservationRoom.objects.create(
+                property=self.prop, reservation=res, room_type=self.rt,
+                rate_plan=self.rate_plan,
+                check_in=timezone.localdate(),
+                check_out=timezone.localdate() + timedelta(days=1),
+                amount=Decimal("200.00"))
+        run = scan_inventory_discrepancies(
+            property_obj=self.prop, days_back=30, checked_by=self.duty)
+        self.assertEqual(run.diff_count, 0,
+                         "两间明细行=2 与账面 sold=2 一致；按旧 distinct 口径会误报")
+
+    def test_scan_excludes_no_show_lines_from_sold(self):
+        """WB-024：已标记未到的明细行不再计入 sold 重算。"""
+        from apps.guests.models import Guest
+        from apps.reservations.models import NoShowRecord
+        row = self._create_inventory_row(total=4, held=0, sold=0)
+        guest = Guest.objects.create(property=self.prop, full_name="未到测试")
+        res = Reservation.objects.create(
+            property=self.prop, guest=guest, booking_no="REC-NOSHOW-001",
+            status=Reservation.Status.CONFIRMED,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            room_count=1, total_amount=Decimal("200.00"), currency="CNY")
+        rr = ReservationRoom.objects.create(
+            property=self.prop, reservation=res, room_type=self.rt,
+            rate_plan=self.rate_plan,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            amount=Decimal("200.00"))
+        NoShowRecord.objects.create(
+            property=self.prop, reservation_room=rr,
+            reason="客人未到（测试）", processed_by=self.duty)
+        run = scan_inventory_discrepancies(
+            property_obj=self.prop, days_back=30, checked_by=self.duty)
+        self.assertEqual(run.diff_count, 0,
+                         "未到明细行不应计入 sold（库存已释放）")
+
+    def test_scan_held_mismatch_flagged_even_when_recomputed_zero(self):
+        """WB-026：held/sold 与真值不一致必须报差异（运算符优先级修正），
+        即使重算总额为 0（此前 and 只约束 total_rooms 一项）。"""
+        # 账面 held=1，实际无 Hold 行、无占用行 → 重算总额 0 仍须报差异
+        self._create_inventory_row(total=1, held=1)
+        run = scan_inventory_discrepancies(
+            property_obj=self.prop, days_back=30, checked_by=self.duty)
+        self.assertEqual(run.diff_count, 1)
+
     def test_dismiss_open_discrepancy(self):
         self._create_inventory_row(total=4, held=0)
         run = scan_inventory_discrepancies(

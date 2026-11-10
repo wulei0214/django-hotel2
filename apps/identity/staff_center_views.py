@@ -128,6 +128,8 @@ def _action_create(request):
         raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
     full_name = (request.POST.get("full_name") or "").strip()
     employee_no = (request.POST.get("employee_no") or "").strip()
+    # WB-037：工号留空时由服务端按部门代码自动编号（DEC-EMP-02）
+    department_code = (request.POST.get("department_code") or "").strip()
     position_code = (request.POST.get("position_code") or "").strip() or "UNASSIGNED"
     phone = (request.POST.get("phone") or "").strip()
     username = (request.POST.get("username") or "").strip()
@@ -142,10 +144,12 @@ def _action_create(request):
     profile, membership, user = _call_service(
         EmployeeLifecycleService.create_employee,
         property_obj=property_obj, full_name=full_name, employee_no=employee_no,
+        department_code=department_code,
         position_code=position_code, phone=phone, legacy_staff=legacy,
         account_username=username, account_password=password,
         role_groups=groups, granted_by=request.user)
-    message = f"员工「{profile.full_name}」已建档" + (
+    message = f"员工「{profile.full_name}」已建档（工号 {membership.employee_no}" + (
+        "，自动编号）" if not employee_no else "）") + (
         "，登录账号已开通" if user else "（未开通登录账号）")
     data = {"message": message, "profile_id": profile.pk,
             "employee_no": membership.employee_no}

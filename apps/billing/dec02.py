@@ -32,6 +32,16 @@ def _money(value):
     return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def _release_blocked_amount(folio):
+    """账单当前负余额的绝对值（WB-049 金额绑定基准）。
+
+    与 front_desk_services._folio_balance 同口径：余额=账本凭证求和；
+    负余额=客人多付/预付超过已入账房费，正是异常放行针对的金额。
+    """
+    return abs(_money(
+        folio.entries.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")))
+
+
 def _sync_liability_status(liability, now):
     """按 DEC-02-A1 语义同步负债状态（SETTLED/OPEN/PARTIALLY_SETTLED）。"""
     if liability.remaining_amount == 0:
@@ -313,8 +323,19 @@ def request_exception_release(*, property_obj, reservation, folio, amount,
     if len(reason_text) > 500:
         raise ValueError("异常说明最多 500 字符。")
     release_amount = _money(amount)
-    if release_amount < 0:
-        raise ValueError("涉及金额不能为负。")
+    if release_amount <= 0:
+        raise ValueError("异常放行涉及金额必须大于零。")
+    # WB-049：申请金额与账单负余额绑定——放行只能覆盖当前已形成的
+    # 负余额（退房时后续房费入账只会使余额更接近 0，不会超过申请时的
+    # 负余额绝对值），杜绝"申请 1 元放行走 1 万"的超额放行。
+    blocked_amount = _release_blocked_amount(folio)
+    if blocked_amount <= 0:
+        raise ValueError(
+            "当前账单没有负余额（客人未多付），无需异常放行。")
+    if release_amount > blocked_amount:
+        raise ValueError(
+            f"异常放行金额 {release_amount} 超过当前账单负余额 {blocked_amount}，"
+            "请按实际负余额发起申请。")
     key = str(idempotency_key or "").strip() or f"checkout-exception:folio:{folio.pk}"
 
     existing = CheckoutExceptionRelease.objects.filter(
@@ -365,11 +386,16 @@ def approve_exception_release(*, property_obj, release_id, approved_by,
     release.approved_at = timezone.now()
     release.save(update_fields=("status", "approved_by", "approved_at",
                                 "updated_at"))
+    # WB-050：审批记录绑定放行金额与审批时点负余额快照——审批事实
+    # 必须可追溯到"批准放行多少钱"，而非只记录状态翻转。
     AuditEvent.record(
         action="billing.checkout_exception_approved",
         entity_type="CheckoutExceptionRelease", entity_id=release.pk,
         actor=approved_by, property_obj=property_obj,
-        after={"status": release.status, "comment": str(comment)[:200]},
+        after={"status": release.status, "comment": str(comment)[:200],
+               "amount": str(release.amount),
+               "currency": release.currency,
+               "blocked_amount_at_approval": str(_release_blocked_amount(release.folio))},
         reason="值班经理审批异常放行")
     return release
 
@@ -413,12 +439,17 @@ def consume_approved_exception_release(*, property_obj, folio, stay,
         status=CheckoutExceptionRelease.Status.APPROVED).first()
     if release is None:
         return None
+    # WB-051：放行金额绑定——退房时实际受阻金额不得超过已批准金额；
+    # 超出部分未经审批，保持阻断让前台重新申请（不得以实际金额覆盖
+    # 已批金额，否则审批事实被静默篡改）。
+    if amount is not None:
+        blocked_now = _money(amount)
+        if blocked_now > release.amount:
+            return None
     release.status = CheckoutExceptionRelease.Status.RELEASED
     release.stay = stay
     release.released_at = timezone.now()
-    if amount is not None:
-        release.amount = _money(amount)
-    release.save(update_fields=("status", "stay", "released_at", "amount",
+    release.save(update_fields=("status", "stay", "released_at",
                                 "updated_at"))
     AuditEvent.record(
         action="billing.checkout_exception_released",
@@ -448,11 +479,22 @@ def settle_exception_release(*, property_obj, release_id, settled_by,
 
     from apps.billing.liabilities import register_refund_liability
     if outcome == "CONVERT_LIABILITY":
+        # WB-051：转负债金额绑定实际负余额（核查时点真值），而非照抄
+        # 放行申请金额——余额已变化（补录凭证/房费入账）时按实际金额
+        # 建负债；实际金额超过已批放行额说明超出审批授权，拒绝转负债。
+        actual_blocked = _release_blocked_amount(release.folio)
+        if actual_blocked <= 0:
+            raise ValueError(
+                "当前账单已无负余额，无需转正式负债；请按核查结论关闭。")
+        if actual_blocked > release.amount:
+            raise ValueError(
+                f"当前账单负余额 {actual_blocked} 超过已批准放行金额 "
+                f"{release.amount}，超出部分未经审批；请驳回后重新申请放行。")
         # 受控转正式负债：重新验证原支付、账本凭证、金额、币种与物业归属；
         # 不能仅凭人工点击把异常记录变成退款负债（DEC-02-B2 控制要求）。
         liability, created = register_refund_liability(
             property_obj=property_obj, reservation=release.reservation,
-            folio=release.folio, amount=release.amount, created_by=settled_by)
+            folio=release.folio, amount=actual_blocked, created_by=settled_by)
         release.status = CheckoutExceptionRelease.Status.CONVERTED_LIABILITY
         release.refund_liability = liability
         note_suffix = f"转正式负债 {liability.pk}（新建={created}）"

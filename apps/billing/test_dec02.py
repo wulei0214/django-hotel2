@@ -391,6 +391,132 @@ class Dec02B2ExceptionReleaseTests(Dec02TestBase):
         self.assertIsNotNone(settled.refund_liability)
         self.assertEqual(settled.refund_liability.amount, Decimal("600.00"))
 
+    def test_b2_request_amount_bound_to_blocked_balance(self):
+        """WB-049：申请金额与账单负余额绑定——超额/零额/无负余额拒绝。"""
+        # setUp：预付 1200、无房费凭证 → 负余额 -1200
+        with self.assertRaises(ValueError) as ctx:
+            request_exception_release(
+                property_obj=self.prop, reservation=self.reservation,
+                folio=self.folio, amount="99999.00",
+                reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+                reason_text="超额放行必须拒绝",
+                requested_by=self.front, idempotency_key="dec02-rel-wb49a")
+        self.assertIn("超过当前账单负余额", str(ctx.exception))
+        with self.assertRaises(ValueError) as ctx:
+            request_exception_release(
+                property_obj=self.prop, reservation=self.reservation,
+                folio=self.folio, amount="0.00",
+                reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+                reason_text="零额放行必须拒绝",
+                requested_by=self.front, idempotency_key="dec02-rel-wb49b")
+        self.assertIn("必须大于零", str(ctx.exception))
+        # 恰等于当前负余额绝对值 → 允许
+        release, created = request_exception_release(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="1200.00",
+            reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+            reason_text="等于当前负余额",
+            requested_by=self.front, idempotency_key="dec02-rel-wb49c")
+        self.assertTrue(created)
+        self.assertEqual(release.amount, Decimal("1200.00"))
+
+    def test_b2_consume_keeps_approved_amount_and_blocks_excess(self):
+        """WB-051：放行消费不覆盖已批金额；受阻金额超过已批额时维持阻断。"""
+        self._register_blocked()
+        release, _ = request_exception_release(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="600.00",
+            reason_code=CheckoutExceptionRelease.ReasonCode.NO_PAYMENT_SOURCE,
+            reason_text="批准放行 600",
+            requested_by=self.front, idempotency_key="dec02-rel-wb51a")
+        approve_exception_release(property_obj=self.prop, release_id=release.pk,
+                                  approved_by=self.duty)
+        # 实际受阻 900 > 已批 600 → 不消费（返回 None），金额不被覆盖
+        consumed = consume_approved_exception_release(
+            property_obj=self.prop, folio=self.folio, stay=self.stay_b,
+            amount="900.00", actor=self.front, trigger_reason="测试受阻")
+        self.assertIsNone(consumed)
+        release.refresh_from_db()
+        self.assertEqual(release.status,
+                         CheckoutExceptionRelease.Status.APPROVED)
+        self.assertEqual(release.amount, Decimal("600.00"))
+        # 实际受阻 600 ≤ 已批 600 → 消费，且 release.amount 保持批准值
+        consumed = consume_approved_exception_release(
+            property_obj=self.prop, folio=self.folio, stay=self.stay_b,
+            amount="600.00", actor=self.front, trigger_reason="测试受阻")
+        self.assertIsNotNone(consumed)
+        release.refresh_from_db()
+        self.assertEqual(release.amount, Decimal("600.00"))
+        event = AuditEvent.objects.filter(
+            action="billing.checkout_exception_approved",
+            entity_id=release.pk).latest("pk")
+        self.assertEqual(event.after_json["amount"], "600.00")
+
+    def test_b2_settle_converts_at_actual_blocked_amount(self):
+        """WB-051：转负债按核查时点实际负余额建账（小于已批额时）。"""
+        self._register_blocked()
+        # 申请时点：stay_a 房费已入账（stay_b 被阻退房已回滚）→ 负余额 -900
+        release, _ = request_exception_release(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="900.00",
+            reason_code=CheckoutExceptionRelease.ReasonCode.LEDGER_MISSING,
+            reason_text="凭证缺失，后续人工补录",
+            requested_by=self.front, idempotency_key="dec02-rel-wb51b")
+        approve_exception_release(property_obj=self.prop, release_id=release.pk,
+                                  approved_by=self.duty)
+        check_out_stay(property_obj=self.prop, stay_id=self.stay_b.pk,
+                       checked_out_by=self.front)
+        # 余额变化：补录后另一间房费入账使实际负余额缩为 -600+300=-300
+        LedgerEntry.objects.create(
+            property=self.prop, folio=self.folio,
+            entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+            amount=Decimal("300.00"), currency="CNY",
+            business_date=timezone.localdate(),
+            reference="stay-room-charge:wb51-settle-drift",
+            description="核查前补入房费（测试余额漂移）")
+        self._restore_prepaid_voucher()
+        settled = settle_exception_release(
+            property_obj=self.prop, release_id=release.pk,
+            settled_by=self.finance, outcome="CONVERT_LIABILITY",
+            verify_note="凭证已补录，按实际负余额转负债")
+        self.assertEqual(settled.status,
+                         CheckoutExceptionRelease.Status.CONVERTED_LIABILITY)
+        self.assertEqual(settled.refund_liability.amount, Decimal("300.00"))
+
+    def test_b2_settle_rejects_blocked_exceeding_approved(self):
+        """WB-051：实际负余额超过已批放行额 → 拒绝转负债（超出未审批）。"""
+        self._register_blocked()
+        release, _ = request_exception_release(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="600.00",
+            reason_code=CheckoutExceptionRelease.ReasonCode.LEDGER_MISSING,
+            reason_text="凭证缺失，后续人工补录",
+            requested_by=self.front, idempotency_key="dec02-rel-wb51c")
+        approve_exception_release(property_obj=self.prop, release_id=release.pk,
+                                  approved_by=self.duty)
+        check_out_stay(property_obj=self.prop, stay_id=self.stay_b.pk,
+                       checked_out_by=self.front)
+        # 负余额扩大（多退了一笔）：-600 − 400 = -1000，abs > 已批 600
+        LedgerEntry.objects.create(
+            property=self.prop, folio=self.folio,
+            entry_type=LedgerEntry.EntryType.ADJUSTMENT,
+            amount=Decimal("-400.00"), currency="CNY",
+            business_date=timezone.localdate(),
+            reference="adjustment:wb51-exceed-drift",
+            description="核查前补入负向调整（测试超额拒绝）")
+        self._restore_prepaid_voucher()
+        with self.assertRaises(ValueError) as ctx:
+            settle_exception_release(
+                property_obj=self.prop, release_id=release.pk,
+                settled_by=self.finance, outcome="CONVERT_LIABILITY",
+                verify_note="负余额超出审批额度")
+        self.assertIn("超过已批准放行金额", str(ctx.exception))
+        release.refresh_from_db()
+        self.assertEqual(release.status,
+                         CheckoutExceptionRelease.Status.RELEASED)
+        self.assertFalse(RefundLiability.objects.filter(
+            folio=self.folio).exists())
+
     def test_b2_duplicate_active_request_rejected(self):
         self._register_blocked()
         request_exception_release(
