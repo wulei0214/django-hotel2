@@ -10,6 +10,7 @@ from django.utils import timezone
 from apps.billing.models import (
     Folio,
     LedgerEntry,
+    Payment,
     PaymentIntent,
     PaymentCompensationTask,
     ProviderTransaction,
@@ -102,15 +103,24 @@ class PaymentIntentTests(TestCase):
             provider_code="mock", provider_transaction_id="MOCK-TXN-001",
             amount="200.00", currency="CNY", channel_status="SUCCESS",
             event_id="evt-001", signature_verified=True)
+        # WB-011：确认成功必须关联真实 Payment（不得出现意图成功但无收款事实）
+        payment = Payment.objects.create(
+            property=self.prop, reservation=self.reservation, folio=self.folio,
+            provider="mock", provider_ref="MOCK-TXN-001", method="MOCK",
+            amount=Decimal("200.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
         confirmed, changed = confirm_intent_success(
             property_obj=self.prop, intent_id=intent.pk,
-            provider_transaction_id="MOCK-TXN-001", actor=self.owner)
+            provider_transaction_id="MOCK-TXN-001",
+            confirmed_payment=payment, actor=self.owner)
         self.assertTrue(changed)
         self.assertEqual(confirmed.status, PaymentIntent.Status.SUCCEEDED)
+        self.assertEqual(confirmed.confirmed_payment_id, payment.pk)
         # 重复确认幂等
         confirmed2, changed2 = confirm_intent_success(
             property_obj=self.prop, intent_id=intent.pk,
-            provider_transaction_id="MOCK-TXN-001", actor=self.owner)
+            provider_transaction_id="MOCK-TXN-001",
+            confirmed_payment=payment, actor=self.owner)
         self.assertFalse(changed2)
         # 重复事件幂等
         pt2, pt2_created = record_provider_event(

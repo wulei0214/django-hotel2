@@ -59,7 +59,9 @@ def calculate_early_departure(*, line, actual_check_out):
     policy = EarlyDeparturePolicy.objects.filter(
         rate_plan_id=line.rate_plan_id, is_active=True).order_by("-created_at").first()
     if policy is None or policy.policy_type == EarlyDeparturePolicy.PolicyType.NONE:
-        return {"actual_room_charge": actual_room_charge,
+        # NONE/未配置政策 = 无提前离店减免：客人按合同房费（line.amount）
+        # 全额结算，罚金 0。回归基线语义（同日退房也须入账合同房费）。
+        return {"actual_room_charge": line.amount,
                 "penalty": Decimal("0.00"), "policy_type": "NONE"}
     pt = policy.policy_type
     pv = policy.policy_value or Decimal("0.00")

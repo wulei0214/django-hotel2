@@ -168,12 +168,14 @@ class DecEd01EarlyDepartureTests(TestCase):
             check_in=check_in, check_out=check_out,
             rate_plan_id=rate_plan_id)
 
-    def test_no_policy_no_penalty(self):
+    def test_no_policy_full_charge_no_penalty(self):
+        # NONE/未配置政策 = 无提前离店减免：按合同金额全额结算（回归基线
+        # 语义——退房必须入账合同房费，同日退房也不例外），罚金 0。
         from apps.reservations.walkin import calculate_early_departure
         line = self._make_line(["300.00", "300.00", "300.00"])
         result = calculate_early_departure(
             line=line, actual_check_out=datetime.datetime(2026, 11, 11, 12, 0))
-        self.assertEqual(result["actual_room_charge"], Decimal("300.00"))
+        self.assertEqual(result["actual_room_charge"], Decimal("900.00"))
         self.assertEqual(result["penalty"], Decimal("0.00"))
 
     def test_first_night_policy(self):

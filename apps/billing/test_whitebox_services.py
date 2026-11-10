@@ -1324,7 +1324,9 @@ class ConcurrencyCurrentReadTests(WhiteboxBillingBase):
         executor = User.objects.create_user(username="wbcurr-dep-executor")
         refund, created = BillingService.request_refund(
             property_obj=self.property, payment_id=payment1.pk,
-            amount="100.00", reason="押金全退当前读回归",
+            # WB-030/DEC-DEP-01：押金按房费 30% 服务端强制计算（300×30%=90），
+            # 调用方传入 100 不生效；全退 payment1 即退 90。
+            amount="90.00", reason="押金全退当前读回归",
             requested_by=self.operator, idempotency_key="wbcurr-dep-ref-1")
         self.assertTrue(created)
         BillingService.approve_refund(
@@ -1350,4 +1352,5 @@ class ConcurrencyCurrentReadTests(WhiteboxBillingBase):
         # 回减押金前必须以当前读锁定预订行，否则会覆盖并发押金登记。
         self.assertIn(Reservation, locked_models)
         reservation.refresh_from_db()
-        self.assertEqual(reservation.deposit_amount, Decimal("60.00"))
+        # 并发事实累计 160 − 本次退款 90 = 70（押金为服务端 30% 计算额）。
+        self.assertEqual(reservation.deposit_amount, Decimal("70.00"))

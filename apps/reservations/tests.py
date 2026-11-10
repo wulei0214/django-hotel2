@@ -829,10 +829,12 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         deposit.refresh_from_db()
         self.reservation.refresh_from_db()
         self.assertEqual(deposit.status, Payment.Status.PARTIALLY_REFUNDED)
-        self.assertEqual(self.reservation.deposit_amount, Decimal("100.00"))
+        # WB-030/DEC-DEP-01：押金由服务端按房费 30% 强制计算（600×30%=180），
+        # 调用方传入的 200 仅作展示核对；退 100 后累计押金余 80。
+        self.assertEqual(self.reservation.deposit_amount, Decimal("80.00"))
         self.assertEqual(
             LedgerEntry.objects.get(reference=f"deposit:{deposit.provider_ref}").amount,
-            Decimal("-200.00"),
+            Decimal("-180.00"),
         )
         self.assertEqual(
             LedgerEntry.objects.get(reference=f"refund:{refund.provider_ref}").amount,

@@ -542,12 +542,14 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         payment = Payment.objects.get(pk=data["payment_id"])
         self.assertEqual(payment.provider, "frontdesk_deposit")
         self.assertEqual(payment.status, Payment.Status.SUCCEEDED)
-        self.assertEqual(payment.amount, Decimal("200.00"))
+        # WB-030/DEC-DEP-01：押金金额由服务端按房费 30% 强制计算
+        # （600×30%=180），请求体传入的 200 仅作展示核对。
+        self.assertEqual(payment.amount, Decimal("180.00"))
         entry = LedgerEntry.objects.get(reference=f"deposit:{payment.provider_ref}")
         self.assertEqual(entry.entry_type, LedgerEntry.EntryType.DEPOSIT)
-        self.assertEqual(entry.amount, Decimal("-200.00"))
+        self.assertEqual(entry.amount, Decimal("-180.00"))
         reservation.refresh_from_db()
-        self.assertEqual(reservation.deposit_amount, Decimal("200.00"))
+        self.assertEqual(reservation.deposit_amount, Decimal("180.00"))
         self.assertTrue(self._audit_exists(
             "billing.deposit_collect", entity_id=payment.pk,
             property_obj=self.property))
@@ -559,20 +561,34 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(replay.status_code, 200)
         self.assertFalse(replay.json()["created"])
         reservation.refresh_from_db()
-        self.assertEqual(reservation.deposit_amount, Decimal("200.00"))
+        self.assertEqual(reservation.deposit_amount, Decimal("180.00"))
 
-        # 累计押金不得超过预订房费总额（200 + 401 > 600）
+        # 每笔押金均为服务端 30% 计算额：再收两笔至累计 540（≤600）
+        second = self._post_json(
+            f"/api/v1/front-desk/reservations/{booking_no}/deposits",
+            {"amount": "180.00", "method": "CASH"},
+            idempotency_key="e2e-dep-002")
+        self.assertEqual(second.status_code, 201, second.content)
+        third = self._post_json(
+            f"/api/v1/front-desk/reservations/{booking_no}/deposits",
+            {"amount": "180.00", "method": "CASH"},
+            idempotency_key="e2e-dep-003")
+        self.assertEqual(third.status_code, 201, third.content)
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.deposit_amount, Decimal("540.00"))
+
+        # 累计押金不得超过预订房费总额（540 + 180 = 720 > 600）
         over = self._post_json(
             f"/api/v1/front-desk/reservations/{booking_no}/deposits",
-            {"amount": "401.00", "method": "CASH"},
-            idempotency_key="e2e-dep-002")
+            {"amount": "180.00", "method": "CASH"},
+            idempotency_key="e2e-dep-004")
         self.assertEqual(over.status_code, 409, over.content)
         self.assertEqual(over.json()["error"]["code"], "BUSINESS_CONFLICT")
         reservation.refresh_from_db()
-        self.assertEqual(reservation.deposit_amount, Decimal("200.00"))
+        self.assertEqual(reservation.deposit_amount, Decimal("540.00"))
         self.assertEqual(Payment.objects.filter(
             reservation__booking_no=booking_no,
-            provider="frontdesk_deposit").count(), 1)
+            provider="frontdesk_deposit").count(), 3)
 
     # ------------------------------------------------------------------
     # 3) 退款链路：前台申请挂起 → 店长（refund_approve）审批完成

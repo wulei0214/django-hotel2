@@ -1,0 +1,6 @@
+
+----------------------------------------------------------------------
+Ran 948 tests in 278.457s
+
+FAILED (errors=2, expected failures=1)
+Destroying test database for alias 'default'...

@@ -1,0 +1,236 @@
+Found 948 test(s).
+Creating test database for alias 'default'...
+System check identified some issues:
+
+WARNINGS:
+billing.ProviderTransaction: (models.W036) MySQL does not support unique constraints with conditions.
+	HINT: A constraint won't be created. Silence this warning if you don't care about it.
+identity.PropertyStaffMembership: (models.W036) MySQL does not support unique constraints with conditions.
+	HINT: A constraint won't be created. Silence this warning if you don't care about it.
+
+System check identified 2 issues (0 silenced).
+.......................................................................login_failed ip=127.0.0.1 username_fp=2942f05b93ba reason=disabled
+.login_failed ip=127.0.0.1 username_fp=00bdef82f273 reason=no_employment
+.login_failed ip=127.0.0.1 username_fp=53f88ee8f52f reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=2942f05b93ba reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=fa2a84f5b524 reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=rate_limited
+...................................................本次关闭 1 笔审批超时退款。
+退款申请 ID：31
+本次关闭 0 笔审批超时退款。
+..................E............F....Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/billing/shifts/open
+.Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/notifications/refresh
+.........login_failed ip=127.0.0.1 username_fp=1064ae8d7d60 reason=disabled
+...............F............................................................................................................................................................................................................................................................................FFF...F.....F............E.................E..................................................................................................................................................................................................................................................................................................................................x.............FF..FF...FEE..................................................................................check_unique cache read failed; falling back to DB
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\hotelapp\views.py", line 203, in _unique_field_exists
+    exists = cache.get(key)
+  File "D:\Python39\lib\unittest\mock.py", line 1093, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1097, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1152, in _execute_mock_call
+    raise effect
+RuntimeError: Redis unavailable
+check_unique cache write failed; returning DB result
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\hotelapp\views.py", line 211, in _unique_field_exists
+    cache.set(key, exists, 60)
+  File "D:\Python39\lib\unittest\mock.py", line 1093, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1097, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1152, in _execute_mock_call
+    raise effect
+RuntimeError: Redis unavailable
+.................
+======================================================================
+ERROR: test_express_checkout_retired_and_pms2_checkout_settles_folio (apps.api.test_e2e_flows.ExceptionFulfillmentE2EFlowTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1331, in test_express_checkout_retired_and_pms2_checkout_settles_folio
+    charge = LedgerEntry.objects.get(reference=f"stay-room-charge:{stay_id}")
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\manager.py", line 85, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\query.py", line 650, in get
+    raise self.model.DoesNotExist(
+apps.billing.models.LedgerEntry.DoesNotExist: LedgerEntry matching query does not exist.
+
+======================================================================
+ERROR: test_confirm_success_idempotent (apps.billing.test_payment_dec02.PaymentIntentTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\billing\test_payment_dec02.py", line 105, in test_confirm_success_idempotent
+    confirmed, changed = confirm_intent_success(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\billing\payment_intents.py", line 182, in confirm_intent_success
+    raise ValueError(
+ValueError: WB-011：确认成功必须关联真实 Payment；不得产生意图显示成功但没有对应收款事实的状态。
+
+======================================================================
+ERROR: test_deposit_refund_locks_reservation_before_balance_update (apps.billing.test_whitebox_services.ConcurrencyCurrentReadTests)
+CR-04：押金退款回减预订押金累计前必须锁定预订行（防并发丢失更新）。
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\billing\test_whitebox_services.py", line 1325, in test_deposit_refund_locks_reservation_before_balance_update
+    refund, created = BillingService.request_refund(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\billing\services_v2.py", line 634, in request_refund
+    raise ValueError("累计退款申请及已完成退款不能超过原支付金额。")
+ValueError: 累计退款申请及已完成退款不能超过原支付金额。
+
+======================================================================
+ERROR: test_partial_no_show_then_last_stay_checkout_closes_multi_room_folio (apps.reservations.tests.FrontDeskStayLifecycleServiceTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 416, in check_out_stay
+    register_refund_liability(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\billing\liabilities.py", line 65, in register_refund_liability
+    raise ValueError("存在负余额，但未找到同时具有支付流水和对应收款账本凭证的原支付，不能登记待退款负债。")
+ValueError: 存在负余额，但未找到同时具有支付流水和对应收款账本凭证的原支付，不能登记待退款负债。
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\reservations\tests.py", line 880, in test_partial_no_show_then_last_stay_checkout_closes_multi_room_folio
+    checked_out, changed = check_out_stay(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 430, in check_out_stay
+    raise FrontDeskOperationError(
+apps.reservations.front_desk_services.FrontDeskOperationError: 存在负余额，但未找到同时具有支付流水和对应收款账本凭证的原支付，不能登记待退款负债。 如需让客人先离店，请发起异常放行申请并由值班经理审批。
+
+======================================================================
+ERROR: test_prepaid_reservation_can_checkout_without_second_collection (apps.reservations.tests.FrontDeskStayLifecycleServiceTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 416, in check_out_stay
+    register_refund_liability(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\billing\liabilities.py", line 65, in register_refund_liability
+    raise ValueError("存在负余额，但未找到同时具有支付流水和对应收款账本凭证的原支付，不能登记待退款负债。")
+ValueError: 存在负余额，但未找到同时具有支付流水和对应收款账本凭证的原支付，不能登记待退款负债。
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\reservations\tests.py", line 617, in test_prepaid_reservation_can_checkout_without_second_collection
+    checked_out, changed = check_out_stay(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 430, in check_out_stay
+    raise FrontDeskOperationError(
+apps.reservations.front_desk_services.FrontDeskOperationError: 存在负余额，但未找到同时具有支付流水和对应收款账本凭证的原支付，不能登记待退款负债。 如需让客人先离店，请发起异常放行申请并由值班经理审批。
+
+======================================================================
+FAIL: test_receive_deposit_records_deposit_semantics_and_caps_at_total (apps.api.test_e2e_flows.PaymentDepositRefundReversalE2EFlowTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 545, in test_receive_deposit_records_deposit_semantics_and_caps_at_total
+    self.assertEqual(payment.amount, Decimal("200.00"))
+AssertionError: Decimal('180.00') != Decimal('200.00')
+
+======================================================================
+FAIL: test_folio_balance_matches_ledger_and_cash_flow_after_refund_cycle (apps.api.test_five_centers_closure.ReconciliationConsistencyTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\api\test_five_centers_closure.py", line 791, in test_folio_balance_matches_ledger_and_cash_flow_after_refund_cycle
+    self.assertEqual(checkout.status_code, 200, checkout.content)
+AssertionError: 409 != 200 : b'{"error": {"code": "BUSINESS_CONFLICT", "message": "\xe5\xbe\x85\xe9\x80\x80\xe6\xac\xbe\xe8\xb4\x9f\xe5\x80\xba\xe8\xb6\x85\xe8\xbf\x87\xe5\x80\x99\xe9\x80\x89\xe5\x8e\x9f\xe6\x94\xaf\xe4\xbb\x98\xe7\x9a\x84\xe5\x8f\xaf\xe9\x80\x80\xe6\xac\xbe\xe4\xbd\x99\xe9\xa2\x9d\xef\xbc\x8c\xe9\x9c\x80\xe5\x85\x88\xe6\xa0\xb8\xe5\xaf\xb9\xe8\xb4\xa6\xe5\x8a\xa1\xe6\x9d\xa5\xe6\xba\x90\xe3\x80\x82 \xe5\xa6\x82\xe9\x9c\x80\xe8\xae\xa9\xe5\xae\xa2\xe4\xba\xba\xe5\x85\x88\xe7\xa6\xbb\xe5\xba\x97\xef\xbc\x8c\xe8\xaf\xb7\xe5\x8f\x91\xe8\xb5\xb7\xe5\xbc\x82\xe5\xb8\xb8\xe6\x94\xbe\xe8\xa1\x8c\xe7\x94\xb3\xe8\xaf\xb7\xe5\xb9\xb6\xe7\x94\xb1\xe5\x80\xbc\xe7\x8f\xad\xe7\xbb\x8f\xe7\x90\x86\xe5\xae\xa1\xe6\x89\xb9\xe3\x80\x82"}}'
+
+======================================================================
+FAIL: test_a1_charge_reverse_increases_net (apps.billing.test_dec02.Dec02A1AdjustmentTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\billing\test_dec02.py", line 198, in test_a1_charge_reverse_increases_net
+    self.assertEqual(liability.remaining_amount, Decimal("680.00"))
+AssertionError: Decimal('1280.00') != Decimal('680.00')
+
+======================================================================
+FAIL: test_a1_deduction_exceeding_net_rejected (apps.billing.test_dec02.Dec02A1AdjustmentTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\billing\test_dec02.py", line 234, in test_a1_deduction_exceeding_net_rejected
+    self.assertEqual(liability.remaining_amount, Decimal("600.00"))
+AssertionError: Decimal('1200.00') != Decimal('600.00')
+
+======================================================================
+FAIL: test_a1_deduction_flow_updates_net_and_audits (apps.billing.test_dec02.Dec02A1AdjustmentTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\billing\test_dec02.py", line 178, in test_a1_deduction_flow_updates_net_and_audits
+    self.assertEqual(liability.remaining_amount, Decimal("500.00"))
+AssertionError: Decimal('1100.00') != Decimal('500.00')
+
+======================================================================
+FAIL: test_a1_refund_increase_beyond_original_allowed (apps.billing.test_dec02.Dec02A1AdjustmentTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\billing\test_dec02.py", line 216, in test_a1_refund_increase_beyond_original_allowed
+    self.assertEqual(liability.remaining_amount, Decimal("750.00"))
+AssertionError: Decimal('1350.00') != Decimal('750.00')
+
+======================================================================
+FAIL: test_b2_settle_converts_to_liability_when_evidence_restored (apps.billing.test_dec02.Dec02B2ExceptionReleaseTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\billing\test_dec02.py", line 392, in test_b2_settle_converts_to_liability_when_evidence_restored
+    self.assertEqual(settled.refund_liability.amount, Decimal("600.00"))
+AssertionError: Decimal('1200.00') != Decimal('600.00')
+
+======================================================================
+FAIL: test_checkout_requires_zero_balance_then_posts_charge_and_cleans_room (apps.reservations.tests.FrontDeskStayLifecycleServiceTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\reservations\tests.py", line 354, in test_checkout_requires_zero_balance_then_posts_charge_and_cleans_room
+    check_out_stay(
+AssertionError: FrontDeskOperationError not raised
+
+======================================================================
+FAIL: test_deposit_refund_requires_separate_approver_and_posts_immutable_entries (apps.reservations.tests.FrontDeskStayLifecycleServiceTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\reservations\tests.py", line 832, in test_deposit_refund_requires_separate_approver_and_posts_immutable_entries
+    self.assertEqual(self.reservation.deposit_amount, Decimal("100.00"))
+AssertionError: Decimal('80.00') != Decimal('100.00')
+
+======================================================================
+FAIL: test_final_checkout_registers_deposit_refund_liability (apps.reservations.tests.FrontDeskStayLifecycleServiceTests)
+真实退房时，前台押金凭证也必须支持登记待退款负债。
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\reservations\tests.py", line 503, in test_final_checkout_registers_deposit_refund_liability
+    self.assertEqual(liability.amount, Decimal("100.00"))
+AssertionError: Decimal('700.00') != Decimal('100.00')
+
+======================================================================
+FAIL: test_final_checkout_registers_refund_liability_without_creating_refund (apps.reservations.tests.FrontDeskStayLifecycleServiceTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\reservations\tests.py", line 444, in test_final_checkout_registers_refund_liability_without_creating_refund
+    self.assertEqual(liability.amount, Decimal("100.00"))
+AssertionError: Decimal('700.00') != Decimal('100.00')
+
+======================================================================
+FAIL: test_partial_checkout_keeps_prepaid_credit_for_other_room (apps.reservations.tests.FrontDeskStayLifecycleServiceTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\reservations\tests.py", line 577, in test_partial_checkout_keeps_prepaid_credit_for_other_room
+    self.assertEqual(interim_balance, Decimal("-600.00"))
+AssertionError: Decimal('-1200.00') != Decimal('-600.00')
+
+----------------------------------------------------------------------
+Ran 948 tests in 269.793s
+
+FAILED (failures=12, errors=5, expected failures=1)
+Destroying test database for alias 'default'...
