@@ -1728,8 +1728,12 @@ def _role_name(user):
     names = list(_active_role_assignments(user).order_by("group__name")
                  .values_list("group__name", flat=True).distinct())
     return "、".join(names) if names else "未分配岗位"
-def _today():
-    return datetime.date.today().strftime("%Y-%m-%d")
+def _today(property_obj=None):
+    """按物业时区返回业务自然日；未传物业时使用 Django 配置时区。"""
+    if property_obj is not None:
+        from apps.inventory.services import _property_today
+        return _property_today(property_obj).strftime("%Y-%m-%d")
+    return timezone.localdate().strftime("%Y-%m-%d")
 
 
 _LOGIN_FAIL_MESSAGE = "账号或密码不正确，或账号暂不可用"
@@ -1884,11 +1888,11 @@ def checkin_manage(request):
     confirmed = Accommodation.objects.filter(状态="已确认").order_by("id")
     living = Accommodation.objects.filter(状态="已入住").order_by("id")
     done = Accommodation.objects.filter(状态="已退房").order_by("-id")[:10]
-    pre_arrival = confirmed.filter(入住时间__lte=(_dt.date.today() + _dt.timedelta(days=3)).strftime("%Y-%m-%d"))
+    pre_arrival = confirmed.filter(入住时间__lte=(timezone.localdate() + _dt.timedelta(days=3)).strftime("%Y-%m-%d"))
     return render(request, "checkin.html", {
         "rooms": rooms, "pending": pending, "confirmed": confirmed, "living": living,
         "done": done, "pre_arrival": pre_arrival,
-        "today": _today(), "can_void": _has_permission(request, "hotelapp.reverse_checkout"),
+        "today": _today(getattr(request, "property", None)), "can_void": _has_permission(request, "hotelapp.reverse_checkout"),
     })
 
 
