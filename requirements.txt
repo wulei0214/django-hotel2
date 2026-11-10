@@ -3,3 +3,4 @@ PyMySQL==1.0.2
 django-simpleui==2022.7.29
 cryptography>=41.0,<42  # 42+ Windows Py39 DLL issue
 whitenoise>=6.4,<7  # WhiteNoise middleware is enabled in Django settings
+redis>=4.3,<6  # Django RedisCache backend client (Django 4.1 / Python 3.9 compatible)

@@ -1362,14 +1362,24 @@ class BillingService:
             property=property_obj,
             business_date__gte=start_date,
             business_date__lte=end_date)
+        # created_at 是带时区时间戳；必须先按物业时区换算自然日边界，
+        # 再用半开区间过滤，避免 UTC/数据库会话时区造成跨日错位。
+        from datetime import datetime, time as datetime_time, timedelta
+        from zoneinfo import ZoneInfo
+        from django.utils import timezone
+        try:
+            property_tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")
+        except Exception:
+            property_tz = ZoneInfo("Asia/Shanghai")
+        start_at = timezone.make_aware(
+            datetime.combine(start_date, datetime_time.min), property_tz)
+        end_at = timezone.make_aware(
+            datetime.combine(end_date + timedelta(days=1), datetime_time.min),
+            property_tz)
         payments = Payment.objects.filter(
-            property=property_obj,
-            created_at__date__gte=start_date,
-            created_at__date__lte=end_date)
+            property=property_obj, created_at__gte=start_at, created_at__lt=end_at)
         refunds = Refund.objects.filter(
-            property=property_obj,
-            created_at__date__gte=start_date,
-            created_at__date__lte=end_date)
+            property=property_obj, created_at__gte=start_at, created_at__lt=end_at)
         total_revenue = sum(
             e.amount for e in entries if e.amount > 0) or Decimal("0.00")
         total_expense = sum(-e.amount for e in entries if e.amount < 0) or Decimal("0.00")

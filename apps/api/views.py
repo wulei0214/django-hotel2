@@ -19,7 +19,8 @@ from apps.billing.services import (
     verify_mock_callback,
 )
 from apps.inventory.models import RoomType
-from apps.inventory.services import InventoryUnavailable, get_room_type_availability
+from apps.inventory.services import (InventoryUnavailable, get_room_type_availability,
+                                     _property_today)
 from apps.reservations.models import Reservation
 from apps.reservations.models import BookingAccessToken
 from apps.reservations.services import (
@@ -113,7 +114,7 @@ def availability(request):
         if rooms < 1 or rooms > MAX_ROOMS:
             raise ValueError(f"房间数必须在 1 至 {MAX_ROOMS} 间之间。")
         # 与创建预订同口径：不接受历史日期的查询（否则库存服务会静默跳过，返回误导性的空列表）
-        if check_in < date.today():
+        if check_in < _property_today(property_obj):
             raise ValueError("入住日期不能早于今天。")
         if check_out <= check_in:
             raise ValueError("离店日期必须晚于入住日期。")
@@ -185,7 +186,7 @@ def reservations_create(request):
             raise ValueError(f"成人数必须在 1 至 {MAX_GUESTS} 人之间。")
         if payload["children"] < 0 or payload["children"] > MAX_GUESTS:
             raise ValueError(f"儿童数必须在 0 至 {MAX_GUESTS} 人之间。")
-        if payload["check_in"] < date.today():
+        if payload["check_in"] < _property_today(property_obj):
             raise ValueError("入住日期不能早于今天。")
         if payload["check_out"] <= payload["check_in"]:
             raise ValueError("离店日期必须晚于入住日期。")

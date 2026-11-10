@@ -37,6 +37,8 @@ from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.core.paginator import Paginator
 from django.shortcuts import render, redirect, get_object_or_404
 
+logger = logging.getLogger(__name__)
+
 from .models import (Staff, Room, Client, Food, Vip, Park, Order, Accommodation,
                      FinanceRecord, NightAudit, Folio, ROOM_STATUS)
 from . import events
@@ -200,10 +202,21 @@ def check_unique(request):
         return JsonResponse({"exists": False})
     field, model = info
     key = f"uq:{model.__name__}:{field}:{value}"
-    exists = cache.get(key)
+    # 查重缓存仅是性能优化，不能成为唯一性判断的可用性依赖。
+    # Redis 读取/写入故障时退化为数据库查询；数据库仍是权威来源。
+    try:
+        exists = cache.get(key)
+    except Exception:
+        logger.warning("check_unique cache read failed; falling back to DB",
+                       exc_info=True, extra={"cache_key": key})
+        exists = None
     if exists is None:
         exists = model.objects.filter(**{field: value}).exists()
-        cache.set(key, exists, 60)
+        try:
+            cache.set(key, exists, 60)
+        except Exception:
+            logger.warning("check_unique cache write failed; returning DB result",
+                           exc_info=True, extra={"cache_key": key})
     return JsonResponse({"exists": exists})
 
 

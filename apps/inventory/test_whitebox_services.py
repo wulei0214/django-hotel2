@@ -237,3 +237,24 @@ class MaintenanceInventorySyncTests(TestCase):
         rows = self._rows()
         self.assertEqual(rows[self.today].out_of_service, 1)
         self.assertEqual(rows[self.today + timedelta(days=1)].out_of_service, 1)
+
+class PropertyDateBoundaryTests(TestCase):
+    """财务自然日边界按物业时区计算，不能依赖 UTC/数据库会话时区。"""
+
+    def test_financial_summary_uses_property_local_midnight_bounds(self):
+        from datetime import date
+        from zoneinfo import ZoneInfo
+        from django.utils import timezone
+        from datetime import datetime, time as datetime_time, timedelta
+
+        prop = Property.objects.create(
+            code="TZFIN", name="财务时区测试酒店", timezone="Asia/Singapore")
+        start_day = date(2026, 11, 10)
+        end_day = date(2026, 11, 10)
+        tz = ZoneInfo(prop.timezone)
+        start_at = timezone.make_aware(datetime.combine(start_day, datetime_time.min), tz)
+        end_at = timezone.make_aware(
+            datetime.combine(end_day + timedelta(days=1), datetime_time.min), tz)
+        self.assertEqual(start_at.isoformat(), "2026-11-10T00:00:00+08:00")
+        self.assertEqual(end_at.isoformat(), "2026-11-11T00:00:00+08:00")
+        self.assertEqual((end_at - start_at).total_seconds(), 86400)
