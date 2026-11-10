@@ -19,6 +19,7 @@ hotelapp 视图层：前台 8 大业务模块的全部页面与接口。
 import csv
 import datetime
 import functools
+import hashlib
 import logging
 import re
 
@@ -195,7 +196,9 @@ def _error_context(request, efield):
 
 def _unique_field_exists(model, field, value):
     """查重缓存是可选加速层；缓存故障时必须回退数据库权威查询。"""
-    key = f"uq:{model.__name__}:{field}:{value}"
+    # 证件号/手机号等敏感值不应以明文进入 Redis key 或异常日志。
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
+    key = f"uq:{model.__name__}:{field}:{digest}"
     try:
         exists = cache.get(key)
     except Exception:

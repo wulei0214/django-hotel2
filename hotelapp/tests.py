@@ -1584,10 +1584,12 @@ class UniqueCheckCacheResilienceTests(TestCase):
         from hotelapp.views import _unique_field_exists
         queryset = Mock()
         queryset.exists.return_value = True
-        with patch("hotelapp.views.cache.get", side_effect=RuntimeError("Redis unavailable")), \
+        with patch("hotelapp.views.cache.get", side_effect=RuntimeError("Redis unavailable")) as cache_get, \
              patch("hotelapp.views.cache.set", side_effect=RuntimeError("Redis unavailable")), \
              patch.object(Client.objects, "filter", return_value=queryset) as db_filter:
             self.assertTrue(_unique_field_exists(Client, "身份证号", "TEST-ID"))
+        cache_key = cache_get.call_args.args[0]
+        self.assertNotIn("TEST-ID", cache_key, "敏感值不得以明文进入缓存键")
         db_filter.assert_called_once_with(**{"身份证号": "TEST-ID"})
         queryset.exists.assert_called_once_with()
 
