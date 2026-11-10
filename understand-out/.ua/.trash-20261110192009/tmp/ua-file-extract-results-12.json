@@ -1,0 +1,2104 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 23,
+  "filesSkipped": [
+    "api_tests/pytest.ini",
+    "api_tests/reports/junit-p0.xml"
+  ],
+  "filesUnreadable": [],
+  "analysisOutcomes": {
+    "structure": {
+      "succeeded": 23,
+      "failed": 0
+    },
+    "callGraph": {
+      "succeeded": 20,
+      "failed": 0,
+      "skipped": 3
+    }
+  },
+  "results": [
+    {
+      "path": ".github/pull_request_template.md",
+      "language": "markdown",
+      "fileCategory": "docs",
+      "totalLines": 43,
+      "nonEmptyLines": 34,
+      "sections": [
+        {
+          "heading": "本次开发内容",
+          "level": 2,
+          "line": 1
+        },
+        {
+          "heading": "Bug 修复",
+          "level": 2,
+          "line": 6
+        },
+        {
+          "heading": "影响范围",
+          "level": 2,
+          "line": 11
+        },
+        {
+          "heading": "界面变化",
+          "level": 2,
+          "line": 19
+        },
+        {
+          "heading": "文档更新",
+          "level": 2,
+          "line": 27
+        },
+        {
+          "heading": "验证结果",
+          "level": 2,
+          "line": 35
+        },
+        {
+          "heading": "风险、限制与回滚",
+          "level": 2,
+          "line": 42
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "sectionCount": 7
+      }
+    },
+    {
+      "path": "api_tests/README.md",
+      "language": "markdown",
+      "fileCategory": "docs",
+      "totalLines": 122,
+      "nonEmptyLines": 94,
+      "sections": [
+        {
+          "heading": "api_tests — P0 真实 HTTP 冒烟套件（Pytest + Requests）",
+          "level": 1,
+          "line": 1
+        },
+        {
+          "heading": "覆盖范围（`@pytest.mark.p0`）",
+          "level": 2,
+          "line": 7
+        },
+        {
+          "heading": "依赖",
+          "level": 2,
+          "line": 20
+        },
+        {
+          "heading": "运行前：准备被测实例",
+          "level": 2,
+          "line": 28
+        },
+        {
+          "heading": "方式 A：本机新建冒烟实例（推荐，文件库可随时重建）",
+          "level": 3,
+          "line": 33
+        },
+        {
+          "heading": "方式 B：指向已运行的实例",
+          "level": 3,
+          "line": 66
+        },
+        {
+          "heading": "运行测试",
+          "level": 2,
+          "line": 71
+        },
+        {
+          "heading": "测试报告（JUnit XML）",
+          "level": 2,
+          "line": 99
+        },
+        {
+          "heading": "限流提示（§6.3，fail-closed）",
+          "level": 2,
+          "line": 106
+        },
+        {
+          "heading": "目录结构",
+          "level": 2,
+          "line": 113
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "sectionCount": 10
+      }
+    },
+    {
+      "path": "api_tests/conftest.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 171,
+      "nonEmptyLines": 141,
+      "functions": [
+        {
+          "name": "_env",
+          "startLine": 36,
+          "endLine": 38,
+          "params": [
+            "name",
+            "default"
+          ]
+        },
+        {
+          "name": "base_url",
+          "startLine": 94,
+          "endLine": 96,
+          "params": []
+        },
+        {
+          "name": "api",
+          "startLine": 100,
+          "endLine": 102,
+          "params": [
+            "base_url"
+          ]
+        },
+        {
+          "name": "staff_credentials",
+          "startLine": 106,
+          "endLine": 111,
+          "params": []
+        },
+        {
+          "name": "_form_login",
+          "startLine": 114,
+          "endLine": 145,
+          "params": [
+            "api",
+            "username",
+            "password"
+          ]
+        },
+        {
+          "name": "staff_session",
+          "startLine": 149,
+          "endLine": 159,
+          "params": [
+            "base_url",
+            "staff_credentials"
+          ]
+        },
+        {
+          "name": "unique_phone",
+          "startLine": 163,
+          "endLine": 165,
+          "params": []
+        },
+        {
+          "name": "idempotency_key",
+          "startLine": 169,
+          "endLine": 171,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "HttpApi",
+          "startLine": 45,
+          "endLine": 90,
+          "methods": [
+            "__init__",
+            "url",
+            "get",
+            "post",
+            "post_json",
+            "ensure_csrf"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "_env",
+          "line": 36,
+          "isDefault": false
+        },
+        {
+          "name": "HttpApi",
+          "line": 45,
+          "isDefault": false
+        },
+        {
+          "name": "base_url",
+          "line": 93,
+          "isDefault": false
+        },
+        {
+          "name": "api",
+          "line": 99,
+          "isDefault": false
+        },
+        {
+          "name": "staff_credentials",
+          "line": 105,
+          "isDefault": false
+        },
+        {
+          "name": "_form_login",
+          "line": 114,
+          "isDefault": false
+        },
+        {
+          "name": "staff_session",
+          "line": 148,
+          "isDefault": false
+        },
+        {
+          "name": "unique_phone",
+          "line": 162,
+          "isDefault": false
+        },
+        {
+          "name": "idempotency_key",
+          "line": 168,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_env",
+          "callee": "environ.get",
+          "lineNumber": 37
+        },
+        {
+          "caller": "__init__",
+          "callee": "requests.Session",
+          "lineNumber": 50
+        },
+        {
+          "caller": "__init__",
+          "callee": "self.session.headers.update",
+          "lineNumber": 51
+        },
+        {
+          "caller": "url",
+          "callee": "path.startswith",
+          "lineNumber": 56
+        },
+        {
+          "caller": "url",
+          "callee": "path.startswith",
+          "lineNumber": 56
+        },
+        {
+          "caller": "get",
+          "callee": "kwargs.setdefault",
+          "lineNumber": 61
+        },
+        {
+          "caller": "get",
+          "callee": "self.session.get",
+          "lineNumber": 62
+        },
+        {
+          "caller": "get",
+          "callee": "self.url",
+          "lineNumber": 62
+        },
+        {
+          "caller": "post",
+          "callee": "kwargs.setdefault",
+          "lineNumber": 65
+        },
+        {
+          "caller": "post",
+          "callee": "kwargs.setdefault",
+          "lineNumber": 68
+        },
+        {
+          "caller": "post",
+          "callee": "headers.setdefault",
+          "lineNumber": 69
+        },
+        {
+          "caller": "post",
+          "callee": "self.session.post",
+          "lineNumber": 70
+        },
+        {
+          "caller": "post",
+          "callee": "self.url",
+          "lineNumber": 70
+        },
+        {
+          "caller": "post_json",
+          "callee": "self.post",
+          "lineNumber": 73
+        },
+        {
+          "caller": "ensure_csrf",
+          "callee": "self.get",
+          "lineNumber": 84
+        },
+        {
+          "caller": "ensure_csrf",
+          "callee": "_CSRF_INPUT_RE.search",
+          "lineNumber": 87
+        },
+        {
+          "caller": "ensure_csrf",
+          "callee": "match.group",
+          "lineNumber": 89
+        },
+        {
+          "caller": "base_url",
+          "callee": "_env(\"PMS_BASE_URL\", \"http://127.0.0.1:8000\").rstrip",
+          "lineNumber": 96
+        },
+        {
+          "caller": "base_url",
+          "callee": "_env",
+          "lineNumber": 96
+        },
+        {
+          "caller": "api",
+          "callee": "HttpApi",
+          "lineNumber": 102
+        },
+        {
+          "caller": "staff_credentials",
+          "callee": "_env",
+          "lineNumber": 109
+        },
+        {
+          "caller": "staff_credentials",
+          "callee": "_env",
+          "lineNumber": 110
+        },
+        {
+          "caller": "_form_login",
+          "callee": "api.get",
+          "lineNumber": 120
+        },
+        {
+          "caller": "_form_login",
+          "callee": "_CSRF_INPUT_RE.search",
+          "lineNumber": 124
+        },
+        {
+          "caller": "_form_login",
+          "callee": "match.group",
+          "lineNumber": 126
+        },
+        {
+          "caller": "_form_login",
+          "callee": "api.post",
+          "lineNumber": 128
+        },
+        {
+          "caller": "_form_login",
+          "callee": "match.group",
+          "lineNumber": 133
+        },
+        {
+          "caller": "_form_login",
+          "callee": "api.url",
+          "lineNumber": 135
+        },
+        {
+          "caller": "_form_login",
+          "callee": "api.ensure_csrf",
+          "lineNumber": 144
+        },
+        {
+          "caller": "staff_session",
+          "callee": "HttpApi",
+          "lineNumber": 154
+        },
+        {
+          "caller": "staff_session",
+          "callee": "_form_login",
+          "lineNumber": 155
+        },
+        {
+          "caller": "staff_session",
+          "callee": "staff.get",
+          "lineNumber": 157
+        },
+        {
+          "caller": "unique_phone",
+          "callee": "uuid.uuid4",
+          "lineNumber": 165
+        },
+        {
+          "caller": "idempotency_key",
+          "callee": "uuid.uuid4",
+          "lineNumber": 171
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 9,
+        "functionCount": 8,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "api_tests/test_p0_smoke.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 304,
+      "nonEmptyLines": 258,
+      "functions": [
+        {
+          "name": "_today",
+          "startLine": 35,
+          "endLine": 37,
+          "params": []
+        },
+        {
+          "name": "p0_booking",
+          "startLine": 44,
+          "endLine": 110,
+          "params": [
+            "api",
+            "unique_phone",
+            "idempotency_key"
+          ]
+        },
+        {
+          "name": "_availability_map",
+          "startLine": 113,
+          "endLine": 124,
+          "params": [
+            "api",
+            "booking"
+          ]
+        },
+        {
+          "name": "test_public_reserve_page_200",
+          "startLine": 130,
+          "endLine": 132,
+          "params": [
+            "api"
+          ]
+        },
+        {
+          "name": "test_public_availability_structure",
+          "startLine": 135,
+          "endLine": 154,
+          "params": [
+            "api"
+          ]
+        },
+        {
+          "name": "test_public_reservation_create_and_idempotent_replay",
+          "startLine": 160,
+          "endLine": 175,
+          "params": [
+            "api",
+            "p0_booking"
+          ]
+        },
+        {
+          "name": "test_booking_token_query_masking",
+          "startLine": 181,
+          "endLine": 202,
+          "params": [
+            "api",
+            "p0_booking"
+          ]
+        },
+        {
+          "name": "test_booking_token_cancel_releases_inventory",
+          "startLine": 208,
+          "endLine": 230,
+          "params": [
+            "api",
+            "p0_booking"
+          ]
+        },
+        {
+          "name": "test_staff_home_and_unauthenticated_front_desk_denied",
+          "startLine": 236,
+          "endLine": 248,
+          "params": [
+            "api",
+            "staff_session"
+          ]
+        },
+        {
+          "name": "test_permission_denied_on_platform_permissions",
+          "startLine": 254,
+          "endLine": 263,
+          "params": [
+            "staff_session"
+          ]
+        },
+        {
+          "name": "test_legacy_routes_retired",
+          "startLine": 269,
+          "endLine": 283,
+          "params": [
+            "api",
+            "staff_session"
+          ]
+        },
+        {
+          "name": "test_openapi_contract",
+          "startLine": 289,
+          "endLine": 304,
+          "params": [
+            "api"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "_today",
+          "line": 35,
+          "isDefault": false
+        },
+        {
+          "name": "p0_booking",
+          "line": 43,
+          "isDefault": false
+        },
+        {
+          "name": "_availability_map",
+          "line": 113,
+          "isDefault": false
+        },
+        {
+          "name": "test_public_reserve_page_200",
+          "line": 130,
+          "isDefault": false
+        },
+        {
+          "name": "test_public_availability_structure",
+          "line": 135,
+          "isDefault": false
+        },
+        {
+          "name": "test_public_reservation_create_and_idempotent_replay",
+          "line": 160,
+          "isDefault": false
+        },
+        {
+          "name": "test_booking_token_query_masking",
+          "line": 181,
+          "isDefault": false
+        },
+        {
+          "name": "test_booking_token_cancel_releases_inventory",
+          "line": 208,
+          "isDefault": false
+        },
+        {
+          "name": "test_staff_home_and_unauthenticated_front_desk_denied",
+          "line": 236,
+          "isDefault": false
+        },
+        {
+          "name": "test_permission_denied_on_platform_permissions",
+          "line": 254,
+          "isDefault": false
+        },
+        {
+          "name": "test_legacy_routes_retired",
+          "line": 269,
+          "isDefault": false
+        },
+        {
+          "name": "test_openapi_contract",
+          "line": 289,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_today",
+          "callee": "date.today",
+          "lineNumber": 37
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "_today",
+          "lineNumber": 50
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "timedelta",
+          "lineNumber": 50
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "timedelta",
+          "lineNumber": 51
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "api.ensure_csrf",
+          "lineNumber": 54
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "api.get",
+          "lineNumber": 58
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "check_in.isoformat",
+          "lineNumber": 60
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "check_out.isoformat",
+          "lineNumber": 61
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "snap.json().get",
+          "lineNumber": 64
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "snap.json",
+          "lineNumber": 64
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "next",
+          "lineNumber": 67
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "snap.json().get",
+          "lineNumber": 68
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "snap.json",
+          "lineNumber": 68
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "item.get",
+          "lineNumber": 69
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "check_in.isoformat",
+          "lineNumber": 80
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "check_out.isoformat",
+          "lineNumber": 81
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "api.post_json",
+          "lineNumber": 86
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "response.json",
+          "lineNumber": 92
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "body.get",
+          "lineNumber": 93
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "body.get",
+          "lineNumber": 94
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "body.get",
+          "lineNumber": 95
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "body.get",
+          "lineNumber": 96
+        },
+        {
+          "caller": "p0_booking",
+          "callee": "_availability_map",
+          "lineNumber": 99
+        },
+        {
+          "caller": "_availability_map",
+          "callee": "api.get",
+          "lineNumber": 114
+        },
+        {
+          "caller": "_availability_map",
+          "callee": "response.json().get",
+          "lineNumber": 123
+        },
+        {
+          "caller": "_availability_map",
+          "callee": "response.json",
+          "lineNumber": 123
+        },
+        {
+          "caller": "test_public_reserve_page_200",
+          "callee": "api.get",
+          "lineNumber": 131
+        },
+        {
+          "caller": "test_public_availability_structure",
+          "callee": "_today",
+          "lineNumber": 136
+        },
+        {
+          "caller": "test_public_availability_structure",
+          "callee": "timedelta",
+          "lineNumber": 136
+        },
+        {
+          "caller": "test_public_availability_structure",
+          "callee": "timedelta",
+          "lineNumber": 137
+        },
+        {
+          "caller": "test_public_availability_structure",
+          "callee": "api.get",
+          "lineNumber": 138
+        },
+        {
+          "caller": "test_public_availability_structure",
+          "callee": "check_in.isoformat",
+          "lineNumber": 140
+        },
+        {
+          "caller": "test_public_availability_structure",
+          "callee": "check_out.isoformat",
+          "lineNumber": 141
+        },
+        {
+          "caller": "test_public_availability_structure",
+          "callee": "response.json",
+          "lineNumber": 144
+        },
+        {
+          "caller": "test_public_availability_structure",
+          "callee": "check_in.isoformat",
+          "lineNumber": 147
+        },
+        {
+          "caller": "test_public_availability_structure",
+          "callee": "check_out.isoformat",
+          "lineNumber": 148
+        },
+        {
+          "caller": "test_public_availability_structure",
+          "callee": "isinstance",
+          "lineNumber": 150
+        },
+        {
+          "caller": "test_public_availability_structure",
+          "callee": "AVAILABILITY_KEYS.issubset",
+          "lineNumber": 152
+        },
+        {
+          "caller": "test_public_availability_structure",
+          "callee": "item.keys",
+          "lineNumber": 152
+        },
+        {
+          "caller": "test_public_availability_structure",
+          "callee": "isinstance",
+          "lineNumber": 153
+        },
+        {
+          "caller": "test_public_reservation_create_and_idempotent_replay",
+          "callee": "api.post_json",
+          "lineNumber": 166
+        },
+        {
+          "caller": "test_public_reservation_create_and_idempotent_replay",
+          "callee": "replay.json",
+          "lineNumber": 171
+        },
+        {
+          "caller": "test_public_reservation_create_and_idempotent_replay",
+          "callee": "body.get",
+          "lineNumber": 172
+        },
+        {
+          "caller": "test_public_reservation_create_and_idempotent_replay",
+          "callee": "body.get",
+          "lineNumber": 173
+        },
+        {
+          "caller": "test_public_reservation_create_and_idempotent_replay",
+          "callee": "body.get",
+          "lineNumber": 175
+        },
+        {
+          "caller": "test_booking_token_query_masking",
+          "callee": "api.get",
+          "lineNumber": 182
+        },
+        {
+          "caller": "test_booking_token_query_masking",
+          "callee": "response.json",
+          "lineNumber": 187
+        },
+        {
+          "caller": "test_booking_token_query_masking",
+          "callee": "body.get",
+          "lineNumber": 191
+        },
+        {
+          "caller": "test_booking_token_query_masking",
+          "callee": "api.get",
+          "lineNumber": 198
+        },
+        {
+          "caller": "test_booking_token_cancel_releases_inventory",
+          "callee": "api.post_json",
+          "lineNumber": 211
+        },
+        {
+          "caller": "test_booking_token_cancel_releases_inventory",
+          "callee": "response.json",
+          "lineNumber": 216
+        },
+        {
+          "caller": "test_booking_token_cancel_releases_inventory",
+          "callee": "body.get",
+          "lineNumber": 219
+        },
+        {
+          "caller": "test_booking_token_cancel_releases_inventory",
+          "callee": "_availability_map",
+          "lineNumber": 223
+        },
+        {
+          "caller": "test_booking_token_cancel_releases_inventory",
+          "callee": "after.get",
+          "lineNumber": 225
+        },
+        {
+          "caller": "test_booking_token_cancel_releases_inventory",
+          "callee": "p0_booking[\"availability_held\"].get",
+          "lineNumber": 227
+        },
+        {
+          "caller": "test_booking_token_cancel_releases_inventory",
+          "callee": "p0_booking[\"availability_before\"].get",
+          "lineNumber": 230
+        },
+        {
+          "caller": "test_staff_home_and_unauthenticated_front_desk_denied",
+          "callee": "staff_session.get",
+          "lineNumber": 238
+        },
+        {
+          "caller": "test_staff_home_and_unauthenticated_front_desk_denied",
+          "callee": "api.get",
+          "lineNumber": 242
+        },
+        {
+          "caller": "test_staff_home_and_unauthenticated_front_desk_denied",
+          "callee": "api.post_json",
+          "lineNumber": 247
+        },
+        {
+          "caller": "test_permission_denied_on_platform_permissions",
+          "callee": "staff_session.get",
+          "lineNumber": 256
+        },
+        {
+          "caller": "test_permission_denied_on_platform_permissions",
+          "callee": "staff_session.get",
+          "lineNumber": 262
+        },
+        {
+          "caller": "test_legacy_routes_retired",
+          "callee": "staff_session.post",
+          "lineNumber": 271
+        },
+        {
+          "caller": "test_legacy_routes_retired",
+          "callee": "api.post",
+          "lineNumber": 277
+        },
+        {
+          "caller": "test_legacy_routes_retired",
+          "callee": "api.get",
+          "lineNumber": 281
+        },
+        {
+          "caller": "test_legacy_routes_retired",
+          "callee": "legacy_booking.headers.get(\"Location\", \"\").startswith",
+          "lineNumber": 283
+        },
+        {
+          "caller": "test_legacy_routes_retired",
+          "callee": "legacy_booking.headers.get",
+          "lineNumber": 283
+        },
+        {
+          "caller": "test_openapi_contract",
+          "callee": "api.get",
+          "lineNumber": 290
+        },
+        {
+          "caller": "test_openapi_contract",
+          "callee": "response.json",
+          "lineNumber": 292
+        },
+        {
+          "caller": "test_openapi_contract",
+          "callee": "str(doc.get(\"openapi\", \"\")).startswith",
+          "lineNumber": 293
+        },
+        {
+          "caller": "test_openapi_contract",
+          "callee": "str",
+          "lineNumber": 293
+        },
+        {
+          "caller": "test_openapi_contract",
+          "callee": "doc.get",
+          "lineNumber": 293
+        },
+        {
+          "caller": "test_openapi_contract",
+          "callee": "doc.get(\"info\", {}).get",
+          "lineNumber": 294
+        },
+        {
+          "caller": "test_openapi_contract",
+          "callee": "doc.get",
+          "lineNumber": 294
+        },
+        {
+          "caller": "test_openapi_contract",
+          "callee": "sum",
+          "lineNumber": 297
+        },
+        {
+          "caller": "test_openapi_contract",
+          "callee": "doc.get(\"paths\", {}).values",
+          "lineNumber": 299
+        },
+        {
+          "caller": "test_openapi_contract",
+          "callee": "doc.get",
+          "lineNumber": 299
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 12,
+        "functionCount": 12,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "apps/__init__.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 1,
+      "nonEmptyLines": 0,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "apps/api/apps.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 8,
+      "nonEmptyLines": 6,
+      "classes": [
+        {
+          "name": "ApiConfig",
+          "startLine": 4,
+          "endLine": 8,
+          "methods": [],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "ApiConfig",
+          "line": 4,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "apps/api/test_center_template_regressions.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 95,
+      "nonEmptyLines": 82,
+      "classes": [
+        {
+          "name": "CenterTemplateRegressionTests",
+          "startLine": 19,
+          "endLine": 95,
+          "methods": [
+            "read_template",
+            "test_write_centers_render_session_backed_csrf_token",
+            "test_billing_forms_read_values_before_any_dom_replacement",
+            "test_billing_write_forms_keep_idempotency_keys_across_retries",
+            "test_billing_center_exposes_shift_controls_and_separate_refund_actions",
+            "test_billing_center_exposes_refund_liabilities_and_manual_source_selection",
+            "test_billing_refund_ui_requires_non_cash_reference_and_marks_legacy",
+            "test_night_audit_dom_helper_appends_node_children"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "CenterTemplateRegressionTests",
+          "line": 19,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "read_template",
+          "callee": "(TEMPLATE_DIR / name).read_text",
+          "lineNumber": 21
+        },
+        {
+          "caller": "test_write_centers_render_session_backed_csrf_token",
+          "callee": "self.assertTrue",
+          "lineNumber": 24
+        },
+        {
+          "caller": "test_write_centers_render_session_backed_csrf_token",
+          "callee": "self.subTest",
+          "lineNumber": 31
+        },
+        {
+          "caller": "test_write_centers_render_session_backed_csrf_token",
+          "callee": "self.read_template",
+          "lineNumber": 32
+        },
+        {
+          "caller": "test_write_centers_render_session_backed_csrf_token",
+          "callee": "self.assertIn",
+          "lineNumber": 33
+        },
+        {
+          "caller": "test_write_centers_render_session_backed_csrf_token",
+          "callee": "self.assertIn",
+          "lineNumber": 34
+        },
+        {
+          "caller": "test_write_centers_render_session_backed_csrf_token",
+          "callee": "self.assertIn",
+          "lineNumber": 35
+        },
+        {
+          "caller": "test_write_centers_render_session_backed_csrf_token",
+          "callee": "self.assertIn",
+          "lineNumber": 36
+        },
+        {
+          "caller": "test_write_centers_render_session_backed_csrf_token",
+          "callee": "self.assertNotIn",
+          "lineNumber": 37
+        },
+        {
+          "caller": "test_billing_forms_read_values_before_any_dom_replacement",
+          "callee": "self.read_template",
+          "lineNumber": 40
+        },
+        {
+          "caller": "test_billing_forms_read_values_before_any_dom_replacement",
+          "callee": "self.assertIn",
+          "lineNumber": 42
+        },
+        {
+          "caller": "test_billing_forms_read_values_before_any_dom_replacement",
+          "callee": "self.assertNotIn",
+          "lineNumber": 43
+        },
+        {
+          "caller": "test_billing_forms_read_values_before_any_dom_replacement",
+          "callee": "self.assertNotIn",
+          "lineNumber": 44
+        },
+        {
+          "caller": "test_billing_forms_read_values_before_any_dom_replacement",
+          "callee": "self.assertNotIn",
+          "lineNumber": 45
+        },
+        {
+          "caller": "test_billing_write_forms_keep_idempotency_keys_across_retries",
+          "callee": "self.read_template",
+          "lineNumber": 48
+        },
+        {
+          "caller": "test_billing_write_forms_keep_idempotency_keys_across_retries",
+          "callee": "self.assertIn",
+          "lineNumber": 49
+        },
+        {
+          "caller": "test_billing_write_forms_keep_idempotency_keys_across_retries",
+          "callee": "self.assertIn",
+          "lineNumber": 50
+        },
+        {
+          "caller": "test_billing_write_forms_keep_idempotency_keys_across_retries",
+          "callee": "self.assertIn",
+          "lineNumber": 51
+        },
+        {
+          "caller": "test_billing_write_forms_keep_idempotency_keys_across_retries",
+          "callee": "self.assertIn",
+          "lineNumber": 52
+        },
+        {
+          "caller": "test_billing_write_forms_keep_idempotency_keys_across_retries",
+          "callee": "self.assertIn",
+          "lineNumber": 53
+        },
+        {
+          "caller": "test_billing_write_forms_keep_idempotency_keys_across_retries",
+          "callee": "self.assertIn",
+          "lineNumber": 54
+        },
+        {
+          "caller": "test_billing_write_forms_keep_idempotency_keys_across_retries",
+          "callee": "self.assertIn",
+          "lineNumber": 55
+        },
+        {
+          "caller": "test_billing_write_forms_keep_idempotency_keys_across_retries",
+          "callee": "self.assertIn",
+          "lineNumber": 56
+        },
+        {
+          "caller": "test_billing_write_forms_keep_idempotency_keys_across_retries",
+          "callee": "self.assertIn",
+          "lineNumber": 57
+        },
+        {
+          "caller": "test_billing_write_forms_keep_idempotency_keys_across_retries",
+          "callee": "self.assertIn",
+          "lineNumber": 58
+        },
+        {
+          "caller": "test_billing_center_exposes_shift_controls_and_separate_refund_actions",
+          "callee": "self.read_template",
+          "lineNumber": 61
+        },
+        {
+          "caller": "test_billing_center_exposes_shift_controls_and_separate_refund_actions",
+          "callee": "self.assertNotIn",
+          "lineNumber": 62
+        },
+        {
+          "caller": "test_billing_center_exposes_shift_controls_and_separate_refund_actions",
+          "callee": "self.assertIn",
+          "lineNumber": 63
+        },
+        {
+          "caller": "test_billing_center_exposes_shift_controls_and_separate_refund_actions",
+          "callee": "self.assertIn",
+          "lineNumber": 64
+        },
+        {
+          "caller": "test_billing_center_exposes_shift_controls_and_separate_refund_actions",
+          "callee": "self.assertIn",
+          "lineNumber": 65
+        },
+        {
+          "caller": "test_billing_center_exposes_shift_controls_and_separate_refund_actions",
+          "callee": "self.assertIn",
+          "lineNumber": 66
+        },
+        {
+          "caller": "test_billing_center_exposes_shift_controls_and_separate_refund_actions",
+          "callee": "self.assertIn",
+          "lineNumber": 67
+        },
+        {
+          "caller": "test_billing_center_exposes_shift_controls_and_separate_refund_actions",
+          "callee": "self.assertIn",
+          "lineNumber": 68
+        },
+        {
+          "caller": "test_billing_center_exposes_shift_controls_and_separate_refund_actions",
+          "callee": "self.assertIn",
+          "lineNumber": 69
+        },
+        {
+          "caller": "test_billing_center_exposes_shift_controls_and_separate_refund_actions",
+          "callee": "self.assertIn",
+          "lineNumber": 70
+        },
+        {
+          "caller": "test_billing_center_exposes_shift_controls_and_separate_refund_actions",
+          "callee": "self.assertIn",
+          "lineNumber": 71
+        },
+        {
+          "caller": "test_billing_center_exposes_refund_liabilities_and_manual_source_selection",
+          "callee": "self.read_template",
+          "lineNumber": 74
+        },
+        {
+          "caller": "test_billing_center_exposes_refund_liabilities_and_manual_source_selection",
+          "callee": "self.assertIn",
+          "lineNumber": 75
+        },
+        {
+          "caller": "test_billing_center_exposes_refund_liabilities_and_manual_source_selection",
+          "callee": "self.assertIn",
+          "lineNumber": 76
+        },
+        {
+          "caller": "test_billing_center_exposes_refund_liabilities_and_manual_source_selection",
+          "callee": "self.assertIn",
+          "lineNumber": 77
+        },
+        {
+          "caller": "test_billing_center_exposes_refund_liabilities_and_manual_source_selection",
+          "callee": "self.assertIn",
+          "lineNumber": 78
+        },
+        {
+          "caller": "test_billing_center_exposes_refund_liabilities_and_manual_source_selection",
+          "callee": "self.assertIn",
+          "lineNumber": 79
+        },
+        {
+          "caller": "test_billing_center_exposes_refund_liabilities_and_manual_source_selection",
+          "callee": "self.assertIn",
+          "lineNumber": 80
+        },
+        {
+          "caller": "test_billing_center_exposes_refund_liabilities_and_manual_source_selection",
+          "callee": "self.assertIn",
+          "lineNumber": 81
+        },
+        {
+          "caller": "test_billing_refund_ui_requires_non_cash_reference_and_marks_legacy",
+          "callee": "self.read_template",
+          "lineNumber": 84
+        },
+        {
+          "caller": "test_billing_refund_ui_requires_non_cash_reference_and_marks_legacy",
+          "callee": "self.assertIn",
+          "lineNumber": 85
+        },
+        {
+          "caller": "test_billing_refund_ui_requires_non_cash_reference_and_marks_legacy",
+          "callee": "self.assertIn",
+          "lineNumber": 86
+        },
+        {
+          "caller": "test_billing_refund_ui_requires_non_cash_reference_and_marks_legacy",
+          "callee": "self.assertIn",
+          "lineNumber": 87
+        },
+        {
+          "caller": "test_billing_refund_ui_requires_non_cash_reference_and_marks_legacy",
+          "callee": "self.assertIn",
+          "lineNumber": 88
+        },
+        {
+          "caller": "test_night_audit_dom_helper_appends_node_children",
+          "callee": "self.read_template",
+          "lineNumber": 91
+        },
+        {
+          "caller": "test_night_audit_dom_helper_appends_node_children",
+          "callee": "source.split(\"function el(\", 1)[1].split",
+          "lineNumber": 92
+        },
+        {
+          "caller": "test_night_audit_dom_helper_appends_node_children",
+          "callee": "source.split",
+          "lineNumber": 92
+        },
+        {
+          "caller": "test_night_audit_dom_helper_appends_node_children",
+          "callee": "self.assertIn",
+          "lineNumber": 93
+        },
+        {
+          "caller": "test_night_audit_dom_helper_appends_node_children",
+          "callee": "self.assertIn",
+          "lineNumber": 94
+        },
+        {
+          "caller": "test_night_audit_dom_helper_appends_node_children",
+          "callee": "self.assertIn",
+          "lineNumber": 95
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "apps/api/test_dup_convergence_guards.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 50,
+      "nonEmptyLines": 37,
+      "classes": [
+        {
+          "name": "DuplicateConvergenceGuardsTests",
+          "startLine": 11,
+          "endLine": 50,
+          "methods": [
+            "test_property_today_single_authority_in_inventory_services",
+            "test_body_pairs_converged",
+            "test_time_boundary_helpers_single_authority_in_report_center",
+            "test_money_str_single_authority_in_billing_center",
+            "test_models_q_valid_to_single_authority_in_inventory_services"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "DuplicateConvergenceGuardsTests",
+          "line": 11,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "test_property_today_single_authority_in_inventory_services",
+          "callee": "self.assertIs",
+          "lineNumber": 20
+        },
+        {
+          "caller": "test_property_today_single_authority_in_inventory_services",
+          "callee": "self.assertIs",
+          "lineNumber": 21
+        },
+        {
+          "caller": "test_property_today_single_authority_in_inventory_services",
+          "callee": "self.assertIs",
+          "lineNumber": 22
+        },
+        {
+          "caller": "test_property_today_single_authority_in_inventory_services",
+          "callee": "self.assertIs",
+          "lineNumber": 23
+        },
+        {
+          "caller": "test_body_pairs_converged",
+          "callee": "self.assertIs",
+          "lineNumber": 29
+        },
+        {
+          "caller": "test_body_pairs_converged",
+          "callee": "self.assertIs",
+          "lineNumber": 31
+        },
+        {
+          "caller": "test_time_boundary_helpers_single_authority_in_report_center",
+          "callee": "self.assertIs",
+          "lineNumber": 36
+        },
+        {
+          "caller": "test_time_boundary_helpers_single_authority_in_report_center",
+          "callee": "self.assertIs",
+          "lineNumber": 38
+        },
+        {
+          "caller": "test_money_str_single_authority_in_billing_center",
+          "callee": "self.assertIs",
+          "lineNumber": 43
+        },
+        {
+          "caller": "test_models_q_valid_to_single_authority_in_inventory_services",
+          "callee": "self.assertIs",
+          "lineNumber": 49
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "apps/api/test_finance_route_regressions.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 11,
+      "nonEmptyLines": 8,
+      "classes": [
+        {
+          "name": "LegacyFinanceRouteTests",
+          "startLine": 6,
+          "endLine": 10,
+          "methods": [
+            "test_legacy_finance_page_redirects_to_pms2_finance_center"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "LegacyFinanceRouteTests",
+          "line": 6,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "test_legacy_finance_page_redirects_to_pms2_finance_center",
+          "callee": "self.client.get",
+          "lineNumber": 8
+        },
+        {
+          "caller": "test_legacy_finance_page_redirects_to_pms2_finance_center",
+          "callee": "self.assertEqual",
+          "lineNumber": 9
+        },
+        {
+          "caller": "test_legacy_finance_page_redirects_to_pms2_finance_center",
+          "callee": "self.assertEqual",
+          "lineNumber": 10
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "apps/billing/apps.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 8,
+      "nonEmptyLines": 6,
+      "classes": [
+        {
+          "name": "BillingConfig",
+          "startLine": 4,
+          "endLine": 8,
+          "methods": [],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "BillingConfig",
+          "line": 4,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "apps/billing/management/__init__.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 1,
+      "nonEmptyLines": 0,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "apps/billing/management/commands/__init__.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 1,
+      "nonEmptyLines": 0,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "apps/core/apps.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 8,
+      "nonEmptyLines": 6,
+      "classes": [
+        {
+          "name": "CoreConfig",
+          "startLine": 4,
+          "endLine": 8,
+          "methods": [],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "CoreConfig",
+          "line": 4,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "apps/core/labels.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 88,
+      "nonEmptyLines": 62,
+      "functions": [
+        {
+          "name": "choice_labels",
+          "startLine": 10,
+          "endLine": 12,
+          "params": [
+            "choices_class"
+          ]
+        },
+        {
+          "name": "room_label_maps",
+          "startLine": 16,
+          "endLine": 22,
+          "params": []
+        },
+        {
+          "name": "reservation_status_labels",
+          "startLine": 25,
+          "endLine": 27,
+          "params": []
+        },
+        {
+          "name": "stay_status_labels",
+          "startLine": 30,
+          "endLine": 32,
+          "params": []
+        },
+        {
+          "name": "employment_status_labels",
+          "startLine": 35,
+          "endLine": 37,
+          "params": []
+        },
+        {
+          "name": "gmembership_status_labels",
+          "startLine": 40,
+          "endLine": 42,
+          "params": []
+        },
+        {
+          "name": "currency_label",
+          "startLine": 70,
+          "endLine": 71,
+          "params": [
+            "code"
+          ]
+        },
+        {
+          "name": "member_level_label",
+          "startLine": 74,
+          "endLine": 75,
+          "params": [
+            "code"
+          ]
+        },
+        {
+          "name": "folio_summary_status_label",
+          "startLine": 78,
+          "endLine": 79,
+          "params": [
+            "code"
+          ]
+        },
+        {
+          "name": "payment_status_labels",
+          "startLine": 81,
+          "endLine": 83,
+          "params": []
+        },
+        {
+          "name": "refund_status_labels",
+          "startLine": 86,
+          "endLine": 88,
+          "params": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "choice_labels",
+          "line": 10,
+          "isDefault": false
+        },
+        {
+          "name": "room_label_maps",
+          "line": 16,
+          "isDefault": false
+        },
+        {
+          "name": "reservation_status_labels",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "stay_status_labels",
+          "line": 30,
+          "isDefault": false
+        },
+        {
+          "name": "employment_status_labels",
+          "line": 35,
+          "isDefault": false
+        },
+        {
+          "name": "gmembership_status_labels",
+          "line": 40,
+          "isDefault": false
+        },
+        {
+          "name": "currency_label",
+          "line": 70,
+          "isDefault": false
+        },
+        {
+          "name": "member_level_label",
+          "line": 74,
+          "isDefault": false
+        },
+        {
+          "name": "folio_summary_status_label",
+          "line": 78,
+          "isDefault": false
+        },
+        {
+          "name": "payment_status_labels",
+          "line": 81,
+          "isDefault": false
+        },
+        {
+          "name": "refund_status_labels",
+          "line": 86,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "room_label_maps",
+          "callee": "choice_labels",
+          "lineNumber": 19
+        },
+        {
+          "caller": "room_label_maps",
+          "callee": "choice_labels",
+          "lineNumber": 20
+        },
+        {
+          "caller": "room_label_maps",
+          "callee": "choice_labels",
+          "lineNumber": 21
+        },
+        {
+          "caller": "reservation_status_labels",
+          "callee": "choice_labels",
+          "lineNumber": 27
+        },
+        {
+          "caller": "stay_status_labels",
+          "callee": "choice_labels",
+          "lineNumber": 32
+        },
+        {
+          "caller": "employment_status_labels",
+          "callee": "choice_labels",
+          "lineNumber": 37
+        },
+        {
+          "caller": "gmembership_status_labels",
+          "callee": "choice_labels",
+          "lineNumber": 42
+        },
+        {
+          "caller": "currency_label",
+          "callee": "CURRENCY_LABELS.get",
+          "lineNumber": 71
+        },
+        {
+          "caller": "member_level_label",
+          "callee": "MEMBER_LEVEL_LABELS.get",
+          "lineNumber": 75
+        },
+        {
+          "caller": "folio_summary_status_label",
+          "callee": "FOLIO_SUMMARY_STATUS_LABELS.get",
+          "lineNumber": 79
+        },
+        {
+          "caller": "payment_status_labels",
+          "callee": "choice_labels",
+          "lineNumber": 83
+        },
+        {
+          "caller": "refund_status_labels",
+          "callee": "choice_labels",
+          "lineNumber": 88
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 11,
+        "functionCount": 11,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "apps/core/management/__init__.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 1,
+      "nonEmptyLines": 0,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "apps/core/management/commands/__init__.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 1,
+      "nonEmptyLines": 0,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "apps/core/management/commands/check_mysql_append_only_guards.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 60,
+      "nonEmptyLines": 55,
+      "classes": [
+        {
+          "name": "Command",
+          "startLine": 20,
+          "endLine": 60,
+          "methods": [
+            "handle"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "Command",
+          "line": 20,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "handle",
+          "callee": "CommandError",
+          "lineNumber": 25
+        },
+        {
+          "caller": "handle",
+          "callee": "connection.cursor",
+          "lineNumber": 27
+        },
+        {
+          "caller": "handle",
+          "callee": "cursor.execute",
+          "lineNumber": 28
+        },
+        {
+          "caller": "handle",
+          "callee": "cursor.fetchall",
+          "lineNumber": 34
+        },
+        {
+          "caller": "handle",
+          "callee": "sorted",
+          "lineNumber": 36
+        },
+        {
+          "caller": "handle",
+          "callee": "set",
+          "lineNumber": 36
+        },
+        {
+          "caller": "handle",
+          "callee": "set",
+          "lineNumber": 36
+        },
+        {
+          "caller": "handle",
+          "callee": "EXPECTED.items",
+          "lineNumber": 38
+        },
+        {
+          "caller": "handle",
+          "callee": "observed[3].upper",
+          "lineNumber": 42
+        },
+        {
+          "caller": "handle",
+          "callee": "all",
+          "lineNumber": 45
+        },
+        {
+          "caller": "handle",
+          "callee": "details.append",
+          "lineNumber": 55
+        },
+        {
+          "caller": "handle",
+          "callee": "\", \".join",
+          "lineNumber": 55
+        },
+        {
+          "caller": "handle",
+          "callee": "details.append",
+          "lineNumber": 57
+        },
+        {
+          "caller": "handle",
+          "callee": "repr",
+          "lineNumber": 57
+        },
+        {
+          "caller": "handle",
+          "callee": "CommandError",
+          "lineNumber": 58
+        },
+        {
+          "caller": "handle",
+          "callee": "\"；\".join",
+          "lineNumber": 58
+        },
+        {
+          "caller": "handle",
+          "callee": "self.stdout.write",
+          "lineNumber": 59
+        },
+        {
+          "caller": "handle",
+          "callee": "self.style.SUCCESS",
+          "lineNumber": 59
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "apps/core/management/commands/install_mysql_append_only_guards.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 80,
+      "nonEmptyLines": 75,
+      "classes": [
+        {
+          "name": "Command",
+          "startLine": 68,
+          "endLine": 80,
+          "methods": [
+            "handle"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "Command",
+          "line": 68,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "handle",
+          "callee": "CommandError",
+          "lineNumber": 73
+        },
+        {
+          "caller": "handle",
+          "callee": "connection.cursor",
+          "lineNumber": 75
+        },
+        {
+          "caller": "handle",
+          "callee": "cursor.execute",
+          "lineNumber": 77
+        },
+        {
+          "caller": "handle",
+          "callee": "cursor.execute",
+          "lineNumber": 78
+        },
+        {
+          "caller": "handle",
+          "callee": "self.stdout.write",
+          "lineNumber": 79
+        },
+        {
+          "caller": "handle",
+          "callee": "self.style.SUCCESS",
+          "lineNumber": 79
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "apps/core/sql/audit_immutability.sql",
+      "language": "sql",
+      "fileCategory": "data",
+      "totalLines": 99,
+      "nonEmptyLines": 88,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0,
+        "definitionCount": 0
+      }
+    },
+    {
+      "path": "apps/guests/__init__.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 1,
+      "nonEmptyLines": 0,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "apps/guests/apps.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 8,
+      "nonEmptyLines": 6,
+      "classes": [
+        {
+          "name": "GuestsConfig",
+          "startLine": 4,
+          "endLine": 8,
+          "methods": [],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "GuestsConfig",
+          "line": 4,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "apps/guests/templatetags/__init__.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 1,
+      "nonEmptyLines": 0,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "apps/identity/apps.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 8,
+      "nonEmptyLines": 6,
+      "classes": [
+        {
+          "name": "IdentityConfig",
+          "startLine": 4,
+          "endLine": 8,
+          "methods": [],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "IdentityConfig",
+          "line": 4,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    }
+  ]
+}

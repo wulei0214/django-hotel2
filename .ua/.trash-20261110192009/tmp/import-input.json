@@ -1,0 +1,1075 @@
+{
+  "projectRoot": "F:\\Desktop\\django-hotel",
+  "files": [
+    {
+      "path": ".env.example",
+      "language": "config",
+      "fileCategory": "config"
+    },
+    {
+      "path": ".github/pull_request_template.md",
+      "language": "markdown",
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "language": "yaml",
+      "fileCategory": "infra"
+    },
+    {
+      "path": ".github/workflows/django-ci.yml",
+      "language": "yaml",
+      "fileCategory": "infra"
+    },
+    {
+      "path": ".github/workflows/openapi-snapshot.yml",
+      "language": "yaml",
+      "fileCategory": "infra"
+    },
+    {
+      "path": "api_tests/README.md",
+      "language": "markdown",
+      "fileCategory": "docs"
+    },
+    {
+      "path": "api_tests/conftest.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "api_tests/pytest.ini",
+      "language": "config",
+      "fileCategory": "config"
+    },
+    {
+      "path": "api_tests/reports/junit-p0.xml",
+      "language": "xml",
+      "fileCategory": "config"
+    },
+    {
+      "path": "api_tests/test_p0_smoke.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/approval.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/apps.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/audit_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/billing_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/dashboard.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/front_desk.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/guest_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/housekeeping_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/management/commands/export_openapi_schema.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/night_audit.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/notification_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/openapi_schema.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/pages.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/report_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/reservation_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/staff_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_approval.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_audit_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_auth_hardening.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_billing_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_center_template_regressions.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_dup_convergence_guards.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_e2e_flows.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_finance_route_regressions.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_five_centers_closure.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_housekeeping_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_night_audit_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_notification_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_openapi_schema.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_pagination_contract.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_public_booking_lifecycle.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_report_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_security.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_whitebox_api.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/tests.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/urls.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/views.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/admin.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/approval_registry.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/apps.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/dec02.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/liabilities.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/management/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/management/commands/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/management/commands/expire_pending_refunds.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/models.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/night_audit.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/payment_intents.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/reconciliation.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/services.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/services_v2.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/test_approval_registry.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/test_break_glass.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/test_dec02.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/test_night_audit_reopen.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/test_payment_dec02.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/test_whitebox_services.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/tests.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/admin.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/api_contract.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/apps.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/labels.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/management/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/management/commands/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/management/commands/check_mysql_append_only_guards.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/management/commands/install_mysql_append_only_guards.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/models.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/rate_limit.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/services_notifications.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/sql/audit_immutability.sql",
+      "language": "sql",
+      "fileCategory": "data"
+    },
+    {
+      "path": "apps/core/test_audit_immutability.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/tests.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/guests/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/guests/admin.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/guests/apps.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/guests/models.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/guests/services.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/guests/templatetags/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/guests/test_whitebox_services.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/admin.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/apps.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/authorization.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/context_processors.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/decorators.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/employee_number.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/invitation_services.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/invitation_views.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/management/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/management/commands/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/management/commands/bind_staff_user.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/management/commands/expire_invitations.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/management/commands/platform_superadmin_check.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/middleware.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/models.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/permission_admin.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/permission_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/platform.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/registry.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/roles.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/services.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/session_middleware.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/staff_center_views.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_cookie_isolation.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_invitations.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_module_gates.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_permission_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_platform.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_registry.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_staff_center.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/tests.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/admin.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/apps.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/management/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/management/commands/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/management/commands/sync_inventory_calendar.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/models.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/reconciliation.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/services.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/test_reconciliation.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/test_whitebox_services.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/tests.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/admin.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/apps.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/front_desk_services.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/lifecycle_services.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/management/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/management/commands/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/management/commands/expire_reservation_holds.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/models.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/services.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/test_six_rules.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/test_whitebox_services.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/tests.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/walkin.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "deploy_notes.md",
+      "language": "markdown",
+      "fileCategory": "docs"
+    },
+    {
+      "path": "hotel/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotel/settings.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotel/urls.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotel/wsgi.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/admin.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/apps.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/audit_middleware.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/events.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/handlers.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/audit_employee_data.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/classify_users.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/issue_booking_tokens.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/reconcile_test_users.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/release_expired_reservations.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/seed_hotel_data.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/seed_role_test_accounts.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/models.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/state_machine.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/templatetags/__init__.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/templatetags/pms_filters.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/tests.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/views.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "manage.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "readme.md",
+      "language": "markdown",
+      "fileCategory": "docs"
+    },
+    {
+      "path": "requirements.txt",
+      "language": "txt",
+      "fileCategory": "docs"
+    },
+    {
+      "path": "scripts/e2e_full_chain.py",
+      "language": "python",
+      "fileCategory": "code"
+    },
+    {
+      "path": "templates/403.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/_sidebar.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/accomodation.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/booking.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/checkin.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/finance.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/force_password_change.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/frontdesk.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/home.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/html1.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/html4.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/identity/invite_accept.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/index.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/login.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/nightaudit.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/order.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/park.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/platform/base.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/platform/home.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/platform/permissions.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/platform/system.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/pms/audit_center.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/pms/billing_center.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/pms/housekeeping_center.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/pms/management_center.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/pms/me.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/pms/night_audit_center.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/pms/notification_center.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/pms/report_center.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/pms/staff_center.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/public/booking.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/room.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/staff_accounts.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/staff_accounts_detail.html",
+      "language": "html",
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/vip.html",
+      "language": "html",
+      "fileCategory": "markup"
+    }
+  ]
+}

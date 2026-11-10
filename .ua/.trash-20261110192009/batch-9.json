@@ -1,0 +1,364 @@
+{
+  "nodes": [
+    {
+      "id": "file:templates/403.html",
+      "type": "file",
+      "name": "403.html",
+      "filePath": "templates/403.html",
+      "summary": "403 无权限页：越权访问时的提示页。",
+      "tags": [
+        "template",
+        "error-page"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:templates/_sidebar.html",
+      "type": "file",
+      "name": "_sidebar.html",
+      "filePath": "templates/_sidebar.html",
+      "summary": "公共侧边栏片段：按角色/模块权限渲染导航入口，被各页面 include。",
+      "tags": [
+        "template",
+        "navigation",
+        "shared-partial"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/accomodation.html",
+      "type": "file",
+      "name": "accomodation.html",
+      "filePath": "templates/accomodation.html",
+      "summary": "客房管理页（旧版）：客房列表与增删改操作界面。",
+      "tags": [
+        "template",
+        "legacy",
+        "room"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/booking.html",
+      "type": "file",
+      "name": "booking.html",
+      "filePath": "templates/booking.html",
+      "summary": "客房预订页：选择日期/房型、填写客人信息并提交预订。",
+      "tags": [
+        "template",
+        "booking"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:templates/checkin.html",
+      "type": "file",
+      "name": "checkin.html",
+      "filePath": "templates/checkin.html",
+      "summary": "入住管理页：待确认/已确认/在店列表与入住办理操作。",
+      "tags": [
+        "template",
+        "front-desk"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/finance.html",
+      "type": "file",
+      "name": "finance.html",
+      "filePath": "templates/finance.html",
+      "summary": "财务管理页（旧版）：财务记录与收入图表。",
+      "tags": [
+        "template",
+        "legacy",
+        "finance"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/force_password_change.html",
+      "type": "file",
+      "name": "force_password_change.html",
+      "filePath": "templates/force_password_change.html",
+      "summary": "强制改密页：首次登录/重置后必须修改密码。",
+      "tags": [
+        "template",
+        "security",
+        "auth"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:templates/frontdesk.html",
+      "type": "file",
+      "name": "frontdesk.html",
+      "filePath": "templates/frontdesk.html",
+      "summary": "前台接待工作台：到店、离店、在店与房间状态操作界面。",
+      "tags": [
+        "template",
+        "front-desk"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:templates/home.html",
+      "type": "file",
+      "name": "home.html",
+      "filePath": "templates/home.html",
+      "summary": "旧版主界面：经营概览、图表与快捷入口。",
+      "tags": [
+        "template",
+        "legacy",
+        "dashboard"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/html1.html",
+      "type": "file",
+      "name": "html1.html",
+      "filePath": "templates/html1.html",
+      "summary": "旧版客房/订单列表页模板。",
+      "tags": [
+        "template",
+        "legacy"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/html4.html",
+      "type": "file",
+      "name": "html4.html",
+      "filePath": "templates/html4.html",
+      "summary": "旧版酒店信息管理页模板。",
+      "tags": [
+        "template",
+        "legacy"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/index.html",
+      "type": "file",
+      "name": "index.html",
+      "filePath": "templates/index.html",
+      "summary": "旧版首页模板：菜单与统计卡片。",
+      "tags": [
+        "template",
+        "legacy",
+        "dashboard"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/login.html",
+      "type": "file",
+      "name": "login.html",
+      "filePath": "templates/login.html",
+      "summary": "员工登录页。",
+      "tags": [
+        "template",
+        "auth",
+        "login"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/nightaudit.html",
+      "type": "file",
+      "name": "nightaudit.html",
+      "filePath": "templates/nightaudit.html",
+      "summary": "夜审页面（旧版）：夜审执行与营业日查看。",
+      "tags": [
+        "template",
+        "legacy",
+        "night-audit"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/order.html",
+      "type": "file",
+      "name": "order.html",
+      "filePath": "templates/order.html",
+      "summary": "订单管理页（旧版）：订单列表与状态操作。",
+      "tags": [
+        "template",
+        "legacy",
+        "order"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/park.html",
+      "type": "file",
+      "name": "park.html",
+      "filePath": "templates/park.html",
+      "summary": "停车管理页（旧版）。",
+      "tags": [
+        "template",
+        "legacy"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/room.html",
+      "type": "file",
+      "name": "room.html",
+      "filePath": "templates/room.html",
+      "summary": "房间管理页（旧版）：房号与房态维护。",
+      "tags": [
+        "template",
+        "legacy",
+        "room"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/staff_accounts.html",
+      "type": "file",
+      "name": "staff_accounts.html",
+      "filePath": "templates/staff_accounts.html",
+      "summary": "员工与账号管理页（只读存档，已由员工中心取代）。",
+      "tags": [
+        "template",
+        "legacy",
+        "staff"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/staff_accounts_detail.html",
+      "type": "file",
+      "name": "staff_accounts_detail.html",
+      "filePath": "templates/staff_accounts_detail.html",
+      "summary": "员工详情页（只读存档）。",
+      "tags": [
+        "template",
+        "legacy",
+        "staff"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/vip.html",
+      "type": "file",
+      "name": "vip.html",
+      "filePath": "templates/vip.html",
+      "summary": "会员管理页（旧版）：会员列表与等级。",
+      "tags": [
+        "template",
+        "legacy",
+        "vip"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:templates/accomodation.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/checkin.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/finance.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/frontdesk.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/home.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/html1.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/html4.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/index.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/nightaudit.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/order.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/park.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/room.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/staff_accounts.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/staff_accounts_detail.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/vip.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}

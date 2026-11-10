@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "F:\\Desktop\\django-hotel\\.archify\\architecture-pms-deploy-ops-20261110-220800\\candidate.json",
+    "sha256": "404608a53dce637080ee70352a9075164a0e46a5b881ebabb626a10f54d0a9bc",
+    "bytes": 4710
+  },
+  "artifact": {
+    "path": "F:\\Desktop\\django-hotel\\.archify\\architecture-pms-deploy-ops-20261110-220800\\pms-deploy-ops.html",
+    "sha256": "1c242a27658b71b5c19de98e56339d8fa0a0673483928b8781194b6c2317642f",
+    "bytes": 846742
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "F:\\Desktop\\django-hotel\\.archify\\architecture-pms-deploy-ops-20261110-220800\\review-2\\pms-deploy-ops.finalize.json",
+    "summaryReceipt": "F:\\Desktop\\django-hotel\\.archify\\architecture-pms-deploy-ops-20261110-220800\\review-2\\pms-deploy-ops.finalize-summary.json",
+    "browserCheckReceipt": "F:\\Desktop\\django-hotel\\.archify\\architecture-pms-deploy-ops-20261110-220800\\review-2\\pms-deploy-ops.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-10T10:50:44.975Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 4075,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  },
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "routesOverSuggestedBends": 1
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [],
+      "detours": [
+        {
+          "relationship": {
+            "id": "edge-schedule",
+            "from": "scheduler",
+            "to": "worker",
+            "label": "调度触发",
+            "collectionIndex": 6,
+            "artifactIndex": 7
+          },
+          "bends": 3,
+          "stretch": 1.112,
+          "directCorridorBlockers": [
+            {
+              "id": "redis",
+              "label": "Redis",
+              "box": [
+                700,
+                540,
+                165,
+                68
+              ]
+            }
+          ]
+        }
+      ],
+      "truncated": false
+    },
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  }
+}

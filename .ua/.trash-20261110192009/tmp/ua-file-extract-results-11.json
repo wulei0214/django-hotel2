@@ -1,0 +1,28 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 0,
+  "filesSkipped": [
+    "templates/pms/audit_center.html",
+    "templates/pms/billing_center.html",
+    "templates/pms/housekeeping_center.html",
+    "templates/pms/management_center.html",
+    "templates/pms/me.html",
+    "templates/pms/night_audit_center.html",
+    "templates/pms/notification_center.html",
+    "templates/pms/report_center.html",
+    "templates/pms/staff_center.html"
+  ],
+  "filesUnreadable": [],
+  "analysisOutcomes": {
+    "structure": {
+      "succeeded": 0,
+      "failed": 0
+    },
+    "callGraph": {
+      "succeeded": 0,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "results": []
+}

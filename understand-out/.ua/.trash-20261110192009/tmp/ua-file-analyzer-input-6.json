@@ -1,0 +1,146 @@
+{
+  "projectRoot": "F:\\Desktop\\django-hotel",
+  "batchFiles": [
+    {
+      "path": "apps/api/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_audit_center.py",
+      "language": "python",
+      "sizeLines": 532,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_housekeeping_center.py",
+      "language": "python",
+      "sizeLines": 596,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_whitebox_api.py",
+      "language": "python",
+      "sizeLines": 487,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/permission_admin.py",
+      "language": "python",
+      "sizeLines": 42,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/permission_center.py",
+      "language": "python",
+      "sizeLines": 558,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/platform.py",
+      "language": "python",
+      "sizeLines": 128,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/registry.py",
+      "language": "python",
+      "sizeLines": 822,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_permission_center.py",
+      "language": "python",
+      "sizeLines": 611,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_registry.py",
+      "language": "python",
+      "sizeLines": 499,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotel/urls.py",
+      "language": "python",
+      "sizeLines": 172,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "apps/api/__init__.py": [],
+    "apps/api/test_audit_center.py": [
+      "apps/api/__init__.py",
+      "apps/api/audit_center.py",
+      "apps/api/test_e2e_flows.py",
+      "apps/core/models.py"
+    ],
+    "apps/api/test_housekeeping_center.py": [
+      "apps/api/test_e2e_flows.py",
+      "apps/core/models.py",
+      "apps/identity/authorization.py",
+      "apps/identity/registry.py",
+      "apps/inventory/models.py",
+      "apps/inventory/services.py"
+    ],
+    "apps/api/test_whitebox_api.py": [
+      "apps/api/__init__.py",
+      "apps/billing/models.py",
+      "apps/core/models.py",
+      "apps/guests/models.py",
+      "apps/identity/models.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/identity/__init__.py": [],
+    "apps/identity/permission_admin.py": [
+      "apps/identity/permission_center.py",
+      "apps/identity/platform.py"
+    ],
+    "apps/identity/permission_center.py": [
+      "apps/core/models.py",
+      "apps/identity/models.py",
+      "apps/identity/platform.py",
+      "apps/identity/registry.py"
+    ],
+    "apps/identity/platform.py": [],
+    "apps/identity/registry.py": [],
+    "apps/identity/test_permission_center.py": [
+      "apps/core/models.py",
+      "apps/identity/authorization.py",
+      "apps/identity/models.py",
+      "apps/identity/permission_center.py",
+      "apps/identity/registry.py"
+    ],
+    "apps/identity/test_registry.py": [
+      "apps/core/models.py",
+      "apps/identity/models.py",
+      "apps/identity/registry.py",
+      "apps/identity/roles.py"
+    ],
+    "hotel/urls.py": [
+      "apps/api/__init__.py",
+      "apps/api/openapi_schema.py",
+      "apps/identity/__init__.py",
+      "apps/identity/invitation_views.py",
+      "apps/identity/permission_admin.py",
+      "apps/identity/permission_center.py",
+      "apps/identity/staff_center_views.py",
+      "hotelapp/__init__.py",
+      "hotelapp/views.py"
+    ],
+    "hotelapp/__init__.py": []
+  }
+}

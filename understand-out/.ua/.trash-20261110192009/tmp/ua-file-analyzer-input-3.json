@@ -1,0 +1,221 @@
+{
+  "projectRoot": "F:\\Desktop\\django-hotel",
+  "batchFiles": [
+    {
+      "path": "apps/api/test_approval.py",
+      "language": "python",
+      "sizeLines": 556,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_billing_center.py",
+      "language": "python",
+      "sizeLines": 1696,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_public_booking_lifecycle.py",
+      "language": "python",
+      "sizeLines": 221,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_security.py",
+      "language": "python",
+      "sizeLines": 144,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/management/commands/expire_pending_refunds.py",
+      "language": "python",
+      "sizeLines": 35,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/night_audit.py",
+      "language": "python",
+      "sizeLines": 511,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/services_v2.py",
+      "language": "python",
+      "sizeLines": 1385,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/test_approval_registry.py",
+      "language": "python",
+      "sizeLines": 144,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/test_break_glass.py",
+      "language": "python",
+      "sizeLines": 183,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/test_night_audit_reopen.py",
+      "language": "python",
+      "sizeLines": 140,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/test_whitebox_services.py",
+      "language": "python",
+      "sizeLines": 1353,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/admin.py",
+      "language": "python",
+      "sizeLines": 72,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/models.py",
+      "language": "python",
+      "sizeLines": 587,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/test_audit_immutability.py",
+      "language": "python",
+      "sizeLines": 52,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/tests.py",
+      "language": "python",
+      "sizeLines": 15,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/guests/services.py",
+      "language": "python",
+      "sizeLines": 382,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/guests/test_whitebox_services.py",
+      "language": "python",
+      "sizeLines": 55,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_cookie_isolation.py",
+      "language": "python",
+      "sizeLines": 666,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_platform.py",
+      "language": "python",
+      "sizeLines": 432,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/management/commands/sync_inventory_calendar.py",
+      "language": "python",
+      "sizeLines": 96,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "apps/api/test_approval.py": [
+      "apps/billing/models.py",
+      "apps/billing/services_v2.py",
+      "apps/core/models.py",
+      "apps/guests/models.py",
+      "apps/identity/models.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/api/test_billing_center.py": [
+      "apps/billing/models.py",
+      "apps/billing/services_v2.py",
+      "apps/core/models.py",
+      "apps/guests/models.py",
+      "apps/identity/models.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/api/test_public_booking_lifecycle.py": [
+      "apps/core/models.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/api/test_security.py": [
+      "apps/core/models.py",
+      "apps/guests/models.py",
+      "apps/guests/services.py",
+      "apps/identity/models.py"
+    ],
+    "apps/billing/management/commands/expire_pending_refunds.py": [
+      "apps/billing/services_v2.py",
+      "apps/core/models.py"
+    ],
+    "apps/billing/night_audit.py": [
+      "apps/billing/models.py",
+      "apps/billing/services_v2.py",
+      "apps/core/models.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/billing/services_v2.py": [
+      "apps/billing/models.py",
+      "apps/core/models.py"
+    ],
+    "apps/billing/test_approval_registry.py": [
+      "apps/billing/approval_registry.py",
+      "apps/billing/models.py",
+      "apps/billing/services_v2.py",
+      "apps/core/models.py"
+    ],
+    "apps/billing/test_break_glass.py": [
+      "apps/billing/night_audit.py",
+      "apps/core/models.py",
+      "apps/identity/models.py"
+    ],
+    "apps/billing/test_night_audit_reopen.py": [
+      "apps/billing/models.py",
+      "apps/billing/night_audit.py",
+      "apps/billing/services_v2.py",
+      "apps/core/models.py"
+    ],
+    "apps/billing/test_whitebox_services.py": [
+      "apps/billing/models.py",
+      "apps/billing/services_v2.py",
+      "apps/core/models.py",
+      "apps/guests/models.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/core/admin.py": [
+      "apps/core/models.py"
+    ],
+    "apps/core/models.py": [],
+    "apps/core/test_audit_immutability.py": [
+      "apps/core/models.py"
+    ],
+    "apps/core/tests.py": [
+      "apps/core/models.py"
+    ],
+    "apps/guests/services.py": [
+      "apps/core/models.py"
+    ],
+    "apps/guests/test_whitebox_services.py": [
+      "apps/core/models.py",
+      "apps/guests/models.py",
+      "apps/guests/services.py"
+    ],
+    "apps/identity/test_cookie_isolation.py": [
+      "apps/core/models.py",
+      "apps/identity/test_platform.py"
+    ],
+    "apps/identity/test_platform.py": [
+      "apps/core/models.py",
+      "apps/identity/models.py"
+    ],
+    "apps/inventory/management/commands/sync_inventory_calendar.py": [
+      "apps/core/models.py",
+      "apps/inventory/models.py"
+    ]
+  }
+}

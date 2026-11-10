@@ -1,0 +1,77 @@
+{
+  "nodes": [
+    {
+      "id": "file:templates/platform/base.html",
+      "type": "file",
+      "name": "base.html",
+      "filePath": "templates/platform/base.html",
+      "summary": "平台管理基础模板：平台侧布局与内容 block。",
+      "tags": [
+        "template",
+        "platform",
+        "layout"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:templates/platform/home.html",
+      "type": "file",
+      "name": "home.html",
+      "filePath": "templates/platform/home.html",
+      "summary": "平台管理首页：系统概览。",
+      "tags": [
+        "template",
+        "platform"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:templates/platform/permissions.html",
+      "type": "file",
+      "name": "permissions.html",
+      "filePath": "templates/platform/permissions.html",
+      "summary": "平台权限页：角色/权限矩阵维护界面。",
+      "tags": [
+        "template",
+        "platform",
+        "permission"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/platform/system.html",
+      "type": "file",
+      "name": "system.html",
+      "filePath": "templates/platform/system.html",
+      "summary": "平台系统信息页：运行环境与账号安全信息。",
+      "tags": [
+        "template",
+        "platform"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:templates/platform/home.html",
+      "target": "file:templates/platform/base.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/platform/permissions.html",
+      "target": "file:templates/platform/base.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/platform/system.html",
+      "target": "file:templates/platform/base.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}

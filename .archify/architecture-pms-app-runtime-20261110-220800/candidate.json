@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "酒店 PMS 应用运行架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/architecture-pms-app-runtime-20261110-220800/pms-app-runtime.html",
+    "repository": {
+      "url": "https://github.com/wulei0214/django-hotel2.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "788d486fdfae050b8084ddd3e63355f788f5349b"
+    }
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "员工 / 客人浏览器",
+      "sublabel": "PMS 工作台 · 公开预订",
+      "pos": [40, 300],
+      "size": [150, 68]
+    },
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "Django 应用",
+      "sublabel": "WSGI · 路由 · 中间件链",
+      "pos": [300, 300],
+      "size": [165, 70],
+      "sources": [
+        { "path": "hotel/settings.py", "line": 57, "end_line": 68, "label": "中间件链" },
+        { "path": "hotel/settings.py", "line": 112, "label": "WSGI 入口" }
+      ]
+    },
+    {
+      "id": "authz",
+      "type": "security",
+      "label": "身份与授权",
+      "sublabel": "任职 · 权限码",
+      "pos": [300, 120],
+      "size": [165, 64],
+      "sources": [
+        { "path": "apps/identity/authorization.py", "line": 38, "end_line": 69, "label": "has_permission" },
+        { "path": "apps/identity/middleware.py", "line": 15, "end_line": 23, "label": "物业上下文" }
+      ]
+    },
+    {
+      "id": "pages",
+      "type": "frontend",
+      "label": "页面层",
+      "sublabel": "服务端模板 · 管理中心",
+      "pos": [570, 200],
+      "size": [160, 68],
+      "sources": [
+        { "path": "apps/api/pages.py", "line": 331, "end_line": 360, "label": "管理中心页面" },
+        { "path": "hotel/urls.py", "line": 69, "label": "路由注册" }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API 层",
+      "sublabel": "/api/v1 · OpenAPI 3.1",
+      "pos": [570, 400],
+      "size": [160, 68],
+      "sources": [
+        { "path": "apps/api/urls.py", "line": 7, "label": "urlpatterns" },
+        { "path": "apps/api/views.py", "line": 39, "end_line": 57, "label": "api_guard 兜底" }
+      ]
+    },
+    {
+      "id": "domain",
+      "type": "backend",
+      "label": "领域服务层",
+      "sublabel": "预订 · 库存 · 账务 · 客人",
+      "pos": [840, 300],
+      "size": [175, 70],
+      "sources": [
+        { "path": "apps/reservations/services.py", "line": 175, "label": "create_reservation" },
+        { "path": "apps/inventory/services.py", "line": 461, "end_line": 491, "label": "库存持有/确认" },
+        { "path": "apps/billing/services.py", "line": 92, "end_line": 130, "label": "支付回调入账" }
+      ]
+    },
+    {
+      "id": "mysql",
+      "type": "database",
+      "label": "MySQL 8",
+      "sublabel": "业务数据 · 限流计数",
+      "tag": "权威来源",
+      "pos": [1115, 300],
+      "size": [150, 64],
+      "sources": [
+        { "path": "hotel/settings.py", "line": 114, "end_line": 145, "label": "数据库配置" },
+        { "path": "apps/core/models.py", "line": 433, "label": "RateLimitCounter" }
+      ]
+    },
+    {
+      "id": "cache",
+      "type": "database",
+      "label": "缓存",
+      "sublabel": "生产 Redis · 开发 LocMem",
+      "tag": "非权威",
+      "pos": [570, 540],
+      "size": [170, 64],
+      "sources": [
+        { "path": "hotel/settings.py", "line": 204, "end_line": 226, "label": "缓存后端环境化" },
+        { "path": "apps/api/billing_center.py", "line": 206, "end_line": 216, "label": "缓存故障降级" }
+      ]
+    },
+    {
+      "id": "audit",
+      "type": "database",
+      "label": "审计与日志",
+      "sublabel": "AuditEvent + audit.log",
+      "pos": [300, 540],
+      "size": [165, 64],
+      "sources": [
+        { "path": "apps/core/models.py", "line": 62, "label": "AuditEvent" },
+        { "path": "hotelapp/audit_middleware.py", "line": 6, "end_line": 20, "label": "写操作审计" },
+        { "path": "apps/core/management/commands/install_mysql_append_only_guards.py", "line": 6, "end_line": 20, "label": "禁改触发器" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "单店 PMS 运行时 · DEFAULT 物业",
+      "wraps": ["authz", "gateway", "pages", "api", "domain"],
+      "pad": 18
+    }
+  ],
+  "connections": [
+    { "id": "web-https", "from": "browser", "to": "gateway", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "session-property", "from": "gateway", "to": "authz", "label": "会话 / 物业", "variant": "security" },
+    { "id": "gate-pages", "from": "gateway", "to": "pages", "label": "权限门禁" },
+    { "id": "gate-api", "from": "gateway", "to": "api", "label": "API 路由" },
+    { "id": "pages-services", "from": "pages", "to": "domain", "label": "调用服务" },
+    { "id": "api-services", "from": "api", "to": "domain", "label": "调用服务" },
+    { "id": "domain-db", "from": "domain", "to": "mysql", "label": "ORM 事务" },
+    { "id": "api-cache", "from": "api", "to": "cache", "label": "摘要缓存 60s", "variant": "dashed" },
+    { "id": "api-ratelimit", "from": "api", "to": "mysql", "label": "限流计数", "variant": "security" },
+    { "id": "gateway-audit", "from": "gateway", "to": "audit", "label": "POST 审计" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "入口与会话",
+      "items": [
+        "PMS 业务会话（/）与平台管理会话隔离：两套 Session 互不认证",
+        "平台门户与 Django Admin 共享同一个平台 Session，仅靠两个 Path Cookie 别名传递：platform_sessionid @ /platform/、django_admin_sessionid @ /admin/",
+        "匿名仅开放公开预订页与邀请激活页"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "安全控制",
+      "items": [
+        "每个业务视图按权限码校验：任职 + 角色授权，缺任职直接拒绝并写审计",
+        "公开面限流走 RateLimitCounter 表原子自增，存储异常时 fail-closed 返回 429",
+        "AuditEvent 的只追加不只靠应用层：另有 MySQL 触发器安装命令与校验命令阻止 UPDATE/DELETE"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "缓存边界",
+      "items": [
+        "开发默认 LocMemCache；DJANGO_ENV=prod 时禁止 LocMem，必须 Redis",
+        "缓存一律非权威：故障时降级直查数据库，只损失性能",
+        "账单摘要与查重缓存 60 秒 TTL"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "支付与补偿",
+      "items": [
+        "支付意图与回调仅 dev/test 开放，回调按 X-Signature HMAC 验签，生产返回 404",
+        "回调区分「渠道资金成功」与「库存是否确认」，库存失败标记补偿",
+        "补偿任务模型已含租约、重试、死信和人工重放；但仓库没有常驻 Worker 进程，见另一张部署图"
+      ]
+    }
+  ]
+}

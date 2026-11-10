@@ -1,0 +1,1630 @@
+{
+  "nodes": [
+    {
+      "id": "file:apps/api/management/commands/export_openapi_schema.py",
+      "type": "file",
+      "name": "export_openapi_schema.py",
+      "filePath": "apps/api/management/commands/export_openapi_schema.py",
+      "summary": "管理命令：把运行时生成的 OpenAPI 文档导出为 JSON 文件，供前端与契约测试比对。",
+      "tags": [
+        "management-command",
+        "openapi",
+        "tooling"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:apps/api/openapi_schema.py",
+      "type": "file",
+      "name": "openapi_schema.py",
+      "filePath": "apps/api/openapi_schema.py",
+      "summary": "OpenAPI 3 文档构建器：以手工描述覆盖全部 PMS2 路由，生成 paths/components 供契约测试与前端使用（超大单文件）。",
+      "tags": [
+        "openapi",
+        "contract",
+        "documentation",
+        "generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/api/test_auth_hardening.py",
+      "type": "file",
+      "name": "test_auth_hardening.py",
+      "filePath": "apps/api/test_auth_hardening.py",
+      "summary": "鉴权加固测试：注册/预订冻结、登录错误统一、密码策略、模拟支付闸门、登录限流与公开预订防滥用。",
+      "tags": [
+        "test",
+        "security",
+        "auth"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/api/test_openapi_schema.py",
+      "type": "file",
+      "name": "test_openapi_schema.py",
+      "filePath": "apps/api/test_openapi_schema.py",
+      "summary": "OpenAPI 契约测试：文档结构合法性、契约状态、路由同步、错误信封、权限注解、幂等与字段一致性。",
+      "tags": [
+        "test",
+        "openapi",
+        "contract"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/core/rate_limit.py",
+      "type": "file",
+      "name": "rate_limit.py",
+      "filePath": "apps/core/rate_limit.py",
+      "summary": "限流实现：基于计数表的滑动窗口限流检查，用于登录与公开接口防刷。",
+      "tags": [
+        "utility",
+        "rate-limit",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/identity/admin.py",
+      "type": "file",
+      "name": "admin.py",
+      "filePath": "apps/identity/admin.py",
+      "summary": "身份后台管理：员工档案、物业成员关系与角色分配的只读 Admin。",
+      "tags": [
+        "admin",
+        "identity",
+        "read-only"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:apps/identity/context_processors.py",
+      "type": "file",
+      "name": "context_processors.py",
+      "filePath": "apps/identity/context_processors.py",
+      "summary": "模板上下文处理器：向模板注入当前员工、角色、权限与物业上下文。",
+      "tags": [
+        "middleware",
+        "template-context"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/identity/decorators.py",
+      "type": "file",
+      "name": "decorators.py",
+      "filePath": "apps/identity/decorators.py",
+      "summary": "权限装饰器：员工身份校验与权限校验的视图装饰器。",
+      "tags": [
+        "utility",
+        "decorator",
+        "authorization"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:apps/identity/employee_number.py",
+      "type": "file",
+      "name": "employee_number.py",
+      "filePath": "apps/identity/employee_number.py",
+      "summary": "员工编号服务：生成工号、离职再入职复用档案并记录审计。",
+      "tags": [
+        "service",
+        "identity",
+        "audit"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/identity/invitation_services.py",
+      "type": "file",
+      "name": "invitation_services.py",
+      "filePath": "apps/identity/invitation_services.py",
+      "summary": "员工邀请服务：生成一次性邀请令牌、校验、激活建号与失效管理。",
+      "tags": [
+        "service",
+        "identity",
+        "invitation",
+        "security"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/identity/invitation_views.py",
+      "type": "file",
+      "name": "invitation_views.py",
+      "filePath": "apps/identity/invitation_views.py",
+      "summary": "邀请激活页面与提交处理：令牌校验、限流、密码策略与激活建号。",
+      "tags": [
+        "view",
+        "identity",
+        "invitation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/identity/management/commands/bind_staff_user.py",
+      "type": "file",
+      "name": "bind_staff_user.py",
+      "filePath": "apps/identity/management/commands/bind_staff_user.py",
+      "summary": "管理命令：把已有 Django 用户绑定到员工档案/成员关系。",
+      "tags": [
+        "management-command",
+        "identity",
+        "migration"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/identity/management/commands/expire_invitations.py",
+      "type": "file",
+      "name": "expire_invitations.py",
+      "filePath": "apps/identity/management/commands/expire_invitations.py",
+      "summary": "管理命令：把过期未使用的员工邀请标记为失效。",
+      "tags": [
+        "management-command",
+        "invitation",
+        "scheduler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:apps/identity/middleware.py",
+      "type": "file",
+      "name": "middleware.py",
+      "filePath": "apps/identity/middleware.py",
+      "summary": "物业上下文中间件：解析当前请求所属物业并注入请求上下文，隔离多物业数据。",
+      "tags": [
+        "middleware",
+        "property-context",
+        "multi-tenant"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/identity/models.py",
+      "type": "file",
+      "name": "models.py",
+      "filePath": "apps/identity/models.py",
+      "summary": "身份领域模型：员工档案、物业成员关系、角色分配与员工邀请。",
+      "tags": [
+        "data-model",
+        "identity",
+        "core-domain"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/identity/roles.py",
+      "type": "file",
+      "name": "roles.py",
+      "filePath": "apps/identity/roles.py",
+      "summary": "角色常量定义（九类角色编码）。",
+      "tags": [
+        "constants",
+        "roles"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:apps/identity/services.py",
+      "type": "file",
+      "name": "services.py",
+      "filePath": "apps/identity/services.py",
+      "summary": "员工生命周期服务：入职、调动、离职、复职及成员关系与角色分配变更。",
+      "tags": [
+        "service",
+        "identity",
+        "lifecycle"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/identity/session_middleware.py",
+      "type": "file",
+      "name": "session_middleware.py",
+      "filePath": "apps/identity/session_middleware.py",
+      "summary": "会话/Cookie 隔离中间件：为 PMS、平台门户与平台 Admin 拆分独立 Cookie 会话，防止串号。",
+      "tags": [
+        "middleware",
+        "session",
+        "security"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/identity/staff_center_views.py",
+      "type": "file",
+      "name": "staff_center_views.py",
+      "filePath": "apps/identity/staff_center_views.py",
+      "summary": "员工中心页面视图与动作：建号、开通、分配角色、停用、重置密码与邀请。",
+      "tags": [
+        "view",
+        "staff",
+        "identity"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/identity/test_invitations.py",
+      "type": "file",
+      "name": "test_invitations.py",
+      "filePath": "apps/identity/test_invitations.py",
+      "summary": "邀请测试：令牌安全、一次性消费、生命周期、密码策略、审计最小化与页面/接口。",
+      "tags": [
+        "test",
+        "invitation",
+        "security"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/identity/test_module_gates.py",
+      "type": "file",
+      "name": "test_module_gates.py",
+      "filePath": "apps/identity/test_module_gates.py",
+      "summary": "模块闸门测试：PII 解密原因强制、敏感导出边界、计划模块闸门与旧入口无绕过。",
+      "tags": [
+        "test",
+        "module-gate",
+        "security"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/identity/test_staff_center.py",
+      "type": "file",
+      "name": "test_staff_center.py",
+      "filePath": "apps/identity/test_staff_center.py",
+      "summary": "员工中心测试：访问控制、写入动作、旧员工账号退役、安全与离职重置守卫。",
+      "tags": [
+        "test",
+        "staff"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/identity/tests.py",
+      "type": "file",
+      "name": "tests.py",
+      "filePath": "apps/identity/tests.py",
+      "summary": "身份基础测试：授权服务、员工生命周期、Admin 只读、九角色跨模块权限与拆分会话。",
+      "tags": [
+        "test",
+        "identity",
+        "authorization"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:hotelapp/admin.py",
+      "type": "file",
+      "name": "admin.py",
+      "filePath": "hotelapp/admin.py",
+      "summary": "旧版酒店后台管理：客房、客户、订单、财务、夜审与账单等 Admin，含禁止删除混入。",
+      "tags": [
+        "admin",
+        "backoffice",
+        "legacy"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:hotelapp/events.py",
+      "type": "file",
+      "name": "events.py",
+      "filePath": "hotelapp/events.py",
+      "summary": "领域事件发布/订阅的轻量实现，供旧版流程解耦。",
+      "tags": [
+        "event",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:hotelapp/handlers.py",
+      "type": "file",
+      "name": "handlers.py",
+      "filePath": "hotelapp/handlers.py",
+      "summary": "事件处理器：订阅并处理发布的事件（审计、联动等）。",
+      "tags": [
+        "event-handler",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:hotelapp/management/commands/audit_employee_data.py",
+      "type": "file",
+      "name": "audit_employee_data.py",
+      "filePath": "hotelapp/management/commands/audit_employee_data.py",
+      "summary": "管理命令：审计员工数据完整性与敏感字段。",
+      "tags": [
+        "management-command",
+        "audit",
+        "data-quality"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:hotelapp/management/commands/classify_users.py",
+      "type": "file",
+      "name": "classify_users.py",
+      "filePath": "hotelapp/management/commands/classify_users.py",
+      "summary": "管理命令：按权限/角色特征对存量用户分类，辅助迁移。",
+      "tags": [
+        "management-command",
+        "migration",
+        "identity"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:hotelapp/management/commands/reconcile_test_users.py",
+      "type": "file",
+      "name": "reconcile_test_users.py",
+      "filePath": "hotelapp/management/commands/reconcile_test_users.py",
+      "summary": "管理命令：核对并修正测试账号数据。",
+      "tags": [
+        "management-command",
+        "data-quality",
+        "test-support"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:hotelapp/management/commands/seed_role_test_accounts.py",
+      "type": "file",
+      "name": "seed_role_test_accounts.py",
+      "filePath": "hotelapp/management/commands/seed_role_test_accounts.py",
+      "summary": "管理命令：按九类角色生成测试账号。",
+      "tags": [
+        "management-command",
+        "seed",
+        "test-support"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:hotelapp/models.py",
+      "type": "file",
+      "name": "models.py",
+      "filePath": "hotelapp/models.py",
+      "summary": "旧版单体业务模型：客房、客户、餐饮、订单、停车、财务记录、夜审、账单、房间、员工与会员。",
+      "tags": [
+        "data-model",
+        "legacy",
+        "core-domain"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:hotelapp/state_machine.py",
+      "type": "file",
+      "name": "state_machine.py",
+      "filePath": "hotelapp/state_machine.py",
+      "summary": "状态机约束：校验订单与房间状态流转是否合法。",
+      "tags": [
+        "utility",
+        "state-machine",
+        "domain-rule"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:hotelapp/tests.py",
+      "type": "file",
+      "name": "tests.py",
+      "filePath": "hotelapp/tests.py",
+      "summary": "旧版核心回归测试（超大）：权限矩阵、敏感字段脱敏、夜审幂等、员工生命周期与数据种子命令。",
+      "tags": [
+        "test",
+        "legacy",
+        "security"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:hotelapp/views.py",
+      "type": "file",
+      "name": "views.py",
+      "filePath": "hotelapp/views.py",
+      "summary": "旧版页面视图（超大）：主界面、入住/离店、预订、财务、员工与导出等全部业务页与动作。",
+      "tags": [
+        "view",
+        "legacy",
+        "core-domain"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:apps/identity/models.py:StaffProfile",
+      "type": "class",
+      "name": "StaffProfile",
+      "filePath": "apps/identity/models.py",
+      "summary": "员工档案：工号、姓名、在职状态与账号绑定。",
+      "tags": [
+        "data-model",
+        "identity",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/identity/models.py:PropertyStaffMembership",
+      "type": "class",
+      "name": "PropertyStaffMembership",
+      "filePath": "apps/identity/models.py",
+      "summary": "物业成员关系：员工在某物业的岗位与状态。",
+      "tags": [
+        "data-model",
+        "identity",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/identity/models.py:StaffRoleAssignment",
+      "type": "class",
+      "name": "StaffRoleAssignment",
+      "filePath": "apps/identity/models.py",
+      "summary": "角色分配：把 Django 组/角色授予成员关系。",
+      "tags": [
+        "data-model",
+        "identity",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/identity/models.py:Invitation",
+      "type": "class",
+      "name": "Invitation",
+      "filePath": "apps/identity/models.py",
+      "summary": "员工邀请：一次性令牌与有效期。",
+      "tags": [
+        "data-model",
+        "identity",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/identity/services.py:EmployeeLifecycleService",
+      "type": "class",
+      "name": "EmployeeLifecycleService",
+      "filePath": "apps/identity/services.py",
+      "summary": "员工生命周期服务：入职、调动、离职、复职的业务实现。",
+      "tags": [
+        "service",
+        "identity",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/identity/session_middleware.py:SessionCookieSpec",
+      "type": "class",
+      "name": "SessionCookieSpec",
+      "filePath": "apps/identity/session_middleware.py",
+      "summary": "会话 Cookie 规格：名称、域、路径与安全属性。",
+      "tags": [
+        "middleware",
+        "session",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/identity/session_middleware.py:SplitSessionMiddleware",
+      "type": "class",
+      "name": "SplitSessionMiddleware",
+      "filePath": "apps/identity/session_middleware.py",
+      "summary": "拆分会话中间件：按入口选择独立会话 Cookie。",
+      "tags": [
+        "middleware",
+        "session",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/identity/invitation_services.py:EmployeeInvitationService",
+      "type": "class",
+      "name": "EmployeeInvitationService",
+      "filePath": "apps/identity/invitation_services.py",
+      "summary": "邀请服务：创建、校验与消费邀请令牌。",
+      "tags": [
+        "service",
+        "identity",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:hotelapp/models.py:Accommodation",
+      "type": "class",
+      "name": "Accommodation",
+      "filePath": "hotelapp/models.py",
+      "summary": "住宿单（房单）：住客在房间的住宿事实与状态。",
+      "tags": [
+        "data-model",
+        "legacy",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:hotelapp/models.py:Client",
+      "type": "class",
+      "name": "Client",
+      "filePath": "hotelapp/models.py",
+      "summary": "客户档案：姓名、证件与联系方式。",
+      "tags": [
+        "data-model",
+        "legacy",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:hotelapp/models.py:Food",
+      "type": "class",
+      "name": "Food",
+      "filePath": "hotelapp/models.py",
+      "summary": "餐饮消费项。",
+      "tags": [
+        "data-model",
+        "legacy",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:hotelapp/models.py:Order",
+      "type": "class",
+      "name": "Order",
+      "filePath": "hotelapp/models.py",
+      "summary": "订单：住宿/餐饮等订单主实体。",
+      "tags": [
+        "data-model",
+        "legacy",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:hotelapp/models.py:Park",
+      "type": "class",
+      "name": "Park",
+      "filePath": "hotelapp/models.py",
+      "summary": "停车记录。",
+      "tags": [
+        "data-model",
+        "legacy",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:hotelapp/models.py:FinanceRecord",
+      "type": "class",
+      "name": "FinanceRecord",
+      "filePath": "hotelapp/models.py",
+      "summary": "财务记录：收支流水。",
+      "tags": [
+        "data-model",
+        "legacy",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:hotelapp/models.py:NightAudit",
+      "type": "class",
+      "name": "NightAudit",
+      "filePath": "hotelapp/models.py",
+      "summary": "夜审记录：营业日与结账标记。",
+      "tags": [
+        "data-model",
+        "legacy",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:hotelapp/models.py:Folio",
+      "type": "class",
+      "name": "Folio",
+      "filePath": "hotelapp/models.py",
+      "summary": "账单明细行（旧版）。",
+      "tags": [
+        "data-model",
+        "legacy",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:hotelapp/models.py:Room",
+      "type": "class",
+      "name": "Room",
+      "filePath": "hotelapp/models.py",
+      "summary": "房间（旧版）：房号与房态。",
+      "tags": [
+        "data-model",
+        "legacy",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:hotelapp/models.py:Staff",
+      "type": "class",
+      "name": "Staff",
+      "filePath": "hotelapp/models.py",
+      "summary": "员工（旧版）。",
+      "tags": [
+        "data-model",
+        "legacy",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:hotelapp/models.py:Vip",
+      "type": "class",
+      "name": "Vip",
+      "filePath": "hotelapp/models.py",
+      "summary": "会员（旧版）：等级与折扣。",
+      "tags": [
+        "data-model",
+        "legacy",
+        "class"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:apps/identity/models.py",
+      "target": "class:apps/identity/models.py:StaffProfile",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/identity/models.py",
+      "target": "class:apps/identity/models.py:StaffProfile",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/identity/models.py",
+      "target": "class:apps/identity/models.py:PropertyStaffMembership",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/identity/models.py",
+      "target": "class:apps/identity/models.py:PropertyStaffMembership",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/identity/models.py",
+      "target": "class:apps/identity/models.py:StaffRoleAssignment",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/identity/models.py",
+      "target": "class:apps/identity/models.py:StaffRoleAssignment",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/identity/models.py",
+      "target": "class:apps/identity/models.py:Invitation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/identity/models.py",
+      "target": "class:apps/identity/models.py:Invitation",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/identity/services.py",
+      "target": "class:apps/identity/services.py:EmployeeLifecycleService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/identity/services.py",
+      "target": "class:apps/identity/services.py:EmployeeLifecycleService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/identity/session_middleware.py",
+      "target": "class:apps/identity/session_middleware.py:SessionCookieSpec",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/identity/session_middleware.py",
+      "target": "class:apps/identity/session_middleware.py:SessionCookieSpec",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/identity/session_middleware.py",
+      "target": "class:apps/identity/session_middleware.py:SplitSessionMiddleware",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/identity/session_middleware.py",
+      "target": "class:apps/identity/session_middleware.py:SplitSessionMiddleware",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/identity/invitation_services.py",
+      "target": "class:apps/identity/invitation_services.py:EmployeeInvitationService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/identity/invitation_services.py",
+      "target": "class:apps/identity/invitation_services.py:EmployeeInvitationService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Accommodation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Accommodation",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Client",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Client",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Food",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Food",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Order",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Order",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Park",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Park",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:FinanceRecord",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:FinanceRecord",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:NightAudit",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:NightAudit",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Folio",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Folio",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Room",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Room",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Staff",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Staff",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Vip",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:hotelapp/models.py",
+      "target": "class:hotelapp/models.py:Vip",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/accomodation.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/checkin.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/finance.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/force_password_change.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/frontdesk.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/home.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/html1.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/html4.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/index.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/login.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/order.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/park.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/room.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/staff_accounts.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/staff_accounts_detail.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/vip.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:apps/identity/invitation_views.py",
+      "target": "file:templates/identity/invite_accept.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:templates/pms/me.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:hotelapp/templatetags/pms_filters.py",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:apps/api/management/commands/export_openapi_schema.py",
+      "target": "file:apps/api/openapi_schema.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_auth_hardening.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_auth_hardening.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_auth_hardening.py",
+      "target": "file:apps/identity/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_auth_hardening.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_auth_hardening.py",
+      "target": "file:hotelapp/tests.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_openapi_schema.py",
+      "target": "file:apps/api/openapi_schema.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_openapi_schema.py",
+      "target": "file:apps/core/rate_limit.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/core/rate_limit.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/admin.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/context_processors.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/context_processors.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/decorators.py",
+      "target": "file:apps/identity/authorization.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/employee_number.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/invitation_services.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/invitation_services.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/invitation_services.py",
+      "target": "file:apps/identity/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/invitation_views.py",
+      "target": "file:apps/core/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/invitation_views.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/invitation_views.py",
+      "target": "file:apps/core/rate_limit.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/invitation_views.py",
+      "target": "file:apps/identity/invitation_services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/management/commands/bind_staff_user.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/management/commands/bind_staff_user.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/management/commands/bind_staff_user.py",
+      "target": "file:apps/identity/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/management/commands/expire_invitations.py",
+      "target": "file:apps/identity/invitation_services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/middleware.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/middleware.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/middleware.py",
+      "target": "file:apps/identity/session_middleware.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/services.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/services.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/services.py",
+      "target": "file:apps/identity/roles.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/staff_center_views.py",
+      "target": "file:apps/core/__init__.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/staff_center_views.py",
+      "target": "file:apps/core/api_contract.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/staff_center_views.py",
+      "target": "file:apps/core/rate_limit.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/staff_center_views.py",
+      "target": "file:apps/identity/decorators.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/staff_center_views.py",
+      "target": "file:apps/identity/invitation_services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/staff_center_views.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/staff_center_views.py",
+      "target": "file:apps/identity/roles.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/staff_center_views.py",
+      "target": "file:apps/identity/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/staff_center_views.py",
+      "target": "file:hotelapp/views.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_invitations.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_invitations.py",
+      "target": "file:apps/identity/invitation_services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_invitations.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_invitations.py",
+      "target": "file:apps/identity/test_staff_center.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_module_gates.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_module_gates.py",
+      "target": "file:apps/guests/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_module_gates.py",
+      "target": "file:apps/guests/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_module_gates.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_module_gates.py",
+      "target": "file:hotelapp/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_staff_center.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_staff_center.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_staff_center.py",
+      "target": "file:apps/identity/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/tests.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/tests.py",
+      "target": "file:apps/identity/authorization.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/tests.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/tests.py",
+      "target": "file:apps/identity/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/admin.py",
+      "target": "file:hotelapp/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/handlers.py",
+      "target": "file:hotelapp/events.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/handlers.py",
+      "target": "file:hotelapp/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/audit_employee_data.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/audit_employee_data.py",
+      "target": "file:hotelapp/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/classify_users.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/reconcile_test_users.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/reconcile_test_users.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/seed_role_test_accounts.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/seed_role_test_accounts.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/tests.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/tests.py",
+      "target": "file:apps/identity/authorization.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/tests.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/tests.py",
+      "target": "file:hotelapp/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:apps/identity/authorization.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:apps/identity/decorators.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:apps/identity/registry.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:hotelapp/events.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:hotelapp/handlers.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:hotelapp/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/views.py",
+      "target": "file:hotelapp/state_machine.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    }
+  ]
+}

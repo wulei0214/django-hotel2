@@ -1,0 +1,233 @@
+{
+  "projectRoot": "F:\\Desktop\\django-hotel",
+  "batchFiles": [
+    {
+      "path": "apps/inventory/admin.py",
+      "language": "python",
+      "sizeLines": 55,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/models.py",
+      "language": "python",
+      "sizeLines": 526,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/reconciliation.py",
+      "language": "python",
+      "sizeLines": 244,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/services.py",
+      "language": "python",
+      "sizeLines": 649,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/test_reconciliation.py",
+      "language": "python",
+      "sizeLines": 198,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/test_whitebox_services.py",
+      "language": "python",
+      "sizeLines": 239,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/tests.py",
+      "language": "python",
+      "sizeLines": 107,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/admin.py",
+      "language": "python",
+      "sizeLines": 43,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/front_desk_services.py",
+      "language": "python",
+      "sizeLines": 438,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/lifecycle_services.py",
+      "language": "python",
+      "sizeLines": 410,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/management/commands/expire_reservation_holds.py",
+      "language": "python",
+      "sizeLines": 43,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/models.py",
+      "language": "python",
+      "sizeLines": 610,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/services.py",
+      "language": "python",
+      "sizeLines": 271,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/test_six_rules.py",
+      "language": "python",
+      "sizeLines": 188,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/test_whitebox_services.py",
+      "language": "python",
+      "sizeLines": 202,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/tests.py",
+      "language": "python",
+      "sizeLines": 925,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/walkin.py",
+      "language": "python",
+      "sizeLines": 151,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/issue_booking_tokens.py",
+      "language": "python",
+      "sizeLines": 40,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/release_expired_reservations.py",
+      "language": "python",
+      "sizeLines": 60,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/seed_hotel_data.py",
+      "language": "python",
+      "sizeLines": 220,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "apps/inventory/admin.py": [
+      "apps/inventory/models.py"
+    ],
+    "apps/inventory/models.py": [],
+    "apps/inventory/reconciliation.py": [
+      "apps/core/models.py",
+      "apps/inventory/models.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/inventory/services.py": [
+      "apps/inventory/models.py"
+    ],
+    "apps/inventory/test_reconciliation.py": [
+      "apps/billing/models.py",
+      "apps/billing/reconciliation.py",
+      "apps/core/models.py",
+      "apps/inventory/models.py",
+      "apps/inventory/reconciliation.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/inventory/test_whitebox_services.py": [
+      "apps/core/models.py",
+      "apps/inventory/models.py",
+      "apps/inventory/services.py"
+    ],
+    "apps/inventory/tests.py": [
+      "apps/core/models.py",
+      "apps/inventory/models.py",
+      "apps/inventory/services.py"
+    ],
+    "apps/reservations/admin.py": [
+      "apps/reservations/models.py"
+    ],
+    "apps/reservations/front_desk_services.py": [
+      "apps/billing/models.py",
+      "apps/core/models.py",
+      "apps/inventory/models.py",
+      "apps/inventory/services.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/reservations/lifecycle_services.py": [
+      "apps/billing/models.py",
+      "apps/core/models.py",
+      "apps/inventory/models.py",
+      "apps/inventory/services.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/reservations/management/commands/expire_reservation_holds.py": [
+      "apps/inventory/services.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/reservations/models.py": [],
+    "apps/reservations/services.py": [
+      "apps/billing/models.py",
+      "apps/guests/models.py",
+      "apps/inventory/models.py",
+      "apps/inventory/services.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/reservations/test_six_rules.py": [
+      "apps/billing/models.py",
+      "apps/core/models.py",
+      "apps/guests/models.py",
+      "apps/identity/models.py",
+      "apps/inventory/models.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/reservations/test_whitebox_services.py": [
+      "apps/billing/models.py",
+      "apps/core/models.py",
+      "apps/guests/models.py",
+      "apps/inventory/models.py",
+      "apps/reservations/front_desk_services.py",
+      "apps/reservations/lifecycle_services.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/reservations/tests.py": [
+      "apps/billing/models.py",
+      "apps/core/models.py",
+      "apps/guests/models.py",
+      "apps/inventory/models.py",
+      "apps/inventory/services.py",
+      "apps/reservations/front_desk_services.py",
+      "apps/reservations/lifecycle_services.py",
+      "apps/reservations/models.py",
+      "apps/reservations/services.py"
+    ],
+    "apps/reservations/walkin.py": [
+      "apps/core/models.py",
+      "apps/inventory/services.py",
+      "apps/reservations/models.py"
+    ],
+    "hotelapp/management/commands/issue_booking_tokens.py": [
+      "apps/reservations/models.py"
+    ],
+    "hotelapp/management/commands/release_expired_reservations.py": [
+      "apps/core/models.py",
+      "apps/inventory/services.py",
+      "apps/reservations/models.py"
+    ],
+    "hotelapp/management/commands/seed_hotel_data.py": [
+      "apps/core/models.py",
+      "apps/guests/models.py",
+      "apps/inventory/models.py",
+      "apps/reservations/models.py"
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "3c838057-9a58-4221-976f-5050b5f135f7",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "F:\\Desktop\\django-hotel\\.archify\\architecture-pms-app-runtime-20261110-220800\\candidate.json",
+  "output": "F:\\Desktop\\django-hotel\\.archify\\architecture-pms-app-runtime-20261110-220800\\pms-app-runtime.html",
+  "specification": {
+    "sha256": "c3e889b0eb593598a633a98342b6a51e8ffedba04728a95fb4f3e9bcbf80ca58",
+    "bytes": 7056
+  },
+  "artifact": {
+    "sha256": "bdecad8f3828dd63942d782988d40f752d1683a832ad1928596dad32673793ee",
+    "bytes": 853048
+  }
+}

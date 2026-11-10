@@ -1,0 +1,1334 @@
+{
+  "nodes": [
+    {
+      "id": "file:apps/inventory/admin.py",
+      "type": "file",
+      "name": "admin.py",
+      "filePath": "apps/inventory/admin.py",
+      "summary": "库存后台管理：房型、房间、房价计划、日房价与房量库存的只读 Admin。",
+      "tags": [
+        "admin",
+        "inventory"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/inventory/models.py",
+      "type": "file",
+      "name": "models.py",
+      "filePath": "apps/inventory/models.py",
+      "summary": "库存领域模型：房型、房间、房价计划、日房价、房量库存、客房任务、维修单、查房、对账运行与差异。",
+      "tags": [
+        "data-model",
+        "inventory",
+        "housekeeping",
+        "core-domain"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/inventory/reconciliation.py",
+      "type": "file",
+      "name": "reconciliation.py",
+      "filePath": "apps/inventory/reconciliation.py",
+      "summary": "库存对账：扫描房态/库存不一致，支持申请、审批、执行修复与忽略差异。",
+      "tags": [
+        "service",
+        "reconciliation",
+        "inventory",
+        "approval"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/inventory/services.py",
+      "type": "file",
+      "name": "services.py",
+      "filePath": "apps/inventory/services.py",
+      "summary": "库存服务：房态流转、维修联动、可用房量计算、预订占房/确认/释放与日房价调整。",
+      "tags": [
+        "service",
+        "inventory",
+        "availability",
+        "core-domain"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/inventory/test_reconciliation.py",
+      "type": "file",
+      "name": "test_reconciliation.py",
+      "filePath": "apps/inventory/test_reconciliation.py",
+      "summary": "库存对账测试：库存差异扫描与账单对账。",
+      "tags": [
+        "test",
+        "reconciliation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/inventory/test_whitebox_services.py",
+      "type": "file",
+      "name": "test_whitebox_services.py",
+      "filePath": "apps/inventory/test_whitebox_services.py",
+      "summary": "库存白盒测试：日房价边界、房态汇总时区与维修-库存联动。",
+      "tags": [
+        "test",
+        "whitebox",
+        "inventory"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/inventory/tests.py",
+      "type": "file",
+      "name": "tests.py",
+      "filePath": "apps/inventory/tests.py",
+      "summary": "库存单元测试：可用量与日房价调整。",
+      "tags": [
+        "test",
+        "inventory"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/reservations/admin.py",
+      "type": "file",
+      "name": "admin.py",
+      "filePath": "apps/reservations/admin.py",
+      "summary": "预订后台管理：预订、住店、预订房间与住客关联的只读 Admin。",
+      "tags": [
+        "admin",
+        "reservation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:apps/reservations/front_desk_services.py",
+      "type": "file",
+      "name": "front_desk_services.py",
+      "filePath": "apps/reservations/front_desk_services.py",
+      "summary": "前台住店服务：排房、办理入住、手工收款、办理离店（含账单结算）。",
+      "tags": [
+        "service",
+        "front-desk",
+        "core-domain"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/reservations/lifecycle_services.py",
+      "type": "file",
+      "name": "lifecycle_services.py",
+      "filePath": "apps/reservations/lifecycle_services.py",
+      "summary": "住店生命周期服务：续住、换房、标记未到（no-show）与押金收取。",
+      "tags": [
+        "service",
+        "lifecycle",
+        "reservation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/reservations/management/commands/expire_reservation_holds.py",
+      "type": "file",
+      "name": "expire_reservation_holds.py",
+      "filePath": "apps/reservations/management/commands/expire_reservation_holds.py",
+      "summary": "管理命令：过期未确认的预订占房并释放库存。",
+      "tags": [
+        "management-command",
+        "reservation",
+        "scheduler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:apps/reservations/models.py",
+      "type": "file",
+      "name": "models.py",
+      "filePath": "apps/reservations/models.py",
+      "summary": "预订领域模型：预订、预订房间、住店、换房段、未到记录、住客、库存占用、取消/押金/早离政策与预订访问令牌。",
+      "tags": [
+        "data-model",
+        "reservation",
+        "core-domain"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/reservations/services.py",
+      "type": "file",
+      "name": "services.py",
+      "filePath": "apps/reservations/services.py",
+      "summary": "预订服务：创建预订（锁库存、校验冲突）、取消待确认预订。",
+      "tags": [
+        "service",
+        "reservation",
+        "inventory"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/reservations/test_six_rules.py",
+      "type": "file",
+      "name": "test_six_rules.py",
+      "filePath": "apps/reservations/test_six_rules.py",
+      "summary": "六项业务规则测试：押金政策、再入职、工号与早离规则。",
+      "tags": [
+        "test",
+        "policy"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/reservations/test_whitebox_services.py",
+      "type": "file",
+      "name": "test_whitebox_services.py",
+      "filePath": "apps/reservations/test_whitebox_services.py",
+      "summary": "预订服务白盒测试：离店账单范围、生命周期账单范围、金额边界与续住边界。",
+      "tags": [
+        "test",
+        "whitebox",
+        "reservation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/reservations/tests.py",
+      "type": "file",
+      "name": "tests.py",
+      "filePath": "apps/reservations/tests.py",
+      "summary": "预订测试集：预订创建与前台住店全生命周期（超大测试文件）。",
+      "tags": [
+        "test",
+        "reservation",
+        "front-desk"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/reservations/walkin.py",
+      "type": "file",
+      "name": "walkin.py",
+      "filePath": "apps/reservations/walkin.py",
+      "summary": "散客入住（walk-in）：早离退费计算与无预订直接入住的建单流程。",
+      "tags": [
+        "service",
+        "walk-in",
+        "front-desk"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:hotelapp/management/commands/issue_booking_tokens.py",
+      "type": "file",
+      "name": "issue_booking_tokens.py",
+      "filePath": "hotelapp/management/commands/issue_booking_tokens.py",
+      "summary": "管理命令：为存量预订补发预订访问令牌。",
+      "tags": [
+        "management-command",
+        "booking",
+        "migration"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:hotelapp/management/commands/release_expired_reservations.py",
+      "type": "file",
+      "name": "release_expired_reservations.py",
+      "filePath": "hotelapp/management/commands/release_expired_reservations.py",
+      "summary": "管理命令：释放过期预订占用的库存。",
+      "tags": [
+        "management-command",
+        "reservation",
+        "scheduler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:hotelapp/management/commands/seed_hotel_data.py",
+      "type": "file",
+      "name": "seed_hotel_data.py",
+      "filePath": "hotelapp/management/commands/seed_hotel_data.py",
+      "summary": "管理命令：初始化演示/基线数据（环境守卫，禁止生产误跑）。",
+      "tags": [
+        "management-command",
+        "seed",
+        "test-support"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:apps/inventory/models.py:RoomType",
+      "type": "class",
+      "name": "RoomType",
+      "filePath": "apps/inventory/models.py",
+      "summary": "房型：房型编码、名称与基础容量。",
+      "tags": [
+        "data-model",
+        "inventory",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/inventory/models.py:Room",
+      "type": "class",
+      "name": "Room",
+      "filePath": "apps/inventory/models.py",
+      "summary": "房间：物理房号、房型与当前房态。",
+      "tags": [
+        "data-model",
+        "inventory",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/inventory/models.py:RatePlan",
+      "type": "class",
+      "name": "RatePlan",
+      "filePath": "apps/inventory/models.py",
+      "summary": "房价计划：价格策略与包含项。",
+      "tags": [
+        "data-model",
+        "inventory",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/inventory/models.py:DailyRate",
+      "type": "class",
+      "name": "DailyRate",
+      "filePath": "apps/inventory/models.py",
+      "summary": "日房价：房型-日期的价格。",
+      "tags": [
+        "data-model",
+        "inventory",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/inventory/models.py:RoomTypeInventory",
+      "type": "class",
+      "name": "RoomTypeInventory",
+      "filePath": "apps/inventory/models.py",
+      "summary": "房量库存：房型-日期的可售房量。",
+      "tags": [
+        "data-model",
+        "inventory",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/inventory/models.py:HousekeepingTask",
+      "type": "class",
+      "name": "HousekeepingTask",
+      "filePath": "apps/inventory/models.py",
+      "summary": "客房任务：清扫/查房任务与状态。",
+      "tags": [
+        "data-model",
+        "inventory",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/inventory/models.py:MaintenanceTicket",
+      "type": "class",
+      "name": "MaintenanceTicket",
+      "filePath": "apps/inventory/models.py",
+      "summary": "维修单：房间维修与影响房态。",
+      "tags": [
+        "data-model",
+        "inventory",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/inventory/models.py:RoomInspection",
+      "type": "class",
+      "name": "RoomInspection",
+      "filePath": "apps/inventory/models.py",
+      "summary": "查房记录：客房检查结果。",
+      "tags": [
+        "data-model",
+        "inventory",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/inventory/models.py:InventoryReconciliationRun",
+      "type": "class",
+      "name": "InventoryReconciliationRun",
+      "filePath": "apps/inventory/models.py",
+      "summary": "库存对账运行记录。",
+      "tags": [
+        "data-model",
+        "inventory",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/inventory/models.py:InventoryDiscrepancy",
+      "type": "class",
+      "name": "InventoryDiscrepancy",
+      "filePath": "apps/inventory/models.py",
+      "summary": "库存差异明细。",
+      "tags": [
+        "data-model",
+        "inventory",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/reservations/models.py:Reservation",
+      "type": "class",
+      "name": "Reservation",
+      "filePath": "apps/reservations/models.py",
+      "summary": "预订主实体：来源、状态、日期与金额。",
+      "tags": [
+        "data-model",
+        "reservation",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/reservations/models.py:ReservationRoom",
+      "type": "class",
+      "name": "ReservationRoom",
+      "filePath": "apps/reservations/models.py",
+      "summary": "预订房间：预订与房间/房型的关联行。",
+      "tags": [
+        "data-model",
+        "reservation",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/reservations/models.py:Stay",
+      "type": "class",
+      "name": "Stay",
+      "filePath": "apps/reservations/models.py",
+      "summary": "住店：入住后的在店事实。",
+      "tags": [
+        "data-model",
+        "reservation",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/reservations/models.py:StayRoomSegment",
+      "type": "class",
+      "name": "StayRoomSegment",
+      "filePath": "apps/reservations/models.py",
+      "summary": "住店房间段：换房产生的时间段。",
+      "tags": [
+        "data-model",
+        "reservation",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/reservations/models.py:NoShowRecord",
+      "type": "class",
+      "name": "NoShowRecord",
+      "filePath": "apps/reservations/models.py",
+      "summary": "未到记录（no-show）。",
+      "tags": [
+        "data-model",
+        "reservation",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/reservations/models.py:ReservationGuest",
+      "type": "class",
+      "name": "ReservationGuest",
+      "filePath": "apps/reservations/models.py",
+      "summary": "预订住客关联。",
+      "tags": [
+        "data-model",
+        "reservation",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/reservations/models.py:StayGuest",
+      "type": "class",
+      "name": "StayGuest",
+      "filePath": "apps/reservations/models.py",
+      "summary": "在店住客关联。",
+      "tags": [
+        "data-model",
+        "reservation",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/reservations/models.py:InventoryHold",
+      "type": "class",
+      "name": "InventoryHold",
+      "filePath": "apps/reservations/models.py",
+      "summary": "库存占用：预订期间的房量占用事实。",
+      "tags": [
+        "data-model",
+        "reservation",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/reservations/models.py:CancellationPolicy",
+      "type": "class",
+      "name": "CancellationPolicy",
+      "filePath": "apps/reservations/models.py",
+      "summary": "取消政策：按时间窗的取消费规则。",
+      "tags": [
+        "data-model",
+        "reservation",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/reservations/models.py:DepositPolicy",
+      "type": "class",
+      "name": "DepositPolicy",
+      "filePath": "apps/reservations/models.py",
+      "summary": "押金政策。",
+      "tags": [
+        "data-model",
+        "reservation",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/reservations/models.py:BookingAccessToken",
+      "type": "class",
+      "name": "BookingAccessToken",
+      "filePath": "apps/reservations/models.py",
+      "summary": "预订访问令牌：客人免登录查看/取消预订。",
+      "tags": [
+        "data-model",
+        "reservation",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/reservations/models.py:EarlyDeparturePolicy",
+      "type": "class",
+      "name": "EarlyDeparturePolicy",
+      "filePath": "apps/reservations/models.py",
+      "summary": "早离政策：提前离店的退费规则。",
+      "tags": [
+        "data-model",
+        "reservation",
+        "class"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:RoomType",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:RoomType",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:Room",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:Room",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:RatePlan",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:RatePlan",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:DailyRate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:DailyRate",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:RoomTypeInventory",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:RoomTypeInventory",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:HousekeepingTask",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:HousekeepingTask",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:MaintenanceTicket",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:MaintenanceTicket",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:RoomInspection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:RoomInspection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:InventoryReconciliationRun",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:InventoryReconciliationRun",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:InventoryDiscrepancy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/inventory/models.py",
+      "target": "class:apps/inventory/models.py:InventoryDiscrepancy",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:Reservation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:Reservation",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:ReservationRoom",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:ReservationRoom",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:Stay",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:Stay",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:StayRoomSegment",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:StayRoomSegment",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:NoShowRecord",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:NoShowRecord",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:ReservationGuest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:ReservationGuest",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:StayGuest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:StayGuest",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:InventoryHold",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:InventoryHold",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:CancellationPolicy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:CancellationPolicy",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:DepositPolicy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:DepositPolicy",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:BookingAccessToken",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:BookingAccessToken",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:EarlyDeparturePolicy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/reservations/models.py",
+      "target": "class:apps/reservations/models.py:EarlyDeparturePolicy",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/inventory/admin.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/reconciliation.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/reconciliation.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/reconciliation.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/services.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/test_reconciliation.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/test_reconciliation.py",
+      "target": "file:apps/billing/reconciliation.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/test_reconciliation.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/test_reconciliation.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/test_reconciliation.py",
+      "target": "file:apps/inventory/reconciliation.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/test_reconciliation.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/test_whitebox_services.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/test_whitebox_services.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/test_whitebox_services.py",
+      "target": "file:apps/inventory/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/tests.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/tests.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/tests.py",
+      "target": "file:apps/inventory/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/admin.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/front_desk_services.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/front_desk_services.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/front_desk_services.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/front_desk_services.py",
+      "target": "file:apps/inventory/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/front_desk_services.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/lifecycle_services.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/lifecycle_services.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/lifecycle_services.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/lifecycle_services.py",
+      "target": "file:apps/inventory/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/lifecycle_services.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/management/commands/expire_reservation_holds.py",
+      "target": "file:apps/inventory/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/management/commands/expire_reservation_holds.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/services.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/services.py",
+      "target": "file:apps/guests/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/services.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/services.py",
+      "target": "file:apps/inventory/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/services.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/test_six_rules.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/test_six_rules.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/test_six_rules.py",
+      "target": "file:apps/guests/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/test_six_rules.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/test_six_rules.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/test_six_rules.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/test_whitebox_services.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/test_whitebox_services.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/test_whitebox_services.py",
+      "target": "file:apps/guests/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/test_whitebox_services.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/test_whitebox_services.py",
+      "target": "file:apps/reservations/front_desk_services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/test_whitebox_services.py",
+      "target": "file:apps/reservations/lifecycle_services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/test_whitebox_services.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/tests.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/tests.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/tests.py",
+      "target": "file:apps/guests/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/tests.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/tests.py",
+      "target": "file:apps/inventory/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/tests.py",
+      "target": "file:apps/reservations/front_desk_services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/tests.py",
+      "target": "file:apps/reservations/lifecycle_services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/tests.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/tests.py",
+      "target": "file:apps/reservations/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/walkin.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/walkin.py",
+      "target": "file:apps/inventory/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/reservations/walkin.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/issue_booking_tokens.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/release_expired_reservations.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/release_expired_reservations.py",
+      "target": "file:apps/inventory/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/release_expired_reservations.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/seed_hotel_data.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/seed_hotel_data.py",
+      "target": "file:apps/guests/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/seed_hotel_data.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:hotelapp/management/commands/seed_hotel_data.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    }
+  ]
+}

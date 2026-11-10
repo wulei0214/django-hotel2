@@ -1,7 +1,9 @@
+from django.utils import timezone
 from datetime import datetime as dt_datetime
 from datetime import time as _time, timedelta
 
 from django.db import transaction
+from django.utils import timezone as dj_timezone
 
 from .models import DailyRate, Room, RoomTypeInventory
 

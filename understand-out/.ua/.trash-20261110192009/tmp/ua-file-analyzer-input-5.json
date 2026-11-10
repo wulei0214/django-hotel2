@@ -1,0 +1,253 @@
+{
+  "projectRoot": "F:\\Desktop\\django-hotel",
+  "batchFiles": [
+    {
+      "path": "apps/api/approval.py",
+      "language": "python",
+      "sizeLines": 241,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/audit_center.py",
+      "language": "python",
+      "sizeLines": 423,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/billing_center.py",
+      "language": "python",
+      "sizeLines": 1139,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/front_desk.py",
+      "language": "python",
+      "sizeLines": 1189,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/guest_center.py",
+      "language": "python",
+      "sizeLines": 809,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/housekeeping_center.py",
+      "language": "python",
+      "sizeLines": 204,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/night_audit.py",
+      "language": "python",
+      "sizeLines": 482,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/notification_center.py",
+      "language": "python",
+      "sizeLines": 238,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/pages.py",
+      "language": "python",
+      "sizeLines": 425,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/report_center.py",
+      "language": "python",
+      "sizeLines": 474,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/reservation_center.py",
+      "language": "python",
+      "sizeLines": 113,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/staff_center.py",
+      "language": "python",
+      "sizeLines": 375,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/urls.py",
+      "language": "python",
+      "sizeLines": 142,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/views.py",
+      "language": "python",
+      "sizeLines": 467,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/billing/approval_registry.py",
+      "language": "python",
+      "sizeLines": 280,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/api_contract.py",
+      "language": "python",
+      "sizeLines": 255,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/authorization.py",
+      "language": "python",
+      "sizeLines": 81,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "apps/api/approval.py": [
+      "apps/billing/approval_registry.py",
+      "apps/billing/models.py",
+      "apps/billing/services_v2.py",
+      "apps/core/api_contract.py",
+      "apps/identity/authorization.py"
+    ],
+    "apps/api/audit_center.py": [
+      "apps/api/report_center.py",
+      "apps/core/api_contract.py",
+      "apps/core/models.py",
+      "apps/identity/authorization.py"
+    ],
+    "apps/api/billing_center.py": [
+      "apps/billing/__init__.py",
+      "apps/billing/dec02.py",
+      "apps/billing/models.py",
+      "apps/billing/services_v2.py",
+      "apps/core/__init__.py",
+      "apps/core/api_contract.py",
+      "apps/identity/authorization.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/api/front_desk.py": [
+      "apps/api/views.py",
+      "apps/billing/models.py",
+      "apps/core/__init__.py",
+      "apps/core/api_contract.py",
+      "apps/identity/authorization.py",
+      "apps/inventory/models.py",
+      "apps/inventory/services.py",
+      "apps/reservations/front_desk_services.py",
+      "apps/reservations/lifecycle_services.py",
+      "apps/reservations/models.py",
+      "hotelapp/models.py"
+    ],
+    "apps/api/guest_center.py": [
+      "apps/billing/models.py",
+      "apps/core/__init__.py",
+      "apps/core/api_contract.py",
+      "apps/core/models.py",
+      "apps/guests/models.py",
+      "apps/guests/services.py",
+      "apps/identity/authorization.py",
+      "apps/inventory/models.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/api/housekeeping_center.py": [
+      "apps/api/night_audit.py",
+      "apps/core/api_contract.py",
+      "apps/identity/authorization.py",
+      "apps/inventory/models.py",
+      "apps/inventory/services.py"
+    ],
+    "apps/api/night_audit.py": [
+      "apps/billing/models.py",
+      "apps/billing/night_audit.py",
+      "apps/core/api_contract.py",
+      "apps/core/models.py",
+      "apps/identity/authorization.py",
+      "apps/inventory/models.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/api/notification_center.py": [
+      "apps/core/api_contract.py",
+      "apps/core/models.py",
+      "apps/core/services_notifications.py",
+      "apps/identity/authorization.py"
+    ],
+    "apps/api/pages.py": [
+      "apps/core/models.py",
+      "apps/identity/authorization.py"
+    ],
+    "apps/api/report_center.py": [
+      "apps/api/billing_center.py",
+      "apps/billing/models.py",
+      "apps/core/api_contract.py",
+      "apps/core/models.py",
+      "apps/guests/models.py",
+      "apps/identity/authorization.py",
+      "apps/inventory/models.py",
+      "apps/inventory/services.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/api/reservation_center.py": [
+      "apps/core/api_contract.py",
+      "apps/identity/authorization.py",
+      "apps/reservations/models.py"
+    ],
+    "apps/api/staff_center.py": [
+      "apps/core/__init__.py",
+      "apps/core/api_contract.py",
+      "apps/guests/models.py",
+      "apps/guests/services.py",
+      "apps/identity/authorization.py",
+      "apps/identity/models.py"
+    ],
+    "apps/api/urls.py": [
+      "apps/api/approval.py",
+      "apps/api/audit_center.py",
+      "apps/api/billing_center.py",
+      "apps/api/front_desk.py",
+      "apps/api/guest_center.py",
+      "apps/api/housekeeping_center.py",
+      "apps/api/night_audit.py",
+      "apps/api/notification_center.py",
+      "apps/api/report_center.py",
+      "apps/api/reservation_center.py",
+      "apps/api/staff_center.py",
+      "apps/api/views.py"
+    ],
+    "apps/api/views.py": [
+      "apps/billing/services.py",
+      "apps/core/__init__.py",
+      "apps/core/models.py",
+      "apps/core/rate_limit.py",
+      "apps/inventory/models.py",
+      "apps/inventory/services.py",
+      "apps/reservations/models.py",
+      "apps/reservations/services.py"
+    ],
+    "apps/billing/__init__.py": [],
+    "apps/billing/approval_registry.py": [
+      "apps/core/api_contract.py"
+    ],
+    "apps/core/__init__.py": [],
+    "apps/core/api_contract.py": [
+      "apps/core/models.py"
+    ],
+    "apps/identity/authorization.py": [
+      "apps/identity/models.py"
+    ]
+  }
+}

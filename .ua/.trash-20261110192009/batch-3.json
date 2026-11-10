@@ -1,0 +1,1087 @@
+{
+  "nodes": [
+    {
+      "id": "file:apps/api/test_approval.py",
+      "type": "file",
+      "name": "test_approval.py",
+      "filePath": "apps/api/test_approval.py",
+      "summary": "审批 API 回归测试：审批列表权限、请求白名单、通过/驳回决策。",
+      "tags": [
+        "test",
+        "approval",
+        "api-contract"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/api/test_billing_center.py",
+      "type": "file",
+      "name": "test_billing_center.py",
+      "filePath": "apps/api/test_billing_center.py",
+      "summary": "账务中心回归测试（超大）：读写权限、退款三方一致性、权限迁移矩阵、CSRF、退款负债完整性等。",
+      "tags": [
+        "test",
+        "billing",
+        "api-contract"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/api/test_public_booking_lifecycle.py",
+      "type": "file",
+      "name": "test_public_booking_lifecycle.py",
+      "filePath": "apps/api/test_public_booking_lifecycle.py",
+      "summary": "公开预订生命周期测试：从查房、下单、支付到取消/释放库存的完整链路。",
+      "tags": [
+        "test",
+        "booking",
+        "e2e"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/api/test_security.py",
+      "type": "file",
+      "name": "test_security.py",
+      "filePath": "apps/api/test_security.py",
+      "summary": "安全回归测试：物业隔离与 PII 保护。",
+      "tags": [
+        "test",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/billing/management/commands/expire_pending_refunds.py",
+      "type": "file",
+      "name": "expire_pending_refunds.py",
+      "filePath": "apps/billing/management/commands/expire_pending_refunds.py",
+      "summary": "管理命令：把超时未完成的退款标记为过期，释放负债占用。",
+      "tags": [
+        "management-command",
+        "refund",
+        "scheduler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:apps/billing/night_audit.py",
+      "type": "file",
+      "name": "night_audit.py",
+      "filePath": "apps/billing/night_audit.py",
+      "summary": "夜审账务服务：营业日结账、收入确认、重开与破玻璃流程的领域实现。",
+      "tags": [
+        "service",
+        "night-audit",
+        "billing"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/billing/services_v2.py",
+      "type": "file",
+      "name": "services_v2.py",
+      "filePath": "apps/billing/services_v2.py",
+      "summary": "账务核心服务（v2）：收款、退款、冲销、调账、班次等业务入口与审批编排（超大服务类）。",
+      "tags": [
+        "service",
+        "billing",
+        "core-domain",
+        "approval"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/billing/test_approval_registry.py",
+      "type": "file",
+      "name": "test_approval_registry.py",
+      "filePath": "apps/billing/test_approval_registry.py",
+      "summary": "审批注册表测试：动作目录完整性、白名单校验与服务层拦截。",
+      "tags": [
+        "test",
+        "approval"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/billing/test_break_glass.py",
+      "type": "file",
+      "name": "test_break_glass.py",
+      "filePath": "apps/billing/test_break_glass.py",
+      "summary": "破玻璃流程测试：紧急越权操作的申请、执行与审计。",
+      "tags": [
+        "test",
+        "break-glass",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/billing/test_night_audit_reopen.py",
+      "type": "file",
+      "name": "test_night_audit_reopen.py",
+      "filePath": "apps/billing/test_night_audit_reopen.py",
+      "summary": "夜审重开测试：重开申请与审批终态后的再申请约束。",
+      "tags": [
+        "test",
+        "night-audit"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/billing/test_whitebox_services.py",
+      "type": "file",
+      "name": "test_whitebox_services.py",
+      "filePath": "apps/billing/test_whitebox_services.py",
+      "summary": "账务白盒测试（超大）：资金守卫、冲销、审批并发、押金、退款三方执行、不可变事实与数据库约束。",
+      "tags": [
+        "test",
+        "whitebox",
+        "billing",
+        "concurrency"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/core/admin.py",
+      "type": "file",
+      "name": "admin.py",
+      "filePath": "apps/core/admin.py",
+      "summary": "核心后台管理：物业、审计事件、遗留记录关联与破玻璃记录的 Admin 配置（只读为主）。",
+      "tags": [
+        "admin",
+        "audit",
+        "backoffice"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/core/models.py",
+      "type": "file",
+      "name": "models.py",
+      "filePath": "apps/core/models.py",
+      "summary": "核心模型：物业、审计事件（不可变）、营业日、破玻璃记录、夜审运行、幂等记录、状态流转、限流计数与通知。",
+      "tags": [
+        "data-model",
+        "audit",
+        "core-domain"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/core/test_audit_immutability.py",
+      "type": "file",
+      "name": "test_audit_immutability.py",
+      "filePath": "apps/core/test_audit_immutability.py",
+      "summary": "审计不可变测试：验证审计事件无法被更新或删除。",
+      "tags": [
+        "test",
+        "audit",
+        "integrity"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/core/tests.py",
+      "type": "file",
+      "name": "tests.py",
+      "filePath": "apps/core/tests.py",
+      "summary": "核心模型测试：物业模型基础行为。",
+      "tags": [
+        "test",
+        "model"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:apps/guests/services.py",
+      "type": "file",
+      "name": "services.py",
+      "filePath": "apps/guests/services.py",
+      "summary": "客人服务：建客原子性、证件/手机号解密（需原因并留痕）、会员等级与状态变更。",
+      "tags": [
+        "service",
+        "guest",
+        "pii-masking"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/guests/test_whitebox_services.py",
+      "type": "file",
+      "name": "test_whitebox_services.py",
+      "filePath": "apps/guests/test_whitebox_services.py",
+      "summary": "客人服务白盒测试：脱敏纪律与建客原子性。",
+      "tags": [
+        "test",
+        "whitebox",
+        "guest"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:apps/identity/test_cookie_isolation.py",
+      "type": "file",
+      "name": "test_cookie_isolation.py",
+      "filePath": "apps/identity/test_cookie_isolation.py",
+      "summary": "Cookie 隔离测试：会话规格分类、登录一致性、非法 Cookie、登出、遗留迁移与 CSRF 隔离。",
+      "tags": [
+        "test",
+        "session",
+        "security"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/identity/test_platform.py",
+      "type": "file",
+      "name": "test_platform.py",
+      "filePath": "apps/identity/test_platform.py",
+      "summary": "平台管理测试：访问控制、CSRF、上下文噪声、旧权限重定向、系统页拆分与超管检查命令。",
+      "tags": [
+        "test",
+        "platform"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:apps/inventory/management/commands/sync_inventory_calendar.py",
+      "type": "file",
+      "name": "sync_inventory_calendar.py",
+      "filePath": "apps/inventory/management/commands/sync_inventory_calendar.py",
+      "summary": "管理命令：按日历批量同步房量库存（房型-日期维度）。",
+      "tags": [
+        "management-command",
+        "inventory",
+        "scheduler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/billing/services_v2.py:ApprovalService",
+      "type": "class",
+      "name": "ApprovalService",
+      "filePath": "apps/billing/services_v2.py",
+      "summary": "审批编排服务：按注册表校验并执行高危动作审批。",
+      "tags": [
+        "service",
+        "billing",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/billing/services_v2.py:BillingService",
+      "type": "class",
+      "name": "BillingService",
+      "filePath": "apps/billing/services_v2.py",
+      "summary": "账务业务服务：收款、退款、冲销、调账与班次的核心实现。",
+      "tags": [
+        "service",
+        "billing",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/billing/night_audit.py:NightAuditService",
+      "type": "class",
+      "name": "NightAuditService",
+      "filePath": "apps/billing/night_audit.py",
+      "summary": "夜审服务：营业日结账、收入结转、重开与破玻璃的账务处理。",
+      "tags": [
+        "service",
+        "night-audit",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/core/models.py:Property",
+      "type": "class",
+      "name": "Property",
+      "filePath": "apps/core/models.py",
+      "summary": "物业（酒店门店）主实体，多物业隔离的根。",
+      "tags": [
+        "data-model",
+        "audit",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/core/models.py:AuditEvent",
+      "type": "class",
+      "name": "AuditEvent",
+      "filePath": "apps/core/models.py",
+      "summary": "审计事件：只追加的不可变审计日志。",
+      "tags": [
+        "data-model",
+        "audit",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/core/models.py:LegacyRecordLink",
+      "type": "class",
+      "name": "LegacyRecordLink",
+      "filePath": "apps/core/models.py",
+      "summary": "遗留记录关联：新旧模型 id 的迁移映射。",
+      "tags": [
+        "data-model",
+        "audit",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/core/models.py:BusinessDate",
+      "type": "class",
+      "name": "BusinessDate",
+      "filePath": "apps/core/models.py",
+      "summary": "营业日：夜审推进的营业日游标。",
+      "tags": [
+        "data-model",
+        "audit",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/core/models.py:BreakGlassRecord",
+      "type": "class",
+      "name": "BreakGlassRecord",
+      "filePath": "apps/core/models.py",
+      "summary": "破玻璃记录：紧急越权操作的申请/执行/复核。",
+      "tags": [
+        "data-model",
+        "audit",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/core/models.py:NightAuditRun",
+      "type": "class",
+      "name": "NightAuditRun",
+      "filePath": "apps/core/models.py",
+      "summary": "夜审运行记录：一次夜审的执行结果。",
+      "tags": [
+        "data-model",
+        "audit",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/core/models.py:IdempotencyRecord",
+      "type": "class",
+      "name": "IdempotencyRecord",
+      "filePath": "apps/core/models.py",
+      "summary": "幂等记录：请求去重的事实存储。",
+      "tags": [
+        "data-model",
+        "audit",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/core/models.py:StatusTransition",
+      "type": "class",
+      "name": "StatusTransition",
+      "filePath": "apps/core/models.py",
+      "summary": "状态流转记录：订单/房态等状态变更留痕。",
+      "tags": [
+        "data-model",
+        "audit",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/core/models.py:RateLimitCounter",
+      "type": "class",
+      "name": "RateLimitCounter",
+      "filePath": "apps/core/models.py",
+      "summary": "限流计数：滑动窗口限流的状态表。",
+      "tags": [
+        "data-model",
+        "audit",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/core/models.py:Notification",
+      "type": "class",
+      "name": "Notification",
+      "filePath": "apps/core/models.py",
+      "summary": "通知/待办实体：运营待办与消息。",
+      "tags": [
+        "data-model",
+        "audit",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/core/models.py:NotificationRead",
+      "type": "class",
+      "name": "NotificationRead",
+      "filePath": "apps/core/models.py",
+      "summary": "通知已读状态。",
+      "tags": [
+        "data-model",
+        "audit",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/guests/services.py:GuestService",
+      "type": "class",
+      "name": "GuestService",
+      "filePath": "apps/guests/services.py",
+      "summary": "客人服务：建客与 PII 解密。",
+      "tags": [
+        "service",
+        "guest",
+        "class"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:apps/guests/services.py:GuestMembershipService",
+      "type": "class",
+      "name": "GuestMembershipService",
+      "filePath": "apps/guests/services.py",
+      "summary": "会员服务：等级与状态变更。",
+      "tags": [
+        "service",
+        "guest",
+        "class"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:apps/billing/services_v2.py",
+      "target": "class:apps/billing/services_v2.py:ApprovalService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/billing/services_v2.py",
+      "target": "class:apps/billing/services_v2.py:ApprovalService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/billing/services_v2.py",
+      "target": "class:apps/billing/services_v2.py:BillingService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/billing/services_v2.py",
+      "target": "class:apps/billing/services_v2.py:BillingService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/billing/night_audit.py",
+      "target": "class:apps/billing/night_audit.py:NightAuditService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/billing/night_audit.py",
+      "target": "class:apps/billing/night_audit.py:NightAuditService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:Property",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:Property",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:AuditEvent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:AuditEvent",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:LegacyRecordLink",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:LegacyRecordLink",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:BusinessDate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:BusinessDate",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:BreakGlassRecord",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:BreakGlassRecord",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:NightAuditRun",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:NightAuditRun",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:IdempotencyRecord",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:IdempotencyRecord",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:StatusTransition",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:StatusTransition",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:RateLimitCounter",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:RateLimitCounter",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:Notification",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:Notification",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:NotificationRead",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "class:apps/core/models.py:NotificationRead",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/guests/services.py",
+      "target": "class:apps/guests/services.py:GuestService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/guests/services.py",
+      "target": "class:apps/guests/services.py:GuestService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/guests/services.py",
+      "target": "class:apps/guests/services.py:GuestMembershipService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:apps/guests/services.py",
+      "target": "class:apps/guests/services.py:GuestMembershipService",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:apps/core/models.py",
+      "target": "file:apps/core/labels.py",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:apps/api/test_approval.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_approval.py",
+      "target": "file:apps/billing/services_v2.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_approval.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_approval.py",
+      "target": "file:apps/guests/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_approval.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_approval.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_billing_center.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_billing_center.py",
+      "target": "file:apps/billing/services_v2.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_billing_center.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_billing_center.py",
+      "target": "file:apps/guests/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_billing_center.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_billing_center.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_public_booking_lifecycle.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_public_booking_lifecycle.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_security.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_security.py",
+      "target": "file:apps/guests/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_security.py",
+      "target": "file:apps/guests/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/api/test_security.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/management/commands/expire_pending_refunds.py",
+      "target": "file:apps/billing/services_v2.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/management/commands/expire_pending_refunds.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/night_audit.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/night_audit.py",
+      "target": "file:apps/billing/services_v2.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/night_audit.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/night_audit.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/services_v2.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/services_v2.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_approval_registry.py",
+      "target": "file:apps/billing/approval_registry.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_approval_registry.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_approval_registry.py",
+      "target": "file:apps/billing/services_v2.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_approval_registry.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_break_glass.py",
+      "target": "file:apps/billing/night_audit.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_break_glass.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_break_glass.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_night_audit_reopen.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_night_audit_reopen.py",
+      "target": "file:apps/billing/night_audit.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_night_audit_reopen.py",
+      "target": "file:apps/billing/services_v2.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_night_audit_reopen.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_whitebox_services.py",
+      "target": "file:apps/billing/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_whitebox_services.py",
+      "target": "file:apps/billing/services_v2.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_whitebox_services.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_whitebox_services.py",
+      "target": "file:apps/guests/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/billing/test_whitebox_services.py",
+      "target": "file:apps/reservations/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/core/admin.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/core/test_audit_immutability.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/core/tests.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/guests/services.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/guests/test_whitebox_services.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/guests/test_whitebox_services.py",
+      "target": "file:apps/guests/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/guests/test_whitebox_services.py",
+      "target": "file:apps/guests/services.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_cookie_isolation.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_cookie_isolation.py",
+      "target": "file:apps/identity/test_platform.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_platform.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/identity/test_platform.py",
+      "target": "file:apps/identity/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/management/commands/sync_inventory_calendar.py",
+      "target": "file:apps/core/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:apps/inventory/management/commands/sync_inventory_calendar.py",
+      "target": "file:apps/inventory/models.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+{
+  "projectRoot": "F:\\Desktop\\django-hotel",
+  "batchFiles": [
+    {
+      "path": "apps/identity/management/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/management/commands/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/management/commands/platform_superadmin_check.py",
+      "language": "python",
+      "sizeLines": 78,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/apps.py",
+      "language": "python",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/management/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/inventory/management/commands/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/apps.py",
+      "language": "python",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/management/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/reservations/management/commands/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotel/__init__.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotel/settings.py",
+      "language": "python",
+      "sizeLines": 303,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotel/wsgi.py",
+      "language": "python",
+      "sizeLines": 16,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/apps.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/audit_middleware.py",
+      "language": "python",
+      "sizeLines": 21,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/templatetags/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/templatetags/pms_filters.py",
+      "language": "python",
+      "sizeLines": 30,
+      "fileCategory": "code"
+    },
+    {
+      "path": "manage.py",
+      "language": "python",
+      "sizeLines": 15,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/e2e_full_chain.py",
+      "language": "python",
+      "sizeLines": 418,
+      "fileCategory": "code"
+    },
+    {
+      "path": "templates/identity/invite_accept.html",
+      "language": "html",
+      "sizeLines": 82,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/public/booking.html",
+      "language": "html",
+      "sizeLines": 493,
+      "fileCategory": "markup"
+    }
+  ],
+  "batchImportData": {
+    "apps/identity/management/__init__.py": [],
+    "apps/identity/management/commands/__init__.py": [],
+    "apps/identity/management/commands/platform_superadmin_check.py": [],
+    "apps/inventory/__init__.py": [],
+    "apps/inventory/apps.py": [],
+    "apps/inventory/management/__init__.py": [],
+    "apps/inventory/management/commands/__init__.py": [],
+    "apps/reservations/__init__.py": [],
+    "apps/reservations/apps.py": [],
+    "apps/reservations/management/__init__.py": [],
+    "apps/reservations/management/commands/__init__.py": [],
+    "hotel/__init__.py": [],
+    "hotel/settings.py": [],
+    "hotel/wsgi.py": [],
+    "hotelapp/apps.py": [],
+    "hotelapp/audit_middleware.py": [],
+    "hotelapp/templatetags/__init__.py": [],
+    "hotelapp/templatetags/pms_filters.py": [],
+    "manage.py": [],
+    "scripts/e2e_full_chain.py": [],
+    "templates/identity/invite_accept.html": [],
+    "templates/public/booking.html": []
+  }
+}

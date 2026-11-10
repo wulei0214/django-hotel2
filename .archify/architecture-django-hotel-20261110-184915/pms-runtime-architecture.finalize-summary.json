@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "F:\\Desktop\\django-hotel\\.archify\\architecture-django-hotel-20261110-184915\\candidate.json",
+    "sha256": "76164d00ed6e825a2b1021a0f21ee201a99df127a95e1629a8f0cf6e87d557b1",
+    "bytes": 6805
+  },
+  "artifact": {
+    "path": "F:\\Desktop\\django-hotel\\.archify\\architecture-django-hotel-20261110-184915\\pms-runtime-architecture.html",
+    "sha256": "8cdb9c373590d11d285a75fda459500fb7af3e60104ac0cdae827378a1af6811",
+    "bytes": 852586
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "F:\\Desktop\\django-hotel\\.archify\\architecture-django-hotel-20261110-184915\\pms-runtime-architecture.finalize.json",
+    "summaryReceipt": "F:\\Desktop\\django-hotel\\.archify\\architecture-django-hotel-20261110-184915\\pms-runtime-architecture.finalize-summary.json",
+    "browserCheckReceipt": "F:\\Desktop\\django-hotel\\.archify\\architecture-django-hotel-20261110-184915\\pms-runtime-architecture.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-10T10:50:44.975Z",
+    "source": "network",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 4372,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

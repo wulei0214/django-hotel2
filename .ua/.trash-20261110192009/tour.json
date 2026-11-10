@@ -1,0 +1,97 @@
+[
+  {
+    "order": 1,
+    "title": "项目总览",
+    "description": "先读 README 了解这套 Django 酒店 PMS（PMS2）的范围：多物业、九角色权限、预订-住店-账务-夜审核心流程。",
+    "nodeIds": [
+      "document:readme.md"
+    ]
+  },
+  {
+    "order": 2,
+    "title": "启动与配置",
+    "description": "从 manage.py 进入，经 hotel/settings.py 组装应用、中间件与会话策略，由 hotel/urls.py 分发请求。",
+    "nodeIds": [
+      "file:manage.py",
+      "file:hotel/settings.py",
+      "file:hotel/urls.py",
+      "file:hotel/wsgi.py"
+    ]
+  },
+  {
+    "order": 3,
+    "title": "路由与接口层",
+    "description": "apps/api/urls.py 注册全部 HTTP 端点：五大中心、公开预订、页面与平台入口。",
+    "nodeIds": [
+      "file:apps/api/urls.py",
+      "file:apps/api/views.py",
+      "file:apps/api/pages.py"
+    ]
+  },
+  {
+    "order": 4,
+    "title": "身份、权限与会话",
+    "description": "权限体系的骨架：注册表定义九角色与模块权限码，授权服务做判定，拆分会话中间件隔离 PMS 与平台入口。",
+    "nodeIds": [
+      "file:apps/identity/registry.py",
+      "file:apps/identity/authorization.py",
+      "file:apps/identity/session_middleware.py",
+      "file:apps/identity/models.py"
+    ]
+  },
+  {
+    "order": 5,
+    "title": "预订到住店的主流程",
+    "description": "预订服务锁库存并落预订事实，前台服务负责排房/入住/收款/离店，住店生命周期服务处理续住与换房。",
+    "nodeIds": [
+      "file:apps/reservations/services.py",
+      "file:apps/reservations/front_desk_services.py",
+      "file:apps/reservations/lifecycle_services.py",
+      "file:apps/reservations/models.py"
+    ]
+  },
+  {
+    "order": 6,
+    "title": "库存与客房联动",
+    "description": "房量库存与房态是可用性的两个来源，客房/维修状态变更会同步库存可用性，并由对账任务兜底。",
+    "nodeIds": [
+      "file:apps/inventory/services.py",
+      "file:apps/inventory/models.py",
+      "file:apps/inventory/reconciliation.py"
+    ]
+  },
+  {
+    "order": 7,
+    "title": "账务、审批与夜审",
+    "description": "账务以“不可变财务事实”为核心：收款/退款/冲销/调账都留事实与审批，夜审推进营业日并结转收入。",
+    "nodeIds": [
+      "file:apps/billing/models.py",
+      "file:apps/billing/services_v2.py",
+      "file:apps/billing/approval_registry.py",
+      "file:apps/billing/night_audit.py",
+      "file:apps/core/models.py"
+    ]
+  },
+  {
+    "order": 8,
+    "title": "前端中心页与公共预订页",
+    "description": "PMS2 的五大中心以服务端渲染模板承载，共享侧边栏；公开预订页面向客人无需登录。",
+    "nodeIds": [
+      "file:templates/pms/billing_center.html",
+      "file:templates/_sidebar.html",
+      "file:templates/public/booking.html",
+      "file:apps/api/pages.py"
+    ]
+  },
+  {
+    "order": 9,
+    "title": "质量保障与交付",
+    "description": "契约测试、白盒/回归测试与端到端脚本守住业务规则；GitHub Actions 跑测试并比对 OpenAPI 快照。",
+    "nodeIds": [
+      "file:apps/api/test_openapi_schema.py",
+      "file:api_tests/test_p0_smoke.py",
+      "file:scripts/e2e_full_chain.py",
+      "pipeline:.github/workflows/django-ci.yml"
+    ]
+  }
+]

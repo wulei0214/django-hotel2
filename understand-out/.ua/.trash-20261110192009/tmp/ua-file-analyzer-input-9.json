@@ -1,0 +1,147 @@
+{
+  "projectRoot": "F:\\Desktop\\django-hotel",
+  "batchFiles": [
+    {
+      "path": "templates/403.html",
+      "language": "html",
+      "sizeLines": 23,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/_sidebar.html",
+      "language": "html",
+      "sizeLines": 81,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/accomodation.html",
+      "language": "html",
+      "sizeLines": 123,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/booking.html",
+      "language": "html",
+      "sizeLines": 293,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/checkin.html",
+      "language": "html",
+      "sizeLines": 173,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/finance.html",
+      "language": "html",
+      "sizeLines": 87,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/force_password_change.html",
+      "language": "html",
+      "sizeLines": 40,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/frontdesk.html",
+      "language": "html",
+      "sizeLines": 265,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/home.html",
+      "language": "html",
+      "sizeLines": 150,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/html1.html",
+      "language": "html",
+      "sizeLines": 140,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/html4.html",
+      "language": "html",
+      "sizeLines": 140,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/index.html",
+      "language": "html",
+      "sizeLines": 182,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/login.html",
+      "language": "html",
+      "sizeLines": 66,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/nightaudit.html",
+      "language": "html",
+      "sizeLines": 83,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/order.html",
+      "language": "html",
+      "sizeLines": 118,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/park.html",
+      "language": "html",
+      "sizeLines": 142,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/room.html",
+      "language": "html",
+      "sizeLines": 150,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/staff_accounts.html",
+      "language": "html",
+      "sizeLines": 71,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/staff_accounts_detail.html",
+      "language": "html",
+      "sizeLines": 68,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/vip.html",
+      "language": "html",
+      "sizeLines": 150,
+      "fileCategory": "markup"
+    }
+  ],
+  "batchImportData": {
+    "templates/403.html": [],
+    "templates/_sidebar.html": [],
+    "templates/accomodation.html": [],
+    "templates/booking.html": [],
+    "templates/checkin.html": [],
+    "templates/finance.html": [],
+    "templates/force_password_change.html": [],
+    "templates/frontdesk.html": [],
+    "templates/home.html": [],
+    "templates/html1.html": [],
+    "templates/html4.html": [],
+    "templates/index.html": [],
+    "templates/login.html": [],
+    "templates/nightaudit.html": [],
+    "templates/order.html": [],
+    "templates/park.html": [],
+    "templates/room.html": [],
+    "templates/staff_accounts.html": [],
+    "templates/staff_accounts_detail.html": [],
+    "templates/vip.html": []
+  }
+}

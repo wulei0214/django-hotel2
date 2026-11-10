@@ -1,0 +1,35 @@
+{
+  "projectRoot": "F:\\Desktop\\django-hotel",
+  "batchFiles": [
+    {
+      "path": "templates/platform/base.html",
+      "language": "html",
+      "sizeLines": 41,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/platform/home.html",
+      "language": "html",
+      "sizeLines": 36,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/platform/permissions.html",
+      "language": "html",
+      "sizeLines": 75,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "templates/platform/system.html",
+      "language": "html",
+      "sizeLines": 47,
+      "fileCategory": "markup"
+    }
+  ],
+  "batchImportData": {
+    "templates/platform/base.html": [],
+    "templates/platform/home.html": [],
+    "templates/platform/permissions.html": [],
+    "templates/platform/system.html": []
+  }
+}

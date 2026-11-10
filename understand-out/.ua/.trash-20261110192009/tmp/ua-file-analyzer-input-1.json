@@ -1,0 +1,349 @@
+{
+  "projectRoot": "F:\\Desktop\\django-hotel",
+  "batchFiles": [
+    {
+      "path": "apps/api/management/commands/export_openapi_schema.py",
+      "language": "python",
+      "sizeLines": 21,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/openapi_schema.py",
+      "language": "python",
+      "sizeLines": 2430,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_auth_hardening.py",
+      "language": "python",
+      "sizeLines": 313,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/api/test_openapi_schema.py",
+      "language": "python",
+      "sizeLines": 700,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/core/rate_limit.py",
+      "language": "python",
+      "sizeLines": 122,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/admin.py",
+      "language": "python",
+      "sizeLines": 40,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/context_processors.py",
+      "language": "python",
+      "sizeLines": 51,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/decorators.py",
+      "language": "python",
+      "sizeLines": 45,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/employee_number.py",
+      "language": "python",
+      "sizeLines": 96,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/invitation_services.py",
+      "language": "python",
+      "sizeLines": 371,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/invitation_views.py",
+      "language": "python",
+      "sizeLines": 125,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/management/commands/bind_staff_user.py",
+      "language": "python",
+      "sizeLines": 79,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/management/commands/expire_invitations.py",
+      "language": "python",
+      "sizeLines": 18,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/middleware.py",
+      "language": "python",
+      "sizeLines": 85,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/models.py",
+      "language": "python",
+      "sizeLines": 283,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/roles.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/services.py",
+      "language": "python",
+      "sizeLines": 497,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/session_middleware.py",
+      "language": "python",
+      "sizeLines": 373,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/staff_center_views.py",
+      "language": "python",
+      "sizeLines": 385,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_invitations.py",
+      "language": "python",
+      "sizeLines": 738,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_module_gates.py",
+      "language": "python",
+      "sizeLines": 552,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/test_staff_center.py",
+      "language": "python",
+      "sizeLines": 445,
+      "fileCategory": "code"
+    },
+    {
+      "path": "apps/identity/tests.py",
+      "language": "python",
+      "sizeLines": 529,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/admin.py",
+      "language": "python",
+      "sizeLines": 141,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/events.py",
+      "language": "python",
+      "sizeLines": 16,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/handlers.py",
+      "language": "python",
+      "sizeLines": 58,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/audit_employee_data.py",
+      "language": "python",
+      "sizeLines": 99,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/classify_users.py",
+      "language": "python",
+      "sizeLines": 149,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/reconcile_test_users.py",
+      "language": "python",
+      "sizeLines": 164,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/management/commands/seed_role_test_accounts.py",
+      "language": "python",
+      "sizeLines": 189,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/models.py",
+      "language": "python",
+      "sizeLines": 332,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/state_machine.py",
+      "language": "python",
+      "sizeLines": 50,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/tests.py",
+      "language": "python",
+      "sizeLines": 1577,
+      "fileCategory": "code"
+    },
+    {
+      "path": "hotelapp/views.py",
+      "language": "python",
+      "sizeLines": 2177,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "apps/api/management/commands/export_openapi_schema.py": [
+      "apps/api/openapi_schema.py"
+    ],
+    "apps/api/openapi_schema.py": [],
+    "apps/api/test_auth_hardening.py": [
+      "apps/core/models.py",
+      "apps/identity/models.py",
+      "apps/identity/services.py",
+      "apps/reservations/models.py",
+      "hotelapp/tests.py"
+    ],
+    "apps/api/test_openapi_schema.py": [
+      "apps/api/openapi_schema.py",
+      "apps/core/rate_limit.py"
+    ],
+    "apps/core/rate_limit.py": [
+      "apps/core/models.py"
+    ],
+    "apps/identity/admin.py": [
+      "apps/identity/models.py"
+    ],
+    "apps/identity/context_processors.py": [
+      "apps/core/models.py",
+      "apps/identity/models.py"
+    ],
+    "apps/identity/decorators.py": [
+      "apps/identity/authorization.py"
+    ],
+    "apps/identity/employee_number.py": [
+      "apps/identity/models.py"
+    ],
+    "apps/identity/invitation_services.py": [
+      "apps/core/models.py",
+      "apps/identity/models.py",
+      "apps/identity/services.py"
+    ],
+    "apps/identity/invitation_views.py": [
+      "apps/core/__init__.py",
+      "apps/core/models.py",
+      "apps/core/rate_limit.py",
+      "apps/identity/invitation_services.py"
+    ],
+    "apps/identity/management/commands/bind_staff_user.py": [
+      "apps/core/models.py",
+      "apps/identity/models.py",
+      "apps/identity/services.py"
+    ],
+    "apps/identity/management/commands/expire_invitations.py": [
+      "apps/identity/invitation_services.py"
+    ],
+    "apps/identity/middleware.py": [
+      "apps/core/models.py",
+      "apps/identity/models.py",
+      "apps/identity/session_middleware.py"
+    ],
+    "apps/identity/models.py": [],
+    "apps/identity/roles.py": [],
+    "apps/identity/services.py": [
+      "apps/core/models.py",
+      "apps/identity/models.py",
+      "apps/identity/roles.py"
+    ],
+    "apps/identity/session_middleware.py": [],
+    "apps/identity/staff_center_views.py": [
+      "apps/core/__init__.py",
+      "apps/core/api_contract.py",
+      "apps/core/rate_limit.py",
+      "apps/identity/decorators.py",
+      "apps/identity/invitation_services.py",
+      "apps/identity/models.py",
+      "apps/identity/roles.py",
+      "apps/identity/services.py",
+      "hotelapp/views.py"
+    ],
+    "apps/identity/test_invitations.py": [
+      "apps/core/models.py",
+      "apps/identity/invitation_services.py",
+      "apps/identity/models.py",
+      "apps/identity/test_staff_center.py"
+    ],
+    "apps/identity/test_module_gates.py": [
+      "apps/core/models.py",
+      "apps/guests/models.py",
+      "apps/guests/services.py",
+      "apps/identity/models.py",
+      "hotelapp/models.py"
+    ],
+    "apps/identity/test_staff_center.py": [
+      "apps/core/models.py",
+      "apps/identity/models.py",
+      "apps/identity/services.py"
+    ],
+    "apps/identity/tests.py": [
+      "apps/core/models.py",
+      "apps/identity/authorization.py",
+      "apps/identity/models.py",
+      "apps/identity/services.py"
+    ],
+    "hotelapp/admin.py": [
+      "hotelapp/models.py"
+    ],
+    "hotelapp/events.py": [],
+    "hotelapp/handlers.py": [
+      "hotelapp/events.py",
+      "hotelapp/models.py"
+    ],
+    "hotelapp/management/commands/audit_employee_data.py": [
+      "apps/identity/models.py",
+      "hotelapp/models.py"
+    ],
+    "hotelapp/management/commands/classify_users.py": [
+      "apps/identity/models.py"
+    ],
+    "hotelapp/management/commands/reconcile_test_users.py": [
+      "apps/core/models.py",
+      "apps/identity/models.py"
+    ],
+    "hotelapp/management/commands/seed_role_test_accounts.py": [
+      "apps/core/models.py",
+      "apps/identity/models.py"
+    ],
+    "hotelapp/models.py": [],
+    "hotelapp/state_machine.py": [],
+    "hotelapp/tests.py": [
+      "apps/core/models.py",
+      "apps/identity/authorization.py",
+      "apps/identity/models.py",
+      "hotelapp/models.py"
+    ],
+    "hotelapp/views.py": [
+      "apps/identity/authorization.py",
+      "apps/identity/decorators.py",
+      "apps/identity/registry.py",
+      "hotelapp/events.py",
+      "hotelapp/handlers.py",
+      "hotelapp/models.py",
+      "hotelapp/state_machine.py"
+    ]
+  }
+}

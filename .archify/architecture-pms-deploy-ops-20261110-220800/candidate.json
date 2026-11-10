@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "PMS 生产部署与运维架构（目标态）",
+    "subtitle": "标「规划」的组件尚未实现，标「部分」表示只有配置、缺依赖；未标记的为已有能力",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/architecture-pms-deploy-ops-20261110-220800/pms-deploy-ops.html"
+  },
+  "components": [
+    {
+      "id": "clients",
+      "type": "external",
+      "label": "员工 / 客人浏览器",
+      "sublabel": "HTTPS 访问",
+      "pos": [40, 300],
+      "size": [150, 64]
+    },
+    {
+      "id": "nginx",
+      "type": "cloud",
+      "label": "Nginx 反向代理",
+      "sublabel": "规划 · TLS 静态限流",
+      "pos": [250, 300],
+      "size": [160, 68]
+    },
+    {
+      "id": "wsgi",
+      "type": "backend",
+      "label": "WSGI 服务器",
+      "sublabel": "规划 · Gunicorn / Waitress",
+      "pos": [470, 300],
+      "size": [190, 68]
+    },
+    {
+      "id": "django",
+      "type": "backend",
+      "label": "Django 应用",
+      "sublabel": "中间件 · 路由 · 服务",
+      "pos": [710, 300],
+      "size": [185, 72]
+    },
+    {
+      "id": "mysql",
+      "type": "database",
+      "label": "MySQL 8",
+      "sublabel": "业务 · 账务 · 任务表",
+      "pos": [1010, 180],
+      "size": [160, 68]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "部分 · 共享缓存",
+      "pos": [710, 540],
+      "size": [165, 68]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Django Worker",
+      "sublabel": "规划 · 补偿重试死信",
+      "pos": [960, 540],
+      "size": [170, 68]
+    },
+    {
+      "id": "scheduler",
+      "type": "backend",
+      "label": "Scheduler",
+      "sublabel": "规划 · cron / 计划任务",
+      "pos": [470, 540],
+      "size": [180, 68]
+    },
+    {
+      "id": "monitor",
+      "type": "cloud",
+      "label": "监控与告警",
+      "sublabel": "规划 · 日志指标告警",
+      "pos": [1210, 60],
+      "size": [165, 68]
+    }
+  ],
+  "connections": [
+    { "id": "edge-https", "from": "clients", "to": "nginx", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "edge-proxy", "from": "nginx", "to": "wsgi", "label": "HTTP" },
+    { "id": "edge-wsgi", "from": "wsgi", "to": "django", "label": "WSGI" },
+    { "id": "edge-orm", "from": "django", "to": "mysql", "label": "ORM" },
+    { "id": "edge-cache", "from": "django", "to": "redis", "label": "缓存" },
+    { "id": "edge-lease", "from": "worker", "to": "mysql", "label": "租约 · 重试" },
+    { "id": "edge-schedule", "from": "scheduler", "to": "worker", "label": "调度触发" },
+    { "id": "edge-logs", "from": "django", "to": "monitor", "label": "日志 / 指标", "fromSide": "top", "toSide": "left" },
+    { "id": "edge-tasklog", "from": "worker", "to": "monitor", "label": "任务日志", "fromSide": "right", "toSide": "bottom" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "当前已有",
+      "items": [
+        "Django 应用与 MySQL 是现状：settings.py、路由、迁移都可运行",
+        "AuditEvent 已有 MySQL 禁改触发器的安装命令与校验命令，不只靠应用层自觉",
+        "deploy_notes.md 给出 Nginx + Gunicorn/Waitress 示例与 cron 用法，但只是文档"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "两个会直接导致生产起不来的缺口",
+      "items": [
+        "requirements.txt 没有 redis 客户端：生产用 Django RedisCache 时缺依赖",
+        ".env.example 没有 DJANGO_CACHE_BACKEND 与 DJANGO_REDIS_URL",
+        "两者叠加：照模板部署生产，settings 因「禁止 LocMemCache」直接拒绝启动"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "规划中（仓库里没有执行进程）",
+      "items": [
+        "PaymentCompensationTask 模型带租约、重试、死信、人工重放，但没有常驻 Worker 去领取",
+        "夜审目前由值班经理在界面手动执行，不是自动任务",
+        "Nginx / Gunicorn / Waitress / Scheduler / 监控告警 均未落地"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "备份与恢复（规划）",
+      "items": [
+        "全量备份 + binlog 增量，异地加密存放",
+        "恢复目标 RPO 15 分钟 / RTO 4 小时（决策目标，尚未进入运行机制）",
+        "仓库内目前没有备份脚本、没有恢复演练记录"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,187 @@
+{
+  "nodes": [
+    {
+      "id": "file:templates/pms/audit_center.html",
+      "type": "file",
+      "name": "audit_center.html",
+      "filePath": "templates/pms/audit_center.html",
+      "summary": "审计中心页面：审计事件检索、详情与汇总视图（含大量前端脚本）。",
+      "tags": [
+        "template",
+        "pms2",
+        "audit"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:templates/pms/billing_center.html",
+      "type": "file",
+      "name": "billing_center.html",
+      "filePath": "templates/pms/billing_center.html",
+      "summary": "账务中心页面（超大）：账单、收款、退款、班次与审批操作的单页界面。",
+      "tags": [
+        "template",
+        "pms2",
+        "billing",
+        "finance"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:templates/pms/housekeeping_center.html",
+      "type": "file",
+      "name": "housekeeping_center.html",
+      "filePath": "templates/pms/housekeeping_center.html",
+      "summary": "客房中心页面：房态看板、房态流转与维修单操作。",
+      "tags": [
+        "template",
+        "pms2",
+        "housekeeping"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:templates/pms/management_center.html",
+      "type": "file",
+      "name": "management_center.html",
+      "filePath": "templates/pms/management_center.html",
+      "summary": "管理中心页面：员工、会员与组织管理的统一入口页。",
+      "tags": [
+        "template",
+        "pms2",
+        "management"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:templates/pms/me.html",
+      "type": "file",
+      "name": "me.html",
+      "filePath": "templates/pms/me.html",
+      "summary": "个人中心页：当前员工信息与改密入口。",
+      "tags": [
+        "template",
+        "pms2",
+        "profile"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:templates/pms/night_audit_center.html",
+      "type": "file",
+      "name": "night_audit_center.html",
+      "filePath": "templates/pms/night_audit_center.html",
+      "summary": "夜审中心页面（超大）：夜审执行、营业日、重开与破玻璃审批界面。",
+      "tags": [
+        "template",
+        "pms2",
+        "night-audit"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:templates/pms/notification_center.html",
+      "type": "file",
+      "name": "notification_center.html",
+      "filePath": "templates/pms/notification_center.html",
+      "summary": "通知中心页面：待办/通知列表与已读操作。",
+      "tags": [
+        "template",
+        "pms2",
+        "notification"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:templates/pms/report_center.html",
+      "type": "file",
+      "name": "report_center.html",
+      "filePath": "templates/pms/report_center.html",
+      "summary": "报表中心页面：出租率、ADR、收入等报表展示。",
+      "tags": [
+        "template",
+        "pms2",
+        "reporting"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:templates/pms/staff_center.html",
+      "type": "file",
+      "name": "staff_center.html",
+      "filePath": "templates/pms/staff_center.html",
+      "summary": "员工中心页面（超大）：员工、成员关系、角色与邀请管理界面。",
+      "tags": [
+        "template",
+        "pms2",
+        "staff"
+      ],
+      "complexity": "complex"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:templates/pms/audit_center.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/pms/billing_center.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/pms/housekeeping_center.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/pms/management_center.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/pms/me.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/pms/night_audit_center.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/pms/notification_center.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/pms/report_center.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:templates/pms/staff_center.html",
+      "target": "file:templates/_sidebar.html",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}
