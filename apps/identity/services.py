@@ -335,6 +335,14 @@ class EmployeeLifecycleService:
         profile.employment_status = profile_status
         profile.save(update_fields=("employment_status", "updated_at"))
         membership = cls.get_membership(profile, property_obj)
+        # WB-041：离职（TERMINATED）→ACTIVE 是重新入职，不得直接恢复旧任职；
+        # 必须走 rehire_employee 流程（新工号+新任职+重新分配岗位）。
+        if (profile_status == StaffProfile.EmploymentStatus.ACTIVE
+                and membership is not None
+                and membership.status == PropertyStaffMembership.Status.TERMINATED):
+            raise EmployeeLifecycleError(
+                "已离职员工不能直接恢复为在职；请走员工重新入职流程"
+                "（DEC-EMP-01），创建新任职并重新分配岗位。")
         ended_count = 0
         if membership is not None:
             if profile_status == StaffProfile.EmploymentStatus.ACTIVE:

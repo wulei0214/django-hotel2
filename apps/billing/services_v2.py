@@ -482,26 +482,19 @@ class BillingService:
         if reservation.property_id != property_obj.pk:
             raise ValueError("预订不属于当前物业。")
 
-        # DEC-DEP-01：服务端按 DepositPolicy 计算押金金额（30% 默认）。
-        # 客户端 amount 仅用于展示/核对；服务端计算结果才是权威金额。
-        rate_plan = None
-        for rr in reservation.reservation_rooms.all():
-            if rr.rate_plan_id:
-                rate_plan = rr.rate_plan
-                break
-        policy = DepositPolicy.objects.filter(rate_plan=rate_plan).first() if rate_plan else None
-        if policy is not None and policy.deposit_type == DepositPolicy.DepositType.PERCENT:
-            pct = policy.deposit_value or Decimal("30")
-            server_amount = (reservation.total_amount * pct / Decimal("100")).quantize(
-                Decimal("0.01"))
-            if client_display_amount is not None:
-                display = BillingService._money(client_display_amount)
-                if display != server_amount:
-                    import logging
-                    logging.getLogger(__name__).warning(
-                        "DEC-DEP-01 押金金额不一致：前端展示 %s，服务端计算 %s（以服务端为准）",
-                        display, server_amount)
-            amount = server_amount
+        # WB-030 修复：押金 30% 为强制策略——无论 DepositPolicy 是否配置，
+        # 服务端统一按 Reservation.total_amount × 30% 计算（DEC-DEP-01 正式规则）。
+        # 客户端传入金额仅用于一致性核对（记日志），不得覆盖服务端结果。
+        import logging
+        server_amount = (reservation.total_amount * Decimal("30") / Decimal("100")).quantize(
+            Decimal("0.01"))
+        if client_display_amount is not None:
+            display = BillingService._money(client_display_amount)
+            if display != server_amount:
+                logging.getLogger(__name__).warning(
+                    "DEC-DEP-01 押金金额不一致：前端展示 %s，服务端计算 %s（以服务端为准）",
+                    display, server_amount)
+        amount = server_amount
         key = str(idempotency_key or "").strip()
         if not key or len(key) > 64:
             raise ValueError("押金登记必须提供 1 至 64 个字符的幂等键。")

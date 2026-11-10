@@ -66,7 +66,7 @@ class DecDep01DepositPolicyTests(TestCase):
         deposit, _ = BillingService.record_deposit(
             property_obj=self.prop, reservation=res,
             amount="200.00", method="CARD", idempotency_key="dep-002", received_by=finance)
-        self.assertEqual(deposit.amount, Decimal("200.00"))
+        self.assertEqual(deposit.amount, Decimal("150.00"))  # WB-030: 500*30%=150
 
 
 @override_settings(DEBUG=True, DJANGO_ENV="test")

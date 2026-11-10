@@ -339,20 +339,13 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
         ).aggregate(total=Sum("amount"))["total"]
         or Decimal("0.00")
     )
-    # DEC-ED-01：提前离店时按实际入住晚数重算应收房费（而非合同额）。
-    # calculate_early_departure 读 nightly_rates 快照 + EarlyDeparturePolicy，
-    # 返回实际住宿房费和违约金；无政策/无快照时按 NONE（不产生罚金）。
-    # 夜审已过账部分从实际应收中扣减，避免重复入账。
-    from apps.reservations.models import EarlyDeparturePolicy
-    ed_policy = EarlyDeparturePolicy.objects.filter(
-        rate_plan_id=line.rate_plan_id, is_active=True).order_by("-created_at").first()
-    if ed_policy is not None:
-        from apps.reservations.walkin import calculate_early_departure
-        ed = calculate_early_departure(
-            line=line, actual_check_out=timezone.now())
-        target_room_charge = ed["actual_room_charge"]
-    else:
-        target_room_charge = line.amount or Decimal("0.00")
+    # DEC-ED-01（WB-009/062/063/064 修复）：
+    # 无论有无 EarlyDeparturePolicy，均按实际入住晚数 + nightly_rates 快照重算。
+    # 无政策时罚金=0（NONE 安全默认）；有政策时违约金独立凭证入账。
+    # 夜审已过账金额按差额处理：多收（负差额）生成 ADJUSTMENT 冲回凭证。
+    from apps.reservations.walkin import calculate_early_departure
+    ed = calculate_early_departure(line=line, actual_check_out=timezone.now())
+    target_room_charge = ed["actual_room_charge"]
     remaining_room_charge = target_room_charge - posted_for_stay
     if remaining_room_charge > 0 and not folio.entries.filter(
         reference=charge_reference
@@ -367,6 +360,32 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
             description=f"房费：{line.check_in.isoformat()} 至 {line.check_out.isoformat()}",
             posted_by=checked_out_by,
         )
+    elif remaining_room_charge < 0:
+        # WB-064：夜审多收房费 → 负向 ADJUSTMENT 冲回（不产生正数凭证）
+        from apps.billing.services_v2 import BillingService
+        adj_ref = f"checkout-adjust:{stay.pk}"
+        if not folio.entries.filter(reference=adj_ref).exists():
+            BillingService.post_entry(
+                property_obj=property_obj, folio=folio, stay=stay,
+                entry_type=LedgerEntry.EntryType.ADJUSTMENT,
+                amount=remaining_room_charge, currency=folio.currency,
+                business_date=_property_today(property_obj),
+                reference=adj_ref,
+                description=f"提前离店房费冲回（差额 {remaining_room_charge}）",
+                posted_by=checked_out_by)
+    # WB-063：违约金独立凭证（有政策且罚金>0 时入账）
+    if ed.get("penalty") and ed["penalty"] > 0:
+        penalty_ref = f"ed-penalty:{stay.pk}"
+        if not folio.entries.filter(reference=penalty_ref).exists():
+            from apps.billing.services_v2 import BillingService
+            BillingService.post_entry(
+                property_obj=property_obj, folio=folio, stay=stay,
+                entry_type=LedgerEntry.EntryType.ADJUSTMENT,
+                amount=ed["penalty"], currency=folio.currency,
+                business_date=_property_today(property_obj),
+                reference=penalty_ref,
+                description=f"提前离店违约金（政策 {ed['policy_type']}）",
+                posted_by=checked_out_by)
 
     total_lines = ReservationRoom.objects.filter(
         property=property_obj, reservation=reservation

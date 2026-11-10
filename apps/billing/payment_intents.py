@@ -49,6 +49,15 @@ def create_intent(*, property_obj, reservation, folio, amount, currency="CNY",
     if intent_amount <= 0:
         raise ValueError("支付意图金额必须大于零。")
 
+    # WB-008 修复：跨表业务归属一致性校验
+    if reservation.property_id != property_obj.pk:
+        raise ValueError("预订不属于当前物业。")
+    if folio.property_id != property_obj.pk:
+        raise ValueError("账单不属于当前物业。")
+    if folio.reservation_id != reservation.pk:
+        raise ValueError("账单与预订不一致。")
+    if folio.currency != reservation.currency:
+        raise ValueError("账单币种与预订币种不一致。")
     existing = PaymentIntent.objects.filter(idempotency_key=key).first()
     if existing is not None:
         if (existing.property_id != property_obj.pk
@@ -123,6 +132,15 @@ def record_provider_event(*, property_obj, intent_id, provider_code,
     existing = ProviderTransaction.objects.filter(
         provider_code=provider_code, event_id=event_id).first() if event_id else None
     if existing is not None:
+        # WB-012 修复：命中已有事件时校验物业/意图/交易号/金额/币种一致
+        if (existing.property_id != property_obj.pk
+                or existing.intent_id != intent.pk
+                or existing.provider_transaction_id != provider_transaction_id
+                or existing.amount != Decimal(str(amount)).quantize(Decimal("0.01"))
+                or existing.currency != currency):
+            raise ValueError(
+                "事件 ID 已用于不同的物业/意图/交易号/金额/币种，"
+                "不能复用已有渠道交易记录。")
         return existing, False
     pt = ProviderTransaction.objects.create(
         property=property_obj, intent=intent,
@@ -160,9 +178,12 @@ def confirm_intent_success(*, property_obj, intent_id, provider_transaction_id,
                          PaymentIntent.Status.EXPIRED,
                          PaymentIntent.Status.CANCELLED):
         raise ValueError("已终态意图不可确认成功。")
+    if confirmed_payment is None:
+        raise ValueError(
+            "WB-011：确认成功必须关联真实 Payment；"
+            "不得产生意图显示成功但没有对应收款事实的状态。")
+    intent.confirmed_payment = confirmed_payment
     intent.status = PaymentIntent.Status.SUCCEEDED
-    if confirmed_payment:
-        intent.confirmed_payment = confirmed_payment
     intent.save(update_fields=("status", "confirmed_payment", "updated_at"))
     try:
         confirm_inventory_for_reservation(intent.reservation)
@@ -243,12 +264,16 @@ def lease_compensation_task(task_id, lease_owner, lease_seconds=60):
 
 @transaction.atomic
 def complete_compensation_task(task_id, success=True, error_code="",
-                               error_summary=""):
-    """完成任务：成功或超限进死信。"""
+                               error_summary="", lease_owner=""):
+    """完成任务：成功或超限进死信。WB-006 修复：校验租约持有者。"""
     task = PaymentCompensationTask.objects.select_for_update().filter(
         pk=task_id).first()
     if task is None:
         raise ValueError("补偿任务不存在。")
+    if task.lease_owner and lease_owner and task.lease_owner != lease_owner:
+        raise ValueError(
+            f"租约持有者不匹配：当前 {task.lease_owner}，调用方 {lease_owner}。"
+            "旧 Worker 不得覆盖新 Worker 的执行状态。")
     if success:
         task.status = PaymentCompensationTask.Status.SUCCEEDED
         task.completed_at = timezone.now()
