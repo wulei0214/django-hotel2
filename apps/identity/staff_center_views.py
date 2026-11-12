@@ -121,14 +121,16 @@ def _staff_center_page(request):
 # ---------- 写操作（每个操作都收口 EmployeeLifecycleService） ----------
 
 def _action_create(request):
-    """新增员工：建档 + DEFAULT 任职 + 可选开通账号 + 初始角色（STAFF-01/02）。"""
+    """新增员工：建档 + DEFAULT 任职 + 可选开通账号 + 初始角色（STAFF-01/02）。
+
+    WB-100：工号不再从表单读取——一律由服务端按部门代码自动编号
+    （DEC-EMP-02），前端不得决定流水号；表单只需提交 department_code。
+    """
     from hotelapp.models import Staff as LegacyStaff
     property_obj = getattr(request, "property", None)
     if property_obj is None:
         raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
     full_name = (request.POST.get("full_name") or "").strip()
-    employee_no = (request.POST.get("employee_no") or "").strip()
-    # WB-037：工号留空时由服务端按部门代码自动编号（DEC-EMP-02）
     department_code = (request.POST.get("department_code") or "").strip()
     position_code = (request.POST.get("position_code") or "").strip() or "UNASSIGNED"
     phone = (request.POST.get("phone") or "").strip()
@@ -143,14 +145,14 @@ def _action_create(request):
 
     profile, membership, user = _call_service(
         EmployeeLifecycleService.create_employee,
-        property_obj=property_obj, full_name=full_name, employee_no=employee_no,
+        property_obj=property_obj, full_name=full_name,
         department_code=department_code,
         position_code=position_code, phone=phone, legacy_staff=legacy,
         account_username=username, account_password=password,
         role_groups=groups, granted_by=request.user)
-    message = f"员工「{profile.full_name}」已建档（工号 {membership.employee_no}" + (
-        "，自动编号）" if not employee_no else "）") + (
-        "，登录账号已开通" if user else "（未开通登录账号）")
+    message = (f"员工「{profile.full_name}」已建档"
+               f"（工号 {membership.employee_no}，由系统按部门自动编号）"
+               + ("，登录账号已开通" if user else "（未开通登录账号）"))
     data = {"message": message, "profile_id": profile.pk,
             "employee_no": membership.employee_no}
     if user is not None:

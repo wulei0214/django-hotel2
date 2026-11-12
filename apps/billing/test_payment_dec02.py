@@ -175,6 +175,66 @@ class PaymentIntentTests(TestCase):
         self.assertFalse(
             PaymentIntent.objects.filter(idempotency_key="pi-wb071").exists())
 
+    # ------------------------------------------------------------------
+    # WB-108：create_intent 预订侧前置校验（状态/窗口/Hold/金额）
+    # ------------------------------------------------------------------
+    def test_create_intent_rejects_terminal_or_inhouse_status(self):
+        """WB-108②：取消/过期/已入住预订不得再创建支付意图。"""
+        for status in (Reservation.Status.CANCELLED,
+                       Reservation.Status.EXPIRED,
+                       Reservation.Status.CHECKED_IN):
+            Reservation.objects.filter(pk=self.reservation.pk).update(
+                status=status)
+            with self.assertRaises(ValueError):
+                self._create("pi-wb108-status")
+        self.assertFalse(PaymentIntent.objects.filter(
+            idempotency_key="pi-wb108-status").exists())
+
+    def test_create_intent_rejects_missing_or_expired_payment_window(self):
+        """WB-108③：PENDING 缺支付截止时间或已过期 → 拒绝。"""
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            status=Reservation.Status.PENDING)
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            expires_at=None)
+        with self.assertRaises(ValueError):
+            self._create("pi-wb108-window-1")
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            expires_at=timezone.now() - timedelta(seconds=1))
+        with self.assertRaises(ValueError):
+            self._create("pi-wb108-window-2")
+        self.assertFalse(PaymentIntent.objects.filter(
+            idempotency_key__startswith="pi-wb108-window").exists())
+
+    def test_create_intent_requires_live_hold_for_pending(self):
+        """WB-108④：PENDING 无有效 Hold（库存计数口径）→ 拒绝；补足后可创建。"""
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            status=Reservation.Status.PENDING,
+            expires_at=timezone.now() + timedelta(minutes=10))
+        with self.assertRaises(ValueError):
+            self._create("pi-wb108-hold-none")
+        self.assertFalse(PaymentIntent.objects.filter(
+            idempotency_key="pi-wb108-hold-none").exists())
+        # 补足有效 Hold 计数（与 confirm_inventory_for_reservation 同口径：
+        # 每个住宿日库存行 held ≥ 预订需求量）后可正常创建
+        from apps.inventory.models import RoomTypeInventory
+        RoomTypeInventory.objects.create(
+            property=self.prop, room_type=self.rt,
+            stay_date=timezone.localdate(), total_rooms=5, held=1)
+        intent, created = self._create("pi-wb108-hold-ok")
+        self.assertTrue(created)
+        self.assertEqual(intent.status, PaymentIntent.Status.PENDING)
+
+    def test_create_intent_amount_must_equal_reservation_total(self):
+        """WB-108⑤：意图金额必须等于订单应付总额（公开链路全款口径）。"""
+        with self.assertRaises(ValueError) as ctx:
+            create_intent(
+                property_obj=self.prop, reservation=self.reservation,
+                folio=self.folio, amount="150.00",
+                created_by=self.owner, idempotency_key="pi-wb108-amt")
+        self.assertIn("应付总额", str(ctx.exception))
+        self.assertFalse(PaymentIntent.objects.filter(
+            idempotency_key="pi-wb108-amt").exists())
+
     def test_confirm_success_payment_ownership_validated(self):
         """WB-072：确认前对收款事实做完整归属/金额/币种/状态/占用校验。"""
         intent, _ = self._create("pi-wb072")
@@ -214,12 +274,20 @@ class PaymentIntentTests(TestCase):
         # 已被其他意图关联的收款事实不可复用
         claimed_payment = Payment.objects.create(
             property=self.prop, reservation=self.reservation, folio=self.folio,
-            provider="mock", provider_ref="MOCK-WB072-DUP", method="MOCK",
+            # WB-107：真实渠道链路中 Payment.provider_ref 即渠道交易号，
+            # 夹具必须与本次确认使用的 provider_transaction_id 一致。
+            provider="mock", provider_ref="MOCK-TXN-WB072-B", method="MOCK",
             amount=Decimal("200.00"), currency="CNY",
             status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
         intent_b, _ = self._create("pi-wb072-b")
         intent_b.status = PaymentIntent.Status.PROCESSING
         intent_b.save(update_fields=("status",))
+        # WB-107：确认前必须存在本意图名下已验签的 SUCCESS 渠道交易
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent_b.pk,
+            provider_code="mock", provider_transaction_id="MOCK-TXN-WB072-B",
+            amount="200.00", currency="CNY", channel_status="SUCCESS",
+            event_id="evt-wb072-b", signature_verified=True)
         confirmed_b, changed_b = confirm_intent_success(
             property_obj=self.prop, intent_id=intent_b.pk,
             provider_transaction_id="MOCK-TXN-WB072-B",
@@ -232,6 +300,126 @@ class PaymentIntentTests(TestCase):
         self.assertNotEqual(intent.status, PaymentIntent.Status.SUCCEEDED)
         self.assertIsNone(intent.confirmed_payment)
 
+    # ------------------------------------------------------------------
+    # WB-107：确认成功前核验渠道交易事实
+    # ------------------------------------------------------------------
+    def _processing_intent(self, key):
+        intent, _ = self._create(key)
+        intent.status = PaymentIntent.Status.PROCESSING
+        intent.save(update_fields=("status",))
+        return intent
+
+    def _succeeded_payment(self, provider_ref):
+        return Payment.objects.create(
+            property=self.prop, reservation=self.reservation, folio=self.folio,
+            provider="mock", provider_ref=provider_ref, method="MOCK",
+            amount=Decimal("200.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+
+    def test_confirm_success_happy_path_with_channel_transaction(self):
+        """WB-107：已验签 SUCCESS 渠道交易 + 合法 Payment → 正常确认成功。"""
+        intent = self._processing_intent("pi-wb107-ok")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk,
+            provider_code="mock", provider_transaction_id="WB107-TXN-OK",
+            amount="200.00", currency="CNY", channel_status="SUCCESS",
+            event_id="evt-wb107-ok", signature_verified=True)
+        payment = self._succeeded_payment("WB107-TXN-OK")
+        confirmed, changed = confirm_intent_success(
+            property_obj=self.prop, intent_id=intent.pk,
+            provider_transaction_id="WB107-TXN-OK",
+            confirmed_payment=payment, actor=self.owner)
+        self.assertTrue(changed)
+        self.assertEqual(confirmed.status, PaymentIntent.Status.SUCCEEDED)
+        self.assertEqual(confirmed.confirmed_payment_id, payment.pk)
+
+    def test_confirm_success_rejects_missing_provider_transaction(self):
+        """WB-107：本意图名下不存在该渠道交易号 → 拒绝确认。"""
+        intent = self._processing_intent("pi-wb107-missing")
+        payment = self._succeeded_payment("WB107-TXN-MISSING")
+        with self.assertRaises(ValueError) as ctx:
+            confirm_intent_success(
+                property_obj=self.prop, intent_id=intent.pk,
+                provider_transaction_id="WB107-TXN-MISSING",
+                confirmed_payment=payment, actor=self.owner)
+        self.assertIn("渠道交易不存在或不属于该意图", str(ctx.exception))
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, PaymentIntent.Status.PROCESSING)
+        self.assertIsNone(intent.confirmed_payment)
+
+    def test_confirm_success_rejects_foreign_intent_transaction(self):
+        """WB-107：渠道交易属于其他意图（或物业）→ 拒绝确认。"""
+        intent = self._processing_intent("pi-wb107-foreign")
+        intent_b = self._processing_intent("pi-wb107-foreign-b")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent_b.pk,
+            provider_code="mock", provider_transaction_id="WB107-TXN-B",
+            amount="200.00", currency="CNY", channel_status="SUCCESS",
+            event_id="evt-wb107-b", signature_verified=True)
+        payment = self._succeeded_payment("WB107-TXN-B")
+        with self.assertRaises(ValueError) as ctx:
+            confirm_intent_success(
+                property_obj=self.prop, intent_id=intent.pk,
+                provider_transaction_id="WB107-TXN-B",
+                confirmed_payment=payment, actor=self.owner)
+        self.assertIn("渠道交易不存在或不属于该意图", str(ctx.exception))
+        intent.refresh_from_db()
+        self.assertNotEqual(intent.status, PaymentIntent.Status.SUCCEEDED)
+
+    def test_confirm_success_rejects_pending_channel_status(self):
+        """WB-107：渠道交易状态非 SUCCESS（如 PENDING）→ 拒绝确认。"""
+        intent = self._processing_intent("pi-wb107-pending")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk,
+            provider_code="mock", provider_transaction_id="WB107-TXN-PENDING",
+            amount="200.00", currency="CNY", channel_status="PENDING")
+        payment = self._succeeded_payment("WB107-TXN-PENDING")
+        with self.assertRaises(ValueError) as ctx:
+            confirm_intent_success(
+                property_obj=self.prop, intent_id=intent.pk,
+                provider_transaction_id="WB107-TXN-PENDING",
+                confirmed_payment=payment, actor=self.owner)
+        self.assertIn("SUCCESS", str(ctx.exception))
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, PaymentIntent.Status.PROCESSING)
+
+    def test_confirm_success_rejects_unsigned_success_transaction(self):
+        """WB-107：SUCCESS 渠道交易未通过验签 → 拒绝确认（防御直写脏数据）。"""
+        intent = self._processing_intent("pi-wb107-unsigned")
+        # record_provider_event 会拒绝未验签 SUCCESS 首写，这里直写模拟历史脏数据
+        ProviderTransaction.objects.create(
+            property=self.prop, intent=intent, provider_code="mock",
+            provider_transaction_id="WB107-TXN-UNSIGNED",
+            amount=Decimal("200.00"), currency="CNY",
+            channel_status="SUCCESS", signature_verified=False)
+        payment = self._succeeded_payment("WB107-TXN-UNSIGNED")
+        with self.assertRaises(ValueError) as ctx:
+            confirm_intent_success(
+                property_obj=self.prop, intent_id=intent.pk,
+                provider_transaction_id="WB107-TXN-UNSIGNED",
+                confirmed_payment=payment, actor=self.owner)
+        self.assertIn("未通过验签", str(ctx.exception))
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, PaymentIntent.Status.PROCESSING)
+
+    def test_confirm_success_rejects_amount_mismatch_transaction(self):
+        """WB-107：渠道交易金额/币种与意图不一致 → 拒绝确认（防御直写脏数据）。"""
+        intent = self._processing_intent("pi-wb107-amount")
+        ProviderTransaction.objects.create(
+            property=self.prop, intent=intent, provider_code="mock",
+            provider_transaction_id="WB107-TXN-SHORT",
+            amount=Decimal("100.00"), currency="CNY",
+            channel_status="SUCCESS", signature_verified=True)
+        payment = self._succeeded_payment("WB107-TXN-SHORT")
+        with self.assertRaises(ValueError) as ctx:
+            confirm_intent_success(
+                property_obj=self.prop, intent_id=intent.pk,
+                provider_transaction_id="WB107-TXN-SHORT",
+                confirmed_payment=payment, actor=self.owner)
+        self.assertIn("金额或币种", str(ctx.exception))
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, PaymentIntent.Status.PROCESSING)
+
     def test_confirm_inventory_failure_creates_compensation_task(self):
         """WB-073：库存确认失败时创建持久化 HOLD_COORDINATION 补偿任务。"""
         intent, _ = self._create("pi-wb073")
@@ -239,9 +427,16 @@ class PaymentIntentTests(TestCase):
         intent.save(update_fields=("status",))
         payment = Payment.objects.create(
             property=self.prop, reservation=self.reservation, folio=self.folio,
-            provider="mock", provider_ref="MOCK-WB073", method="MOCK",
+            # WB-107：Payment.provider_ref 与渠道交易号同源（真实回调链路）。
+            provider="mock", provider_ref="MOCK-TXN-WB073", method="MOCK",
             amount=Decimal("200.00"), currency="CNY",
             status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        # WB-107：先落本意图名下已验签的 SUCCESS 渠道交易事实
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk,
+            provider_code="mock", provider_transaction_id="MOCK-TXN-WB073",
+            amount="200.00", currency="CNY", channel_status="SUCCESS",
+            event_id="evt-wb073", signature_verified=True)
         # 预订回退 PENDING 且无库存 Hold 行 → confirm_inventory 抛 InventoryUnavailable
         Reservation.objects.filter(pk=self.reservation.pk).update(
             status=Reservation.Status.PENDING)
@@ -453,3 +648,158 @@ class CompensationTaskTests(TestCase):
         done = complete_compensation_task(task.pk, success=True,
                                           lease_owner="worker-1")
         self.assertEqual(done.status, PaymentCompensationTask.Status.SUCCEEDED)
+
+
+@override_settings(DEBUG=True, DJANGO_ENV="test")
+class ProviderEventReplayFactTests(TestCase):
+    """WB-115：渠道事件幂等重放必须核对完整不可变事实。
+
+    验收矩阵（审查报告 WB-115）：
+      * SUCCESS/已验签 重放 SUCCESS/已验签 → 幂等返回；
+      * SUCCESS/已验签 重放 FAILED/已验签 → 拒绝 + 安全审计；
+      * SUCCESS/已验签 重放 SUCCESS/未验签 → 拒绝 + 安全审计；
+      * PENDING/未验签 重放 SUCCESS/已验签（同事件 ID）→ 拒绝 + 安全审计；
+      * 同事件 ID 不同金额 / 不同意图 → 拒绝（WB-012 既有语义 + 审计）。
+    渠道状态变化必须使用新的渠道事件 ID，不得复用旧事件 ID 翻转事实。
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.prop = Property.objects.get(code="DEFAULT")
+        cls.owner = User.objects.create_user(username="pi_wb115", password="x")
+        from apps.guests.models import Guest
+        cls.guest = Guest.objects.create(property=cls.prop, full_name="WB115 客")
+        from apps.reservations.models import ReservationRoom
+        from apps.inventory.models import RoomType, RatePlan
+        cls.rt = RoomType.objects.create(
+            property=cls.prop, code="PI-WB115", name="WB115 房型", capacity=2)
+        cls.rate = RatePlan.objects.create(
+            property=cls.prop, code="PI-WB115-BAR", name="WB115 门市价",
+            valid_from=timezone.localdate())
+        cls.reservation = Reservation.objects.create(
+            property=cls.prop, guest=cls.guest, booking_no="PI-WB115-001",
+            status=Reservation.Status.CONFIRMED,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            room_count=1, total_amount=Decimal("200.00"), currency="CNY")
+        ReservationRoom.objects.create(
+            property=cls.prop, reservation=cls.reservation,
+            room_type=cls.rt, rate_plan=cls.rate,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            amount=Decimal("200.00"))
+        cls.folio = Folio.objects.create(
+            property=cls.prop, reservation=cls.reservation,
+            guest=cls.guest, currency="CNY")
+
+    def _intent(self, key, status=PaymentIntent.Status.PROCESSING):
+        intent, _ = create_intent(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="200.00",
+            created_by=self.owner, idempotency_key=key)
+        intent.status = status
+        intent.save(update_fields=("status",))
+        return intent
+
+    @staticmethod
+    def _conflict_count(event_id):
+        return AuditEvent.objects.filter(
+            action="billing.provider_event_replay_conflict").count()
+
+    def test_identical_replay_is_idempotent_without_conflict_audit(self):
+        intent = self._intent("pi-wb115-ok")
+        base = dict(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB115-TXN-OK", amount="200.00",
+            currency="CNY", channel_status="SUCCESS", event_id="evt-wb115-ok",
+            signature_verified=True)
+        pt, created = record_provider_event(**base)
+        self.assertTrue(created)
+        before = self._conflict_count("evt-wb115-ok")
+        pt2, created2 = record_provider_event(**base)
+        self.assertFalse(created2)
+        self.assertEqual(pt.pk, pt2.pk)
+        self.assertEqual(self._conflict_count("evt-wb115-ok"), before)
+
+    def test_replay_with_failed_status_is_rejected(self):
+        intent = self._intent("pi-wb115-fail")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB115-TXN-F", amount="200.00",
+            currency="CNY", channel_status="SUCCESS", event_id="evt-wb115-f",
+            signature_verified=True)
+        before = self._conflict_count("evt-wb115-f")
+        with self.assertRaises(ValueError) as ctx:
+            record_provider_event(
+                property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+                provider_transaction_id="WB115-TXN-F", amount="200.00",
+                currency="CNY", channel_status="FAILED", event_id="evt-wb115-f",
+                signature_verified=True)
+        self.assertIn("渠道状态", str(ctx.exception))
+        self.assertEqual(self._conflict_count("evt-wb115-f"), before + 1)
+        # 首次记录不被第二次请求覆盖
+        pt = ProviderTransaction.objects.get(event_id="evt-wb115-f")
+        self.assertEqual(pt.channel_status, "SUCCESS")
+        self.assertTrue(pt.signature_verified)
+
+    def test_replay_downgrading_signature_is_rejected(self):
+        intent = self._intent("pi-wb115-sig")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB115-TXN-S", amount="200.00",
+            currency="CNY", channel_status="SUCCESS", event_id="evt-wb115-s",
+            signature_verified=True)
+        before = self._conflict_count("evt-wb115-s")
+        with self.assertRaises(ValueError):
+            record_provider_event(
+                property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+                provider_transaction_id="WB115-TXN-S", amount="200.00",
+                currency="CNY", channel_status="SUCCESS", event_id="evt-wb115-s",
+                signature_verified=False)
+        self.assertEqual(self._conflict_count("evt-wb115-s"), before + 1)
+        pt = ProviderTransaction.objects.get(event_id="evt-wb115-s")
+        self.assertTrue(pt.signature_verified)
+
+    def test_replay_pending_to_success_same_event_id_is_rejected(self):
+        intent = self._intent("pi-wb115-p2s")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB115-TXN-P", amount="200.00",
+            currency="CNY", channel_status="PENDING", event_id="evt-wb115-p",
+            signature_verified=False)
+        before = self._conflict_count("evt-wb115-p")
+        with self.assertRaises(ValueError):
+            record_provider_event(
+                property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+                provider_transaction_id="WB115-TXN-P", amount="200.00",
+                currency="CNY", channel_status="SUCCESS", event_id="evt-wb115-p",
+                signature_verified=True)
+        self.assertEqual(self._conflict_count("evt-wb115-p"), before + 1)
+        pt = ProviderTransaction.objects.get(event_id="evt-wb115-p")
+        self.assertEqual(pt.channel_status, "PENDING")
+        self.assertFalse(pt.signature_verified)
+
+    def test_replay_with_different_amount_or_intent_is_rejected(self):
+        intent = self._intent("pi-wb115-amt")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB115-TXN-A", amount="200.00",
+            currency="CNY", channel_status="SUCCESS", event_id="evt-wb115-a",
+            signature_verified=True)
+        before = self._conflict_count("evt-wb115-a")
+        # 同事件 ID 不同金额
+        with self.assertRaises(ValueError):
+            record_provider_event(
+                property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+                provider_transaction_id="WB115-TXN-A", amount="100.00",
+                currency="CNY", channel_status="SUCCESS", event_id="evt-wb115-a",
+                signature_verified=True)
+        # 同事件 ID 不同意图
+        other = self._intent("pi-wb115-amt-b")
+        with self.assertRaises(ValueError):
+            record_provider_event(
+                property_obj=self.prop, intent_id=other.pk, provider_code="mock",
+                provider_transaction_id="WB115-TXN-A", amount="200.00",
+                currency="CNY", channel_status="SUCCESS", event_id="evt-wb115-a",
+                signature_verified=True)
+        self.assertEqual(self._conflict_count("evt-wb115-a"), before + 2)

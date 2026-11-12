@@ -9,7 +9,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.billing.models import Folio
-from apps.guests.models import Guest, GuestPhone
+from apps.guests.services import GuestService, phone_hash
 from apps.inventory.models import RatePlan, RoomType
 from apps.inventory.services import (
     InventoryUnavailable,
@@ -18,7 +18,7 @@ from apps.inventory.services import (
     models_q_valid_to,
     release_inventory_hold,
 )
-from .models import BookingAccessToken, Reservation, ReservationRoom
+from .models import BookingAccessToken, PendingBookingGate, Reservation, ReservationRoom
 
 
 class ReservationConflict(Exception):
@@ -70,12 +70,32 @@ def _create_reservation(
         return existing, False, None  # 重放不重复暴露令牌（明文只在首次创建返回）
 
     # §6.4：同手机号同物业未支付 PENDING 上限（默认 2 笔）——
-    # 幂等重放在此之前已返回，不受上限影响；超限不新增 Guest/Reservation/Folio
+    # 幂等重放在此之前已返回，不受上限影响；超限不新增 Guest/Reservation/Folio。
+    # WB-103：手机号查重改走 guest.phone_hash（HMAC），不再查询明文列。
+    # WB-106：上限的"先读后写"必须有串行化保证——同（物业, phone_hash）的
+    # 并发创建事务先在 PendingBookingGate 锁行上 get_or_create + 行锁排队，
+    # 拿到行锁后再统计 PENDING 数，消除"并发双读同计数、双双通过上限"窗口；
+    # 不同手机号之间互不阻塞。gate_key 与 guest.phone_hash 同源（HMAC），
+    # 保证锁行粒度与统计口径完全一致。
+    gate_key = phone_hash(normalize_phone(payload["phone"]))
+    # WB-106 收尾：同手机号首次并发下单时两个事务可能同时建 gate 行，
+    # 后者撞唯一约束。用 savepoint 隔离 IntegrityError 后重取已存在的锁行，
+    # 保证两个请求都能进入同一把行锁排队，而不是一个整单失败。
+    try:
+        with transaction.atomic():
+            gate = PendingBookingGate.objects.get_or_create(
+                property=property_obj, gate_key=gate_key)[0]
+    except IntegrityError:
+        gate = PendingBookingGate.objects.get(
+            property=property_obj, gate_key=gate_key)
+    # 行锁：后续同手机号创建事务在此排队；首次创建无锁行竞争，直接通过。
+    PendingBookingGate.objects.select_for_update().get(pk=gate.pk)
+
     from django.conf import settings as _settings
     pending_cap = int(getattr(_settings, "PUBLIC_PENDING_RESERVATION_CAP", 2))
     pending_count = Reservation.objects.filter(
         property=property_obj,
-        guest__phone_normalized=normalize_phone(payload["phone"]),
+        guest__phone_hash=gate_key,
         status=Reservation.Status.PENDING,
     ).count()
     if pending_count >= pending_cap:
@@ -105,24 +125,26 @@ def _create_reservation(
 
     phone = normalize_phone(payload["phone"])
     # 手机号只用于检索，不把两个使用共享号码的人自动合并为同一自然人。
-    shared_phone = GuestPhone.objects.filter(phone_normalized=phone).exists()
-    if shared_phone:
-        GuestPhone.objects.filter(phone_normalized=phone).update(
-            shared_review_required=True)
-    guest = Guest.objects.create(
-        property=property_obj,
+    # WB-103 收口说明：Guest/GuestPhone 创建统一委托 GuestService.create_guest
+    # ——手机号在服务内经 encrypt_phone/phone_hash 密文+哈希落库，不再写
+    # Guest.phone/phone_normalized 明文列；共享号码判定（M-03 规则 2，
+    # 全局口径）与 shared_review_required 标记逻辑由服务层保持不变。
+    # 传入的是本函数 normalize_phone（纯数字）结果，保证 pending 上限
+    # 查询的 phone_hash 与建档 hash 完全一致。
+    # 事务语义：本函数整体处于 create_reservation 的 transaction.atomic
+    # 内（WB-09 同事务建档语义不变）；幂等重放在 _create_reservation
+    # 开头按 idempotency_key 返回，不会重复创建 Guest。
+    guest = GuestService.create_guest(
+        property_obj=property_obj,
         full_name=payload["full_name"].strip(),
-        phone=payload["phone"].strip(),
-        phone_normalized=phone,
-    )
-    GuestPhone.objects.create(
-        guest=guest, phone=payload["phone"].strip(),
-        phone_normalized=phone, is_primary=True,
-        shared_review_required=shared_phone, source="官网预订",
-    )
+        phone=phone,
+        source="官网预订")
     booking_no = "R" + secrets.token_hex(10).upper()
     amount = Decimal(availability["total_amount"])
-    expires_at = timezone.now() + timedelta(minutes=15)
+    # RSV-07：与支付意图窗口共用同一时限常量，避免两处硬编码漂移。
+    from apps.core.booking_constants import PENDING_RESERVATION_TTL_MINUTES
+    expires_at = timezone.now() + timedelta(
+        minutes=PENDING_RESERVATION_TTL_MINUTES)
 
     reservation = Reservation.objects.create(
         property=property_obj,

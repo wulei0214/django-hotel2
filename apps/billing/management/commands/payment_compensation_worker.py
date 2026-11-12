@@ -1,13 +1,28 @@
 # -*- coding: utf-8 -*-
-"""D3 P0 / WB-070/078：支付补偿任务 Worker。
+"""D3 P0 / WB-070/078 + WB-110：支付补偿任务 Worker。
 
 循环扫描到期的 PaymentCompensationTask（PENDING，或租约已过期的 LEASED），
 以数据库租约抢占后按任务类型分派执行：
-- HOLD_COORDINATION（库存确认类）：按聚合标识解析出预订，调用
+- HOLD_COORDINATION（库存确认类）：按聚合标识解析出预订；PENDING 调用
   apps.inventory.services.confirm_inventory_for_reservation 做幂等库存确认；
-- 其余任务类型（CHANNEL_QUERY / CALLBACK_CONFIRM_RETRY 等）暂无自动执行器：
-  先记日志，再按失败处理进入服务层指数退避，超过 max_attempts 由
-  complete_compensation_task 转入 DEAD_LETTER，人工可通过
+  已确认/入住/退房为幂等成功；取消/过期/未到店等终态不再重试，直接进死信
+  等人工协调（WB-110a）；
+- CHANNEL_QUERY：mock 渠道查询适配器——只读取该意图/支付已持久化的
+  ProviderTransaction 渠道事实；最新渠道状态 SUCCESS → 任务成功（不改任何
+  状态，只汇报）；无交易或非 SUCCESS → 按失败退避重试，绝不伪造渠道成功
+  （真实渠道适配器未接入，WB-110b）；
+- CALLBACK_CONFIRM_RETRY：找意图的 SUCCESS+已验签 ProviderTransaction，并
+  找到按渠道流水号关联的 SUCCEEDED Payment 后调 confirm_intent_success 推进
+  意图状态机；找不到支付事实则失败重试，不凭空造成功（WB-110c）；
+- PAYMENT_LEDGER_REPAIR：核对 Payment 与账本凭证（PAYMENT payment:{ref} 或
+  DEPOSIT deposit:{ref}）；缺失且可安全重建时经 post_entry（WB-111 新口径，
+  显式传 channel_payment）补凭证；凭证已存在幂等成功；Payment 非 SUCCEEDED、
+  账单已关闭等不可安全重建场景直接进死信注明需人工/对账差异，不得篡改
+  （WB-110d）；
+- RECONCILIATION_DIFF：调用既有 scan_folio_reconciliation 生成差异报告与
+  审计；只读核对，绝不自动改账（WB-110e）；
+- 其余未知任务类型：先记日志，再按失败处理进入服务层指数退避，超过
+  max_attempts 由 complete_compensation_task 转入 DEAD_LETTER，人工可通过
   replay_dead_letter_task 重放。
 
 用法：
@@ -26,18 +41,24 @@ from django.db import models
 from django.utils import timezone
 
 from apps.billing.models import (
+    Folio,
+    LedgerEntry,
     Payment,
     PaymentCompensationTask,
     PaymentIntent,
+    ProviderTransaction,
 )
 from apps.billing.payment_intents import (
     complete_compensation_task,
+    confirm_intent_success,
     lease_compensation_task,
 )
+from apps.core.models import BusinessDate, Property
 from apps.inventory.services import (
     InventoryUnavailable,
     confirm_inventory_for_reservation,
 )
+from apps.reservations.models import Reservation
 
 logger = logging.getLogger("hotel.billing.compensation")
 
@@ -45,6 +66,25 @@ ERROR_UNSUPPORTED_TASK_TYPE = "UNSUPPORTED_TASK_TYPE"
 ERROR_INVENTORY_CONFIRM_UNAVAILABLE = "INVENTORY_CONFIRM_UNAVAILABLE"
 ERROR_AGGREGATE_MISSING = "AGGREGATE_MISSING"
 ERROR_WORKER_EXCEPTION = "WORKER_EXCEPTION"
+# WB-110：不可自动恢复的失败——complete_compensation_task 对该错误码
+# 跳过退避直接转 DEAD_LETTER（人工协调/对账差异），原因写入错误摘要。
+ERROR_REQUIRES_MANUAL_COORDINATION = "REQUIRES_MANUAL_COORDINATION"
+ERROR_CHANNEL_QUERY_NO_SUCCESS_FACT = "CHANNEL_QUERY_NO_SUCCESS_FACT"
+ERROR_CALLBACK_CONFIRM_NO_PAYMENT_FACT = "CALLBACK_CONFIRM_NO_PAYMENT_FACT"
+
+# WB-110a：Hold 协调视角下"永远无法确认"的预订终态——重试无意义，
+# 必须直接进入死信/人工协调，不得无限重试。
+HOLD_TERMINAL_RESERVATION_STATUSES = (
+    Reservation.Status.CANCELLED,
+    Reservation.Status.EXPIRED,
+    Reservation.Status.NO_SHOW,
+)
+# 已成交/在住/离店：库存已占用或无需再消耗 Hold，幂等成功。
+HOLD_SETTLED_RESERVATION_STATUSES = (
+    Reservation.Status.CONFIRMED,
+    Reservation.Status.CHECKED_IN,
+    Reservation.Status.CHECKED_OUT,
+)
 
 
 def default_lease_owner():
@@ -73,6 +113,233 @@ def resolve_hold_coordination_reservation(task):
     raise LookupError(f"不支持的聚合类型：{task.aggregate_type}。")
 
 
+def execute_hold_coordination(task):
+    """WB-110a：Hold 协调执行器。
+
+    - PENDING：confirm_inventory_for_reservation（成功/失败按现有语义，
+      Hold 失效 → INVENTORY_CONFIRM_UNAVAILABLE 退避重试）；
+    - CONFIRMED/CHECKED_IN/CHECKED_OUT：库存已成交/占用，幂等成功；
+    - CANCELLED/EXPIRED/NO_SHOW 等终态：确认永远不可能成功，不得无限
+      重试——返回 REQUIRES_MANUAL_COORDINATION，由服务层直接转死信，
+      原因写入摘要，支付资金事实保留。
+    """
+    reservation = resolve_hold_coordination_reservation(task)
+    status = reservation.status
+    if status in HOLD_TERMINAL_RESERVATION_STATUSES:
+        return (False, ERROR_REQUIRES_MANUAL_COORDINATION,
+                f"预订 {reservation.pk} 已是终态 {status}，库存 Hold 无法再确认，"
+                f"不得无限重试；支付资金事实保留，需人工协调（退款/对账）。")
+    if status in HOLD_SETTLED_RESERVATION_STATUSES:
+        # 幂等成功：库存确认已达成或无需再做（不重复消耗 Hold）
+        return (True, "", "")
+    # PENDING（及其余可确认状态）：按现有语义执行幂等库存确认
+    confirm_inventory_for_reservation(reservation)
+    return (True, "", "")
+
+
+def _find_intent_for_payment(payment):
+    """为 Payment 定位关联 PaymentIntent（优先已确认绑定，其次同事实匹配）。"""
+    intent = PaymentIntent.objects.filter(
+        confirmed_payment=payment).order_by("pk").first()
+    if intent is not None:
+        return intent
+    return PaymentIntent.objects.filter(
+        reservation_id=payment.reservation_id,
+        folio_id=payment.folio_id,
+        amount=payment.amount,
+        currency=payment.currency,
+        provider_code=payment.provider or "mock",
+    ).order_by("-pk").first()
+
+
+def _latest_provider_transaction(intent):
+    if intent is None:
+        return None
+    return ProviderTransaction.objects.filter(
+        intent=intent).order_by("-received_at", "-pk").first()
+
+
+def execute_channel_query(task):
+    """WB-110b：渠道查询执行器（mock 适配器）。
+
+    真实渠道适配器未接入：本执行器只读取已持久化的 ProviderTransaction
+    渠道事实（PMS 侧记录的回调/查询结果），不发起任何外部请求。
+    - 最新渠道状态 SUCCESS → 任务成功；不改意图/支付状态，只汇报渠道事实；
+    - 无交易或非 SUCCESS → 按失败退避重试，绝不伪造渠道成功。
+    """
+    intent = None
+    if task.aggregate_type == "PaymentIntent":
+        intent = PaymentIntent.objects.filter(pk=task.aggregate_id).first()
+        if intent is None:
+            raise LookupError(
+                f"聚合实体不存在：PaymentIntent {task.aggregate_id}。")
+    elif task.aggregate_type == "Payment":
+        payment = Payment.objects.filter(pk=task.aggregate_id).first()
+        if payment is None:
+            raise LookupError(f"聚合实体不存在：Payment {task.aggregate_id}。")
+        intent = _find_intent_for_payment(payment)
+    else:
+        raise LookupError(f"不支持的聚合类型：{task.aggregate_type}。")
+    pt = _latest_provider_transaction(intent)
+    if pt is None:
+        return (False, ERROR_CHANNEL_QUERY_NO_SUCCESS_FACT,
+                "mock 渠道查询：意图/支付名下无任何已持久化的渠道交易事实，"
+                "不伪造渠道成功；按失败退避重试。")
+    if pt.channel_status != "SUCCESS":
+        return (False, ERROR_CHANNEL_QUERY_NO_SUCCESS_FACT,
+                f"mock 渠道查询：最新渠道交易 {pt.provider_transaction_id} "
+                f"状态为 {pt.channel_status}（非 SUCCESS），不伪造渠道成功；"
+                "按失败退避重试。")
+    # SUCCESS：任务成功。仅汇报渠道事实，不修改意图/支付任何状态。
+    return (True, "",
+            f"mock 渠道查询：渠道交易 {pt.provider_transaction_id} "
+            f"channel_status=SUCCESS（验签={pt.signature_verified}）；"
+            "仅汇报渠道事实，不修改任何状态。")
+
+
+def execute_callback_confirm_retry(task):
+    """WB-110c：回调确认重试执行器。
+
+    找意图的 SUCCESS+已验签 ProviderTransaction；存在按渠道流水号关联的
+    SUCCEEDED Payment → confirm_intent_success 推进状态机（含幂等重放）；
+    找不到支付事实（或支付非 SUCCEEDED）→ 失败重试，不得凭空造成功。
+    """
+    if task.aggregate_type != "PaymentIntent":
+        raise LookupError(f"不支持的聚合类型：{task.aggregate_type}。")
+    intent = PaymentIntent.objects.filter(pk=task.aggregate_id).first()
+    if intent is None:
+        raise LookupError(
+            f"聚合实体不存在：PaymentIntent {task.aggregate_id}。")
+    pt = ProviderTransaction.objects.filter(
+        intent=intent, channel_status="SUCCESS",
+        signature_verified=True,
+    ).order_by("-received_at", "-pk").first()
+    if pt is None:
+        return (False, ERROR_CALLBACK_CONFIRM_NO_PAYMENT_FACT,
+                "意图名下没有已验签的 SUCCESS 渠道交易，不能确认成功；"
+                "按失败退避重试。")
+    payment = Payment.objects.filter(
+        provider_ref=pt.provider_transaction_id).first()
+    if payment is None or payment.status != Payment.Status.SUCCEEDED:
+        return (False, ERROR_CALLBACK_CONFIRM_NO_PAYMENT_FACT,
+                f"渠道交易 {pt.provider_transaction_id} 没有对应的 SUCCEEDED "
+                "收款事实（Payment），不能凭空造成功；按失败退避重试。")
+    confirm_intent_success(
+        property_obj=intent.property,
+        intent_id=intent.pk,
+        provider_transaction_id=pt.provider_transaction_id,
+        confirmed_payment=payment,
+        actor=None)
+    return (True, "", "")
+
+
+def execute_payment_ledger_repair(task):
+    """WB-110d：支付账本修复执行器。
+
+    - 核对 Payment 与账本凭证（PAYMENT payment:{ref} 或 DEPOSIT
+      deposit:{ref}）；凭证已存在 → 幂等成功；
+    - 缺失且 Payment SUCCEEDED、账单未结 → 经 post_entry 补凭证
+      （WB-111 新口径：显式传 channel_payment；营业日取当前物业开放营业日，
+      无开放营业日回退自然营业日）；
+    - Payment 非 SUCCEEDED、账单已关闭/作废、补写被拒等不可安全重建场景 →
+      REQUIRES_MANUAL_COORDINATION 直接进死信，注明需人工/对账差异，
+      绝不篡改任何账务事实。
+    """
+    if task.aggregate_type != "Payment":
+        raise LookupError(f"不支持的聚合类型：{task.aggregate_type}。")
+    payment = Payment.objects.select_related("folio").filter(
+        pk=task.aggregate_id).first()
+    if payment is None:
+        raise LookupError(f"聚合实体不存在：Payment {task.aggregate_id}。")
+    payment_ref = payment.provider_ref
+    candidate_refs = [f"payment:{payment_ref}", f"deposit:{payment_ref}"]
+    if LedgerEntry.objects.filter(reference__in=candidate_refs).exists():
+        # 幂等成功：凭证已存在，不重复入账
+        return (True, "", "")
+    if payment.status != Payment.Status.SUCCEEDED:
+        return (False, ERROR_REQUIRES_MANUAL_COORDINATION,
+                f"Payment {payment_ref} 状态为 {payment.status}（非 SUCCEEDED），"
+                "无法安全重建账本凭证；需人工/对账差异处理，不得篡改。")
+    folio = payment.folio
+    if folio is None or folio.property_id != payment.property_id:
+        return (False, ERROR_REQUIRES_MANUAL_COORDINATION,
+                f"Payment {payment_ref} 对应账单缺失或归属不一致，"
+                "无法安全重建账本凭证；需人工/对账差异处理，不得篡改。")
+    if folio.status != Folio.Status.OPEN:
+        return (False, ERROR_REQUIRES_MANUAL_COORDINATION,
+                f"Payment {payment_ref} 对应账单 {folio.pk} 状态为 "
+                f"{folio.status}（非未结），补凭证会影响已结账余额；"
+                "需人工/对账差异处理，不得篡改。")
+    # 押金登记走 DEPOSIT deposit:{ref}，其余收款走 PAYMENT payment:{ref}
+    entry_type = (LedgerEntry.EntryType.DEPOSIT
+                  if payment.provider == "frontdesk_deposit"
+                  else LedgerEntry.EntryType.PAYMENT)
+    reference = f"{entry_type.lower()}:{payment_ref}"
+    from apps.billing.services_v2 import BillingService
+    open_bd = BusinessDate.objects.filter(
+        property=payment.property,
+        status=BusinessDate.Status.OPEN,
+    ).order_by("-business_date").first()
+    business_date = (open_bd.business_date if open_bd is not None
+                     else BillingService._business_date(payment.property))
+    try:
+        BillingService.post_entry(
+            property_obj=payment.property, folio=folio,
+            entry_type=entry_type, amount=-payment.amount,
+            currency=payment.currency, business_date=business_date,
+            reference=reference,
+            description=f"补偿修复：支付 {payment_ref} 补入账本凭证",
+            posted_by=None,
+            # WB-111 新口径：显式绑定渠道支付事实（关账日豁免必需）
+            channel_payment=payment)
+    except Exception as exc:  # 补写被拒（关账守卫/归属校验等）→ 人工处理
+        return (False, ERROR_REQUIRES_MANUAL_COORDINATION,
+                f"补凭证失败（{reference}）：{exc}；需人工/对账差异处理，"
+                "不得篡改。")
+    return (True, "", "")
+
+
+def resolve_reconciliation_property(task):
+    """RECONCILIATION_DIFF：由聚合标识解析对账范围的物业。"""
+    if task.aggregate_type == "Property":
+        prop = Property.objects.filter(pk=task.aggregate_id).first()
+        if prop is None:
+            raise LookupError(f"聚合实体不存在：Property {task.aggregate_id}。")
+        return prop
+    if task.aggregate_type == "Payment":
+        payment = Payment.objects.filter(pk=task.aggregate_id).first()
+        if payment is None:
+            raise LookupError(f"聚合实体不存在：Payment {task.aggregate_id}。")
+        return payment.property
+    if task.aggregate_type == "PaymentIntent":
+        intent = PaymentIntent.objects.filter(pk=task.aggregate_id).first()
+        if intent is None:
+            raise LookupError(
+                f"聚合实体不存在：PaymentIntent {task.aggregate_id}。")
+        return intent.property
+    if task.aggregate_type == "Folio":
+        folio = Folio.objects.filter(pk=task.aggregate_id).first()
+        if folio is None:
+            raise LookupError(f"聚合实体不存在：Folio {task.aggregate_id}。")
+        return folio.property
+    raise LookupError(f"不支持的聚合类型：{task.aggregate_type}。")
+
+
+def execute_reconciliation_diff(task):
+    """WB-110e：对账差异处理执行器——只读核对，绝不自动改账。
+
+    调用既有 scan_folio_reconciliation 生成差异报告与审计事件；扫描异常
+    按失败退避重试。
+    """
+    from apps.billing.reconciliation import scan_folio_reconciliation
+    property_obj = resolve_reconciliation_property(task)
+    run = scan_folio_reconciliation(property_obj=property_obj)
+    return (True, "",
+            f"对账扫描完成：run={run.pk}，扫描账单 {run.scanned_folios}，"
+            f"差异 {run.diff_count} 项；差异已生成报告与审计，"
+            "等待授权财务处理，绝不自动改账。")
+
+
 def execute_compensation_task(task):
     """执行单个已租约任务，返回 (success, error_code, error_summary)。
 
@@ -81,12 +348,19 @@ def execute_compensation_task(task):
     """
     try:
         if task.task_type == PaymentCompensationTask.TaskType.HOLD_COORDINATION:
-            reservation = resolve_hold_coordination_reservation(task)
-            # True=Hold 已消耗并确认；False=预订早已确认（幂等空跑）——都算成功
-            confirm_inventory_for_reservation(reservation)
-            return True, "", ""
-        # 其他任务类型目前没有自动执行器：先记日志，再按失败处理进入退避，
-        # 超过 max_attempts 转死信，等待人工排查后 replay_dead_letter_task 重放。
+            return execute_hold_coordination(task)
+        if task.task_type == PaymentCompensationTask.TaskType.CHANNEL_QUERY:
+            return execute_channel_query(task)
+        if (task.task_type ==
+                PaymentCompensationTask.TaskType.CALLBACK_CONFIRM_RETRY):
+            return execute_callback_confirm_retry(task)
+        if (task.task_type ==
+                PaymentCompensationTask.TaskType.PAYMENT_LEDGER_REPAIR):
+            return execute_payment_ledger_repair(task)
+        if task.task_type == PaymentCompensationTask.TaskType.RECONCILIATION_DIFF:
+            return execute_reconciliation_diff(task)
+        # 未知任务类型：先记日志，再按失败处理进入退避，超过 max_attempts
+        # 转死信，等待人工排查后 replay_dead_letter_task 重放。
         logger.warning(
             "补偿任务 %s 类型 %s 暂无自动执行器，按失败退避。",
             task.pk, task.task_type)
@@ -142,8 +416,10 @@ def run_worker_cycle(*, lease_owner, lease_seconds=60, limit=50):
 
 
 class Command(BaseCommand):
-    help = ("支付补偿任务 Worker（D3 P0 / WB-070/078）：租约抢占到期补偿任务并"
-            "按类型分派执行；失败走指数退避，超过上限转死信等待人工重放。")
+    help = ("支付补偿任务 Worker（D3 P0 / WB-070/078 + WB-110）：租约抢占到期"
+            "补偿任务并按类型分派执行（Hold 协调/渠道查询/回调确认重试/账本"
+            "修复/对账差异）；失败走指数退避（不可自动恢复直接死信），超过上限"
+            "转死信等待人工重放。")
 
     def add_arguments(self, parser):
         parser.add_argument(

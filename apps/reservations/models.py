@@ -139,6 +139,21 @@ class ReservationRoom(models.Model):
         max_digits=12, decimal_places=2, verbose_name="该间房小计",
         help_text="不得为负数",
     )
+    # WB-098（DEC-ED-01 §2.1/§11.3-A）：预订确认时保存的提前离店政策版本
+    # 快照；历史事实不可覆盖（§11.1-5），legacy 无快照行按 NONE 兜底并审计。
+    early_departure_snapshot = models.JSONField(
+        null=True, blank=True, default=None,
+        verbose_name="提前离店政策快照",
+        help_text="预订确认时写入：{policy_type, policy_value, rate_plan_id, "
+                  "snapshot_at}；无政策配置写 {\"policy_type\": \"NONE\"}。"
+                  "退房结算优先读本快照，修改 RatePlan 当前政策不影响已确认订单。",
+    )
+    # RSV-03：提前离店释放库存的起始住宿日（含）。保留合同原始 check_out
+    # 不改写，避免污染历史订单事实；库存对账重算 sold 时据此排除
+    # [inventory_released_from, check_out) 已释放的夜晚，防止把释放量算回
+    # sold 制造永久假差异并写坏库存。NULL 表示未发生提前离店释放。
+    inventory_released_from = models.DateField(
+        null=True, blank=True, verbose_name="提前离店库存释放起始日")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
 
     class Meta:
@@ -606,5 +621,34 @@ class EarlyDeparturePolicy(models.Model):
 
     def __str__(self):
         return f"{self.rate_plan_id} [{self.policy_type}] {self.policy_value or ''}"
+
+
+class PendingBookingGate(models.Model):
+    """WB-106：官网未支付订单并发上限的串行化锁行。
+
+    以（物业, 手机号哈希）为粒度的纯锁行：同一 phone_hash 的并发创建事务
+    在 select_for_update 上排队，使"统计 PENDING 未支付数 → 创建预订"
+    成为串行的先读后写，消除并发窗口内"双读同计数、双双通过上限"的竞态。
+    行本身不承载业务状态，仅用于锁竞争；gate_key 与 guest.phone_hash 同源
+    （HMAC-SHA256 摘要），不落明文（WB-103 口径）。幂等重放在进入锁行
+    之前已按 idempotency_key 早退，不占用锁行、不重复计数。
+    """
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.CASCADE,
+        related_name="pending_booking_gates", verbose_name="所属酒店")
+    gate_key = models.CharField(max_length=64, verbose_name="锁键（手机号哈希）")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "预订并发锁行"
+        verbose_name_plural = "预订并发锁行"
+        constraints = [
+            models.UniqueConstraint(fields=("property", "gate_key"),
+                                    name="uq_pbg_property_gate_key"),
+        ]
+
+    def __str__(self):
+        return f"gate:{self.property_id}:{self.gate_key[:12]}"
 
 

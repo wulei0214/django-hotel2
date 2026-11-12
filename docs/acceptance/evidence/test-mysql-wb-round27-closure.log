@@ -1,0 +1,30 @@
+﻿Found 96 test(s).
+python.exe : Creating test database for alias 'default'...
+所在位置 行:519 字符: 1
++ & .\.venv\Scripts\python.exe manage.py test @labels --noinput -v 1 2> ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Creating test d...as 'default'...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+System check identified no issues (0 silenced).
+.E..............................................................................................
+======================================================================
+ERROR: test_wb090_unknown_channel_fact_blocks_expiry_and_creates_task (apps.billing.test_wb_round27_closure.Round27Clos
+ureTests)
+WB-090锛氭笭閬?UNKNOWN 鏃朵笉鍙噴鏀?Hold/杩囨湡锛屽苟钀藉彲閲嶈瘯鏌ヨ浠诲姟銆?
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\billing\test_wb_round27_closure.py", line 143, in test_wb090_unknown_channel_fact_
+blocks_expiry_and_creates_task
+    PaymentIntent.objects.filter(pk=intent.pk).update(
+  File "F:\Desktop\django-hotel\apps\billing\models.py", line 13, in update
+    raise ValidationError("璐㈠姟浜嬪疄绂佹 QuerySet.update锛涜璋冪敤 BillingService銆?)
+django.core.exceptions.ValidationError: ['璐㈠姟浜嬪疄绂佹 QuerySet.update锛涜璋冪敤 BillingService銆?]
+
+----------------------------------------------------------------------
+Ran 96 tests in 5.228s
+
+FAILED (errors=1)
+Destroying test database for alias 'default'...
+

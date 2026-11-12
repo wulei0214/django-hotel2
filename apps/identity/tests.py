@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from django.contrib.auth.models import Group, Permission, User
 from django.contrib.contenttypes.models import ContentType
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
 
@@ -10,6 +11,7 @@ from apps.core.models import Property
 from .authorization import AuthorizationService
 from .services import EmployeeLifecycleError, EmployeeLifecycleService
 from .models import (
+    EmployeeNumberCounter,
     PropertyStaffMembership,
     StaffProfile,
     StaffRoleAssignment,
@@ -113,13 +115,15 @@ class EmployeeLifecycleServiceTests(TestCase):
         )
 
     def test_shared_employee_phone_is_allowed_with_distinct_property_employee_numbers(self):
+        # WB-100：工号由服务端自动编号（department_code=MG → MG-0001 起），
+        # 每名员工自动获得不同工号；手机号可共享（C-03）。
         profile, membership, _ = EmployeeLifecycleService.create_employee(
             property_obj=self.property_obj,
-            full_name="同名员工", employee_no="LIFE-002",
+            full_name="同名员工", department_code="MG",
             phone=" 13800001111 ",
         )
         self.assertEqual(profile.phone, "13800001111")
-        self.assertEqual(membership.employee_no, "LIFE-002")
+        self.assertRegex(membership.employee_no, r"^MG-\d{4}$")
         self.assertEqual(
             StaffProfile.objects.filter(phone="13800001111").count(), 2
         )
@@ -207,6 +211,134 @@ class EmployeeLifecycleServiceTests(TestCase):
                 group=manager_role,
                 granted_by=self.manager,
             )
+
+
+class EmployeeNumberCounterTests(TestCase):
+    """WB-101：工号流水号计数器原子性（行锁串行化 + 同事务回滚 + 一次性种子）。"""
+
+    def setUp(self):
+        self.prop = Property.objects.create(code="WB101", name="编号计数器测试酒店")
+
+    def test_empty_department_two_generations_fo_0001_then_0002(self):
+        """①空部门两次生成：FO-0001 → FO-0002，计数器行随之递增。"""
+        from apps.identity.employee_number import generate_employee_no
+        no1 = generate_employee_no(property_obj=self.prop, department_code="FO")
+        no2 = generate_employee_no(property_obj=self.prop, department_code="FO")
+        self.assertEqual((no1, no2), ("FO-0001", "FO-0002"))
+        counter = EmployeeNumberCounter.objects.get(
+            property=self.prop, department_code="FO")
+        self.assertEqual(counter.next_seq, 3)
+
+    def test_concurrent_counter_row_lock_serializes_generation(self):
+        """②计数器行锁定：并发分配在同一计数器行上串行读-增-写，不产生重复号。
+
+        SQLite 无 SELECT ... FOR UPDATE（no-op），按单连接串行语义验证逻辑
+        正确性：同一计数器行上的两次分配各得不同号；支持 FOR UPDATE 的
+        后端（MySQL/PostgreSQL）必须实际下发行锁 SQL。
+        """
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from apps.identity.employee_number import generate_employee_no
+        with CaptureQueriesContext(connection) as ctx:
+            with transaction.atomic():
+                no_a = generate_employee_no(
+                    property_obj=self.prop, department_code="FO")
+                no_b = generate_employee_no(
+                    property_obj=self.prop, department_code="FO")
+        self.assertEqual((no_a, no_b), ("FO-0001", "FO-0002"))
+        counter = EmployeeNumberCounter.objects.get(
+            property=self.prop, department_code="FO")
+        self.assertEqual(counter.next_seq, 3)
+        if connection.features.has_select_for_update:
+            counter_table = EmployeeNumberCounter._meta.db_table
+            counter_selects = [
+                q["sql"] for q in ctx.captured_queries
+                if counter_table in q["sql"]
+                and q["sql"].lstrip().upper().startswith("SELECT")]
+            self.assertTrue(
+                any("FOR UPDATE" in sql.upper() for sql in counter_selects),
+                f"行锁必须真实下发 SELECT ... FOR UPDATE：{counter_selects}")
+
+    def test_counter_rolls_back_with_failed_membership_creation(self):
+        """③计数器与 Membership 同事务回滚：建档失败后编号不消耗。"""
+        from apps.identity.employee_number import generate_employee_no
+        User.objects.create_user(username="rollback-dup-user",
+                                 password="Xk9#mTq2vLw8")
+        with self.assertRaises(EmployeeLifecycleError):
+            # 建档在生成工号之后才因登录账号占用失败 → 编号必须随事务回滚
+            EmployeeLifecycleService.create_employee(
+                property_obj=self.prop, full_name="回滚员工",
+                department_code="FO", account_username="rollback-dup-user",
+                account_password="Xk9#mTq2vLw8")
+        self.assertFalse(
+            EmployeeNumberCounter.objects.filter(
+                property=self.prop, department_code="FO").exists(),
+            "失败的建档不得留下已消耗的计数器行")
+        self.assertEqual(
+            generate_employee_no(property_obj=self.prop, department_code="FO"),
+            "FO-0001", "回滚后重新生成必须从 0001 开始（编号未消耗）")
+
+    def test_next_seq_rolls_back_within_same_transaction(self):
+        """③同一事务内抛异常：next_seq 递增随事务回滚（编号不消耗）。"""
+        from apps.identity.employee_number import generate_employee_no
+        with self.assertRaises(RuntimeError):
+            with transaction.atomic():
+                no = generate_employee_no(
+                    property_obj=self.prop, department_code="FO")
+                self.assertEqual(no, "FO-0001")
+                counter = EmployeeNumberCounter.objects.get(
+                    property=self.prop, department_code="FO")
+                self.assertEqual(counter.next_seq, 2)
+                raise RuntimeError("建档失败：计数器必须随事务回滚")
+        remaining = EmployeeNumberCounter.objects.filter(
+            property=self.prop, department_code="FO").first()
+        self.assertTrue(remaining is None or remaining.next_seq == 1,
+                        f"回滚后计数器不得残留递增值：{remaining}")
+        self.assertEqual(
+            generate_employee_no(property_obj=self.prop, department_code="FO"),
+            "FO-0001")
+
+    def test_missing_counter_row_seeds_once_from_existing_employee_numbers(self):
+        """计数器行缺失时按存量工号一次性种子初始化（旧 MAX+1 语义仅作种子）。
+
+        计数器行一旦存在即不再回读 MAX：手工插入更大的历史工号（离职保留）
+        不影响后续递增——并发正确性由行锁承担，不依赖 MAX+1 查询。
+        """
+        from apps.identity.employee_number import generate_employee_no
+        profile = StaffProfile.objects.create(
+            user=None, full_name="存量工号员工")
+        PropertyStaffMembership.objects.create(
+            property=self.prop, staff_profile=profile,
+            employee_no="FO-9007", position_code="FO",
+            status=PropertyStaffMembership.Status.ACTIVE)
+        self.assertEqual(
+            generate_employee_no(property_obj=self.prop, department_code="FO"),
+            "FO-9008")
+        counter = EmployeeNumberCounter.objects.get(
+            property=self.prop, department_code="FO")
+        self.assertEqual(counter.next_seq, 9009)
+        PropertyStaffMembership.objects.create(
+            property=self.prop, staff_profile=profile,
+            employee_no="FO-9900", position_code="FO",
+            status=PropertyStaffMembership.Status.TERMINATED,
+            started_at=timezone.localdate())
+        self.assertEqual(
+            generate_employee_no(property_obj=self.prop, department_code="FO"),
+            "FO-9009", "计数器行存在后不再按 MAX+1 取号")
+
+    def test_counter_unique_constraint_blocks_duplicate_rows(self):
+        """(property, department_code) 唯一约束兜底并发 get_or_create 竞态。"""
+        EmployeeNumberCounter.objects.create(
+            property=self.prop, department_code="HK", next_seq=41)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                EmployeeNumberCounter.objects.create(
+                    property=self.prop, department_code="HK", next_seq=99)
+        # 已有计数器行时直接按行内 next_seq 取号（不重新种子、不查 MAX）
+        from apps.identity.employee_number import generate_employee_no
+        self.assertEqual(
+            generate_employee_no(property_obj=self.prop, department_code="HK"),
+            "HK-0041")
 
 
 class IdentityAdminReadOnlyTests(TestCase):

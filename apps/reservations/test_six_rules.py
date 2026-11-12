@@ -99,24 +99,35 @@ class DecEmp01RehireTests(TestCase):
             property=self.prop, staff_profile=profile).count(), 2)
 
     @override_settings(DEBUG=True, DJANGO_ENV="test")
-    @unittest.skipUnless(
-        connection.features.supports_partial_indexes,
-        "条件唯一约束依赖 partial index：SQLite 支持必跑；MySQL 8 后端不支持，"
-        "需改用生成列+唯一索引方案（P0-06 §13.4）——统一标记 expectedFailure "
-        "会让 SQLite 侧出现 unexpected success 导致 Django CI 假失败，故按数据库能力区分。")
     def test_active_duplicate_blocked(self):
-        """同一时点两条 ACTIVE 任职应被阻止。"""
+        """WB-EMP-01：同一时点两条 ACTIVE 任职必须被数据库唯一键阻止。
+
+        原实现依赖 condition=Q(status="ACTIVE") 部分唯一索引，MySQL 8
+        不创建该索引（models.W036），故该用例曾按数据库能力跳过。整改后
+        由 active_membership_key 可空唯一键在 MySQL/SQLite 双库强制生效，
+        取消跳过，双库必跑。
+        """
+        from django.db import IntegrityError, transaction
         profile = self._make_profile("rehire_t2", "FO-9103")
-        PropertyStaffMembership.objects.create(
+        first = PropertyStaffMembership.objects.create(
             property=self.prop, staff_profile=profile, employee_no="FO-9103",
             position_code="FO", status=PropertyStaffMembership.Status.ACTIVE,
             started_at=timezone.now())
-        from django.db import IntegrityError
+        self.assertEqual(
+            first.active_membership_key, f"{self.prop.pk}:{profile.pk}")
         with self.assertRaises(IntegrityError):
-            PropertyStaffMembership.objects.create(
-                property=self.prop, staff_profile=profile, employee_no="FO-9104",
-                position_code="FO", status=PropertyStaffMembership.Status.ACTIVE,
-                started_at=timezone.now())
+            with transaction.atomic():
+                PropertyStaffMembership.objects.create(
+                    property=self.prop, staff_profile=profile,
+                    employee_no="FO-9104", position_code="FO",
+                    status=PropertyStaffMembership.Status.ACTIVE,
+                    started_at=timezone.now())
+        # 非 ACTIVE 历史任职不占用唯一键：离职后可重新入职创建新任职
+        terminated = PropertyStaffMembership.objects.create(
+            property=self.prop, staff_profile=profile, employee_no="FO-9105",
+            position_code="FO", status=PropertyStaffMembership.Status.TERMINATED,
+            started_at=timezone.now())
+        self.assertIsNone(terminated.active_membership_key)
 
 
 @override_settings(DEBUG=True, DJANGO_ENV="test")
@@ -155,6 +166,29 @@ class DecEmp02EmployeeNumberTests(TestCase):
         with self.assertRaises(ValueError):
             generate_employee_no(property_obj=self.prop, department_code="XXX")
 
+    def test_counter_is_source_of_truth_not_max_query(self):
+        """WB-101：计数器行存在后编号只由行内 next_seq 递增，与 MAX+1 查询无关。
+
+        离职工号永久保留（DEC-EMP-01）：手工插入更大历史工号后，计数器
+        仍然顺序递增，不会跳到 MAX+1，也不会与历史工号冲突。
+        """
+        from apps.identity.employee_number import generate_employee_no
+        from apps.identity.models import EmployeeNumberCounter
+        no1 = generate_employee_no(property_obj=self.prop, department_code="FO")
+        self.assertEqual(no1, "FO-0001")
+        profile = StaffProfile.objects.create(
+            user=None, full_name="历史工号员工")
+        PropertyStaffMembership.objects.create(
+            property=self.prop, staff_profile=profile, employee_no="FO-7777",
+            position_code="FO", status=PropertyStaffMembership.Status.TERMINATED,
+            started_at=timezone.localdate())
+        no2 = generate_employee_no(property_obj=self.prop, department_code="FO")
+        self.assertEqual(no2, "FO-0002",
+                         "计数器行存在后不得回退到 MAX+1 语义（WB-101）")
+        counter = EmployeeNumberCounter.objects.get(
+            property=self.prop, department_code="FO")
+        self.assertEqual(counter.next_seq, 3)
+
 
 # DEC-WALKIN-01 Walk-in 原子化创建走 E2E 验证
 @override_settings(DEBUG=True, DJANGO_ENV="test")
@@ -171,17 +205,38 @@ class DecEd01EarlyDepartureTests(TestCase):
             check_in=check_in, check_out=check_out,
             rate_plan_id=rate_plan_id)
 
-    def test_no_policy_full_charge_no_penalty(self):
-        # NONE/未配置政策 = 无提前离店减免：按合同金额全额结算（回归基线
-        # 语义——退房必须入账合同房费，同日退房也不例外），罚金 0。
+    def test_no_policy_no_penalty(self):
+        """WB-097 正式语义（DEC-ED-01 §2.1 第 36/38 行）：NONE/未配置政策时
+        实际住宿房费=预订时保存的逐晚房价快照×实际入住晚数；未住晚不计
+        房费、不收违约金（3 晚合同住 1 晚 → 只收 1 晚 300，罚金 0）。"""
         from apps.reservations.walkin import calculate_early_departure
         line = self._make_line(["300.00", "300.00", "300.00"])
         result = calculate_early_departure(
             line=line, actual_check_out=datetime.datetime(2026, 11, 11, 12, 0))
-        self.assertEqual(result["actual_room_charge"], Decimal("900.00"))
+        self.assertEqual(result["actual_room_charge"], Decimal("300.00"))
+        self.assertEqual(result["penalty"], Decimal("0.00"))
+        self.assertEqual(result["policy_type"], "NONE")
+
+    def test_same_day_checkout_settles_zero_room_charge(self):
+        """WB-097 正式语义：同日退房=实际入住 0 晚=无房费、无违约金。"""
+        from apps.reservations.walkin import calculate_early_departure
+        line = self._make_line(["300.00", "300.00"])
+        result = calculate_early_departure(
+            line=line, actual_check_out=datetime.datetime(2026, 11, 10, 20, 0))
+        self.assertEqual(result["actual_room_charge"], Decimal("0.00"))
+        self.assertEqual(result["penalty"], Decimal("0.00"))
+
+    def test_actual_nights_clamped_to_total_nights(self):
+        """WB-097 正式语义：实际晚数超过合同晚数时截取到总晚数（不超收）。"""
+        from apps.reservations.walkin import calculate_early_departure
+        line = self._make_line(["300.00", "300.00"])
+        result = calculate_early_departure(
+            line=line, actual_check_out=datetime.datetime(2026, 11, 15, 12, 0))
+        self.assertEqual(result["actual_room_charge"], Decimal("600.00"))
         self.assertEqual(result["penalty"], Decimal("0.00"))
 
     def test_first_night_policy(self):
+        """FIRST_NIGHT 快照：违约金=快照首晚价格；实际住宿房费按实际晚数。"""
         prop = Property.objects.get(code="DEFAULT")
         rate = RatePlan.objects.create(
             property=prop, code="ED-BAR", name="提前离店测试", valid_from=timezone.localdate())
@@ -189,7 +244,70 @@ class DecEd01EarlyDepartureTests(TestCase):
             rate_plan=rate, policy_type="FIRST_NIGHT", is_active=True)
         from apps.reservations.walkin import calculate_early_departure
         line = self._make_line(["300.00", "300.00"], rate_plan_id=rate.pk)
+        # WB-098：罚金只能来自预订确认时保存的政策快照
+        line.early_departure_snapshot = {
+            "policy_type": "FIRST_NIGHT", "policy_value": None,
+            "rate_plan_id": rate.pk,
+            "snapshot_at": "2026-11-10T09:00:00+08:00",
+        }
         result = calculate_early_departure(
             line=line, actual_check_out=datetime.datetime(2026, 11, 11, 12, 0))
         self.assertEqual(result["actual_room_charge"], Decimal("300.00"))
         self.assertEqual(result["penalty"], Decimal("300.00"))
+
+    def test_snapshot_takes_precedence_over_current_policy(self):
+        """WB-098：退房结算优先读预订确认时保存的政策版本快照，
+        当前 RatePlan 活跃政策不得改变已确认订单的结算口径。"""
+        from apps.reservations.walkin import calculate_early_departure
+        line = self._make_line(["300.00", "300.00"])
+        line.early_departure_snapshot = {
+            "policy_type": "REMAINING_NIGHTS", "policy_value": None,
+            "rate_plan_id": None,
+            "snapshot_at": "2026-11-10T09:00:00+08:00",
+        }
+        result = calculate_early_departure(
+            line=line, actual_check_out=datetime.datetime(2026, 11, 10, 18, 0))
+        self.assertEqual(result["policy_type"], "REMAINING_NIGHTS")
+        self.assertEqual(result["actual_room_charge"], Decimal("0.00"))
+        self.assertEqual(result["penalty"], Decimal("600.00"))
+
+    def test_snapshot_none_beats_current_active_policy(self):
+        """WB-098：确认时快照为 NONE 的老订单，即使当前政策改为
+        REMAINING_NIGHTS，退房仍无违约金（快照优先）。"""
+        prop = Property.objects.get(code="DEFAULT")
+        rate = RatePlan.objects.create(
+            property=prop, code="ED-SNAP-NONE", name="快照NONE测试",
+            valid_from=timezone.localdate())
+        EarlyDeparturePolicy.objects.create(
+            rate_plan=rate, policy_type="REMAINING_NIGHTS", is_active=True)
+        from apps.reservations.walkin import calculate_early_departure
+        line = self._make_line(["300.00", "300.00"], rate_plan_id=rate.pk)
+        line.early_departure_snapshot = {
+            "policy_type": "NONE", "policy_value": None,
+            "rate_plan_id": rate.pk,
+            "snapshot_at": "2026-11-10T09:00:00+08:00",
+        }
+        result = calculate_early_departure(
+            line=line, actual_check_out=datetime.datetime(2026, 11, 11, 12, 0))
+        self.assertEqual(result["policy_type"], "NONE")
+        self.assertEqual(result["actual_room_charge"], Decimal("300.00"))
+        self.assertEqual(result["penalty"], Decimal("0.00"))
+
+    def test_missing_snapshot_falls_back_to_none_even_with_active_policy(self):
+        """WB-098 legacy 兜底：无预订时快照的明细按 NONE 处理——当前活跃
+        REMAINING_NIGHTS 政策也不得生成非零罚金（DEC-ED-01 §2.1/§11.3-A
+        第 77 行：快照缺失按 NONE，不得生成非零罚金）。"""
+        prop = Property.objects.get(code="DEFAULT")
+        rate = RatePlan.objects.create(
+            property=prop, code="ED-LEGACY", name="legacy 无快照测试",
+            valid_from=timezone.localdate())
+        EarlyDeparturePolicy.objects.create(
+            rate_plan=rate, policy_type="REMAINING_NIGHTS", is_active=True)
+        from apps.reservations.walkin import calculate_early_departure
+        line = self._make_line(["300.00", "300.00"], rate_plan_id=rate.pk)
+        self.assertIsNone(line.early_departure_snapshot)
+        result = calculate_early_departure(
+            line=line, actual_check_out=datetime.datetime(2026, 11, 11, 12, 0))
+        self.assertEqual(result["policy_type"], "NONE")
+        self.assertEqual(result["actual_room_charge"], Decimal("300.00"))
+        self.assertEqual(result["penalty"], Decimal("0.00"))

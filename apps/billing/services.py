@@ -261,6 +261,12 @@ def process_mock_payment_callback(*, provider_ref, amount, status,
             reservation.status = Reservation.Status.CONFIRMED
             reservation.save(update_fields=("status", "updated_at"))
             reservation_confirmed = True
+            # WB-098：在线支付回调确认是 PENDING→CONFIRMED 的正式确认路径，
+            # 必须在确认事实落库的同一事务内保存提前离店政策快照，否则该
+            # 渠道订单恒走 legacy NONE 分支，RatePlan 已配置的政策不生效。
+            from apps.reservations.front_desk_services import (
+                snapshot_early_departure_policy)
+            snapshot_early_departure_policy(reservation)
         except InventoryUnavailable:
             if expired:
                 reservation.status = Reservation.Status.EXPIRED
@@ -322,6 +328,9 @@ def process_mock_payment_callback(*, provider_ref, amount, status,
         reference=f"payment:{payment.provider_ref}",
         description="渠道支付成功回调入账",
         posted_by=None,
+        # WB-111：关账日豁免必须显式绑定渠道支付事实（回调路径为 mock
+        # 回调/迟到成功），由 post_entry 校验归属/状态/币种/金额/引用。
+        channel_payment=payment,
     )
     # WB-088：渠道成功事实同步推进 PaymentIntent 状态机（同一事务），
     # 保证公开入口创建的意图与 Payment/渠道交易事实不再脱节。
@@ -340,33 +349,14 @@ def process_mock_payment_callback(*, provider_ref, amount, status,
 
 @transaction.atomic
 def reverse_ledger_entry(*, entry_id, reason, posted_by=None):
-    reason = str(reason or "").strip()
-    if not reason:
-        raise PaymentConflict("红字冲销必须填写原因。")
-    if len(reason) > 240:
-        raise PaymentConflict("冲销原因不能超过 240 个字符。")
+    """WB-079 收尾：旧冲销入口已退役，不得再直接写 LedgerEntry。
 
-    original = LedgerEntry.objects.select_for_update().get(pk=entry_id)
-    existing = LedgerEntry.objects.filter(
-        reference=f"reversal:{original.reference}"
-    ).first()
-    if existing:
-        return existing, False
-    if original.entry_type == LedgerEntry.EntryType.REVERSAL:
-        raise PaymentConflict("不能直接冲销一条红字凭证。")
-
-    reversal = LedgerEntry.objects.create(
-        property=original.property,
-        folio=original.folio,
-        stay=original.stay,
-        entry_type=LedgerEntry.EntryType.REVERSAL,
-        amount=-original.amount,
-        currency=original.currency,
-        business_date=timezone.localdate(),
-        reference=f"reversal:{original.reference}",
-        description=f"冲销：{original.description}"[:240],
-        posted_by=posted_by,
-        void_of=original,
-        void_reason=reason,
-    )
-    return reversal, True
+    该遗留实现绕过 BillingService.post_entry() 的营业日关账守卫（WB-111）
+    与红字冲销审批链，且不写 approval_record，在 MySQL 上必然被
+    ck_ledger_reversal_approval_link 约束拒绝。仓库内无生产调用点，
+    保留函数签名仅为导入兼容，调用一律明确引导到受控入口。
+    """
+    raise PaymentConflict(
+        "该旧冲销入口已退役：请调用 BillingService.reverse_entry()，"
+        "它要求当前物业已批准的冲销审批记录、执行权限与申请/审批/执行"
+        "职责分离，并是关账日调整的唯一合法账务写入链路。")

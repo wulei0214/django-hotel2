@@ -8,6 +8,7 @@ from decimal import Decimal
 from functools import wraps
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.http import JsonResponse
 from django.utils import timezone
@@ -16,6 +17,7 @@ from django.views.decorators.http import require_GET, require_POST
 from apps.billing.models import Folio, Payment, Refund
 from apps.core import labels as L
 from apps.core.api_contract import ApiError, idempotent, parse_page_args
+from apps.guests.services import guest_phone_plain, phone_hash
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import Room
 from apps.inventory.services import _property_today
@@ -23,14 +25,14 @@ from apps.reservations.models import (
     NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment,
 )
 from apps.reservations.front_desk_services import (
-    FrontDeskOperationError,
+    FrontDeskOperationError, FrontDeskValidationError,
     assign_room as assign_room_service,
     check_in_stay,
     collect_manual_payment,
     check_out_stay,
 )
 from apps.reservations.lifecycle_services import (
-    LifecycleOperationError,
+    LifecycleOperationError, LifecycleValidationError,
     approve_refund as approve_refund_service,
     reject_refund as reject_refund_service,
     change_stay_room,
@@ -261,7 +263,7 @@ def _reservation_room_dto(line, folio_map=None, stay_map=None):
         "guest": {
             "id": reservation.guest_id,
             "full_name": reservation.guest.full_name,
-            "phone_masked": _mask_phone(reservation.guest.phone),
+            "phone_masked": _mask_phone(guest_phone_plain(reservation.guest)),
         },
         "room_type": {"id": line.room_type_id, "name": line.room_type.name},
         "assigned_room": ({"id": room.pk, "number": room.number, "floor": room.floor} if room else None),
@@ -310,10 +312,13 @@ def _apply_search(queryset, value):
     conditions = (
         Q(reservation__booking_no__icontains=value)
         | Q(reservation__guest__full_name__icontains=value)
-        | Q(reservation__guest__phone__icontains=value)
-        | Q(reservation__guest__phone_normalized__icontains=digits or value)
         | Q(assigned_room__number__icontains=value)
     )
+    # WB-103：电话检索改为 phone_hash 精确匹配（HMAC 不可逆，不支持部分
+    # 匹配）；不再查询 guest.phone / phone_normalized 明文列。
+    if digits:
+        conditions = conditions | Q(
+            reservation__guest__phone_hash=phone_hash(digits))
     return queryset.filter(conditions)
 
 
@@ -493,12 +498,12 @@ def reservations(request):
         if len(value) > 80:
             return _response({"error": {"code": "VALIDATION_ERROR", "message": "搜索内容不能超过 80 个字符。"}}, 400)
         digits = "".join(ch for ch in value if ch.isdigit()) or value
-        queryset = queryset.filter(
-            Q(booking_no__icontains=value)
-            | Q(guest__full_name__icontains=value)
-            | Q(guest__phone__icontains=value)
-            | Q(guest__phone_normalized__icontains=digits)
-        )
+        # WB-103：电话检索改为 guest.phone_hash 精确匹配（HMAC 不可逆）。
+        conditions = Q(booking_no__icontains=value) | Q(
+            guest__full_name__icontains=value)
+        if digits:
+            conditions = conditions | Q(guest__phone_hash=phone_hash(digits))
+        queryset = queryset.filter(conditions)
     status = (request.GET.get("status") or "").strip().upper()
     valid_statuses = {choice[0] for choice in Reservation.Status.choices}
     if status:
@@ -520,7 +525,7 @@ def reservations(request):
             "status_label": _status_label(reservation.status),
             "source": reservation.source,
             "source_label": _source_label(reservation.source),
-            "guest": {"id": reservation.guest_id, "full_name": reservation.guest.full_name, "phone_masked": _mask_phone(reservation.guest.phone)},
+            "guest": {"id": reservation.guest_id, "full_name": reservation.guest.full_name, "phone_masked": _mask_phone(guest_phone_plain(reservation.guest))},
             "check_in": reservation.check_in.isoformat(),
             "check_out": reservation.check_out.isoformat(),
             "nights": (reservation.check_out - reservation.check_in).days,
@@ -566,7 +571,7 @@ def reservation_detail(request, booking_no):
         "guest": {
             "id": reservation.guest_id,
             "full_name": reservation.guest.full_name,
-            "phone_masked": _mask_phone(reservation.guest.phone),
+            "phone_masked": _mask_phone(guest_phone_plain(reservation.guest)),
         },
         "check_in": reservation.check_in.isoformat(),
         "check_out": reservation.check_out.isoformat(),
@@ -670,7 +675,12 @@ def folio_detail(request, booking_no):
     reservation = Reservation.objects.filter(property=property_obj, booking_no=booking_no).first()
     if reservation is None:
         return _response({"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该预订。"}}, 404)
-    folio = Folio.objects.filter(property=property_obj, reservation=reservation).prefetch_related("entries", "payments").first()
+    # MAINT-02b：显式锁定主账单并固定顺序，避免多账单时取到非 MASTER 行。
+    folio = (Folio.objects
+             .filter(property=property_obj, reservation=reservation,
+                     folio_type=Folio.FolioType.MASTER)
+             .order_by("pk")
+             .prefetch_related("entries", "payments").first())
     if folio is None:
         return _response({"data": {
             "folio": None, "summary": _empty_folio_summary(reservation.currency),
@@ -780,6 +790,9 @@ def collect_payment(request, booking_no):
             received_by=request.user,
         )
     except ValueError as exc:
+        return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
+    except FrontDeskValidationError as exc:
+        # RSV-10：子类必须先于父类捕获，否则金额格式错误仍被归为 409。
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
     except FrontDeskOperationError as exc:
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
@@ -1058,13 +1071,20 @@ def mark_no_show_api(request, reservation_room_id):
 def receive_deposit_api(request, booking_no):
     try:
         body = _body(request)
+    except ValueError as exc:
+        return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
+    try:
         payment, created = receive_manual_deposit(
             property_obj=request.front_desk_property, booking_no=booking_no,
             amount=body.get("amount"), method=body.get("method"),
             idempotency_key=request.headers.get("Idempotency-Key", ""),
             received_by=request.user,
         )
+    except LifecycleValidationError as exc:
+        # RSV-10：仅入参格式/精度错误 → 400（子类须先于父类捕获）。
+        return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
     except LifecycleOperationError as exc:
+        # 累计押金超额等业务状态冲突 → 409。
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
     return _response({"data": {
         "payment_id": payment.pk, "provider_ref": payment.provider_ref,
@@ -1154,27 +1174,32 @@ def exception_release_request(request, booking_no):
     — 前台发起退房异常放行申请（DEC-02-B2），待值班经理审批。"""
     try:
         body = _body(request)
-        reservation = Reservation.objects.select_for_update().filter(
-            property=request.front_desk_property, booking_no=booking_no).first()
-        if reservation is None:
-            return _response({"error": {"code": "RESOURCE_NOT_FOUND",
-                                        "message": "未找到该物业下的预订。"}}, 404)
-        from apps.billing.models import Folio
-        folio = Folio.objects.filter(
-            property=request.front_desk_property, reservation=reservation,
-            folio_type=Folio.FolioType.MASTER).first()
-        if folio is None:
-            return _response({"error": {"code": "RESOURCE_NOT_FOUND",
-                                        "message": "未找到该预订的主账单。"}}, 404)
-        from apps.billing.dec02 import request_exception_release
-        release, created = request_exception_release(
-            property_obj=request.front_desk_property,
-            reservation=reservation, folio=folio,
-            amount=body.get("amount", "0"),
-            reason_code=str(body.get("reason_code") or ""),
-            reason_text=str(body.get("reason_text") or ""),
-            requested_by=request.user,
-            idempotency_key=request.headers.get("Idempotency-Key", ""))
+        # FIN-01：select_for_update 必须在事务内求值。MySQL/PostgreSQL 在
+        # autocommit 下会抛 TransactionManagementError（SQLite 静默忽略，
+        # 因此只有真实 MySQL 请求才能暴露）。与服务层 atomic 嵌套为同一事务，
+        # 保证「锁 Reservation → 锁 Folio → 建申请」与业务写入原子提交。
+        with transaction.atomic():
+            reservation = Reservation.objects.select_for_update().filter(
+                property=request.front_desk_property, booking_no=booking_no).first()
+            if reservation is None:
+                return _response({"error": {"code": "RESOURCE_NOT_FOUND",
+                                            "message": "未找到该物业下的预订。"}}, 404)
+            from apps.billing.models import Folio
+            folio = Folio.objects.filter(
+                property=request.front_desk_property, reservation=reservation,
+                folio_type=Folio.FolioType.MASTER).order_by("pk").first()
+            if folio is None:
+                return _response({"error": {"code": "RESOURCE_NOT_FOUND",
+                                            "message": "未找到该预订的主账单。"}}, 404)
+            from apps.billing.dec02 import request_exception_release
+            release, created = request_exception_release(
+                property_obj=request.front_desk_property,
+                reservation=reservation, folio=folio,
+                amount=body.get("amount", "0"),
+                reason_code=str(body.get("reason_code") or ""),
+                reason_text=str(body.get("reason_text") or ""),
+                requested_by=request.user,
+                idempotency_key=request.headers.get("Idempotency-Key", ""))
     except LifecycleOperationError as exc:
         return _response({"error": {"code": "BUSINESS_CONFLICT",
                                     "message": str(exc)}}, 409)

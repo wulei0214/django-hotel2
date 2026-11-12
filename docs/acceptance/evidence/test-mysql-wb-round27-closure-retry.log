@@ -1,0 +1,18 @@
+﻿Found 35 test(s).
+python.exe : Creating test database for alias 'default'...
+所在位置 行:512 字符: 1
++ & .\.venv\Scripts\python.exe manage.py test apps.billing.test_wb_roun ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Creating test d...as 'default'... 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+System check identified no issues (0 silenced).
+...................................
+----------------------------------------------------------------------
+Ran 35 tests in 0.990s
+
+OK
+Destroying test database for alias 'default'...
+

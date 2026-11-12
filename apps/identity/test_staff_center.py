@@ -13,12 +13,16 @@
   * 旧 /staff_accounts/ 列表与详情页保留只读 200；
   * CSRF 缺失 → 403（页面域端点同样强制 CSRF）。
 """
+import datetime
+
+from django.conf import settings
 from django.contrib.auth.models import Group, User
 from django.test import Client, TestCase
 from django.utils import timezone
 
 from apps.core.models import AuditEvent, Property
 
+from .employee_number import rehire_employee
 from .models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from .services import EmployeeLifecycleService
 
@@ -44,15 +48,19 @@ def _make_user(username, group_name="店长"):
     return user
 
 
-def _make_target_employee(employee_no, with_account=True):
-    """被管理目标员工：店长以外，供六个写操作操作。"""
+def _make_target_employee(label, with_account=True):
+    """被管理目标员工：店长以外，供六个写操作操作。
+
+    WB-100：工号一律服务端自动编号（department_code=FO → FO-0001 起），
+    label 仅用于姓名/账号命名，不再作为工号传入。
+    """
     kwargs = {}
     if with_account:
-        kwargs = {"account_username": f"emp_{employee_no.replace('-', '')}",
+        kwargs = {"account_username": f"emp_{label.replace('-', '')}",
                   "account_password": "target-original-pass"}
     return EmployeeLifecycleService.create_employee(
         property_obj=Property.objects.get(code="DEFAULT"),
-        full_name=f"员工{employee_no}", employee_no=employee_no,
+        full_name=f"员工{label}", department_code="FO",
         role_groups=[Group.objects.get(name="前台")] if with_account else [],
         **kwargs)
 
@@ -88,7 +96,7 @@ class StaffCenterAccessTests(TestCase):
     def test_action_anonymous_redirects_to_login(self):
         """匿名 POST 写端点 → 302 登录（测试客户端默认不强制 CSRF）。"""
         response = self.client.post("/manage/staff/actions/create/", {
-            "full_name": "匿名者", "employee_no": "F-9001"})
+            "full_name": "匿名者", "department_code": "FO"})
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login/", response["Location"])
 
@@ -105,9 +113,12 @@ class StaffCenterWriteTests(TestCase):
         self.property_obj = Property.objects.get(code="DEFAULT")
 
     def test_create_employee_success_and_audit(self):
-        """a. 新增员工：建档 + DEFAULT 任职 + 初始角色 + identity.employee_create 审计。"""
+        """a. 新增员工：建档 + DEFAULT 任职 + 初始角色 + identity.employee_create 审计。
+
+        WB-100：工号不再由表单提交，一律服务端按部门代码自动编号（FO-0001 起）。
+        """
         response = self.client.post("/manage/staff/actions/create/", {
-            "full_name": "中心新员工", "employee_no": "F-8801",
+            "full_name": "中心新员工", "department_code": "FO",
             "position_code": "FO", "phone": "", "roles": ["前台"],
         })
         self.assertEqual(response.status_code, 200)
@@ -116,7 +127,7 @@ class StaffCenterWriteTests(TestCase):
         profile = StaffProfile.objects.get(full_name="中心新员工")
         membership = PropertyStaffMembership.objects.get(
             staff_profile=profile, property=self.property_obj)
-        self.assertEqual(membership.employee_no, "F-8801")
+        self.assertEqual(membership.employee_no, "FO-0001")
         self.assertEqual(membership.status, PropertyStaffMembership.Status.ACTIVE)
         self.assertTrue(StaffRoleAssignment.objects.filter(
             membership=membership, group__name="前台", ends_at__isnull=True).exists())
@@ -127,7 +138,7 @@ class StaffCenterWriteTests(TestCase):
     def test_create_employee_generated_password_shown_once(self):
         """a-可选开通账号：留空密码 → 服务端生成强初始密码，仅本次响应显示一次。"""
         response = self.client.post("/manage/staff/actions/create/", {
-            "full_name": "自动密码员工", "employee_no": "F-8802",
+            "full_name": "自动密码员工", "department_code": "FO",
             "username": "emp_gen01", "password": "",
         })
         self.assertEqual(response.status_code, 200)
@@ -144,29 +155,62 @@ class StaffCenterWriteTests(TestCase):
             self.assertNotIn(data["initial_password"], str(blob),
                              "初始密码明文不得写入任何审计字段")
 
-    def test_create_employee_duplicate_no_rejected_400_chinese(self):
-        """a-校验：同店工号重复 → 400 + 中文提示（EmployeeLifecycleError 转换）。"""
-        self.client.post("/manage/staff/actions/create/", {
-            "full_name": "工号占用甲", "employee_no": "F-8803"})
-        response = self.client.post("/manage/staff/actions/create/", {
-            "full_name": "工号占用乙", "employee_no": "F-8803"})
+    def test_create_employee_duplicate_replay_rejected_400_chinese(self):
+        """a-校验：重复建档重放 → 400 + 中文提示（EmployeeLifecycleError 转换）。
+
+        WB-100 后工号由服务端分配，同店工号重复提交已不可能发生；原
+        "重复建档 400 中文拒绝 + 不留第二条档案"的意图改由账号唯一性
+        重放路径保护（同请求重放第二个员工）。
+        """
+        payload = {"full_name": "重放员工甲", "department_code": "FO",
+                   "username": "dup_replay_user", "password": "R7#kQw2mZx!9"}
+        first = self.client.post("/manage/staff/actions/create/", payload)
+        self.assertEqual(first.status_code, 200)
+        response = self.client.post("/manage/staff/actions/create/", payload)
         self.assertEqual(response.status_code, 400)
-        self.assertIn("已存在", response.json()["error"]["message"])
+        self.assertIn("已被占用", response.json()["error"]["message"])
         self.assertEqual(StaffProfile.objects.filter(
-            full_name__in=["工号占用甲", "工号占用乙"]).count(), 1,
+            full_name="重放员工甲").count(), 1,
             "失败的重复建档不得留下第二条档案")
+        self.assertEqual(User.objects.filter(username="dup_replay_user").count(), 1)
+
+    def test_create_employee_view_drops_client_employee_no_wb100(self):
+        """WB-100（视图）：表单里的 employee_no 不再被读取，工号一律服务端编号。"""
+        response = self.client.post("/manage/staff/actions/create/", {
+            "full_name": "前端指定工号员工", "employee_no": "HACK-9999",
+            "department_code": "FO",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["employee_no"], "FO-0001")
+        self.assertFalse(PropertyStaffMembership.objects.filter(
+            property=self.property_obj, employee_no="HACK-9999").exists(),
+            "客户端传入的工号不得被采用")
+
+    def test_create_employee_service_ignores_caller_employee_no_wb100(self):
+        """WB-100（服务）：调用方直传 employee_no 被忽略并记 WARNING 日志。"""
+        with self.assertLogs("hotel.audit", level="WARNING") as logs:
+            _, membership, _ = EmployeeLifecycleService.create_employee(
+                property_obj=self.property_obj, full_name="直传工号员工",
+                employee_no="HACK-8888", department_code="FO",
+                granted_by=self.owner)
+        self.assertEqual(membership.employee_no, "FO-0001")
+        self.assertFalse(PropertyStaffMembership.objects.filter(
+            property=self.property_obj, employee_no="HACK-8888").exists())
+        self.assertTrue(
+            any("WB-100 服务端统一编号" in message for message in logs.output),
+            f"必须记录 WB-100 服务端统一编号 WARNING 日志：{logs.output}")
 
     def test_create_employee_auto_number_when_left_blank(self):
-        """WB-037：工号留空 + 部门代码 → DEC-EMP-02 自动编号（FO-0001 起递增）。"""
+        """WB-037/WB-100：不提交工号 + 部门代码 → DEC-EMP-02 自动编号（FO-0001 起递增）。"""
         response = self.client.post("/manage/staff/actions/create/", {
-            "full_name": "自动编号员工一", "employee_no": "",
+            "full_name": "自动编号员工一",
             "department_code": "FO", "position_code": "FO",
         })
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["employee_no"], "FO-0001")
         # 同部门第二名员工流水号原子递增
         response2 = self.client.post("/manage/staff/actions/create/", {
-            "full_name": "自动编号员工二", "employee_no": "",
+            "full_name": "自动编号员工二",
             "department_code": "FO",
         })
         self.assertEqual(response2.status_code, 200)
@@ -175,9 +219,9 @@ class StaffCenterWriteTests(TestCase):
             staff_profile=StaffProfile.objects.get(full_name="自动编号员工二"),
             property=self.property_obj)
         self.assertEqual(membership.employee_no, "FO-0002")
-        # 工号与部门代码都缺失且岗位不可映射 → 400 中文提示
+        # 部门代码缺失且岗位不可映射 → 400 中文提示
         response3 = self.client.post("/manage/staff/actions/create/", {
-            "full_name": "无部门员工", "employee_no": "",
+            "full_name": "无部门员工",
             "position_code": "UNASSIGNED",
         })
         self.assertEqual(response3.status_code, 400)
@@ -394,7 +438,7 @@ class StaffCenterSecurityTests(TestCase):
         strict = Client(enforce_csrf_checks=True)
         strict.force_login(self.owner)
         response = strict.post("/manage/staff/actions/create/", {
-            "full_name": "无令牌员工", "employee_no": "F-8820"})
+            "full_name": "无令牌员工", "department_code": "FO"})
         self.assertEqual(response.status_code, 403)
         self.assertFalse(StaffProfile.objects.filter(full_name="无令牌员工").exists())
 
@@ -402,7 +446,7 @@ class StaffCenterSecurityTests(TestCase):
         """无 identity.staff_manage 的 PMS 员工调用写端点 → 403。"""
         self.client.force_login(self.fd)
         response = self.client.post("/manage/staff/actions/create/", {
-            "full_name": "越权员工", "employee_no": "F-8821"})
+            "full_name": "越权员工", "department_code": "FO"})
         self.assertEqual(response.status_code, 403)
         self.assertFalse(StaffProfile.objects.filter(full_name="越权员工").exists())
 
@@ -472,3 +516,220 @@ class TerminatedEmployeeResetGuardTests(TestCase):
             {"password": "Str0ng!New2026"})
         self.assertEqual(response.status_code, 400)
         self.assertIn("已离职", response.json()["error"]["message"])
+
+
+class RehireEmployeeLifecycleTests(TestCase):
+    """WB-099/DEC-EMP-01：离职员工重新入职的完整生命周期（同一事务收口）。
+
+    场景：档案 TERMINATED + 账号停用 + 旧授权已终止 → rehire_employee →
+    档案 ACTIVE、账号可用、新任职 ACTIVE（新工号）、assign_role 可用、
+    PropertyContextMiddleware 视角可解析出 DEFAULT 有效任职。
+    """
+
+    STRONG_PASSWORD = "Vb3#nHt8Ks!2"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.prop = Property.objects.get(code="DEFAULT")
+
+    def setUp(self):
+        self.manager = _make_user("rehire-mgr", "店长")
+
+    def _make_employee_then_terminate(self, label):
+        """建档（FO 自动编号 + 前台授权）→ 离职（档案 TERMINATED + 账号停用）。"""
+        profile, membership, user = EmployeeLifecycleService.create_employee(
+            property_obj=self.prop, full_name=f"再入职{label}",
+            department_code="FO",
+            account_username=f"rehire_user_{label}",
+            account_password=self.STRONG_PASSWORD,
+            role_groups=[Group.objects.get(name="前台")],
+            granted_by=self.manager)
+        EmployeeLifecycleService.set_employment_status(
+            profile, property_obj=self.prop, status="TERMINATED",
+            ended_by=self.manager, reason="离职测试", deactivate_user=True)
+        profile.refresh_from_db()
+        user.refresh_from_db()
+        old_assignment = StaffRoleAssignment.objects.get(membership=membership)
+        # 前置确认：档案 TERMINATED + 账号停用 + 旧授权 ends_at 非空
+        self.assertEqual(profile.employment_status,
+                         StaffProfile.EmploymentStatus.TERMINATED)
+        self.assertFalse(user.is_active)
+        self.assertIsNotNone(old_assignment.ends_at)
+        return profile, membership, user, old_assignment
+
+    def _middleware_view_membership(self, user):
+        """复刻 PropertyContextMiddleware 的 DEFAULT 有效任职解析查询。"""
+        return (PropertyStaffMembership.objects
+                .filter(
+                    staff_profile__user=user,
+                    staff_profile__employment_status="ACTIVE",
+                    status=PropertyStaffMembership.Status.ACTIVE,
+                    property__status=Property.Status.ACTIVE,
+                    property__code=getattr(settings, "DEFAULT_PROPERTY_CODE",
+                                           "DEFAULT"))
+                .order_by("id")
+                .first())
+
+    def test_rehire_restores_profile_account_membership_and_authorization(self):
+        """离职 → rehire：档案/账号恢复、旧授权关闭、新任职 ACTIVE + 新工号。"""
+        profile, old_membership, user, old_assignment = (
+            self._make_employee_then_terminate("a"))
+        new_membership = rehire_employee(
+            property_obj=self.prop, staff_profile=profile,
+            department_code="FO", position_code="FO", granted_by=self.manager)
+        profile.refresh_from_db()
+        user.refresh_from_db()
+        old_assignment.refresh_from_db()
+        old_membership.refresh_from_db()
+        # ② 档案与账号恢复可用
+        self.assertEqual(profile.employment_status,
+                         StaffProfile.EmploymentStatus.ACTIVE)
+        self.assertTrue(user.is_active)
+        # ③ 旧授权统一终止（ends_at 非空，历史保留不删除）
+        self.assertIsNotNone(old_assignment.ends_at)
+        self.assertTrue(StaffRoleAssignment.objects.filter(
+            pk=old_assignment.pk).exists())
+        # ⑤ 旧工号保留 + 新工号由编号服务分配
+        self.assertEqual(old_membership.employee_no, "FO-0001")
+        self.assertEqual(new_membership.employee_no, "FO-0002")
+        self.assertEqual(new_membership.status,
+                         PropertyStaffMembership.Status.ACTIVE)
+        # ④ started_at 为 DateField，缺省今天（不是 datetime）
+        self.assertEqual(new_membership.started_at, timezone.localdate())
+        self.assertIsInstance(new_membership.started_at, datetime.date)
+        # ⑥ 审计完整记录档案/账号/新旧任职/授权变更
+        event = AuditEvent.objects.get(
+            action="identity.employee_rehire", entity_type="StaffProfile",
+            entity_id=str(profile.pk), actor=self.manager)
+        self.assertEqual(event.after_json["account"], user.username)
+        self.assertTrue(event.after_json["account_active"])
+        self.assertEqual(event.after_json["profile_status"], "ACTIVE")
+        self.assertEqual(event.after_json["new_membership"]["employee_no"],
+                         "FO-0002")
+        self.assertEqual(event.before_json["old_membership"]["employee_no"],
+                         "FO-0001")
+        # 旧任职的全部授权历史入审计；离职时已统一终止 → 本次再入职无需再终止
+        self.assertEqual(event.before_json["old_assignment_ids"],
+                         [old_assignment.pk])
+        self.assertEqual(event.before_json["ended_assignment_ids"], [])
+        # 旧授权终止经 EmployeeLifecycleService 统一出口 → identity.role_end 审计
+        self.assertTrue(AuditEvent.objects.filter(
+            action="identity.role_end", entity_type="StaffProfile",
+            entity_id=str(profile.pk)).exists())
+
+    def test_rehire_then_assign_role_and_middleware_context_available(self):
+        """再入职后：assign_role 可用；PropertyContextMiddleware 视角可进入。"""
+        profile, _, user, _ = self._make_employee_then_terminate("b")
+        new_membership = rehire_employee(
+            property_obj=self.prop, staff_profile=profile,
+            department_code="FO", position_code="FO", granted_by=self.manager)
+        # assign_role 可用（档案/任职/物业均 ACTIVE）
+        group = Group.objects.get(name="客房服务员")
+        assignment = EmployeeLifecycleService.assign_role(
+            membership=new_membership, group=group,
+            granted_by=self.manager, reason="再入职重新授权")
+        self.assertIsNone(assignment.ends_at)
+        self.assertEqual(assignment.membership_id, new_membership.pk)
+        # PropertyContextMiddleware 视角：能解析出 DEFAULT 有效任职（可进入）
+        context_membership = self._middleware_view_membership(user)
+        self.assertIsNotNone(
+            context_membership,
+            "再入职后中间件必须能解析出 DEFAULT 有效任职，否则员工被拒之门外")
+        self.assertEqual(context_membership.pk, new_membership.pk)
+
+    def test_rehire_ends_still_open_legacy_assignment_via_service(self):
+        """③边界：旧授权因历史数据遗漏仍生效 → rehire 经统一服务层终止。"""
+        # 直接构造：档案/任职已 TERMINATED，但授权仍开放（离职工号 FO-9701）
+        user = User.objects.create_user(
+            username="rehire_user_d", password=self.STRONG_PASSWORD)
+        user.is_active = False
+        user.save(update_fields=("is_active",))
+        profile = StaffProfile.objects.create(
+            user=user, full_name="再入职遗留授权",
+            employment_status=StaffProfile.EmploymentStatus.TERMINATED)
+        old_membership = PropertyStaffMembership.objects.create(
+            property=self.prop, staff_profile=profile,
+            employee_no="FO-9701", position_code="FO",
+            status=PropertyStaffMembership.Status.TERMINATED,
+            started_at=timezone.localdate() - datetime.timedelta(days=300),
+            ended_at=timezone.localdate() - datetime.timedelta(days=10))
+        open_assignment = StaffRoleAssignment.objects.create(
+            membership=old_membership, group=Group.objects.get(name="前台"),
+            starts_at=timezone.now() - datetime.timedelta(days=290))
+        new_membership = rehire_employee(
+            property_obj=self.prop, staff_profile=profile,
+            department_code="FO", position_code="FO", granted_by=self.manager)
+        open_assignment.refresh_from_db()
+        self.assertIsNotNone(open_assignment.ends_at,
+                             "遗留的旧授权必须被统一结束（ends_at 非空）")
+        self.assertTrue(AuditEvent.objects.filter(
+            action="identity.role_end", entity_type="StaffProfile",
+            entity_id=str(profile.pk)).exists(),
+            "旧授权终止必须经 EmployeeLifecycleService 统一出口并落审计")
+        event = AuditEvent.objects.get(action="identity.employee_rehire")
+        self.assertEqual(event.before_json["ended_assignment_ids"],
+                         [open_assignment.pk])
+        # 计数器行缺失 → 按存量工号一次性种子接续：FO-9701 → FO-9702
+        self.assertEqual(event.after_json["new_membership"]["employee_no"],
+                         "FO-9702")
+
+    def test_rehire_rejects_non_terminated_profile_and_points_to_set_status(self):
+        """①档案未离职（ACTIVE/INACTIVE）→ ValueError 指走 set_employment_status。"""
+        profile, membership, user = EmployeeLifecycleService.create_employee(
+            property_obj=self.prop, full_name="在职再入职拒绝",
+            department_code="FO", granted_by=self.manager)
+        with self.assertRaises(ValueError) as ctx:
+            rehire_employee(
+                property_obj=self.prop, staff_profile=profile,
+                department_code="FO", position_code="FO",
+                granted_by=self.manager)
+        self.assertIn("set_employment_status", str(ctx.exception))
+        profile.refresh_from_db()
+        self.assertEqual(profile.employment_status,
+                         StaffProfile.EmploymentStatus.ACTIVE)
+        self.assertEqual(
+            PropertyStaffMembership.objects.filter(
+                property=self.prop, staff_profile=profile).count(), 1,
+            "被拒绝的再入职不得创建新任职")
+
+    def test_rehire_failure_keeps_terminated_state_atomic(self):
+        """同一事务：编号失败（部门代码非法）→ 档案/账号/任职全部保持离职态。"""
+        profile, old_membership, user, _ = self._make_employee_then_terminate("c")
+        with self.assertRaises(ValueError):
+            rehire_employee(
+                property_obj=self.prop, staff_profile=profile,
+                department_code="XX", position_code="FO",
+                granted_by=self.manager)
+        profile.refresh_from_db()
+        user.refresh_from_db()
+        self.assertEqual(profile.employment_status,
+                         StaffProfile.EmploymentStatus.TERMINATED)
+        self.assertFalse(user.is_active, "失败的事务不得提前恢复账号")
+        self.assertEqual(PropertyStaffMembership.objects.filter(
+            property=self.prop, staff_profile=profile).count(), 1)
+        old_membership.refresh_from_db()
+        self.assertEqual(old_membership.status,
+                         PropertyStaffMembership.Status.TERMINATED)
+
+    def test_rehire_without_login_account_profiles_only(self):
+        """②无账号员工允许只建档再入职：档案 ACTIVE，不因缺账号报错。"""
+        profile = StaffProfile.objects.create(
+            user=None, full_name="无账号再入职",
+            employment_status=StaffProfile.EmploymentStatus.TERMINATED)
+        PropertyStaffMembership.objects.create(
+            property=self.prop, staff_profile=profile,
+            employee_no="FO-9501", position_code="FO",
+            status=PropertyStaffMembership.Status.TERMINATED,
+            started_at=timezone.localdate() - datetime.timedelta(days=30),
+            ended_at=timezone.localdate() - datetime.timedelta(days=1))
+        new_membership = rehire_employee(
+            property_obj=self.prop, staff_profile=profile,
+            department_code="FO", position_code="FO", granted_by=self.manager)
+        profile.refresh_from_db()
+        self.assertEqual(profile.employment_status,
+                         StaffProfile.EmploymentStatus.ACTIVE)
+        self.assertIsNone(profile.user)
+        self.assertEqual(new_membership.status,
+                         PropertyStaffMembership.Status.ACTIVE)
+        # 计数器行缺失时按存量工号一次性种子接续：FO-9501 → FO-9502
+        self.assertEqual(new_membership.employee_no, "FO-9502")

@@ -95,7 +95,7 @@ server {
 
 ## 三、定时任务（基线 2.0 §4.2 自动调度：Windows Task Scheduler / cron）
 
-现有维护类管理命令共 5 个（本节只做文档化，不新增任务队列依赖）。
+现有维护类管理命令共 8 个（本节只做文档化，不新增任务队列依赖）。
 所有命令支持重复执行（幂等），可安全挂调度；失败重试=按原计划再次执行。
 
 | 命令 | 作用 | 建议频率 | 幂等性 |
@@ -105,6 +105,13 @@ server {
 | `python manage.py expire_invitations` | 员工邀请超期扫描（PENDING → EXPIRED，AUTH-20） | 每 15 分钟 | 是 |
 | `python manage.py bind_staff_user ...` | 员工账号绑定修复（按需手动执行） | 按需 | 按入参 |
 | `python manage.py platform_superadmin_check ...` | 平台超管账号核查（按需手动执行） | 按需 | 按入参 |
+| `python manage.py run_billing_maintenance` | 支付意图到期过期、卡住的渠道成功回调重试、账务对账差异转补偿任务 | 每 10 分钟 | 是（意图只处理到期项；任务按稳定幂等键去重） |
+| `python manage.py payment_compensation_worker` | 消费持久化补偿任务（渠道查询/回调确认/账本修复/Hold 协调/对账差异） | 每 5 分钟 | 是（数据库租约 + 退避 + 死信） |
+| `python manage.py recover_stale_night_audits` | 把超时残留的夜审 RUNNING 标记 FAILED，恢复该营业日可重跑 | 每 15 分钟 | 是（仅处理超阈值记录） |
+
+> 调度闭环：`run_billing_maintenance` 是补偿任务的**创建方**，
+> `payment_compensation_worker` 是**消费方**。此前两者都未列入调度清单，
+> 导致意图过期、账务对账扫描与四类补偿执行器在生产中完全不可达。
 
 ### 夜审（Night Audit）调度口径
 
@@ -123,6 +130,9 @@ server {
 */5 * * * * cd /srv/django-hotel && .venv/bin/python manage.py expire_reservation_holds >> logs/scheduler.log 2>&1
 */15 * * * * cd /srv/django-hotel && .venv/bin/python manage.py expire_invitations >> logs/scheduler.log 2>&1
 30 2 * * * cd /srv/django-hotel && .venv/bin/python manage.py sync_inventory_calendar --property-code DEFAULT --room-type-code STD --start-date $(date +\%F) --end-date $(date -d "+30 days" +\%F) >> logs/scheduler.log 2>&1
+*/10 * * * * cd /srv/django-hotel && .venv/bin/python manage.py run_billing_maintenance >> logs/scheduler.log 2>&1
+*/5 * * * * cd /srv/django-hotel && .venv/bin/python manage.py payment_compensation_worker >> logs/scheduler.log 2>&1
+*/15 * * * * cd /srv/django-hotel && .venv/bin/python manage.py recover_stale_night_audits >> logs/scheduler.log 2>&1
 ```
 
 ### Windows Task Scheduler（开发/单机部署）示例
@@ -133,6 +143,12 @@ schtasks /Create /TN "PMS2 expire_reservation_holds" /SC MINUTE /MO 5 ^
   /TR "cmd /c cd /d F:\django-hotel && .venv\Scripts\python.exe manage.py expire_reservation_holds >> logs\scheduler.log 2>&1"
 schtasks /Create /TN "PMS2 expire_invitations" /SC MINUTE /MO 15 ^
   /TR "cmd /c cd /d F:\django-hotel && .venv\Scripts\python.exe manage.py expire_invitations >> logs\scheduler.log 2>&1"
+schtasks /Create /TN "PMS2 billing_maintenance" /SC MINUTE /MO 10 ^
+  /TR "cmd /c cd /d F:\django-hotel && .venv\Scripts\python.exe manage.py run_billing_maintenance >> logs\scheduler.log 2>&1"
+schtasks /Create /TN "PMS2 payment_compensation_worker" /SC MINUTE /MO 5 ^
+  /TR "cmd /c cd /d F:\django-hotel && .venv\Scripts\python.exe manage.py payment_compensation_worker >> logs\scheduler.log 2>&1"
+schtasks /Create /TN "PMS2 recover_stale_night_audits" /SC MINUTE /MO 15 ^
+  /TR "cmd /c cd /d F:\django-hotel && .venv\Scripts\python.exe manage.py recover_stale_night_audits >> logs\scheduler.log 2>&1"
 ```
 
 > 注意：命令重复执行安全（幂等）；并发场景由 `select_for_update` 串行化。

@@ -804,14 +804,14 @@ class RefundExecutionReferenceUniquenessTests(WhiteboxBillingBase):
         self.assertTrue(created2)
         self.assertEqual(executed2.execution_reference, "BANK-124")
 
-    @unittest.skipUnless(
-        connection.features.supports_partial_indexes,
-        "部分唯一索引（condition UniqueConstraint）MySQL 8 后端不生效"
-        "（P0-06 §13.4 已知限制，MySQL 需生成列+唯一索引方案）；"
-        "统一标记 expectedFailure 会让 SQLite 出现 unexpected success，故按数据库能力区分。"
-        "服务层查重（test_same_execution_reference_on_second_refund_rejected）双库必跑。")
     def test_execution_reference_uniqueness_is_database_enforced(self):
-        """绕过服务层直写也要被数据库部分唯一约束拦截。"""
+        """绕过服务层、直接写模型层仍必须被数据库唯一键拦截（双库必跑）。
+
+        原实现依赖 condition=~Q(execution_reference="") 部分唯一索引，
+        MySQL 8 不创建该索引（models.W036），故该用例曾按数据库能力跳过。
+        整改后由 Refund.save() 维护的可空唯一键 execution_reference_key
+        在 MySQL/SQLite 真实生效，取消跳过。
+        """
         payment = self._make_card_payment("WBBRFRREF02")
         approver = self._approve_first_refund(payment)
         executor = User.objects.create_user(username="wbb-rfref-executor-2")
@@ -822,11 +822,14 @@ class RefundExecutionReferenceUniquenessTests(WhiteboxBillingBase):
         BillingService.approve_refund(
             property_obj=self.property, refund_id=first.pk,
             approved_by=approver)
-        BillingService.execute_refund(
+        executed_first, _ = BillingService.execute_refund(
             property_obj=self.property, refund_id=first.pk,
             executed_by=executor, confirm_refund_paid=True,
             execution_reference="BANK-DB-001",
             idempotency_key="wbb-rfref-db-exec-1")
+        self.assertEqual(
+            executed_first.execution_reference_key,
+            f"{self.property.pk}:BANK-DB-001")
         second, _ = BillingService.request_refund(
             property_obj=self.property, payment_id=payment.pk,
             amount="30.00", reason="第二笔退款（DB 约束）",
@@ -834,18 +837,20 @@ class RefundExecutionReferenceUniquenessTests(WhiteboxBillingBase):
         BillingService.approve_refund(
             property_obj=self.property, refund_id=second.pk,
             approved_by=approver)
-        # 构造满足所有 CHECK 约束的"已执行"行，仅复用渠道参考号——
-        # 让 IntegrityError 只能来自 uq_refund_property_execution_reference。
+        # 审批在服务层另一事务完成，本地实例须刷新，否则模型 save() 会把
+        # 陈旧实例误判为「改写已审批事实」。
+        second.refresh_from_db()
+        # 绕过服务层查重，直接通过模型层写入满足全部业务校验的「已执行」行，
+        # 仅复用渠道参考号：IntegrityError 只能来自数据库唯一键。
+        second.status = Refund.Status.SUCCEEDED
+        second.executed_by = executor
+        second.executed_at = timezone.now()
+        second.processed_at = timezone.now()
+        second.execution_idempotency_key = "wbb-rfref-db-bypass-exec-2"
+        second.execution_reference = "BANK-DB-001"
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
-                QuerySet.update(
-                    Refund.objects.filter(pk=second.pk),
-                    status=Refund.Status.SUCCEEDED,
-                    executed_by=executor.pk,
-                    executed_at=timezone.now(),
-                    processed_at=timezone.now(),
-                    execution_idempotency_key="wbb-rfref-db-bypass-exec-2",
-                    execution_reference="BANK-DB-001")
+                second.save()
 
     def test_empty_execution_reference_cash_refunds_not_constrained(self):
         """现金退款 execution_reference 为空，多笔并存不受唯一约束影响。"""

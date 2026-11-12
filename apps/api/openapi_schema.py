@@ -1036,7 +1036,8 @@ fd_write = [
      s_obj({"payment_id": s_int(), "provider_ref": s_nullable(s_str()),
             "amount": s_str(), "method": s_str(), "status": s_str(),
             "payment_kind": s_str("固定 DEPOSIT。")}),
-     "Idempotency-Key 必填（1-64 字符）；仅已确认/在住预订可收押金。", FD_WRITE_PERM,
+     "Idempotency-Key 必填（1-64 字符）；待支付/已确认/在住预订均可收押金，"
+     "PENDING 订单押金登记成功即确认订单（押金即确认）。", FD_WRITE_PERM,
      (("201", "押金登记成功"), ("200", "相同幂等键重放"))),
     ("/front-desk/payments/{payment_id}/refunds", "申请退款", "verified",
      [("payment_id", "原支付单 ID。")],
@@ -1748,7 +1749,7 @@ op("/billing/reversals", "post", "财务", "执行已获管理者批准的红字
 
 op("/billing/shifts", "get", "财务", "收银班次列表",
    status="verified",
-   query=[Q("status", "班次状态筛选 OPEN/CLOSED/RECONCILED。"),
+   query=[Q("status", "班次状态筛选 OPEN/CLOSED。"),
           Q("mine", "1 时仅返回当前员工本人班次；财务查看全部时也可缩小到本人。"), *PQ()],
    permission="有效员工 + (billing.cashier_shift_manage 或 hotelapp.finance_access)；仅本人班次/本物业全部班次按权限区分",
    ok=(("200", "CashierShift 行数组（备用金/应有/实盘/差异/关班人）"),),

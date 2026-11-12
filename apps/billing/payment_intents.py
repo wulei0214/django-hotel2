@@ -20,11 +20,14 @@ from apps.billing.models import (
     PaymentCompensationTask,
 )
 from apps.core.models import AuditEvent
+from apps.core.booking_constants import PENDING_RESERVATION_TTL_MINUTES
 
 # D2：渠道支付窗口策略（服务端配置；客户端不得提交或修改）
+# RSV-07：初始窗口必须与预订 expires_at 同源，否则会出现「库存已释放但
+# 支付意图仍有效」或反之。
 CHANNEL_WINDOW_CONFIG = {
     "mock": {
-        "initial_wait_seconds": 15 * 60,       # 初始等待 15 分钟
+        "initial_wait_seconds": PENDING_RESERVATION_TTL_MINUTES * 60,
         "max_total_wait_seconds": 30 * 60,     # 最大累计等待 30 分钟
         "max_extensions": 1,                    # 最大延长次数
         "extension_seconds": 5 * 60,           # 每次延长 5 分钟
@@ -53,7 +56,21 @@ def get_channel_window(provider_code):
 def create_intent(*, property_obj, reservation, folio, amount, currency="CNY",
                   purpose="ROOM_FEE", provider_code="mock", created_by=None,
                   idempotency_key=""):
-    """创建支付意图（幂等）。创建时关联有效 Hold 并设置初始窗口。"""
+    """创建支付意图（幂等）。创建时关联有效 Hold 并设置初始窗口。
+
+    WB-108 收尾：意图创建前对预订侧做完整前置校验（校验先于幂等重放
+    查找，不得以重放为名绕过前置）——
+    ① 与取消/过期/Hold 释放仲裁共用 Reservation 行锁；
+    ② 状态机口径与公开模拟支付服务一致：PENDING 可付；CONFIRMED 允许
+       补建意图（已成交，无需 Hold）；CANCELLED/EXPIRED/CHECKED_IN 及
+       之后的状态拒绝；
+    ③ PENDING 必须有未过期的支付截止时间（expires_at 语义仅适用于
+       待支付状态）；
+    ④ PENDING 必须存在有效库存 Hold（口径见下方注释）；
+    ⑤ 意图金额必须等于订单应付总额（公开支付链路即全款支付）。
+    """
+    from apps.reservations.models import Reservation
+
     key = str(idempotency_key or "").strip()
     if not key or len(key) > 96:
         raise ValueError("支付意图必须提供 1 至 96 个字符的幂等键。")
@@ -75,6 +92,63 @@ def create_intent(*, property_obj, reservation, folio, amount, currency="CNY",
         raise ValueError("支付意图币种与账单币种不一致。")
     if currency != reservation.currency:
         raise ValueError("支付意图币种与预订币种不一致。")
+
+    # WB-108 ①：与取消/过期/Hold 释放竞争同一 Reservation 行锁后，
+    # 后续状态/窗口/Hold/金额读到的都是锁内真值（MySQL 行锁仲裁；
+    # 本事务可能已持有该锁——create_mock_payment_intent 先锁预订）。
+    try:
+        reservation = Reservation.objects.select_for_update().get(
+            pk=reservation.pk)
+    except Reservation.DoesNotExist as exc:
+        raise ValueError("预订不存在，不能创建支付意图。") from exc
+
+    # WB-108 ②：状态机口径与 create_mock_payment_intent 保持一致——
+    # PENDING 是唯一"待支付"状态；CONFIRMED 已成交，允许补建意图但
+    # 无需 Hold；取消/过期/入住及之后的终态不得再产生新的待支付意图。
+    if reservation.status not in (Reservation.Status.PENDING,
+                                  Reservation.Status.CONFIRMED):
+        raise ValueError(
+            "当前预订状态不允许创建支付意图（仅待支付/已确认订单可支付）。")
+
+    if reservation.status == Reservation.Status.PENDING:
+        # WB-108 ③：待支付订单必须存在未过期的支付截止时间
+        # （与 create_mock_payment_intent 的超时拒绝同口径）。
+        if reservation.expires_at is None:
+            raise ValueError("待支付订单缺少支付截止时间，不能创建支付意图。")
+        if reservation.expires_at <= timezone.now():
+            raise ValueError("预订已超过支付截止时间，请重新查询房态后下单。")
+
+        # WB-108 ④：有效 Hold 判定与 confirm_inventory_for_reservation
+        # 同口径——冻结的权威载体是 RoomTypeInventory.held 计数；
+        # InventoryHold 明细行（RSV-01 起由库存服务同事务维护）用于逐单
+        # 追溯与对账重建，不作为支付存在性判据。预订每个（房型, 入住-离店）
+        # 区间的每个住宿日都必须有库存行且 held ≥ 需求量，否则视为
+        # Hold 已释放/失效，拒绝为不可履约的订单创建支付意图。
+        from apps.inventory.models import RoomTypeInventory
+        from apps.inventory.services import (
+            _group_reservation_room_quantities,
+            stay_dates,
+        )
+        for (room_type_id, check_in, check_out), quantity in (
+                _group_reservation_room_quantities(reservation).items()):
+            dates = list(stay_dates(check_in, check_out))
+            rows = RoomTypeInventory.objects.filter(
+                property_id=reservation.property_id,
+                room_type_id=room_type_id,
+                stay_date__in=dates,
+            )
+            if (rows.count() != len(dates)
+                    or any(row.held < quantity for row in rows)):
+                raise ValueError(
+                    "预订库存 Hold 已失效或不存在，不能创建支付意图。")
+
+    # WB-108 ⑤：金额服务端核对——公开支付链路即全款支付，现有全部调用方
+    # （create_mock_payment_intent 以 reservation.total_amount 建单）均为
+    # 全额口径；意图金额必须等于订单应付总额，杜绝部分金额意图绕过
+    # "付清即确认"的语义。
+    if intent_amount != reservation.total_amount.quantize(Decimal("0.01")):
+        raise ValueError("支付意图金额必须与订单应付总额一致。")
+
     existing = PaymentIntent.objects.filter(idempotency_key=key).first()
     if existing is not None:
         # WB-069 修复：幂等重放比较补齐 currency/purpose/provider_code
@@ -95,7 +169,7 @@ def create_intent(*, property_obj, reservation, folio, amount, currency="CNY",
         intent_no=f"PI-{uuid.uuid4().hex.upper()[:20]}",
         idempotency_key=key,
         amount=intent_amount, currency=currency,
-        purpose=PaymentIntent.Purpose.purpose if hasattr(PaymentIntent.Purpose, 'purpose') else purpose,
+        purpose=purpose,
         provider_code=provider_code,
         provider_config_version="v1",
         status=PaymentIntent.Status.PENDING,
@@ -141,11 +215,43 @@ def extend_intent_window(*, intent_id, property_obj, extended_by=None):
     return intent
 
 
+class _ProviderEventReplayConflict(Exception):
+    """WB-115：同一 event_id 重放携带不同事实（携带冲突双方快照）。
+
+    在原子块内抛出会让整块回滚——若把安全审计写在块内，审计证据会
+    随回滚消失。公开入口在独立事务中消费本异常落审计后再转 ValueError。
+    """
+
+    def __init__(self, existing, *, event_id, provider_code,
+                 provider_transaction_id, incoming_amount, currency,
+                 channel_status, signature_verified):
+        self.entity_id = existing.pk
+        self.detail = {
+            "event_id": event_id,
+            "provider_code": provider_code,
+            "stored": {
+                "provider_transaction_id": existing.provider_transaction_id,
+                "amount": str(existing.amount),
+                "currency": existing.currency,
+                "channel_status": existing.channel_status,
+                "signature_verified": bool(existing.signature_verified),
+            },
+            "incoming": {
+                "provider_transaction_id": provider_transaction_id,
+                "amount": str(incoming_amount),
+                "currency": currency,
+                "channel_status": channel_status,
+                "signature_verified": bool(signature_verified),
+            },
+        }
+        super().__init__(self.detail)
+
+
 @transaction.atomic
-def record_provider_event(*, property_obj, intent_id, provider_code,
-                          provider_transaction_id, amount, currency,
-                          channel_status, event_id="", signature_verified=False):
-    """记录渠道交易事实（event_id 幂等；重复/乱序通知先记录再判断）。"""
+def _record_provider_event_atomic(*, property_obj, intent_id, provider_code,
+                                  provider_transaction_id, amount, currency,
+                                  channel_status, event_id="",
+                                  signature_verified=False):
     from apps.core.models import AuditEvent as AE
     intent = PaymentIntent.objects.filter(pk=intent_id, property=property_obj).first()
     if intent is None:
@@ -153,15 +259,29 @@ def record_provider_event(*, property_obj, intent_id, provider_code,
     existing = ProviderTransaction.objects.filter(
         provider_code=provider_code, event_id=event_id).first() if event_id else None
     if existing is not None:
-        # WB-012 修复：命中已有事件时校验物业/意图/交易号/金额/币种一致
+        # WB-012 修复：命中已有事件时校验物业/意图/交易号/金额/币种一致。
+        # WB-115：幂等重放必须核对**完整不可变事实**——channel_status 与
+        # signature_verified 也是渠道事件事实的一部分。同一 event_id 重放
+        # 携带任何不同事实（SUCCESS 改报 FAILED、已验签改报未验签、
+        # PENDING 重放改报 SUCCESS 等）一律视为冲突重放：拒绝并落安全
+        # 审计事件（由公开入口在独立事务落盘，不随本块回滚），不得静默
+        # 返回第一次记录，也不得用第二次请求的验签结果覆盖/补齐第一次
+        # 记录。渠道状态变化必须由渠道下发**新的事件 ID**表达。
+        stored_amount = existing.amount
+        incoming_amount = Decimal(str(amount)).quantize(Decimal("0.01"))
         if (existing.property_id != property_obj.pk
                 or existing.intent_id != intent.pk
                 or existing.provider_transaction_id != provider_transaction_id
-                or existing.amount != Decimal(str(amount)).quantize(Decimal("0.01"))
-                or existing.currency != currency):
-            raise ValueError(
-                "事件 ID 已用于不同的物业/意图/交易号/金额/币种，"
-                "不能复用已有渠道交易记录。")
+                or stored_amount != incoming_amount
+                or existing.currency != currency
+                or existing.channel_status != channel_status
+                or bool(existing.signature_verified) != bool(signature_verified)):
+            raise _ProviderEventReplayConflict(
+                existing, event_id=event_id, provider_code=provider_code,
+                provider_transaction_id=provider_transaction_id,
+                incoming_amount=incoming_amount, currency=currency,
+                channel_status=channel_status,
+                signature_verified=signature_verified)
         return existing, False
     # WB-076/089 修复：首次写入渠道事实前做完整一致性校验
     pt_amount = Decimal(str(amount)).quantize(Decimal("0.01"))
@@ -193,6 +313,38 @@ def record_provider_event(*, property_obj, intent_id, provider_code,
                "channel_status": channel_status, "event_id": event_id},
         reason="记录渠道交易事实")
     return pt, True
+
+
+def record_provider_event(*, property_obj, intent_id, provider_code,
+                          provider_transaction_id, amount, currency,
+                          channel_status, event_id="", signature_verified=False):
+    """记录渠道交易事实（event_id 幂等；重复/乱序通知先记录再判断）。
+
+    WB-115：冲突重放的安全审计在**独立事务**中落盘——主原子块回滚
+    不能吞掉审计证据（与 expire_intent 落 CHANNEL_QUERY 任务同模式）。
+    """
+    try:
+        return _record_provider_event_atomic(
+            property_obj=property_obj, intent_id=intent_id,
+            provider_code=provider_code,
+            provider_transaction_id=provider_transaction_id,
+            amount=amount, currency=currency,
+            channel_status=channel_status, event_id=event_id,
+            signature_verified=signature_verified)
+    except _ProviderEventReplayConflict as conflict:
+        from apps.core.models import AuditEvent as AE
+        with transaction.atomic():
+            AE.record(
+                action="billing.provider_event_replay_conflict",
+                entity_type="ProviderTransaction",
+                entity_id=conflict.entity_id,
+                property_obj=property_obj,
+                after=conflict.detail,
+                reason="同一渠道事件 ID 重放携带不同事实，拒绝重放（WB-115）")
+        raise ValueError(
+            "事件 ID 已用于不同的物业/意图/交易号/金额/币种/渠道状态/"
+            "验签结果，不能复用已有渠道交易记录；渠道状态变化请使用"
+            "新的渠道事件 ID 表达。") from conflict
 
 
 @transaction.atomic
@@ -232,6 +384,39 @@ def confirm_intent_success(*, property_obj, intent_id, provider_transaction_id,
     if PaymentIntent.objects.filter(confirmed_payment=confirmed_payment).exclude(
             pk=intent.pk).exists():
         raise ValueError("该收款事实已被其他支付意图关联，不可重复确认。")
+    # WB-107 修复：确认前核验渠道交易事实——支付成功确认必须有本意图名下、
+    # 已验签的 SUCCESS 渠道交易支撑，杜绝仅凭本地 Payment 伪造渠道成功：
+    # ① 按（物业=意图物业, 意图, 渠道交易号）锁定查询；查不到即交易不存在，
+    #    或交易属于其他意图/物业（唯一约束保证同一交易号只归属一个意图）；
+    # ② 渠道代码/状态/验签/金额/币种必须与意图一致。
+    provider_txn = ProviderTransaction.objects.select_for_update().filter(
+        property_id=intent.property_id,
+        intent_id=intent.pk,
+        provider_transaction_id=provider_transaction_id,
+    ).first()
+    if provider_txn is None:
+        raise ValueError(
+            "渠道交易不存在或不属于该意图，不能确认支付成功。")
+    if provider_txn.provider_code != intent.provider_code:
+        raise ValueError("渠道交易渠道代码与支付意图不一致，不能确认支付成功。")
+    if provider_txn.channel_status != "SUCCESS":
+        raise ValueError(
+            f"渠道交易状态为 {provider_txn.channel_status} 而非 SUCCESS，"
+            "不能确认支付成功。")
+    if not provider_txn.signature_verified:
+        raise ValueError("渠道交易未通过验签，不能确认支付成功。")
+    if (provider_txn.amount != intent.amount
+            or provider_txn.currency != intent.currency):
+        raise ValueError("渠道交易金额或币种与支付意图不一致，不能确认支付成功。")
+    # WB-107 收尾：收款事实与渠道交易事实必须双向绑定。此前只校验了归属/
+    # 金额/币种，属性一致但属于另一笔渠道交易的 Payment 仍可能被配对本意图。
+    if confirmed_payment.provider != provider_txn.provider_code:
+        raise ValueError(
+            "收款事实的支付渠道与渠道交易渠道不一致，不能确认支付成功。")
+    if (confirmed_payment.provider_ref
+            != provider_txn.provider_transaction_id):
+        raise ValueError(
+            "收款事实的渠道流水号与渠道交易号不一致，不能确认支付成功。")
     intent.confirmed_payment = confirmed_payment
     intent.status = PaymentIntent.Status.SUCCEEDED
     intent.save(update_fields=("status", "confirmed_payment", "updated_at"))
@@ -267,9 +452,33 @@ def confirm_intent_success(*, property_obj, intent_id, provider_transaction_id,
     return intent, True
 
 
-@transaction.atomic
+class _ChannelStateUnknown(Exception):
+    """内部信号：渠道事实 UNKNOWN，原子块需回滚，但补偿任务必须独立落库。"""
+
+
 def expire_intent(*, property_obj, intent_id, actor=None):
-    """意图过期（窗口到期且渠道未确认成功方可过期；UNKNOWN 不走此路径）。"""
+    """意图过期（窗口到期且渠道未确认成功方可过期；UNKNOWN 不走此路径）。
+
+    WB-090 收尾：状态迁移本身在单个原子块内；渠道 UNKNOWN 时原子块回滚
+    （意图保持原状态），随后在**独立事务**中落 CHANNEL_QUERY 补偿任务，
+    再向调用方抛 ValueError。若把任务创建放在同一原子块里，抛异常时任务
+    会随事务一起回滚，「先查渠道再决策」在生产链路上将永远不可达。
+    """
+    try:
+        with transaction.atomic():
+            return _expire_intent_atomic(
+                property_obj=property_obj, intent_id=intent_id, actor=actor)
+    except _ChannelStateUnknown:
+        create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.CHANNEL_QUERY,
+            aggregate_type="PaymentIntent", aggregate_id=intent_id,
+            idempotency_key=f"intent-expire-channel-query:{intent_id}")
+        raise ValueError(
+            "渠道状态未知（UNKNOWN），必须先查询渠道最终结果；"
+            "不可直接过期，已创建渠道查询补偿任务。")
+
+
+def _expire_intent_atomic(*, property_obj, intent_id, actor=None):
     intent = PaymentIntent.objects.select_for_update().filter(
         pk=intent_id, property=property_obj).first()
     if intent is None:
@@ -280,6 +489,11 @@ def expire_intent(*, property_obj, intent_id, actor=None):
     # WB-077/090 修复：必须真实到期才允许过期，防止提前作废未到期意图
     if intent.expires_at is None or intent.expires_at > timezone.now():
         raise ValueError("支付窗口尚未到期，不可将意图标记为过期。")
+    # 渠道侧状态未知时，PMS 未掌握渠道最终结果，直接释放 Hold / 标记过期
+    # 可能造成「渠道已收款但订单被作废」。
+    if ProviderTransaction.objects.filter(
+            intent_id=intent.pk, channel_status="UNKNOWN").exists():
+        raise _ChannelStateUnknown()
     intent.status = PaymentIntent.Status.EXPIRED
     intent.save(update_fields=("status", "updated_at"))
     AuditEvent.record(
@@ -352,18 +566,36 @@ def complete_compensation_task(task_id, success=True, error_code="",
         raise ValueError(
             f"租约持有者不匹配：当前 {task.lease_owner}，调用方 {lease_owner}。"
             "旧 Worker 不得覆盖新 Worker 的执行状态。")
+    # WB-067：完成任务必须发生在活跃租约（status=LEASED）内——任务已不在
+    # LEASED 状态（SUCCEEDED/DEAD_LETTER 终态，或失败退避已回 PENDING）
+    # 说明本次租约已收尾，重复提交属于越权写入：终态不得被复活、退避重试
+    # 不得被重复计数（同一租约下重复 complete 只生效一次）。
+    if task.status != PaymentCompensationTask.Status.LEASED:
+        raise ValueError(
+            "任务不在租约执行状态（已终态或已退回待执行），"
+            "重复提交执行结果被拒绝。")
     # WB-067：租约未过期才可提交；过期视为租约失效，拒绝提交。
-    # 任务已不在 LEASED 状态的合法路径（退避重试/重复收尾）无活跃租约可校验
-    if task.status == PaymentCompensationTask.Status.LEASED and (
-            task.lease_expires_at is None
+    if (task.lease_expires_at is None
             or task.lease_expires_at <= timezone.now()):
         raise ValueError("租约已过期，视为租约失效，拒绝提交执行结果。")
     if success:
         task.status = PaymentCompensationTask.Status.SUCCEEDED
         task.completed_at = timezone.now()
-        task.save(update_fields=("status", "completed_at"))
+        # WB-110：成功执行也可附带执行报告（如 mock 渠道查询只读汇报、
+        # 对账扫描摘要），写入错误摘要字段供运维查询（空值则保持原样）。
+        task.last_error_code = (error_code or "")[:64]
+        task.last_error_summary = (error_summary or "")[:500]
+        task.save(update_fields=("status", "completed_at", "last_error_code",
+                                 "last_error_summary"))
         return task
-    if task.attempt_count >= task.max_attempts:
+    # WB-110：不可自动恢复的失败（如预订已进入取消/过期等终态、账本凭证
+    # 无法安全重建）重试没有意义——跳过指数退避直接进入死信，等待人工
+    # 协调/对账；原因写入 last_error_summary（payload），支付等资金事实
+    # 一律保留、不得篡改。人工排查后仍可 replay_dead_letter_task 重放。
+    if error_code == "REQUIRES_MANUAL_COORDINATION":
+        task.status = PaymentCompensationTask.Status.DEAD_LETTER
+        task.completed_at = timezone.now()
+    elif task.attempt_count >= task.max_attempts:
         task.status = PaymentCompensationTask.Status.DEAD_LETTER
         task.completed_at = timezone.now()
     else:

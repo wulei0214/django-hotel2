@@ -66,10 +66,13 @@ def cleanup_expired(now=None):
 
 
 def check(request, action, *, phone="", username="", booking_no="", token="",
-          fail_closed=True):
+          fail_closed=True, consume=True):
     """多维度限流检查：任一维度超限返回 False（调用方回 429 + Retry-After）。
 
     - 每个维度原子自增（F 表达式），超限后计数继续累加便于观测但不放行。
+    - ``consume=False`` 只查询当前计数不自增（peek），用于 SEC-02：登录
+      场景需要先判断是否已超限，但只有认证**失败**才应消耗配额，避免
+      高频正常登入登出的前台账号被误锁。
     - 存储异常：fail_closed=True（默认）拒绝请求；只读面可显式 fail_open。
     - 缺失维度指纹（如空手机号）跳过该维度，不产生共享桶（P0-02）。
     """
@@ -98,14 +101,24 @@ def check(request, action, *, phone="", username="", booking_no="", token="",
         expires_at = window_start + timedelta(seconds=window_seconds)
         try:
             with transaction.atomic():
-                counter, created = RateLimitCounter.objects.get_or_create(
-                    key_hash=key_hash, action=action, window_start=window_start,
-                    defaults={"count": 1, "expires_at": expires_at})
-                if not created:
-                    RateLimitCounter.objects.filter(pk=counter.pk).update(
-                        count=F("count") + 1)
-                    counter.refresh_from_db(fields=("count",))
-                if counter.count > limit:
+                if consume:
+                    counter, created = RateLimitCounter.objects.get_or_create(
+                        key_hash=key_hash, action=action, window_start=window_start,
+                        defaults={"count": 1, "expires_at": expires_at})
+                    if not created:
+                        RateLimitCounter.objects.filter(pk=counter.pk).update(
+                            count=F("count") + 1)
+                        counter.refresh_from_db(fields=("count",))
+                    current_count = counter.count
+                    exceeded = current_count > limit
+                else:
+                    counter = RateLimitCounter.objects.filter(
+                        key_hash=key_hash, action=action,
+                        window_start=window_start).first()
+                    current_count = counter.count if counter else 0
+                    # peek 不占用本次配额：计数已用满即拒绝下一次请求。
+                    exceeded = current_count >= limit
+                if exceeded:
                     return False
         except Exception:
             if fail_closed:

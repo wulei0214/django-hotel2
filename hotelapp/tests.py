@@ -592,7 +592,7 @@ class EmployeeLifecycleServiceTests(TestCase):
         """STAFF-01：只建档不开账号——档案保存、账号状态'未开通'、不能登录"""
         profile, membership, user = self.svc.create_employee(
             property_obj=Property.objects.get(code="DEFAULT"),
-            full_name="只建档员工", employee_no="F-2001",
+            full_name="只建档员工", department_code="FO",
             role_groups=[Group.objects.get(name="前台")])
         self.assertIsNone(user)
         self.assertIsNotNone(membership)
@@ -605,7 +605,7 @@ class EmployeeLifecycleServiceTests(TestCase):
         """STAFF-02：建档+开账号+分角色——账号可登录并拥有角色权限"""
         profile, membership, user = self.svc.create_employee(
             property_obj=Property.objects.get(code="DEFAULT"),
-            full_name="全链路员工", employee_no="F-2002",
+            full_name="全链路员工", department_code="FO",
             account_username="emp2002", account_password="emp2002-pass",
             role_groups=[Group.objects.get(name="前台")])
         self.assertIsNotNone(user)
@@ -614,12 +614,20 @@ class EmployeeLifecycleServiceTests(TestCase):
         self.assertTrue(self.client.login(username="emp2002", password="emp2002-pass"))
 
     def test_duplicate_employee_no_rejected(self):
-        """STAFF-06：同店工号唯一，重复建档拒绝"""
+        """STAFF-06（WB-100 服务端统一编号后口径）：登录账号唯一，重复建档拒绝。
+
+        工号已改为服务端按部门自动编号（前端/调用方不再决定流水号），
+        同店唯一性由编号服务天然保证；本用例改用登录账号唯一性验证
+        "重复建档拒绝"的保护意图。"""
         self.svc.create_employee(property_obj=Property.objects.get(code="DEFAULT"),
-                                 full_name="员工甲", employee_no="F-2003")
+                                 full_name="员工甲", department_code="FO",
+                                 account_username="emp_dup_2003",
+                                 account_password="emp2003-pass")
         with self.assertRaises(Exception):
             self.svc.create_employee(property_obj=Property.objects.get(code="DEFAULT"),
-                                     full_name="员工乙", employee_no="F-2003")
+                                     full_name="员工乙", department_code="FO",
+                                     account_username="emp_dup_2003",
+                                     account_password="emp2003-pass2")
 
     def test_multi_role_union_and_expiry(self):
         """STAFF-07：多角色权限并集；过期临时授权自动失效"""
@@ -627,7 +635,7 @@ class EmployeeLifecycleServiceTests(TestCase):
         from django.utils import timezone
         profile, membership, user = self.svc.create_employee(
             property_obj=Property.objects.get(code="DEFAULT"),
-            full_name="兼岗员工", employee_no="F-2004",
+            full_name="兼岗员工", department_code="FO",
             account_username="emp2004", account_password="emp2004-pass",
             role_groups=[Group.objects.get(name="前台"),
                          Group.objects.get(name="值班经理")])
@@ -651,7 +659,7 @@ class EmployeeLifecycleServiceTests(TestCase):
         """STAFF-08：调岗=旧授权结束+新授权生效，历史可查"""
         profile, membership, user = self.svc.create_employee(
             property_obj=Property.objects.get(code="DEFAULT"),
-            full_name="调岗员工", employee_no="F-2005",
+            full_name="调岗员工", department_code="FO",
             account_username="emp2005", account_password="emp2005-pass",
             role_groups=[Group.objects.get(name="前台")])
         front_assignment = StaffRoleAssignment.objects.get(
@@ -671,7 +679,7 @@ class EmployeeLifecycleServiceTests(TestCase):
         """STAFF-09：离职=授权终止+账号停用+历史不删除"""
         profile, membership, user = self.svc.create_employee(
             property_obj=Property.objects.get(code="DEFAULT"),
-            full_name="离职员工", employee_no="F-2006",
+            full_name="离职员工", department_code="FO",
             account_username="emp2006", account_password="emp2006-pass",
             role_groups=[Group.objects.get(name="前台")])
         self.svc.set_employment_status(profile, property_obj=Property.objects.get(code="DEFAULT"),
@@ -782,7 +790,7 @@ class ForcedPasswordChangeTests(TestCase):
         from apps.identity.services import EmployeeLifecycleService
         profile, membership, user = self.svc.create_employee(
             property_obj=Property.objects.get(code="DEFAULT"),
-            full_name="建档未开号员工", employee_no="F-7001",
+            full_name="建档未开号员工", department_code="FO",
             role_groups=[Group.objects.get(name="前台")])
         self.assertIsNone(user)
         root = User.objects.create_superuser("rootd07", "root-pass123456")
@@ -1203,9 +1211,10 @@ class GuestServiceTests(TestCase):
             property_obj=self.prop, full_name="二客", phone="13900008888")
         self.assertNotEqual(first.pk, second.pk)
         from apps.guests.models import GuestPhone
+        from apps.guests.services import phone_hash
         self.assertEqual(
             GuestPhone.objects.filter(
-                phone_normalized="13900008888",
+                phone_hash=phone_hash("13900008888"),
                 shared_review_required=True,
             ).count(), 2
         )
@@ -1231,10 +1240,14 @@ class GuestServiceTests(TestCase):
         self.svc.update_guest(guest_id=guest.pk, property_obj=self.prop,
                               updated_by=self.staff, phone="13900007777")
         from apps.guests.models import GuestPhone
+        from apps.guests.services import phone_hash
         phones = GuestPhone.objects.filter(guest=guest).order_by("-is_primary")
         self.assertEqual(phones.count(), 2, "旧号码保留历史")
         self.assertTrue(phones.first().is_primary)
-        self.assertEqual(phones.first().phone_normalized, "13900007777")
+        # WB-103：明文列不再写入，号码经 phone_hash 语义验证
+        self.assertEqual(phones.first().phone_hash,
+                         phone_hash("13900007777"))
+        self.assertFalse(phones.first().phone)
 
 
 class MembershipServiceTests(TestCase):

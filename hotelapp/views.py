@@ -1486,7 +1486,10 @@ def export_module(request, module):
     model = info[1]
     if not _has_permission(request, f"hotelapp.view_{module}"):
         return HttpResponse("没有导出权限", status=403)
-    # 顾客身份证与会员电话只导出脱敏值；完整值不通过常规 CSV 导出。    from apps.core.models import AuditEvent
+    # 顾客身份证与会员电话只导出脱敏值；完整值不通过常规 CSV 导出。
+    # MAINT-01：import 必须独占一行。此前它与注释同行被吞掉，而下方
+    # 1519 行又存在同名局部 import，导致此处引用未绑定局部名 → 导出必 500。
+    from apps.core.models import AuditEvent
     AuditEvent.record(
         action="export.module_csv", entity_type="ExportModule",
         entity_id=module, actor=request.user, property_obj=_prop,
@@ -1516,7 +1519,7 @@ def export_module(request, module):
         elif module == "vip":
             row[3] = (row[3] or "")[:3] + "****" + (row[3] or "")[-4:] if len(row[3] or "") >= 8 else row[3]
         writer.writerow([str(x) for x in row])
-    from apps.core.models import AuditEvent
+    # MAINT-01：AuditEvent 已在函数前段导入，此处不再重复局部 import。
     AuditEvent.record(
         action="legacy.export", entity_type="LegacyExport",
         entity_id=module, actor=request.user,
@@ -1618,20 +1621,23 @@ def staff_accounts(request):
     property_obj = getattr(request, "property", None)
     if property_obj is None:
         return HttpResponse("当前账号没有可用物业上下文", status=503)
+    from django.db.models import Q
     qs = (StaffProfile.objects.filter(property_memberships__property=property_obj)
           .select_related("user").distinct().order_by("-created_at"))
     q = (request.GET.get("q") or "").strip()
-    rows = []
-    for profile in qs:
-        page = _workbench_profile_page(profile, property_obj)
-        if q and q not in page["profile"].full_name and q not in (
-                page["membership"].employee_no if page["membership"] else ""):
-            continue
-        rows.append(page)
-    paginator = Paginator(rows, 15)
+    # MAINT-07：搜索下沉到 QuerySet，分页在数据库侧完成，只对当前页做
+    # 聚合查询。此前每员工 2 条查询 + 全量内存过滤 + 内存分页，员工数增长
+    # 后每请求 O(N) 且 N+1 随列表线性放大。
+    if q:
+        qs = qs.filter(
+            Q(full_name__icontains=q)
+            | Q(property_memberships__employee_no__icontains=q)).distinct()
+    paginator = Paginator(qs, 15)
     page_obj = paginator.get_page(request.GET.get("page"))
+    rows = [_workbench_profile_page(profile, property_obj)
+            for profile in page_obj.object_list]
     return render(request, "staff_accounts.html", {
-        "rows": page_obj.object_list, "page_obj": page_obj, "q": q,
+        "rows": rows, "page_obj": page_obj, "q": q,
     })
 
 
@@ -1776,8 +1782,11 @@ def login_view(request):
     if request.method == "POST":
         username = (request.POST.get("username") or "").strip()
         # §6.3：登录失败限流（IP + username_hash，5 次/5 分钟，fail-closed）
+        # SEC-02：成功登录不得消耗失败配额。先 peek 判断是否已超限，
+        # 只有认证失败才真正自增计数（check 默认 consume=True）。
         from apps.core import rate_limit
-        if not rate_limit.check(request, "auth.login", username=username):
+        if not rate_limit.check(request, "auth.login", username=username,
+                                consume=False):
             _audit_login_failure(request, username, "rate_limited")
             error = _LOGIN_FAIL_MESSAGE
             return render(request, "login.html",
@@ -1785,19 +1794,14 @@ def login_view(request):
         # P1-09：authenticate() 对停用账号返回 None（ModelBackend 拒绝 inactive），
         # 旧 disabled 分支不可达且原因失真；改为先取账号再验证，区分真实原因
         login_user = User.objects.filter(username__iexact=username).first()
-        if login_user is not None and not login_user.is_active:
-            _audit_login_failure(request, username, "disabled")
-            error = _LOGIN_FAIL_MESSAGE
-            return render(request, "login.html",
-                          {"error": error, "next": next_url})
         user = authenticate(request, username=username,
                             password=request.POST.get("password"))
-        if user is None:
-            error = _LOGIN_FAIL_MESSAGE
-            _audit_login_failure(request, username, "bad_credentials")
+        if login_user is not None and not login_user.is_active:
+            failure_reason = "disabled"
+        elif user is None:
+            failure_reason = "bad_credentials"
         elif not _has_active_employment(user):
-            error = _LOGIN_FAIL_MESSAGE
-            _audit_login_failure(request, username, "no_employment")
+            failure_reason = "no_employment"
         else:
             auth_login(request, user)
             from apps.core.models import AuditEvent
@@ -1805,6 +1809,15 @@ def login_view(request):
                 action="auth.login_success", entity_type="User",
                 entity_id=str(user.pk), actor=user, request=request)
             return redirect(_safe_login_next(request, request.POST.get("next")))
+        # 认证失败才计入限流配额；达到上限返回 429。
+        if not rate_limit.check(request, "auth.login", username=username):
+            failure_reason = "rate_limited"
+            _audit_login_failure(request, username, failure_reason)
+            error = _LOGIN_FAIL_MESSAGE
+            return render(request, "login.html",
+                          {"error": error, "next": next_url}, status=429)
+        _audit_login_failure(request, username, failure_reason)
+        error = _LOGIN_FAIL_MESSAGE
     return render(request, "login.html",
                   {"error": error, "next": next_url, "activated": activated})
 

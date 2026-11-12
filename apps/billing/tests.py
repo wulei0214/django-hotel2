@@ -2,6 +2,7 @@ import json
 from datetime import date, timedelta
 from decimal import Decimal
 from io import StringIO
+from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.management import call_command
@@ -9,6 +10,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from apps.billing.models import (
+    FolioReconciliationRun,
     LedgerEntry,
     Payment,
     PaymentCompensationTask,
@@ -642,9 +644,14 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         self.assertEqual(self._run_worker(), "")
 
     def test_worker_backs_off_when_inventory_hold_cannot_confirm(self):
-        """迟到成功补偿任务在 Hold 失效时执行失败：退避计数增加、不再立即重试。"""
+        """迟到成功补偿任务在 Hold 失效时执行失败：退避计数增加、不再立即重试。
+
+        WB-110a：预订保持 PENDING（未终态）时，Hold 失效仍按现有语义
+        退避重试（INVENTORY_CONFIRM_UNAVAILABLE）。
+        """
+        # 预订保持 PENDING 且未过期，仅释放 Hold → 迟到成功后进入补偿
         Reservation.objects.filter(pk=self.reservation.pk).update(
-            expires_at=timezone.now() - timedelta(minutes=1)
+            expires_at=timezone.now() + timedelta(minutes=10)
         )
         release_inventory_hold(self.reservation)
         response = self._callback()
@@ -664,6 +671,278 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         task.refresh_from_db()
         self.assertEqual(task.attempt_count, 1)
 
+    def test_worker_dead_letters_terminal_reservation_hold_task(self):
+        """WB-110a：终态预订的 Hold 协调任务不得无限重试——首轮即转死信。"""
+        # 渠道迟到成功但订单已取消（终态）→ 补偿任务创建
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            status=Reservation.Status.CANCELLED)
+        response = self._callback()
+        self.assertTrue(response.json()["compensation_required"])
+        task = PaymentCompensationTask.objects.get(
+            idempotency_key=f"late-success:payment:{self.payment.pk}")
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.DEAD_LETTER)
+        self.assertEqual(task.last_error_code, "REQUIRES_MANUAL_COORDINATION")
+        self.assertIn("终态", task.last_error_summary)
+        self.assertIn(str(self.reservation.pk), task.last_error_summary)
+        self.assertIsNotNone(task.completed_at)
+        self.assertEqual(task.attempt_count, 1)
+        # 意图侧 Hold 协调任务（WB-073 路径）同样不得无限重试
+        intent = PaymentIntent.objects.filter(
+            reservation=self.reservation).order_by("pk").first()
+        intent_task = PaymentCompensationTask.objects.get(
+            idempotency_key=f"intent-inventory-confirm:{intent.pk}")
+        self.assertEqual(intent_task.status,
+                         PaymentCompensationTask.Status.DEAD_LETTER)
+        self.assertEqual(intent_task.last_error_code,
+                         "REQUIRES_MANUAL_COORDINATION")
+        # 支付资金事实保留：不得篡改成功支付
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.status, Payment.Status.SUCCEEDED)
+        # 死信任务不再被扫描
+        self.assertEqual(self._run_worker(), "")
+
+    def test_worker_hold_coordination_confirmed_reservation_is_idempotent(self):
+        """WB-110a：已确认预订的 Hold 协调任务幂等成功，不重复消耗库存。"""
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            status=Reservation.Status.CONFIRMED)
+        held_before = list(RoomTypeInventory.objects.order_by(
+            "stay_date").values_list("held", "sold"))
+        task, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.HOLD_COORDINATION,
+            aggregate_type="Payment",
+            aggregate_id=self.payment.pk,
+            idempotency_key="worker-hold-confirmed-idempotent",
+        )
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.SUCCEEDED)
+        self.assertEqual(list(RoomTypeInventory.objects.order_by(
+            "stay_date").values_list("held", "sold")), held_before)
+
+    def test_worker_channel_query_reports_persisted_success(self):
+        """WB-110b：mock 渠道查询读到 SUCCESS 渠道事实 → 任务成功且不改状态。"""
+        intent = PaymentIntent.objects.filter(
+            reservation=self.reservation).order_by("pk").first()
+        ProviderTransaction.objects.create(
+            property=self.property, intent=intent, provider_code="mock",
+            provider_transaction_id="CQ-TXN-001", amount=intent.amount,
+            currency="CNY", channel_status="SUCCESS", signature_verified=True)
+        task, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.CHANNEL_QUERY,
+            aggregate_type="PaymentIntent",
+            aggregate_id=intent.pk,
+            idempotency_key="worker-channel-query-success",
+        )
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.SUCCEEDED)
+        self.assertIn("mock 渠道查询", task.last_error_summary)
+        # 只汇报渠道事实，不修改意图/支付状态
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, PaymentIntent.Status.PENDING)
+        self.assertIsNone(intent.confirmed_payment)
+
+    def test_worker_channel_query_fails_without_success_fact(self):
+        """WB-110b：无渠道交易或非 SUCCESS → 失败退避，不得伪造渠道成功。"""
+        intent = PaymentIntent.objects.filter(
+            reservation=self.reservation).order_by("pk").first()
+        # 最新渠道事实为 PENDING（非 SUCCESS）
+        ProviderTransaction.objects.create(
+            property=self.property, intent=intent, provider_code="mock",
+            provider_transaction_id="CQ-TXN-002", amount=intent.amount,
+            currency="CNY", channel_status="PENDING")
+        task, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.CHANNEL_QUERY,
+            aggregate_type="PaymentIntent",
+            aggregate_id=intent.pk,
+            idempotency_key="worker-channel-query-fail",
+        )
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
+        self.assertEqual(
+            task.last_error_code, "CHANNEL_QUERY_NO_SUCCESS_FACT")
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, PaymentIntent.Status.PENDING)
+        # 无任何渠道交易 → 同样失败退避
+        task2, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.CHANNEL_QUERY,
+            aggregate_type="Payment",
+            aggregate_id=self.payment.pk,
+            idempotency_key="worker-channel-query-no-txn",
+        )
+        task.next_attempt_at = timezone.now() - timedelta(seconds=1)
+        task.save(update_fields=("next_attempt_at",))
+        self._run_worker()
+        task2.refresh_from_db()
+        self.assertEqual(task2.status, PaymentCompensationTask.Status.PENDING)
+        self.assertEqual(
+            task2.last_error_code, "CHANNEL_QUERY_NO_SUCCESS_FACT")
+
+    def test_worker_callback_confirm_retry_advances_intent(self):
+        """WB-110c：存在已验签 SUCCESS 渠道交易 + 成功 Payment → 推进意图。"""
+        self.payment.status = Payment.Status.SUCCEEDED
+        self.payment.paid_at = timezone.now()
+        self.payment.save(update_fields=("status", "paid_at"))
+        intent = PaymentIntent.objects.filter(
+            reservation=self.reservation).order_by("pk").first()
+        intent.status = PaymentIntent.Status.PROCESSING
+        intent.save(update_fields=("status",))
+        ProviderTransaction.objects.create(
+            property=self.property, intent=intent, provider_code="mock",
+            provider_transaction_id=self.payment.provider_ref,
+            amount=self.payment.amount, currency=self.payment.currency,
+            channel_status="SUCCESS", signature_verified=True)
+        task, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.CALLBACK_CONFIRM_RETRY,
+            aggregate_type="PaymentIntent",
+            aggregate_id=intent.pk,
+            idempotency_key="worker-callback-confirm-ok",
+        )
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.SUCCEEDED)
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, PaymentIntent.Status.SUCCEEDED)
+        self.assertEqual(intent.confirmed_payment_id, self.payment.pk)
+        # 重复执行幂等：重建任务再跑，确认返回原状态、不产生新事实
+        task2, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.CALLBACK_CONFIRM_RETRY,
+            aggregate_type="PaymentIntent",
+            aggregate_id=intent.pk,
+            idempotency_key="worker-callback-confirm-replay",
+        )
+        self._run_worker()
+        task2.refresh_from_db()
+        self.assertEqual(task2.status, PaymentCompensationTask.Status.SUCCEEDED)
+        self.assertEqual(
+            PaymentIntent.objects.filter(pk=intent.pk).count(), 1)
+
+    def test_worker_callback_confirm_retry_fails_without_payment_fact(self):
+        """WB-110c：找不到对应成功 Payment → 失败重试，不得凭空造成功。"""
+        intent = PaymentIntent.objects.filter(
+            reservation=self.reservation).order_by("pk").first()
+        ProviderTransaction.objects.create(
+            property=self.property, intent=intent, provider_code="mock",
+            provider_transaction_id="CQ-NO-PAYMENT-TXN",
+            amount=intent.amount, currency="CNY",
+            channel_status="SUCCESS", signature_verified=True)
+        task, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.CALLBACK_CONFIRM_RETRY,
+            aggregate_type="PaymentIntent",
+            aggregate_id=intent.pk,
+            idempotency_key="worker-callback-confirm-missing",
+        )
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
+        self.assertEqual(
+            task.last_error_code, "CALLBACK_CONFIRM_NO_PAYMENT_FACT")
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, PaymentIntent.Status.PENDING)
+
+    def test_worker_ledger_repair_posts_missing_voucher(self):
+        """WB-110d：成功支付缺凭证 → 按 WB-111 新口径补凭证；重复执行幂等。"""
+        self._callback()  # 渠道成功回调入账：payment:{ref} 凭证已存在
+        task, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.PAYMENT_LEDGER_REPAIR,
+            aggregate_type="Payment",
+            aggregate_id=self.payment.pk,
+            idempotency_key="worker-ledger-repair-exists",
+        )
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.SUCCEEDED)
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference=f"payment:{self.payment.provider_ref}").count(), 1)
+
+        # 缺凭证场景：同账单上另一笔已成功但从未入账的支付
+        payment2 = Payment.objects.create(
+            property=self.property, reservation=self.reservation,
+            folio=self.reservation.get_master_folio(),
+            provider="mock", provider_ref="REPAIR-REF-001", method="MOCK",
+            amount=Decimal("100.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        task2, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.PAYMENT_LEDGER_REPAIR,
+            aggregate_type="Payment",
+            aggregate_id=payment2.pk,
+            idempotency_key="worker-ledger-repair-missing",
+        )
+        self._run_worker()
+        task2.refresh_from_db()
+        self.assertEqual(task2.status, PaymentCompensationTask.Status.SUCCEEDED)
+        entry = LedgerEntry.objects.get(reference="payment:REPAIR-REF-001")
+        self.assertEqual(entry.amount, Decimal("-100.00"))
+        self.assertEqual(entry.entry_type, LedgerEntry.EntryType.PAYMENT)
+        self.assertIsNone(entry.posted_by)
+        # 幂等重放：同一支付再来一张修复任务 → 幂等成功，不重复入账
+        task3, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.PAYMENT_LEDGER_REPAIR,
+            aggregate_type="Payment",
+            aggregate_id=payment2.pk,
+            idempotency_key="worker-ledger-repair-replay",
+        )
+        self._run_worker()
+        task3.refresh_from_db()
+        self.assertEqual(task3.status, PaymentCompensationTask.Status.SUCCEEDED)
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference="payment:REPAIR-REF-001").count(), 1)
+
+    def test_worker_ledger_repair_dead_letters_unsafe_payment(self):
+        """WB-110d：Payment 非 SUCCEEDED → 直接死信，注明需人工/对账。"""
+        task, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.PAYMENT_LEDGER_REPAIR,
+            aggregate_type="Payment",
+            aggregate_id=self.payment.pk,  # 未回调：PENDING
+            idempotency_key="worker-ledger-repair-pending",
+        )
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.DEAD_LETTER)
+        self.assertEqual(task.last_error_code, "REQUIRES_MANUAL_COORDINATION")
+        self.assertIn("人工", task.last_error_summary)
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"payment:{self.payment.provider_ref}").exists())
+
+    def test_worker_reconciliation_diff_runs_read_only_scan(self):
+        """WB-110e：对账差异任务调用既有扫描 → 成功且不自动改账。"""
+        task, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.RECONCILIATION_DIFF,
+            aggregate_type="Property",
+            aggregate_id=self.property.pk,
+            idempotency_key="worker-reconciliation-diff",
+        )
+        entries_before = LedgerEntry.objects.count()
+        self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.SUCCEEDED)
+        self.assertIn("不自动改账", task.last_error_summary)
+        # 扫描生成对账运行批次；账本不被改动（只读核对）
+        self.assertTrue(FolioReconciliationRun.objects.filter(
+            property=self.property).exists())
+        self.assertEqual(LedgerEntry.objects.count(), entries_before)
+
+    def test_worker_reconciliation_diff_failure_retries(self):
+        """WB-110e：扫描异常 → 失败退避重试。"""
+        task, _ = create_compensation_task(
+            task_type=PaymentCompensationTask.TaskType.RECONCILIATION_DIFF,
+            aggregate_type="Property",
+            aggregate_id=self.property.pk,
+            idempotency_key="worker-reconciliation-diff-fail",
+        )
+        with mock.patch(
+                "apps.billing.reconciliation.scan_folio_reconciliation",
+                side_effect=RuntimeError("db unavailable")):
+            self._run_worker()
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
+        self.assertEqual(task.last_error_code, "WORKER_EXCEPTION")
+
     def test_dead_letter_task_can_be_replayed_manually(self):
         """超过尝试上限转死信；replay_dead_letter_task 重放后可再次消费。"""
         task, _ = create_compensation_task(
@@ -673,12 +952,12 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
             idempotency_key="worker-dead-letter-replay",
             max_attempts=2,
         )
-        # 第 1 次执行：类型暂无自动执行器 → 失败退避
+        # 第 1 次执行：mock 渠道查询无 SUCCESS 事实 → 失败退避
         self._run_worker()
         task.refresh_from_db()
         self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
         self.assertEqual(task.attempt_count, 1)
-        self.assertEqual(task.last_error_code, "UNSUPPORTED_TASK_TYPE")
+        self.assertEqual(task.last_error_code, "CHANNEL_QUERY_NO_SUCCESS_FACT")
         # 人为把退避时间拨回，模拟到期后的第 2 次执行 → 达到上限转死信
         task.next_attempt_at = timezone.now() - timedelta(seconds=1)
         task.save(update_fields=("next_attempt_at",))
@@ -695,4 +974,4 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         task.refresh_from_db()
         self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
         self.assertEqual(task.attempt_count, 1)
-        self.assertEqual(task.last_error_code, "UNSUPPORTED_TASK_TYPE")
+        self.assertEqual(task.last_error_code, "CHANNEL_QUERY_NO_SUCCESS_FACT")

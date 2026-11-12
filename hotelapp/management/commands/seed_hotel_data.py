@@ -102,15 +102,22 @@ class Command(BaseCommand):
         for i in range(options["guests"]):
             name = FIRST[i % len(FIRST)]
             phone = "138" + str(random.randint(10000000, 99999999))
+            # WB-103：种子数据同样经 PII 统一服务密文+哈希落库，不写明文列；
+            # 幂等键从 phone_normalized 改为 phone_hash（查询口径不变）。
+            from apps.guests.services import (
+                encrypt_phone, normalize_phone, phone_hash)
+            norm = normalize_phone(phone)
+            digest = phone_hash(norm)
             guest, _created = Guest.objects.get_or_create(
-                property=prop, phone_normalized=phone,
+                property=prop, phone_hash=digest,
                 defaults={"full_name": name + "(" + str(i+1) + ")",
-                          "phone": phone, "phone_normalized": phone})
+                          "phone_ciphertext": encrypt_phone(norm)})
             # V1.1 M-03：电话走 GuestPhone（列表脱敏列的数据来源）；对存量客人幂等补建
             from apps.guests.models import GuestPhone
             GuestPhone.objects.get_or_create(
-                guest=guest, phone=phone,
-                defaults={"phone_normalized": phone, "is_primary": True})
+                guest=guest, phone_hash=digest,
+                defaults={"phone_ciphertext": encrypt_phone(norm),
+                          "is_primary": True})
             # V1.1 M-16：约三分之一客人带有效会员关系（会员中心演示数据）；按 pk 幂等
             from apps.guests.models import GuestMembership
             if guest.pk % 3 == 0:

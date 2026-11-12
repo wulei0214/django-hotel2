@@ -1,19 +1,30 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from threading import Barrier, Thread
+import unittest
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.db import close_old_connections, connection
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from apps.core.models import AuditEvent, Property
 from apps.guests.models import Guest
+from apps.guests.services import phone_hash
 from apps.billing.models import Folio, LedgerEntry, Payment, Refund, RefundLiability
 from apps.inventory.models import (
     DailyRate, HousekeepingTask, RatePlan, Room, RoomType, RoomTypeInventory,
 )
 from apps.inventory.services import InventoryUnavailable
-from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
+from .models import (
+    NoShowRecord,
+    PendingBookingGate,
+    Reservation,
+    ReservationRoom,
+    Stay,
+    StayRoomSegment,
+)
 from .services import ReservationConflict, create_reservation
 from .front_desk_services import (
     FrontDeskOperationError, assign_room, check_in_stay,
@@ -149,6 +160,75 @@ class ReservationCreationTests(TestCase):
             )
         self.assertEqual(Reservation.objects.count(), 0)
 
+    # ------------------------------------------------------------------
+    # WB-106：官网未支付订单并发上限（PendingBookingGate 串行化）
+    # ------------------------------------------------------------------
+    @override_settings(PUBLIC_PENDING_RESERVATION_CAP=2)
+    def test_pending_cap_second_accepted_third_rejected(self):
+        """WB-106：上限 2 笔时同手机号第 2 笔接受、第 3 笔拒绝且不落库。"""
+        _, created_first, _tk = create_reservation(
+            property_obj=self.property,
+            payload=self.payload,
+            idempotency_key="wb106-cap-001",
+        )
+        self.assertTrue(created_first)
+        _, created_second, _tk = create_reservation(
+            property_obj=self.property,
+            payload=self.payload,
+            idempotency_key="wb106-cap-002",
+        )
+        self.assertTrue(created_second)
+        with self.assertRaises(ReservationConflict) as ctx:
+            create_reservation(
+                property_obj=self.property,
+                payload=self.payload,
+                idempotency_key="wb106-cap-003",
+            )
+        self.assertIn("过多未支付预订", str(ctx.exception))
+        self.assertEqual(Reservation.objects.filter(
+            property=self.property,
+            guest__phone_hash=phone_hash("13800000000"),
+        ).count(), 2, "超限请求不得新增预订")
+
+    def test_pending_gate_row_created_on_first_booking(self):
+        """WB-106：锁行缺失时首次创建成功，并按（物业, phone_hash）落锁行。"""
+        self.assertFalse(PendingBookingGate.objects.exists())
+        reservation, created, _tk = create_reservation(
+            property_obj=self.property,
+            payload=self.payload,
+            idempotency_key="wb106-gate-first",
+        )
+        self.assertTrue(created)
+        self.assertEqual(PendingBookingGate.objects.count(), 1)
+        gate = PendingBookingGate.objects.get()
+        self.assertEqual(gate.property_id, self.property.pk)
+        self.assertEqual(gate.gate_key, phone_hash("13800000000"))
+
+    @override_settings(PUBLIC_PENDING_RESERVATION_CAP=1)
+    def test_same_idempotency_key_replay_not_counted_against_cap(self):
+        """WB-106：幂等重放在进入锁行/统计前早退——上限 1 时重放仍返回原单。"""
+        first, created, _tk = create_reservation(
+            property_obj=self.property,
+            payload=self.payload,
+            idempotency_key="wb106-replay-key",
+        )
+        self.assertTrue(created)
+        replay, created_again, _tk = create_reservation(
+            property_obj=self.property,
+            payload=self.payload,
+            idempotency_key="wb106-replay-key",
+        )
+        self.assertFalse(created_again)
+        self.assertEqual(replay.pk, first.pk)
+        self.assertEqual(Reservation.objects.count(), 1)
+        # 对照：同手机号换新幂等键才受上限拦截
+        with self.assertRaises(ReservationConflict):
+            create_reservation(
+                property_obj=self.property,
+                payload=self.payload,
+                idempotency_key="wb106-replay-other",
+            )
+
 
 class FrontDeskStayLifecycleServiceTests(TestCase):
     """新版入住写操作：物业边界、排房、实际入住、收款、结账与房态。"""
@@ -171,13 +251,17 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             phone="13800009999",
             phone_normalized="13800009999",
         )
+        # WB-097 正式语义（DEC-ED-01 §2.1）：退房按实际入住晚数的逐晚快照结算。
+        # 退房发生在今天，夹具构造"昨天入住、明天原定离店"的已住 1 晚事实，
+        # 使退房结算目标 = 600（昨日晚快照）；同日退房（0 晚）则应为 0 房费。
+        self.yesterday = self.today - timedelta(days=1)
         self.reservation = Reservation.objects.create(
             property=self.property,
             booking_no="RSTAY000001",
             guest=self.guest,
             source="WEBSITE",
             status=Reservation.Status.CONFIRMED,
-            check_in=self.today,
+            check_in=self.yesterday,
             check_out=self.tomorrow,
             room_count=1,
             adult_count=2,
@@ -190,10 +274,10 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             reservation=self.reservation,
             room_type=self.room_type,
             rate_plan=self.rate_plan,
-            check_in=self.today,
+            check_in=self.yesterday,
             check_out=self.tomorrow,
             nightly_rates=[
-                {"date": self.today.isoformat(), "price": "600.00", "currency": "CNY"}
+                {"date": self.yesterday.isoformat(), "price": "600.00", "currency": "CNY"}
             ],
             amount=Decimal("600.00"),
         )
@@ -566,15 +650,16 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         self.reservation.room_count = 2
         self.reservation.total_amount = Decimal("1200.00")
         self.reservation.save(update_fields=("room_count", "total_amount", "updated_at"))
+        # WB-097 正式语义：两间均已住 1 晚（昨日入住），退房各按 1 晚快照结算。
         second_line = ReservationRoom.objects.create(
             property=self.property,
             reservation=self.reservation,
             room_type=self.room_type,
             rate_plan=self.rate_plan,
-            check_in=self.today,
+            check_in=self.yesterday,
             check_out=self.tomorrow,
             nightly_rates=[
-                {"date": self.today.isoformat(), "price": "600.00", "currency": "CNY"}
+                {"date": self.yesterday.isoformat(), "price": "600.00", "currency": "CNY"}
             ],
             amount=Decimal("600.00"),
         )
@@ -1146,3 +1231,89 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             event.after_json["early_departure_release_to_exclusive"],
             check_out.isoformat())
         self.assertIn("提前离店", event.reason)
+
+
+@unittest.skipUnless(connection.vendor == "mysql",
+                     "WB-106 真并发上限验收仅在 MySQL/InnoDB 执行（SQLite 逻辑口径见 ReservationCreationTests）")
+class PendingCapConcurrentCreationTests(TransactionTestCase):
+    """WB-106：真实并发下同一手机号创建不超过 PENDING 上限。
+
+    无锁行串行化时，两个并发事务都会读到相同的 PENDING 计数后双双创建；
+    PendingBookingGate 行锁使同（物业, phone_hash）创建串行化，后到者
+    统计到超限并收到 ReservationConflict。
+    """
+
+    reset_sequences = True
+
+    def setUp(self):
+        from apps.inventory.models import DailyRate, RatePlan, RoomType, RoomTypeInventory
+        # 并发夹具自建独立物业，不依赖迁移 seed 的 DEFAULT，避免测试顺序
+        # 下前置 TransactionTestCase 污染全局物业导致 setUp DoesNotExist。
+        self.property, _ = Property.objects.get_or_create(
+            code="WB106-PROP",
+            defaults={"name": "并发上限测试酒店", "timezone": "Asia/Shanghai",
+                       "currency": "CNY", "status": "ACTIVE"})
+        self.today = timezone.localdate()
+        self.room_type = RoomType.objects.create(
+            property=self.property, code="WB106-CONCURRENT",
+            name="并发上限测试房型", capacity=2)
+        self.rate_plan = RatePlan.objects.create(
+            property=self.property, code="WB106-BAR", name="并发上限门市价",
+            valid_from=self.today)
+        for offset in (0, 1):
+            DailyRate.objects.create(
+                property=self.property, rate_plan=self.rate_plan,
+                room_type=self.room_type,
+                stay_date=self.today + timedelta(days=offset),
+                price=Decimal("300.00"))
+            RoomTypeInventory.objects.create(
+                property=self.property, room_type=self.room_type,
+                stay_date=self.today + timedelta(days=offset), total_rooms=5)
+        self.phone = "13899990000"
+        self.payload = {
+            "full_name": "并发上限测试住客",
+            "phone": self.phone,
+            "room_type_id": self.room_type.pk,
+            "rate_plan_id": self.rate_plan.pk,
+            "check_in": self.today,
+            "check_out": self.today + timedelta(days=2),
+            "rooms": 1,
+            "adults": 1,
+            "children": 0,
+        }
+
+    @override_settings(PUBLIC_PENDING_RESERVATION_CAP=1)
+    def test_parallel_same_phone_creation_respects_cap(self):
+        barrier = Barrier(2)
+        results = {"created": [], "conflicts": []}
+
+        def create_once(index):
+            close_old_connections()
+            try:
+                property_obj = Property.objects.get(pk=self.property.pk)
+                barrier.wait(timeout=10)
+                try:
+                    create_reservation(
+                        property_obj=property_obj,
+                        payload=self.payload,
+                        idempotency_key=f"wb106-concurrent-{index}")
+                    results["created"].append(index)
+                except ReservationConflict:
+                    results["conflicts"].append(index)
+            finally:
+                close_old_connections()
+
+        threads = [
+            Thread(target=create_once, args=(i,))
+            for i in range(2)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=20)
+        self.assertEqual(len(results["created"]), 1,
+                         "并发双创建最多只允许 1 笔通过上限")
+        self.assertEqual(len(results["conflicts"]), 1,
+                         "超限并发请求必须收到 ReservationConflict")
+        self.assertEqual(Reservation.objects.filter(
+            guest__phone_hash=phone_hash(self.phone)).count(), 1)

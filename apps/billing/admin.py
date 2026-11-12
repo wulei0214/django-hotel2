@@ -15,7 +15,7 @@ class LedgerEntryInline(admin.TabularInline):
 class FolioAdmin(admin.ModelAdmin):
     list_display = ("id", "property", "reservation", "guest", "status", "currency", "opened_at", "closed_at")
     list_filter = ("property", "status", "currency")
-    search_fields = ("reservation__booking_no", "guest__full_name", "guest__phone")
+    search_fields = ("reservation__booking_no", "guest__full_name", "guest__phone_hash")
     readonly_fields = tuple(field.name for field in Folio._meta.fields)
     inlines = (LedgerEntryInline,)
 

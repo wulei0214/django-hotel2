@@ -46,9 +46,16 @@ class EmployeeLifecycleService:
     def get_membership(profile, property_obj):
         if property_obj is None or property_obj.status != Property.Status.ACTIVE:
             raise EmployeeLifecycleError("必须指定有效物业，不能回退到默认物业。")
-        return PropertyStaffMembership.objects.filter(
-            staff_profile=profile, property=property_obj
-        ).order_by("id").first()
+        # WB-041 收尾：重新入职会保留旧 TERMINATED 任职并新建 ACTIVE 任职。
+        # 旧实现取 id 最小（最旧）任职，会让已重新入职员工的「恢复在职」
+        # 命中旧 TERMINATED 行而被误阻断。优先取最新 ACTIVE 任职；无 ACTIVE
+        # 时取最新一条（仍保证离职后直接恢复旧任职被守卫拒绝）。
+        qs = PropertyStaffMembership.objects.filter(
+            staff_profile=profile, property=property_obj)
+        active = qs.filter(
+            status=PropertyStaffMembership.Status.ACTIVE
+        ).order_by("-id").first()
+        return active or qs.order_by("-id").first()
 
     @staticmethod
     def active_assignments(membership):
@@ -68,9 +75,10 @@ class EmployeeLifecycleService:
         """在服务端明确指定的物业内建档；可选开通账号并分配初始角色。
 
         查重（STAFF-06）：同店工号唯一、同手机号唯一、同账号名唯一。
-        WB-037：employee_no 留空时由 DEC-EMP-02 自动编号服务分配
-        （部门代码 + 四位流水号；department_code 显式传入，或岗位代码
-        恰为受控部门代码 FO/HK/FIN/MG/ENG 时自动映射）。
+        WB-100：工号一律由服务端 generate_employee_no() 按部门代码自动
+        编号（DEC-EMP-02，前端不得决定流水号）——employee_no 参数仅保留
+        只读兼容，传入非空时忽略并记 WARNING；department_code 必填
+        （岗位代码恰为受控部门代码 FO/HK/FIN/MG/ENG 时可自动映射）。
         返回 (profile, membership, user_or_None)。
         """
         User = get_user_model()
@@ -81,21 +89,25 @@ class EmployeeLifecycleService:
         phone = (phone or "").strip()
         if not full_name:
             raise EmployeeLifecycleError("员工姓名不能为空")
-        if not employee_no:
-            # WB-037：主创建路径接入工号自动编号（此前生成服务无调用方，死代码）
-            from apps.identity.employee_number import (
-                DEPARTMENT_CODES, generate_employee_no)
-            dept = (department_code or "").strip().upper()
-            if not dept:
-                candidate = (position_code or "").strip().upper()
-                if candidate in DEPARTMENT_CODES:
-                    dept = candidate
-            if not dept:
-                raise EmployeeLifecycleError(
-                    "未提供工号时必须指定部门代码（FO/HK/FIN/MG/ENG），"
-                    "或岗位代码恰为受控部门代码以便自动编号")
-            employee_no = generate_employee_no(
-                property_obj=property_obj, department_code=dept)
+        if employee_no:
+            # WB-100 服务端统一编号：调用方传入的工号不作为分配依据（旧签名只读兼容）
+            audit.warning(
+                "WB-100 服务端统一编号：忽略调用方传入工号 %s（员工 %s），"
+                "一律改由服务端按部门代码自动编号", employee_no, full_name)
+        # WB-037/WB-100：主创建路径一律走工号自动编号（部门代码 + 四位流水号）
+        from apps.identity.employee_number import (
+            DEPARTMENT_CODES, generate_employee_no)
+        dept = (department_code or "").strip().upper()
+        if not dept:
+            candidate = (position_code or "").strip().upper()
+            if candidate in DEPARTMENT_CODES:
+                dept = candidate
+        if not dept:
+            raise EmployeeLifecycleError(
+                "必须指定部门代码（FO/HK/FIN/MG/ENG），"
+                "或岗位代码恰为受控部门代码以便服务端自动编号")
+        employee_no = generate_employee_no(
+            property_obj=property_obj, department_code=dept)
         if PropertyStaffMembership.objects.filter(
                 property=property_obj, employee_no=employee_no).exists():
             raise EmployeeLifecycleError(f"工号 {employee_no} 已存在，不能重复建档")

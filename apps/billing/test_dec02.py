@@ -6,11 +6,14 @@ A1：原负债冻结 + 账务调整独立记录（财务发起/值班经理审�
 B2：异常放行（前台申请/值班经理审批/放行后不建正式负债/待财务核查/
     受控转负债/无需退款关闭/申请人自批拒绝/重复申请拒绝/跨物业隔离）。
 """
+import threading
+import unittest
 from decimal import Decimal
 from datetime import timedelta
 
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.db import connection
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from apps.billing.dec02 import (
@@ -20,6 +23,7 @@ from apps.billing.dec02 import (
     execute_adjustment,
     liability_net_snapshot,
     reject_adjustment,
+    reject_exception_release,
     request_adjustment,
     request_exception_release,
     settle_exception_release,
@@ -83,25 +87,31 @@ class Dec02TestBase(TestCase):
     def setUp(self):
         from apps.billing.models import Folio
         from apps.reservations.models import ReservationRoom, Stay
+        # WB-097 正式语义（DEC-ED-01 §2.1）：退房按实际入住晚数的逐晚快照
+        # 结算，未住晚不计房费。原夹具为"当日入住、住 2 晚、当日退房"，
+        # 在正式语义下同日退房=0 晚=0 房费，负债基数会从 600 变为 1200。
+        # 为保持既有 DEC-02 断言口径（负债 600 = 预付 1200 - 两间各 300
+        # 已履行房费），改为"昨日入住 1 晚 300、今日退房"的已住 1 晚事实
+        # （每间实际结算 300，与旧口径一致）。
+        check_in = timezone.localdate() - timedelta(days=1)
+        check_out = timezone.localdate()
         self.reservation = Reservation.objects.create(
             property=self.prop, guest=self.guest, booking_no="DEC02TEST001",
             status=Reservation.Status.CHECKED_IN,
-            check_in=timezone.localdate(), check_out=timezone.localdate() + timedelta(days=2),
+            check_in=check_in, check_out=check_out,
             room_count=2, total_amount=_money("1200.00"), currency="CNY")
         self.line_a = ReservationRoom.objects.create(
             property=self.prop, reservation=self.reservation,
             room_type_id=self.room_type.pk, rate_plan=self.rate_plan,
-            check_in=timezone.localdate(), check_out=timezone.localdate() + timedelta(days=2),
+            check_in=check_in, check_out=check_out,
             amount=_money("300.00"), nightly_rates=[
-                {"date": str(timezone.localdate()), "price": "150.00"},
-                {"date": str(timezone.localdate() + timedelta(days=1)), "price": "150.00"}])
+                {"date": str(check_in), "price": "300.00"}])
         self.line_b = ReservationRoom.objects.create(
             property=self.prop, reservation=self.reservation,
             room_type_id=self.room_type.pk, rate_plan=self.rate_plan,
-            check_in=timezone.localdate(), check_out=timezone.localdate() + timedelta(days=2),
+            check_in=check_in, check_out=check_out,
             amount=_money("300.00"), nightly_rates=[
-                {"date": str(timezone.localdate()), "price": "150.00"},
-                {"date": str(timezone.localdate() + timedelta(days=1)), "price": "150.00"}])
+                {"date": str(check_in), "price": "300.00"}])
         self.folio = Folio.objects.create(
             property=self.prop, reservation=self.reservation,
             guest=self.guest, currency="CNY")
@@ -604,3 +614,329 @@ class Dec02B2ExceptionReleaseTests(Dec02TestBase):
         release.refresh_from_db()
         self.assertEqual(release.status,
                          CheckoutExceptionRelease.Status.REQUESTED)
+
+    # ------------------------------------------------------------------
+    # WB-094：异常放行对象关联核验
+    # ------------------------------------------------------------------
+    def _make_other_reservation_folio(self, property_obj,
+                                      booking_no="DEC02TEST002",
+                                      currency="CNY"):
+        """构造另一张（物业, 预订, 账单）三元组，供归属核验测试用。"""
+        reservation = Reservation.objects.create(
+            property=property_obj, guest=self.guest, booking_no=booking_no,
+            status=Reservation.Status.CHECKED_IN,
+            check_in=timezone.localdate() - timedelta(days=1),
+            check_out=timezone.localdate(),
+            room_count=1, total_amount=_money("300.00"), currency="CNY")
+        folio = Folio.objects.create(
+            property=property_obj, reservation=reservation,
+            guest=self.guest, currency=currency)
+        return reservation, folio
+
+    def test_b2_request_rejects_cross_reservation_folio(self):
+        """WB-094：账单属于其他预订 → 拒绝发起异常放行。"""
+        self._register_blocked()
+        _, other_folio = self._make_other_reservation_folio(self.prop)
+        with self.assertRaises(ValueError) as ctx:
+            request_exception_release(
+                property_obj=self.prop, reservation=self.reservation,
+                folio=other_folio, amount="600.00",
+                reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+                reason_text="跨预订 folio 必须拒绝",
+                requested_by=self.front, idempotency_key="dec02-rel-wb94a")
+        self.assertIn("账单与预订不一致", str(ctx.exception))
+        self.assertFalse(CheckoutExceptionRelease.objects.filter(
+            idempotency_key="dec02-rel-wb94a").exists())
+
+    def test_b2_request_rejects_cross_property_objects(self):
+        """WB-094：预订或账单属于其他物业 → 拒绝发起异常放行。"""
+        self._register_blocked()
+        other_reservation, other_folio = self._make_other_reservation_folio(
+            self.other_prop, booking_no="DEC02OTHER01")
+        # 预订跨物业（folio 为本物业账单，预订属于其他物业）
+        with self.assertRaises(ValueError) as ctx:
+            request_exception_release(
+                property_obj=self.prop, reservation=other_reservation,
+                folio=self.folio, amount="600.00",
+                reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+                reason_text="预订跨物业必须拒绝",
+                requested_by=self.front, idempotency_key="dec02-rel-wb94b1")
+        self.assertIn("预订不属于当前物业", str(ctx.exception))
+        # 账单跨物业
+        with self.assertRaises(ValueError) as ctx:
+            request_exception_release(
+                property_obj=self.prop, reservation=self.reservation,
+                folio=other_folio, amount="600.00",
+                reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+                reason_text="账单跨物业必须拒绝",
+                requested_by=self.front, idempotency_key="dec02-rel-wb94b2")
+        self.assertIn("账单不属于当前物业", str(ctx.exception))
+        self.assertFalse(CheckoutExceptionRelease.objects.filter(
+            idempotency_key__startswith="dec02-rel-wb94b").exists())
+
+    def test_b2_request_rejects_currency_mismatch_folio(self):
+        """WB-094：账单币种与预订币种不一致 → 拒绝发起异常放行。"""
+        self._register_blocked()
+        # 模拟脏数据：账单币种被改写为 USD（M-04 限一个预订一张 MASTER 账单，
+        # 不能另建异币种账单；ImmutableFinancialFactQuerySet 禁 update，
+        # 测试经原生 QuerySet 绕过，仅用于构造不一致场景）
+        from django.db.models import QuerySet
+        QuerySet(Folio).filter(pk=self.folio.pk).update(currency="USD")
+        mismatched_folio = Folio.objects.get(pk=self.folio.pk)
+        with self.assertRaises(ValueError) as ctx:
+            request_exception_release(
+                property_obj=self.prop, reservation=self.reservation,
+                folio=mismatched_folio, amount="600.00",
+                reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+                reason_text="异币种账单必须拒绝",
+                requested_by=self.front, idempotency_key="dec02-rel-wb94c")
+        self.assertIn("币种", str(ctx.exception))
+        self.assertFalse(CheckoutExceptionRelease.objects.filter(
+            idempotency_key="dec02-rel-wb94c").exists())
+
+    def test_b2_consume_rejects_release_with_mismatched_reservation(self):
+        """WB-094：放行记录关联的预订与账单不一致 → 锁内复核拒绝消费。"""
+        self._register_blocked()
+        release, _ = request_exception_release(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="600.00",
+            reason_code=CheckoutExceptionRelease.ReasonCode.NO_PAYMENT_SOURCE,
+            reason_text="归属复核测试",
+            requested_by=self.front, idempotency_key="dec02-rel-wb94d")
+        approve_exception_release(property_obj=self.prop,
+                                  release_id=release.pk,
+                                  approved_by=self.duty)
+        other_reservation, _ = self._make_other_reservation_folio(
+            self.prop, booking_no="DEC02TEST003")
+        # 直接改写 release.reservation 指向其他预订（模拟历史脏数据；
+        # ImmutableFinancialFactQuerySet 禁 update，测试经原生 QuerySet 绕过）
+        from django.db.models import QuerySet
+        QuerySet(CheckoutExceptionRelease).filter(pk=release.pk).update(
+            reservation=other_reservation)
+        with self.assertRaises(ValueError) as ctx:
+            consume_approved_exception_release(
+                property_obj=self.prop, folio=self.folio, stay=self.stay_b,
+                amount="600.00", actor=self.front, trigger_reason="测试受阻")
+        self.assertIn("归属不一致", str(ctx.exception))
+        release.refresh_from_db()
+        self.assertEqual(release.status,
+                         CheckoutExceptionRelease.Status.APPROVED)
+
+    def test_b2_settle_rejects_release_with_cross_property_folio(self):
+        """WB-094：放行记录关联的账单跨物业 → 锁内复核拒绝结案。"""
+        self._register_blocked()
+        release, _ = request_exception_release(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="600.00",
+            reason_code=CheckoutExceptionRelease.ReasonCode.LEDGER_MISSING,
+            reason_text="结案归属复核测试",
+            requested_by=self.front, idempotency_key="dec02-rel-wb94e")
+        approve_exception_release(property_obj=self.prop,
+                                  release_id=release.pk,
+                                  approved_by=self.duty)
+        check_out_stay(property_obj=self.prop, stay_id=self.stay_b.pk,
+                       checked_out_by=self.front)
+        release.refresh_from_db()
+        self.assertEqual(release.status,
+                         CheckoutExceptionRelease.Status.RELEASED)
+        _, other_folio = self._make_other_reservation_folio(
+            self.other_prop, booking_no="DEC02OTHER02")
+        from django.db.models import QuerySet
+        QuerySet(CheckoutExceptionRelease).filter(pk=release.pk).update(
+            folio=other_folio)
+        with self.assertRaises(ValueError) as ctx:
+            settle_exception_release(
+                property_obj=self.prop, release_id=release.pk,
+                settled_by=self.finance, outcome="CLOSE_NO_REFUND",
+                verify_note="账单跨物业必须拒绝结案")
+        self.assertIn("禁止结案", str(ctx.exception))
+        release.refresh_from_db()
+        self.assertEqual(release.status,
+                         CheckoutExceptionRelease.Status.RELEASED)
+
+    # ------------------------------------------------------------------
+    # WB-112：异常放行申请防并发重复（Folio 行锁 + 幂等键 + 在途检查）
+    # ------------------------------------------------------------------
+    def _make_folio_with_negative_balance(self, booking_no, amount="800.00"):
+        """构造另一张有负余额的（预订, 账单）：预付 amount、无房费凭证。"""
+        reservation, folio = self._make_other_reservation_folio(
+            self.prop, booking_no=booking_no)
+        Payment.objects.create(
+            property=self.prop, reservation=reservation, folio=folio,
+            provider="mock", provider_ref=f"{booking_no}-PREPAID",
+            method="MOCK", amount=_money(amount), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        LedgerEntry.objects.create(
+            property=self.prop, folio=folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+            amount=-_money(amount), currency="CNY",
+            business_date=timezone.localdate(),
+            reference=f"payment:{booking_no}-PREPAID", description="预付")
+        return reservation, folio
+
+    def test_wb112_same_folio_two_keys_second_rejected(self):
+        """WB-112：同 Folio 两次不同幂等键申请 → 第二个被拒（在途唯一）。"""
+        self._register_blocked()
+        request_exception_release(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="600.00",
+            reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+            reason_text="第一笔在途申请（WB-112）",
+            requested_by=self.front, idempotency_key="wb112-key-a")
+        with self.assertRaises(ValueError) as ctx:
+            request_exception_release(
+                property_obj=self.prop, reservation=self.reservation,
+                folio=self.folio, amount="600.00",
+                reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+                reason_text="第二笔同 Folio 申请（WB-112）",
+                requested_by=self.front, idempotency_key="wb112-key-b")
+        self.assertIn("在途", str(ctx.exception))
+        self.assertEqual(CheckoutExceptionRelease.objects.filter(
+            folio=self.folio,
+            status=CheckoutExceptionRelease.Status.REQUESTED).count(), 1)
+
+    def test_wb112_same_key_replay_returns_same_record(self):
+        """WB-112：同幂等键重放返回原记录，不新建申请。"""
+        self._register_blocked()
+        first, created = request_exception_release(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="600.00",
+            reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+            reason_text="幂等重放（WB-112）",
+            requested_by=self.front, idempotency_key="wb112-replay")
+        self.assertTrue(created)
+        replayed, created2 = request_exception_release(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="600.00",
+            reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+            reason_text="幂等重放（WB-112）",
+            requested_by=self.front, idempotency_key="wb112-replay")
+        self.assertFalse(created2)
+        self.assertEqual(replayed.pk, first.pk)
+        self.assertEqual(CheckoutExceptionRelease.objects.filter(
+            folio=self.folio).count(), 1)
+
+    def test_wb112_different_folios_do_not_block_each_other(self):
+        """WB-112：不同 Folio 各自申请互不影响（在途隔离按 Folio 判定）。"""
+        self._register_blocked()
+        release_a, created_a = request_exception_release(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="600.00",
+            reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+            reason_text="Folio A 在途申请",
+            requested_by=self.front, idempotency_key="wb112-folio-a")
+        self.assertTrue(created_a)
+        other_reservation, other_folio = self._make_folio_with_negative_balance(
+            "WB112OTHER1")
+        release_b, created_b = request_exception_release(
+            property_obj=self.prop, reservation=other_reservation,
+            folio=other_folio, amount="500.00",
+            reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+            reason_text="Folio B 独立申请",
+            requested_by=self.front, idempotency_key="wb112-folio-b")
+        self.assertTrue(created_b)
+        self.assertNotEqual(release_a.folio_id, release_b.folio_id)
+        self.assertEqual(CheckoutExceptionRelease.objects.filter(
+            status=CheckoutExceptionRelease.Status.REQUESTED).count(), 2)
+
+    def test_wb112_rejected_release_allows_new_request(self):
+        """WB-112：已驳回（终态）后可再次申请（换新幂等键），既有语义确认。"""
+        self._register_blocked()
+        first, _ = request_exception_release(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="600.00",
+            reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+            reason_text="将被驳回的申请",
+            requested_by=self.front, idempotency_key="wb112-reject-1")
+        reject_exception_release(
+            property_obj=self.prop, release_id=first.pk,
+            rejected_by=self.duty, reason="材料不足驳回")
+        second, created = request_exception_release(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="600.00",
+            reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+            reason_text="驳回后重新申请",
+            requested_by=self.front, idempotency_key="wb112-reject-1")
+        self.assertTrue(created)
+        self.assertNotEqual(second.pk, first.pk)
+        self.assertEqual(second.status,
+                         CheckoutExceptionRelease.Status.REQUESTED)
+        first.refresh_from_db()
+        self.assertEqual(first.status,
+                         CheckoutExceptionRelease.Status.REJECTED)
+
+
+@override_settings(DEBUG=True, DJANGO_ENV="test")
+@unittest.skipUnless(
+    connection.vendor == "mysql",
+    "WB-112 并发申请依赖 MySQL Folio 行锁（select_for_update 在 SQLite 下为 "
+    "no-op），SQLite 测试环境跳过。")
+class WB112ExceptionReleaseConcurrencyTests(TransactionTestCase):
+    """WB-112 可选并发用例：双线程同 Folio 申请 → 最多一笔在途。"""
+
+    def setUp(self):
+        from apps.guests.models import Guest
+        self.prop = Property.objects.create(
+            code="WB112CC", name="放行并发测试酒店")
+        self.user = User.objects.create_user(username="wb112cc-front")
+        self.guest = Guest.objects.create(
+            property=self.prop, full_name="并发放行客人")
+        self.reservation = Reservation.objects.create(
+            property=self.prop, guest=self.guest,
+            booking_no="WB112CC001",
+            status=Reservation.Status.CHECKED_IN,
+            check_in=timezone.localdate() - timedelta(days=1),
+            check_out=timezone.localdate(),
+            room_count=1, total_amount=_money("600.00"), currency="CNY")
+        self.folio = Folio.objects.create(
+            property=self.prop, reservation=self.reservation,
+            guest=self.guest, currency="CNY")
+        Payment.objects.create(
+            property=self.prop, reservation=self.reservation,
+            folio=self.folio, provider="mock",
+            provider_ref="WB112CC-PREPAID", method="MOCK",
+            amount=_money("1200.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        LedgerEntry.objects.create(
+            property=self.prop, folio=self.folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+            amount=-_money("1200.00"), currency="CNY",
+            business_date=timezone.localdate(),
+            reference="payment:WB112CC-PREPAID", description="预付")
+
+    def test_two_threads_same_folio_leave_single_active_request(self):
+        from django.db import connections as db_connections
+
+        results = {}
+
+        def _request(key):
+            try:
+                release, created = request_exception_release(
+                    property_obj=self.prop, reservation=self.reservation,
+                    folio=self.folio, amount="600.00",
+                    reason_code=CheckoutExceptionRelease.ReasonCode.OTHER,
+                    reason_text=f"并发申请 {key}",
+                    requested_by=self.user, idempotency_key=key)
+                results[key] = created
+            except ValueError as exc:
+                results[key] = f"rejected:{exc}"
+            finally:
+                db_connections["default"].close()
+
+        threads = [
+            threading.Thread(target=_request, args=(f"wb112cc-{i}",))
+            for i in range(2)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=60)
+            self.assertFalse(thread.is_alive(), "并发申请线程超时未结束")
+
+        created_flags = [v for v in results.values() if v is True]
+        self.assertEqual(len(created_flags), 1, f"并发结果异常：{results}")
+        self.assertEqual(CheckoutExceptionRelease.objects.filter(
+            folio=self.folio).count(), 1)
+        self.assertEqual(CheckoutExceptionRelease.objects.filter(
+            folio=self.folio,
+            status=CheckoutExceptionRelease.Status.REQUESTED).count(), 1)

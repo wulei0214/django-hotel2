@@ -1,0 +1,147 @@
+﻿Performing system checks...
+
+System check identified no issues (0 silenced).
+
+You have 7 unapplied migration(s). Your project may not work properly until you apply the migrations for app(s): billing, guests, identity, reservations.
+Run 'python manage.py migrate' to apply them.
+November 12, 2026 - 16:34:20
+Django version 4.1.13, using settings 'hotel.settings'
+Starting development server at http://127.0.0.1:8765/
+Quit the server with CTRL-BREAK.
+python.exe : [12/Nov/2026 16:35:05] "GET /admin/login/ HTTP/1.1" 200 4000
+所在位置 行:513 字符: 1
++ & .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8765 --nor ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([12/Nov/2026 16...P/1.1" 200 4000:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[12/Nov/2026 16:35:05] "GET / HTTP/1.1" 302 0
+[12/Nov/2026 16:35:05] "GET /api/v1/openapi.json HTTP/1.1" 200 455106
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "D:\Python39\lib\threading.py", line 908, in _bootstrap
+    self._bootstrap_inner()
+  File "D:\Python39\lib\threading.py", line 950, in _bootstrap_inner
+    self.run()
+  File "D:\Python39\lib\threading.py", line 888, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\Python39\lib\socketserver.py", line 650, in process_request_thread
+    self.finish_request(request, client_address)
+  File "D:\Python39\lib\socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "D:\Python39\lib\socketserver.py", line 720, in __init__
+    self.handle()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\servers\basehttp.py", line 204, in handle
+    self.handle_one_request()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\servers\basehttp.py", line 227, in handle_one_reque
+st
+    handler.run(self.server.get_app())
+  File "D:\Python39\lib\wsgiref\handlers.py", line 137, in run
+    self.result = application(self.environ, self.start_response)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\contrib\staticfiles\handlers.py", line 80, in __call__
+    return self.application(environ, start_response)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\wsgi.py", line 131, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 140, in get_response
+    response = self._middleware_chain(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\whitenoise\middleware.py", line 123, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\apps\identity\middleware.py", line 85, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\hotelapp\audit_middleware.py", line 13, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\views\decorators\http.py", line 35, in inner
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: 'Method Not Allowed (%s): %s'
+Arguments: ('GET', '/api/v1/notifications/refresh')
+[12/Nov/2026 16:35:05] "GET /api/v1/notifications/refresh HTTP/1.1" 405 0
+[12/Nov/2026 16:35:05] "GET /static/ HTTP/1.1" 404 1755
+[12/Nov/2026 16:35:21] "GET / HTTP/1.1" 302 0
+[12/Nov/2026 16:35:21] "GET /admin/login/ HTTP/1.1" 200 4000
+[12/Nov/2026 16:35:21] "GET /api/v1/openapi.json HTTP/1.1" 200 455106
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "D:\Python39\lib\threading.py", line 908, in _bootstrap
+    self._bootstrap_inner()
+  File "D:\Python39\lib\threading.py", line 950, in _bootstrap_inner
+    self.run()
+  File "D:\Python39\lib\threading.py", line 888, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\Python39\lib\socketserver.py", line 650, in process_request_thread
+    self.finish_request(request, client_address)
+  File "D:\Python39\lib\socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "D:\Python39\lib\socketserver.py", line 720, in __init__
+    self.handle()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\servers\basehttp.py", line 202, in handle
+    self.handle_one_request()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\servers\basehttp.py", line 227, in handle_one_reque
+st
+    handler.run(self.server.get_app())
+  File "D:\Python39\lib\wsgiref\handlers.py", line 137, in run
+    self.result = application(self.environ, self.start_response)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\contrib\staticfiles\handlers.py", line 80, in __call__
+    return self.application(environ, start_response)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\wsgi.py", line 131, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Unauthorized', '/api/v1/billing/shifts')
+[12/Nov/2026 16:35:21] "GET /api/v1/billing/shifts HTTP/1.1" 401 249

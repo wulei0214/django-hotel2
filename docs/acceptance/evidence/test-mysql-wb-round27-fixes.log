@@ -1,0 +1,1696 @@
+﻿Found 166 test(s).
+python.exe : Creating test database for alias 'default'...
+所在位置 行:521 字符: 1
++ & .\.venv\Scripts\python.exe manage.py test @labels --noinput -v 1 2> ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Creating test d...as 'default'...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+System check identified no issues (0 silenced).
+...................................................E............E..E...................................................
+.........--- Logging error ---
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\contrib\admin\options.py", line 686, in wrapper
+    return self.admin_site.admin_view(view)(*args, **kwargs)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\decorators.py", line 134, in _wrapped_view
+    response = view_func(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\views\decorators\cache.py", line 62, in _wrapped_view_fu
+nc
+    response = view_func(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\contrib\admin\sites.py", line 242, in inner
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\contrib\admin\options.py", line 1894, in change_view
+    return self.changeform_view(request, object_id, form_url, extra_context)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\decorators.py", line 46, in _wrapper
+    return bound_method(*args, **kwargs)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\decorators.py", line 134, in _wrapped_view
+    response = view_func(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\contrib\admin\options.py", line 1751, in changeform_view
+    return self._changeform_view(request, object_id, form_url, extra_context)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\contrib\admin\options.py", line 1778, in _changeform_vie
+w
+    raise PermissionDenied
+django.core.exceptions.PermissionDenied
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\identity\tests.py", line 384, in test_identity_admin_disables_direct_add_change_an
+d_delete
+    denied_post = self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 140, in get_response
+    response = self._middleware_chain(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\whitenoise\middleware.py", line 123, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\apps\identity\middleware.py", line 39, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\hotelapp\audit_middleware.py", line 13, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 58, in inner
+    response = response_for_exception(request, exc)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 77, in response_for_ex
+ception
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: 'Forbidden (Permission denied): %s'
+Arguments: ('/admin/identity/staffroleassignment/24/change/',)
+........--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1163, in test_cancel_checked_in_reservation_conflicts
+    response = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/reservations/RBEDCE3F7B433835EDD2C/cancel')
+..--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1340, in test_express_checkout_retired_and_pms2_check
+out_settles_folio
+    self._collect_payment(booking_no, "600.00", "e2e-pay-co")
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 310, in _collect_payment
+    return self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/front-desk/reservations/RB1529A6C791DE074E0E0/payments')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1342, in test_express_checkout_retired_and_pms2_check
+out_settles_folio
+    legacy = self._post_json("/express_checkout/", {"id": stay_id})
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Gone', '/express_checkout/')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1271, in test_extend_stay_appends_amount_and_inventor
+y_and_rejects_earlier_date
+    earlier = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/front-desk/stays/5/extend')
+..--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1225, in test_no_show_rejected_for_pending_and_checke
+d_in_lines
+    pending_resp = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/front-desk/reservation-rooms/46/no-show')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1233, in test_no_show_rejected_for_pending_and_checke
+d_in_lines
+    checked_in_resp = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/front-desk/reservation-rooms/47/no-show')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1379, in test_uncheckout_gap_no_pms2_api_and_legacy_r
+oute_retired
+    self._collect_payment(booking_no, "600.00", "e2e-pay-uc")
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 310, in _collect_payment
+    return self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/front-desk/reservations/R9668CEC8792BDD047A22/payments')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1385, in test_uncheckout_gap_no_pms2_api_and_legacy_r
+oute_retired
+    legacy = self._post_json("/uncheckout/", {"id": stay_id})
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Gone', '/uncheckout/')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1389, in test_uncheckout_gap_no_pms2_api_and_legacy_r
+oute_retired
+    missing = self._post_json(f"/api/v1/front-desk/stays/{stay_id}/uncheckout")
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Not Found', '/api/v1/front-desk/stays/7/uncheckout')
+...--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1034, in test_break_glass_request_execute_review_full
+_lifecycle
+    wrong_password = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/night-audit/business-dates/1/break-glass')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1062, in test_break_glass_request_execute_review_full
+_lifecycle
+    wrong_actor = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/night-audit/business-dates/1/break-glass/1/execute')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1084, in test_break_glass_request_execute_review_full
+_lifecycle
+    self_review = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/night-audit/break-glass/1/review')
+..--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 1130, in test_new_check_in_after_night_audit_is_block
+ed
+    blocked = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/front-desk/reservation-rooms/54/check-in')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 890, in test_night_audit_endpoints_require_night_audi
+t_execute_permission
+    preview = self.client.get("/api/v1/night-audit/preview")
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 836, in get
+    response = super().get(path, data=data, secure=secure, **extra)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 424, in get
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Forbidden', '/api/v1/night-audit/preview')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 894, in test_night_audit_endpoints_require_night_audi
+t_execute_permission
+    run = self._run_night_audit()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 880, in _run_night_audit
+    return self._post_json("/api/v1/night-audit/run", payload)
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Forbidden', '/api/v1/night-audit/run')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 967, in test_reopen_requires_reason_then_owner_approv
+al_and_self_approval_denied
+    no_reason = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/night-audit/business-dates/4/reopen-request')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 989, in test_reopen_requires_reason_then_owner_approv
+al_and_self_approval_denied
+    self_approve = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/night-audit/business-dates/4/approvals/31/approve')
+..--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 583, in test_receive_deposit_records_deposit_semantic
+s_and_caps_at_total
+    over = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/front-desk/reservations/R15054FCC1714FE88DCB2/deposits')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 787, in test_refund_approve_denied_for_finance_access
+_without_approve_permission
+    response = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Forbidden', '/api/v1/front-desk/refunds/29/approve')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 757, in test_refund_request_over_payment_amount_confl
+icts_without_side_effects
+    response = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Conflict', '/api/v1/front-desk/payments/68/refunds')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 631, in test_refund_request_pends_for_approval_then_o
+wner_completes
+    denied = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Forbidden', '/api/v1/front-desk/refunds/30/approve')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\request.log' -> 'F:\\D
+esktop\\django-hotel\\logs\\request.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 666, in test_refund_request_pends_for_approval_then_o
+wner_completes
+    insufficient_cash = self._post_json(
+  File "F:\Desktop\django-hotel\apps\api\test_e2e_flows.py", line 183, in _post_json
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 143, in get_response
+    log_response(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\log.py", line 241, in log_response
+    getattr(logger, level)(
+Message: '%s: %s'
+Arguments: ('Bad Request', '/api/v1/billing/refunds/30/execute')
+..Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/billing/shifts/open
+.Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/notifications/refresh
+.........
+======================================================================
+ERROR: test_execution_reference_uniqueness_is_database_enforced (apps.billing.test_whitebox_services.RefundExecutionRef
+erenceUniquenessTests)
+缁曡繃鏈嶅姟灞傘€佺洿鎺ュ啓妯″瀷灞備粛蹇呴』琚暟鎹簱鍞竴閿嫤鎴紙鍙屽簱蹇呰窇锛夈€?
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\billing\test_whitebox_services.py", line 850, in test_execution_reference_uniquene
+ss_is_database_enforced
+    second.save()
+  File "F:\Desktop\django-hotel\apps\billing\models.py", line 727, in save
+    raise ValidationError("閫€娆惧鎵?鎵ц浜嬪疄涓嶅彲瑕嗙洊鎴栨敼鍐欍€?)
+django.core.exceptions.ValidationError: ['閫€娆惧鎵?鎵ц浜嬪疄涓嶅彲瑕嗙洊鎴栨敼鍐欍€?]
+
+======================================================================
+ERROR: test_confirm_inventory_failure_creates_compensation_task (apps.billing.test_payment_dec02.PaymentIntentTests)
+WB-073锛氬簱瀛樼‘璁ゅけ璐ユ椂鍒涘缓鎸佷箙鍖?HOLD_COORDINATION 琛ュ伩浠诲姟銆?
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\billing\test_payment_dec02.py", line 440, in test_confirm_inventory_failure_create
+s_compensation_task
+    confirmed, changed = confirm_intent_success(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\billing\payment_intents.py", line 337, in confirm_intent_success
+    raise ValueError(
+ValueError: 鏀舵浜嬪疄鐨勬笭閬撴祦姘村彿涓庢笭閬撲氦鏄撳彿涓嶄竴鑷达紝涓嶈兘纭鏀粯鎴愬姛銆?
+
+======================================================================
+ERROR: test_confirm_success_payment_ownership_validated (apps.billing.test_payment_dec02.PaymentIntentTests)
+WB-072锛氱‘璁ゅ墠瀵规敹娆句簨瀹炲仛瀹屾暣褰掑睘/閲戦/甯佺/鐘舵€?鍗犵敤鏍￠獙銆?
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\billing\test_payment_dec02.py", line 289, in test_confirm_success_payment_ownershi
+p_validated
+    confirmed_b, changed_b = confirm_intent_success(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\billing\payment_intents.py", line 337, in confirm_intent_success
+    raise ValueError(
+ValueError: 鏀舵浜嬪疄鐨勬笭閬撴祦姘村彿涓庢笭閬撲氦鏄撳彿涓嶄竴鑷达紝涓嶈兘纭鏀粯鎴愬姛銆?
+
+----------------------------------------------------------------------
+Ran 166 tests in 32.579s
+
+FAILED (errors=3)
+Destroying test database for alias 'default'...
+

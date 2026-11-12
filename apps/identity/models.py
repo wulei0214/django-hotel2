@@ -97,6 +97,14 @@ class PropertyStaffMembership(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    # WB-EMP-01 / DEC-EMP-01：MySQL 8 不支持条件唯一约束（models.W036），
+    # 因此改用「可空唯一键」在数据库层强制「同一物业同一员工同时点最多一条
+    # ACTIVE 任职」。仅 ACTIVE 行写入 {property_id}:{staff_profile_id}，
+    # SUSPENDED/TERMINATED 行为 NULL（MySQL 唯一索引允许多个 NULL）。
+    # 与 apps/core/migrations/0006、billing/0006 的治理方案保持一致。
+    active_membership_key = models.CharField(
+        max_length=64, null=True, blank=True, unique=True, editable=False,
+        verbose_name="有效任职唯一键")
 
     class Meta:
         ordering = ("property_id", "employee_no")
@@ -104,13 +112,6 @@ class PropertyStaffMembership(models.Model):
             models.UniqueConstraint(
                 fields=("property", "employee_no"),
                 name="uq_membership_property_employee_no",
-            ),
-            # DEC-EMP-01：同一员工同一物业最多一条 ACTIVE 任职（条件唯一约束）。
-            # 离职（TERMINATED/SUSPENDED）后可创建新任职记录，历史保留不覆盖。
-            models.UniqueConstraint(
-                fields=("property", "staff_profile"),
-                condition=Q(status="ACTIVE"),
-                name="uq_membership_property_staff_active",
             ),
             models.CheckConstraint(
                 check=Q(ended_at__isnull=True) | Q(ended_at__gte=F("started_at")),
@@ -120,8 +121,66 @@ class PropertyStaffMembership(models.Model):
         verbose_name = "员工酒店任职关系"
         verbose_name_plural = "员工酒店任职关系"
 
+    def save(self, *args, **kwargs):
+        """在模型层统一维护可空唯一键，任何 ORM 写入路径都无法绕过。
+
+        update_fields 由调用方指定时必须同步并入本字段，否则状态由
+        ACTIVE 改为非 ACTIVE（或反向）时唯一键会残留在旧值上。
+        """
+        if (self.status == self.Status.ACTIVE
+                and self.property_id and self.staff_profile_id):
+            self.active_membership_key = (
+                f"{self.property_id}:{self.staff_profile_id}")
+        else:
+            self.active_membership_key = None
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {
+                "active_membership_key"}
+        return super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.property.code} / {self.employee_no} / {self.staff_profile.full_name}"
+
+
+class EmployeeNumberCounter(models.Model):
+    """WB-101/DEC-EMP-02：员工工号流水号计数器（每物业每部门一行）。
+
+    generate_employee_no() 在事务内对本行 select_for_update 行锁后读取并
+    递增 next_seq，与 Membership 创建同事务提交（失败即回滚，编号不消耗）；
+    并发分配由行锁串行化，替代旧"按已有工号前缀 MAX+1"查询。
+    离职工号不回收（DEC-EMP-01）：计数器只增不减。
+    """
+
+    property = models.ForeignKey(
+        "core.Property",
+        on_delete=models.PROTECT,
+        related_name="employee_number_counters",
+        verbose_name="物业",
+    )
+    department_code = models.CharField(
+        max_length=8, verbose_name="部门代码",
+        help_text="受控部门代码（FO/HK/FIN/MG/ENG）；工号前缀即该代码",
+    )
+    next_seq = models.PositiveIntegerField(
+        default=1, verbose_name="下一个流水号",
+        help_text="行锁保护下递增；生成工号为该值，落库后 +1",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("property", "department_code"),
+                name="uq_emp_no_counter_property_department",
+            ),
+        ]
+        verbose_name = "员工工号计数器"
+        verbose_name_plural = "员工工号计数器"
+
+    def __str__(self):
+        return f"{self.property.code} / {self.department_code} 下一个 {self.next_seq:04d}"
 
 
 class StaffRoleAssignment(models.Model):

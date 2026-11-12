@@ -4228,7 +4228,7 @@
           "前台接待"
         ],
         "summary": "收取押金",
-        "description": "Idempotency-Key 必填（1-64 字符）；仅已确认/在住预订可收押金。\n\n权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "description": "Idempotency-Key 必填（1-64 字符）；待支付/已确认/在住预订均可收押金，PENDING 订单押金登记成功即确认订单（押金即确认）。\n\n权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_front_desk_reservations_booking_no_deposits",
         "responses": {
           "201": {
@@ -14864,7 +14864,7 @@
             "name": "status",
             "in": "query",
             "required": false,
-            "description": "班次状态筛选 OPEN/CLOSED/RECONCILED。",
+            "description": "班次状态筛选 OPEN/CLOSED。",
             "schema": {
               "type": "string"
             }

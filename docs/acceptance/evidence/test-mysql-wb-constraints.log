@@ -1,0 +1,28 @@
+﻿Found 41 test(s).
+python.exe : Creating test database for alias 'default'...
+所在位置 行:520 字符: 1
++ & .\.venv\Scripts\python.exe manage.py test @labels --noinput -v 1 2> ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Creating test d...as 'default'...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+System check identified no issues (0 silenced).
+...E.....................................
+======================================================================
+ERROR: test_execution_reference_uniqueness_is_database_enforced (apps.billing.test_whitebox_services.RefundExecutionRef
+erenceUniquenessTests)
+缁曡繃鏈嶅姟灞傘€佺洿鎺ュ啓妯″瀷灞備粛蹇呴』琚暟鎹簱鍞竴閿嫤鎴紙鍙屽簱蹇呰窇锛夈€?
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\billing\test_whitebox_services.py", line 831, in test_execution_reference_uniquene
+ss_is_database_enforced
+    executed_first.execution_reference_key,
+AttributeError: 'tuple' object has no attribute 'execution_reference_key'
+
+----------------------------------------------------------------------
+Ran 41 tests in 5.506s
+
+FAILED (errors=1)
+Destroying test database for alias 'default'...
+

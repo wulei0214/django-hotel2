@@ -514,6 +514,52 @@ def _group_reservation_room_quantities(reservation):
     return quantities
 
 
+def sync_inventory_hold_details(*, property_obj, lines, target_status,
+                                only_dates=None, expires_at=None):
+    """RSV-01：库存冻结明细与 held/sold 计数变更必须在同一事务内落库。
+
+    ``InventoryHold`` 是「这一间被哪张订单冻结」的逐日逐单可追溯事实。
+    此前 hold/confirm/release 只维护 ``RoomTypeInventory`` 计数，明细表生产
+    零写入；而库存对账把明细行数当作 held 的真值（恒为 0），已批准的修复
+    会执行 ``row.held = 0`` 把真实冻结清零，造成超卖窗口与原客支付回调失败。
+
+    本函数补齐明细写入，并提供幂等状态迁移：
+      * HELD      预订创建、冻结房量时；
+      * CONFIRMED 库存确认（held→sold）时；
+      * RELEASED  取消/过期释放、No-Show、提前离店释放时。
+
+    ``only_dates`` 用于部分释放（只处理指定住宿日），其余日期保持原状态。
+    """
+    from apps.reservations.models import InventoryHold
+
+    released = target_status == InventoryHold.HoldStatus.RELEASED
+    now = timezone.now()
+    for line in lines:
+        for stay_date in stay_dates(line.check_in, line.check_out):
+            if only_dates is not None and stay_date not in only_dates:
+                continue
+            hold = (InventoryHold.objects
+                    .filter(property=property_obj,
+                            room_type_id=line.room_type_id,
+                            stay_date=stay_date, reservation_room=line)
+                    .order_by("pk").first())
+            if released:
+                if hold is not None and hold.status != target_status:
+                    hold.status = target_status
+                    hold.released_at = now
+                    # save() 会自动同步 active_hold_key（RELEASED → None）。
+                    hold.save(update_fields=("status", "released_at"))
+                continue
+            if hold is None:
+                InventoryHold.objects.create(
+                    property=property_obj, room_type_id=line.room_type_id,
+                    stay_date=stay_date, reservation_room=line,
+                    quantity=1, status=target_status, expires_at=expires_at)
+            elif hold.status != target_status:
+                hold.status = target_status
+                hold.save(update_fields=("status",))
+
+
 @transaction.atomic
 def hold_inventory_for_reservation(reservation):
     """在同一事务中锁定每晚库存并增加 held。"""
@@ -542,8 +588,15 @@ def hold_inventory_for_reservation(reservation):
             row.version += 1
             row.save(update_fields=("held", "version", "updated_at"))
 
+    # RSV-01：冻结明细与计数同事务落库，使对账有独立可重建的真值来源。
+    from apps.reservations.models import InventoryHold
+    sync_inventory_hold_details(
+        property_obj=reservation.property,
+        lines=list(reservation.reservation_rooms.all()),
+        target_status=InventoryHold.HoldStatus.HELD,
+        expires_at=getattr(reservation, "expires_at", None))
 
-@transaction.atomic
+
 @transaction.atomic
 def confirm_inventory_for_reservation(reservation):
     """幂等确认库存：只允许 PENDING -> CONFIRMED 路径消耗 Hold。
@@ -588,6 +641,13 @@ def confirm_inventory_for_reservation(reservation):
             row.sold += quantity
             row.version += 1
             row.save(update_fields=("held", "sold", "version", "updated_at"))
+
+    # RSV-01：冻结明细同步转 CONFIRMED（不再计入 held；sold 由明细行重算）。
+    from apps.reservations.models import InventoryHold
+    sync_inventory_hold_details(
+        property_obj=reservation.property,
+        lines=list(reservation.reservation_rooms.all()),
+        target_status=InventoryHold.HoldStatus.CONFIRMED)
     return True
 
 
@@ -618,6 +678,11 @@ def release_inventory_hold(reservation):
             row.version += 1
             row.save(update_fields=("held", "version", "updated_at"))
 
+    from apps.reservations.models import InventoryHold
+    sync_inventory_hold_details(
+        property_obj=reservation.property,
+        lines=list(reservation.reservation_rooms.all()),
+        target_status=InventoryHold.HoldStatus.RELEASED)
 
 
 @transaction.atomic
@@ -643,6 +708,12 @@ def release_sold_inventory_for_room_line(line, *, from_date):
         row.sold -= 1
         row.version += 1
         row.save(update_fields=("sold", "version", "updated_at"))
+
+    from apps.reservations.models import InventoryHold
+    sync_inventory_hold_details(
+        property_obj=line.property, lines=[line],
+        target_status=InventoryHold.HoldStatus.RELEASED,
+        only_dates=set(dates))
     return len(rows)
 
 

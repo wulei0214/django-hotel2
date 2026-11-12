@@ -318,6 +318,13 @@ def payment_intent_create(request):
         token = str(body.get("token") or "").strip()
     except Exception:
         return JsonResponse({"error": "请求体必须是有效 JSON。"}, status=400)
+    # §6.3 支付意图限流：IP 10/5min，booking 5/5min（fail-closed）
+    # SEC-01：限流必须先于 token 校验。此前无效 token 在限流前直接 404，
+    # 从未调用 check（计数在 check 内自增），导致无效 token 请求完全绕过
+    # public.payment_intent 限流；与 reservation_detail / cancel 的顺序一致。
+    from apps.core import rate_limit
+    if not rate_limit.check(request, "public.payment_intent", booking_no=booking_no):
+        return _throttle_deny(request, "public.payment_intent")
     # P0-08：订单访问一律凭 Booking Access Token；phone 不再作为凭据
     reservation = BookingAccessToken.validate(booking_no, token)
     if reservation is None or reservation.property_id != property_obj.pk:
@@ -326,10 +333,6 @@ def payment_intent_create(request):
             entity_id=booking_no[:32], reason="payment_intent_token_invalid",
             request=request)
         return JsonResponse({"error": "预订编号或访问令牌不正确。"}, status=404)
-    # §6.3 支付意图限流：IP 10/5min，booking 5/5min（fail-closed）
-    from apps.core import rate_limit
-    if not rate_limit.check(request, "public.payment_intent", booking_no=booking_no):
-        return _throttle_deny(request, "public.payment_intent")
     try:
         # WB-088：旧 Payment 创建保留的同时，同事务创建配套 PaymentIntent；
         # 幂等键取请求 Idempotency-Key，缺省回落渠道流水号 provider_ref。

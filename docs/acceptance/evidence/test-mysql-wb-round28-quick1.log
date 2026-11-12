@@ -1,0 +1,1173 @@
+﻿Found 30 test(s).
+python.exe : Creating test database for alias 'default'...
+所在位置 行:516 字符: 1
++ & .\.venv\Scripts\python.exe manage.py test apps.inventory.test_recon ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Creating test d...as 'default'...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+System check identified no issues (0 silenced).
+.........--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 98, in test_check_out_settles_master
+_folio
+    assign_room(property_obj=self.property, reservation_room_id=line.pk,
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 225, in assign_room
+    audit.info(
+Message: '鍓嶅彴鎺掓埧 user=%s booking=%s line=%s room=%s'
+Arguments: ('wbr-operator', 'WBRCO0001', 6, 'WBR-8101')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 100, in test_check_out_settles_maste
+r_folio
+    stay, created = check_in_stay(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 327, in check_in_stay
+    audit.info(
+Message: '鍓嶅彴鍔炵悊鍏ヤ綇 user=%s booking=%s stay=%s room=%s'
+Arguments: ('wbr-operator', 'WBRCO0001', 1, 'WBR-8101')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 105, in test_check_out_settles_maste
+r_folio
+    stay, checkout_created = check_out_stay(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 625, in check_out_stay
+    audit.info(
+Message: '鍓嶅彴鍔炵悊閫€鎴?user=%s booking=%s stay=%s room=%s'
+Arguments: ('wbr-operator', 'WBRCO0001', 1, 'WBR-8101')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 337, in test_checkout_with_nightly_r
+ates_snapshot_settles_stayed_nights
+    assign_room(property_obj=self.property, reservation_room_id=line.pk,
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 225, in assign_room
+    audit.info(
+Message: '鍓嶅彴鎺掓埧 user=%s booking=%s line=%s room=%s'
+Arguments: ('wbr-operator', 'WBRCO0003', 7, 'WBR-8101')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 339, in test_checkout_with_nightly_r
+ates_snapshot_settles_stayed_nights
+    stay, _ = check_in_stay(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 327, in check_in_stay
+    audit.info(
+Message: '鍓嶅彴鍔炵悊鍏ヤ綇 user=%s booking=%s stay=%s room=%s'
+Arguments: ('wbr-operator', 'WBRCO0003', 2, 'WBR-8101')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 348, in test_checkout_with_nightly_r
+ates_snapshot_settles_stayed_nights
+    checked_out, changed = check_out_stay(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 625, in check_out_stay
+    audit.info(
+Message: '鍓嶅彴鍔炵悊閫€鎴?user=%s booking=%s stay=%s room=%s'
+Arguments: ('wbr-operator', 'WBRCO0003', 2, 'WBR-8101')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 311, in test_checkout_without_nightl
+y_rates_snapshot_is_blocked
+    assign_room(property_obj=self.property, reservation_room_id=line.pk,
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 225, in assign_room
+    audit.info(
+Message: '鍓嶅彴鎺掓埧 user=%s booking=%s line=%s room=%s'
+Arguments: ('wbr-operator', 'WBRCO0002', 8, 'WBR-8101')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 313, in test_checkout_without_nightl
+y_rates_snapshot_is_blocked
+    stay, created = check_in_stay(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 327, in check_in_stay
+    audit.info(
+Message: '鍓嶅彴鍔炵悊鍏ヤ綇 user=%s booking=%s stay=%s room=%s'
+Arguments: ('wbr-operator', 'WBRCO0002', 3, 'WBR-8101')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 422, in test_confirmed_order_settles
+_by_snapshot_after_policy_change
+    assign_room(property_obj=self.property, reservation_room_id=line.pk,
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 225, in assign_room
+    audit.info(
+Message: '鍓嶅彴鎺掓埧 user=%s booking=%s line=%s room=%s'
+Arguments: ('wbr-operator', 'R7F6929EDE48DAAC31F75', 9, 'WBR-8101')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 424, in test_confirmed_order_settles
+_by_snapshot_after_policy_change
+    stay, _ = check_in_stay(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 327, in check_in_stay
+    audit.info(
+Message: '鍓嶅彴鍔炵悊鍏ヤ綇 user=%s booking=%s stay=%s room=%s'
+Arguments: ('wbr-operator', 'R7F6929EDE48DAAC31F75', 4, 'WBR-8101')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 429, in test_confirmed_order_settles
+_by_snapshot_after_policy_change
+    checked_out, changed = check_out_stay(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 625, in check_out_stay
+    audit.info(
+Message: '鍓嶅彴鍔炵悊閫€鎴?user=%s booking=%s stay=%s room=%s'
+Arguments: ('wbr-operator', 'R7F6929EDE48DAAC31F75', 4, 'WBR-8101')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 477, in test_new_order_uses_current_
+policy_after_change
+    assign_room(property_obj=self.property, reservation_room_id=new_line.pk,
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 225, in assign_room
+    audit.info(
+Message: '鍓嶅彴鎺掓埧 user=%s booking=%s line=%s room=%s'
+Arguments: ('wbr-operator', 'R6F29B4F1AE0C2616093D', 11, 'WBR-8101')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 479, in test_new_order_uses_current_
+policy_after_change
+    stay, _ = check_in_stay(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 327, in check_in_stay
+    audit.info(
+Message: '鍓嶅彴鍔炵悊鍏ヤ綇 user=%s booking=%s stay=%s room=%s'
+Arguments: ('wbr-operator', 'R6F29B4F1AE0C2616093D', 5, 'WBR-8101')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 482, in test_new_order_uses_current_
+policy_after_change
+    checked_out, changed = check_out_stay(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 625, in check_out_stay
+    audit.info(
+Message: '鍓嶅彴鍔炵悊閫€鎴?user=%s booking=%s stay=%s room=%s'
+Arguments: ('wbr-operator', 'R6F29B4F1AE0C2616093D', 5, 'WBR-8101')
+......--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 236, in test_same_idempotency_key_re
+plays_without_duplicate_records
+    first = self._walk_in(key)
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 228, in _walk_in
+    return create_walk_in(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\walkin.py", line 234, in create_walk_in
+    assign_room(property_obj=property_obj, reservation_room_id=line.pk,
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 225, in assign_room
+    audit.info(
+Message: '鍓嶅彴鎺掓埧 user=%s booking=%s line=%s room=%s'
+Arguments: ('wbr-operator', 'RF450FD3DFEB10CD16952', 16, 'WBR-8101')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 236, in test_same_idempotency_key_re
+plays_without_duplicate_records
+    first = self._walk_in(key)
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 228, in _walk_in
+    return create_walk_in(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\walkin.py", line 236, in create_walk_in
+    stay, _ = check_in_stay(property_obj=property_obj,
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 327, in check_in_stay
+    audit.info(
+Message: '鍓嶅彴鍔炵悊鍏ヤ綇 user=%s booking=%s stay=%s room=%s'
+Arguments: ('wbr-operator', 'RF450FD3DFEB10CD16952', 9, 'WBR-8101')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 267, in test_walkin_confirmation_wri
+tes_policy_snapshot
+    result = self._walk_in("walkin-wb098-snap-001", phone="13900000002")
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 228, in _walk_in
+    return create_walk_in(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\walkin.py", line 234, in create_walk_in
+    assign_room(property_obj=property_obj, reservation_room_id=line.pk,
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 225, in assign_room
+    audit.info(
+Message: '鍓嶅彴鎺掓埧 user=%s booking=%s line=%s room=%s'
+Arguments: ('wbr-operator', 'RC271A6FFD8C0B7311100', 17, 'WBR-8101')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 267, in test_walkin_confirmation_wri
+tes_policy_snapshot
+    result = self._walk_in("walkin-wb098-snap-001", phone="13900000002")
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 228, in _walk_in
+    return create_walk_in(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\walkin.py", line 236, in create_walk_in
+    stay, _ = check_in_stay(property_obj=property_obj,
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 327, in check_in_stay
+    audit.info(
+Message: '鍓嶅彴鍔炵悊鍏ヤ綇 user=%s booking=%s stay=%s room=%s'
+Arguments: ('wbr-operator', 'RC271A6FFD8C0B7311100', 10, 'WBR-8101')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 287, in test_walkin_room_search_is_s
+coped_to_current_property
+    result = self._walk_in("walkin-wb074-prop-001", phone="13900000001")
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 228, in _walk_in
+    return create_walk_in(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\walkin.py", line 234, in create_walk_in
+    assign_room(property_obj=property_obj, reservation_room_id=line.pk,
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 225, in assign_room
+    audit.info(
+Message: '鍓嶅彴鎺掓埧 user=%s booking=%s line=%s room=%s'
+Arguments: ('wbr-operator', 'R5D55EB426C5AE586D912', 18, 'WBR-8101')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€? 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Des
+ktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_
+command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_
+argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 287, in test_walkin_room_search_is_s
+coped_to_current_property
+    result = self._walk_in("walkin-wb074-prop-001", phone="13900000001")
+  File "F:\Desktop\django-hotel\apps\reservations\test_whitebox_services.py", line 228, in _walk_in
+    return create_walk_in(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\walkin.py", line 236, in create_walk_in
+    stay, _ = check_in_stay(property_obj=property_obj,
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\reservations\front_desk_services.py", line 327, in check_in_stay
+    audit.info(
+Message: '鍓嶅彴鍔炵悊鍏ヤ綇 user=%s booking=%s stay=%s room=%s'
+Arguments: ('wbr-operator', 'R5D55EB426C5AE586D912', 11, 'WBR-8101')
+.........
+----------------------------------------------------------------------
+Ran 30 tests in 2.644s
+
+OK
+Destroying test database for alias 'default'...
+

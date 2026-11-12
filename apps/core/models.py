@@ -99,6 +99,10 @@ class AuditEvent(models.Model):
             models.Index(fields=("entity_type", "entity_id", "-created_at"),
                          name="idx_audit_entity_time"),
             models.Index(fields=("action", "-created_at"), name="idx_audit_action_time"),
+            # MAINT-06：审计列表/汇总都按物业 + 30 天时间窗口查询。
+            # append-only 表随时间线性增长，缺复合索引会全表扫描。
+            models.Index(fields=("property", "-created_at"),
+                         name="idx_audit_property_time"),
         ]
 
     def __str__(self):

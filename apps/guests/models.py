@@ -4,7 +4,12 @@ from django.db import models
 
 
 class Guest(models.Model):
-    """住客档案：手机号是可共享联系方式，不作为自然人唯一身份键。"""
+    """住客档案：手机号是可共享联系方式，不作为自然人唯一身份键。
+
+    PII 基线 11.3-E（WB-103）：手机号只存密文（phone_ciphertext，Fernet），
+    检索/去重用 phone_hash（HMAC-SHA256(PII_KEY, normalized)）；
+    完整号码只能经 reveal_phone（权限+审计）解密获取，不留明文旁路。
+    """
 
     property = models.ForeignKey(
         "core.Property", on_delete=models.PROTECT, related_name="guests",
@@ -12,13 +17,22 @@ class Guest(models.Model):
     )
     full_name = models.CharField(max_length=80, verbose_name="姓名")
     phone = models.CharField(
-        max_length=24, verbose_name="联系电话",
-        help_text="展示用原格式；查询/去重使用 phone_normalized",
+        max_length=24, null=True, blank=True, verbose_name="联系电话（历史列）",
+        help_text="已迁移（WB-103）：留列兼容历史 DDL，新数据不再写入明文；"
+                  "完整号码经 phone_ciphertext 加密存储",
     )
     phone_normalized = models.CharField(
-        max_length=24, null=True, blank=True, verbose_name="标准化手机号",
-        help_text="去分隔符后的标准化号码；仅用于检索与候选匹配，不代表自然人唯一身份",
+        max_length=24, null=True, blank=True, verbose_name="标准化手机号（历史列）",
+        help_text="已迁移（WB-103）：留列兼容历史 DDL，新数据不再写入明文；"
+                  "检索/去重使用 phone_hash",
     )
+    phone_ciphertext = models.TextField(
+        null=True, blank=True, verbose_name="手机号密文",
+        help_text="Fernet(phone_ciphertext)=标准化号码；揭示需独立权限并写审计")
+    phone_hash = models.CharField(
+        max_length=64, null=True, blank=True, verbose_name="手机号查询哈希",
+        help_text="HMAC-SHA256(PII_KEY, normalized)，仅用于检索与共享判定，"
+                  "不可逆、不代表自然人唯一身份")
     email = models.EmailField(blank=True, verbose_name="电子邮箱")
     notes = models.TextField(blank=True, verbose_name="备注")
     consent_version = models.CharField(
@@ -35,10 +49,12 @@ class Guest(models.Model):
         indexes = [
             models.Index(fields=("property", "full_name"), name="idx_guest_prop_name"),
             models.Index(fields=("property", "phone_normalized"), name="idx_guest_prop_phone"),
+            models.Index(fields=("property", "phone_hash"), name="idx_guest_prop_hash"),
         ]
 
     def __str__(self):
-        return f"{self.full_name} ({self.phone})"
+        # WB-103：不再把明文手机号拼进字符串表示（可能进入日志/管理页）。
+        return f"{self.full_name}#{self.pk}"
 
 
 class GuestPhone(models.Model):
@@ -53,8 +69,19 @@ class GuestPhone(models.Model):
     guest = models.ForeignKey(
         Guest, on_delete=models.CASCADE, related_name="phones",
         verbose_name="所属客人")
-    phone = models.CharField(max_length=24, verbose_name="原始号码")
-    phone_normalized = models.CharField(max_length=24, verbose_name="标准化号码")
+    phone = models.CharField(
+        max_length=24, null=True, blank=True, verbose_name="原始号码（历史列）",
+        help_text="已迁移（WB-103）：留列兼容历史 DDL，新数据不再写入明文")
+    phone_normalized = models.CharField(
+        max_length=24, null=True, blank=True, verbose_name="标准化号码（历史列）",
+        help_text="已迁移（WB-103）：留列兼容历史 DDL，新数据不再写入明文；"
+                  "检索使用 phone_hash")
+    phone_ciphertext = models.TextField(
+        null=True, blank=True, verbose_name="号码密文",
+        help_text="Fernet(标准化号码)；完整值揭示需独立权限并写审计")
+    phone_hash = models.CharField(
+        max_length=64, null=True, blank=True, verbose_name="号码查询哈希",
+        help_text="HMAC-SHA256(PII_KEY, normalized)，检索与共享号码判定专用")
     phone_type = models.CharField(
         max_length=8, choices=PhoneType.choices, default=PhoneType.MOBILE,
         verbose_name="号码类型")
@@ -77,6 +104,16 @@ class GuestPhone(models.Model):
         verbose_name_plural = "客人电话"
         indexes = [
             models.Index(fields=("phone_normalized",), name="idx_guestphone_norm"),
+            models.Index(fields=("phone_hash",), name="idx_guestphone_hash"),
+        ]
+        constraints = [
+            # WB-103：同一客人同一号码（hash）只登记一次——以 DB 唯一约束
+            # 替代应用层明文查重；共享号码（跨客人）语义保持不变
+            # （0005 迁移已明确电话不是自然人唯一身份键）。
+            models.UniqueConstraint(
+                fields=("guest", "phone_hash"),
+                name="uq_guestphone_guest_hash",
+            ),
         ]
 
     def save(self, *args, **kwargs):
@@ -94,7 +131,9 @@ class GuestPhone(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.guest_id}:{self.phone_normalized}({'主' if self.is_primary else '副'})"
+        # WB-103：字符串表示不再携带明文号码，只展示哈希前缀。
+        return (f"{self.guest_id}:"
+                f"{(self.phone_hash or '')[:8]}({'主' if self.is_primary else '副'})")
 
 
 class GuestDocument(models.Model):
@@ -149,6 +188,49 @@ class GuestDocument(models.Model):
 
     def __str__(self):
         return f"{self.guest_id}:{self.get_doc_type_display()}(hash {self.doc_no_hash[:8]}…)"
+
+    def save(self, *args, **kwargs):
+        # WB-105：核验人与核验时间必须成对（同空或同非空）。
+        if bool(self.verified_at) != bool(self.verified_by_id):
+            raise ValidationError("证件核验人与核验时间必须同时提供或同时为空。")
+        super().save(*args, **kwargs)
+
+
+class GuestDocumentIndex(models.Model):
+    """证件物业级占用索引（WB-102）：并发登记的唯一仲裁载体。
+
+    UniqueConstraint(property, doc_no_hash) 保证同物业内同一证件（hash）
+    只能被一个客人档案占用；register_document 在同一事务内对其
+    select_for_update + upsert：
+      * 同一 guest 重复登记 → 占用不变（更新语义）；
+      * 不同 guest 争抢同一证件 → IntegrityError → 服务层转友好中文错误。
+    当前系统没有证件解除关联/删除路径（GuestDocument 无 delete 服务，
+    模型层亦无级联删除入口），故索引仅做登记语义，不做解除维护；
+    若未来增加换证/解绑服务，必须在同一事务内同步删除/迁移本索引行。
+    """
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT,
+        related_name="guest_document_indexes", verbose_name="所属酒店")
+    guest = models.ForeignKey(
+        Guest, on_delete=models.PROTECT, related_name="document_indexes",
+        verbose_name="占用客人")
+    doc_no_hash = models.CharField(
+        max_length=64, verbose_name="证件号哈希",
+        help_text="HMAC-SHA256，与 GuestDocument.doc_no_hash 同源")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "证件物业级占用索引"
+        verbose_name_plural = "证件物业级占用索引"
+        constraints = [
+            models.UniqueConstraint(fields=("property", "doc_no_hash"),
+                                    name="uq_guestdocindex_property_hash"),
+        ]
+
+    def __str__(self):
+        return f"{self.property_id}:{self.doc_no_hash[:8]}… → guest {self.guest_id}"
 
 
 class GuestMembership(models.Model):

@@ -20,8 +20,8 @@ from apps.guests.models import (
 import json as _json
 
 from apps.guests.services import (
-    decrypt_doc_no, _mask,
-    GuestService, GuestServiceError, )
+    decrypt_doc_no, _mask, phone_plain,
+    GuestService, GuestServiceError, phone_hash, )
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import (
     DailyRate, Room, RoomType, RoomTypeInventory,
@@ -35,6 +35,12 @@ from decimal import Decimal
 logger = logging.getLogger("hotel.api")
 
 ZERO = Decimal("0.00")
+
+
+def _mask_phone_dto(plain):
+    """电话掩码 DTO 口径：>=8 位 3+4 掩码，短值一律"已隐藏"（WB-46-07）。"""
+    return (plain[:3] + "****" + plain[-4:]
+            if len(plain) >= 8 else "已隐藏")
 
 
 def _guest_dto(guest, user, property_obj, include_detail=False,
@@ -56,11 +62,9 @@ def _guest_dto(guest, user, property_obj, include_detail=False,
         primary_phone = cached_phones[0]
     phone_masked = None
     if primary_phone:
-        raw = primary_phone.phone
-        # WB-46-07：短值（<8 位）此前原样返回 = 明文泄漏（同 WB-10 根因）；
-        # 与本文件 phones 列表口径一致：<8 位一律"已隐藏"。
-        phone_masked = (raw[:3] + "****" + raw[-4:]
-                        if len(raw) >= 8 else "已隐藏")
+        # WB-103：完整值从 phone_ciphertext 解密（未迁移行回退历史列），
+        # 只用于本地掩码；列表/详情不再触碰明文列。
+        phone_masked = _mask_phone_dto(phone_plain(primary_phone))
     cached_memberships = getattr(guest, "prefetched_memberships", None)
     if cached_memberships is None:
         membership = GuestMembership.objects.filter(
@@ -111,8 +115,7 @@ def _guest_dto(guest, user, property_obj, include_detail=False,
             })
         dto["documents"] = docs
         dto["phones"] = [
-            {"phone": (p.phone[:3] + "****" + p.phone[-4:]
-                       if len(p.phone) >= 8 else "已隐藏"),
+            {"phone": _mask_phone_dto(phone_plain(p)),
              "type": p.phone_type, "is_primary": p.is_primary}
             for p in cached_phones
         ]
@@ -146,10 +149,14 @@ def guest_list(request):
     q = (request.GET.get("q") or "").strip()
     if q:
         from django.db.models import Q
-        qs = qs.filter(
-            Q(full_name__icontains=q) |
-            Q(phones__phone_normalized__icontains=q.replace(" ", ""))
-        ).distinct()
+        # WB-103：电话检索改为 phone_hash 精确匹配（HMAC 不可逆，无法再做
+        # icontains 部分匹配）；姓名模糊检索不受影响。
+        conditions = Q(full_name__icontains=q)
+        digits = "".join(ch for ch in q if ch.isdigit())
+        if digits:
+            conditions = conditions | Q(
+                phones__phone_hash=phone_hash(digits))
+        qs = qs.filter(conditions).distinct()
     items, pagination = paginate(qs, request)
     # G10：本页客人的在住 Stay 一次取回（深层反向链逐行查询是压测
     # P50 1040ms 的主因；50 行 = 50 次跨 4 表 JOIN 查询）
@@ -722,12 +729,15 @@ def guest_reveal_phone(request, guest_id, phone_id):
     reason = str(body.get("reason") or "").strip()
     if len(reason) < 8 or len(reason) > 240:
         raise ApiError("VALIDATION_ERROR", "揭示电话必须填写 8 至 240 个字符的业务用途/原因。")
+    # WB-103：完整值从 phone_ciphertext 解密（明文列已清空，未迁移行回退）；
+    # 审计口径不变（guest.pii_reveal.phone，masked 落库）。
+    plain = phone_plain(phone)
     AuditEvent.record(
         action="guest.pii_reveal.phone", entity_type="GuestPhone",
         entity_id=phone.pk, actor=user, property_obj=property_obj,
-        after={"masked": _mask(phone.phone)}, reason=reason, request=request)
+        after={"masked": _mask(plain)}, reason=reason, request=request)
     return api_response(request, {
-        "guest_id": guest.pk, "phone_id": phone.pk, "phone": phone.phone,
+        "guest_id": guest.pk, "phone_id": phone.pk, "phone": plain,
     })
 
 

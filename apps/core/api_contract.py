@@ -256,14 +256,21 @@ def idempotent(view):
             record.status = IdempotencyRecord.RecordStatus.FAILED
             record.save(update_fields=("status",))
             raise
+        record.response_status = response.status_code
+        try:
+            record.response_body = json.loads(response.content)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            record.response_body = None
         if 200 <= response.status_code < 300:
-            try:
-                record.response_status = response.status_code
-                record.response_body = json.loads(response.content)
-                record.status = IdempotencyRecord.RecordStatus.COMPLETED
-                record.save(update_fields=("response_status", "response_body", "status"))
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                pass
+            record.status = IdempotencyRecord.RecordStatus.COMPLETED
+        else:
+            # RSV-06：视图**正常返回**的 4xx/5xx（如 409「已有审批记录」）
+            # 也必须落终态。此前只有「抛异常→FAILED」和「2xx→COMPLETED」，
+            # 4xx/5xx 会永久停留 PROCESSING，导致客户端按提示重试时在
+            # 5 分钟窗口内全被 425 掩盖真实业务冲突。
+            record.status = IdempotencyRecord.RecordStatus.FAILED
+        record.save(update_fields=(
+            "response_status", "response_body", "status", "updated_at"))
         return response
 
     return wrapper

@@ -25,22 +25,20 @@
       <div class="pms-tools">
         <h2 class="pms-panel-title">新增员工</h2>
         <button type="button" class="sc-toggle-btn" id="sc-create-toggle" aria-expanded="false" aria-controls="sc-create-form">展开表单</button>
-        <span class="pms-meta">建档 + DEFAULT 任职；登录账号可稍后为员工单独开通</span>
+        <span class="pms-meta">建档 + DEFAULT 任职；工号由系统按部门自动编号，无需填写；登录账号可稍后为员工单独开通</span>
       </div>
       <form id="sc-create-form" class="sc-form sc-hidden" autocomplete="off">
         {% csrf_token %}
         {# —— A. 员工身份信息（§2.1-A）—— #}
         <fieldset class="sc-fieldset">
           <legend>A. 员工身份信息</legend>
-          <p class="sc-zone-hint">员工档案记录“这个人是谁”；登录账号与系统角色是另外两个独立概念，分别在 B、C 区开通/授予，不会因建档自动创建。</p>
+          <p class="sc-zone-hint">员工档案记录“这个人是谁”；登录账号与系统角色是另外两个独立概念，分别在 B、C 区开通/授予，不会因建档自动创建。工号由系统按部门自动编号（部门代码 + 四位流水号），前端不得指定流水号。</p>
           <div class="sc-grid">
             <label class="sc-field">姓名<span class="sc-req" aria-hidden="true">*</span>
               <input type="text" name="full_name" required maxlength="20" placeholder="员工真实姓名，如 张晓雨"></label>
-            <label class="sc-field">物业工号（留空则按部门自动编号）
-              <input type="text" name="employee_no" maxlength="32" placeholder="同物业唯一，如 FO-0001；留空自动分配"></label>
-            <label class="sc-field">部门代码（工号留空时必填）
+            <label class="sc-field">部门代码（工号按此自动编号）
               <select name="department_code">
-                <option value="">（不自动编号）</option>
+                <option value="">（未选时按岗位代码映射）</option>
                 <option value="FO">FO — 前台</option>
                 <option value="HK">HK — 客房</option>
                 <option value="FIN">FIN — 财务</option>

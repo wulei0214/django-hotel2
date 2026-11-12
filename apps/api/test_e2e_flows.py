@@ -1327,6 +1327,15 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
     # ------------------------------------------------------------------
     def test_express_checkout_retired_and_pms2_checkout_settles_folio(self):
         booking_no, _, line, stay_id = self._booking_checked_in()
+        # WB-097 正式语义：退房按实际入住晚数的逐晚快照结算（未住晚不计
+        # 房费）。公开预订当日入住当日退房=0 晚；本用例验证"退房结清
+        # Folio"意图，改为构造已住 1 晚（600）事实再退房。
+        line.check_in = self.today - timedelta(days=1)
+        line.nightly_rates = [
+            {"date": (self.today - timedelta(days=1)).isoformat(),
+             "price": "600.00", "currency": "CNY"},
+        ]
+        line.save(update_fields=("check_in", "nightly_rates"))
         self.client.force_login(self.fd)
         self._collect_payment(booking_no, "600.00", "e2e-pay-co")
 

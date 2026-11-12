@@ -19,6 +19,7 @@
     收款/退款三方对账一致性（结账门禁）。
 """
 import json
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -726,6 +727,19 @@ class ReconciliationConsistencyTests(E2EFlowTestBase):
     def test_folio_balance_matches_ledger_and_cash_flow_after_refund_cycle(self):
         # 预付一晚入住 + 续住一晚（应收 300）→ 收 200 → 退 100
         booking_no, token, line, stay_id = self._booking_with_outstanding(self.fd)
+        # WB-097 正式语义：退房按实际入住晚数的逐晚快照结算（未住晚不计
+        # 房费）。公开预订当日入住=0 晚，同日退房将不补入房费、转向负债
+        # 口径，本用例的"退房被应收门禁阻断 → 补收 → 结清归零"意图需以
+        # 已住 2 晚事实承载：入住日移前两天并重写逐晚快照（金额口径不变，
+        # line.amount 仍为 600，其中 300 为续住时已入账的 stay-extension）。
+        line.check_in = self.today - timedelta(days=2)
+        line.nightly_rates = [
+            {"date": (self.today - timedelta(days=2)).isoformat(),
+             "price": "300.00", "currency": "CNY"},
+            {"date": (self.today - timedelta(days=1)).isoformat(),
+             "price": "300.00", "currency": "CNY"},
+        ]
+        line.save(update_fields=("check_in", "nightly_rates"))
         collected = self._collect_payment(
             booking_no, "200.00", f"closure-rc1-{booking_no}")
         self.assertEqual(collected.status_code, 201, collected.content)

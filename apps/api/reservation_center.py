@@ -102,12 +102,17 @@ def audit_timeline(request):
     if action:
         qs = qs.filter(action__icontains=action)
     items, pagination = paginate(qs, request, page_size_default=30)
+    # MAINT-03：与 /audit/events（audit_center）统一 PII 最小化口径。
+    # 两者同为 core.audit_view 权限，此前本列表却把 before/after 全量
+    # JSON 直接下发（可能含证件号/手机号等 PII 快照），权限相同而口径相反。
+    # 列表一律不下发载荷；has_payload 仅提示存在载荷，详情请走审计详情端点。
     data = [{
         "id": e.pk, "action": e.action,
         "entity_type": e.entity_type, "entity_id": e.entity_id,
         "actor": e.actor.username if e.actor else "system",
         "reason": e.reason or None,
-        "before": e.before_json, "after": e.after_json,
+        "before": None, "after": None,
+        "has_payload": bool(e.before_json or e.after_json),
         "created_at": e.created_at.isoformat(),
     } for e in items]
     return api_response(request, data, pagination=pagination)

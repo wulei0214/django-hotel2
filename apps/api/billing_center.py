@@ -523,7 +523,7 @@ def shift_list(request):
     status_filter = request.GET.get("status", "").strip().upper()
     if status_filter:
         if status_filter not in CashierShift.ShiftStatus.values:
-            raise ApiError("VALIDATION_ERROR", "status 只支持 OPEN/CLOSED/RECONCILED。")
+            raise ApiError("VALIDATION_ERROR", "status 只支持 OPEN/CLOSED。")
         qs = qs.filter(status=status_filter)
     items, pagination = paginate(qs.order_by("-opened_at"), request)
     data = [{

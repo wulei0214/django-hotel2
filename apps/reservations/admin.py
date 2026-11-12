@@ -30,7 +30,7 @@ class ReservationRoomInline(ReadOnlyAdminMixin, admin.TabularInline):
 class ReservationAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ("booking_no", "property", "guest", "check_in", "check_out", "room_count", "total_amount", "status", "expires_at")
     list_filter = ("property", "status", "source")
-    search_fields = ("booking_no", "guest__full_name", "guest__phone")
+    search_fields = ("booking_no", "guest__full_name", "guest__phone_hash")
     readonly_fields = ("booking_no", "created_at", "updated_at", "request_fingerprint")
     inlines = (ReservationRoomInline,)
 

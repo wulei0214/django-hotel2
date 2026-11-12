@@ -191,11 +191,12 @@ def dashboard_warnings(property_obj, today=None):
         property=property_obj,
         status__in=(Reservation.Status.PENDING, Reservation.Status.CONFIRMED),
         check_in__lt=today).select_related("guest").order_by("-check_in", "-id")[:10]
+    from apps.guests.services import guest_phone_plain, _mask
     return [{
         "level": "过期未入住",
         "guest": r.guest.full_name,
-        "tel": (r.guest.phone[:3] + "****" + r.guest.phone[-4:]
-                if len(r.guest.phone or "") >= 8 else (r.guest.phone or "—")),
+        # WB-103：明文列已迁移清空，完整号码只经 PII 服务解密后掩码展示
+        "tel": _mask(guest_phone_plain(r.guest)) or "—",
         "date": str(r.check_in),
     } for r in overdue]
 
@@ -208,7 +209,9 @@ def dashboard_finance(property_obj, today=None):
     week_start = today - timedelta(days=today.weekday())
     year_start = today.replace(month=1, day=1)
 
-    def _sum(qs, field, positive):
+    # MAINT-09：移除从未使用的 positive 形参（调用方一直传 True/False，
+    # 函数内部只做 abs，语义误导）。
+    def _sum(qs, field):
         agg = qs.aggregate(s=Sum(field))["s"]
         v = agg or Decimal("0.00")
         return abs(v)
@@ -217,10 +220,10 @@ def dashboard_finance(property_obj, today=None):
     fin = {}
     for key, start in (("today", today), ("week", week_start), ("year", year_start)):
         qs = led.filter(created_at__date__gte=start)
-        fin[key + "_in"] = _sum(qs.filter(amount__gt=0), "amount", True)
-        fin[key + "_out"] = _sum(qs.filter(amount__lt=0), "amount", False)
+        fin[key + "_in"] = _sum(qs.filter(amount__gt=0), "amount")
+        fin[key + "_out"] = _sum(qs.filter(amount__lt=0), "amount")
     fin["settled"] = _sum(
         Payment.objects.filter(property=property_obj,
                                status=Payment.Status.SUCCEEDED),
-        "amount", True)
+        "amount")
     return {k: str(v) for k, v in fin.items()}

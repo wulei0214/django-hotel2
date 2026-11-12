@@ -569,6 +569,12 @@ class Refund(models.Model):
         help_text="迁移前无法证明申请/审批/执行三方分离的历史记录；只读保留，不代表新流程验收。")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="申请时间")
     processed_at = models.DateTimeField(null=True, blank=True, verbose_name="处理时间")
+    # WB-EMP-01 同类治理：MySQL 8 不支持 condition 唯一约束（W036）。
+    # 用可空唯一键在数据库层保证「同一物业内渠道退款凭据不重复」；
+    # execution_reference 为空（现金退款）时为 NULL，不受唯一约束限制。
+    execution_reference_key = models.CharField(
+        max_length=128, null=True, blank=True, unique=True, editable=False,
+        verbose_name="退款渠道凭据唯一键")
 
     class Meta:
         verbose_name = "退款申请"
@@ -629,13 +635,6 @@ class Refund(models.Model):
                 check=(Q(legacy_workflow=True) | Q(status="SUCCEEDED")
                        | Q(execution_reference="")),
                 name="ck_refund_execution_reference_state"),
-            # WB-091-旧：非现金退款的渠道执行参考号在物业内唯一。现金退款
-            # 不产生渠道参考号（execution_reference 为空，不强制）；同一笔
-            # 渠道退款凭据不得被两笔退款事实重复登记。
-            models.UniqueConstraint(
-                fields=("property", "execution_reference"),
-                condition=~Q(execution_reference=""),
-                name="uq_refund_property_execution_reference"),
         ]
         permissions = (
             ("refund_request", "可以登记退款申请"),
@@ -644,6 +643,16 @@ class Refund(models.Model):
         )
 
     def save(self, *args, **kwargs):
+        # MySQL 8 无 partial index：以可空唯一键替代 condition UniqueConstraint。
+        # 必须与 update_fields 同步写入，否则执行成功写入参考号时约束不生效。
+        reference = (self.execution_reference or "").strip()
+        self.execution_reference_key = (
+            f"{self.property_id}:{reference}" if reference and self.property_id
+            else None)
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {
+                "execution_reference_key"}
         if self.payment_id and self.property_id != self.payment.property_id:
             raise ValidationError("退款与原支付必须属于同一物业。")
         if self.payment_id and self.currency != self.payment.currency:
@@ -1345,6 +1354,26 @@ class CheckoutExceptionRelease(models.Model):
         RefundLiability, null=True, blank=True, on_delete=models.PROTECT,
         related_name="checkout_exception_releases", verbose_name="转出的正式负债")
     idempotency_key = models.CharField(max_length=96, unique=True, verbose_name="幂等键")
+    # WB-112：MySQL 8 不支持条件唯一索引（models.W036），用可空唯一键实现
+    # 「同一 Folio 最多一笔在途异常放行」的**数据库级**兜底。服务层的
+    # select_for_update(Folio) + 在途查询是主防线，本字段防止任何绕过
+    # 服务层的直写或 SQLite 部署（行锁为 no-op）产生两笔在途申请。
+    active_folio_key = models.CharField(
+        max_length=64, null=True, blank=True, unique=True, editable=False,
+        verbose_name="在途放行唯一键")
+
+    _ACTIVE_RELEASE_STATUSES = ("REQUESTED", "APPROVED", "RELEASED")
+
+    def save(self, *args, **kwargs):
+        desired = (f"cxr:folio:{self.folio_id}"
+                   if self.status in self._ACTIVE_RELEASE_STATUSES and self.folio_id
+                   else None)
+        if self.active_folio_key != desired:
+            self.active_folio_key = desired
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = (set(kwargs["update_fields"])
+                                           | {"active_folio_key"})
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = "退房异常放行（DEC-02-B2）"
@@ -1463,6 +1492,11 @@ class ProviderTransaction(models.Model):
     last_queried_at = models.DateTimeField(null=True, blank=True, verbose_name="最后查询时间")
     query_count = models.PositiveSmallIntegerField(default=0, verbose_name="查询次数")
     payload_hash = models.CharField(max_length=64, blank=True, default="", verbose_name="报文摘要")
+    # 同 Refund：以可空唯一键替代 MySQL 不支持的 condition UniqueConstraint，
+    # 保证渠道事件（provider_code, event_id）在数据库层真实唯一。
+    provider_event_key = models.CharField(
+        max_length=192, null=True, blank=True, unique=True, editable=False,
+        verbose_name="渠道事件唯一键")
 
     class Meta:
         verbose_name = "渠道交易事实"
@@ -1472,11 +1506,16 @@ class ProviderTransaction(models.Model):
             models.UniqueConstraint(
                 fields=("provider_code", "provider_transaction_id"),
                 name="uq_pt_provider_txn"),
-            models.UniqueConstraint(
-                fields=("provider_code", "event_id"),
-                condition=~Q(event_id=""),
-                name="uq_pt_provider_event"),
         ]
+
+    def save(self, *args, **kwargs):
+        event_id = (self.event_id or "").strip()
+        self.provider_event_key = (
+            f"{self.provider_code}:{event_id}" if event_id else None)
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {"provider_event_key"}
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.provider_code}:{self.provider_transaction_id} [{self.channel_status}]"

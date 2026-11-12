@@ -10,10 +10,11 @@ import base64
 import hashlib
 import hmac
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ImproperlyConfigured
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 from cryptography.fernet import Fernet, InvalidToken
 
 from apps.core.models import AuditEvent
@@ -52,28 +53,104 @@ def decrypt_doc_no(ciphertext):
         raise ValueError("证件密文解密失败：密钥不匹配或数据损坏") from exc
 
 
+# ---------- WB-103：手机号 PII 统一服务入口（encrypt/normalize/hash/lookup） ----------
+# PII 基线 11.3-E：手机号密文存储 + 独立 HMAC 查询索引 + 统一服务 + 不留
+# 明文 normalized 旁路。所有电话读写在经过本模块的这组函数后，
+# 一律不接触明文列（Guest.phone/phone_normalized、GuestPhone.phone/
+# phone_normalized 已于迁移 0007 清空，仅留列兼容历史 DDL）。
+
+
+def phone_hash(normalized):
+    """手机号查询哈希：HMAC-SHA256(PII_KEY, normalized)，不可逆、防彩虹表。
+
+    参数必须传 normalize_phone() 之后的标准化值；全仓 phone 检索/查重/
+    共享判定统一用本函数的结果过滤 phone_hash 列，不再查明文。
+    """
+    return hmac.new(_pii_key_bytes(), (normalized or "").strip().encode("utf-8"),
+                    hashlib.sha256).hexdigest()
+
+
+def encrypt_phone(normalized):
+    """Fernet 加密标准化号码（存储格式与证件号密文同源）。"""
+    return _fernet().encrypt((normalized or "").strip().encode("utf-8")).decode("ascii")
+
+
+def decrypt_phone(ciphertext):
+    try:
+        return _fernet().decrypt((ciphertext or "").encode("ascii")).decode("utf-8")
+    except InvalidToken as exc:
+        raise ValueError("电话密文解密失败：密钥不匹配或数据损坏") from exc
+
+
+def phone_plain(phone_row):
+    """从 GuestPhone 行解密完整号码（揭示/掩码前使用）。
+
+    兼容未迁移行：无密文时回退历史明文列（迁移 0007 已清空存量，
+    该回退仅供滚动升级窗口与测试夹具使用）。返回值只允许立即掩码或
+    经权限+审计的揭示，不得落日志/DTO/导出。
+    """
+    if phone_row.phone_ciphertext:
+        return decrypt_phone(phone_row.phone_ciphertext)
+    return phone_row.phone or ""
+
+
+def guest_phone_plain(guest):
+    """从 Guest 档案解密主号码完整值（口径同 phone_plain）。"""
+    if guest.phone_ciphertext:
+        return decrypt_phone(guest.phone_ciphertext)
+    return guest.phone or ""
+
+
 def register_document(*, guest, doc_type, doc_no, verified_by=None,
                       issuing_country="CN", expiry_date=None, request=None):
-    """登记证件：密文+hash 落库；同一物业内同一证件查重（不自动合并）。"""
+    """登记证件：密文+hash 落库；同物业内同一证件只允许被一个客人档案占用。
+
+    WB-102：物业级并发唯一——同事务内对 GuestDocumentIndex
+    (UniqueConstraint(property, doc_no_hash)) 做 select_for_update upsert：
+      * 同一 guest 重复登记 → 占用不变（更新占用语义）；
+      * 不同 guest 争抢同一证件 → 唯一约束 IntegrityError → 转友好中文
+        ValueError/ValidationError"该证件已登记至其他客人档案"。
+    WB-105：verified_by 与 verified_at 成对写入（模型 save 双重校验）。
+    """
     doc_no = (doc_no or "").strip()
     if not doc_no:
         raise ValidationError("证件号不能为空")
-    from .models import GuestDocument
+    from .models import GuestDocument, GuestDocumentIndex
     h = doc_no_hash(doc_no)
-    if GuestDocument.objects.filter(guest__property=guest.property_id,
-                                    doc_no_hash=h).exclude(guest=guest).exists():
-        raise ValidationError("该证件已登记在其他客人档案（同物业查重），"
-                              "如为同一人请走客人合并/关联流程")
-    doc = GuestDocument.objects.create(
-        guest=guest, doc_type=doc_type,
-        doc_no_ciphertext=encrypt_doc_no(doc_no), doc_no_hash=h,
-        issuing_country=issuing_country, expiry_date=expiry_date,
-        verified_by=verified_by)
-    AuditEvent.record(
-        action="guest.document_register", entity_type="GuestDocument",
-        entity_id=doc.pk, actor=verified_by, property_obj=guest.property,
-        after={"doc_type": doc_type, "masked": _mask(doc_no)},
-        request=request)
+    # WB-105：核验人与核验时间同空或同非空
+    verified_at = timezone.now() if verified_by else None
+    with transaction.atomic():
+        if GuestDocument.objects.filter(guest__property_id=guest.property_id,
+                                        doc_no_hash=h).exclude(guest=guest).exists():
+            raise ValidationError("该证件已登记在其他客人档案（同物业查重），"
+                                  "如为同一人请走客人合并/关联流程")
+        index_row = GuestDocumentIndex.objects.select_for_update().filter(
+            property_id=guest.property_id, doc_no_hash=h).first()
+        if index_row is None:
+            try:
+                with transaction.atomic():
+                    GuestDocumentIndex.objects.create(
+                        property=guest.property, guest=guest, doc_no_hash=h)
+            except IntegrityError:
+                # 并发抢先登记：唯一约束仲裁后按当前占用者判定
+                index_row = GuestDocumentIndex.objects.filter(
+                    property_id=guest.property_id, doc_no_hash=h).first()
+                if index_row is None or index_row.guest_id != guest.pk:
+                    raise ValidationError("该证件已登记至其他客人档案")
+        elif index_row.guest_id != guest.pk:
+            raise ValidationError("该证件已登记至其他客人档案")
+        doc = GuestDocument.objects.create(
+            guest=guest, doc_type=doc_type,
+            doc_no_ciphertext=encrypt_doc_no(doc_no), doc_no_hash=h,
+            issuing_country=issuing_country, expiry_date=expiry_date,
+            verified_by=verified_by, verified_at=verified_at)
+        # WB-102 收尾：审计必须与证件登记同事务。审计落库失败时整笔登记
+        # 回滚，不能出现「证件已占用但无审计轨迹」的半完成状态。
+        AuditEvent.record(
+            action="guest.document_register", entity_type="GuestDocument",
+            entity_id=doc.pk, actor=verified_by, property_obj=guest.property,
+            after={"doc_type": doc_type, "masked": _mask(doc_no)},
+            request=request)
     return doc
 
 
@@ -108,6 +185,8 @@ def reveal_phone(phone, *, revealed_by, reason="", request=None):
 
     与 reveal_document 同构（§10.2 双权分离）：服务层为唯一正式写入口，
     API 层（guest_center.guest_reveal_phone）在其上叠加 8-240 字符长度策略。
+    WB-103：完整值从 phone_ciphertext 解密获取（明文列已迁移清空；
+    未迁移行回退历史明文列，兼容滚动升级窗口）。
     """
     from apps.identity.authorization import AuthorizationService
     if not AuthorizationService.has_permission(
@@ -115,11 +194,12 @@ def reveal_phone(phone, *, revealed_by, reason="", request=None):
         raise PermissionDenied("揭示电话完整值需要独立权限")
     # Phase 5-B（方案 §10.2）：理由为空/全空白 → 拒绝，且不产生揭示值与审计
     reason = _require_reveal_reason(reason)
+    plain = phone_plain(phone)
     AuditEvent.record(
         action="guest.phone_reveal", entity_type="GuestPhone",
         entity_id=phone.pk, actor=revealed_by, property_obj=phone.guest.property,
-        after={"masked": _mask(phone.phone)}, reason=reason, request=request)
-    return phone.phone
+        after={"masked": _mask(plain)}, reason=reason, request=request)
+    return plain
 
 
 def _mask(value):
@@ -146,34 +226,44 @@ class GuestServiceError(Exception):
 
 
 class GuestService:
-    """Guest/电话/证件唯一写入口（方案 §4.2：前台/Admin/命令统一调此服务）。"""
+    """Guest/电话/证件唯一写入口（方案 §4.2：前台/Admin/命令统一调此服务）。
+
+    WB-103：手机号经 encrypt_phone/phone_hash 密文+哈希落库，不写明文列；
+    共享号码判定（M-03 规则 2）保持全局口径——与迁移 0005 移除
+    uq_guest_property_phone 后的既有查重口径一致（电话不是自然人唯一
+    身份键，可跨客人/跨物业共享，共享只标记人工核验不合并）。
+    """
 
     @staticmethod
     @transaction.atomic
     def create_guest(*, property_obj, full_name, phone="", email="",
-                     notes="", created_by=None, request=None):
+                     notes="", created_by=None, request=None, source="前台登记"):
         """创建客人档案；共享电话只标记人工核验，不把不同客人自动合并。
 
         WB-09：档案与主电话必须同事务落库，电话写失败不得遗留孤儿档案。
+        WB-103：phone 为 normalize_phone() 口径的号码；明文列不写入。
         """
         from .models import Guest, GuestPhone
         full_name = (full_name or "").strip()
         if not full_name:
             raise GuestServiceError("客人姓名不能为空。")
         norm = normalize_phone(phone)
-        shared_phone = bool(norm and GuestPhone.objects.filter(
-            phone_normalized=norm).exists())
+        digest = phone_hash(norm) if norm else None
+        shared_phone = bool(digest and GuestPhone.objects.filter(
+            phone_hash=digest).exists())
         if shared_phone:
-            GuestPhone.objects.filter(phone_normalized=norm).update(
+            GuestPhone.objects.filter(phone_hash=digest).update(
                 shared_review_required=True)
         guest = Guest.objects.create(
             property=property_obj, full_name=full_name,
-            phone=phone, phone_normalized=norm or None,
+            phone_ciphertext=encrypt_phone(norm) if norm else "",
+            phone_hash=digest,
             email=email or "", notes=notes or "")
         if norm:
             GuestPhone.objects.create(
-                guest=guest, phone=phone, phone_normalized=norm,
-                is_primary=True, source="前台登记",
+                guest=guest, phone_ciphertext=encrypt_phone(norm),
+                phone_hash=digest,
+                is_primary=True, source=source,
                 shared_review_required=shared_phone)
         AuditEvent.record(
             action="guest.create", entity_type="Guest", entity_id=guest.pk,
@@ -183,10 +273,17 @@ class GuestService:
         return guest
 
     @staticmethod
+    @transaction.atomic
     def update_guest(*, guest_id, property_obj, updated_by=None, request=None, **fields):
-        """物业范围内更新客人档案；手机号变更保留历史并写审计。"""
+        """物业范围内更新客人档案；手机号变更保留历史并写审计。
+
+        WB-104：主号码切换（旧主号码降级 + 新号码建档 + Guest 主字段更新）
+        包在同一事务内并对 Guest 行 select_for_update；任一步失败
+        （含 (guest, phone_hash) 唯一约束冲突）整体回滚，旧主号码不降级。
+        """
         from .models import Guest, GuestPhone
-        guest = Guest.objects.select_related().get(pk=guest_id, property=property_obj)
+        guest = Guest.objects.select_for_update().select_related().get(
+            pk=guest_id, property=property_obj)
         changed = {}
         for field in ("full_name", "email", "notes"):
             if field in fields and fields[field] is not None:
@@ -198,24 +295,32 @@ class GuestService:
         phone = fields.get("phone")
         if phone is not None:
             norm = normalize_phone(phone)
-            if norm and norm != guest.phone_normalized:
-                old_phone = guest.phone or ""
+            if norm and phone_hash(norm) != guest.phone_hash:
+                old_phone = guest_phone_plain(guest)
+                digest = phone_hash(norm)
                 GuestPhone.objects.filter(
                     guest=guest, is_primary=True).update(
                         is_primary=False, primary_guest_key=None)
                 shared_phone = GuestPhone.objects.filter(
-                    phone_normalized=norm).exclude(guest=guest).exists()
+                    phone_hash=digest).exclude(guest=guest).exists()
                 if shared_phone:
-                    GuestPhone.objects.filter(phone_normalized=norm).update(
+                    GuestPhone.objects.filter(phone_hash=digest).update(
                         shared_review_required=True)
-                GuestPhone.objects.create(
-                    guest=guest, phone=phone, phone_normalized=norm,
-                    is_primary=True, source="前台变更",
-                    shared_review_required=shared_phone)
-                guest.phone = phone
-                guest.phone_normalized = norm
+                try:
+                    with transaction.atomic():
+                        GuestPhone.objects.create(
+                            guest=guest, phone_ciphertext=encrypt_phone(norm),
+                            phone_hash=digest,
+                            is_primary=True, source="前台变更",
+                            shared_review_required=shared_phone)
+                except IntegrityError:
+                    # WB-104：唯一约束冲突（同 guest 重复号码）→ 整体回滚，
+                    # 旧主号码保持未降级状态
+                    raise GuestServiceError("该客人已登记过此号码，请勿重复添加。")
+                guest.phone_ciphertext = encrypt_phone(norm)
+                guest.phone_hash = digest
                 changed["phone"] = {"before": _mask(old_phone),
-                                    "after": _mask(phone)}
+                                    "after": _mask(norm)}
         if changed:
             guest.save()
             AuditEvent.record(
@@ -227,27 +332,41 @@ class GuestService:
         return guest, changed
 
     @staticmethod
+    @transaction.atomic
     def add_phone(*, guest, phone, phone_type="MOBILE", is_primary=False,
                   source="前台登记", added_by=None, request=None):
-        """添加电话号码；主号码切换时旧号码自动降级。"""
+        """添加电话号码；主号码切换时旧号码自动降级。
+
+        WB-104：降级 + 新建 + Guest 主字段更新在同一事务内并对 Guest 行
+        select_for_update；(guest, phone_hash) 唯一约束冲突时整体回滚，
+        旧主号码不被降级。
+        """
         from .models import GuestPhone
         norm = normalize_phone(phone)
         if not norm:
             raise GuestServiceError("电话号码不能为空。")
+        guest = type(guest).objects.select_for_update().get(pk=guest.pk)
+        digest = phone_hash(norm)
         if is_primary:
             GuestPhone.objects.filter(guest=guest, is_primary=True).update(
                 is_primary=False, primary_guest_key=None)
-        phone_obj = GuestPhone.objects.create(
-            guest=guest, phone=phone, phone_normalized=norm,
-            phone_type=phone_type, is_primary=is_primary, source=source)
+        try:
+            with transaction.atomic():
+                phone_obj = GuestPhone.objects.create(
+                    guest=guest, phone_ciphertext=encrypt_phone(norm),
+                    phone_hash=digest,
+                    phone_type=phone_type, is_primary=is_primary, source=source)
+        except IntegrityError:
+            raise GuestServiceError("该客人已登记过此号码，请勿重复添加。")
         if is_primary:
-            guest.phone = phone
-            guest.phone_normalized = norm
-            guest.save(update_fields=("phone", "phone_normalized", "updated_at"))
+            guest.phone_ciphertext = encrypt_phone(norm)
+            guest.phone_hash = digest
+            guest.save(update_fields=("phone_ciphertext", "phone_hash",
+                                      "updated_at"))
         AuditEvent.record(
             action="guest.phone_add", entity_type="Guest", entity_id=guest.pk,
             actor=added_by, property_obj=guest.property,
-            after={"masked": _mask(phone), "type": phone_type,
+            after={"masked": _mask(norm), "type": phone_type,
                    "is_primary": is_primary},
             request=request)
         return phone_obj

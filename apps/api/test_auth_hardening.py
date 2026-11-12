@@ -16,6 +16,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from apps.core.models import AuditEvent, Property
+from apps.guests.services import phone_hash
 from apps.reservations.models import BookingAccessToken, Reservation
 from apps.identity.services import EmployeeLifecycleError, EmployeeLifecycleService
 from apps.identity.models import StaffProfile
@@ -247,8 +248,9 @@ class PublicBookingAntiAbuseTests(TestCase):
             "/api/v1/reservations", data=json.dumps(self._payload(phone, "")),
             content_type="application/json", HTTP_IDEMPOTENCY_KEY="cap-key-2")
         self.assertEqual(third.status_code, 409, "同手机号 PENDING 上限（2 笔）必须拦截")
+        # WB-103：明文列不再写入，预订归属经 guest.phone_hash 核对
         self.assertEqual(Reservation.objects.filter(
-            guest__phone_normalized=phone).count(), 2,
+            guest__phone_hash=phone_hash(phone)).count(), 2,
             "超限请求不得新增预订")
 
     def test_rate_limit_429_with_retry_after(self):

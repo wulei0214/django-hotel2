@@ -1,7 +1,5 @@
 from django.contrib import admin
 
-from django.contrib import admin
-
 from .models import Guest
 
 
@@ -23,7 +21,16 @@ class ReadOnlyAdminMixin:
 
 @admin.register(Guest)
 class GuestAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ("id", "property", "full_name", "phone", "created_at")
+    list_display = ("id", "property", "full_name", "phone_masked", "created_at")
     list_filter = ("property",)
-    search_fields = ("full_name", "phone", "phone_normalized")
+    search_fields = ("full_name", "phone_hash")
     readonly_fields = ("created_at", "updated_at")
+
+    @admin.display(description="电话（掩码）")
+    def phone_masked(self, obj):
+        """WB-103：Admin 只展示掩码；完整号码必须走 reveal_phone（权限+审计）。"""
+        from .services import _mask, guest_phone_plain
+        try:
+            return _mask(guest_phone_plain(obj)) or "—"
+        except Exception:
+            return "解密失败"

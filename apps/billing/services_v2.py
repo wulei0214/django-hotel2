@@ -16,6 +16,18 @@ from apps.core.models import AuditEvent
 
 from apps.billing.models import ApprovalRecord
 
+
+class BillingInputError(ValueError):
+    """账务服务的入参校验失败（金额格式/精度、支付方式、参考号/幂等键格式）。
+
+    RSV-10 只应把「客户端传参错误」映射为 400 VALIDATION_ERROR；业务状态
+    冲突（关账守卫、预订状态不允许、累计押金超额、班次未开、应收余额不足、
+    幂等键复用于不同事实等）必须继续以普通 ValueError 抛出，由视图层映射为
+    409 BUSINESS_CONFLICT。继承 ValueError 保证既有 `except ValueError`
+    调用方（含服务层与测试）行为不变。
+    """
+
+
 class ApprovalService:
     """审批流程唯一写入口（Q-05/Q-06/Q-14 SoD 强制；P0-02 白名单双层校验）。"""
 
@@ -282,10 +294,47 @@ class BillingService:
         )
 
     @staticmethod
+    def _validate_channel_payment_exemption(channel_payment, *, property_obj,
+                                            folio, amount, currency,
+                                            reference):
+        """WB-111：关账日渠道支付豁免的支付事实校验（全部通过才豁免）。
+
+        豁免只授予"真实渠道资金事实实时到达"的入账：调用方必须显式传入
+        channel_payment，且该 Payment 与凭证的归属/状态/币种/金额/引用
+        完全一致，任一不符直接拒绝（中文报错），绝不凭"没传操作人"放行。
+        """
+        from apps.billing.models import Payment
+        if not isinstance(channel_payment, Payment):
+            raise ValueError(
+                "channel_payment 必须是真实的支付流水（Payment）实例，"
+                "关账日渠道支付豁免拒绝。")
+        if (channel_payment.property_id != property_obj.pk
+                or channel_payment.folio_id != folio.pk):
+            raise ValueError(
+                "channel_payment 与凭证的物业/账单归属不一致，"
+                "关账日渠道支付豁免拒绝。")
+        if channel_payment.status != Payment.Status.SUCCEEDED:
+            raise ValueError(
+                "channel_payment 不是 SUCCEEDED 状态的收款事实，"
+                "关账日渠道支付豁免拒绝。")
+        if currency != channel_payment.currency:
+            raise ValueError(
+                "channel_payment 币种与凭证币种不一致，关账日渠道支付豁免拒绝。")
+        if abs(amount) != channel_payment.amount:
+            raise ValueError(
+                "channel_payment 金额与凭证金额不一致，关账日渠道支付豁免拒绝。")
+        expected_reference = f"payment:{channel_payment.provider_ref}"
+        if reference != expected_reference:
+            raise ValueError(
+                "凭证引用与 channel_payment 渠道流水号不一致"
+                f"（应为 {expected_reference}），关账日渠道支付豁免拒绝。")
+
+    @staticmethod
     @transaction.atomic
     def post_entry(*, property_obj, folio, entry_type, amount, reference,
                    description="", posted_by=None, business_date=None,
-                   currency=None, stay=None, void_of=None, void_reason=""):
+                   currency=None, stay=None, void_of=None, void_reason="",
+                   channel_payment=None):
         """账本唯一写入口：追加、强幂等；冲销只能追加等额反向凭证。"""
         from apps.billing.models import LedgerEntry
         amount = BillingService._money(amount)
@@ -321,20 +370,33 @@ class BillingService:
         # "新增凭证"，保持强幂等契约（关账后重试不误报）。
         # 夜审 run() 的过租凭证写入发生在同一事务内 bd 置 CLOSED 之前
         # （见 night_audit.run 注释），因此本守卫不阻断合法夜审链路。
-        # 豁免（合法链路）：渠道支付回调（posted_by=None 且 PAYMENT）代表
-        # 外部资金事实的实时到达——回调可能在夜审关账后才到达（深夜支付），
-        # "Payment 是不可逆的资金事实"不可拒绝也不可延迟；其真实经济时点
-        # 由 Payment.paid_at 保留。员工发起的入账（posted_by 非空）一律拦截。
+        # 豁免（合法链路，WB-111 收紧口径）：渠道支付回调（posted_by=None 且
+        # PAYMENT）代表外部资金事实的实时到达——回调可能在夜审关账后才到达
+        # （深夜支付），"Payment 是不可逆的资金事实"不可拒绝也不可延迟；
+        # 其真实经济时点由 Payment.paid_at 保留。员工发起的入账（posted_by
+        # 非空）一律拦截。CLOSED 营业日下豁免还必须同时满足：调用方显式传入
+        # channel_payment=<Payment 实例>，且该 Payment 通过归属/状态/币种/
+        # 金额/引用五重校验——不再凭"没传操作人"就放行。OPEN 营业日（或无
+        # 营业日记录）行为不变，不强制 channel_payment。
         from apps.core.models import BusinessDate
-        is_channel_payment_fact = (
-            entry_type == LedgerEntry.EntryType.PAYMENT
-            and posted_by is None)
-        if not is_channel_payment_fact:
-            closed_day = BusinessDate.objects.filter(
-                property=property_obj, business_date=business_date,
-                status=BusinessDate.Status.CLOSED,
-            ).only("pk").first()
-            if closed_day is not None:
+        closed_day = BusinessDate.objects.filter(
+            property=property_obj, business_date=business_date,
+            status=BusinessDate.Status.CLOSED,
+        ).only("pk").first()
+        if closed_day is not None:
+            is_channel_payment_fact = False
+            if (entry_type == LedgerEntry.EntryType.PAYMENT
+                    and posted_by is None):
+                if channel_payment is None:
+                    raise ValueError(
+                        f"营业日 {business_date.isoformat()} 已关账，未显式绑定"
+                        "渠道支付事实（channel_payment）的收款凭证禁止入账；"
+                        "补记须走授权流程。")
+                BillingService._validate_channel_payment_exemption(
+                    channel_payment, property_obj=property_obj, folio=folio,
+                    amount=amount, currency=currency, reference=reference)
+                is_channel_payment_fact = True
+            if not is_channel_payment_fact:
                 raise ValueError(
                     f"营业日 {business_date.isoformat()} 已关账，禁止新增账务凭证；"
                     "补记/冲账须走授权流程。")
@@ -383,15 +445,19 @@ class BillingService:
         from apps.billing.models import Folio, LedgerEntry, Payment
         method = "TRANSFER" if method == "BANK_TRANSFER" else method
         if method not in BillingService.VALID_PAYMENT_METHODS:
-            raise ValueError(f"支付方式必须是 {'、'.join(BillingService.VALID_PAYMENT_METHODS)}")
-        amount = BillingService._money(amount)
+            raise BillingInputError(
+                f"支付方式必须是 {'、'.join(BillingService.VALID_PAYMENT_METHODS)}")
+        try:
+            amount = BillingService._money(amount)
+        except ValueError as exc:
+            raise BillingInputError(str(exc)) from exc
         if amount <= 0:
-            raise ValueError("收款金额必须大于 0。")
+            raise BillingInputError("收款金额必须大于 0。")
         if reservation.property_id != property_obj.pk:
             raise ValueError("预订不属于当前物业。")
         provider_ref = str(reference or "").strip() or f"FD-{uuid.uuid4().hex.upper()}"
         if len(provider_ref) > 80:
-            raise ValueError("收款参考号不能超过 80 个字符。")
+            raise BillingInputError("收款参考号不能超过 80 个字符。")
         # 先处理幂等重放，再检查账单是否仍开放；成功收款后账单可能已结账，
         # 但同一参考号重试仍必须返回原支付，不能因后续状态变化制造“失败”假象。
         existing = Payment.objects.filter(provider_ref=provider_ref).first()
@@ -453,7 +519,7 @@ class BillingService:
                     cashier_shift=cashier_shift,
                     status=Payment.Status.SUCCEEDED, paid_at=now,
                 )
-        except IntegrityError:
+        except IntegrityError as exc:
             raced = Payment.objects.filter(provider_ref=provider_ref).first()
             if raced is not None and (
                 raced.property_id == property_obj.pk
@@ -463,7 +529,12 @@ class BillingService:
                 and raced.status == Payment.Status.SUCCEEDED
             ):
                 return raced
-            raise
+            # RSV-08：不同预订复用同一 Idempotency-Key 时业务事实不一致，
+            # 这是可预期的客户端冲突，必须以 400/409 返回，不能让
+            # IntegrityError 冒泡成 500。
+            raise ValueError(
+                "该 Idempotency-Key 已被其他收款请求使用且业务事实不一致；"
+                "请更换幂等键后重试。") from exc
         BillingService.post_entry(
             property_obj=property_obj, folio=folio,
             entry_type=LedgerEntry.EntryType.PAYMENT,
@@ -499,10 +570,13 @@ class BillingService:
         if method == "BANK_TRANSFER":
             method = "TRANSFER"
         if method not in BillingService.VALID_PAYMENT_METHODS:
-            raise ValueError("押金方式只支持现金、刷卡或转账。")
-        amount = BillingService._money(amount)
+            raise BillingInputError("押金方式只支持现金、刷卡或转账。")
+        try:
+            amount = BillingService._money(amount)
+        except ValueError as exc:
+            raise BillingInputError(str(exc)) from exc
         if amount <= 0:
-            raise ValueError("押金金额必须大于零。")
+            raise BillingInputError("押金金额必须大于零。")
         if reservation.property_id != property_obj.pk:
             raise ValueError("预订不属于当前物业。")
 
@@ -510,10 +584,17 @@ class BillingService:
         # 服务端统一按 Reservation.total_amount × 30% 计算（DEC-DEP-01 正式规则）。
         # 客户端传入金额仅用于一致性核对（记日志），不得覆盖服务端结果。
         import logging
+        from decimal import ROUND_HALF_UP
+        # FIN-04：账务域统一 ROUND_HALF_UP（与 dec02._money 同口径）。
+        # 此前 quantize 未指定 rounding，取 Decimal 上下文默认 HALF_EVEN，
+        # 特定金额（如总额 6.75）会与调整/退款负债差 1 分。
         server_amount = (reservation.total_amount * Decimal("30") / Decimal("100")).quantize(
-            Decimal("0.01"))
+            Decimal("0.01"), rounding=ROUND_HALF_UP)
         if client_display_amount is not None:
-            display = BillingService._money(client_display_amount)
+            try:
+                display = BillingService._money(client_display_amount)
+            except ValueError as exc:
+                raise BillingInputError(str(exc)) from exc
             if display != server_amount:
                 logging.getLogger(__name__).warning(
                     "DEC-DEP-01 押金金额不一致：前端展示 %s，服务端计算 %s（以服务端为准）",
@@ -521,7 +602,7 @@ class BillingService:
         amount = server_amount
         key = str(idempotency_key or "").strip()
         if not key or len(key) > 64:
-            raise ValueError("押金登记必须提供 1 至 64 个字符的幂等键。")
+            raise BillingInputError("押金登记必须提供 1 至 64 个字符的幂等键。")
         # WB-05a：押金上限与累计押金都写回预订行；必须在行锁下读取最新值，
         # 否则并发押金（或脏快照实例）会绕过“累计押金 ≤ 房费总额”上限。
         reservation = Reservation.objects.select_for_update().get(
@@ -583,6 +664,10 @@ class BillingService:
                 raise ValueError(str(exc)) from exc
             reservation.status = "CONFIRMED"
             reservation.save(update_fields=("status", "updated_at"))
+            # WB-098：前台收押金确认同样是正式确认路径，必须写政策快照。
+            from apps.reservations.front_desk_services import (
+                snapshot_early_departure_policy)
+            snapshot_early_departure_policy(reservation)
             from apps.billing.services import cancel_open_payment_intents_for_reservation
             cancel_open_payment_intents_for_reservation(reservation)
             AuditEvent.record(
@@ -1153,6 +1238,18 @@ class BillingService:
             raise ValueError("冲销审批人与实际执行人必须是不同账号。")
         if approval.reason != reason:
             raise ValueError("冲销执行原因必须与已批准的申请原因完全一致。")
+        # WB-079：红字冲销此前是唯一绕过 post_entry 的生产活跃账本直写，
+        # 因此在 CLOSED 营业日也能写入。关账后调整必须先经授权重开营业日
+        # （night_audit.reopen / break-glass），审批链不能替代营业日守卫。
+        from apps.core.models import BusinessDate
+        business_date = BillingService._business_date(original.property)
+        closed_day = BusinessDate.objects.filter(
+            property=property_obj, business_date=business_date,
+            status=BusinessDate.Status.CLOSED).exists()
+        if closed_day:
+            raise ValueError(
+                f"营业日 {business_date.isoformat()} 已关账；红字冲销须先经授权"
+                "重开营业日后再执行，不得绕过关账守卫（WB-079）。")
         existing_ref = f"reversal:{original.reference}"
         dup = LedgerEntry.objects.filter(reference=existing_ref).first()
         if dup:
@@ -1166,7 +1263,7 @@ class BillingService:
             stay=original.stay,
             entry_type=LedgerEntry.EntryType.REVERSAL,
             amount=-original.amount, currency=original.currency,
-            business_date=BillingService._business_date(original.property),
+            business_date=business_date,
             reference=existing_ref,
             description=f"冲销：{original.description}"[:240],
             void_of=original, void_reason=reason[:240],
@@ -1403,10 +1500,16 @@ class BillingService:
         end_at = timezone.make_aware(
             datetime.combine(end_date + timedelta(days=1), datetime_time.min),
             property_tz)
+        # FIN-03：报表只统计真实到账/已动用资金。此前零状态过滤，
+        # FAILED/CANCELLED/PENDING 支付与 PENDING/REJECTED 退款全部计入，
+        # 报表金额虚增。口径与对账服务保持一致（同一常量、同一退款终态）。
+        from apps.billing.reconciliation import PAYMENT_ENTRY_CHECK_STATUSES
         payments = Payment.objects.filter(
-            property=property_obj, created_at__gte=start_at, created_at__lt=end_at)
+            property=property_obj, created_at__gte=start_at, created_at__lt=end_at,
+            status__in=PAYMENT_ENTRY_CHECK_STATUSES)
         refunds = Refund.objects.filter(
-            property=property_obj, created_at__gte=start_at, created_at__lt=end_at)
+            property=property_obj, created_at__gte=start_at, created_at__lt=end_at,
+            status=Refund.Status.SUCCEEDED)
         total_revenue = sum(
             e.amount for e in entries if e.amount > 0) or Decimal("0.00")
         total_expense = sum(-e.amount for e in entries if e.amount < 0) or Decimal("0.00")

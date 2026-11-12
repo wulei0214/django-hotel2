@@ -23,6 +23,10 @@ class LifecycleOperationError(Exception):
     """前台入住生命周期操作冲突。"""
 
 
+class LifecycleValidationError(LifecycleOperationError):
+    """RSV-10：入参校验失败（金额格式等），应与业务状态冲突区分（400 vs 409）。"""
+
+
 
 def _money(value):
     try:
@@ -399,12 +403,18 @@ def receive_manual_deposit(
     ).first()
     if reservation is None:
         raise LifecycleOperationError("未找到可收取押金的待支付/已确认/在住预订。")
-    from apps.billing.services_v2 import BillingService
+    from apps.billing.services_v2 import BillingInputError, BillingService
     try:
         return BillingService.record_deposit(
             property_obj=property_obj, reservation=reservation, amount=amount,
             method=method, idempotency_key=idempotency_key, received_by=received_by)
+    except BillingInputError as exc:
+        # RSV-10：只有金额格式/精度、方式、幂等键格式等入参错误 → 400。
+        raise LifecycleValidationError(str(exc)) from exc
     except ValueError as exc:
+        # 累计押金超额、状态不允许、关账守卫、班次未开等属于业务状态冲突 → 409。
+        # 第 28 轮回归：此前把所有 ValueError 一律降级为 400，导致
+        # 「累计押金不能超过当前预订房费总额」由 409 变成 400。
         raise LifecycleOperationError(str(exc)) from exc
 
 

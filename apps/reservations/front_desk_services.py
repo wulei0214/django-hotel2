@@ -10,7 +10,10 @@ from apps.billing.models import Folio, LedgerEntry, Payment
 from apps.inventory.models import HousekeepingTask, Room
 from apps.inventory.services import _property_today
 from apps.core.models import AuditEvent
-from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
+from .models import (
+    EarlyDeparturePolicy, NoShowRecord, Reservation, ReservationRoom,
+    Stay, StayRoomSegment,
+)
 
 
 audit = logging.getLogger("hotel.audit")
@@ -23,8 +26,71 @@ ACTIVE_RESERVATION_STATUSES = (
 MANUAL_PAYMENT_METHODS = {"CASH", "CARD", "BANK_TRANSFER", "OTHER"}
 
 
+def snapshot_early_departure_policy(reservation):
+    """WB-098（DEC-ED-01 §2.1/§11.3-A）：预订确认时保存提前离店政策快照。
+
+    文档第 38 行口径："预订确认时保存政策版本快照、逐晚房价快照和适用规则"。
+    为每间 ReservationRoom 写入当前生效（is_active、最新一条）政策快照
+    {policy_type, policy_value, rate_plan_id, snapshot_at}：
+
+    * 无政策配置时写 {"policy_type": "NONE"}（§2.1：没有有效政策配置按
+      NONE 处理，不得由系统或前台自行生成罚金）；
+    * 幂等且不可覆盖：已有快照的明细跳过（§11.1-5 历史事实不可覆盖；
+      确认后修改 RatePlan 当前政策不得改变已确认订单的历史快照，§2.4）。
+
+    确认路径调用点（确认事实落库的同一事务内，WB-098 全入口覆盖）：
+      * front_desk_services.collect_manual_payment（前台收款确认，含公开
+        PENDING 订单的前台确认）；
+      * walkin.create_walk_in（Walk-in 到店确认）；
+      * billing.services.process_mock_payment_callback（在线渠道支付成功确认）；
+      * billing.services_v2.record_deposit（前台收押金确认）。
+    legacy 分支仅用于历史订单（确认时尚无快照字段），按 NONE 兜底并审计，
+    不得成为新增确认路径跳过快照的默认值。
+    """
+    now_iso = timezone.now().isoformat()
+    snapshotted = []
+    for line in reservation.reservation_rooms.all().order_by("pk"):
+        if line.early_departure_snapshot:
+            continue
+        policy = EarlyDeparturePolicy.objects.filter(
+            rate_plan_id=line.rate_plan_id, is_active=True,
+        ).order_by("-created_at", "-pk").first()
+        line.early_departure_snapshot = {
+            "policy_type": (policy.policy_type if policy is not None
+                            else EarlyDeparturePolicy.PolicyType.NONE),
+            "policy_value": (str(policy.policy_value)
+                             if policy is not None
+                             and policy.policy_value is not None else None),
+            "rate_plan_id": line.rate_plan_id,
+            "snapshot_at": now_iso,
+        }
+        line.save(update_fields=("early_departure_snapshot",))
+        snapshotted.append(line)
+    if snapshotted:
+        AuditEvent.record(
+            action="reservation.early_departure_policy_snapshotted",
+            entity_type="Reservation", entity_id=reservation.pk,
+            property_obj=reservation.property,
+            after={
+                "lines": [line.pk for line in snapshotted],
+                "policy_types": {
+                    str(line.pk): line.early_departure_snapshot["policy_type"]
+                    for line in snapshotted},
+            },
+            reason="预订确认时保存提前离店政策快照（WB-098/DEC-ED-01）")
+    return snapshotted
+
+
 class FrontDeskOperationError(Exception):
     """前台操作不满足业务状态或账务约束。"""
+
+
+class FrontDeskValidationError(FrontDeskOperationError):
+    """RSV-10：入参校验失败（金额格式等），应与业务状态冲突区分。
+
+    继承 FrontDeskOperationError 保证旧调用方的 except 仍能捕获；视图层
+    需在本类之前单独捕获并返回 400，而不是把所有失败都归为 409。
+    """
 
 
 def _money(value):
@@ -63,6 +129,28 @@ def _check_room_assignment_conflict(line, room):
         raise FrontDeskOperationError("该房间在预订住宿日期内已有其他有效预订占用。")
 
 
+def _ledger_reference_for_amount(folio, *, base_reference, amount):
+    """RSV-11：按 reference 前缀查已有凭证，金额一致才幂等跳过。
+
+    旧实现只判断 ``reference`` 是否存在：只要历史上留有一条同引用凭证
+    （哪怕金额远小于本轮应补差额），``exists()`` 为真就整笔跳过，差额被
+    永久吞掉。这里改为按金额比对；金额不一致时返回一个带序号的新引用，
+    由 post_entry 以唯一 reference 落差额凭证，绝不静默漏账。
+    """
+    existing = list(
+        folio.entries.filter(reference__startswith=base_reference)
+        .order_by("pk").values_list("reference", "amount"))
+    if any(entry_amount == amount for _, entry_amount in existing):
+        return None
+    used = {ref for ref, _ in existing}
+    if base_reference not in used:
+        return base_reference
+    seq = 1
+    while f"{base_reference}:delta:{seq}" in used:
+        seq += 1
+    return f"{base_reference}:delta:{seq}"
+
+
 def _release_sold_inventory_for_early_departure(line, *, from_date):
     """WB-086：提前离店按明细行释放 [from_date, line.check_out) 的已售库存。
 
@@ -98,6 +186,24 @@ def _release_sold_inventory_for_early_departure(line, *, from_date):
         row.version = (row.version or 0) + 1
         row.save(update_fields=("sold", "version", "updated_at"))
         released += 1
+
+    # RSV-03：把释放区间持久化为明细事实（保留合同原始 check_out 不变）。
+    # 库存对账按 [check_in, check_out) 重算 sold，若无此标记会把已释放
+    # 夜晚重新计回，制造永久假差异，再叠加修复路径就会把 sold 写回释放前值。
+    if line.inventory_released_from is None:
+        line.inventory_released_from = from_date
+        line.save(update_fields=("inventory_released_from",))
+    else:
+        line.inventory_released_from = min(line.inventory_released_from, from_date)
+        line.save(update_fields=("inventory_released_from",))
+
+    # RSV-01：冻结明细同步释放，保证对账 held/sold 真值可独立重建。
+    from apps.inventory.services import sync_inventory_hold_details
+    from apps.reservations.models import InventoryHold
+    sync_inventory_hold_details(
+        property_obj=line.property, lines=[line],
+        target_status=InventoryHold.HoldStatus.RELEASED,
+        only_dates=set(dates))
     return released
 
 
@@ -287,23 +393,33 @@ def collect_manual_payment(
         raise FrontDeskOperationError("当前预订状态不允许前台收款。")
     provider_ref = f"FD{property_obj.pk}-{key}"
     existing = Payment.objects.filter(provider_ref=provider_ref).first()
-    if existing is not None and (
-        existing.property_id != property_obj.pk
-        or existing.reservation_id != reservation.pk
-        or existing.amount != _money(amount)
-        or existing.method != method
-        or existing.provider != "frontdesk_manual"
-        or existing.status != Payment.Status.SUCCEEDED
-    ):
-        raise FrontDeskOperationError(
-            "该 Idempotency-Key 已用于其他收款请求，不能重复使用。")
-    from apps.billing.services_v2 import BillingService
+    if existing is not None:
+        try:
+            requested_amount = _money(amount)
+        except FrontDeskOperationError as exc:
+            # RSV-10：金额格式/精度错误属于客户端入参错误（400）。
+            raise FrontDeskValidationError(str(exc)) from exc
+        if (
+            existing.property_id != property_obj.pk
+            or existing.reservation_id != reservation.pk
+            or existing.amount != requested_amount
+            or existing.method != method
+            or existing.provider != "frontdesk_manual"
+            or existing.status != Payment.Status.SUCCEEDED
+        ):
+            raise FrontDeskOperationError(
+                "该 Idempotency-Key 已用于其他收款请求，不能重复使用。")
+    from apps.billing.services_v2 import BillingInputError, BillingService
     try:
         payment = BillingService.collect_payment(
             property_obj=property_obj, reservation=reservation,
             amount=amount, method=method, collected_by=received_by,
             reference=provider_ref)
+    except BillingInputError as exc:
+        # RSV-10：金额格式/精度、支付方式、参考号格式 → 400。
+        raise FrontDeskValidationError(str(exc)) from exc
     except ValueError as exc:
+        # 关账守卫、超额收款、班次未开、幂等键复用于不同事实 → 409。
         raise FrontDeskOperationError(str(exc)) from exc
 
     # 业务闭环缺口修复（用户全链路串测发现）：未接入真实支付渠道时，
@@ -319,6 +435,9 @@ def collect_manual_payment(
             raise FrontDeskOperationError(str(exc)) from exc
         reservation.status = Reservation.Status.CONFIRMED
         reservation.save(update_fields=("status", "updated_at"))
+        # WB-098：确认事实落库的同一事务内保存提前离店政策快照
+        # （DEC-ED-01：预订确认时保存政策版本快照）。
+        snapshot_early_departure_policy(reservation)
         from apps.billing.services import cancel_open_payment_intents_for_reservation
         cancel_open_payment_intents_for_reservation(reservation)
         AuditEvent.record(
@@ -361,8 +480,9 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
 
     # WB-075：逐晚房价快照缺失时拒绝自动结算退房房费（与夜审
     # NIGHTLY_RATE_MISSING critical 阻断同口径——没有价格依据不得入账）。
-    # 注意语义边界：本守卫只拦截"缺数据"；有快照时 NONE 政策=合同全额
-    # （calculate_early_departure 基线语义）不受影响。
+    # 语义边界（WB-097 正式语义）：本守卫只拦截"缺数据"；有快照时
+    # NONE 政策=按实际入住晚数的逐晚快照之和结算、未住晚不计房费
+    # 也不收违约金（calculate_early_departure，DEC-ED-01 §2.1）。
     if not (line.nightly_rates or []):
         raise FrontDeskOperationError(
             "缺少逐晚房价快照，无法自动结算退房房费；"
@@ -378,7 +498,9 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
     posted_for_stay = (
         folio.entries.filter(
             entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-            reference=charge_reference,
+            # RSV-11：差额凭证使用 base_reference:delta:N 后缀，必须一并归集，
+            # 否则重复退房会把已补差额当成未入账而再次计费。
+            reference__startswith=charge_reference,
         ).aggregate(total=Sum("amount"))["total"]
         or Decimal("0.00")
     ) + (
@@ -394,32 +516,38 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
         ).aggregate(total=Sum("amount"))["total"]
         or Decimal("0.00")
     )
-    # DEC-ED-01（WB-009/062/063/064 修复）：
-    # 无论有无 EarlyDeparturePolicy，均按实际入住晚数 + nightly_rates 快照重算。
+    # DEC-ED-01（WB-009/062/063/064 修复；WB-097 正式语义）：
+    # 无论有无 EarlyDeparturePolicy，均按实际入住晚数 + nightly_rates 快照重算；
+    # 政策口径优先读预订确认时保存的 early_departure_snapshot（WB-098）。
     # 无政策时罚金=0（NONE 安全默认）；有政策时违约金独立凭证入账。
     # 夜审已过账金额按差额处理：多收（负差额）生成 ADJUSTMENT 冲回凭证。
     from apps.reservations.walkin import calculate_early_departure
     ed = calculate_early_departure(line=line, actual_check_out=timezone.now())
     target_room_charge = ed["actual_room_charge"]
     remaining_room_charge = target_room_charge - posted_for_stay
-    if remaining_room_charge > 0 and not folio.entries.filter(
-        reference=charge_reference
-    ).exists():
-        from apps.billing.services_v2 import BillingService
-        BillingService.post_entry(
-            property_obj=property_obj, folio=folio, stay=stay,
-            entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-            amount=remaining_room_charge, currency=folio.currency,
-            business_date=_property_today(property_obj),
-            reference=charge_reference,
-            description=f"房费：{line.check_in.isoformat()} 至 {line.check_out.isoformat()}",
-            posted_by=checked_out_by,
-        )
+    # RSV-11：三处凭证守卫一律改为「按金额幂等」，不再凭 reference 存在性吞差额。
+    if remaining_room_charge > 0:
+        charge_ref = _ledger_reference_for_amount(
+            folio, base_reference=charge_reference,
+            amount=remaining_room_charge)
+        if charge_ref:
+            from apps.billing.services_v2 import BillingService
+            BillingService.post_entry(
+                property_obj=property_obj, folio=folio, stay=stay,
+                entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+                amount=remaining_room_charge, currency=folio.currency,
+                business_date=_property_today(property_obj),
+                reference=charge_ref,
+                description=f"房费：{line.check_in.isoformat()} 至 {line.check_out.isoformat()}",
+                posted_by=checked_out_by,
+            )
     elif remaining_room_charge < 0:
         # WB-064：夜审多收房费 → 负向 ADJUSTMENT 冲回（不产生正数凭证）
-        from apps.billing.services_v2 import BillingService
-        adj_ref = f"checkout-adjust:{stay.pk}"
-        if not folio.entries.filter(reference=adj_ref).exists():
+        adj_ref = _ledger_reference_for_amount(
+            folio, base_reference=f"checkout-adjust:{stay.pk}",
+            amount=remaining_room_charge)
+        if adj_ref:
+            from apps.billing.services_v2 import BillingService
             BillingService.post_entry(
                 property_obj=property_obj, folio=folio, stay=stay,
                 entry_type=LedgerEntry.EntryType.ADJUSTMENT,
@@ -430,8 +558,10 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
                 posted_by=checked_out_by)
     # WB-063：违约金独立凭证（有政策且罚金>0 时入账）
     if ed.get("penalty") and ed["penalty"] > 0:
-        penalty_ref = f"ed-penalty:{stay.pk}"
-        if not folio.entries.filter(reference=penalty_ref).exists():
+        penalty_ref = _ledger_reference_for_amount(
+            folio, base_reference=f"ed-penalty:{stay.pk}",
+            amount=ed["penalty"])
+        if penalty_ref:
             from apps.billing.services_v2 import BillingService
             BillingService.post_entry(
                 property_obj=property_obj, folio=folio, stay=stay,

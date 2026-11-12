@@ -40,6 +40,20 @@ def calculate_early_departure(*, line, actual_check_out):
     WB-004/065 修复：nightly_rates 按日期顺序取值（不按金额排序），
     确保不同日期不同价格时实际住宿晚数和罚金正确。
 
+    WB-097（DEC-ED-01 §2.1 正式语义，docs/PMS2六项业务规则正式决策
+    与实施基线_2026-11-10.md 第 36/38 行）：
+      * 实际住宿房费 = 预订时保存的逐晚房价快照 × 实际入住晚数
+        （actual_nights = (actual_check_out.date() - line.check_in).days，
+        截取到 [0, 总晚数]）；未住晚不作为实际住宿房费入账；
+      * NONE/未配置政策 = 未住晚不收违约金、未住晚不计房费——不再回退
+        "合同全额 line.amount"（旧实现已按正式语义推翻）；
+      * WB-098：优先读取预订确认时保存的 line.early_departure_snapshot
+        （政策版本快照，第 38 行口径）；无快照的 legacy 行按 NONE 兜底并
+        落一条审计说明回退原因（§2.1/§11.3-A 第 77 行：快照缺失不得
+        生成非零罚金），不再无条件实时读表；
+      * nightly_rates 缺失时无结算依据：抛 ValueError fail-closed。
+        退房链路的 WB-075 前置守卫（FrontDeskOperationError）保持不变。
+
     返回 {"actual_room_charge": Decimal, "penalty": Decimal, "policy_type": str}。
     """
     nightly = [
@@ -50,23 +64,75 @@ def calculate_early_departure(*, line, actual_check_out):
         )
     ]
     if not nightly:
-        return {"actual_room_charge": line.amount, "penalty": Decimal("0.00"),
-                "policy_type": "NONE"}
+        # WB-097 正式语义：没有逐晚房价快照就没有结算依据，不得回退
+        # 合同全额。退房入口已按 WB-075 先行阻断；此处对直接调用兜底。
+        raise ValueError(
+            "缺少逐晚房价快照，无法按实际入住晚数结算退房房费（DEC-ED-01）。")
     total_nights = len(nightly)
-    actual_nights = max(
-        (actual_check_out.date() - line.check_in).days, 0)
+    # FIN-02 / DEC-ED-01 §2.3：actual_nights 必须按**物业时区**业务日期计算。
+    # 此前用 timezon.localdate()（部署 TIME_ZONE）或 aware datetime 的 .date()
+    # （UTC 日期）：Asia/Shanghai 凌晨 00:00–07:59 退房时 UTC 是前一天，
+    # 少算一晚房费且该晚库存不释放也不计费。与夜审 property_date /
+    # _property_today / 提前离店释放起点统一到同一物业时区口径。
+    from datetime import date as date_cls, datetime as dt_datetime
+    from zoneinfo import ZoneInfo
+    try:
+        property_tz = ZoneInfo(line.property.timezone or "Asia/Shanghai")
+    except Exception:
+        property_tz = ZoneInfo("Asia/Shanghai")
+    if isinstance(actual_check_out, dt_datetime):
+        if timezone.is_aware(actual_check_out):
+            actual_check_out_day = timezone.localdate(actual_check_out, property_tz)
+        else:
+            # naive 视为物业本地时间（测试夹具常用），直接取其日期部分。
+            actual_check_out_day = actual_check_out.date()
+    elif isinstance(actual_check_out, date_cls):
+        actual_check_out_day = actual_check_out
+    else:
+        raise ValueError("actual_check_out 必须是日期或日期时间。")
+    actual_nights = max((actual_check_out_day - line.check_in).days, 0)
     actual_nights = min(actual_nights, total_nights)
     actual_room_charge = sum(nightly[:actual_nights], Decimal("0.00"))
 
-    policy = EarlyDeparturePolicy.objects.filter(
-        rate_plan_id=line.rate_plan_id, is_active=True).order_by("-created_at").first()
-    if policy is None or policy.policy_type == EarlyDeparturePolicy.PolicyType.NONE:
-        # NONE/未配置政策 = 无提前离店减免：客人按合同房费（line.amount）
-        # 全额结算，罚金 0。回归基线语义（同日退房也须入账合同房费）。
-        return {"actual_room_charge": line.amount,
-                "penalty": Decimal("0.00"), "policy_type": "NONE"}
-    pt = policy.policy_type
-    pv = policy.policy_value or Decimal("0.00")
+    none_result = {"actual_room_charge": actual_room_charge,
+                   "penalty": Decimal("0.00"),
+                   "policy_type": EarlyDeparturePolicy.PolicyType.NONE}
+
+    # WB-098：优先使用预订确认时保存的政策版本快照。
+    snapshot = line.early_departure_snapshot or None
+    if snapshot is not None:
+        pt = str(snapshot.get("policy_type") or "").strip() or \
+            EarlyDeparturePolicy.PolicyType.NONE
+        if pt not in dict(EarlyDeparturePolicy.PolicyType.choices):
+            # 快照内容异常（如手工篡改/脏数据）按 NONE 兜底，不得生成罚金。
+            return none_result
+        pv_raw = snapshot.get("policy_value")
+        pv = Decimal(str(pv_raw)) if pv_raw not in (None, "") else Decimal("0.00")
+    else:
+        # legacy 行无预订时快照：按 NONE 处理（DEC-ED-01 §2.1："没有有效
+        # 政策配置或政策快照时……按 NONE 处理"；§11.3-A 第 77 行："快照
+        # 缺失时按 NONE，不得生成非零罚金"），并审计一条 history 说明
+        # 回退原因。不回退当前活跃政策——确认后新增/修改的政策不得追溯
+        # 施加到从未确认过该政策的订单上。
+        current_policy = EarlyDeparturePolicy.objects.filter(
+            rate_plan_id=line.rate_plan_id, is_active=True).order_by(
+            "-created_at", "-pk").first()
+        if line.pk and line.property_id:
+            AuditEvent.record(
+                action="reservations.early_departure_snapshot_missing",
+                entity_type="ReservationRoom", entity_id=str(line.pk),
+                property_obj=line.property,
+                after={"rate_plan_id": line.rate_plan_id,
+                       "current_active_policy": (
+                           current_policy.policy_type
+                           if current_policy else None),
+                       "applied_policy_type": "NONE"},
+                reason="该明细无预订时提前离店政策快照（legacy 数据），"
+                       "按 NONE 处理、不生成罚金（DEC-ED-01 §2.1/§11.3-A）")
+        return none_result
+
+    if pt == EarlyDeparturePolicy.PolicyType.NONE:
+        return none_result
     if pt == EarlyDeparturePolicy.PolicyType.FIRST_NIGHT:
         penalty = nightly[0]
     elif pt == EarlyDeparturePolicy.PolicyType.FIXED:
@@ -159,6 +225,12 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
         raise ValueError(str(exc)) from exc
     reservation.status = Reservation.Status.CONFIRMED
     reservation.save(update_fields=("status", "updated_at"))
+    # WB-098：确认事实落库的同一事务内保存提前离店政策快照
+    # （DEC-ED-01：预订确认时保存政策版本快照）。
+    from apps.reservations.front_desk_services import (
+        snapshot_early_departure_policy,
+    )
+    snapshot_early_departure_policy(reservation)
 
     # 排房 + 入住（同事务）；WB-002 修复：assign_room/check_in_stay 已导入。
     # WB-074 修复：房间查询限定当前物业（room_type 已由 create_reservation

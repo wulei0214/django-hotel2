@@ -40,3 +40,7 @@ Thumbs.db
 !docs/schema_only/*.sql
 staticfiles/
 docs/acceptance/evidence/hotel-backup-*.sql
+
+# 本地智能体工作数据（不入库）
+.workbuddy/
+.mimosa/

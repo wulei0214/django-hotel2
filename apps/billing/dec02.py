@@ -330,6 +330,25 @@ def request_exception_release(*, property_obj, reservation, folio, amount,
                               reason_code, reason_text, requested_by,
                               idempotency_key=""):
     """前台发起异常放行申请（结构化原因 + 说明）；同一账单仅一笔在途。"""
+    # WB-112：进入事务后第一步锁定账单行——同一 Folio 的并发申请在行锁上
+    # 串行化，后续的对象关联校验、幂等键重放、在途申请检查、创建与审计
+    # 全部基于锁后重取的 folio 真值执行，杜绝"双在途"竞态。
+    try:
+        folio = Folio.objects.select_for_update().get(
+            pk=folio.pk, property=property_obj)
+    except Folio.DoesNotExist as exc:
+        raise ValueError(
+            "账单不属于当前物业或不存在，不能发起异常放行。") from exc
+    # WB-094：异常放行对象关联核验——账单/预订/物业必须同主且币种一致，
+    # 杜绝跨预订 folio、跨物业对象或异币种账单混入放行流程。
+    if reservation.property_id != property_obj.pk:
+        raise ValueError("预订不属于当前物业，不能发起异常放行。")
+    if folio.property_id != property_obj.pk:
+        raise ValueError("账单不属于当前物业，不能发起异常放行。")
+    if folio.reservation_id != reservation.pk:
+        raise ValueError("账单与预订不一致，不能发起异常放行。")
+    if folio.currency != reservation.currency:
+        raise ValueError("账单币种与预订币种不一致，不能发起异常放行。")
     if reason_code not in CheckoutExceptionRelease.ReasonCode.values:
         raise ValueError("异常原因代码不合法。")
     reason_text = str(reason_text or "").strip()
@@ -454,6 +473,14 @@ def consume_approved_exception_release(*, property_obj, folio, stay,
         status=CheckoutExceptionRelease.Status.APPROVED).first()
     if release is None:
         return None
+    # WB-094：锁内复核放行记录与当前账单/预订/物业归属一致——查询条件已按
+    # folio+property 圈定，这里显式复核三重归属与币种，历史脏数据直接拒绝
+    # （不得把 A 单的放行记录消费到 B 单的退房上）。
+    if (release.property_id != property_obj.pk
+            or release.folio_id != folio.pk
+            or release.reservation_id != folio.reservation_id
+            or release.currency != folio.currency):
+        raise ValueError("异常放行记录与当前账单/预订/物业归属不一致，禁止放行。")
     # WB-051：放行金额绑定——退房时实际受阻金额不得超过已批准金额；
     # 超出部分未经审批，保持阻断让前台重新申请（不得以实际金额覆盖
     # 已批金额，否则审批事实被静默篡改）。
@@ -488,6 +515,16 @@ def settle_exception_release(*, property_obj, release_id, settled_by,
         raise ValueError("异常放行记录不存在或不属于当前物业。")
     if release.status != CheckoutExceptionRelease.Status.RELEASED:
         raise ValueError("只有已放行待核查的记录可以结案。")
+    # WB-094：锁内复核放行记录与账单/预订/物业归属一致（register_refund_liability
+    # 已有同型校验，这里补齐服务层前置，CLOSE_NO_REFUND 路径同样受保护）。
+    release_folio = release.folio
+    if (release.property_id != property_obj.pk
+            or release.reservation_id is None
+            or release_folio is None
+            or release_folio.property_id != property_obj.pk
+            or release_folio.reservation_id != release.reservation_id
+            or release_folio.currency != release.reservation.currency):
+        raise ValueError("异常放行记录与账单/预订/物业归属或币种不一致，禁止结案。")
     verify_note = str(verify_note or "").strip()
     if not verify_note:
         raise ValueError("结案必须填写财务核查结论。")

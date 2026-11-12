@@ -19,6 +19,45 @@ class NightAuditError(Exception):
     """夜审业务校验失败。"""
 
 
+# MAINT-02：夜审 RUNNING 记录在主过账事务外先提交，进程被 OOM/断电硬杀时
+# 不会走 run() 的 except 分支，RUNNING 会永久残留，导致该营业日再也无法
+# 执行夜审。超时阈值用于惰性恢复与运维恢复命令。
+NIGHT_AUDIT_RUN_TIMEOUT_MINUTES = 15
+
+
+def recover_stale_night_audit_runs(*, property_obj=None, business_date=None,
+                                   timeout_minutes=NIGHT_AUDIT_RUN_TIMEOUT_MINUTES):
+    """把超过阈值的 RUNNING 夜审标记为 FAILED，返回恢复条数。
+
+    只处理明确超时的记录：正在执行的夜审在阈值内不受影响。调用方应处于
+    事务内（run() 的并发仲裁块已满足；管理命令自行包 atomic）。
+    """
+    cutoff = timezone.now() - timedelta(minutes=timeout_minutes)
+    qs = NightAuditRun.objects.filter(
+        status=NightAuditRun.RunStatus.RUNNING, started_at__lt=cutoff)
+    if property_obj is not None:
+        qs = qs.filter(business_date__property=property_obj)
+    if business_date is not None:
+        qs = qs.filter(business_date=business_date)
+    stale = list(qs.values_list("pk", "business_date__property_id"))
+    if not stale:
+        return 0
+    NightAuditRun.objects.filter(pk__in=[pk for pk, _ in stale]).update(
+        status=NightAuditRun.RunStatus.FAILED,
+        finished_at=timezone.now(),
+        error_message=(f"夜审执行超过 {timeout_minutes} 分钟未结束，进程可能已中断；"
+                       "由超时恢复流程标记为失败，可重新发起夜审。"))
+    props = {p.pk: p for p in Property.objects.filter(
+        pk__in={prop_id for _, prop_id in stale})}
+    for pk, prop_id in stale:
+        AuditEvent.record(
+            action="night_audit.run_recovered", entity_type="NightAuditRun",
+            entity_id=pk, property_obj=props.get(prop_id),
+            after={"status": "FAILED", "timeout_minutes": timeout_minutes},
+            reason="RUNNING 超时恢复（MAINT-02）")
+    return len(stale)
+
+
 def property_date(property_obj):
     try:
         tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")
@@ -280,6 +319,10 @@ class NightAuditService:
                 raise NightAuditError(
                     f"物业已有未关闭营业日 {other_open.business_date.isoformat()}，请先处理。"
                 )
+            # MAINT-02：惰性恢复。进程被硬杀时 except 分支不会执行，
+            # 残留 RUNNING 会让该营业日永久无法再跑夜审。
+            recover_stale_night_audit_runs(
+                property_obj=property_obj, business_date=bd)
             running = NightAuditRun.objects.filter(
                 business_date=bd, status=NightAuditRun.RunStatus.RUNNING
             ).first()
@@ -292,6 +335,46 @@ class NightAuditService:
 
         try:
             with transaction.atomic():
+                # 收尾并发专项（MySQL 1213 死锁修复，锁序重排）：过账事务的
+                # Stay 行锁必须先于 Property/BusinessDate 行锁获取。原因：
+                # 退房事务持有 Stay 行锁后插入 LedgerEntry/审计事件，InnoDB
+                # 外键校验会对父行 core_property 取共享锁；若夜审先持有
+                # Property 排他锁再等 Stay 行锁，即形成
+                # 夜审{property X → 等 stay} vs 退房{stay X → 等 property S}
+                # 的 ABBA 死锁（MySQL 1213）。Stay 先锁后，并发退房要么在
+                # Stay 行锁上等待（未持有任何夜审所需锁），要么已提交
+                # （Stay 不再 IN_HOUSE，被过滤跳过），无环可成。
+                candidate_stay_pks = list(
+                    Stay.objects.filter(
+                        property=property_obj,
+                        status=Stay.Status.IN_HOUSE,
+                        reservation_room__check_in__lte=day,
+                        reservation_room__check_out__gt=day,
+                    ).values_list("pk", flat=True)
+                )
+                # WB-109：夜审与退房并发仲裁。在写入任何房费之前，先按主键序
+                # 对本次涉及的全部 Stay（IN_HOUSE 且住宿区间覆盖目标营业日）
+                # select_for_update()；锁序 Stay→ReservationRoom→Reservation
+                # →Folio 与 check_out_stay 一致，杜绝 ABBA 死锁窗口：
+                #   * 夜审先锁 → 并发退房在 Stay 行锁上等待，夜审提交后退房
+                #     按"已过租差额"口径结算，只收一次房费；
+                #   * 退房先锁/已提交 → Stay 不再 IN_HOUSE，夜审跳过该 Stay，
+                #     房费由退房事务结算，夜审不重复计费。
+                # （收尾并发专项补充：锁定读只锁 Stay 行——区间条件用前置
+                # 一致性读求候选主键超集，再以纯 Stay 单表 select_for_update
+                # 锁定，避免 JOIN 锁定读把 ReservationRoom 行也一并锁住、
+                # 锁序退化为 RR→Stay；status=IN_HOUSE 留在锁定语句内，锁
+                # 等待结束后按当前读重评（锁定后已退房的 Stay 仍被过滤），
+                # WB-109 语义不变；住宿区间并发变化由过账循环内锁定 RR 后
+                # 的窗口复核兜底。）
+                locked_stays = {
+                    row.pk: row
+                    for row in Stay.objects.select_for_update().filter(
+                        pk__in=candidate_stay_pks,
+                        property=property_obj,
+                        status=Stay.Status.IN_HOUSE,
+                    ).order_by("pk")
+                }
                 Property.objects.select_for_update().get(pk=property_obj.pk)
                 bd = BusinessDate.objects.select_for_update().get(pk=bd.pk)
                 if bd.status not in (BusinessDate.Status.OPEN, BusinessDate.Status.REOPENED):
@@ -305,25 +388,60 @@ class NightAuditService:
                         (len(preview["blockers"]), "、".join(codes)))
                 posted = 0
                 already = 0
+                summary_stay_count = 0
+                summary_charge_total = Decimal("0.00")
                 for row in preview["stays"]:
+                    stay = locked_stays.get(row["stay_id"])
+                    if stay is None:
+                        # WB-109：锁定后退房并发获胜（Stay 已退房/不在锁定集）
+                        # → 夜审跳过该 Stay，不写凭证、不计数。
+                        continue
+                    summary_stay_count += 1
                     if row["already_posted"]:
                         already += 1
                         continue
-                    if Decimal(row["amount"]) == 0:
-                        # 零价房不创建零金额凭证，但保留在结果汇总。
-                        already += 1
+                    line = ReservationRoom.objects.select_for_update().get(
+                        pk=stay.reservation_room_id, property=property_obj)
+                    if not (line.check_in <= day < line.check_out):
+                        # 锁定后住宿区间不再覆盖营业日（如并发续住/缩短）→ 跳过。
                         continue
+                    reservation = Reservation.objects.select_for_update().get(
+                        pk=line.reservation_id, property=property_obj)
+                    # 锁定行上重读当晚房价快照（预览读发生在加锁前，金额以
+                    # 锁定事实为准；缺失/非法按既有 blocker 口径整体回滚）。
+                    nightly = next(
+                        (item for item in (line.nightly_rates or [])
+                         if str(item.get("date")) == day.isoformat()),
+                        None,
+                    )
+                    if nightly is None:
+                        raise NightAuditError(
+                            f"预订 {reservation.booking_no} 的房间明细 {line.pk} "
+                            f"缺少 {day.isoformat()} 的每晚房价快照，夜审已整体回滚。"
+                        )
+                    try:
+                        amount = Decimal(str(nightly.get("price")))
+                    except (InvalidOperation, TypeError, ValueError) as exc:
+                        raise NightAuditError(
+                            f"预订 {reservation.booking_no} 的当日房价快照不是"
+                            "有效金额，夜审已整体回滚。") from exc
                     folio = Folio.objects.select_for_update().filter(
                         property=property_obj,
-                        reservation__booking_no=row["booking_no"],
+                        reservation__booking_no=reservation.booking_no,
                         folio_type=Folio.FolioType.MASTER,
                         status=Folio.Status.OPEN,
                     ).first()
                     if folio is None:
                         raise NightAuditError(
-                            f"预订 {row['booking_no']} 没有有效主账单，夜审已整体回滚。"
+                            f"预订 {reservation.booking_no} 没有有效主账单，夜审已整体回滚。"
                         )
-                    stay = Stay.objects.get(pk=row["stay_id"], property=property_obj)
+                    if amount == 0:
+                        # 零价房不创建零金额凭证，但保留在结果汇总。
+                        already += 1
+                        continue
+                    reference = (
+                        f"night-audit:{property_obj.pk}:{day.isoformat()}"
+                        f":stay:{stay.pk}")
                     # WB-079 顺序不变量：过租凭证写入必须发生在营业日置
                     # CLOSED 之前（同一事务内，先 post_entry 后关账）——
                     # post_entry 的营业日关账守卫依赖该顺序，否则会阻断
@@ -331,12 +449,13 @@ class NightAuditService:
                     BillingService.post_entry(
                         property_obj=property_obj, folio=folio, stay=stay,
                         entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-                        amount=Decimal(row["amount"]), currency=row["currency"],
-                        business_date=day, reference=row["reference"],
+                        amount=amount, currency=reservation.currency,
+                        business_date=day, reference=reference,
                         description=f"夜审房费过租 {day.isoformat()}",
                         posted_by=executed_by,
                     )
                     posted += 1
+                    summary_charge_total += amount
 
                 now = timezone.now()
                 bd.status = BusinessDate.Status.CLOSED
@@ -344,10 +463,13 @@ class NightAuditService:
                 bd.closed_by = executed_by
                 bd.save(update_fields=("status", "closed_at", "closed_by", "open_property_key"))
                 summary = {
-                    "stay_count": preview["stay_count"],
+                    # WB-109：汇总按锁定后实际处理的 Stay 口径重算，
+                    # 与 preview（无锁读）口径在无并发时一致。
+                    "stay_count": summary_stay_count,
                     "charge_count": posted,
                     "already_posted_count": already,
-                    "charge_total": preview["charge_total"],
+                    "charge_total": str(summary_charge_total.quantize(
+                        Decimal("0.01"))),
                     "currency": preview["currency"],
                     "no_show_review_candidates": preview["no_show_review_candidates"],
                 }
