@@ -1463,10 +1463,12 @@ class PaymentIntent(models.Model):
 
 
 class ProviderTransaction(models.Model):
-    """渠道交易事实：渠道返回或查询到的数据，与 PaymentIntent 分离。
+    """渠道交易主记录：同一渠道交易号唯一，承载该交易**最新**渠道状态。
 
-    同一渠道交易号只归属一个意图；同一成功交易最多一笔有效 Payment。
-    重复或乱序通知先记录事件（event_id 幂等），再由状态机判断推进。
+    WB-119：状态推进语义明确化——同一交易号的每次渠道通知/查询结果是
+    一条不可变事件，落 ``ProviderTransactionEvent``（事件历史）；主记录
+    仅由 ``record_provider_event`` 按受控状态机更新到最新事实，终态
+    （SUCCESS）不得倒退。数据库唯一键：同一渠道交易号只归属一个意图。
     """
 
     objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
@@ -1509,6 +1511,15 @@ class ProviderTransaction(models.Model):
         ]
 
     def save(self, *args, **kwargs):
+        # WB-125：渠道交易主记录的既有事实不可通过实例 save() 直接改写——
+        # 任何字段变更必须经 record_provider_event 的事件重放/状态机校验。
+        # 仅服务层受控迁移（状态推进）通过 _allow_controlled_transition 放行。
+        if not self._state.adding and not getattr(
+                self, "_allow_controlled_transition", False):
+            raise ValueError(
+                "渠道交易事实不可变（WB-125）：不得直接修改已存在的渠道交易"
+                "记录；状态变化请通过 record_provider_event 记录新的渠道事件，"
+                "由受控状态机推进。")
         event_id = (self.event_id or "").strip()
         self.provider_event_key = (
             f"{self.provider_code}:{event_id}" if event_id else None)
@@ -1519,6 +1530,62 @@ class ProviderTransaction(models.Model):
 
     def __str__(self):
         return f"{self.provider_code}:{self.provider_transaction_id} [{self.channel_status}]"
+
+
+class ProviderTransactionEvent(models.Model):
+    """渠道事件历史（不可变事实，WB-119）。
+
+    同一渠道交易号的每次通知/查询结果各记一行：event_id 幂等（同一事件
+    重放做完整事实核对），不同事件追加新行；事件本身永不修改。主记录
+    ``ProviderTransaction`` 只保存受控状态机推进后的最新事实。
+    """
+
+    objects = models.Manager.from_queryset(ImmutableFinancialFactQuerySet)()
+
+    property = models.ForeignKey(
+        "core.Property", on_delete=models.PROTECT,
+        related_name="provider_transaction_events", verbose_name="所属酒店")
+    intent = models.ForeignKey(
+        PaymentIntent, on_delete=models.PROTECT,
+        related_name="provider_transaction_events", verbose_name="关联支付意图")
+    transaction = models.ForeignKey(
+        ProviderTransaction, on_delete=models.PROTECT,
+        related_name="events", verbose_name="渠道交易主记录")
+    provider_code = models.CharField(max_length=32, verbose_name="渠道代码")
+    provider_transaction_id = models.CharField(max_length=128, verbose_name="渠道交易号")
+    event_id = models.CharField(
+        max_length=128, blank=True, default="", verbose_name="渠道事件 ID")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="交易金额")
+    currency = models.CharField(max_length=3, verbose_name="币种")
+    channel_status = models.CharField(max_length=32, verbose_name="渠道状态")
+    signature_verified = models.BooleanField(default=False, verbose_name="验签通过")
+    received_at = models.DateTimeField(auto_now_add=True, verbose_name="PMS 接收时间")
+    # 同 ProviderTransaction：可空唯一键替代 MySQL 不支持的条件唯一约束，
+    # 保证（provider_code, event_id）在事件历史中真实唯一。
+    provider_event_key = models.CharField(
+        max_length=192, null=True, blank=True, unique=True, editable=False,
+        verbose_name="渠道事件唯一键")
+
+    class Meta:
+        verbose_name = "渠道事件历史"
+        verbose_name_plural = "渠道事件历史"
+        ordering = ("-received_at", "-pk")
+        indexes = [
+            models.Index(fields=["provider_code", "provider_transaction_id"],
+                         name="idx_pte_code_txn"),
+        ]
+
+    def save(self, *args, **kwargs):
+        event_id = (self.event_id or "").strip()
+        self.provider_event_key = (
+            f"{self.provider_code}:{event_id}" if event_id else None)
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {"provider_event_key"}
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.provider_code}:{self.provider_transaction_id}#{self.event_id} [{self.channel_status}]"
 
 
 class PaymentCompensationTask(models.Model):

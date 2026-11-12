@@ -24,9 +24,16 @@ from django.db import migrations, models
 
 
 def _pii_key_bytes():
-    # 与 apps.guests.services._pii_key_bytes 同口径：
-    # 生产必须 DJANGO_PII_KEY（settings 启动校验兜底），测试/开发回退 SECRET_KEY。
-    key = getattr(settings, "DJANGO_PII_KEY", None) or settings.SECRET_KEY
+    # 与 apps.guests.services._pii_key_bytes 同口径（WB-123）：
+    # 优先 settings.DJANGO_PII_KEY（生产由 Q7 启动校验保证已配置）；
+    # 生产缺失时 fail-fast 禁止回退 SECRET_KEY；开发/测试允许回退。
+    key = getattr(settings, "DJANGO_PII_KEY", "")
+    if not key:
+        if getattr(settings, "IS_PRODUCTION", False):
+            raise RuntimeError(
+                "生产环境必须配置 DJANGO_PII_KEY（WB-123），"
+                "禁止回退 SECRET_KEY 执行 PII 数据迁移。")
+        key = settings.SECRET_KEY
     return hashlib.sha256(str(key).encode("utf-8")).digest()
 
 
@@ -45,19 +52,31 @@ def _encrypt_phone(normalized):
     return fernet.encrypt((normalized or "").strip().encode("utf-8")).decode("ascii")
 
 
+def _iter_guests_with_phone(Guest):
+    """WB-122：覆盖 phone 或 phone_normalized 任一字段非空的记录。
+
+    历史数据存在 phone 为空但 phone_normalized 有值的 Guest——只扫 phone
+    会漏回填这类行，随后的清明文步骤却会清掉它们唯一的号码，造成不可逆
+    数据丢失。标准化优先取 phone_normalized，为空时再从 phone 标准化。
+    """
+    return Guest.objects.exclude(
+        phone__isnull=True, phone_normalized__isnull=True).iterator()
+
+
 def backfill_phone_pii(apps, schema_editor):
     """明文行回填 ciphertext+hash；失败该行保留原值并让迁移显式失败。"""
     Guest = apps.get_model("guests", "Guest")
     GuestPhone = apps.get_model("guests", "GuestPhone")
 
     failures = []
-    for guest in Guest.objects.exclude(phone__isnull=True).exclude(
-            phone__exact="").iterator():
+    for guest in _iter_guests_with_phone(Guest):
+        raw_phone = (guest.phone or "").strip()
+        normalized = ((guest.phone_normalized or "").strip()
+                      or _normalize_phone(raw_phone))
+        if not normalized:
+            # 两个字段均为空（仅理论可达）：按无电话记录处理，不伪造号码
+            continue
         try:
-            normalized = ((guest.phone_normalized or "").strip()
-                          or _normalize_phone(guest.phone))
-            if not normalized:
-                raise ValueError("标准化号码为空，无法计算密文/哈希")
             Guest.objects.filter(pk=guest.pk).update(
                 phone_ciphertext=_encrypt_phone(normalized),
                 phone_hash=_phone_hash(normalized))
@@ -65,13 +84,17 @@ def backfill_phone_pii(apps, schema_editor):
             failures.append(f"Guest#{guest.pk}: {exc}")
 
     occupied = {}
-    for row in GuestPhone.objects.iterator():
+    for row in GuestPhone.objects.exclude(
+            phone__isnull=True, phone_normalized__isnull=True).iterator():
+        raw_phone = (row.phone or "").strip()
+        normalized = ((row.phone_normalized or "").strip()
+                      or _normalize_phone(raw_phone))
+        if not normalized:
+            # 有原始值但无法标准化：数据异常，显式失败（不清明文，不丢数据）
+            raise ValueError(
+                f"GuestPhone#{row.pk} 原始值无法标准化为有效号码，"
+                "需人工核对后再执行迁移")
         try:
-            normalized = ((row.phone_normalized or "").strip()
-                          or _normalize_phone(row.phone))
-            if not normalized:
-                # 历史 GuestPhone.phone_normalized 必填；空值视为数据异常
-                raise ValueError("标准化号码为空，无法计算密文/哈希")
             digest = _phone_hash(normalized)
             key = (row.guest_id, digest)
             if key in occupied:
@@ -92,9 +115,27 @@ def backfill_phone_pii(apps, schema_editor):
 
 
 def clear_phone_plaintext(apps, schema_editor):
-    """清空明文列：迁移后 phone/phone_normalized 不再承载任何数据。"""
+    """清空明文列（不可逆步骤，WB-124）。
+
+    清空前守卫（WB-122/124）：任何「明文非空但密文/哈希缺失」的记录都会
+    让本步骤显式失败——回填必须先完整成功，才允许清除明文；反向迁移不
+    提供明文恢复（迁移声明为不可逆），部署前必须备份并验证可恢复。
+    """
     Guest = apps.get_model("guests", "Guest")
     GuestPhone = apps.get_model("guests", "GuestPhone")
+    missing = []
+    for guest in Guest.objects.exclude(
+            phone__isnull=True, phone_normalized__isnull=True).iterator():
+        if not ((guest.phone_ciphertext or "") and (guest.phone_hash or "")):
+            missing.append(f"Guest#{guest.pk}")
+    for row in GuestPhone.objects.exclude(
+            phone__isnull=True, phone_normalized__isnull=True).iterator():
+        if not ((row.phone_ciphertext or "") and (row.phone_hash or "")):
+            missing.append(f"GuestPhone#{row.pk}")
+    if missing:
+        raise RuntimeError(
+            "WB-124 清明文前守卫：以下记录明文非空但密文/哈希缺失，"
+            "禁止清空明文（必须先修复回填）：" + "; ".join(missing[:20]))
     Guest.objects.update(phone=None, phone_normalized=None)
     GuestPhone.objects.update(phone=None, phone_normalized=None)
 
@@ -181,5 +222,9 @@ class Migration(migrations.Migration):
             name="phone_normalized",
             field=models.CharField(blank=True, help_text="已迁移（WB-103）：留列兼容历史 DDL，新数据不再写入明文；检索使用 phone_hash", max_length=24, null=True, verbose_name="标准化号码（历史列）"),
         ),
-        migrations.RunPython(clear_phone_plaintext, migrations.RunPython.noop),
+        # WB-124：清明文是**不可逆**数据操作——不提供 reverse_code，任何
+        # migrate guests 0006 回退尝试都会被 Django 显式拒绝，而不是用
+        # noop 伪装成可逆迁移静默成功（回滚方案依赖迁移前备份 + 应用层
+        # 兼容读密文，见迁移 docstring）。
+        migrations.RunPython(clear_phone_plaintext),
     ]

@@ -25,6 +25,14 @@ if not SECRET_KEY:
         raise ImproperlyConfigured("生产环境必须设置 DJANGO_SECRET_KEY。")
     SECRET_KEY = get_random_secret_key()
 
+# WB-123：PII 加密/HMAC 必须使用独立密钥。此前只做了环境变量启动校验，
+# 却从未注入 Django settings，导致加密服务实际回退 SECRET_KEY——独立密钥
+# 治理形同虚设。服务层（apps/guests/services.py）与数据迁移统一读取本设置；
+# 生产（DJANGO_ENV=prod）未配置时由 Q7 启动校验与服务层 fail-fast 双重兜底，
+# 开发/测试未配置时允许回退 SECRET_KEY 派生（仅限非生产）。
+DJANGO_PII_KEY = os.environ.get("DJANGO_PII_KEY", "").strip()
+IS_PRODUCTION = DJANGO_ENV == "prod"
+
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")

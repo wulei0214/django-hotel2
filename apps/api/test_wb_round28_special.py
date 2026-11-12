@@ -749,3 +749,166 @@ class Round28MySQLConcurrencyHttpTests(TransactionTestCase):
         self.assertEqual(LedgerEntry.objects.filter(
             folio__reservation=reservation,
             entry_type=LedgerEntry.EntryType.DEPOSIT).count(), 3)
+
+
+# ---------------------------------------------------------------------------
+# 第 29 轮：WB-120/121 —— 维护命令创建的任务必须能被 Worker 按同一聚合契约消费
+# ---------------------------------------------------------------------------
+@override_settings(DEBUG=True, DJANGO_ENV="test")
+class Round29MaintenanceWorkerContractTests(TestCase):
+    """WB-120：创建方（run_billing_maintenance）与执行方（Worker）聚合契约
+    必须一致——PAYMENT_LEDGER_REPAIR 用 Payment 聚合、RECONCILIATION_DIFF
+    用 FolioReconciliationRun 聚合；从真实对账差异出发走完
+    「维护命令 → 任务 → Worker → 终态/账务事实 → 重跑无重复副作用」。
+    WB-121：UNKNOWN 与状态冲突在维护统计中分开计数。
+    """
+
+    def setUp(self):
+        from apps.core.models import Property
+        self.prop = Property.objects.create(
+            code="R29MAINT", name="第29轮维护契约专项酒店",
+            timezone="Asia/Shanghai")
+        self.guest = Guest.objects.create(
+            property=self.prop, full_name="第29轮契约住客")
+        self.today = timezone.localdate()
+
+    def _make_folio(self, booking_no):
+        reservation = Reservation.objects.create(
+            property=self.prop, guest=self.guest, booking_no=booking_no,
+            status=Reservation.Status.CONFIRMED, check_in=self.today,
+            check_out=self.today + timedelta(days=1), room_count=1,
+            adult_count=1, total_amount=Decimal("600.00"), currency="CNY")
+        folio = Folio.objects.create(
+            property=self.prop, reservation=reservation, guest=self.guest,
+            currency="CNY")
+        return reservation, folio
+
+    def test_payment_no_entry_uses_payment_aggregate_and_worker_repairs(self):
+        """PAYMENT_NO_ENTRY 差异：任务聚合=Payment，Worker 成功补凭证。"""
+        _, folio = self._make_folio("R29-REPAIR-001")
+        payment = Payment.objects.create(
+            property=self.prop, reservation=folio.reservation, folio=folio,
+            provider="mock", provider_ref="R29-PAY-REPAIR", method="MOCK",
+            amount=Decimal("600.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        # 故意不建 LedgerEntry —— 构造真实对账差异
+        call_command("run_billing_maintenance", "--property", "R29MAINT",
+                     "--only", "recon")
+
+        task = PaymentCompensationTask.objects.get(
+            task_type=PaymentCompensationTask.TaskType.PAYMENT_LEDGER_REPAIR,
+            idempotency_key__startswith="PAYMENT_NO_ENTRY:")
+        self.assertEqual(task.aggregate_type, "Payment",
+                         "WB-120：不得再用 Folio ID 冒充 Payment 聚合")
+        self.assertEqual(task.aggregate_id, payment.pk)
+
+        call_command("payment_compensation_worker", "--once", "--limit", "10")
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.SUCCEEDED,
+                         task.last_error_summary)
+        self.assertTrue(LedgerEntry.objects.filter(
+            folio=folio, reference="payment:R29-PAY-REPAIR").exists())
+
+        # 重跑维护 + Worker：差异不再产生，凭证不重复
+        call_command("run_billing_maintenance", "--property", "R29MAINT",
+                     "--only", "recon")
+        call_command("payment_compensation_worker", "--once", "--limit", "10")
+        self.assertEqual(PaymentCompensationTask.objects.filter(
+            task_type=PaymentCompensationTask.TaskType.PAYMENT_LEDGER_REPAIR,
+            idempotency_key__startswith="PAYMENT_NO_ENTRY:",
+            aggregate_type="Payment").count(), 1)
+        self.assertEqual(LedgerEntry.objects.filter(
+            folio=folio, reference="payment:R29-PAY-REPAIR").count(), 1)
+
+    def test_non_payment_diff_uses_run_aggregate_and_worker_rescans_readonly(self):
+        """BALANCE_MISMATCH（已关闭账单余额重建不符）差异：任务聚合=对账运行，
+        Worker 解析物业做只读重扫成功，不改任何账务事实。"""
+        _, folio = self._make_folio("R29-RECON-001")
+        folio.status = Folio.Status.CLOSED
+        folio.closed_at = timezone.now()
+        folio.save(update_fields=("status", "closed_at"))
+        LedgerEntry.objects.create(
+            property=self.prop, folio=folio,
+            entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+            amount=Decimal("600.00"), currency="CNY",
+            business_date=self.today, reference="charge:R29-RECON-ROOM",
+            description="房费（已关闭账单，余额重建不符 → 构造对账差异）")
+        call_command("run_billing_maintenance", "--property", "R29MAINT",
+                     "--only", "recon")
+
+        task = PaymentCompensationTask.objects.get(
+            task_type=PaymentCompensationTask.TaskType.RECONCILIATION_DIFF,
+            idempotency_key__startswith="BALANCE_MISMATCH:")
+        self.assertEqual(task.aggregate_type, "FolioReconciliationRun")
+
+        call_command("payment_compensation_worker", "--once", "--limit", "10")
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.SUCCEEDED,
+                         task.last_error_summary)
+        # 只读核对：不改账本（差异事实保持原样，等待授权财务处理）
+        self.assertEqual(LedgerEntry.objects.filter(folio=folio).count(), 1)
+
+    def test_expire_statistics_separate_unknown_from_conflicts(self):
+        """WB-121：渠道 UNKNOWN 计 unknown，状态竞态/业务拒绝计 conflicts。"""
+        from io import StringIO
+        from unittest.mock import patch
+        from apps.billing.management.commands import run_billing_maintenance as maint
+        from apps.billing.payment_intents import ChannelStateUnknownError
+
+        r1, f1 = self._make_folio("R29-EXP-U")
+        r2, f2 = self._make_folio("R29-EXP-C")
+        for reservation, folio, suffix in ((r1, f1, "U"), (r2, f2, "C")):
+            PaymentIntent.objects.create(
+                property=self.prop, reservation=reservation, folio=folio,
+                intent_no=f"R29-INTENT-{suffix}",
+                idempotency_key=f"R29-INTENT-KEY-{suffix}",
+                amount=Decimal("600.00"), currency="CNY",
+                status=PaymentIntent.Status.PENDING,
+                expires_at=timezone.now() - timedelta(minutes=1))
+
+        with patch.object(
+                maint, "expire_intent",
+                side_effect=[ChannelStateUnknownError(),
+                             ValueError("意图状态已被并发修改")]):
+            out = StringIO()
+            call_command("run_billing_maintenance", "--property", "R29MAINT",
+                         "--only", "expire", stdout=out)
+        output = out.getvalue()
+        self.assertIn("1 个渠道状态未知", output)
+        self.assertIn("1 个状态冲突/业务拒绝", output)
+
+    def test_unknown_intent_via_maintenance_creates_channel_query_task(self):
+        """真实 UNKNOWN 路径：维护命令不过期意图，落 CHANNEL_QUERY 任务；
+        Worker 渠道查询无 SUCCESS 事实时不伪造成功。"""
+        _, folio = self._make_folio("R29-EXP-REAL")
+        intent = PaymentIntent.objects.create(
+            property=self.prop, reservation=folio.reservation, folio=folio,
+            intent_no="R29-INTENT-REAL", idempotency_key="R29-INTENT-KEY-REAL",
+            amount=Decimal("600.00"), currency="CNY",
+            status=PaymentIntent.Status.PENDING,
+            expires_at=timezone.now() - timedelta(minutes=1))
+        ProviderTransaction.objects.create(
+            property=self.prop, intent=intent, provider_code="mock",
+            provider_transaction_id="R29-PT-UNKNOWN",
+            amount=Decimal("600.00"), currency="CNY",
+            channel_status="UNKNOWN", signature_verified=False)
+
+        call_command("run_billing_maintenance", "--property", "R29MAINT",
+                     "--only", "expire")
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, PaymentIntent.Status.PENDING,
+                         "UNKNOWN 意图不得直接过期/释放库存")
+        task = PaymentCompensationTask.objects.get(
+            task_type=PaymentCompensationTask.TaskType.CHANNEL_QUERY,
+            idempotency_key=f"intent-expire-channel-query:{intent.pk}")
+        self.assertEqual(task.aggregate_type, "PaymentIntent")
+
+        call_command("payment_compensation_worker", "--once", "--limit", "10")
+        task.refresh_from_db()
+        self.assertEqual(task.last_error_code, "CHANNEL_QUERY_NO_SUCCESS_FACT")
+        self.assertIn(task.status, (
+            PaymentCompensationTask.Status.PENDING,
+            PaymentCompensationTask.Status.LEASED,
+            PaymentCompensationTask.Status.DEAD_LETTER))
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, PaymentIntent.Status.PENDING)

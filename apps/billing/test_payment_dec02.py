@@ -803,3 +803,236 @@ class ProviderEventReplayFactTests(TestCase):
                 currency="CNY", channel_status="SUCCESS", event_id="evt-wb115-a",
                 signature_verified=True)
         self.assertEqual(self._conflict_count("evt-wb115-a"), before + 2)
+
+
+@override_settings(DEBUG=True, DJANGO_ENV="test")
+class ProviderEventProgressionTests(TestCase):
+    """WB-119/125：同交易号新事件 ID 推进状态 + 主记录不可变。
+
+    - 同交易号新事件（PENDING→SUCCESS）不得撞 uq_pt_provider_txn（WB-119），
+      主记录按受控状态机推进，事件历史保留每次不可变事实；
+    - SUCCESS 是终态，不得被后续 FAILED/PENDING/UNKNOWN 事件倒退；
+    - 实例 save() 直接改写主记录被模型禁止（WB-125），QuerySet.update 亦然。
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.prop = Property.objects.get(code="DEFAULT")
+        cls.owner = User.objects.create_user(username="pi_wb119", password="x")
+        from apps.guests.models import Guest
+        cls.guest = Guest.objects.create(property=cls.prop, full_name="WB119 客")
+        from apps.reservations.models import ReservationRoom
+        from apps.inventory.models import RoomType, RatePlan
+        cls.rt = RoomType.objects.create(
+            property=cls.prop, code="PI-WB119", name="WB119 房型", capacity=2)
+        cls.rate = RatePlan.objects.create(
+            property=cls.prop, code="PI-WB119-BAR", name="WB119 门市价",
+            valid_from=timezone.localdate())
+        cls.reservation = Reservation.objects.create(
+            property=cls.prop, guest=cls.guest, booking_no="PI-WB119-001",
+            status=Reservation.Status.CONFIRMED,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            room_count=1, total_amount=Decimal("200.00"), currency="CNY")
+        ReservationRoom.objects.create(
+            property=cls.prop, reservation=cls.reservation,
+            room_type=cls.rt, rate_plan=cls.rate,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            amount=Decimal("200.00"))
+        cls.folio = Folio.objects.create(
+            property=cls.prop, reservation=cls.reservation,
+            guest=cls.guest, currency="CNY")
+
+    def _intent(self, key):
+        intent, _ = create_intent(
+            property_obj=self.prop, reservation=self.reservation,
+            folio=self.folio, amount="200.00",
+            created_by=self.owner, idempotency_key=key)
+        intent.status = PaymentIntent.Status.PROCESSING
+        intent.save(update_fields=("status",))
+        return intent
+
+    def test_new_event_id_advances_pending_to_success_on_same_txn(self):
+        from apps.billing.models import ProviderTransactionEvent
+        intent = self._intent("pi-wb119-p2s")
+        main, created = record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB119-TXN-1", amount="200.00",
+            currency="CNY", channel_status="PENDING", event_id="evt-wb119-1")
+        self.assertTrue(created)
+        self.assertEqual(main.channel_status, "PENDING")
+        # 同交易号、新事件 ID：状态推进不再被交易号唯一约束阻断（WB-119）
+        main2, created2 = record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB119-TXN-1", amount="200.00",
+            currency="CNY", channel_status="SUCCESS", event_id="evt-wb119-2",
+            signature_verified=True)
+        self.assertTrue(created2)  # 新事件已追加
+        self.assertEqual(main2.pk, main.pk)
+        main2.refresh_from_db()
+        self.assertEqual(main2.channel_status, "SUCCESS")
+        self.assertTrue(main2.signature_verified)
+        self.assertIsNotNone(main2.provider_confirmed_at)
+        # 事件历史保留两次不可变事实
+        events = list(ProviderTransactionEvent.objects.filter(
+            transaction=main2).order_by("pk"))
+        self.assertEqual([e.channel_status for e in events],
+                         ["PENDING", "SUCCESS"])
+        self.assertEqual([e.event_id for e in events],
+                         ["evt-wb119-1", "evt-wb119-2"])
+
+    def test_success_is_terminal_and_cannot_regress(self):
+        from apps.billing.models import ProviderTransactionEvent
+        intent = self._intent("pi-wb119-terminal")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB119-TXN-2", amount="200.00",
+            currency="CNY", channel_status="SUCCESS", event_id="evt-wb119-t1",
+            signature_verified=True)
+        with self.assertRaises(ValueError) as ctx:
+            record_provider_event(
+                property_obj=self.prop, intent_id=intent.pk,
+                provider_code="mock",
+                provider_transaction_id="WB119-TXN-2", amount="200.00",
+                currency="CNY", channel_status="FAILED",
+                event_id="evt-wb119-t2", signature_verified=True)
+        self.assertIn("终态", str(ctx.exception))
+        main = ProviderTransaction.objects.get(
+            provider_code="mock", provider_transaction_id="WB119-TXN-2")
+        self.assertEqual(main.channel_status, "SUCCESS")
+        self.assertEqual(
+            ProviderTransactionEvent.objects.filter(transaction=main).count(), 1)
+
+    def test_late_success_after_failure_notification(self):
+        from apps.billing.models import ProviderTransactionEvent
+        intent = self._intent("pi-wb119-late")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB119-TXN-3", amount="200.00",
+            currency="CNY", channel_status="PENDING", event_id="evt-wb119-l1")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB119-TXN-3", amount="200.00",
+            currency="CNY", channel_status="FAILED", event_id="evt-wb119-l2")
+        main, created = record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB119-TXN-3", amount="200.00",
+            currency="CNY", channel_status="SUCCESS", event_id="evt-wb119-l3",
+            signature_verified=True)
+        self.assertTrue(created)
+        main.refresh_from_db()
+        self.assertEqual(main.channel_status, "SUCCESS")
+        self.assertEqual(
+            ProviderTransactionEvent.objects.filter(transaction=main).count(), 3)
+        # 渠道成功确认闭环：合法 Payment 可绑定
+        payment = Payment.objects.create(
+            property=self.prop, reservation=self.reservation, folio=self.folio,
+            provider="mock", provider_ref="WB119-TXN-3", method="MOCK",
+            amount=Decimal("200.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+        confirmed, changed = confirm_intent_success(
+            property_obj=self.prop, intent_id=intent.pk,
+            provider_transaction_id="WB119-TXN-3",
+            confirmed_payment=payment, actor=self.owner)
+        self.assertTrue(changed)
+        self.assertEqual(confirmed.status, PaymentIntent.Status.SUCCEEDED)
+
+    def test_unknown_then_success_unblocks_expiry(self):
+        """UNKNOWN 后收到 SUCCESS：主记录不再是 UNKNOWN，意图可正常过期。"""
+        intent = self._intent("pi-wb119-unk")
+        # 过期守卫只对 PENDING/CREATED 意图生效，先降回待支付状态
+        intent.status = PaymentIntent.Status.PENDING
+        intent.save(update_fields=("status",))
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB119-TXN-4", amount="200.00",
+            currency="CNY", channel_status="UNKNOWN", event_id="evt-wb119-u1")
+        intent.expires_at = timezone.now() - timedelta(seconds=1)
+        intent.save(update_fields=("expires_at",))
+        with self.assertRaises(ValueError) as ctx:
+            expire_intent(property_obj=self.prop, intent_id=intent.pk)
+        self.assertIn("渠道状态未知", str(ctx.exception))
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, PaymentIntent.Status.PENDING)
+        # 渠道迟到成功：主记录推进为 SUCCESS，UNKNOWN 守卫不再拦截
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB119-TXN-4", amount="200.00",
+            currency="CNY", channel_status="SUCCESS", event_id="evt-wb119-u2",
+            signature_verified=True)
+        expired = expire_intent(property_obj=self.prop, intent_id=intent.pk)
+        self.assertEqual(expired.status, PaymentIntent.Status.EXPIRED)
+
+    def test_instance_save_and_queryset_update_are_blocked(self):
+        """WB-125：实例级 save 不得绕过不可变保护；QuerySet.update 亦被禁。"""
+        from django.core.exceptions import ValidationError
+        intent = self._intent("pi-wb125")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB125-TXN-1", amount="200.00",
+            currency="CNY", channel_status="SUCCESS", event_id="evt-wb125",
+            signature_verified=True)
+        fetched = ProviderTransaction.objects.get(
+            provider_code="mock", provider_transaction_id="WB125-TXN-1")
+        fetched.channel_status = "FAILED"
+        fetched.signature_verified = False
+        with self.assertRaises(ValueError):
+            fetched.save()
+        fetched.refresh_from_db()
+        self.assertEqual(fetched.channel_status, "SUCCESS")
+        self.assertTrue(fetched.signature_verified)
+        with self.assertRaises(ValidationError):
+            ProviderTransaction.objects.filter(
+                provider_transaction_id="WB125-TXN-1").update(
+                channel_status="FAILED")
+
+
+import threading
+import unittest
+from threading import Barrier
+from django.db import close_old_connections, connection
+from django.test import TransactionTestCase
+
+
+@unittest.skipUnless(connection.vendor == "mysql",
+                     "真实 MySQL 并发专用（SQLite 无法复现唯一键竞争）")
+@override_settings(DEBUG=True, DJANGO_ENV="test")
+class CompensationTaskCreateConcurrencyTests(TransactionTestCase):
+    """WB-126：两个调度进程并发创建同幂等键任务，必须幂等且不 500。"""
+
+    def test_concurrent_same_key_create_is_idempotent(self):
+        from apps.billing.payment_intents import create_compensation_task
+
+        results = []
+        barrier = Barrier(2)
+
+        def worker(tag):
+            close_old_connections()
+            barrier.wait(timeout=10)
+            try:
+                task, created = create_compensation_task(
+                    task_type=PaymentCompensationTask.TaskType.CHANNEL_QUERY,
+                    aggregate_type="PaymentIntent", aggregate_id=1,
+                    idempotency_key="wb126-race-key")
+                results.append((tag, task.pk, created))
+            except Exception as exc:  # noqa: BLE001 —— 测试收集器
+                results.append((tag, None, repr(exc)))
+            finally:
+                close_old_connections()
+
+        threads = [threading.Thread(target=worker, args=(t,)) for t in ("a", "b")]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+
+        self.assertEqual(len(results), 2, results)
+        pks = {r[1] for r in results}
+        self.assertEqual(len(pks), 1,
+                         f"并发创建必须收敛到同一任务且无异常：{results}")
+        created_flags = sorted(r[2] for r in results)
+        self.assertEqual(created_flags, [False, True], results)
+        self.assertEqual(
+            PaymentCompensationTask.objects.filter(
+                idempotency_key="wb126-race-key").count(), 1)

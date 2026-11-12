@@ -25,6 +25,7 @@ from apps.billing.models import (
     ProviderTransaction,
 )
 from apps.billing.payment_intents import (
+    ChannelStateUnknownError,
     create_compensation_task,
     expire_intent,
 )
@@ -32,11 +33,13 @@ from apps.billing.reconciliation import scan_folio_reconciliation
 from apps.core.models import Property
 
 
-LEDGER_REPAIR_DIFF_TYPES = (
+# WB-120：只有「Payment 缺凭证」类差异可交给 PAYMENT_LEDGER_REPAIR 执行器
+# （其契约是 aggregate_type="Payment"；Deposit 也是 Payment 事实）。其余差异
+# （退款/调整/余额/负债）一律走 RECONCILIATION_DIFF 只读核对转人工，
+# 绝不拿 Folio ID 或错误实体冒充 Payment。
+PAYMENT_REPAIR_DIFF_TYPES = (
     FolioReconciliationDiff.DiffType.PAYMENT_NO_ENTRY,
     FolioReconciliationDiff.DiffType.DEPOSIT_NO_ENTRY,
-    FolioReconciliationDiff.DiffType.REFUND_NO_ENTRY,
-    FolioReconciliationDiff.DiffType.ADJUSTMENT_NO_ENTRY,
 )
 
 
@@ -55,7 +58,7 @@ class Command(BaseCommand):
         props = Property.objects.all().order_by("pk")
         if options["property_code"]:
             props = props.filter(code=options["property_code"])
-        totals = {"expired": 0, "unknown": 0, "callback": 0,
+        totals = {"expired": 0, "unknown": 0, "conflicts": 0, "callback": 0,
                   "ledger_repair": 0, "recon_diff": 0, "errors": 0}
         for prop in props:
             if only in ("all", "expire"):
@@ -66,7 +69,8 @@ class Command(BaseCommand):
                 self._reconcile(prop, totals)
         self.stdout.write(self.style.SUCCESS(
             "支付/账务维护完成：%(expired)s 个意图过期，%(unknown)s 个渠道状态未知"
-            "（已转 CHANNEL_QUERY），%(callback)s 个回调确认重试，"
+            "（已转 CHANNEL_QUERY），%(conflicts)s 个状态冲突/业务拒绝，"
+            "%(callback)s 个回调确认重试，"
             "%(ledger_repair)s 个账本修复，%(recon_diff)s 个对账差异任务，"
             "%(errors)s 个错误。" % totals))
 
@@ -81,10 +85,16 @@ class Command(BaseCommand):
             try:
                 expire_intent(property_obj=prop, intent_id=intent_id)
                 totals["expired"] += 1
-            except ValueError:
-                # WB-090：渠道 UNKNOWN 路径由 expire_intent 在独立事务中
-                # 落 CHANNEL_QUERY 任务后抛出，属于预期分支。
+            except ChannelStateUnknownError:
+                # WB-121：只有渠道事实 UNKNOWN 才计入 unknown——
+                # expire_intent 以专用异常标识该分支（独立事务落
+                # CHANNEL_QUERY 任务后抛出），属于预期路径。
                 totals["unknown"] += 1
+            except ValueError as exc:
+                # WB-121：状态竞态/业务拒绝（意图已被并发迁移、未到期等）
+                # 不再混入 UNKNOWN 指标，单独计数并留痕。
+                totals["conflicts"] += 1
+                self.stderr.write(f"意图 {intent_id} 过期被拒绝：{exc}")
             except Exception as exc:  # 单个意图失败不阻断其它物业/意图
                 totals["errors"] += 1
                 self.stderr.write(f"意图 {intent_id} 过期失败：{exc}")
@@ -112,11 +122,17 @@ class Command(BaseCommand):
             self.stderr.write(f"物业 {prop.code} 对账扫描失败：{exc}")
             return
         for diff in run.diffs.all().order_by("pk"):
-            if diff.diff_type in LEDGER_REPAIR_DIFF_TYPES:
+            # WB-120：任务类型、聚合类型与实体 ID 按统一契约生成，创建方与
+            # Worker 执行器必须可互相解析——PAYMENT_LEDGER_REPAIR 只接受
+            # aggregate_type="Payment"（差异的 entity_type/entity_id 即为
+            # 缺凭证的 Payment）；其余差异统一 RECONCILIATION_DIFF，聚合为
+            # 对账运行，Worker 解析其物业做只读重扫，绝不自动改账。
+            if (diff.diff_type in PAYMENT_REPAIR_DIFF_TYPES
+                    and diff.entity_type == "Payment"):
                 task_type = PaymentCompensationTask.TaskType.PAYMENT_LEDGER_REPAIR
                 counter = "ledger_repair"
-                aggregate_type = "Folio"
-                aggregate_id = diff.folio_id
+                aggregate_type = "Payment"
+                aggregate_id = diff.entity_id
             else:
                 task_type = PaymentCompensationTask.TaskType.RECONCILIATION_DIFF
                 counter = "recon_diff"

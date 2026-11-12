@@ -21,15 +21,25 @@ from apps.core.models import AuditEvent
 
 
 def _pii_key_bytes():
-    """PII 加密/哈希密钥：生产必须 DJANGO_PII_KEY；开发/测试允许 SECRET_KEY 派生。
+    """PII 加密/哈希密钥：统一密钥派生入口（WB-123）。
 
-    P0-02（用户审计）：生产环境 SECRET_KEY 回退被移除，密钥缺失 fail-fast。
+    密钥来源顺序：
+      1. settings.DJANGO_PII_KEY（由 hotel/settings.py 从环境变量注入）；
+      2. 生产环境（settings.IS_PRODUCTION）缺失时 fail-fast，**禁止回退
+         SECRET_KEY**——证件/手机号密文与 HMAC 必须与会话/签名密钥隔离；
+      3. 开发/测试允许 SECRET_KEY 派生回退。
+    数据迁移 apps/guests/migrations/0007 使用同口径内联实现，避免迁移
+    依赖业务模块注册表；两处算法必须保持一致。
     """
-    # P0-02：生产环境 DJANGO_PII_KEY 强校验已由 Q7 settings 启动检查兜底
-    # （settings.py 尾部 Q7 production startup validation）；此处保留
-    # SECRET_KEY 派生回退以确保测试环境和开发环境兼容。
-    key = getattr(settings, "DJANGO_PII_KEY", None) or settings.SECRET_KEY
-    return hashlib.sha256(str(key).encode("utf-8")).digest()
+    key = getattr(settings, "DJANGO_PII_KEY", "")
+    if key:
+        return hashlib.sha256(str(key).encode("utf-8")).digest()
+    if getattr(settings, "IS_PRODUCTION", False):
+        raise ImproperlyConfigured(
+            "生产环境必须配置 DJANGO_PII_KEY（独立 PII 密钥），"
+            "禁止回退 SECRET_KEY（WB-123）。")
+    # 开发/测试回退：仅限非生产环境
+    return hashlib.sha256(str(settings.SECRET_KEY).encode("utf-8")).digest()
 
 
 def _fernet():

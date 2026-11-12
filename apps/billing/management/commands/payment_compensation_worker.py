@@ -42,6 +42,7 @@ from django.utils import timezone
 
 from apps.billing.models import (
     Folio,
+    FolioReconciliationRun,
     LedgerEntry,
     Payment,
     PaymentCompensationTask,
@@ -300,7 +301,19 @@ def execute_payment_ledger_repair(task):
 
 
 def resolve_reconciliation_property(task):
-    """RECONCILIATION_DIFF：由聚合标识解析对账范围的物业。"""
+    """RECONCILIATION_DIFF：由聚合标识解析对账范围的物业。
+
+    WB-120：维护命令创建的对账差异任务统一以 FolioReconciliationRun 为
+    聚合（run 自带 property）；此处补齐对应解析分支，创建方与执行方契约
+    保持一致，避免任务因聚合类型不被解析而退避进死信。
+    """
+    if task.aggregate_type == "FolioReconciliationRun":
+        run = FolioReconciliationRun.objects.filter(
+            pk=task.aggregate_id).first()
+        if run is None:
+            raise LookupError(
+                f"聚合实体不存在：FolioReconciliationRun {task.aggregate_id}。")
+        return run.property
     if task.aggregate_type == "Property":
         prop = Property.objects.filter(pk=task.aggregate_id).first()
         if prop is None:

@@ -10,13 +10,14 @@
 import uuid
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.billing.models import (
     Payment,
     PaymentIntent,
     ProviderTransaction,
+    ProviderTransactionEvent,
     PaymentCompensationTask,
 )
 from apps.core.models import AuditEvent
@@ -247,47 +248,13 @@ class _ProviderEventReplayConflict(Exception):
         super().__init__(self.detail)
 
 
-@transaction.atomic
-def _record_provider_event_atomic(*, property_obj, intent_id, provider_code,
-                                  provider_transaction_id, amount, currency,
-                                  channel_status, event_id="",
-                                  signature_verified=False):
-    from apps.core.models import AuditEvent as AE
-    intent = PaymentIntent.objects.filter(pk=intent_id, property=property_obj).first()
-    if intent is None:
-        raise ValueError("支付意图不存在或不属于当前物业。")
-    existing = ProviderTransaction.objects.filter(
-        provider_code=provider_code, event_id=event_id).first() if event_id else None
-    if existing is not None:
-        # WB-012 修复：命中已有事件时校验物业/意图/交易号/金额/币种一致。
-        # WB-115：幂等重放必须核对**完整不可变事实**——channel_status 与
-        # signature_verified 也是渠道事件事实的一部分。同一 event_id 重放
-        # 携带任何不同事实（SUCCESS 改报 FAILED、已验签改报未验签、
-        # PENDING 重放改报 SUCCESS 等）一律视为冲突重放：拒绝并落安全
-        # 审计事件（由公开入口在独立事务落盘，不随本块回滚），不得静默
-        # 返回第一次记录，也不得用第二次请求的验签结果覆盖/补齐第一次
-        # 记录。渠道状态变化必须由渠道下发**新的事件 ID**表达。
-        stored_amount = existing.amount
-        incoming_amount = Decimal(str(amount)).quantize(Decimal("0.01"))
-        if (existing.property_id != property_obj.pk
-                or existing.intent_id != intent.pk
-                or existing.provider_transaction_id != provider_transaction_id
-                or stored_amount != incoming_amount
-                or existing.currency != currency
-                or existing.channel_status != channel_status
-                or bool(existing.signature_verified) != bool(signature_verified)):
-            raise _ProviderEventReplayConflict(
-                existing, event_id=event_id, provider_code=provider_code,
-                provider_transaction_id=provider_transaction_id,
-                incoming_amount=incoming_amount, currency=currency,
-                channel_status=channel_status,
-                signature_verified=signature_verified)
-        return existing, False
-    # WB-076/089 修复：首次写入渠道事实前做完整一致性校验
-    pt_amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+def _validate_provider_event_facts(intent, provider_code, incoming_amount,
+                                   currency, channel_status,
+                                   signature_verified):
+    """WB-076/089：首次写入渠道事实前做完整一致性校验。"""
     if provider_code != intent.provider_code:
         raise ValueError("渠道代码与支付意图的渠道不一致，不能记录渠道交易事实。")
-    if pt_amount != intent.amount:
+    if incoming_amount != intent.amount:
         raise ValueError("渠道交易金额与支付意图金额不一致。")
     if currency != intent.currency:
         raise ValueError("渠道交易币种与支付意图币种不一致。")
@@ -299,29 +266,167 @@ def _record_provider_event_atomic(*, property_obj, intent_id, provider_code,
         raise ValueError(
             "渠道状态为 SUCCESS 时必须提供验签通过结果"
             "（signature_verified=True），拒绝未验签的成功事实。")
-    pt = ProviderTransaction.objects.create(
-        property=property_obj, intent=intent,
+
+
+def _transition_provider_transaction(pt, *, channel_status,
+                                     signature_verified):
+    """WB-125：唯一允许改写渠道交易主记录的受控路径（状态机推进）。
+
+    模型 save() 对既有记录的实例级修改已被禁止（不可变保护）；仅本函数
+    通过内部标志放行。事件历史另存于 ProviderTransactionEvent，永不修改。
+    """
+    pt._allow_controlled_transition = True
+    try:
+        pt.channel_status = channel_status
+        pt.signature_verified = signature_verified
+        if channel_status == "SUCCESS":
+            pt.provider_confirmed_at = (
+                pt.provider_confirmed_at or timezone.now())
+        pt.save(update_fields=("channel_status", "signature_verified",
+                               "provider_confirmed_at"))
+    finally:
+        pt._allow_controlled_transition = False
+
+
+@transaction.atomic
+def _record_provider_event_atomic(*, property_obj, intent_id, provider_code,
+                                  provider_transaction_id, amount, currency,
+                                  channel_status, event_id="",
+                                  signature_verified=False):
+    from apps.core.models import AuditEvent as AE
+    intent = PaymentIntent.objects.filter(pk=intent_id, property=property_obj).first()
+    if intent is None:
+        raise ValueError("支付意图不存在或不属于当前物业。")
+    incoming_amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+    event_id = (event_id or "").strip()
+
+    # ---- 事件幂等锚点：provider_code + event_id（事件历史表，WB-119）----
+    existing_event = None
+    if event_id:
+        existing_event = ProviderTransactionEvent.objects.filter(
+            provider_code=provider_code,
+            provider_event_key=f"{provider_code}:{event_id}").first()
+    if existing_event is not None:
+        # WB-115：幂等重放必须核对**完整不可变事实**——channel_status 与
+        # signature_verified 也是渠道事件事实的一部分。同一 event_id 重放
+        # 携带任何不同事实（SUCCESS 改报 FAILED、已验签改报未验签、
+        # PENDING 重放改报 SUCCESS 等）一律视为冲突重放：拒绝并落安全
+        # 审计事件（由公开入口在独立事务落盘，不随本块回滚），不得静默
+        # 返回第一次记录，也不得用第二次请求的验签结果覆盖/补齐第一次
+        # 记录。渠道状态变化必须由渠道下发**新的事件 ID**表达。
+        if (existing_event.property_id != property_obj.pk
+                or existing_event.intent_id != intent.pk
+                or existing_event.provider_transaction_id != provider_transaction_id
+                or existing_event.amount != incoming_amount
+                or existing_event.currency != currency
+                or existing_event.channel_status != channel_status
+                or bool(existing_event.signature_verified) != bool(signature_verified)):
+            raise _ProviderEventReplayConflict(
+                existing_event, event_id=event_id, provider_code=provider_code,
+                provider_transaction_id=provider_transaction_id,
+                incoming_amount=incoming_amount, currency=currency,
+                channel_status=channel_status,
+                signature_verified=signature_verified)
+        main = ProviderTransaction.objects.filter(
+            provider_code=provider_code,
+            provider_transaction_id=provider_transaction_id).first()
+        return main, False
+
+    _validate_provider_event_facts(intent, provider_code, incoming_amount,
+                                   currency, channel_status,
+                                   signature_verified)
+
+    # ---- WB-119：主记录按（渠道, 交易号）行锁定位，存在则受控推进 ----
+    main = ProviderTransaction.objects.select_for_update().filter(
+        provider_code=provider_code,
+        provider_transaction_id=provider_transaction_id).first()
+    if main is None:
+        try:
+            # 保存点：并发首建同交易号（间隙锁不阻止 INSERT）撞
+            # uq_pt_provider_txn 时只回滚本块，回查后改走追加路径。
+            with transaction.atomic():
+                main = ProviderTransaction.objects.create(
+                    property=property_obj, intent=intent,
+                    provider_code=provider_code,
+                    provider_transaction_id=provider_transaction_id,
+                    event_id=event_id, amount=incoming_amount,
+                    currency=currency, channel_status=channel_status,
+                    signature_verified=signature_verified)
+                ProviderTransactionEvent.objects.create(
+                    property=property_obj, intent=intent, transaction=main,
+                    provider_code=provider_code,
+                    provider_transaction_id=provider_transaction_id,
+                    event_id=event_id, amount=incoming_amount,
+                    currency=currency, channel_status=channel_status,
+                    signature_verified=signature_verified)
+                AE.record(
+                    action="billing.provider_event_recorded",
+                    entity_type="ProviderTransaction",
+                    entity_id=main.pk, property_obj=property_obj,
+                    after={"provider_transaction_id": provider_transaction_id,
+                           "channel_status": channel_status,
+                           "event_id": event_id},
+                    reason="记录渠道交易事实")
+        except IntegrityError:
+            main = ProviderTransaction.objects.select_for_update().filter(
+                provider_code=provider_code,
+                provider_transaction_id=provider_transaction_id).first()
+            if main is None:
+                raise
+        else:
+            return main, True
+
+    # 同交易号新事件：归属必须一致（数据库唯一键保证同一交易号只归属
+    # 一个意图；此处防止跨物业/跨意图/金额币种漂移的事件追加）。
+    if (main.property_id != property_obj.pk
+            or main.intent_id != intent.pk
+            or main.amount != incoming_amount
+            or main.currency != currency):
+        raise _ProviderEventReplayConflict(
+            main, event_id=event_id, provider_code=provider_code,
+            provider_transaction_id=provider_transaction_id,
+            incoming_amount=incoming_amount, currency=currency,
+            channel_status=channel_status,
+            signature_verified=signature_verified)
+    # 状态机：SUCCESS 是终态，不得倒退（迟到成功不可逆；失败/未知不覆盖成功）。
+    if main.channel_status == "SUCCESS" and channel_status != "SUCCESS":
+        raise ValueError(
+            f"渠道交易 {provider_transaction_id} 已成功（终态），不得倒退为 "
+            f"{channel_status}；拒绝该渠道事件，请核对渠道通知内容。")
+    ProviderTransactionEvent.objects.create(
+        property=property_obj, intent=intent, transaction=main,
         provider_code=provider_code,
         provider_transaction_id=provider_transaction_id,
-        event_id=event_id, amount=pt_amount,
-        currency=currency, channel_status=channel_status,
-        signature_verified=signature_verified)
+        event_id=event_id, amount=incoming_amount, currency=currency,
+        channel_status=channel_status, signature_verified=signature_verified)
+    if (main.channel_status != channel_status
+            or bool(main.signature_verified) != bool(signature_verified)):
+        _transition_provider_transaction(
+            main, channel_status=channel_status,
+            signature_verified=signature_verified)
     AE.record(
-        action="billing.provider_event_recorded", entity_type="ProviderTransaction",
-        entity_id=pt.pk, property_obj=property_obj,
+        action="billing.provider_event_appended",
+        entity_type="ProviderTransaction",
+        entity_id=main.pk, property_obj=property_obj,
         after={"provider_transaction_id": provider_transaction_id,
-               "channel_status": channel_status, "event_id": event_id},
-        reason="记录渠道交易事实")
-    return pt, True
+               "channel_status": channel_status, "event_id": event_id,
+               "previous_channel_status": main.channel_status},
+        reason="追加渠道事件并按状态机推进主记录（WB-119）")
+    return main, True
 
 
 def record_provider_event(*, property_obj, intent_id, provider_code,
                           provider_transaction_id, amount, currency,
                           channel_status, event_id="", signature_verified=False):
-    """记录渠道交易事实（event_id 幂等；重复/乱序通知先记录再判断）。
+    """记录渠道交易事实（事件历史 + 主记录受控状态机，WB-119/125）。
 
-    WB-115：冲突重放的安全审计在**独立事务**中落盘——主原子块回滚
-    不能吞掉审计证据（与 expire_intent 落 CHANNEL_QUERY 任务同模式）。
+    - 事件幂等：同 event_id 完整事实一致 → 幂等返回；任何事实不一致
+      （含渠道状态、验签结果）→ 拒绝（WB-115）；
+    - 同交易号新事件 ID → 追加不可变事件历史，并按受控状态机推进主记录
+      （SUCCESS 终态不可倒退），不再撞交易号唯一约束（WB-119）；
+    - 主记录实例级改写被模型禁止，仅状态机受控放行（WB-125）；
+    - 冲突重放的安全审计在**独立事务**中落盘——主原子块回滚不能吞掉
+      审计证据（与 expire_intent 落 CHANNEL_QUERY 任务同模式）。
     """
     try:
         return _record_provider_event_atomic(
@@ -340,7 +445,7 @@ def record_provider_event(*, property_obj, intent_id, provider_code,
                 entity_id=conflict.entity_id,
                 property_obj=property_obj,
                 after=conflict.detail,
-                reason="同一渠道事件 ID 重放携带不同事实，拒绝重放（WB-115）")
+                reason="渠道事件事实冲突，拒绝重放（WB-115/119）")
         raise ValueError(
             "事件 ID 已用于不同的物业/意图/交易号/金额/币种/渠道状态/"
             "验签结果，不能复用已有渠道交易记录；渠道状态变化请使用"
@@ -452,8 +557,13 @@ def confirm_intent_success(*, property_obj, intent_id, provider_transaction_id,
     return intent, True
 
 
-class _ChannelStateUnknown(Exception):
-    """内部信号：渠道事实 UNKNOWN，原子块需回滚，但补偿任务必须独立落库。"""
+class ChannelStateUnknownError(ValueError):
+    """WB-121：渠道事实 UNKNOWN 的专用信号。
+
+    不再用通用 ValueError 表达多个不同业务结果——调度/统计方据此把
+    「渠道未知」与「状态竞态/业务拒绝」分开计数，UNKNOWN 指标不失真。
+    仍继承 ValueError：既有按 ValueError 处理的调用方语义不变。
+    """
 
 
 def expire_intent(*, property_obj, intent_id, actor=None):
@@ -468,7 +578,7 @@ def expire_intent(*, property_obj, intent_id, actor=None):
         with transaction.atomic():
             return _expire_intent_atomic(
                 property_obj=property_obj, intent_id=intent_id, actor=actor)
-    except _ChannelStateUnknown:
+    except ChannelStateUnknownError:
         create_compensation_task(
             task_type=PaymentCompensationTask.TaskType.CHANNEL_QUERY,
             aggregate_type="PaymentIntent", aggregate_id=intent_id,
@@ -493,7 +603,7 @@ def _expire_intent_atomic(*, property_obj, intent_id, actor=None):
     # 可能造成「渠道已收款但订单被作废」。
     if ProviderTransaction.objects.filter(
             intent_id=intent.pk, channel_status="UNKNOWN").exists():
-        raise _ChannelStateUnknown()
+        raise ChannelStateUnknownError()
     intent.status = PaymentIntent.Status.EXPIRED
     intent.save(update_fields=("status", "updated_at"))
     AuditEvent.record(
@@ -503,19 +613,46 @@ def _expire_intent_atomic(*, property_obj, intent_id, actor=None):
     return intent
 
 
+def _find_compensation_task(task_type, aggregate_type, aggregate_id,
+                            idempotency_key):
+    """按幂等键回查任务；事实（类型/聚合）不一致即拒绝复用。"""
+    task = PaymentCompensationTask.objects.filter(
+        idempotency_key=idempotency_key).first()
+    if task is not None and (task.task_type != task_type
+                             or task.aggregate_type != aggregate_type
+                             or task.aggregate_id != aggregate_id):
+        raise ValueError(
+            f"幂等键 {idempotency_key} 已被用于不同的补偿任务事实"
+            "（类型/聚合不一致），不能复用。")
+    return task
+
+
 @transaction.atomic
 def create_compensation_task(*, task_type, aggregate_type, aggregate_id,
                              idempotency_key, max_attempts=5):
-    """创建持久化补偿任务（幂等）。"""
-    existing = PaymentCompensationTask.objects.filter(
-        idempotency_key=idempotency_key).first()
+    """创建持久化补偿任务（幂等）。
+
+    WB-126：并发创建方同时通过预查询后，第二个 create 会撞 idempotency_key
+    唯一键。用嵌套保存点把冲突回滚收敛到本块，再按幂等键回查、核对事实后
+    幂等返回已有任务——两个调度进程都不再 500/中断本轮维护。
+    """
+    existing = _find_compensation_task(task_type, aggregate_type,
+                                       aggregate_id, idempotency_key)
     if existing is not None:
         return existing, False
-    task = PaymentCompensationTask.objects.create(
-        task_type=task_type, aggregate_type=aggregate_type,
-        aggregate_id=aggregate_id, idempotency_key=idempotency_key,
-        max_attempts=max_attempts,
-        next_attempt_at=timezone.now())
+    try:
+        with transaction.atomic():  # 嵌套保存点：唯一键竞争只回滚本块
+            task = PaymentCompensationTask.objects.create(
+                task_type=task_type, aggregate_type=aggregate_type,
+                aggregate_id=aggregate_id, idempotency_key=idempotency_key,
+                max_attempts=max_attempts,
+                next_attempt_at=timezone.now())
+    except IntegrityError:
+        existing = _find_compensation_task(task_type, aggregate_type,
+                                           aggregate_id, idempotency_key)
+        if existing is None:
+            raise
+        return existing, False
     AuditEvent.record(
         action="billing.compensation_task_created",
         entity_type="PaymentCompensationTask", entity_id=task.pk,
