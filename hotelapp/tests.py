@@ -1672,3 +1672,112 @@ class UniqueCheckCacheResilienceTests(TestCase):
              patch.object(Client.objects, "filter") as db_filter:
             self.assertTrue(_unique_field_exists(Client, "身份证号", "TEST-ID"))
         db_filter.assert_not_called()
+
+
+class HomeDisplayFallbackTests(TestCase):
+    """第三阶段迭代-1 变更 B（问题清单 P-07 口径统一）——函数级契约锁定。
+
+    实测结论（本测试类验证）：/home/ 路由层的回退分支在现行守卫下**不可达**——
+    staff_required._has_active_employment 硬性要求 DEFAULT 物业的有效任职，
+    他店员工在装饰器层即 403；而持有 DEFAULT 任职者经 middleware 必有
+    request.property。因此该回退分支是防御性代码，本测试直接以 RequestFactory
+    构造 property=None 请求锁定其**函数级契约**：
+
+      * property=None 时回退 DEFAULT 物业仅做展示取数（stats 可渲染）；
+      * 授权不受回退输入影响：无 DEFAULT 任职的用户 show_finance 必为 False
+        （has_permission 以传入物业判定，无任职即 False）；
+      * middleware 对无 DEFAULT 任职会话的 security.property_context_denied
+        审计独立生效（路由层 403 不掩盖该审计）。
+    """
+
+    def setUp(self):
+        self.prop, _ = Property.objects.get_or_create(
+            code="DEFAULT", defaults={"name": "测试酒店"})
+
+    def _request_with_property_none(self, username):
+        """RequestFactory 构造 property=None 的已登录请求（绕过装饰器直达视图体）。"""
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.contrib.sessions.backends.db import SessionStore
+        from django.test import RequestFactory
+        from apps.identity.models import StaffProfile
+
+        user = User.objects.create_user(
+            username=username, password=f"{username}-pass123")
+        StaffProfile.objects.create(
+            user=user, full_name=username, employment_status="ACTIVE")
+        request = RequestFactory().get("/home/")
+        request.user = user
+        request.session = SessionStore()
+        request._messages = FallbackStorage(request)
+        request.property = None  # 模拟 middleware 置空后的函数级入口
+        return request, user
+
+    def test_home_function_contract_property_none_falls_back_to_default(self):
+        from hotelapp.views import home
+        from unittest.mock import patch
+        # home 是 staff_required+login_required 装饰后的函数；取双层 __wrapped__
+        # 的裸视图体做函数级契约测试（装饰器守卫由路由层测试单独锁定）。
+        bare_home = home.__wrapped__.__wrapped__
+        request, _ = self._request_with_property_none("no-prop-staff")
+        with patch("apps.api.dashboard.dashboard_data",
+                   return_value={"pending": 1}) as mock_data, \
+             patch("apps.api.dashboard.dashboard_charts", return_value={}), \
+             patch("apps.api.dashboard.dashboard_warnings", return_value=[]), \
+             patch("apps.api.dashboard.dashboard_finance") as mock_finance:
+            response = bare_home(request)
+        self.assertEqual(response.status_code, 200)
+        # 展示面回退 DEFAULT：统计数据以 DEFAULT 物业取数
+        mock_data.assert_called_once()
+        self.assertEqual(mock_data.call_args[0][0].code, "DEFAULT")
+        # 授权不受回退影响：无 DEFAULT 任职的用户不出现财务卡取数
+        mock_finance.assert_not_called()
+
+    def test_route_layer_guards_make_fallback_unreachable(self):
+        """路由层口径：无 DEFAULT 任职的员工（在他店有任职）经 /home/ 即被
+        staff_required 以 PermissionDenied（生产环境 403）拒绝，property=None
+        到不了视图体——回退分支为防御性代码的事实证据。"""
+        from django.core.exceptions import PermissionDenied
+        from apps.core.models import AuditEvent
+        from apps.identity.models import PropertyStaffMembership, StaffProfile
+        other_prop, _ = Property.objects.get_or_create(
+            code="OTHER-BRANCH", defaults={"name": "分店酒店"})
+        user = User.objects.create_user(
+            username="branch-staff", password="branch-staff-pass123")
+        profile = StaffProfile.objects.create(
+            user=user, full_name="分店员工", employment_status="ACTIVE")
+        membership = PropertyStaffMembership.objects.create(
+            property=other_prop, staff_profile=profile,
+            employee_no="E-BRANCH-1", status="ACTIVE")
+        group = Group.objects.filter(name="店长").first()
+        if group is not None:
+            StaffRoleAssignment.objects.get_or_create(
+                membership=membership, group=group,
+                starts_at=timezone.now() - timedelta(minutes=1))
+        self.client.force_login(user)
+        # 测试客户端将 PermissionDenied 转为 403 响应
+        response = self.client.get("/home/")
+        self.assertEqual(response.status_code, 403)
+        # middleware 拒绝审计独立生效（拒绝不掩盖授权口径的审计）
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="security.property_context_denied",
+                entity_type="User", entity_id=str(user.pk)).exists())
+
+    def test_home_with_default_membership_uses_own_property(self):
+        from apps.identity.models import PropertyStaffMembership, StaffProfile
+        user = User.objects.create_user(
+            username="hq-staff", password="hq-staff-pass123")
+        profile = StaffProfile.objects.create(
+            user=user, full_name="总部员工", employment_status="ACTIVE")
+        membership = PropertyStaffMembership.objects.create(
+            property=self.prop, staff_profile=profile, employee_no="E-HQ-1",
+            status="ACTIVE")
+        group = Group.objects.filter(name="店长").first()
+        if group is not None:
+            StaffRoleAssignment.objects.get_or_create(
+                membership=membership, group=group,
+                starts_at=timezone.now() - timedelta(minutes=1))
+        self.client.force_login(user)
+        response = self.client.get("/home/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(response.context["stats"])
