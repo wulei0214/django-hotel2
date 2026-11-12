@@ -1,0 +1,43 @@
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+src = ["apps", "hotel"]
+exclude = [".venv", "venv", "migrations", "__pycache__", "static", "staticfiles", "hotelapp"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "C4", "UP", "SIM"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "hotel"]
+force-single-line = false
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B", "SIM"]
+"apps/*/migrations/*" = ["E", "F"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["apps", "hotel"]
+skip = [".venv", "venv", "migrations"]
+
+[tool.mypy]
+python_version = "3.9"
+mypy_path = "apps:hotel"
+ignore_missing_imports = true
+warn_unused_ignores = false
+disallow_untyped_defs = false
+check_untyped_defs = true
+exclude = ["migrations", ".venv", "venv", "hotelapp"]
+
+[tool.pytest.ini_options]
+python_files = ["test_*.py", "tests.py"]
+testpaths = ["apps", "tests"]
+DJANGO_SETTINGS_MODULE = "hotel.settings"
+pythonwarnings = ["ignore::DeprecationWarning"]

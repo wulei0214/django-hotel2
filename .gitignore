@@ -41,6 +41,15 @@ Thumbs.db
 staticfiles/
 docs/acceptance/evidence/hotel-backup-*.sql
 
-# 本地智能体工作数据（不入库）
+# ===== 本地智能体 / AI 工具工作数据（不入库）=====
 .workbuddy/
 .mimosa/
+.zcode/
+.archify/
+.ua/
+understand-out/
+.deepseek-harness/
+
+# 工具回收站垃圾
+.trash-*/
+**/.trash-*/
