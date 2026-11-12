@@ -49,6 +49,12 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
   - **财务凭证/对账/班次**：WB-091 REFUND_INCREASE 补独立调整凭证（不再只有负债变更无凭证）；WB-093 负债回增清空 settled_at（审计保留原结清时间）；WB-092/096 对账补齐——原始收款凭证覆盖退款中/部分退/全退状态、已关闭 Folio 余额重建、负债净额重建、调整缺凭证检测（新差异类型 ADJUSTMENT_NO_ENTRY）；WB-091-旧 执行参考号物业内唯一（服务层查重双库生效+DB 部分唯一索引）；WB-092-旧 班次现金支出模型层余额校验；WB-095 移除不可达 RECONCILED 状态。
   - **双 CI 漂移修复**：rehire 条件约束与退款参考号 DB 约束测试改 `skipUnless(supports_partial_indexes)`（SQLite 必跑、MySQL 按能力跳过，替代统一 expectedFailure 造成 SQLite unexpected success 假失败）。
   - 迁移：billing.0027（班次状态 choices/对账差异类型/退款参考号部分唯一约束）。回归证据：`docs/acceptance/evidence/test-mysql-wb-batch3.log`。
+- 【2026-11-13】第三路全面审查（P1×4/P2×12/P3×9）对 HEAD 93f23cc 复核后收口：26 项中 22 项已由并行轮次在 HEAD 修复（FIN-01/02/03/04、RSV-01/02/03/06/07/08/10/11、SEC-01/02、MAINT-02/02b/03/05/06/07/09，逐项四态核verified），本轮修复剩余 4 项：
+  - **MAINT-01**：hotelapp/views.py 32 个 410 退役入口的 747 行不可达旧写体删除（AST 定位行手术，36 个 410 返回完好，hotelapp 全绿）。
+  - **PERF-01**：夜审 preview 批量预取主账单与既有凭证（2N+1→固定 3 条查询），语义与原 .first() 一致（含 Folio -opened_at 排序口径）。
+  - **RSV-05**：`create_walk_in` 入住/离店日期改物业时区业务日（与夜审/提前离店同口径）+ 弃用标注（生产零调用，供后续 API 接线复用，禁止零散重写）。
+  - **MAINT-04**：公开端点（availability/reserve/详情/取消/支付意图/回调）25 处扁平 `{"error": "字符串"}` 收敛为 `{error:{code,message},meta}`；`ApiError` 增补 METHOD_NOT_ALLOWED/SERVICE_UNAVAILABLE/PROPERTY_UNAVAILABLE 三码（与 openapi 声明词汇对齐）；ErrorDetail 词汇表更新并重导 openapi.json 快照（113 paths）；6 处测试断言同步。
+  - 回归证据：`docs/acceptance/evidence/test-sqlite-round34.log`（SQLite 全量）、`test-mysql-round34.log`（MySQL 全量）。
 
 **注意：** 两条 CI 没有执行 scripts/e2e_full_chain.py。在脚本修复并于隔离 MySQL 数据库重新运行前，不得把提交标题中的 36/36 当成已验证结果。
 

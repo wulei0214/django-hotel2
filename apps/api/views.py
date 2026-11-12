@@ -10,6 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.core import rate_limit
+from apps.core.api_contract import ApiError, api_error_response
 from apps.core.models import AuditEvent
 from apps.billing.services import (
     PaymentConflict,
@@ -48,14 +49,18 @@ def api_guard(view):
             result = view(request, *args, **kwargs)
         except Exception:
             logger.exception("API 未预期错误：%s %s", request.method, request.path)
-            return JsonResponse(
-                {"error": "服务器内部错误，请稍后重试或联系管理员。"}, status=500
-            )
+            # MAINT-04：统一错误对象封套（与 api_contract 一致），不再外泄扁平字符串
+            return api_error_response(request, ApiError("INTERNAL_ERROR", "服务器内部错误，请稍后重试或联系管理员。"))
         if getattr(result, "status_code", None) == 405:
-            return JsonResponse({"error": "不支持的 HTTP 方法，请检查请求方式。"}, status=405)
+            return api_error_response(request, ApiError("METHOD_NOT_ALLOWED", "不支持的 HTTP 方法，请检查请求方式。"))
         return result
 
     return wrapper
+
+
+def _api_error(request, code, message):
+    """MAINT-04：公开端点统一错误对象封套薄助手（{error:{code,message},meta}）。"""
+    return api_error_response(request, ApiError(code, message))
 
 
 def csrf_failure(request, reason=""):
@@ -105,7 +110,7 @@ def _integer(value, label, default=None):
 def availability(request):
     property_obj = getattr(request, "property", None)
     if property_obj is None:
-        return JsonResponse({"error": "酒店物业不可用。"}, status=503)
+        return _api_error(request, "PROPERTY_UNAVAILABLE", "酒店物业不可用。")
 
     try:
         check_in = _date(request.GET.get("check_in"), "入住日期")
@@ -125,7 +130,7 @@ def availability(request):
         if room_type_id:
             room_types = room_types.filter(pk=_integer(room_type_id, "房型编号"))
     except ValueError as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _api_error(request, "VALIDATION_ERROR", str(exc))
 
     data = []
     for room_type in room_types.order_by("code"):
@@ -153,7 +158,7 @@ def availability(request):
 def reservations_create(request):
     property_obj = getattr(request, "property", None)
     if property_obj is None:
-        return JsonResponse({"error": "酒店物业不可用。"}, status=503)
+        return _api_error(request, "PROPERTY_UNAVAILABLE", "酒店物业不可用。")
 
     try:
         body = _body(request)
@@ -205,13 +210,13 @@ def reservations_create(request):
                        "total": str(reservation.total_amount)},
                 request=request)
     except ReservationConflict as exc:
-        return JsonResponse({"error": str(exc)}, status=409)
+        return _api_error(request, "BUSINESS_CONFLICT", str(exc))
     except ValueError as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _api_error(request, "VALIDATION_ERROR", str(exc))
     except RoomType.DoesNotExist:
-        return JsonResponse({"error": "房型不存在或未启用。"}, status=404)
+        return _api_error(request, "RESOURCE_NOT_FOUND", "房型不存在或未启用。")
     except InventoryUnavailable as exc:
-        return JsonResponse({"error": str(exc)}, status=409)
+        return _api_error(request, "BUSINESS_CONFLICT", str(exc))
 
     response_body = {
         "booking_no": reservation.booking_no,
@@ -238,7 +243,7 @@ def reservation_detail(request, booking_no):
     if property_obj is None:
         # WB-46-11：DEFAULT 物业缺失时此前 property_obj.pk 抛 AttributeError → 500；
         # 与 availability/reservations_create 同口径 503。
-        return JsonResponse({"error": "酒店物业不可用。"}, status=503)
+        return _api_error(request, "PROPERTY_UNAVAILABLE", "酒店物业不可用。")
     # SEC-01：令牌只经 X-Booking-Token 头传递。query 参数会落入服务器访问
     # 日志、浏览器历史与代理日志（验收红线：Token 不得写入 URL 查询参数）。
     token = request.headers.get("X-Booking-Token", "")
@@ -251,7 +256,7 @@ def reservation_detail(request, booking_no):
             action="guest.booking_access_denied", entity_type="Reservation",
             entity_id=booking_no[:32], reason="detail_token_invalid",
             request=request)
-        return JsonResponse({"error": "预订编号或访问令牌不正确。"}, status=404)
+        return _api_error(request, "RESOURCE_NOT_FOUND", "预订编号或访问令牌不正确。")
     AuditEvent.record(
         action="guest.booking_access_viewed", entity_type="Reservation",
         entity_id=reservation.booking_no, property_obj=property_obj,
@@ -308,16 +313,16 @@ def payment_intent_create(request):
     if property_obj is None:
         # WB-46-11：DEFAULT 物业缺失时 503，不 500（同 availability 口径）；
         # 物业上下文是一切支付操作的前置条件，先于环境门禁判定。
-        return JsonResponse({"error": "酒店物业不可用。"}, status=503)
+        return _api_error(request, "PROPERTY_UNAVAILABLE", "酒店物业不可用。")
     # AUTH-07（P0-12）：mock 支付门禁——生产环境拒绝创建模拟支付
     if not _is_dev_env():
-        return JsonResponse({"error": "模拟支付仅在开发/测试环境开放。"}, status=403)
+        return _api_error(request, "PERMISSION_DENIED", "模拟支付仅在开发/测试环境开放。")
     try:
         body = _body(request)
         booking_no = str(body.get("booking_no") or "").strip()
         token = str(body.get("token") or "").strip()
     except Exception:
-        return JsonResponse({"error": "请求体必须是有效 JSON。"}, status=400)
+        return _api_error(request, "VALIDATION_ERROR", "请求体必须是有效 JSON。")
     # §6.3 支付意图限流：IP 10/5min，booking 5/5min（fail-closed）
     # SEC-01：限流必须先于 token 校验。此前无效 token 在限流前直接 404，
     # 从未调用 check（计数在 check 内自增），导致无效 token 请求完全绕过
@@ -332,7 +337,7 @@ def payment_intent_create(request):
             action="guest.booking_access_denied", entity_type="Reservation",
             entity_id=booking_no[:32], reason="payment_intent_token_invalid",
             request=request)
-        return JsonResponse({"error": "预订编号或访问令牌不正确。"}, status=404)
+        return _api_error(request, "RESOURCE_NOT_FOUND", "预订编号或访问令牌不正确。")
     try:
         # WB-088：旧 Payment 创建保留的同时，同事务创建配套 PaymentIntent；
         # 幂等键取请求 Idempotency-Key，缺省回落渠道流水号 provider_ref。
@@ -341,9 +346,9 @@ def payment_intent_create(request):
             idempotency_key=request.headers.get("Idempotency-Key", ""),
         )
     except PaymentConflict as exc:
-        return JsonResponse({"error": str(exc)}, status=409)
+        return _api_error(request, "BUSINESS_CONFLICT", str(exc))
     except ValueError as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _api_error(request, "VALIDATION_ERROR", str(exc))
 
     response = {
         "provider": "mock",
@@ -377,14 +382,14 @@ def payment_intent_create(request):
 @require_POST
 def payment_callback(request):
     if not settings.DEBUG or getattr(settings, "DJANGO_ENV", "dev") not in {"dev", "test"}:
-        return JsonResponse({"error": "模拟支付回调仅允许在本地开发和测试环境使用。"}, status=404)
+        return _api_error(request, "RESOURCE_NOT_FOUND", "模拟支付回调仅允许在本地开发和测试环境使用。")
 
     # WB-088：HMAC 验签结果即 mock 渠道验签事实，透传给服务层——
     # 渠道 SUCCESS 事实落 ProviderTransaction 必须带验签标记（WB-076）。
     signature_verified = verify_mock_callback(
         request.body, request.headers.get("X-Signature", ""))
     if not signature_verified:
-        return JsonResponse({"error": "模拟支付回调签名验证失败。"}, status=401)
+        return _api_error(request, "AUTHENTICATION_REQUIRED", "模拟支付回调签名验证失败。")
 
     try:
         body = _body(request)
@@ -395,9 +400,9 @@ def payment_callback(request):
             signature_verified=signature_verified,
         )
     except PaymentConflict as exc:
-        return JsonResponse({"error": str(exc)}, status=409)
+        return _api_error(request, "BUSINESS_CONFLICT", str(exc))
     except ValueError as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _api_error(request, "VALIDATION_ERROR", str(exc))
 
     reservation = result["reservation"]
     response = {
@@ -431,11 +436,11 @@ def reservation_cancel(request, booking_no):
     property_obj = getattr(request, "property", None)
     if property_obj is None:
         # WB-46-11：DEFAULT 物业缺失时 503，不 500（同 availability 口径）。
-        return JsonResponse({"error": "酒店物业不可用。"}, status=503)
+        return _api_error(request, "PROPERTY_UNAVAILABLE", "酒店物业不可用。")
     try:
         body = _body(request)
     except Exception:
-        return JsonResponse({"error": "请求体必须是有效 JSON。"}, status=400)
+        return _api_error(request, "VALIDATION_ERROR", "请求体必须是有效 JSON。")
     token = str(body.get("token") or "").strip()
     from apps.core import rate_limit
     if not rate_limit.check(request, "public.reservation_cancel", booking_no=booking_no):
@@ -446,7 +451,7 @@ def reservation_cancel(request, booking_no):
             action="guest.booking_access_denied", entity_type="Reservation",
             entity_id=booking_no[:32], reason="cancel_token_invalid",
             request=request)
-        return JsonResponse({"error": "预订编号或访问令牌不正确。"}, status=404)
+        return _api_error(request, "RESOURCE_NOT_FOUND", "预订编号或访问令牌不正确。")
     if reservation.status == Reservation.Status.CANCELLED:
         # 幂等：已取消的订单重复取消直接返回当前状态，不再变更
         return JsonResponse({
@@ -465,9 +470,9 @@ def reservation_cancel(request, booking_no):
             action="guest.booking_cancelled", entity_type="Reservation",
             entity_id=booking_no[:32], property_obj=property_obj,
             reason="cancelled_rejected: %s" % str(exc)[:80], request=request)
-        return JsonResponse({"error": str(exc)}, status=409)
+        return _api_error(request, "BUSINESS_CONFLICT", str(exc))
     except ValueError as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _api_error(request, "VALIDATION_ERROR", str(exc))
 
     AuditEvent.record(
         action="guest.booking_cancelled", entity_type="Reservation",

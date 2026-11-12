@@ -219,7 +219,8 @@ class ParamValidationTests(WhiteboxApiTestBase):
             "rooms": True, "adults": 1, "children": 0,
         })
         self.assertEqual(response.status_code, 400, response.content)
-        self.assertIn("房间数", response.json()["error"])
+        # MAINT-04：公开端点统一错误对象封套
+        self.assertIn("房间数", response.json()["error"]["message"])
 
     def test_public_reservation_create_rejects_bool_adults(self):
         """WB-46-10：adults=false 此前被静默当 0 拒，语义应为类型错误。"""
@@ -230,7 +231,7 @@ class ParamValidationTests(WhiteboxApiTestBase):
             "rooms": 1, "adults": False, "children": 0,
         })
         self.assertEqual(response.status_code, 400, response.content)
-        self.assertIn("成人数", response.json()["error"])
+        self.assertIn("成人数", response.json()["error"]["message"])
 
 
 class MaskingTests(WhiteboxApiTestBase):
@@ -299,7 +300,7 @@ class PublicPropertyGuardTests(WhiteboxApiTestBase):
         response = public_views.reservation_detail(
             self._anonymous_request("get", "/api/v1/reservations/BK-X"), "BK-X")
         self.assertEqual(response.status_code, 503)
-        self.assertIn("物业不可用", _json(response)["error"])
+        self.assertIn("物业不可用", _json(response)["error"]["message"])
 
     def test_payment_intent_create_without_property_returns_503(self):
         response = public_views.payment_intent_create(
@@ -308,7 +309,7 @@ class PublicPropertyGuardTests(WhiteboxApiTestBase):
                 data=json.dumps({"booking_no": "BK-X", "token": "t"}),
                 content_type="application/json"))
         self.assertEqual(response.status_code, 503)
-        self.assertIn("物业不可用", _json(response)["error"])
+        self.assertIn("物业不可用", _json(response)["error"]["message"])
 
     def test_reservation_cancel_without_property_returns_503(self):
         response = public_views.reservation_cancel(
@@ -317,7 +318,7 @@ class PublicPropertyGuardTests(WhiteboxApiTestBase):
                 data=json.dumps({"token": "t"}),
                 content_type="application/json"), "BK-X")
         self.assertEqual(response.status_code, 503)
-        self.assertIn("物业不可用", _json(response)["error"])
+        self.assertIn("物业不可用", _json(response)["error"]["message"])
 
     def test_availability_without_property_returns_503_reference(self):
         """参照口径：availability 在同边界早已 503（回归护栏）。"""
@@ -429,7 +430,8 @@ class AuthStateTests(WhiteboxApiTestBase):
         response = self.client.post("/api/v1/availability", data="{}",
                                     content_type="application/json")
         self.assertEqual(response.status_code, 405, response.content)
-        self.assertEqual(response.json()["error"],
+        self.assertEqual(response.json()["error"]["code"], "METHOD_NOT_ALLOWED")
+        self.assertEqual(response.json()["error"]["message"],
                          "不支持的 HTTP 方法，请检查请求方式。")
 
 

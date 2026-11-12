@@ -163,10 +163,16 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
 
     WB-003 修复：不再单独创建 Guest；create_reservation 内部统一创建，
     避免重复住客档案。无手机号时使用确定性占位号。
+
+    RSV-05/deprecated：当前生产代码零调用（旧 walk-in 入口已 410 退役，
+    PMS2 API 面尚未提供散客直入端点）；保留本服务并已对齐物业时区口径
+    （入住/离店日期用 _property_today 而非部署时区），供后续 API 接线
+    时直接复用——接线前不得在别处零散重写同链路逻辑。
     """
     from apps.billing.services_v2 import BillingService
     from apps.inventory.services import (
         InventoryUnavailable,
+        _property_today,
         confirm_inventory_for_reservation,
     )
     from apps.reservations.front_desk_services import assign_room, check_in_stay
@@ -187,12 +193,15 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
         phone_normalized = f"0000{uuid.uuid5(uuid.NAMESPACE_URL, f'walkin:{property_obj.pk}:{key}').hex[:8]}"
 
     # create_reservation 统一创建 Guest + GuestPhone + Reservation + Folio + Hold
+    # RSV-05：入住/离店日期按物业时区业务日计算（与夜审/提前离店同口径），
+    # 不用部署时区——跨时区物业在日界附近会错一天。
+    walkin_today = _property_today(property_obj)
     payload = {
         "full_name": full_name.strip(),
         "phone": phone_normalized,
         "room_type_id": room_type_id, "rate_plan_id": rate_plan_id,
-        "check_in": timezone.localdate(),
-        "check_out": timezone.localdate() + timedelta(days=nights),
+        "check_in": walkin_today,
+        "check_out": walkin_today + timedelta(days=nights),
         "rooms": 1, "adults": adults, "children": children,
     }
     reservation, created, token = create_reservation(

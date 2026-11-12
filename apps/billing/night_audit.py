@@ -123,6 +123,36 @@ class NightAuditService:
         )
         rows = []
         blockers = []
+        # PERF-01：批量预取主账单与既有夜审凭证，替代循环内逐 Stay 两条查询
+        # （N 家在住 = 2N+1 条查询 → 固定 3 条）。语义与原 .first() 一致：
+        # 同预订多张 OPEN 主账单属异常态，setdefault 保留默认排序下的第一条
+        # （Folio Meta ordering=-opened_at，即最近开立的账单）。
+        window_reservation_ids = {
+            stay.reservation_room.reservation_id for stay in stays
+            if stay.reservation_room.check_in <= day < stay.reservation_room.check_out
+        }
+        folios_by_reservation = {}
+        if window_reservation_ids:
+            for folio_row in Folio.objects.filter(
+                property=property_obj,
+                reservation_id__in=window_reservation_ids,
+                folio_type=Folio.FolioType.MASTER,
+                status=Folio.Status.OPEN,
+            ).only("id", "reservation_id"):
+                folios_by_reservation.setdefault(
+                    folio_row.reservation_id, folio_row)
+        window_references = [
+            f"night-audit:{property_obj.pk}:{day.isoformat()}:stay:{stay.pk}"
+            for stay in stays
+            if stay.reservation_room.check_in <= day < stay.reservation_room.check_out
+        ]
+        entries_by_reference = {}
+        if window_references:
+            for entry_row in LedgerEntry.objects.filter(
+                property=property_obj, reference__in=window_references,
+            ).only("reference", "folio_id", "stay_id", "entry_type",
+                   "amount", "currency", "business_date"):
+                entries_by_reference.setdefault(entry_row.reference, entry_row)
         total = Decimal("0.00")
         # WB-081：stay_count 与过租过滤同口径——只统计房价窗口覆盖目标
         # 营业日（check_in <= day < check_out）的在住 Stay。
@@ -180,12 +210,7 @@ class NightAuditService:
                     "suggested_action": "修复并核验原始房价快照后重新预览。",
                 })
                 continue
-            folio = Folio.objects.filter(
-                property=property_obj,
-                reservation_id=line.reservation_id,
-                folio_type=Folio.FolioType.MASTER,
-                status=Folio.Status.OPEN,
-            ).only("id").first()
+            folio = folios_by_reservation.get(line.reservation_id)
             if folio is None:
                 blockers.append({
                     "code": "MASTER_FOLIO_MISSING",
@@ -203,10 +228,7 @@ class NightAuditService:
             # 房价、币种、营业日等于目标日。任一不符记为账务冲突 blocker，
             # 不得按"已过租"跳过。执行阶段 post_entry 的 _entry_facts_match
             # 失败路径保持不变（同一事实口径兜底并发窗口）。
-            existing_entry = LedgerEntry.objects.filter(
-                property=property_obj, reference=reference
-            ).only("folio_id", "stay_id", "entry_type", "amount",
-                   "currency", "business_date").first()
+            existing_entry = entries_by_reference.get(reference)
             already_posted = False
             if existing_entry is not None:
                 differences = []

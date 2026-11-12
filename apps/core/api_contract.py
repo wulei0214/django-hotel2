@@ -29,6 +29,10 @@ class ApiError(Exception):
         "RESOURCE_NOT_FOUND": 404,
         "BUSINESS_CONFLICT": 409,
         "RATE_LIMITED": 429,
+        "METHOD_NOT_ALLOWED": 405,
+        "SERVICE_UNAVAILABLE": 503,
+        # openapi_schema 已声明的 503 词汇（apps/api/openapi_schema.py:128）
+        "PROPERTY_UNAVAILABLE": 503,
         "INTERNAL_ERROR": 500,
     }
 

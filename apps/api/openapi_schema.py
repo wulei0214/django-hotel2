@@ -125,6 +125,7 @@ COMPONENTS = {
     "ErrorDetail": s_obj({
         "code": s_str("稳定错误码：VALIDATION_ERROR/AUTHENTICATION_REQUIRED/PERMISSION_DENIED/"
                       "RESOURCE_NOT_FOUND/BUSINESS_CONFLICT/RATE_LIMITED/"
+                      "METHOD_NOT_ALLOWED/SERVICE_UNAVAILABLE/"
                       "PROPERTY_UNAVAILABLE/EMPLOYEE_MEMBERSHIP_REQUIRED/INTERNAL_ERROR。"),
         "message": s_str("人类可读错误信息（中文）。"),
         "field_errors": s_nullable(s_obj(desc="字段级校验错误映射。")),
