@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """P0 真实 HTTP 冒烟套件公共设施（实施方案 §9.11）。
 
 设计要点：
@@ -23,6 +22,7 @@
     登录 IP+用户名 5 次/5 分钟——本套件每轮运行最多创建 1 笔预订（含幂等
     重放共 2 次写请求）、登录 1 次，正常运行不会触发限流。
 """
+
 import re
 import uuid
 from os import environ
@@ -30,16 +30,13 @@ from os import environ
 import pytest
 import requests
 
-# ---------------------------------------------------------------------------
-# 环境配置（均可被环境变量覆盖；缺省指向本机开发实例）
-# ---------------------------------------------------------------------------
+
 def _env(name, default):
     value = environ.get(name)
     return value if value else default
 
 
-_CSRF_INPUT_RE = re.compile(
-    r'name="csrfmiddlewaretoken"[^>]*value="([^"]+)"')
+_CSRF_INPUT_RE = re.compile(r'name="csrfmiddlewaretoken"[^>]*value="([^"]+)"')
 
 
 class HttpApi:
@@ -82,10 +79,9 @@ class HttpApi:
         登录、退出会轮换令牌；换绑会话后必须重新调用本方法。
         """
         page = self.get(path)
-        assert page.status_code == 200, (
-            "无法获取 CSRF 令牌：GET %s 返回 %s" % (path, page.status_code))
+        assert page.status_code == 200, f"无法获取 CSRF 令牌：GET {path} 返回 {page.status_code}"
         match = _CSRF_INPUT_RE.search(page.text)
-        assert match, "页面 %s 未渲染 csrfmiddlewaretoken" % path
+        assert match, f"页面 {path} 未渲染 csrfmiddlewaretoken"
         self.csrf_token = match.group(1)
         return self.csrf_token
 
@@ -119,8 +115,9 @@ def _form_login(api: HttpApi, username: str, password: str):
     """
     login_page = api.get("/login/")
     assert login_page.status_code == 200, (
-        "登录页不可达：GET /login/ 返回 %s（请确认 PMS_BASE_URL 指向已启动实例）"
-        % login_page.status_code)
+        f"登录页不可达：GET /login/ 返回 {login_page.status_code}"
+        "（请确认 PMS_BASE_URL 指向已启动实例）"
+    )
     match = _CSRF_INPUT_RE.search(login_page.text)
     assert match, "登录页未渲染 csrfmiddlewaretoken，无法完成表单登录"
     api.csrf_token = match.group(1)
@@ -139,7 +136,8 @@ def _form_login(api: HttpApi, username: str, password: str):
     # 但不回显提交的账号口令。
     assert response.status_code == 302, (
         "员工登录失败：请检查 PMS_STAFF_USER/PMS_STAFF_PASSWORD 对应账号在该实例"
-        "是否存在、在职且有有效角色授权（或是否触发了登录限流）")
+        "是否存在、在职且有有效角色授权（或是否触发了登录限流）"
+    )
     # 登录成功后 Django 轮换 CSRF 令牌：从公开页重新获取
     api.ensure_csrf("/reserve/")
     return api

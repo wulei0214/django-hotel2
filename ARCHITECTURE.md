@@ -76,6 +76,9 @@ pytest                           # 测试
 
 ## 6. 测试约定
 
-- 单元测试：`apps/<domain>/test_*.py`
-- 跨模块 E2E/冒烟：`tests/`（由 `api_tests/` 迁移而来）
+- 单元测试：`apps/<domain>/test_*.py`（Django unittest 风格，`manage.py test` 运行）
+- 跨模块 E2E/冒烟：`apps/api/tests_p0/`（纯 requests 真实 HTTP 冒烟，不加载 Django
+  settings；标记 `@pytest.mark.p0`，运行 `pytest apps/api/tests_p0 -m p0`，需先启动
+  已种子化实例，详见该目录 README.md；原 `api_tests/` 已并入此处，pytest 配置
+  统一在根 `pyproject.toml`，默认 addopts 已排除 p0 用例）
 - 没有测试的 PR 一律打回

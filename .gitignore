@@ -53,3 +53,7 @@ understand-out/
 # 工具回收站垃圾
 .trash-*/
 **/.trash-*/
+
+# ===== 测试运行产物（不入库）=====
+reports/
+.pytest_cache/

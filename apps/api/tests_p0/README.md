@@ -1,8 +1,13 @@
-# api_tests — P0 真实 HTTP 冒烟套件（Pytest + Requests）
+# apps/api/tests_p0 — P0 真实 HTTP 冒烟套件（Pytest + Requests）
 
 《PMS2 平台身份权限与业务全链路治理开发实施方案》§9.11 交付物：
 对**已启动的真实 HTTP 实例**执行 P0 链路冒烟（不使用 Django test client，
-与既有 334+ 项 Django 单测完全隔离，二者可并行维护）。
+不加载 Django settings，与既有 Django 单测完全隔离，二者可并行维护）。
+
+> 位置说明（2026-11-13 迁移，多 AI 协作治理方案 §1.3 方案 B）：
+> 原独立目录 `api_tests/` 已并入 `apps/api/tests_p0/`。未命名为 `tests/`
+> 是因为 `apps/api/tests.py`（Django 单测）与 `tests/` 包存在模块名冲突；
+> 统一的 pytest 配置收敛在根 `pyproject.toml`（原 `api_tests/pytest.ini` 已废除）。
 
 ## 覆盖范围（`@pytest.mark.p0`）
 
@@ -71,22 +76,22 @@ $env:DJANGO_DB_NAME="_pytest_smoke.sqlite3"
 ## 运行测试
 
 ```powershell
-cd api_tests
-F:\Desktop\django-hotel\.venv\Scripts\python.exe -m pytest
+# 在仓库根目录运行（统一 pytest 配置来自 pyproject.toml）
+.venv\Scripts\python.exe -m pytest apps/api/tests_p0 -m p0
 ```
 
 常用变体：
 
 ```powershell
-# 只跑 P0 标记（默认全部即 P0）
-.venv\Scripts\python.exe -m pytest -m p0
-
 # 指定其它实例
-$env:PMS_BASE_URL="http://127.0.0.1:8001"; .venv\Scripts\python.exe -m pytest
+$env:PMS_BASE_URL="http://127.0.0.1:8001"; .venv\Scripts\python.exe -m pytest apps/api/tests_p0 -m p0
 
 # 指定员工测试账号（缺省 demo_owner / Demo@Owner2026，仅本机演示凭据）
 $env:PMS_STAFF_USER="demo_owner"; $env:PMS_STAFF_PASSWORD="你的口令"
 ```
+
+> 仓库根 `pyproject.toml` 的全局 addopts 默认 `-m "not p0"`——日常裸跑
+> `pytest` 只收集 Django 单测，不会误打真实实例；冒烟套件必须显式 `-m p0`。
 
 环境变量一览：
 
@@ -98,8 +103,12 @@ $env:PMS_STAFF_USER="demo_owner"; $env:PMS_STAFF_PASSWORD="你的口令"
 
 ## 测试报告（JUnit XML）
 
-每次运行生成 `api_tests/reports/junit-p0.xml`
-（由 `pytest.ini` 的 `--junitxml=reports/junit-p0.xml` 固化）。
+每次运行可生成 `reports/junit-p0.xml`（`reports/` 已加入 .gitignore）：
+
+```powershell
+.venv\Scripts\python.exe -m pytest apps/api/tests_p0 -m p0 --junitxml=reports/junit-p0.xml
+```
+
 CI 或质量门禁直接消费该文件；失败用例的 system-output 不含口令、
 Session Cookie、CSRF token、Booking Access Token 或完整手机号。
 
@@ -113,10 +122,9 @@ Session Cookie、CSRF token、Booking Access Token 或完整手机号。
 ## 目录结构
 
 ```
-api_tests/
+apps/api/tests_p0/
   conftest.py        # BASE_URL / requests 封装 / 表单登录 fixture / 环境变量
   test_p0_smoke.py   # P0 八条冒烟链路（@pytest.mark.p0）
-  pytest.ini         # markers 注册 + JUnit XML 输出
   README.md          # 本文件
-  reports/           # junit-p0.xml（运行时生成）
+reports/             # junit-p0.xml（运行时生成，gitignore）
 ```

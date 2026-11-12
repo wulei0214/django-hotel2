@@ -40,4 +40,10 @@ exclude = ["migrations", ".venv", "venv", "hotelapp"]
 python_files = ["test_*.py", "tests.py"]
 testpaths = ["apps", "tests"]
 DJANGO_SETTINGS_MODULE = "hotel.settings"
-pythonwarnings = ["ignore::DeprecationWarning"]
+filterwarnings = ["ignore::DeprecationWarning"]
+# 默认排除 p0 冒烟用例（真实 HTTP，需已启动实例）；冒烟跑法：
+#   pytest apps/api/tests_p0 -m p0  （CLI 的 -m 覆盖此处默认值）
+addopts = "-ra --strict-markers -m 'not p0'"
+markers = [
+  "p0: P0 链路真实 HTTP 冒烟用例（需已启动且完成演示数据种子的实例，见 apps/api/tests_p0/README.md）",
+]

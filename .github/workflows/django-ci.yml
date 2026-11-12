@@ -10,6 +10,70 @@ on:
       - main
 
 jobs:
+  lint:
+    # 多 AI 协作治理方案 附录#9：lint 门禁。
+    # 差异范围策略：只检查本次变更的 apps/、hotel/ 下 .py 文件——
+    # 存量文件保持原状，谁改动谁负责清理（与 pre-commit 同口径）。
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install linters
+        run: pip install ruff==0.6.9 black==24.8.0
+      - name: Collect changed Python files (apps/ or hotel/)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --name-only "origin/${{ github.base_ref }}...HEAD" \
+              --diff-filter=ACMR -- apps hotel | grep '\.py$' > changed_py.txt || true
+          else
+            git diff --name-only "HEAD~1" \
+              --diff-filter=ACMR -- apps hotel | grep '\.py$' > changed_py.txt || true
+          fi
+          # 仅保留本次检出中仍存在的文件（排除已删除文件）
+          while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done \
+            < changed_py.txt > existing_py.txt || true
+          echo "Changed Python files:"; cat existing_py.txt
+      - name: Ruff (changed files must be clean)
+        run: |
+          if [ -s existing_py.txt ]; then
+            xargs -a existing_py.txt ruff check
+          else
+            echo "No changed Python files under apps/ or hotel/ — ruff skipped"
+          fi
+      - name: Black format check (changed files)
+        run: |
+          if [ -s existing_py.txt ]; then
+            xargs -a existing_py.txt black --check
+          else
+            echo "No changed Python files under apps/ or hotel/ — black check skipped"
+          fi
+
+  type-check:
+    # mypy 先以观察模式运行：apps/ 存量类型债约 800+ 错（仅 apps/core 即 803），
+    # 直接硬门禁会打死全部 PR。待存量清偿后移除 continue-on-error 收紧为硬门禁。
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Mypy (advisory)
+        run: mypy apps/
+
   test:
     runs-on: ubuntu-24.04
     env:

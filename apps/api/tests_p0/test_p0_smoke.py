@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """P0 链路真实 HTTP 冒烟（实施方案 §9.11，标记 @pytest.mark.p0）。
 
 覆盖 8 条 P0 冒烟面（全部经真实 HTTP 打到 PMS_BASE_URL 指向的已种子化实例）：
@@ -18,17 +17,22 @@
 安全约束：不在断言/日志/报告中记录口令、Session Cookie、CSRF token、
 Booking Access Token 明文或完整手机号——token 只用于请求头。
 """
+
 from datetime import date, timedelta
 
 import pytest
 
 pytestmark = pytest.mark.p0
 
-NIGHTS = 2          # 冒烟预订连住 2 晚
-ROOMS = 1           # 单间
+NIGHTS = 2  # 冒烟预订连住 2 晚
+ROOMS = 1  # 单间
 AVAILABILITY_KEYS = {
-    "room_type_id", "room_type_name", "rate_plan_id", "available_count",
-    "total_amount", "nightly_details",
+    "room_type_id",
+    "room_type_name",
+    "rate_plan_id",
+    "available_count",
+    "total_amount",
+    "nightly_details",
 }
 
 
@@ -57,21 +61,27 @@ def p0_booking(api, unique_phone, idempotency_key):
     before = {}
     snap = api.get(
         "/api/v1/availability",
-        params={"check_in": check_in.isoformat(),
-                "check_out": check_out.isoformat(), "rooms": ROOMS},
+        params={
+            "check_in": check_in.isoformat(),
+            "check_out": check_out.isoformat(),
+            "rooms": ROOMS,
+        },
     )
     assert snap.status_code == 200
     for item in snap.json().get("data", []):
         before[item["room_type_id"]] = item["available_count"]
 
     target = next(
-        (item for item in snap.json().get("data", [])
-         if item.get("available_count") is not None
-         and item["available_count"] >= ROOMS),
+        (
+            item
+            for item in snap.json().get("data", [])
+            if item.get("available_count") is not None and item["available_count"] >= ROOMS
+        ),
         None,
     )
-    assert target is not None, (
-        "实例无可用房型库存：请先按 README 完成演示数据种子（房型/房价计划/库存日历）")
+    assert (
+        target is not None
+    ), "实例无可用房型库存：请先按 README 完成演示数据种子（房型/房价计划/库存日历）"
 
     payload = {
         "full_name": "冒烟住客",
@@ -84,11 +94,13 @@ def p0_booking(api, unique_phone, idempotency_key):
         "children": 0,
     }
     response = api.post_json(
-        "/api/v1/reservations", payload,
+        "/api/v1/reservations",
+        payload,
         headers={"Idempotency-Key": idempotency_key},
     )
-    assert response.status_code == 201, (
-        "公开预订创建失败（HTTP %s）：请确认实例已种子化且未触发限流" % response.status_code)
+    assert (
+        response.status_code == 201
+    ), f"公开预订创建失败（HTTP {response.status_code}）：请确认实例已种子化且未触发限流"
     body = response.json()
     assert body.get("booking_no")
     assert body.get("access_token"), "首次创建必须一次性下发 access_token"
@@ -96,9 +108,12 @@ def p0_booking(api, unique_phone, idempotency_key):
     assert body.get("status") == "PENDING"
 
     # 持有中的库存快照（取消测试用）：创建已占用 ROOMS 间
-    availability_held = _availability_map(api, {
-        "payload": payload,
-    })
+    availability_held = _availability_map(
+        api,
+        {
+            "payload": payload,
+        },
+    )
     return {
         "booking_no": body["booking_no"],
         "token": body["access_token"],
@@ -113,14 +128,15 @@ def p0_booking(api, unique_phone, idempotency_key):
 def _availability_map(api, booking):
     response = api.get(
         "/api/v1/availability",
-        params={"check_in": booking["payload"]["check_in"],
-                "check_out": booking["payload"]["check_out"],
-                "rooms": ROOMS},
+        params={
+            "check_in": booking["payload"]["check_in"],
+            "check_out": booking["payload"]["check_out"],
+            "rooms": ROOMS,
+        },
     )
     assert response.status_code == 200
     return {
-        item["room_type_id"]: item["available_count"]
-        for item in response.json().get("data", [])
+        item["room_type_id"]: item["available_count"] for item in response.json().get("data", [])
     }
 
 
@@ -137,8 +153,7 @@ def test_public_availability_structure(api):
     check_out = check_in + timedelta(days=1)
     response = api.get(
         "/api/v1/availability",
-        params={"check_in": check_in.isoformat(),
-                "check_out": check_out.isoformat(), "rooms": 1},
+        params={"check_in": check_in.isoformat(), "check_out": check_out.isoformat(), "rooms": 1},
     )
     assert response.status_code == 200
     body = response.json()
@@ -164,7 +179,8 @@ def test_public_reservation_create_and_idempotent_replay(api, p0_booking):
 
     # 同 Idempotency-Key + 同内容重放 → 200 幂等返回既有订单
     replay = api.post_json(
-        "/api/v1/reservations", p0_booking["payload"],
+        "/api/v1/reservations",
+        p0_booking["payload"],
         headers={"Idempotency-Key": p0_booking["idempotency_key"]},
     )
     assert replay.status_code == 200
@@ -180,7 +196,7 @@ def test_public_reservation_create_and_idempotent_replay(api, p0_booking):
 # ---------------------------------------------------------------------------
 def test_booking_token_query_masking(api, p0_booking):
     response = api.get(
-        "/api/v1/reservations/%s" % p0_booking["booking_no"],
+        f"/api/v1/reservations/{p0_booking['booking_no']}",
         headers={"X-Booking-Token": p0_booking["token"]},
     )
     assert response.status_code == 200
@@ -196,7 +212,7 @@ def test_booking_token_query_masking(api, p0_booking):
 
     # 错误 token → 404（不泄露订单存在性）
     wrong = api.get(
-        "/api/v1/reservations/%s" % p0_booking["booking_no"],
+        f"/api/v1/reservations/{p0_booking['booking_no']}",
         headers={"X-Booking-Token": "definitely-wrong-token"},
     )
     assert wrong.status_code == 404
@@ -209,7 +225,7 @@ def test_booking_token_cancel_releases_inventory(api, p0_booking):
     booking_no = p0_booking["booking_no"]
 
     response = api.post_json(
-        "/api/v1/reservations/%s/cancel" % booking_no,
+        f"/api/v1/reservations/{booking_no}/cancel",
         {"token": p0_booking["token"]},
     )
     assert response.status_code == 200
@@ -268,8 +284,7 @@ def test_permission_denied_on_platform_permissions(staff_session):
 # ---------------------------------------------------------------------------
 def test_legacy_routes_retired(api, staff_session):
     # P1-05：旧写入口已 410——持相应岗位权限的员工命中视图体（永久退役语义）
-    staff_post = staff_session.post(
-        "/insert_client/", data={}, allow_redirects=False)
+    staff_post = staff_session.post("/insert_client/", data={}, allow_redirects=False)
     assert staff_post.status_code == 410
 
     # 匿名命中门禁族：带 CSRF 头 → 302 登录墙；缺 CSRF 头 → 403；
@@ -300,5 +315,4 @@ def test_openapi_contract(api):
         for method in methods
         if method in path_item
     )
-    assert operation_count >= 60, (
-        "OpenAPI operation 数 %d 低于契约基线 60" % operation_count)
+    assert operation_count >= 60, "OpenAPI operation 数 %d 低于契约基线 60" % operation_count
