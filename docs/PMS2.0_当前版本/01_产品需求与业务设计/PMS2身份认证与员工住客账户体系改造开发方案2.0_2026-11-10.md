@@ -1038,3 +1038,8 @@ Guest 重复档案的业务合并政策仍按第 8 节执行，不允许用“�
 - 初始化命令使用 getpass 隐藏输入和 Django 密码校验器；密码不写入仓库、日志或文档。
 - 最新 SQLite 与 MySQL 8.0.46 CI 各 887 项通过；但九角色真实口令登录、真实浏览器 E2E 和 G14 独立验收仍待完成。
 - 全链路脚本 scripts/e2e_full_chain.py 的白盒缺陷和安全限制见《PMS2最新代码单元测试与白盒全链路审查报告_2026-11-09.md》。
+
+
+## 2026-11-12 当前代码核对
+
+当前 main 57d2176b2dec821dd5c82ec71743603a42f44474。员工登录以 User.username 为主标识；StaffProfile、PropertyStaffMembership、StaffRoleAssignment 分层；rehire_employee 与工号计数器服务已实现。手机号不作为员工身份唯一键。公开预订订单访问使用 Booking Access Token 请求头，不以 booking_no + phone 作为访问凭据。Guest 手机号密文/HMAC 与 DJANGO_PII_KEY 生产校验已实现；dev guests.0007 迁移和生产密钥受控切换仍待执行。九角色真实口令登录、浏览器 E2E 和独立验收未完成。
