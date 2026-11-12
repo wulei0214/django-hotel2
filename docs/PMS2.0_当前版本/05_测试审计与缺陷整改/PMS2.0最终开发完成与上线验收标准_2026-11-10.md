@@ -553,3 +553,21 @@ OpenAPI、接口实现和 Apifox 测试资产必须一致；Apifox 的实际导�
 2. 九角色真实账号逐一登录、五个 ACTIVE 角色的正反向授权、四个 PLANNED 角色的默认拒绝仍须在用户本地隔离测试环境执行。
 3. 真实 Chromium 浏览器 E2E、Apifox 25 个 partial operation 关闭和 G14 独立验收签署仍待完成。
 4. PMS3 正式业务代码开发门禁继续保持；本节的 CI PASS 不解除门禁。
+
+
+---
+
+## 2026-11-12 当前验收状态附录
+
+当前复核 SHA：57d2176b2dec821dd5c82ec71743603a42f44474。MySQL 1178 OK、SQLite 1178 OK（skip 19），对应 Actions 为 run 43225156079 和 43225156017。OpenAPI 113 paths / 115 operations（90 verified / 25 partial）。
+
+上述自动化结果只覆盖 CI 声明的测试范围，不能替代以下验收：
+
+1. dev 数据库 hotel 的 guests.0007 / billing.0030 迁移与迁移后数据核对；
+2. 生产 PII 密钥受控切换及 MySQL 备份恢复演练；
+3. ENTRY_NO_PAYMENT 反向对账扫描和 ChargeLine/金额/币种/凭证类型一致性；
+4. WB-076/089 服务层验签、WB-085 MySQL 并发、WB-087 迟到成功补偿、WB-092 对账和 WB-125 状态迁移边界；
+5. 九角色真实登录、真实浏览器 E2E、Apifox 实际执行和用户本地业务走查；
+6. 独立验收人完成 96 G14 签署。
+
+因此当前 PMS2.0 仍是“开发持续整改/待独立验收”，不得在 A16 或 G14 中标记最终通过；PMS3.0 正式业务代码开发门禁继续关闭。
