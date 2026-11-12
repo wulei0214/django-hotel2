@@ -14864,7 +14864,7 @@
             "name": "status",
             "in": "query",
             "required": false,
-            "description": "班次状态筛选 OPEN/CLOSED/RECONCILED。",
+            "description": "班次状态筛选 OPEN/CLOSED。",
             "schema": {
               "type": "string"
             }

@@ -676,3 +676,18 @@ SplitSessionMiddleware 应按以下顺序工作：
 | 以上完成前不写实现代码 | 本次只更新设计文档；未修改认证代码、中间件、路由、数据库或部署配置 |
 
 **当前状态：P0 设计评审决议已确认；阶段 1 编码尚未开始。** 后续若要进入实现阶段，必须由项目负责人另行明确授权；本决议本身不构成编码授权。
+
+
+---
+
+## 2026-11-12 当前代码/验收状态
+
+当前 main 57d2176b2dec821dd5c82ec71743603a42f44474。服务端平台 Cookie 路径隔离方案 A 的实现说明继续有效；本轮没有真实浏览器请求头证据，不把 Django Client 或 CI 测试等同于浏览器 E2E。上线前仍需验证 /platform/、/admin/、PMS 根路径三类 Cookie 的 Path、SameSite、Secure、登录/登出和 CSRF 行为，并留存浏览器版本、响应头和 trace。
+
+
+## 2026-11-12 当前实现核对补充
+
+- 本轮文档审查输入 main SHA：`b546425912cc5fad730057e368ca36ad2d130725`；业务代码基线：`57d2176b2dec821dd5c82ec71743603a42f44474`。其后文档同步提交未修改业务代码。
+- 该审查输入 SHA 的 Django CI run 43242839234、MySQL tests run 43242839197 均 success。
+- 需求状态须区分已实现、已测试、已部署、已验收；未执行 dev/生产操作不得标记部署完成。
+- Cookie Path/Domain、CSRF 写请求、平台入口与 PMS 员工入口隔离，必须用真实浏览器网络请求和独立账号验收；Django Test Client/OpenAPI contract 测试不等于浏览器 Cookie 隔离验收。
