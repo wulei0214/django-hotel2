@@ -23,7 +23,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.9"
       - name: Install linters
         run: pip install ruff==0.6.9 black==24.8.0
       - name: Collect changed Python files (apps/ or hotel/)
@@ -55,24 +55,24 @@ jobs:
           fi
 
   type-check:
-    # mypy 先以观察模式运行：apps/ 存量类型债约 800+ 错（仅 apps/core 即 803），
-    # 直接硬门禁会打死全部 PR。待存量清偿后移除 continue-on-error 收紧为硬门禁。
+    # mypy 基线门禁（治理 V1.1 第二阶段，P-04）：存量错误冻结于 mypy-baseline.txt，
+    # 仅拦截"新增"错误；存量清偿后由 scripts/mypy_baseline.py generate 重新收紧。
+    # 禁止清空/手改基线文件伪造通过（基线变更须随真实清偿提交并说明范围）。
     runs-on: ubuntu-24.04
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.9"
           cache: pip
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
-      - name: Mypy (advisory)
-        run: mypy apps/
+      - name: Mypy baseline check (new errors are blocking)
+        run: python scripts/mypy_baseline.py check
 
   test:
     runs-on: ubuntu-24.04
@@ -90,7 +90,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.9"
           cache: pip
       - name: Install dependencies
         run: |

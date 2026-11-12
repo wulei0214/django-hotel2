@@ -3,9 +3,9 @@
 - 项目：wulei0214/django-hotel2
 - 适用范围：整个仓库、所有开发人员及所有 AI
 - 文档级别：最高级架构与工程约束
-- 本次修订基线：main@982ee3349d7442cf4a2d09556e859756c494023b
+- 本次修订基线：main@b365d66e2d924d71c06d2e2a3cccdabc2ea2e2ae（治理 V1.1 第一阶段验收通过）
 - 核对范围：仓库目录、Django 配置与路由、七个 apps 模块的文件结构、关键领域 Model/Service、工程配置和现有架构说明
-- 状态：治理基线 V1；本文件约束新开发和重构，不代表所有历史代码已符合规范
+- 状态：治理基线 V2（第二阶段校准）；本文件约束新开发和重构，不代表所有历史代码已符合规范
 
 > 本文件是唯一架构宪法。所有 AI 和开发人员开始任务前必须读取本文件、当前 main SHA、正式需求/决策文档及任务涉及的实现和测试。专项规范可以细化本文件，但不得与本文件冲突。修改本文件属于 L3 架构变更，必须经项目负责人批准。
 >
@@ -52,8 +52,8 @@ hotelapp 仍在 INSTALLED_APPS 中，且 hotel/urls.py 仍注册大量历史业�
 
 当前仓库已存在以下配置文件，不能再把“创建这些文件”作为尚未完成的工作重复派发：
 
-- requirements.txt：运行依赖；当前含 Django 4.1、PyMySQL、DRF 3.14、SimpleUI、cryptography、WhiteNoise、Redis 客户端及 drf-yasg 等依赖。
-- requirements-dev.txt：开发工具依赖，含 Ruff、Black、isort、Mypy、Django/DRF stubs、pytest、pytest-django、pre-commit。
+- requirements.txt：运行依赖；当前含 Django 4.1、PyMySQL、SimpleUI、cryptography、WhiteNoise、Redis 客户端（2026-11-13 第二阶段移除经核实全仓未使用的 djangorestframework 与 drf-yasg，见修订记录 R-2 与问题清单 P-02）。
+- requirements-dev.txt：开发工具依赖，含 Ruff、Black、Mypy、Django stubs、pytest、pytest-django、pre-commit（isort 已移除，导入排序统一由 Ruff I001 负责，见修订记录 R-2 与问题清单 G-05）。
 - pyproject.toml：已有 Ruff、Black、isort、Mypy、pytest 配置；目标 Python 配置为 3.9。
 - .pre-commit-config.yaml：已有 Ruff、格式化、isort、Mypy 与 pytest hook 配置。
 - .editorconfig：已有跨编辑器编码、换行和缩进规则。
@@ -196,14 +196,14 @@ Python 命名：变量/函数/方法/模块文件使用 snake_case；类使用 C
 
 ## 10. 自动化质量与测试门禁
 
-当前质量工具配置已经存在，但执行覆盖和阻断效力仍需第一阶段核实。所有任务至少按影响范围执行：
+当前质量工具配置已经存在；第一阶段已核实其执行覆盖与阻断效力（lint=差异范围 ruff+black 硬门禁、mypy=基线硬门禁——存量冻结于 mypy-baseline.txt、仅拦新增、全量测试=硬门禁、MySQL 套件+守卫由 ci.yml 承担），详见 `docs/共享规范/第一阶段_仓库现状盘点报告.md` §7-§8 与修订记录 R-2。所有任务至少按影响范围执行：
 
 1. 对应单元/服务测试；
 2. 对应 API/页面/权限测试；
 3. 关联模块回归；
 4. python manage.py check；
 5. makemigrations --check --dry-run（适用时）；
-6. Ruff、Black、isort、Mypy（按当前配置及任务覆盖范围）；
+6. Ruff（含导入排序 I001）、Black、Mypy（按当前配置及任务覆盖范围）；
 7. SQLite 与 MySQL 测试（涉及数据库差异、锁、约束、并发时必须两者验证）；
 8. 相关 GitHub Actions CI。
 
@@ -254,6 +254,13 @@ Python 命名：变量/函数/方法/模块文件使用 snake_case；类使用 C
 - 专项规范可以增加更细的规则，但必须引用本文件并保持一致。
 - 文档与代码不一致时，先确认当前代码事实和正式决策，再更新文档或提出代码整改；不得通过改文档掩盖实现缺陷。
 - 本文件每次修订必须记录原因、基线 SHA、影响文件和审批记录。
+
+---
+
+## 修订记录
+
+- R-1｜2026-11-12｜按治理 V1.1 整体重写为"事实/规则/目标"三态结构（commit 879af2f）；修订基线 main@982ee3349d7442cf4a2d09556e859756c494023b；审批：项目负责人。
+- R-2｜2026-11-13｜第二阶段校准（按第一阶段问题清单 G-01 允许的三类动作，未重写任何章节）：① §2.2 依赖快照更新——移除经核实全仓未使用的 `djangorestframework` 与 `drf-yasg`（问题清单 P-02 方案 A）、移除 isort（G-05，导入排序统一由 Ruff I001 收口）；② §10 回填第一阶段门禁核实结论（lint=差异范围硬门禁 / mypy=基线硬门禁 mypy-baseline.txt 仅拦新增 / 全量测试硬门禁 / MySQL 套件与守卫由 ci.yml 承担），并同步 §10 第 6 项工具清单。修订基线 main@b365d66e2d924d71c06d2e2a3cccdabc2ea2e2ae；审批：项目负责人批准进入第二阶段（"可以进行第二阶段开发了"，2026-11-13）。影响文件：ARCHITECTURE.md、requirements.txt、requirements-dev.txt、pyproject.toml、.pre-commit-config.yaml、.github/workflows/django-ci.yml、scripts/mypy_baseline.py、mypy-baseline.txt。
 
 ---
 

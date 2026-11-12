@@ -14,18 +14,12 @@ repos:
       - id: black
         files: ^(apps|hotel)/.+\.py$
 
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        files: ^(apps|hotel)/.+\.py$
-
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.11.2
     hooks:
       - id: mypy
         files: ^(apps|hotel)/.+\.py$
-        additional_dependencies: [django-stubs, djangorestframework-stubs]
+        additional_dependencies: [django-stubs]
         args: [--ignore-missing-imports]
 
   - repo: local
