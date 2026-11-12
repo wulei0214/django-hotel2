@@ -21,10 +21,12 @@ form 白名单保存（N-1 缺口：旧 ALL_CODENAMES 含 PLANNED 模块 food/or
   * 不改 AuthorizationService 运行时逻辑：矩阵保存只写 Group.permissions，
     PMS 业务权限仍以员工任职和岗位授权为准（§8.1）。
 """
+
 import hashlib
 import json
 
 from django.contrib.auth.models import Group, Permission
+from django.core.exceptions import ValidationError
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.db import transaction
 from django.db.models import Q
@@ -34,7 +36,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from apps.core.models import AuditEvent
 
-from .models import StaffRoleAssignment
+from .models import PermissionMatrixApproval, StaffRoleAssignment
 from .platform import platform_superadmin_required
 from .registry import (
     MODULE_ACTIVE,
@@ -54,8 +56,12 @@ _CONFIRM_SALT_PREFIX = "pms2.permission_center.confirm."
 # 矩阵动作列（6 固定键中的 5 个非专项键；special 列以 SPECIAL_PERMISSIONS 呈现）
 MATRIX_ACTIONS = ("view", "add", "change", "delete", "approve")
 ACTION_LABELS = {
-    "view": "查看", "add": "新增", "change": "修改",
-    "delete": "删除", "approve": "审批", "special": "专项",
+    "view": "查看",
+    "add": "新增",
+    "change": "修改",
+    "delete": "删除",
+    "approve": "审批",
+    "special": "专项",
 }
 
 # 专项权限展示名（纯展示用途，不参与任何授权判定）
@@ -77,14 +83,13 @@ SPECIAL_LABELS = {
 }
 
 # §8.1 页面固定文案（页面必须原文呈现）
-PLATFORM_SCOPE_NOTICE = (
-    "平台超管拥有平台域管理权限；PMS 业务权限仍以员工任职和岗位授权为准"
-)
+PLATFORM_SCOPE_NOTICE = "平台超管拥有平台域管理权限；PMS 业务权限仍以员工任职和岗位授权为准"
 
 
 # ---------------------------------------------------------------------------
 # 注册表派生授权面（N-1 修复：allowed 只来自注册表，不再有手工白名单）
 # ---------------------------------------------------------------------------
+
 
 def active_module_codes():
     """ACTIVE 模块登记的全部权限码（去重排序元组）。"""
@@ -119,6 +124,7 @@ def special_codenames():
 # 内容 hash 版本 / diff / 高危 token
 # ---------------------------------------------------------------------------
 
+
 def content_version(codenames):
     """权限码全集（排序后）的 sha256 前 16 位内容 hash（§8.1 version）。"""
     payload = "\n".join(sorted(codenames)).encode("utf-8")
@@ -128,8 +134,8 @@ def content_version(codenames):
 def diff_hash(added, removed):
     """added/removed 两组码的稳定短 hash（token 绑定用）。"""
     payload = json.dumps(
-        {"added": sorted(added), "removed": sorted(removed)},
-        sort_keys=True, separators=(",", ":")).encode("utf-8")
+        {"added": sorted(added), "removed": sorted(removed)}, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()[:16]
 
 
@@ -152,7 +158,7 @@ def is_high_risk_diff(added, removed):
 
 def _confirm_salt(group_id, user_pk, diff_digest):
     """salt 绑定 group_id+diff_hash+user.pk（§8.3.f）。"""
-    material = f"{group_id}|{diff_digest}|{user_pk}".encode("utf-8")
+    material = f"{group_id}|{diff_digest}|{user_pk}".encode()
     return _CONFIRM_SALT_PREFIX + hashlib.sha256(material).hexdigest()[:16]
 
 
@@ -188,6 +194,7 @@ def validate_confirm_token(token, group_id, user_pk, added, removed):
 # 组 / 角色元数据与影响范围
 # ---------------------------------------------------------------------------
 
+
 def role_meta_for_group(group):
     """Group → ROLE_REGISTRY 元数据（未登记角色返回 None）。"""
     if group is None:
@@ -200,16 +207,20 @@ def role_meta_for_group(group):
 
 def group_permission_codes(group):
     """组当前全部权限码全集（"app_label.codename"，跨 App）。"""
-    return {f"{app_label}.{codename}"
-            for app_label, codename in group.permissions.values_list(
-                "content_type__app_label", "codename")}
+    return {
+        f"{app_label}.{codename}"
+        for app_label, codename in group.permissions.values_list(
+            "content_type__app_label", "codename"
+        )
+    }
 
 
 def effective_assignments(group):
     """某角色组当前生效（starts_at≤now<ends_at 或长期）的岗位授权查询集。"""
     now = timezone.now()
     return StaffRoleAssignment.objects.filter(
-        group=group, starts_at__lte=now,
+        group=group,
+        starts_at__lte=now,
     ).filter(Q(ends_at__isnull=True) | Q(ends_at__gt=now))
 
 
@@ -217,16 +228,15 @@ def role_impact(group):
     """影响范围计数（§8.1 impact）：员工数按去重员工档案，任职数按去重任职。"""
     effective = effective_assignments(group)
     membership_count = effective.values("membership_id").distinct().count()
-    staff_count = (effective
-                   .values("membership__staff_profile_id").distinct().count())
+    staff_count = effective.values("membership__staff_profile_id").distinct().count()
     return {"staff_count": staff_count, "membership_count": membership_count}
 
 
 def last_matrix_save(group):
     """最近一次矩阵保存审计（§8.1 右区展示）。"""
     event = AuditEvent.objects.filter(
-        action="permissions.matrix_saved",
-        entity_type="Group", entity_id=str(group.pk)).first()
+        action="permissions.matrix_saved", entity_type="Group", entity_id=str(group.pk)
+    ).first()
     if event is None:
         return None
     return {
@@ -241,10 +251,13 @@ def last_matrix_save(group):
 # 页面 bootstrap（矩阵结构为静态注册表数据，经 json_script 嵌入页面）
 # ---------------------------------------------------------------------------
 
+
 def page_bootstrap():
     """四区页面初始化数据：角色目录（含计数）+ 注册表矩阵 + 专项权限。"""
-    group_ids = {g.name: g.id for g in Group.objects.filter(
-        name__in=[r["group_name"] for r in ROLE_REGISTRY])}
+    group_ids = {
+        g.name: g.id
+        for g in Group.objects.filter(name__in=[r["group_name"] for r in ROLE_REGISTRY])
+    }
     roles = []
     for role in ROLE_REGISTRY:
         group_id = group_ids.get(role["group_name"])
@@ -253,24 +266,33 @@ def page_bootstrap():
             impact = role_impact(Group.objects.get(pk=group_id))
             staff_count = impact["staff_count"]
             membership_count = impact["membership_count"]
-        roles.append({
-            "key": role["key"], "name": role["name"],
-            "group_id": group_id, "status": role["status"],
-            "editable": role["editable"], "risk_level": role["risk_level"],
-            "description": role["description"],
-            "staff_count": staff_count, "membership_count": membership_count,
-        })
+        roles.append(
+            {
+                "key": role["key"],
+                "name": role["name"],
+                "group_id": group_id,
+                "status": role["status"],
+                "editable": role["editable"],
+                "risk_level": role["risk_level"],
+                "description": role["description"],
+                "staff_count": staff_count,
+                "membership_count": membership_count,
+            }
+        )
 
     specials_by_module = {}
     for item in SPECIAL_PERMISSIONS:
-        specials_by_module.setdefault(item["module"], []).append({
-            "key": item["key"], "codename": item["codename"],
-            "risk": item["risk"],
-            "label": SPECIAL_LABELS.get(item["key"], item["codename"]),
-            "note": item["note"],
-            "requires_reason": item["requires_reason"],
-            "requires_confirm": item["requires_confirm"],
-        })
+        specials_by_module.setdefault(item["module"], []).append(
+            {
+                "key": item["key"],
+                "codename": item["codename"],
+                "risk": item["risk"],
+                "label": SPECIAL_LABELS.get(item["key"], item["codename"]),
+                "note": item["note"],
+                "requires_reason": item["requires_reason"],
+                "requires_confirm": item["requires_confirm"],
+            }
+        )
 
     modules = []
     for module in MODULE_REGISTRY_V2.values():
@@ -281,20 +303,31 @@ def page_bootstrap():
             code = None if value == NOT_APPLICABLE else value
             if code:
                 matrix_codes.add(code)
-            columns.append({
-                "action": action, "label": ACTION_LABELS[action],
-                "code": code,
-            })
+            columns.append(
+                {
+                    "action": action,
+                    "label": ACTION_LABELS[action],
+                    "code": code,
+                }
+            )
         # 专项区只列矩阵动作列未呈现的专项码（与矩阵列同码的不重复渲染）
-        specials = [s for s in specials_by_module.get(module["code"], [])
-                    if s["codename"] not in matrix_codes]
-        modules.append({
-            "code": module["code"], "name": module["name_zh"],
-            "status": module["status"], "risk_level": module["risk_level"],
-            "app_label": module["app_label"],
-            "property_scoped": module["property_scoped"],
-            "columns": columns, "specials": specials,
-        })
+        specials = [
+            s
+            for s in specials_by_module.get(module["code"], [])
+            if s["codename"] not in matrix_codes
+        ]
+        modules.append(
+            {
+                "code": module["code"],
+                "name": module["name_zh"],
+                "status": module["status"],
+                "risk_level": module["risk_level"],
+                "app_label": module["app_label"],
+                "property_scoped": module["property_scoped"],
+                "columns": columns,
+                "specials": specials,
+            }
+        )
 
     return {
         "roles": roles,
@@ -309,6 +342,7 @@ def page_bootstrap():
 # 请求解析辅助
 # ---------------------------------------------------------------------------
 
+
 class _ApiError(Exception):
     """携带现成 JsonResponse 的流程中断（视图内统一捕获返回）。"""
 
@@ -321,23 +355,27 @@ def _json_body(request):
     """解析 JSON 请求体；非法 → 400。"""
     try:
         data = json.loads(request.body.decode("utf-8") or "{}")
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise _ApiError(JsonResponse(
-            {"error": "请求体必须是有效 JSON。", "code": "bad_json"}, status=400))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise _ApiError(
+            JsonResponse({"error": "请求体必须是有效 JSON。", "code": "bad_json"}, status=400)
+        ) from exc
     if not isinstance(data, dict):
-        raise _ApiError(JsonResponse(
-            {"error": "请求体必须是 JSON 对象。", "code": "bad_json"}, status=400))
+        raise _ApiError(
+            JsonResponse({"error": "请求体必须是 JSON 对象。", "code": "bad_json"}, status=400)
+        )
     return data
 
 
 def _requested_permissions(data):
     """校验 permissions 字段：字符串列表。"""
     requested = data.get("permissions")
-    if (not isinstance(requested, list)
-            or not all(isinstance(c, str) for c in requested)):
-        raise _ApiError(JsonResponse(
-            {"error": "permissions 必须是权限码字符串列表。",
-             "code": "bad_permissions"}, status=400))
+    if not isinstance(requested, list) or not all(isinstance(c, str) for c in requested):
+        raise _ApiError(
+            JsonResponse(
+                {"error": "permissions 必须是权限码字符串列表。", "code": "bad_permissions"},
+                status=400,
+            )
+        )
     # 全角/空串防护：去首尾空白并丢弃空串
     cleaned = {code.strip() for code in requested}
     cleaned.discard("")
@@ -348,18 +386,24 @@ def _validate_reason(data):
     """reason 必须 1-240 字符（§8.3.g/i），缺失/超长 → 400。"""
     reason = data.get("reason")
     if not isinstance(reason, str):
-        raise _ApiError(JsonResponse(
-            {"error": "变更理由必填（1-240 字符）。",
-             "code": "reason_required"}, status=400))
+        raise _ApiError(
+            JsonResponse(
+                {"error": "变更理由必填（1-240 字符）。", "code": "reason_required"}, status=400
+            )
+        )
     reason = reason.strip()
     if not reason:
-        raise _ApiError(JsonResponse(
-            {"error": "变更理由必填（1-240 字符）。",
-             "code": "reason_required"}, status=400))
+        raise _ApiError(
+            JsonResponse(
+                {"error": "变更理由必填（1-240 字符）。", "code": "reason_required"}, status=400
+            )
+        )
     if len(reason) > 240:
-        raise _ApiError(JsonResponse(
-            {"error": "变更理由不能超过 240 字符。",
-             "code": "reason_too_long"}, status=400))
+        raise _ApiError(
+            JsonResponse(
+                {"error": "变更理由不能超过 240 字符。", "code": "reason_too_long"}, status=400
+            )
+        )
     return reason
 
 
@@ -367,9 +411,11 @@ def _get_registry_group(group_id):
     """加载组并确认属于 ROLE_REGISTRY（未登记 → 404）。"""
     group = Group.objects.filter(pk=group_id).first()
     if group is None or role_meta_for_group(group) is None:
-        raise _ApiError(JsonResponse(
-            {"error": "角色不存在或未在注册表登记。", "code": "group_not_found"},
-            status=404))
+        raise _ApiError(
+            JsonResponse(
+                {"error": "角色不存在或未在注册表登记。", "code": "group_not_found"}, status=404
+            )
+        )
     return group
 
 
@@ -380,15 +426,22 @@ def _reject_unknown(request, group, requested):
         return
     AuditEvent.record(
         action="security.permission_denied",
-        entity_type="Group", entity_id=str(group.pk), actor=request.user,
+        entity_type="Group",
+        entity_id=str(group.pk),
+        actor=request.user,
         reason="permission_center 越权码整体拒绝: " + "、".join(unknown),
-        request=request)
-    raise _ApiError(JsonResponse({
-        "error": "包含不可授予的权限码，整体拒绝（不静默过滤）："
-                 + "、".join(unknown),
-        "code": "unknown_permissions",
-        "unknown": unknown,
-    }, status=409))
+        request=request,
+    )
+    raise _ApiError(
+        JsonResponse(
+            {
+                "error": "包含不可授予的权限码，整体拒绝（不静默过滤）：" + "、".join(unknown),
+                "code": "unknown_permissions",
+                "unknown": unknown,
+            },
+            status=409,
+        )
+    )
 
 
 def _split_preserved(current):
@@ -399,6 +452,7 @@ def _split_preserved(current):
 # ---------------------------------------------------------------------------
 # API 视图
 # ---------------------------------------------------------------------------
+
 
 @require_GET
 @platform_superadmin_required
@@ -412,22 +466,27 @@ def permission_read(request, group_id):
     current = group_permission_codes(group)
     held_specials = sorted(set(current) & special_codenames())
     impact = role_impact(group)
-    return JsonResponse({
-        "role": {
-            "key": role["key"], "name": role["name"],
-            "status": role["status"], "editable": role["editable"],
-            "risk_level": role["risk_level"],
-            "description": role["description"],
-        },
-        "permissions": sorted(current),
-        "version": content_version(current),
-        "impact": impact,
-        "special": held_specials,
-        # 保存时将被声明式回收的历史 PLANNED 授权（UI 预告，非静默）
-        "reclaimed_on_save": sorted(
-            (current & managed_universe_codenames()) - allowed_codenames()),
-        "last_save": last_matrix_save(group),
-    })
+    return JsonResponse(
+        {
+            "role": {
+                "key": role["key"],
+                "name": role["name"],
+                "status": role["status"],
+                "editable": role["editable"],
+                "risk_level": role["risk_level"],
+                "description": role["description"],
+            },
+            "permissions": sorted(current),
+            "version": content_version(current),
+            "impact": impact,
+            "special": held_specials,
+            # 保存时将被声明式回收的历史 PLANNED 授权（UI 预告，非静默）
+            "reclaimed_on_save": sorted(
+                (current & managed_universe_codenames()) - allowed_codenames()
+            ),
+            "last_save": last_matrix_save(group),
+        }
+    )
 
 
 @require_POST
@@ -435,21 +494,26 @@ def permission_read(request, group_id):
 def permission_save(request, group_id):
     """POST /platform/api/permissions/<group_id>/save/（§8.3 九步保存流程）。"""
     try:
-        data = _json_body(request)                      # JSON → 400
-        reason = _validate_reason(data)                 # reason → 400
-        requested = _requested_permissions(data)        # permissions 形状 → 400
-        group = _get_registry_group(group_id)           # 未登记组 → 404
-        _reject_unknown(request, group, requested)      # allowed → 409+审计
+        data = _json_body(request)  # JSON → 400
+        reason = _validate_reason(data)  # reason → 400
+        requested = _requested_permissions(data)  # permissions 形状 → 400
+        group = _get_registry_group(group_id)  # 未登记组 → 404
+        _reject_unknown(request, group, requested)  # allowed → 409+审计
         version = data.get("version")
         if not isinstance(version, str) or not version:
-            raise _ApiError(JsonResponse(
-                {"error": "缺少 version（内容 hash 并发保护）。",
-                 "code": "version_required"}, status=400))
+            raise _ApiError(
+                JsonResponse(
+                    {"error": "缺少 version（内容 hash 并发保护）。", "code": "version_required"},
+                    status=400,
+                )
+            )
         confirm_token = data.get("confirm_token")
         if confirm_token is not None and not isinstance(confirm_token, str):
-            raise _ApiError(JsonResponse(
-                {"error": "confirm_token 必须是字符串。",
-                 "code": "token_invalid"}, status=403))
+            raise _ApiError(
+                JsonResponse(
+                    {"error": "confirm_token 必须是字符串。", "code": "token_invalid"}, status=403
+                )
+            )
     except _ApiError as exc:
         return exc.response
 
@@ -461,11 +525,16 @@ def permission_save(request, group_id):
 
             # §8.3.d 内容 hash 并发保护：不匹配 → 409
             if content_version(current) != version:
-                raise _ApiError(JsonResponse({
-                    "error": "版本冲突：角色权限已被他人修改，请刷新后重试。",
-                    "code": "version_conflict",
-                    "current_version": content_version(current),
-                }, status=409))
+                raise _ApiError(
+                    JsonResponse(
+                        {
+                            "error": "版本冲突：角色权限已被他人修改，请刷新后重试。",
+                            "code": "version_conflict",
+                            "current_version": content_version(current),
+                        },
+                        status=409,
+                    )
+                )
 
             # §8.3.e diff（管辖外码原样并入请求侧保留，不计入 removed）
             preserved = _split_preserved(current)
@@ -475,51 +544,149 @@ def permission_save(request, group_id):
             # §8.3.f 高危变更必须携带有效 confirm_token（缺失/过期/diff 不匹配 → 403）
             if is_high_risk_diff(added, removed) or confirm_token is not None:
                 if confirm_token is None:
-                    raise _ApiError(JsonResponse({
-                        "error": "本次变更触及高危专项权限，必须先获取确认令牌"
-                                 "（confirm-token）后携带 confirm_token 再保存。",
-                        "code": "token_required",
-                        "added": sorted(added), "removed": sorted(removed),
-                    }, status=403))
+                    raise _ApiError(
+                        JsonResponse(
+                            {
+                                "error": "本次变更触及高危专项权限，必须先获取确认令牌"
+                                "（confirm-token）后携带 confirm_token 再保存。",
+                                "code": "token_required",
+                                "added": sorted(added),
+                                "removed": sorted(removed),
+                            },
+                            status=403,
+                        )
+                    )
                 problem = validate_confirm_token(
-                    confirm_token, group.pk, request.user.pk, added, removed)
+                    confirm_token, group.pk, request.user.pk, added, removed
+                )
                 if problem is not None:
-                    raise _ApiError(JsonResponse({
-                        "error": {
-                            "token_required": "缺少有效确认令牌。",
-                            "token_expired": "确认令牌已过期（10 分钟有效期），"
-                                             "请重新获取。",
-                            "token_invalid": "确认令牌无效：与当前变更内容不匹配。",
-                        }[problem],
-                        "code": problem,
-                    }, status=403))
+                    raise _ApiError(
+                        JsonResponse(
+                            {
+                                "error": {
+                                    "token_required": "缺少有效确认令牌。",
+                                    "token_expired": "确认令牌已过期（10 分钟有效期），"
+                                    "请重新获取。",
+                                    "token_invalid": "确认令牌无效：与当前变更内容不匹配。",
+                                }[problem],
+                                "code": problem,
+                            },
+                            status=403,
+                        )
+                    )
 
-            # §8.3.g 保存与审计同事务（§8.3.9 一致性）
-            perms = list(Permission.objects.filter(
-                content_type__app_label__in={c.split(".", 1)[0] for c in after},
-                codename__in={c.split(".", 1)[1] for c in after}))
-            # 双保险：集合交集回验（防 app_label/codename 交叉错配）
-            perms = [p for p in perms
-                     if f"{p.content_type.app_label}.{p.codename}" in after]
-            group.permissions.set(perms)
+            # 迭代-1 变更 A（治理 V1.1 第三阶段，L4 已批）：高危变更接入第二人
+            # 审批流——申请人即便持有有效确认令牌，也不能单人落库。此处仅登记
+            # 审批意图（approval_payload），记录创建走下方独立事务（须在返回 409
+            # 前提交；放在锁事务内会随 _ApiError 一起回滚）。
+            if is_high_risk_diff(added, removed):
+                approval_payload = {
+                    "group_pk": group.pk,
+                    "digest": diff_hash(added, removed),
+                    "added": sorted(added),
+                    "removed": sorted(removed),
+                    "preserved": sorted(preserved),
+                    "requested": sorted(requested),
+                    "version": version,
+                    "before_current": sorted(current),
+                }
+            else:
+                approval_payload = None
 
-            event = AuditEvent.record(
-                action="permissions.matrix_saved",
-                entity_type="Group", entity_id=str(group.pk),
-                actor=request.user, reason=reason,
-                before=sorted(current), after=sorted(after),
-                request=request)
+            if approval_payload is None:
+                # §8.3.g 低危保存与审计同事务（§8.3.9 一致性）
+                perms = list(
+                    Permission.objects.filter(
+                        content_type__app_label__in={c.split(".", 1)[0] for c in after},
+                        codename__in={c.split(".", 1)[1] for c in after},
+                    )
+                )
+                # 双保险：集合交集回验（防 app_label/codename 交叉错配）
+                perms = [p for p in perms if f"{p.content_type.app_label}.{p.codename}" in after]
+                group.permissions.set(perms)
+
+                event = AuditEvent.record(
+                    action="permissions.matrix_saved",
+                    entity_type="Group",
+                    entity_id=str(group.pk),
+                    actor=request.user,
+                    reason=reason,
+                    before=sorted(current),
+                    after=sorted(after),
+                    request=request,
+                )
     except _ApiError as exc:
         # atomic 块内拒绝：事务回滚，任何授权与审计变更都不落库
         return exc.response
 
-    return JsonResponse({
-        "saved": True,
-        "added": sorted(added),
-        "removed": sorted(removed),
-        "version": content_version(after),
-        "request_id": event.request_id,
-    })
+    if approval_payload is not None:
+        # 高危变更：审批记录与申请审计走独立事务（提交后返回 409 approval_required）。
+        # 执行端（approve）在组行锁事务内复核 version/diff/allowed，漂移即 409 且
+        # 记录保持待审批——此处行锁已释放产生的竞态由执行端复核兜底。
+        with transaction.atomic():
+            record_status = PermissionMatrixApproval.Status
+            group_for_approval = Group.objects.get(pk=approval_payload["group_pk"])
+            record = PermissionMatrixApproval.objects.filter(
+                group=group_for_approval,
+                diff_hash=approval_payload["digest"],
+                status=record_status.PENDING,
+            ).first()
+            if record is None:
+                # 同组其它待审批 diff 已被本次新 diff 取代 → 撤销（逐实例
+                # save 走守卫，不用 queryset.update 绕过不可变性校验）
+                for stale in PermissionMatrixApproval.objects.filter(
+                    group=group_for_approval, status=record_status.PENDING
+                ).exclude(diff_hash=approval_payload["digest"]):
+                    stale.status = record_status.CANCELLED
+                    stale.save()
+                record = PermissionMatrixApproval.objects.create(
+                    group=group_for_approval,
+                    requested_by=request.user,
+                    reason=reason,
+                    diff_hash=approval_payload["digest"],
+                    payload_snapshot={
+                        "added": approval_payload["added"],
+                        "removed": approval_payload["removed"],
+                        "preserved": approval_payload["preserved"],
+                        "requested": approval_payload["requested"],
+                        "version": approval_payload["version"],
+                    },
+                )
+                AuditEvent.record(
+                    action="permissions.approval_requested",
+                    entity_type="Group",
+                    entity_id=str(group_for_approval.pk),
+                    actor=request.user,
+                    reason=reason,
+                    before=approval_payload["before_current"],
+                    after=sorted(
+                        set(approval_payload["requested"]) | set(approval_payload["preserved"])
+                    ),
+                    request=request,
+                )
+        return JsonResponse(
+            {
+                "error": "本次变更触及高危专项权限，已进入第二人审批流程："
+                "需另一名平台超管审批通过后才会生效。",
+                "code": "approval_required",
+                "approval_id": record.pk,
+                "approval_status": record.status,
+                "requested_by": record.requested_by.username,
+                "added": approval_payload["added"],
+                "removed": approval_payload["removed"],
+            },
+            status=409,
+        )
+
+    return JsonResponse(
+        {
+            "saved": True,
+            "added": sorted(added),
+            "removed": sorted(removed),
+            "version": content_version(after),
+            "request_id": event.request_id,
+        }
+    )
 
 
 @require_POST
@@ -543,16 +710,188 @@ def permission_confirm_token(request, group_id):
     added, removed = compute_diff(current, requested | preserved)
     if not added and not removed:
         return JsonResponse(
-            {"error": "无实际变更，无需确认令牌。", "code": "no_changes"},
-            status=400)
+            {"error": "无实际变更，无需确认令牌。", "code": "no_changes"}, status=400
+        )
 
-    token, digest = issue_confirm_token(
-        group.pk, request.user.pk, added, removed)
-    return JsonResponse({
-        "token": token,
-        "diff_hash": digest,
-        "added": sorted(added),
-        "removed": sorted(removed),
-        "high_risk": is_high_risk_diff(added, removed),
-        "expires_in": CONFIRM_TOKEN_MAX_AGE,
-    })
+    token, digest = issue_confirm_token(group.pk, request.user.pk, added, removed)
+    return JsonResponse(
+        {
+            "token": token,
+            "diff_hash": digest,
+            "added": sorted(added),
+            "removed": sorted(removed),
+            "high_risk": is_high_risk_diff(added, removed),
+            "expires_in": CONFIRM_TOKEN_MAX_AGE,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# 迭代-1 变更 A：高危变更第二人审批（request→approve/reject→原子执行）
+# ---------------------------------------------------------------------------
+
+
+def _load_pending_approval(group, record_id):
+    """加载指定组的待审批记录；缺失/不属于该组/非待审批 → 404/409。"""
+    record = PermissionMatrixApproval.objects.filter(pk=record_id, group=group).first()
+    if record is None:
+        raise _ApiError(
+            JsonResponse(
+                {"error": "审批记录不存在或不属于该角色组。", "code": "record_not_found"},
+                status=404,
+            )
+        )
+    if record.status != PermissionMatrixApproval.Status.PENDING:
+        raise _ApiError(
+            JsonResponse(
+                {
+                    "error": f"审批记录已决策（{record.status}），不可重复处理。",
+                    "code": "record_already_decided",
+                    "approval_status": record.status,
+                },
+                status=409,
+            )
+        )
+    return record
+
+
+def _execute_approved_matrix(group, record, approver, request):
+    """在组行锁事务内复核并应用已批准的矩阵 diff，记录与审批同一事务。
+
+    复核链：version 内容 hash → diff 哈希一致性 → allowed 白名单复核（registry
+    可能已演进）。任一复核失败 → 409 且记录保持 PENDING（申请人可刷新重发）。
+    """
+    current = group_permission_codes(group)
+    payload = record.payload_snapshot or {}
+    if content_version(current) != payload.get("version"):
+        raise _ApiError(
+            JsonResponse(
+                {
+                    "error": "版本冲突：角色权限在审批期间已被修改，请申请人刷新后重新发起。",
+                    "code": "version_conflict",
+                    "current_version": content_version(current),
+                },
+                status=409,
+            )
+        )
+
+    preserved = set(payload.get("preserved", []))
+    after = set(payload.get("requested", [])) | preserved
+    added, removed = compute_diff(current, after)
+    if diff_hash(added, removed) != record.diff_hash:
+        raise _ApiError(
+            JsonResponse(
+                {
+                    "error": "diff 哈希与审批快照不一致，记录已失效。",
+                    "code": "diff_mismatch",
+                },
+                status=409,
+            )
+        )
+    unknown = sorted(set(payload.get("requested", [])) - allowed_codenames())
+    if unknown:
+        raise _ApiError(
+            JsonResponse(
+                {
+                    "error": "审批快照包含已不可授予的权限码（注册表已变更）："
+                    + "、".join(unknown),
+                    "code": "unknown_permissions",
+                    "unknown": unknown,
+                },
+                status=409,
+            )
+        )
+
+    perms = list(
+        Permission.objects.filter(
+            content_type__app_label__in={c.split(".", 1)[0] for c in after},
+            codename__in={c.split(".", 1)[1] for c in after},
+        )
+    )
+    perms = [p for p in perms if f"{p.content_type.app_label}.{p.codename}" in after]
+    group.permissions.set(perms)
+
+    record.status = PermissionMatrixApproval.Status.APPROVED
+    record.approved_by = approver
+    record.approved_at = timezone.now()
+    record.save()  # SoD（申请人≠审批人）与不可变性由 save/DB 约束强制
+
+    AuditEvent.record(
+        action="permissions.matrix_saved",
+        entity_type="Group",
+        entity_id=str(group.pk),
+        actor=approver,
+        reason=record.reason,
+        before=sorted(current),
+        after=sorted(after),
+        request=request,
+    )
+
+
+@require_POST
+@platform_superadmin_required
+def permission_approval_approve(request, group_id, record_id):
+    """POST /platform/api/permissions/<group_id>/approvals/<record_id>/approve/
+    （迭代-1 变更 A：第二人审批并原子执行）。
+
+    SoD：审批人 = 申请人时被模型 save/DB 约束拒绝；审批与矩阵落库同事务。
+    """
+    try:
+        group = _get_registry_group(group_id)
+    except _ApiError as exc:
+        return exc.response
+    try:
+        with transaction.atomic():
+            record = _load_pending_approval(group, record_id)
+            group_locked = Group.objects.select_for_update().get(pk=group.pk)
+            _execute_approved_matrix(group_locked, record, request.user, request)
+    except _ApiError as exc:
+        return exc.response
+    except ValidationError as exc:
+        # 模型层拒绝（自审批/不可变冲突/DB SoD 约束）→ 回滚并明确响应
+        return JsonResponse({"error": "; ".join(exc.messages), "code": "sod_violation"}, status=403)
+    return JsonResponse(
+        {
+            "approved": True,
+            "approval_id": record.pk,
+            "approver": request.user.username,
+            "requested_by": record.requested_by.username,
+        }
+    )
+
+
+@require_POST
+@platform_superadmin_required
+def permission_approval_reject(request, group_id, record_id):
+    """POST /platform/api/permissions/<group_id>/approvals/<record_id>/reject/
+    （第二人驳回：记录转 REJECTED，矩阵不变更）。"""
+    try:
+        group = _get_registry_group(group_id)
+    except _ApiError as exc:
+        return exc.response
+    try:
+        with transaction.atomic():
+            record = _load_pending_approval(group, record_id)
+            record.status = PermissionMatrixApproval.Status.REJECTED
+            record.approved_by = request.user
+            record.approved_at = timezone.now()
+            record.save()  # SoD 与状态机由 save/DB 约束强制
+            AuditEvent.record(
+                action="permissions.approval_rejected",
+                entity_type="Group",
+                entity_id=str(group.pk),
+                actor=request.user,
+                reason=record.reason,
+                request=request,
+            )
+    except _ApiError as exc:
+        return exc.response
+    except ValidationError as exc:
+        return JsonResponse({"error": "; ".join(exc.messages), "code": "sod_violation"}, status=403)
+    return JsonResponse(
+        {
+            "rejected": True,
+            "approval_id": record.pk,
+            "approver": request.user.username,
+        }
+    )

@@ -1,6 +1,8 @@
 from django.conf import settings
+
 # 业务阅读提示：User 仅表示认证账号；StaffProfile 表示员工档案；PropertyStaffMembership 表示某物业任职；StaffRoleAssignment 表示任职期间的岗位授权。不要把手机号当作认证凭据，也不要把 User.groups 当作员工任职事实。新增字段/约束前先核对 docs 中 D11/D12 决策与数据迁移影响。
 from django.contrib.auth.models import Group
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q
 from django.utils import timezone
@@ -41,10 +43,13 @@ class StaffProfile(models.Model):
         verbose_name="雇佣状态",
     )
     must_change_password = models.BooleanField(
-        default=False, verbose_name="须强制改密",
-        help_text="开通账号/重置密码后置位；首次登录强制修改（D-07）")
+        default=False,
+        verbose_name="须强制改密",
+        help_text="开通账号/重置密码后置位；首次登录强制修改（D-07）",
+    )
     last_password_change = models.DateTimeField(
-        null=True, blank=True, verbose_name="最近密码变更时间")
+        null=True, blank=True, verbose_name="最近密码变更时间"
+    )
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
@@ -79,20 +84,27 @@ class PropertyStaffMembership(models.Model):
         verbose_name="任职酒店",
     )
     employee_no = models.CharField(
-        max_length=32, verbose_name="店内工号",
+        max_length=32,
+        verbose_name="店内工号",
         help_text="同酒店内唯一；前台展示用",
     )
     position_code = models.CharField(
-        max_length=32, default="UNASSIGNED", verbose_name="岗位代码",
+        max_length=32,
+        default="UNASSIGNED",
+        verbose_name="岗位代码",
         help_text="如 GM（总经理）/ FO（前台）；UNASSIGNED 为未定岗",
     )
     status = models.CharField(
-        max_length=16, choices=Status.choices, default=Status.ACTIVE,
+        max_length=16,
+        choices=Status.choices,
+        default=Status.ACTIVE,
         verbose_name="任职状态",
     )
     started_at = models.DateField(default=timezone.localdate, verbose_name="入职日期")
     ended_at = models.DateField(
-        null=True, blank=True, verbose_name="离职日期",
+        null=True,
+        blank=True,
+        verbose_name="离职日期",
         help_text="不得早于入职日期",
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
@@ -103,8 +115,13 @@ class PropertyStaffMembership(models.Model):
     # SUSPENDED/TERMINATED 行为 NULL（MySQL 唯一索引允许多个 NULL）。
     # 与 apps/core/migrations/0006、billing/0006 的治理方案保持一致。
     active_membership_key = models.CharField(
-        max_length=64, null=True, blank=True, unique=True, editable=False,
-        verbose_name="有效任职唯一键")
+        max_length=64,
+        null=True,
+        blank=True,
+        unique=True,
+        editable=False,
+        verbose_name="有效任职唯一键",
+    )
 
     class Meta:
         ordering = ("property_id", "employee_no")
@@ -127,16 +144,13 @@ class PropertyStaffMembership(models.Model):
         update_fields 由调用方指定时必须同步并入本字段，否则状态由
         ACTIVE 改为非 ACTIVE（或反向）时唯一键会残留在旧值上。
         """
-        if (self.status == self.Status.ACTIVE
-                and self.property_id and self.staff_profile_id):
-            self.active_membership_key = (
-                f"{self.property_id}:{self.staff_profile_id}")
+        if self.status == self.Status.ACTIVE and self.property_id and self.staff_profile_id:
+            self.active_membership_key = f"{self.property_id}:{self.staff_profile_id}"
         else:
             self.active_membership_key = None
         update_fields = kwargs.get("update_fields")
         if update_fields is not None:
-            kwargs["update_fields"] = set(update_fields) | {
-                "active_membership_key"}
+            kwargs["update_fields"] = set(update_fields) | {"active_membership_key"}
         return super().save(*args, **kwargs)
 
     def __str__(self):
@@ -159,11 +173,13 @@ class EmployeeNumberCounter(models.Model):
         verbose_name="物业",
     )
     department_code = models.CharField(
-        max_length=8, verbose_name="部门代码",
+        max_length=8,
+        verbose_name="部门代码",
         help_text="受控部门代码（FO/HK/FIN/MG/ENG）；工号前缀即该代码",
     )
     next_seq = models.PositiveIntegerField(
-        default=1, verbose_name="下一个流水号",
+        default=1,
+        verbose_name="下一个流水号",
         help_text="行锁保护下递增；生成工号为该值，落库后 +1",
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
@@ -201,7 +217,9 @@ class StaffRoleAssignment(models.Model):
     )
     starts_at = models.DateTimeField(default=timezone.now, verbose_name="授权开始时间")
     ends_at = models.DateTimeField(
-        null=True, blank=True, verbose_name="授权结束时间",
+        null=True,
+        blank=True,
+        verbose_name="授权结束时间",
         help_text="空表示长期有效；必须晚于开始时间",
     )
     granted_by = models.ForeignKey(
@@ -265,39 +283,50 @@ class Invitation(models.Model):
         help_text="token 绑定的任职关系；必须属于同一员工档案，激活时复核",
     )
     token_hash = models.CharField(
-        max_length=64, unique=True, verbose_name="token 摘要",
+        max_length=64,
+        unique=True,
+        verbose_name="token 摘要",
         help_text="SHA-256(token) 十六进制；明文 token 不落库不落审计",
     )
     status = models.CharField(
-        max_length=16, choices=Status.choices, default=Status.PENDING,
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
         verbose_name="邀请状态",
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     expires_at = models.DateTimeField(verbose_name="失效时间")
     consumed_at = models.DateTimeField(
-        null=True, blank=True, verbose_name="消费时间",
+        null=True,
+        blank=True,
+        verbose_name="消费时间",
         help_text="员工激活成功时间；仅 ACCEPTED 状态允许非空",
     )
     revoked_at = models.DateTimeField(
-        null=True, blank=True, verbose_name="撤销时间",
+        null=True,
+        blank=True,
+        verbose_name="撤销时间",
         help_text="管理员撤销时间；仅 REVOKED 状态允许非空",
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        null=True, blank=True,
+        null=True,
+        blank=True,
         on_delete=models.SET_NULL,
         related_name="created_invitations",
         verbose_name="发起人",
     )
     revoked_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        null=True, blank=True,
+        null=True,
+        blank=True,
         on_delete=models.SET_NULL,
         related_name="revoked_invitations",
         verbose_name="撤销人",
     )
     resend_count = models.PositiveIntegerField(
-        default=0, verbose_name="重发次数",
+        default=0,
+        verbose_name="重发次数",
         help_text="同一员工邀请链上的重发序号；首次创建为 0，重发 +1",
     )
     last_sent_at = models.DateTimeField(
@@ -330,13 +359,140 @@ class Invitation(models.Model):
             ),
         ]
         indexes = [
-            models.Index(fields=("staff_profile", "status"),
-                         name="idx_invitation_profile_status"),
-            models.Index(fields=("status", "expires_at"),
-                         name="idx_invitation_status_expiry"),
+            models.Index(fields=("staff_profile", "status"), name="idx_invitation_profile_status"),
+            models.Index(fields=("status", "expires_at"), name="idx_invitation_status_expiry"),
         ]
 
     def __str__(self):
         # 业务阅读提示：字符串展示不含 token 摘要（日志/管理界面对齐 §16.2 最小化）。
-        return (f"邀请#{self.pk} 员工档案#{self.staff_profile_id} "
-                f"任职#{self.membership_id} {self.get_status_display()}")
+        return (
+            f"邀请#{self.pk} 员工档案#{self.staff_profile_id} "
+            f"任职#{self.membership_id} {self.get_status_display()}"
+        )
+
+
+class PermissionMatrixApproval(models.Model):
+    """平台权限矩阵高危变更的第二人审批事实（治理 V1.1 第三阶段迭代-1 变更 A）。
+
+    镜像 apps.billing.ApprovalRecord 的双人 SoD 保证（仅 PENDING 创建 / 申请事实
+    不可变 / 自审批禁止 / 不可删除），差异点：权限矩阵为平台域动作、无物业上下文，
+    故不挂 property 外键，也不进入 billing 的 ApprovalActionRegistry 白名单；
+    payload 快照保存 added/removed/version，执行时在组行锁事务内复核。
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "待审批"
+        APPROVED = "APPROVED", "已批准"
+        REJECTED = "REJECTED", "已驳回"
+        CANCELLED = "CANCELLED", "已撤销"
+
+    group = models.ForeignKey(
+        "auth.Group",
+        on_delete=models.PROTECT,
+        related_name="permission_matrix_approvals",
+        verbose_name="目标角色组",
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="permission_matrix_approvals_requested",
+        verbose_name="申请人",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="permission_matrix_approvals_approved",
+        verbose_name="审批人",
+    )
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.PENDING, verbose_name="审批状态"
+    )
+    reason = models.CharField(max_length=240, verbose_name="变更理由")
+    diff_hash = models.CharField(
+        max_length=16, verbose_name="diff 短哈希", help_text="added/removed 稳定哈希"
+    )
+    payload_snapshot = models.JSONField(
+        verbose_name="变更快照", help_text="added/removed/preserved/requested/version"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="申请时间")
+    approved_at = models.DateTimeField(null=True, blank=True, verbose_name="审批时间")
+
+    class Meta:
+        verbose_name = "权限矩阵审批记录"
+        verbose_name_plural = "权限矩阵审批记录"
+        ordering = ("-created_at",)
+        constraints = [
+            # SoD 数据库级强制：批准/驳回必须有审批人且不得为申请人本人（镜像
+            # billing ck_refund_sod_* 家族约束，第二人原则不依赖应用层纪律）
+            models.CheckConstraint(
+                check=~Q(status__in=["APPROVED", "REJECTED"])
+                | (Q(approved_by__isnull=False) & ~Q(approved_by=F("requested_by"))),
+                name="ck_permatrix_sod_approver",
+            ),
+            models.CheckConstraint(
+                check=~Q(status__in=["APPROVED", "REJECTED"]) | Q(approved_at__isnull=False),
+                name="ck_permatrix_decided_has_time",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("group", "status"), name="idx_permatrix_group_status"),
+            models.Index(fields=("diff_hash", "status"), name="idx_permatrix_diff_status"),
+        ]
+
+    def save(self, *args, **kwargs):
+        """镜像 ApprovalRecord.save 的不可变性与 SoD 校验（identity 域自持）。"""
+        if self._state.adding:
+            if self.status != self.Status.PENDING or self.approved_by_id or self.approved_at:
+                raise ValidationError("审批记录必须从待审批状态创建。")
+            if not self.reason or not self.diff_hash:
+                raise ValidationError("审批记录必须携带变更理由与 diff 哈希。")
+        else:
+            previous = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values(
+                    "group_id",
+                    "requested_by_id",
+                    "reason",
+                    "diff_hash",
+                    "payload_snapshot",
+                    "created_at",
+                    "status",
+                )
+                .first()
+            )
+            if previous:
+                immutable = (
+                    "group_id",
+                    "requested_by_id",
+                    "reason",
+                    "diff_hash",
+                    "payload_snapshot",
+                    "created_at",
+                )
+                if any(previous[field] != getattr(self, field) for field in immutable):
+                    raise ValidationError("审批申请事实不可修改。")
+                if previous["status"] != self.Status.PENDING:
+                    raise ValidationError("已决策审批记录不可修改。")
+                if self.status not in (
+                    self.Status.APPROVED,
+                    self.Status.REJECTED,
+                    self.Status.CANCELLED,
+                ):
+                    raise ValidationError("审批记录只允许从待审批转为最终状态。")
+                if self.status in (self.Status.APPROVED, self.Status.REJECTED):
+                    if not self.approved_by_id or not self.approved_at:
+                        raise ValidationError("审批通过/驳回必须记录审批人和时间。")
+                    if self.approved_by_id == self.requested_by_id:
+                        raise ValidationError("申请人不能审批自己的申请。")
+                elif self.approved_by:
+                    raise ValidationError("撤销审批不得伪造审批人。")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise RuntimeError("权限矩阵审批记录不可删除")
+
+    def __str__(self):
+        return f"权限矩阵审批#{self.pk} Group#{self.group_id} " f"{self.diff_hash} {self.status}"

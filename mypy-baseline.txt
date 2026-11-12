@@ -1,6 +1,6 @@
 # mypy 基线（治理 V1.1 第二阶段 P-04）——格式: 归一化路径|错误码|数量
 # 纪律: 禁止清空或手改本文件伪造通过；重新生成必须随真实存量清偿提交。
-# 生成命令: python scripts/mypy_baseline.py generate；总错误数: 2179
+# 生成命令: python scripts/mypy_baseline.py generate；总错误数: 2202
 
 apps/api/billing_center.py|attr-defined|5
 apps/api/front_desk.py|attr-defined|11
@@ -46,7 +46,8 @@ apps/billing/models.py|assignment|1
 apps/billing/models.py|attr-defined|65
 apps/billing/models.py|override|4
 apps/billing/models.py|var-annotated|237
-apps/billing/night_audit.py|attr-defined|4
+apps/billing/night_audit.py|attr-defined|5
+apps/billing/night_audit.py|var-annotated|2
 apps/billing/payment_intents.py|attr-defined|6
 apps/billing/reconciliation.py|var-annotated|2
 apps/billing/services_v2.py|assignment|1
@@ -84,8 +85,8 @@ apps/identity/context_processors.py|var-annotated|2
 apps/identity/management/commands/bind_staff_user.py|attr-defined|1
 apps/identity/management/commands/platform_superadmin_check.py|attr-defined|2
 apps/identity/management/commands/platform_superadmin_check.py|var-annotated|1
-apps/identity/models.py|attr-defined|7
-apps/identity/models.py|var-annotated|42
+apps/identity/models.py|attr-defined|12
+apps/identity/models.py|var-annotated|50
 apps/identity/permission_center.py|attr-defined|2
 apps/identity/permission_center.py|call-overload|1
 apps/identity/permission_center.py|var-annotated|1
@@ -101,13 +102,15 @@ apps/identity/test_invitations.py|attr-defined|72
 apps/identity/test_mysql_concurrency.py|attr-defined|3
 apps/identity/test_mysql_concurrency.py|index|1
 apps/identity/test_mysql_concurrency.py|var-annotated|2
+apps/identity/test_permission_approval.py|attr-defined|6
+apps/identity/test_permission_approval.py|union-attr|1
 apps/identity/test_permission_center.py|attr-defined|18
-apps/identity/test_permission_center.py|union-attr|6
+apps/identity/test_permission_center.py|union-attr|2
 apps/identity/test_platform.py|attr-defined|16
 apps/identity/test_platform.py|union-attr|1
 apps/identity/test_registry.py|arg-type|1
 apps/identity/test_registry.py|assignment|1
-apps/identity/test_registry.py|attr-defined|9
+apps/identity/test_registry.py|attr-defined|11
 apps/identity/test_registry.py|index|5
 apps/identity/test_registry.py|operator|1
 apps/identity/test_registry.py|union-attr|1
@@ -143,7 +146,7 @@ hotel/settings.py|dict-item|1
 hotelapp/events.py|var-annotated|1
 hotelapp/models.py|var-annotated|65
 hotelapp/tests.py|arg-type|3
-hotelapp/tests.py|attr-defined|6
+hotelapp/tests.py|attr-defined|8
 hotelapp/tests.py|union-attr|4
 hotelapp/views.py|name-defined|1
 hotelapp/views.py|var-annotated|1
