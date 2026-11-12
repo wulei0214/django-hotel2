@@ -4,7 +4,7 @@
 > 
 > | 项目 | 记录值 |
 > |---|---|
-> | 验收版本 / commit SHA | 最新业务代码核对基线 `8e310b5a8491f31dd91b5461160fd6dfc1f22e06`；历史证据 SHA 仍按各 A 项保留 |
+> | 验收版本 / commit SHA | 最新业务代码核对基线 `57d2176b2dec821dd5c82ec71743603a42f44474`；历史证据 SHA 仍按各 A 项保留 |
 > | 验收环境 | 本地开发机（Windows 10 22631 / Python 3.9.0 / Django 4.1） |
 > | MySQL | 8.x（hotel@localhost，UTF8MB4） |
 > | Redis | Redis 5.0.14 已部署；G09 双 worker 共享/TTL/故障降级已有 95 号证据；生产拓扑仍待部署验收 |
@@ -21,10 +21,10 @@
 | 业务中心 | 通过（申报） | A02 | 11 中心实现；批次 5 逐中心闭环对照（40-five-centers-closure.md） |
 | 端到端闭环 | 通过（申报） | A03 | test_e2e_flows 18 项 + test_five_centers_closure 20 项 |
 | 数据库 | **通过（机器证据）** | A04 | 2026-11-07：空库全量迁移 97 迁移全过/无漂移 + 升级库（备份还原）74 表行数零差异 + Folio 余额重算零差异（原"DBA 授权"阻塞经 test_hotel 库级权限绕过）；见 95 号报告 §2 |
-| API | 通过（申报） | A05 | 最新静态 OpenAPI 102 paths / 104 operations；79 verified / 25 partial，partial 仍待逐项真实执行 |
+| API | 通过（申报） | A05 | 最新静态 OpenAPI 113 paths / 115 operations；90 verified / 25 partial，partial 仍待逐项真实执行 |
 | 身份与权限 | 通过（申报） | A06 | 九角色授权链测试在位；demo_owner/测试账号走真实 StaffRoleAssignment 链 |
 | 安全合规 | 通过（申报） | A07 | §8.3 零容忍项有负向测试；check --deploy 5 WARN 为部署前置条件（见下） |
-| 自动化测试 | **通过** | A08 | **最新 main Actions：MySQL 8.0.46 887 项 OK + SQLite 887 项 OK**（2026-11-09 更新；历史"SQLite+MySQL 双 729"实为 MySQL 运行，引擎标注更正见 95 号报告 §1） |
+| 自动化测试 | **通过** | A08 | **最新 main Actions：MySQL 8.0.46 1178 项 OK + SQLite 1178 项 OK**（2026-11-09 更新；历史"SQLite+MySQL 双 729"实为 MySQL 运行，引擎标注更正见 95 号报告 §1） |
 | 运行与部署 | 通过（申报） | A10/A12 | Redis 5.0.14 已部署并验证（多进程共享/TTL/故障捕获，2026-11-06）；**G09 多 worker 共享/TTL/故障降级 2026-11-07 完成**（95 号报告 §3） |
 | 性能容量 | 通过（申报） | A11 | 冻结目标（查询 P95≤500ms/报表≤3s/并发 10）下压测通过：6 场景全 PASS（waitress 16 线程 + MySQL 4000 预订/4002 账本行数据集）；详见 A11 节 |
 | 旧入口退役 | 通过（申报） | A13 | 35×410 + 3 redirect + 门禁覆盖率测试（test_module_gates） |
@@ -49,7 +49,7 @@ security.W002 XFrameOptions / W004 HSTS / W008 SSL_REDIRECT / W010 SESSION_COOKI
 | A02 | 业务中心验收报告 | docs/audit/phase0/40-five-centers-closure.md |
 | A03 | 业务闭环报告 | apps/api/test_e2e_flows.py + test_five_centers_closure.py |
 | A04 | 数据库验收报告 | 本报告数据库节 + makemigrations --check 无漂移 |
-| A05 | API 验收报告 | apps/api/test_openapi_schema.py（当前静态快照 102 paths / 104 operations；79 verified / 25 partial）+ test_pagination_contract |
+| A05 | API 验收报告 | apps/api/test_openapi_schema.py（当前静态快照 113 paths / 115 operations；90 verified / 25 partial）+ test_pagination_contract |
 | A06 | 九角色权限报告 | hotelapp/tests.py 角色矩阵测试 + docs/角色权限验证指南.md |
 | A07 | 安全验收报告 | apps/api/test_auth_hardening.py + test_cookie_isolation.py + test_security.py |
 | A08 | 自动化测试报告 | 本报告测试节（SHA/命令/数字）；时区缺陷修复为本报告后新 commit |
@@ -76,7 +76,7 @@ security.W002 XFrameOptions / W004 HSTS / W008 SSL_REDIRECT / W010 SESSION_COOKI
 
 ## 2026-11-09 最新 main 补充说明
 
-- 最新代码 SHA：8e310b5a8491f31dd91b5461160fd6dfc1f22e06；SQLite 与 MySQL 8 Actions 各 887 项通过。
+- 最新代码 SHA：57d2176b2dec821dd5c82ec71743603a42f44474；SQLite 与 MySQL 8 Actions 各 887 项通过。
 - 最新业务代码已覆盖 PENDING 预订由前台押金/人工收款成功后自动确认、夜审按营业日过账、退房按 Stay 补记未入账房费差额、清洁放行和退款三方分离。
 - 白盒复核发现 scripts/e2e_full_chain.py 有导入缺失、凭据硬编码、清库保护不足和空断言；该脚本未纳入 CI，36/36 不作为有效验收结论。
 - 九角色真实登录、用户业务走查、真实浏览器 E2E 和 G14 独立签署仍未完成。A16 仍为开发者申报，不是最终验收通过。
@@ -85,4 +85,14 @@ security.W002 XFrameOptions / W004 HSTS / W008 SSL_REDIRECT / W010 SESSION_COOKI
 
 ## 2026-11-10 代码基线时效说明
 
-本报告的原始验收证据与结论以其记录的 2026-11-09 业务代码 SHA `8e310b5a8491f31dd91b5461160fd6dfc1f22e06` 为准，历史测试数、环境和签署状态不得改写。2026-11-10 文档治理复核时业务代码参照 SHA 已更新为 `332c57f11e1dd59d646a2a3ca8592391d6e66d56`；DEC-02-A1/B2 后续实施和 MySQL 919 项测试的提交记录不能自动替代 A16 的独立验收。九角色真实口令登录、核心业务走查、数据治理确认和 G14 独立签署仍须按最新代码重新复核。PMS3 门禁未解除。
+本报告的原始验收证据与结论以其记录的 2026-11-09 业务代码 SHA `57d2176b2dec821dd5c82ec71743603a42f44474` 为准，历史测试数、环境和签署状态不得改写。2026-11-10 文档治理复核时业务代码参照 SHA 已更新为 `332c57f11e1dd59d646a2a3ca8592391d6e66d56`；DEC-02-A1/B2 后续实施和 MySQL 919 项测试的提交记录不能自动替代 A16 的独立验收。九角色真实口令登录、核心业务走查、数据治理确认和 G14 独立签署仍须按最新代码重新复核。PMS3 门禁未解除。
+
+
+## 2026-11-12 最新基线状态（开发侧补充，不构成最终验收）
+
+- 当前 main SHA：`57d2176b2dec821dd5c82ec71743603a42f44474`。
+- GitHub Actions：MySQL run 43225156079 success（1178 OK）；SQLite run 43225156017 success（1178 OK，skip 19）。
+- OpenAPI：113 paths / 115 operations，90 verified / 25 partial。
+- 尚未完成：dev hotel 数据库迁移 guests.0007 / billing.0030；生产 PII 密钥受控切换；ENTRY_NO_PAYMENT 反向扫描；WB-076/089、WB-085、WB-087、WB-092、WB-125 的专项整改/验收；九角色真实登录、浏览器 E2E、Apifox 手工执行和 G14 独立签署。
+- 旧 A01-A16 证据仍绑定各自历史 SHA，不得把历史 97 迁移、74 表数据或 887 测试结果直接挪用为当前 SHA 的生产验收证据。
+- 最终结论仍为“开发者申报/有条件整改”，不是 PMS2 最终验收通过。
