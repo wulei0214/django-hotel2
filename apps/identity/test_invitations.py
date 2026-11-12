@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """员工邀请激活体系测试（AUTH-14~18 + AUTH-20，方案 §5.2/§5.3/§15.1 邀请清单）。
 
 覆盖：
@@ -24,6 +23,10 @@ from django.db import transaction
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.core.models import AuditEvent, Property
 
 from .invitation_services import (
@@ -34,6 +37,10 @@ from .invitation_services import (
 )
 from .models import Invitation, PropertyStaffMembership, StaffProfile
 from .test_staff_center import _make_target_employee, _make_user
+
+_TEST_PW_412432D8 = get_random_string(24)
+
+
 
 STRONG_PASSWORD = "Str0ng-Pass-2026!"
 
@@ -124,7 +131,7 @@ class InvitationTokenSecurityTests(InvitationServiceTestBase):
 
     def test_create_rejects_taken_username(self):
         """登录账号已被占用 → 拒绝且不留任何邀请/账号副作用。"""
-        User.objects.create_user(username="iv_taken", password="existing-pass1")
+        User.objects.create_user(username="iv_taken", password=_TEST_PW_412432D8)
         users_before = User.objects.count()
         with self.assertRaises(InvitationError) as ctx:
             self._invite(username="iv_taken")

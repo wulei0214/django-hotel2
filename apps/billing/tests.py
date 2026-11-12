@@ -9,6 +9,9 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
+# 测试专用 webhook 密钥：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.billing.models import (
     FolioReconciliationRun,
     LedgerEntry,
@@ -28,11 +31,13 @@ from apps.inventory.services import release_inventory_hold
 from apps.reservations.models import Reservation
 from apps.reservations.services import create_reservation
 
+UNIT_TEST_WEBHOOK_SECRET = get_random_string(32)
+
 
 @override_settings(
     DEBUG=True,
     DJANGO_ENV="test",
-    PAYMENT_WEBHOOK_SECRET="unit-test-webhook-secret",
+    PAYMENT_WEBHOOK_SECRET=UNIT_TEST_WEBHOOK_SECRET,
 )
 class MockPaymentFixtureMixin(TestCase):
     """Mock 支付链路公共夹具：库存日历 + 预订 + 本地支付单 + 签名回调助手。"""
@@ -452,6 +457,7 @@ class ApprovalRecordTests(TestCase):
             entity_type="Refund", entity_id=2,
             requested_by=self.requester, reason="审批超时流程测试")
         from datetime import timedelta
+
         from django.utils import timezone
         type(record)._base_manager.filter(pk=record.pk).update(
             expires_at=timezone.now() - timedelta(minutes=1))
@@ -472,11 +478,13 @@ class NightAuditServiceTests(TestCase):
         self.guest = __import__("apps.guests.models", fromlist=["Guest"]).Guest.objects.create(
             property=self.property, full_name="夜审客人",
             phone="13800008881", phone_normalized="13800008881")
-        from apps.reservations.models import Reservation, ReservationRoom, Stay
-        from apps.inventory.models import Room
-        from apps.billing.night_audit import NightAuditService
         from decimal import Decimal
+
         from django.contrib.auth.models import User
+
+        from apps.billing.night_audit import NightAuditService
+        from apps.inventory.models import Room
+        from apps.reservations.models import Reservation, ReservationRoom, Stay
 
         self.user = User.objects.create_user(username="night-audit-operator")
         self.reservation = Reservation.objects.create(
@@ -528,9 +536,10 @@ class NightAuditServiceTests(TestCase):
             property=self.property, business_date=self.today).count(), 1)
 
     def test_night_audit_requires_second_manager_to_reopen(self):
+        from django.contrib.auth.models import User
+
         from apps.billing.models import LedgerEntry
         from apps.core.models import BusinessDate
-        from django.contrib.auth.models import User
         run, _ = self.NightAuditService.run(
             property_obj=self.property, executed_by=self.user,
             business_date=self.today)
@@ -569,9 +578,9 @@ class BillingServiceManualCollectionTests(TestCase):
         self.rate_plan = RatePlan.objects.create(
             property=self.property, code="BILL-BAR", name="统一账务门市价",
             valid_from=today)
+        from apps.billing.models import Folio
         from apps.guests.models import Guest
         from apps.reservations.models import Reservation, ReservationRoom
-        from apps.billing.models import Folio
         self.guest = Guest.objects.create(
             property=self.property, full_name="统一账务客人",
             phone="13800008882", phone_normalized="13800008882")

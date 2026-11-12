@@ -1,7 +1,7 @@
+import unittest
 from datetime import date, timedelta
 from decimal import Decimal
 from threading import Barrier, Thread
-import unittest
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
@@ -9,26 +9,30 @@ from django.db import close_old_connections, connection
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
+from apps.billing.models import Folio, LedgerEntry, Payment, Refund, RefundLiability
 from apps.core.models import AuditEvent, Property
 from apps.guests.models import Guest
 from apps.guests.services import phone_hash
-from apps.billing.models import Folio, LedgerEntry, Payment, Refund, RefundLiability
 from apps.inventory.models import (
-    DailyRate, HousekeepingTask, RatePlan, Room, RoomType, RoomTypeInventory,
+    DailyRate,
+    HousekeepingTask,
+    RatePlan,
+    Room,
+    RoomType,
+    RoomTypeInventory,
 )
 from apps.inventory.services import InventoryUnavailable
-from .models import (
-    NoShowRecord,
-    PendingBookingGate,
-    Reservation,
-    ReservationRoom,
-    Stay,
-    StayRoomSegment,
-)
-from .services import ReservationConflict, create_reservation
+
 from .front_desk_services import (
-    FrontDeskOperationError, assign_room, check_in_stay,
-    collect_manual_payment, check_out_stay,
+    FrontDeskOperationError,
+    assign_room,
+    check_in_stay,
+    check_out_stay,
+    collect_manual_payment,
 )
 from .lifecycle_services import (
     LifecycleOperationError,
@@ -39,6 +43,19 @@ from .lifecycle_services import (
     receive_manual_deposit,
     request_refund,
 )
+from .models import (
+    NoShowRecord,
+    PendingBookingGate,
+    Reservation,
+    ReservationRoom,
+    Stay,
+    StayRoomSegment,
+)
+from .services import ReservationConflict, create_reservation
+
+_TEST_PW_FC11BD50 = get_random_string(24)
+_TEST_PW_878D14F8 = get_random_string(24)
+_TEST_PW_24A4B483 = get_random_string(24)
 
 
 class ReservationCreationTests(TestCase):
@@ -297,7 +314,7 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             maintenance_status=Room.MaintenanceStatus.NORMAL,
         )
         self.operator = User.objects.create_user(
-            username="stay-operator", password="stay-test-password"
+            username="stay-operator", password=_TEST_PW_FC11BD50
         )
         from apps.billing.services_v2 import BillingService
         BillingService.open_shift(
@@ -935,7 +952,7 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             )
 
         supervisor = User.objects.create_user(
-            username="stay-refund-supervisor", password="refund-test-password"
+            username="stay-refund-supervisor", password=_TEST_PW_878D14F8
         )
         approved, changed = approve_refund(
             property_obj=self.property, refund_id=refund.pk,
@@ -947,7 +964,7 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             reference=f"refund:{refund.provider_ref}").exists())
 
         executor = User.objects.create_user(
-            username="stay-refund-executor", password="refund-exec-password")
+            username="stay-refund-executor", password=_TEST_PW_24A4B483)
         from apps.billing.services_v2 import BillingService
         # 现金退款必须来自真实可用现金；本测试为执行班次准备 100 元备用现金。
         BillingService.open_shift(

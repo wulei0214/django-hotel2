@@ -43,6 +43,13 @@ from apps.guests.models import Guest
 from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from apps.reservations.models import Reservation, ReservationRoom
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+_TEST_PW_2D836F41 = get_random_string(24)
+
+
+
 
 def _post_json(client, url, payload=None, idempotency_key=""):
     extra = {}
@@ -69,7 +76,7 @@ class BillingCenterTestBase(TestCase):
             "fin_center_writer", "财务",
             extra_codenames=["reverse_entry"])
         self.no_membership_user = User.objects.create_user(
-            username="fin_center_outsider", password="outsider-pass-123")
+            username="fin_center_outsider", password=_TEST_PW_2D836F41)
         self._seq = 0
 
     # ------------------------------------------------------------------

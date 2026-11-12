@@ -28,6 +28,13 @@ from apps.api import audit_center
 from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.core.models import AuditEvent, Property
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+_TEST_PW_EA5E4F64 = get_random_string(24)
+
+
+
 # 测试用"明文 PII"（揭示类审计的写入侧纪律：只允许 masked 值入库）
 PLAIN_DOC_NO = "110101199003071234"
 MASKED_DOC_NO = "1101********34"
@@ -91,7 +98,7 @@ class AuditCenterPermissionTests(AuditCenterTestBase):
     def test_read_endpoints_require_property_membership(self):
         """已登录但无任何物业任职：无物业上下文 → 404（与夜审中心同口径）。"""
         outsider = User.objects.create_user(
-            username="audit_no_membership", password="No-Membership-2026!")
+            username="audit_no_membership", password=_TEST_PW_EA5E4F64)
         self.client.force_login(outsider)
         for url in self.READ_ENDPOINTS:
             response = self.client.get(url)

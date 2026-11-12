@@ -14,6 +14,15 @@ from apps.inventory.models import Room
 from apps.reservations.models import Reservation, ReservationRoom
 from apps.inventory.models import DailyRate, RatePlan, RoomType, RoomTypeInventory
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+_TEST_PW_510C52C1 = get_random_string(24)
+_TEST_PW_29AF8666 = get_random_string(24)
+_TEST_PW_C9A8E88B = get_random_string(24)
+
+
+
 
 @override_settings(DEBUG=True, DJANGO_ENV="test", PAYMENT_WEBHOOK_SECRET="api-test-webhook-secret")
 class PublicBookingApiTests(TestCase):
@@ -183,7 +192,7 @@ class FrontDeskReadApiTests(TestCase):
         self.property = Property.objects.get(code="DEFAULT")
         self.user = User.objects.create_user(
             username="frontdesk-api-user",
-            password="TestPass-2026!",
+            password=_TEST_PW_510C52C1,
         )
         self.profile = StaffProfile.objects.create(
             user=self.user,
@@ -348,7 +357,7 @@ class FrontDeskWriteApiTests(TestCase):
         self.tomorrow = self.today + timedelta(days=1)
         self.user = User.objects.create_user(
             username="frontdesk-write-user",
-            password="TestPass-Write-2026!",
+            password=_TEST_PW_29AF8666,
         )
         self.profile = StaffProfile.objects.create(
             user=self.user,
@@ -535,7 +544,7 @@ class FrontDeskWorkspacePageTests(TestCase):
         self.property = Property.objects.get(code="DEFAULT")
         self.user = User.objects.create_user(
             username="frontdesk-page-user",
-            password="TestPass-Page-2026!",
+            password=_TEST_PW_C9A8E88B,
         )
         self.profile = StaffProfile.objects.create(
             user=self.user,

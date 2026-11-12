@@ -20,6 +20,10 @@ from django.contrib.auth.models import Group, Permission
 from django.test import Client, TestCase
 from django.utils import timezone
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.core.models import AuditEvent, Property
 
 from .authorization import AuthorizationService
@@ -31,6 +35,11 @@ from .permission_center import (
     special_codenames,
 )
 from .registry import validate_registry
+
+_TEST_PW_0F916B80 = get_random_string(24)
+_TEST_PW_B71AAACF = get_random_string(24)
+
+
 
 User = get_user_model()
 
@@ -49,7 +58,7 @@ class PermissionCenterTestBase(TestCase):
 
     def setUp(self):
         self.superadmin = User.objects.create_superuser(
-            "pc_admin", password="admin-pass123456")
+            "pc_admin", password=_TEST_PW_0F916B80)
         self.client = Client()
         self._platform_login(self.client, self.superadmin)
         self.group = Group.objects.get(name="客房服务员")
@@ -109,7 +118,7 @@ class PermissionCenterReadApiTests(PermissionCenterTestBase):
 
     def test_read_pms_session_only_redirects(self):
         """仅 PMS 会话（员工登录，无平台 Cookie）→ 302，不因员工登录放行。"""
-        staff = User.objects.create_user("pc_staff", password="staff-pass123")
+        staff = User.objects.create_user("pc_staff", password=_TEST_PW_B71AAACF)
         client = Client()
         client.force_login(staff)  # 只写 sessionid
         response = client.get(f"/platform/api/permissions/{self.group.id}/")
@@ -117,7 +126,7 @@ class PermissionCenterReadApiTests(PermissionCenterTestBase):
         self.assertTrue(response["Location"].startswith("/admin/login/"))
 
     def test_read_staff_non_superuser_platform_session_403(self):
-        staff = User.objects.create_user("pc_clerk", password="staff-pass123")
+        staff = User.objects.create_user("pc_clerk", password=_TEST_PW_B71AAACF)
         staff.is_staff = True
         staff.save(update_fields=["is_staff"])
         client = Client()
@@ -170,7 +179,7 @@ class PermissionCenterWriteGuardTests(PermissionCenterTestBase):
                                content_type="application/json")
         self.assertEqual(response.status_code, 302)
         # 仅 PMS 会话 → 302
-        staff = User.objects.create_user("pc_w1", password="staff-pass123")
+        staff = User.objects.create_user("pc_w1", password=_TEST_PW_B71AAACF)
         client = Client()
         client.force_login(staff)
         self.assertEqual(client.post(

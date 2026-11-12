@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """第 28 轮整改专项验收：接口 E2E + 真实 MySQL 并发 + 故障注入。
 
 本套件不是「普通单元测试」的替代品，而是针对第二份审查报告里那些
@@ -32,40 +31,67 @@ from django.db.transaction import TransactionManagementError
 from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
+# ---------------------------------------------------------------------------
+# A/B：接口 E2E —— 400/409 分流 + 幂等非 2xx 终态
+# ---------------------------------------------------------------------------
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.billing.models import (
-    CheckoutExceptionRelease, Folio, LedgerEntry, Payment,
-    PaymentCompensationTask, PaymentIntent, ProviderTransaction,
+    CheckoutExceptionRelease,
+    Folio,
+    LedgerEntry,
+    Payment,
+    PaymentCompensationTask,
+    PaymentIntent,
+    ProviderTransaction,
 )
 from apps.billing.night_audit import recover_stale_night_audit_runs
 from apps.core.models import (
-    AuditEvent, BusinessDate, IdempotencyRecord, NightAuditRun, Property,
+    AuditEvent,
+    BusinessDate,
+    IdempotencyRecord,
+    NightAuditRun,
+    Property,
 )
 from apps.guests.models import Guest
 from apps.identity.models import (
-    PropertyStaffMembership, StaffProfile, StaffRoleAssignment,
+    PropertyStaffMembership,
+    StaffProfile,
+    StaffRoleAssignment,
 )
 from apps.inventory.models import (
-    InventoryDiscrepancy, RatePlan, RoomType, RoomTypeInventory,
+    InventoryDiscrepancy,
+    RatePlan,
+    RoomType,
+    RoomTypeInventory,
 )
 from apps.inventory.reconciliation import (
-    _recompute_inventory_day, approve_inventory_fix, execute_inventory_fix,
-    request_inventory_fix, scan_inventory_discrepancies,
+    _recompute_inventory_day,
+    approve_inventory_fix,
+    execute_inventory_fix,
+    request_inventory_fix,
+    scan_inventory_discrepancies,
 )
 from apps.inventory.services import (
-    confirm_inventory_for_reservation, hold_inventory_for_reservation,
+    confirm_inventory_for_reservation,
+    hold_inventory_for_reservation,
 )
 from apps.reservations.front_desk_services import (
     _release_sold_inventory_for_early_departure,
 )
 from apps.reservations.models import (
-    InventoryHold, NoShowRecord, Reservation, ReservationRoom,
+    InventoryHold,
+    NoShowRecord,
+    Reservation,
+    ReservationRoom,
 )
 
+_TEST_PW_F543CF12 = get_random_string(24)
 
-# ---------------------------------------------------------------------------
-# A/B：接口 E2E —— 400/409 分流 + 幂等非 2xx 终态
-# ---------------------------------------------------------------------------
+
 @override_settings(DEBUG=True, DJANGO_ENV="test")
 class Round28HttpContractTests(E2EFlowTestBase):
     """RSV-10 分类回归：格式错误 400、业务冲突 409，两条写入链路都要覆盖。"""
@@ -561,7 +587,7 @@ class Round28MySQLConcurrencyHttpTests(TransactionTestCase):
             property=self.property, full_name="第28轮并发住客")
 
     def _make_staff(self, username, group_name):
-        user = User.objects.create_user(username=username, password="r28-pass")
+        user = User.objects.create_user(username=username, password=_TEST_PW_F543CF12)
         profile = StaffProfile.objects.create(
             user=user, full_name=username,
             employment_status=StaffProfile.EmploymentStatus.ACTIVE)
@@ -853,6 +879,7 @@ class Round29MaintenanceWorkerContractTests(TestCase):
         且不 mock expire_intent；竞态冲突单独计 conflicts。"""
         from io import StringIO
         from unittest.mock import patch
+
         from apps.billing.management.commands import run_billing_maintenance as maint
 
         r1, f1 = self._make_folio("R29-EXP-U")

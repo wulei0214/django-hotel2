@@ -14,11 +14,17 @@ from django.contrib.auth.models import Group
 from django.core.management import call_command
 from django.test import Client, TestCase
 from django.utils import timezone
+from django.utils.crypto import get_random_string
 
 from apps.core.models import AuditEvent, Property
+
 from .models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 
 User = get_user_model()
+
+# 平台门禁测试专用密码：运行时随机生成，源码不落任何凭据字面量
+# （Mimosa L3 门禁：测试文件同样不得写入可用凭据字面量）。
+PLATFORM_TEST_PASSWORD = get_random_string(24)
 
 
 def _pms_staff_user(username="pf_staff", group_name="前台", full_name="王前台"):
@@ -43,7 +49,7 @@ class PlatformAccessTests(TestCase):
 
     def setUp(self):
         self.superadmin = User.objects.create_superuser(
-            "pf_admin", password="admin-pass123456")
+            "pf_admin", password=PLATFORM_TEST_PASSWORD)
 
     def _platform_login(self, user):
         """模拟平台登录：force_login 后把会话键复制到两份平台 Cookie
@@ -121,6 +127,7 @@ class PlatformAccessTests(TestCase):
         from django.core.exceptions import PermissionDenied
         from django.http import HttpResponse
         from django.test import RequestFactory
+
         from .platform import platform_superadmin_required
 
         self.superadmin.is_active = False
@@ -173,7 +180,7 @@ class PlatformCsrfTests(TestCase):
 
     def setUp(self):
         self.superadmin = User.objects.create_superuser(
-            "pf_csrf", password="admin-pass123456")
+            "pf_csrf", password=PLATFORM_TEST_PASSWORD)
         self.group = Group.objects.get(name="前台")
 
     def _csrf_client(self):
@@ -220,7 +227,7 @@ class PlatformContextNoiseTests(TestCase):
 
     def setUp(self):
         self.superadmin = User.objects.create_superuser(
-            "pf_noise", password="admin-pass123456")
+            "pf_noise", password=PLATFORM_TEST_PASSWORD)
 
     def _platform_login(self):
         self.client.force_login(self.superadmin)
@@ -241,7 +248,7 @@ class PlatformContextNoiseTests(TestCase):
 
     def test_pms_page_without_membership_still_audits(self):
         """回归保护：PMS 路径的 property_context_denied 审计行为保持不变"""
-        user = User.objects.create_user("no_job", password="no-job-pass123")
+        user = User.objects.create_user("no_job", password=get_random_string(20))
         self.client.force_login(user)
         self.client.get("/home/")
         self.assertTrue(
@@ -269,7 +276,7 @@ class SystemPageSplitTests(TestCase):
 
     def setUp(self):
         self.superadmin = User.objects.create_superuser(
-            "pf_split", password="admin-pass123456")
+            "pf_split", password=PLATFORM_TEST_PASSWORD)
         self.staff = _pms_staff_user("pf_me", full_name="李测试")
         self.other = _pms_staff_user("pf_other", full_name="赵同事")
 
@@ -355,7 +362,7 @@ class PlatformBoundaryTests(TestCase):
     def test_platform_access_grants_no_pms_authorization(self):
         """访问 /platform/* 不创建任职/角色，也不写全局权限"""
         from .authorization import AuthorizationService
-        admin = User.objects.create_superuser("pf_bnd", password="admin-pass123456")
+        admin = User.objects.create_superuser("pf_bnd", password=PLATFORM_TEST_PASSWORD)
         prop, _ = Property.objects.get_or_create(
             code="DEFAULT", defaults={"name": "测试酒店"})
         client = Client()
@@ -376,7 +383,7 @@ class PlatformBoundaryTests(TestCase):
 
     def test_superuser_without_employment_still_blocked_from_pms(self):
         """平台会话不改变 PMS 门禁：无任职超管访问 PMS 业务页仍 403"""
-        admin = User.objects.create_superuser("pf_bnd2", password="admin-pass123456")
+        admin = User.objects.create_superuser("pf_bnd2", password=PLATFORM_TEST_PASSWORD)
         self.client.force_login(admin)  # PMS 会话（D-04 下超管拿不到平台外权限）
         self.assertEqual(self.client.get("/show_client/").status_code, 403)
 
@@ -391,11 +398,11 @@ class PlatformSuperadminCheckCommandTests(TestCase):
         return buf.getvalue()
 
     def test_report_classifies_healthy_and_broken_superusers(self):
-        healthy = User.objects.create_superuser("chk_ok", password="admin-pass123456")
-        broken = User.objects.create_superuser("chk_broken", password="admin-pass123456")
+        healthy = User.objects.create_superuser("chk_ok", password=PLATFORM_TEST_PASSWORD)
+        broken = User.objects.create_superuser("chk_broken", password=PLATFORM_TEST_PASSWORD)
         broken.is_staff = False
         broken.save(update_fields=["is_staff"])
-        inactive = User.objects.create_superuser("chk_inactive", password="admin-pass123456")
+        inactive = User.objects.create_superuser("chk_inactive", password=PLATFORM_TEST_PASSWORD)
         inactive.is_active = False
         inactive.save(update_fields=["is_active"])
 
@@ -409,7 +416,7 @@ class PlatformSuperadminCheckCommandTests(TestCase):
         self.assertIn("异常 2", output)
 
     def test_dry_run_does_not_modify_data(self):
-        broken = User.objects.create_superuser("chk_readonly", password="admin-pass123456")
+        broken = User.objects.create_superuser("chk_readonly", password=PLATFORM_TEST_PASSWORD)
         broken.is_staff = False
         broken.save(update_fields=["is_staff"])
         self._run("--dry-run")
@@ -418,7 +425,7 @@ class PlatformSuperadminCheckCommandTests(TestCase):
         self.assertFalse(broken.is_staff, "体检不得自动修复 is_staff")
 
     def test_without_dry_run_still_read_only(self):
-        broken = User.objects.create_superuser("chk_plain", password="admin-pass123456")
+        broken = User.objects.create_superuser("chk_plain", password=PLATFORM_TEST_PASSWORD)
         broken.is_staff = False
         broken.save(update_fields=["is_staff"])
         output = self._run()

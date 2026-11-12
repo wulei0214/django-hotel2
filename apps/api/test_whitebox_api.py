@@ -27,6 +27,14 @@ from apps.reservations.models import Reservation
 
 from . import views as public_views
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+_TEST_PW_A73B46BB = get_random_string(24)
+_TEST_PW_057CC5EF = get_random_string(24)
+
+
+
 
 def _post_json(client, url, payload, **extra):
     return client.post(url, data=json.dumps(payload),
@@ -339,7 +347,7 @@ class HorizontalAccessTests(WhiteboxApiTestBase):
         user = self._make_staff(codenames={"staff_manage"}, app_label="identity")
         self.client.force_login(user)
         outsider = User.objects.create_user(username="wb46_outsider",
-                                            password="outsider-pass123")
+                                            password=_TEST_PW_A73B46BB)
         profile = StaffProfile.objects.create(
             user=outsider, full_name="别店员工",
             employment_status=StaffProfile.EmploymentStatus.ACTIVE)
@@ -389,7 +397,7 @@ class AuthStateTests(WhiteboxApiTestBase):
     def test_authenticated_without_membership_returns_404(self):
         """无 DEFAULT 任职（含任职别店）→ 无物业上下文 → 404，不静默回退。"""
         user = User.objects.create_user(username="wb46_nomember",
-                                        password="nomember-pass123")
+                                        password=_TEST_PW_057CC5EF)
         self.client.force_login(user)
         response = self.client.get("/api/v1/notifications")
         self.assertEqual(response.status_code, 404, response.content)

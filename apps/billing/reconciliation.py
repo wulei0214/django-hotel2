@@ -1,8 +1,9 @@
-# -*- coding: utf-8 -*-
 """FIN-P0 账本与 Folio/负债一致性对账服务（只读核对，不自动改写）。
 
 依据 docs/PMS2财务账务与营业日P0P1专项整改需求_2026-11-09.md：
 - 核对 Payment ↔ PAYMENT 凭证、Deposit ↔ DEPOSIT 凭证、Refund ↔ REFUND 凭证；
+- 反向核对 PAYMENT/DEPOSIT 凭证 ↔ Payment（ENTRY_NO_PAYMENT，凭证孤立
+  /伪造/重复入账方向，WB-092 反向扫描）；
 - 核对已执行 BillingAdjustment ↔ ADJUSTMENT 凭证（WB-092）；
 - 已关闭 Folio 余额重建：账本凭证合计 vs 期望余额（WB-096）；
 - RefundLiability 净额重建：remaining_amount vs amount − 已成功退款
@@ -11,9 +12,7 @@
 """
 from decimal import Decimal
 
-from django.db import transaction
 from django.db.models import Sum
-from django.utils import timezone
 
 from apps.billing.models import (
     BillingAdjustment,
@@ -61,6 +60,10 @@ def scan_folio_reconciliation(*, property_obj, checked_by=None, batch_size=200):
        账外事实，跳过余额核对，不视为差异。
     6. RefundLiability 净额重建：remaining_amount == amount − 已成功退款
        − 已执行抵扣 + 已执行增加（未执行/未批准调整不计入）。
+    7. 反向（WB-092 反向扫描）：每张 PAYMENT/DEPOSIT 凭证必须能精确
+       追回到一笔白名单状态内的 Payment（ENTRY_NO_PAYMENT）——凭证
+       孤立、引用命名不合规、渠道类别不符、状态失配、金额方向/币种/
+       物业不符均报差异。
     """
     from apps.billing.dec02 import liability_net_snapshot
     run = FolioReconciliationRun.objects.create(
@@ -131,6 +134,99 @@ def scan_folio_reconciliation(*, property_obj, checked_by=None, batch_size=200):
                                 f"{expected_ref} 与业务事实不符："
                                 + "；".join(problems)))
                     diff_count += 1
+
+            # WB-092（反向，ENTRY_NO_PAYMENT）：每张收款类凭证
+            # （PAYMENT/DEPOSIT）必须能精确追回到一笔白名单状态内的
+            # Payment——与正向扫描互补，兜住"凭证孤立/伪造/重复入账"方向；
+            # 引用仍按 payment:{provider_ref} / deposit:{provider_ref} 精确
+            # 匹配，金额方向为 -payment.amount。
+            payments_by_ref = {}
+            for p in Payment.objects.filter(folio=folio).only(
+                    "pk", "provider", "provider_ref", "amount", "currency",
+                    "status", "property_id"):
+                payments_by_ref.setdefault(p.provider_ref, []).append(p)
+            for e in entries:
+                if e["entry_type"] not in (
+                        LedgerEntry.EntryType.PAYMENT,
+                        LedgerEntry.EntryType.DEPOSIT):
+                    continue
+                ref = e["reference"] or ""
+                if ref.startswith("payment:"):
+                    ref_value = ref[len("payment:"):]
+                    require_deposit = False
+                elif ref.startswith("deposit:"):
+                    ref_value = ref[len("deposit:"):]
+                    require_deposit = True
+                else:
+                    FolioReconciliationDiff.objects.create(
+                        run=run, folio=folio,
+                        diff_type=FolioReconciliationDiff.DiffType.ENTRY_NO_PAYMENT,
+                        entity_type="LedgerEntry", entity_id=e["pk"],
+                        detail=(f"收款类凭证 {e['pk']} 引用 {ref} 不符合 "
+                                "payment:{provider_ref} / deposit:{provider_ref} "
+                                "命名，无法追溯来源 Payment"))
+                    diff_count += 1
+                    continue
+                candidates = payments_by_ref.get(ref_value, [])
+                type_matched = [
+                    p for p in candidates
+                    if (p.provider == "frontdesk_deposit") == require_deposit]
+                in_scope = [
+                    p for p in type_matched
+                    if p.status in PAYMENT_ENTRY_CHECK_STATUSES]
+                if not in_scope:
+                    if candidates and not type_matched:
+                        p0 = candidates[0]
+                        detail = (
+                            f"凭证 {e['pk']}（{ref}）对应 Payment {p0.pk} 的渠道"
+                            f"类别 {p0.provider} 与凭证类型 {e['entry_type']} 不符")
+                    elif type_matched:
+                        p0 = type_matched[0]
+                        detail = (
+                            f"凭证 {e['pk']}（{ref}）对应 Payment {p0.pk} 状态 "
+                            f"{p0.status} 不在可核对状态范围"
+                            f"（{'/'.join(PAYMENT_ENTRY_CHECK_STATUSES)}）")
+                    else:
+                        cross = Payment.objects.filter(
+                            property=property_obj,
+                            provider_ref=ref_value).exclude(folio=folio).first()
+                        if cross is not None:
+                            detail = (
+                                f"凭证 {e['pk']}（{ref}）对应的 Payment {cross.pk} "
+                                f"挂在账单 Folio {cross.folio_id or '（无）'}，"
+                                "与凭证归属不一致")
+                        else:
+                            detail = (
+                                f"收款类凭证 {e['pk']}（{ref}）缺对应 Payment"
+                                f"（provider_ref={ref_value}）")
+                    FolioReconciliationDiff.objects.create(
+                        run=run, folio=folio,
+                        diff_type=FolioReconciliationDiff.DiffType.ENTRY_NO_PAYMENT,
+                        entity_type="LedgerEntry", entity_id=e["pk"],
+                        detail=detail)
+                    diff_count += 1
+                    continue
+                # WB-092：凭证能追溯到 Payment ≠ 事实正确——逐项核对
+                # 金额方向/币种/物业。
+                p = in_scope[0]
+                problems = []
+                if Decimal(str(e["amount"])) != -p.amount:
+                    problems.append(
+                        f"金额 {e['amount']}，按方向应为 {-p.amount}")
+                if e["currency"] != p.currency:
+                    problems.append(
+                        f"币种 {e['currency']}，应为 {p.currency}")
+                if e["property_id"] != p.property_id:
+                    problems.append("物业归属不一致")
+                if problems:
+                    FolioReconciliationDiff.objects.create(
+                        run=run, folio=folio,
+                        diff_type=FolioReconciliationDiff.DiffType.ENTRY_NO_PAYMENT,
+                        entity_type="LedgerEntry", entity_id=e["pk"],
+                        detail=(f"凭证 {e['pk']}（{ref}）与来源 Payment {p.pk} "
+                                "不符：" + "；".join(problems)))
+                    diff_count += 1
+
             refunds = list(Refund.objects.filter(
                 payment__folio=folio, status=Refund.Status.SUCCEEDED))
             for rf in refunds:

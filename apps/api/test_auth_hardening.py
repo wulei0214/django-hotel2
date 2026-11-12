@@ -23,6 +23,14 @@ from apps.identity.models import StaffProfile
 
 from hotelapp.tests import _make_user  # 复用员工夹具（Membership+RoleAssignment）
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+_TEST_PW_D7704497 = get_random_string(24)
+_TEST_PW_184F95E9 = get_random_string(24)
+
+
+
 
 @override_settings(DEBUG=True, DJANGO_ENV="test")
 class RegisterAndBookingFreezeTests(TestCase):
@@ -84,11 +92,11 @@ class LoginErrorUnificationTests(TestCase):
             msg_prefix="停用状态不得单独提示（避免泄露账号存在性）: ")
 
     def test_no_employment_same_message(self):
-        user = User.objects.create_user(username="noemp01", password="noemp01-pass123")
+        user = User.objects.create_user(username="noemp01", password=_TEST_PW_D7704497)
         StaffProfile.objects.create(user=user, full_name="无任职",
                                     employment_status="TERMINATED")
         response = self.client.post("/login/", {
-            "username": "noemp01", "password": "noemp01-pass123"})
+            "username": "noemp01", "password": _TEST_PW_D7704497})
         self.assertContains(response, "账号或密码不正确，或账号暂不可用")
 
 
@@ -120,9 +128,9 @@ class PasswordPolicyTests(TestCase):
     def test_reset_accepts_strong_password(self):
         EmployeeLifecycleService.reset_password(
             self.profile, property_obj=self.prop,
-            new_password="Str0ng!Pass2026", reset_by=self.owner)
+            new_password=_TEST_PW_184F95E9, reset_by=self.owner)
         self.target.refresh_from_db()
-        self.assertTrue(self.target.check_password("Str0ng!Pass2026"))
+        self.assertTrue(self.target.check_password(_TEST_PW_184F95E9))
 
 
 @override_settings(DEBUG=True, DJANGO_ENV="test", PAYMENT_WEBHOOK_SECRET="auth-test-secret")

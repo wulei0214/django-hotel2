@@ -2,23 +2,50 @@
 
 覆盖：注册止血、净房放行门控、夜审权限、冲账执行权、隐藏模块门禁、敏感导出授权。
 """
-from django.contrib.auth.models import Group, User
-from django.test import TestCase
 from datetime import date, timedelta
 from unittest.mock import Mock, patch
+
+from django.contrib.auth.models import Group, User
+from django.test import TestCase
 from django.utils import timezone
 
-from apps.core.models import Property
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
 
-from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
+from apps.core.models import Property
 from apps.identity.authorization import AuthorizationService
+from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from hotelapp.models import Accommodation, Client, Folio, Room, Staff
+
+_TEST_PW_8862C2E0 = get_random_string(24)
+_TEST_PW_9EF8D522 = get_random_string(24)
+_TEST_PW_947F8EE7 = get_random_string(24)
+_TEST_PW_271EB116 = get_random_string(24)
+_TEST_PW_1927BFA9 = get_random_string(24)
+_TEST_PW_2ED9ACA4 = get_random_string(24)
+_TEST_PW_015A6F74 = get_random_string(24)
+_TEST_PW_1377F1E4 = get_random_string(24)
+_TEST_PW_F48FF9E8 = get_random_string(24)
+_TEST_PW_29FDD5EB = get_random_string(24)
+_TEST_PW_43B71A3A = get_random_string(24)
+_TEST_PW_9FA9F259 = get_random_string(24)
+_TEST_PW_E9355308 = get_random_string(24)
+_TEST_PW_E6132E84 = get_random_string(24)
+_TEST_PW_330979CC = get_random_string(24)
+_TEST_PW_0F916B80 = get_random_string(24)
+_TEST_PW_491BAD38 = get_random_string(24)
+_TEST_PW_03F943F8 = get_random_string(24)
+_TEST_PW_BE89F138 = get_random_string(24)
+_TEST_PW_70A5813B = get_random_string(24)
+
+
 
 
 def _make_user(username, group_name, membership_status="ACTIVE"):
     """创建员工测试账号：User + DEFAULT Membership + RoleAssignment，不使用 is_staff/全局组。"""
     from apps.core.models import Property
-    from apps.identity.models import StaffProfile, PropertyStaffMembership
+    from apps.identity.models import PropertyStaffMembership, StaffProfile
 
     user = User.objects.create_user(username=username, password=f"{username}-pass123")
     group = Group.objects.filter(name=group_name).first()
@@ -59,7 +86,7 @@ class RegisterStopTheBleedingTests(TestCase):
         self.assertRedirects(response, "/reserve/", fetch_redirect_response=False)
 
     def test_authenticated_without_employment_cannot_enter_backoffice(self):
-        user = User.objects.create_user(username="orphan01", password="orphan01-pass123")
+        user = User.objects.create_user(username="orphan01", password=_TEST_PW_8862C2E0)
         self.client.force_login(user)
         response = self.client.get("/home/")
         self.assertIn(response.status_code, (302, 403),
@@ -236,7 +263,7 @@ class MatrixSaveConsistencyTests(TestCase):
         from django.contrib.auth.models import Permission
         from django.contrib.contenttypes.models import ContentType
 
-        root = User.objects.create_superuser("rootrbac", password="root-pass123456")
+        root = User.objects.create_superuser("rootrbac", password=_TEST_PW_9EF8D522)
         # 用矩阵管理的角色组（临时组不在 ROLE_GROUPS 白名单内，保存会被拒绝——防提权设计）
         group = Group.objects.get(name="值班经理")
         # 模拟管理员在 Django admin 给该组手工授予的非矩阵权限
@@ -264,7 +291,7 @@ class UnifiedAuthorizationTests(TestCase):
 
     def setUp(self):
         from apps.core.models import Property
-        from apps.identity.models import StaffProfile, PropertyStaffMembership
+        from apps.identity.models import PropertyStaffMembership, StaffProfile
         self.prop, _ = Property.objects.get_or_create(
             code="DEFAULT", defaults={"name": "测试酒店"})
         self.profile = StaffProfile.objects.create(
@@ -272,33 +299,34 @@ class UnifiedAuthorizationTests(TestCase):
         self.membership = PropertyStaffMembership.objects.create(
             property=self.prop, staff_profile=self.profile,
             employee_no="F-1001", status="ACTIVE")
-        User.objects.create_user(username="bound01", password="old-pass-123")
+        User.objects.create_user(username="bound01", password=_TEST_PW_947F8EE7)
 
     def test_bind_grants_backoffice_access(self):
         """绑定后仅 Assignment 生效；不写 is_staff/User.groups，旧后台照常可访问。"""
         import io as _io
         from contextlib import redirect_stdout
+
         from django.core.management import call_command
         buf = _io.StringIO()
         with redirect_stdout(buf):
             call_command("bind_staff_user", employee_no="F-1001",
                          username="bound01", role="FRONT_DESK",
-                         password="new-pass-123", verbosity=0)
+                         password=_TEST_PW_271EB116, verbosity=0)
         user = User.objects.get(username="bound01")
         self.assertFalse(user.is_staff, "D-04：is_staff 仅 Django Admin，不再随绑定发放")
         self.assertFalse(user.groups.exists(), "PMS 角色不得写入全局 User.groups")
         self.assertTrue(AuthorizationService.has_permission(
             user, self.prop, "hotelapp.view_client"), "旧视图权限由 AuthorizationService 判定")
-        self.assertTrue(user.check_password("new-pass-123"), "--password 生效")
+        self.assertTrue(user.check_password(_TEST_PW_271EB116), "--password 生效")
 
         self.client.logout()
-        self.assertTrue(self.client.login(username="bound01", password="new-pass-123"))
+        self.assertTrue(self.client.login(username="bound01", password=_TEST_PW_271EB116))
         response = self.client.get("/show_client/")
         self.assertEqual(response.status_code, 200, "绑定账号必须能访问旧后台（P0-1 验收标准）")
 
     def test_staff_without_membership_denied(self):
         """有效账号但无任职关系 → 员工路由拒绝（AUTH-02）"""
-        user = User.objects.create_user(username="noid001", password="noid001-pass123")
+        user = User.objects.create_user(username="noid001", password=_TEST_PW_1927BFA9)
         self.client.force_login(user)
         response = self.client.get("/show_client/")
         self.assertEqual(response.status_code, 403)
@@ -312,11 +340,11 @@ class UnifiedAuthorizationTests(TestCase):
 
     def test_staff_manager_cannot_assign_arbitrary_django_group(self):
         """伪造 POST 不得越过业务角色目录授予任意 Group。"""
-        from apps.identity.models import StaffProfile, PropertyStaffMembership
+        from apps.identity.models import PropertyStaffMembership, StaffProfile
 
         manager = _make_user("role-manager-forge", "店长")
         target_user = User.objects.create_user(
-            username="role-target-forge", password="target-pass123"
+            username="role-target-forge", password=_TEST_PW_2ED9ACA4
         )
         profile = StaffProfile.objects.create(
             user=target_user,
@@ -352,7 +380,7 @@ class AdminHardeningTests(TestCase):
     def setUp(self):
         from django.contrib import admin as django_admin
         self.admin_site = django_admin.site
-        self.root = User.objects.create_superuser("rootv2", password="root-pass123456")
+        self.root = User.objects.create_superuser("rootv2", password=_TEST_PW_9EF8D522)
 
     def test_hidden_module_admin_unregistered(self):
         """餐饮/停车不注册 Admin：直接 URL 404（SCOPE-02）"""
@@ -364,9 +392,15 @@ class AdminHardeningTests(TestCase):
 
     def test_business_records_cannot_be_physically_deleted(self):
         """业务记录禁止 Admin 物理删除（评审 P0-2-3）"""
-        from hotelapp.admin import (AccommodationAdmin, ClientAdmin, RoomAdmin,
-                                    StaffAdmin, FinanceRecordAdmin, NightAuditAdmin)
-        from hotelapp.models import Accommodation, Client, Room, Staff, FinanceRecord, NightAudit
+        from hotelapp.admin import (
+            AccommodationAdmin,
+            ClientAdmin,
+            FinanceRecordAdmin,
+            NightAuditAdmin,
+            RoomAdmin,
+            StaffAdmin,
+        )
+        from hotelapp.models import Accommodation, Client, FinanceRecord, NightAudit, Room, Staff
         request = None
         for admin_cls, model in [(AccommodationAdmin, Accommodation), (ClientAdmin, Client),
                                  (RoomAdmin, Room), (StaffAdmin, Staff),
@@ -566,9 +600,9 @@ class DefaultPropertyOnlyTests(TestCase):
 
     def test_membership_on_other_property_denied(self):
         from apps.core.models import Property
-        from apps.identity.models import StaffProfile, PropertyStaffMembership
+        from apps.identity.models import PropertyStaffMembership, StaffProfile
         other = Property.objects.create(code="OTHER", name="别店")
-        user = User.objects.create_user(username="otherp01", password="otherp01-pass123")
+        user = User.objects.create_user(username="otherp01", password=_TEST_PW_015A6F74)
         profile = StaffProfile.objects.create(
             user=user, full_name="外店员工", employment_status="ACTIVE")
         PropertyStaffMembership.objects.create(
@@ -606,12 +640,12 @@ class EmployeeLifecycleServiceTests(TestCase):
         profile, membership, user = self.svc.create_employee(
             property_obj=Property.objects.get(code="DEFAULT"),
             full_name="全链路员工", department_code="FO",
-            account_username="emp2002", account_password="emp2002-pass",
+            account_username="emp2002", account_password=_TEST_PW_1377F1E4,
             role_groups=[Group.objects.get(name="前台")])
         self.assertIsNotNone(user)
         self.assertFalse(user.groups.exists())
         self.assertTrue(AuthorizationService.has_permission(user, Property.objects.get(code="DEFAULT"), "hotelapp.view_client"))
-        self.assertTrue(self.client.login(username="emp2002", password="emp2002-pass"))
+        self.assertTrue(self.client.login(username="emp2002", password=_TEST_PW_1377F1E4))
 
     def test_duplicate_employee_no_rejected(self):
         """STAFF-06（WB-100 服务端统一编号后口径）：登录账号唯一，重复建档拒绝。
@@ -622,27 +656,28 @@ class EmployeeLifecycleServiceTests(TestCase):
         self.svc.create_employee(property_obj=Property.objects.get(code="DEFAULT"),
                                  full_name="员工甲", department_code="FO",
                                  account_username="emp_dup_2003",
-                                 account_password="emp2003-pass")
+                                 account_password=_TEST_PW_F48FF9E8)
         with self.assertRaises(Exception):
             self.svc.create_employee(property_obj=Property.objects.get(code="DEFAULT"),
                                      full_name="员工乙", department_code="FO",
                                      account_username="emp_dup_2003",
-                                     account_password="emp2003-pass2")
+                                     account_password=_TEST_PW_29FDD5EB)
 
     def test_multi_role_union_and_expiry(self):
         """STAFF-07：多角色权限并集；过期临时授权自动失效"""
         from datetime import timedelta
+
         from django.utils import timezone
         profile, membership, user = self.svc.create_employee(
             property_obj=Property.objects.get(code="DEFAULT"),
             full_name="兼岗员工", department_code="FO",
-            account_username="emp2004", account_password="emp2004-pass",
+            account_username="emp2004", account_password=_TEST_PW_43B71A3A,
             role_groups=[Group.objects.get(name="前台"),
                          Group.objects.get(name="值班经理")])
         self.assertTrue(AuthorizationService.has_permission(user, Property.objects.get(code="DEFAULT"), "hotelapp.view_client"))
         self.assertTrue(AuthorizationService.has_permission(user, Property.objects.get(code="DEFAULT"), "hotelapp.night_audit_execute"))
         # 已过期的临时授权：组镜像同步后立即失权
-        from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
+        from apps.identity.models import StaffRoleAssignment
         temp = StaffRoleAssignment.objects.create(
             membership=membership, group=Group.objects.get(name="客房服务员"),
             starts_at=timezone.now() - timedelta(days=2),
@@ -660,7 +695,7 @@ class EmployeeLifecycleServiceTests(TestCase):
         profile, membership, user = self.svc.create_employee(
             property_obj=Property.objects.get(code="DEFAULT"),
             full_name="调岗员工", department_code="FO",
-            account_username="emp2005", account_password="emp2005-pass",
+            account_username="emp2005", account_password=_TEST_PW_9FA9F259,
             role_groups=[Group.objects.get(name="前台")])
         front_assignment = StaffRoleAssignment.objects.get(
             membership=membership, group__name="前台")
@@ -680,7 +715,7 @@ class EmployeeLifecycleServiceTests(TestCase):
         profile, membership, user = self.svc.create_employee(
             property_obj=Property.objects.get(code="DEFAULT"),
             full_name="离职员工", department_code="FO",
-            account_username="emp2006", account_password="emp2006-pass",
+            account_username="emp2006", account_password=_TEST_PW_E9355308,
             role_groups=[Group.objects.get(name="前台")])
         self.svc.set_employment_status(profile, property_obj=Property.objects.get(code="DEFAULT"),
                                        status="TERMINATED",
@@ -688,9 +723,9 @@ class EmployeeLifecycleServiceTests(TestCase):
         user.refresh_from_db()
         self.assertFalse(user.is_active)
         self.assertTrue(self.client.login(username="emp2006",
-                                          password="emp2006-pass") is False
+                                          password=_TEST_PW_E9355308) is False
                         or True)  # 停用账号认证失败
-        self.assertFalse(self.client.login(username="emp2006", password="emp2006-pass"))
+        self.assertFalse(self.client.login(username="emp2006", password=_TEST_PW_E9355308))
         profile.refresh_from_db()
         self.assertEqual(profile.employment_status, "TERMINATED")
         now = timezone.now()
@@ -795,7 +830,7 @@ class ForcedPasswordChangeTests(TestCase):
         self.assertIsNone(user)
         root = User.objects.create_superuser("rootd07", "root-pass123456")
         account = EmployeeLifecycleService.provision_account(
-            profile, username="d07acc", password="d07acc-pass", granted_by=root)
+            profile, username="d07acc", password=_TEST_PW_E6132E84, granted_by=root)
         self.assertFalse(account.is_staff, "D-04")
         profile.refresh_from_db()
         self.assertTrue(profile.must_change_password, "开通账号后必须强制改密")
@@ -828,7 +863,7 @@ class ForcedPasswordChangeTests(TestCase):
         root = User.objects.create_superuser("rootd07b", "root-pass123456")
         EmployeeLifecycleService.reset_password(
             profile, property_obj=Property.objects.get(code="DEFAULT"),
-            new_password="resetted-pass", reset_by=root)
+            new_password=_TEST_PW_330979CC, reset_by=root)
         profile.refresh_from_db()
         self.assertTrue(profile.must_change_password)
         from apps.core.models import AuditEvent
@@ -949,8 +984,8 @@ class V11P0ModelTests(TestCase):
     def setUp(self):
         from apps.core.models import Property
         from apps.guests.models import Guest
-        from apps.reservations.models import Reservation, ReservationRoom, Stay
         from apps.inventory.models import Room, RoomType
+        from apps.reservations.models import Reservation, ReservationRoom, Stay
         self.prop, _ = Property.objects.get_or_create(
             code="DEFAULT", defaults={"name": "测试酒店"})
         self.guest = Guest.objects.create(
@@ -991,8 +1026,8 @@ class V11P0ModelTests(TestCase):
 
     # ---------- M-02 ----------
     def test_guest_document_encrypt_and_reveal(self):
-        from apps.guests.services import register_document, reveal_document
         from apps.core.models import AuditEvent
+        from apps.guests.services import register_document, reveal_document
         doc = register_document(
             guest=self.guest, doc_type="ID_CARD", doc_no="110101199001010017")
         self.assertNotIn("110101199001010017", doc.doc_no_ciphertext,
@@ -1024,7 +1059,7 @@ class V11P0ModelTests(TestCase):
 
     # ---------- M-03 ----------
     def test_guest_phone_primary_unique_and_shared_flag(self):
-        from apps.guests.models import GuestPhone, Guest
+        from apps.guests.models import Guest, GuestPhone
         GuestPhone.objects.create(guest=self.guest, phone="13900001111",
                                   phone_normalized="13900001111", is_primary=True)
         with self.assertRaises(Exception):
@@ -1039,7 +1074,7 @@ class V11P0ModelTests(TestCase):
 
     # ---------- M-16 ----------
     def test_guest_membership_unique_active(self):
-        from apps.guests.models import GuestMembership, Guest
+        from apps.guests.models import Guest, GuestMembership
         GuestMembership.objects.create(
             property=self.prop, guest=self.guest, member_no="M-P0-001",
             status=GuestMembership.Status.ACTIVE)
@@ -1119,7 +1154,7 @@ class SuperuserPolicyTests(TestCase):
 
     def setUp(self):
         self.admin = User.objects.create_superuser(
-            "admin_policy", password="admin-pass123456")
+            "admin_policy", password=_TEST_PW_0F916B80)
 
     def test_superuser_blocked_from_pms_pages(self):
         """superuser 无任职 → PMS 业务页面 403（与 AuthorizationService 一致）"""
@@ -1300,11 +1335,12 @@ class ClassifyUsersCommandTests(TestCase):
     """AUTH-22：账号盘点只读，且只把当前有效任职/授权识别为在职员工。"""
 
     def test_classify_requires_current_membership_and_assignment(self):
-        from django.core.management import call_command
         import json
         from io import StringIO
 
-        user = User.objects.create_user(username="inventory_staff", password="unused-pass-123")
+        from django.core.management import call_command
+
+        user = User.objects.create_user(username="inventory_staff", password=_TEST_PW_491BAD38)
         profile = StaffProfile.objects.create(
             user=user, full_name="盘点员工",
             employment_status=StaffProfile.EmploymentStatus.ACTIVE,
@@ -1336,11 +1372,12 @@ class ClassifyUsersCommandTests(TestCase):
         )
 
     def test_expired_assignment_does_not_classify_as_staff_linked(self):
-        from django.core.management import call_command
         import json
         from io import StringIO
 
-        user = User.objects.create_user(username="expired_staff", password="unused-pass-123")
+        from django.core.management import call_command
+
+        user = User.objects.create_user(username="expired_staff", password=_TEST_PW_491BAD38)
         profile = StaffProfile.objects.create(
             user=user, full_name="过期授权员工",
             employment_status=StaffProfile.EmploymentStatus.ACTIVE,
@@ -1366,10 +1403,11 @@ class ClassifyUsersCommandTests(TestCase):
         self.assertEqual(user_row["category"], "PROFILE_ONLY")
 
     def test_empty_csv_report_has_stable_headers(self):
-        from django.core.management import call_command
         import tempfile
-        from pathlib import Path
         from io import StringIO
+        from pathlib import Path
+
+        from django.core.management import call_command
 
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / "inventory.csv")
@@ -1384,10 +1422,11 @@ class ReconcileTestUsersCommandTests(TestCase):
     """F-02：只在隔离开发/测试库执行可逆账号收敛，不物理删除历史。"""
 
     def test_default_preview_does_not_change_users_or_groups(self):
-        from django.core.management import call_command
         from io import StringIO
 
-        user = User.objects.create_user(username="orphan_preview", password="unused-pass-123")
+        from django.core.management import call_command
+
+        user = User.objects.create_user(username="orphan_preview", password=_TEST_PW_491BAD38)
         group = Group.objects.create(name="legacy-preview-group")
         user.groups.add(group)
         call_command("reconcile_test_users", stdout=StringIO())
@@ -1396,14 +1435,15 @@ class ReconcileTestUsersCommandTests(TestCase):
         self.assertTrue(user.groups.filter(pk=group.pk).exists())
 
     def test_execute_requires_database_confirmation_and_nonempty_backup(self):
-        from django.core.management import call_command, CommandError
+        import tempfile
+        from io import StringIO
+        from pathlib import Path
+
+        from django.core.management import CommandError, call_command
         from django.db import connection
         from django.test import override_settings
-        import tempfile
-        from pathlib import Path
-        from io import StringIO
 
-        user = User.objects.create_user(username="orphan_execute", password="unused-pass-123")
+        user = User.objects.create_user(username="orphan_execute", password=_TEST_PW_491BAD38)
         group = Group.objects.create(name="legacy-execute-group")
         user.groups.add(group)
         with tempfile.TemporaryDirectory() as directory:
@@ -1427,10 +1467,11 @@ class ReconcileTestUsersCommandTests(TestCase):
         self.assertTrue(user.groups.filter(pk=group.pk).exists())
 
     def test_staff_profile_is_preserved_and_account_is_not_disabled(self):
-        from django.core.management import call_command
         from io import StringIO
 
-        user = User.objects.create_user(username="linked_staff", password="unused-pass-123")
+        from django.core.management import call_command
+
+        user = User.objects.create_user(username="linked_staff", password=_TEST_PW_491BAD38)
         StaffProfile.objects.create(
             user=user, full_name="保留员工",
             employment_status=StaffProfile.EmploymentStatus.ACTIVE,
@@ -1445,10 +1486,11 @@ class ReconcileTestUsersCommandTests(TestCase):
         self.assertTrue(StaffProfile.objects.filter(user=user).exists())
 
     def test_only_effectively_assigned_staff_has_direct_groups_cleared(self):
-        from django.core.management import call_command
         from io import StringIO
 
-        user = User.objects.create_user(username="assigned_staff", password="unused-pass-123")
+        from django.core.management import call_command
+
+        user = User.objects.create_user(username="assigned_staff", password=_TEST_PW_491BAD38)
         profile = StaffProfile.objects.create(
             user=user, full_name="有效任职员工",
             employment_status=StaffProfile.EmploymentStatus.ACTIVE,
@@ -1468,6 +1510,7 @@ class ReconcileTestUsersCommandTests(TestCase):
         user.groups.add(legacy)
         import tempfile
         from pathlib import Path
+
         from django.db import connection
         from django.test import override_settings
         with tempfile.TemporaryDirectory() as directory:
@@ -1491,10 +1534,11 @@ class SeedRoleTestAccountsCommandTests(TestCase):
     """九角色种子命令必须走正式身份链，密码仅通过隐藏交互输入。"""
 
     def test_production_environment_is_rejected_before_password_prompt(self):
-        from django.core.management import call_command, CommandError
-        from django.test import override_settings
-        from unittest.mock import patch
         from io import StringIO
+        from unittest.mock import patch
+
+        from django.core.management import CommandError, call_command
+        from django.test import override_settings
 
         with override_settings(DJANGO_ENV="prod", DEBUG=False):
             with patch("getpass.getpass", side_effect=AssertionError("不应提示输入密码")):
@@ -1502,18 +1546,19 @@ class SeedRoleTestAccountsCommandTests(TestCase):
                     call_command("seed_role_test_accounts", stdout=StringIO())
 
     def test_existing_platform_admin_test_username_is_not_demoted(self):
-        from django.core.management import call_command, CommandError
-        from django.test import override_settings
-        from unittest.mock import patch
         from io import StringIO
+        from unittest.mock import patch
+
+        from django.core.management import CommandError, call_command
+        from django.test import override_settings
 
         Property.objects.create(code="ROLEADMIN", name="管理员保护测试物业")
         Group.objects.get_or_create(name="前台")
         admin_user = User.objects.create_superuser(
             username="test_front", email="admin@example.invalid",
-            password="Existing-Admin-Pass-123!"
+            password=_TEST_PW_03F943F8
         )
-        password = "Cedar!Orbit#N7vQ-4mZp"
+        password = _TEST_PW_BE89F138
         with override_settings(DJANGO_ENV="test"):
             with patch("getpass.getpass", side_effect=[password, password]):
                 with self.assertRaises(CommandError):
@@ -1523,10 +1568,11 @@ class SeedRoleTestAccountsCommandTests(TestCase):
         self.assertTrue(admin_user.is_staff)
 
     def test_creates_nine_independent_accounts_with_assignment_authority(self):
+        from io import StringIO
+        from unittest.mock import patch
+
         from django.core.management import call_command
         from django.test import override_settings
-        from unittest.mock import patch
-        from io import StringIO
 
         roles = [
             ("前台", "test_front"),
@@ -1545,7 +1591,7 @@ class SeedRoleTestAccountsCommandTests(TestCase):
         role_groups = {role: Group.objects.get_or_create(name=role)[0] for role, _username in roles}
         old_group = Group.objects.create(name="旧测试岗位")
         existing_user = User.objects.create_user(
-            username="test_front", password="old-passphrase-123"
+            username="test_front", password=_TEST_PW_70A5813B
         )
         existing_profile = StaffProfile.objects.create(
             user=existing_user, full_name="旧前台测试账号",
@@ -1560,7 +1606,7 @@ class SeedRoleTestAccountsCommandTests(TestCase):
             starts_at=timezone.now() - timedelta(minutes=5),
         )
 
-        password = "Cedar!Orbit#N7vQ-4mZp"
+        password = _TEST_PW_BE89F138
         output = StringIO()
         with override_settings(DJANGO_ENV="test"):
             with patch("getpass.getpass", side_effect=[password, password, password, password]):
@@ -1592,9 +1638,10 @@ class SeedHotelDataEnvironmentGuardTests(TestCase):
     """业务演示数据种子在生产环境必须在任何写入前拒绝。"""
 
     def test_production_environment_is_rejected_without_creating_property(self):
-        from django.core.management import call_command, CommandError
-        from django.test import override_settings
         from io import StringIO
+
+        from django.core.management import CommandError, call_command
+        from django.test import override_settings
 
         before = Property.objects.count()
         with override_settings(DJANGO_ENV="prod", DEBUG=False):

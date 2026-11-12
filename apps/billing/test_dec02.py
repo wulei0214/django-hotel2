@@ -46,6 +46,13 @@ from apps.reservations.front_desk_services import (
 )
 from apps.reservations.models import Reservation
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+_TEST_PW_4756BB53 = get_random_string(24)
+
+
+
 
 def _money(v):
     return Decimal(str(v))
@@ -79,7 +86,7 @@ class Dec02TestBase(TestCase):
         cls.users = {}
         for name in ("dec02_front", "dec02_duty", "dec02_finance"):
             cls.users[name.split("_")[1]] = User.objects.create_user(
-                username=name, password="xdec02test")
+                username=name, password=_TEST_PW_4756BB53)
         cls.front = cls.users["front"]
         cls.duty = cls.users["duty"]
         cls.finance = cls.users["finance"]

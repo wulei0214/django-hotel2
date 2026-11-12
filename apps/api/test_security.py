@@ -11,13 +11,20 @@ from apps.guests.models import Guest, GuestDocument, GuestPhone
 from apps.guests.services import encrypt_doc_no
 from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+_TEST_PW_510C52C1 = get_random_string(24)
+
+
+
 
 class PropertyScopeAndPiiSecurityTests(TestCase):
     def setUp(self):
         self.property = Property.objects.get(code="DEFAULT")
         self.other_property = Property.objects.create(code="OTHER", name="其他物业")
         self.user = User.objects.create_user(
-            username="pms-security-user", password="TestPass-2026!"
+            username="pms-security-user", password=_TEST_PW_510C52C1
         )
         self.profile = StaffProfile.objects.create(
             user=self.user, full_name="安全测试前台",

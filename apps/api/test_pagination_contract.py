@@ -95,6 +95,13 @@ from apps.guests.models import Guest
 from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from apps.reservations.models import Reservation
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+_TEST_PW_510C52C1 = get_random_string(24)
+
+
+
 ENVELOPE_ENDPOINTS = (
     # (url, 说明) — api_contract {data, meta.pagination} 封套族
     "/api/v1/staff",
@@ -125,7 +132,7 @@ class PaginationContractTestBase(TestCase):
     def setUp(self):
         self.property = Property.objects.get(code="DEFAULT")
         self.user = User.objects.create_user(
-            username="p0-contract-user", password="TestPass-2026!")
+            username="p0-contract-user", password=_TEST_PW_510C52C1)
         self.profile = StaffProfile.objects.create(
             user=self.user, full_name="契约测试员工",
             employment_status=StaffProfile.EmploymentStatus.ACTIVE,

@@ -12,6 +12,15 @@ from apps.identity.models import (
 )
 
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+_TEST_PW_5F396C89 = get_random_string(24)
+_TEST_PW_E8392925 = get_random_string(24)
+_TEST_PW_E910C033 = get_random_string(24)
+_TEST_PW_B071E00A = get_random_string(24)
+
+
 class BreakGlassServiceTests(TestCase):
     """Q-06：单一经理紧急重开、限时执行、独立事后复核。"""
 
@@ -24,7 +33,7 @@ class BreakGlassServiceTests(TestCase):
             status=BusinessDate.Status.CLOSED,
         )
         self.actor = User.objects.create_user(
-            username="breakglass-actor", password="BreakGlass@123"
+            username="breakglass-actor", password=_TEST_PW_5F396C89
         )
         self.actor_group = Group.objects.get(name="值班经理")
         reopen_permission = Permission.objects.get(
@@ -60,7 +69,7 @@ class BreakGlassServiceTests(TestCase):
             property_obj=self.property,
             business_date_id=self.business_date.pk,
             requested_by=self.actor,
-            password="BreakGlass@123",
+            password=_TEST_PW_5F396C89,
             reason="夜审发现紧急账务差错，需要修正营业日",
         )
 
@@ -77,7 +86,7 @@ class BreakGlassServiceTests(TestCase):
 
     def test_break_glass_is_denied_when_another_manager_can_approve(self):
         second_manager = User.objects.create_user(
-            username="breakglass-second-manager", password="Manager@123"
+            username="breakglass-second-manager", password=_TEST_PW_E8392925
         )
         self._add_staff(second_manager, "BG-002", self.actor_group)
         with self.assertRaises(NightAuditError):
@@ -91,7 +100,7 @@ class BreakGlassServiceTests(TestCase):
                          timedelta(minutes=10))
 
         wrong_actor = User.objects.create_user(
-            username="breakglass-wrong-actor", password="Wrong@123"
+            username="breakglass-wrong-actor", password=_TEST_PW_E910C033
         )
         with self.assertRaises(NightAuditError):
             NightAuditService.execute_break_glass(
@@ -146,7 +155,7 @@ class BreakGlassServiceTests(TestCase):
         )
 
         reviewer = User.objects.create_user(
-            username="breakglass-reviewer", password="Reviewer@123"
+            username="breakglass-reviewer", password=_TEST_PW_B071E00A
         )
         reviewer_group, _ = Group.objects.get_or_create(name="店长-事后复核")
         review_permission = Permission.objects.get(

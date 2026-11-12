@@ -7,22 +7,32 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.core.models import Property
+
 from .authorization import AuthorizationService
-from .services import EmployeeLifecycleError, EmployeeLifecycleService
 from .models import (
     EmployeeNumberCounter,
     PropertyStaffMembership,
     StaffProfile,
     StaffRoleAssignment,
 )
+from .services import EmployeeLifecycleError, EmployeeLifecycleService
+
+_TEST_PW_E024079B = get_random_string(24)
+_TEST_PW_2432CB73 = get_random_string(24)
+_TEST_PW_91B03909 = get_random_string(24)
+_TEST_PW_E5265C4E = get_random_string(24)
 
 
 class AuthorizationServiceTests(TestCase):
     def setUp(self):
         self.property_a = Property.objects.create(code="TEST-A", name="测试酒店 A")
         self.property_b = Property.objects.create(code="TEST-B", name="测试酒店 B")
-        self.user = User.objects.create_user(username="front-test", password="test-pass-123")
+        self.user = User.objects.create_user(username="front-test", password=_TEST_PW_E024079B)
         self.profile = StaffProfile.objects.create(full_name="测试前台", user=self.user)
         self.membership_a = PropertyStaffMembership.objects.create(
             staff_profile=self.profile,
@@ -95,10 +105,10 @@ class EmployeeLifecycleServiceTests(TestCase):
             code="DEFAULT", defaults={"name": "默认测试酒店"}
         )
         self.manager = User.objects.create_user(
-            username="lifecycle-manager", password="test-pass-123"
+            username="lifecycle-manager", password=_TEST_PW_E024079B
         )
         self.employee = User.objects.create_user(
-            username="lifecycle-employee", password="test-pass-123"
+            username="lifecycle-employee", password=_TEST_PW_E024079B
         )
         self.profile = StaffProfile.objects.create(
             user=self.employee, full_name="同名员工", phone="13800001111",
@@ -238,6 +248,7 @@ class EmployeeNumberCounterTests(TestCase):
         """
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
+
         from apps.identity.employee_number import generate_employee_no
         with CaptureQueriesContext(connection) as ctx:
             with transaction.atomic():
@@ -263,13 +274,13 @@ class EmployeeNumberCounterTests(TestCase):
         """③计数器与 Membership 同事务回滚：建档失败后编号不消耗。"""
         from apps.identity.employee_number import generate_employee_no
         User.objects.create_user(username="rollback-dup-user",
-                                 password="Xk9#mTq2vLw8")
+                                 password=_TEST_PW_2432CB73)
         with self.assertRaises(EmployeeLifecycleError):
             # 建档在生成工号之后才因登录账号占用失败 → 编号必须随事务回滚
             EmployeeLifecycleService.create_employee(
                 property_obj=self.prop, full_name="回滚员工",
                 department_code="FO", account_username="rollback-dup-user",
-                account_password="Xk9#mTq2vLw8")
+                account_password=_TEST_PW_2432CB73)
         self.assertFalse(
             EmployeeNumberCounter.objects.filter(
                 property=self.prop, department_code="FO").exists(),
@@ -350,7 +361,7 @@ class IdentityAdminReadOnlyTests(TestCase):
         root = User.objects.create_superuser(
             username="identity-admin-root",
             email="identity-admin@example.com",
-            password="test-pass-123",
+            password=_TEST_PW_E024079B,
         )
         profile = StaffProfile.objects.create(
             full_name="只读 Admin 员工",
@@ -488,7 +499,7 @@ class NineRoleCrossModulePermissionRegressionTests(TestCase):
 
         for index, role_name in enumerate(self.ROLE_NAMES, start=1):
             user = User.objects.create_user(
-                username=f"rbac-nine-{index}", password="test-pass-123"
+                username=f"rbac-nine-{index}", password=_TEST_PW_E024079B
             )
             profile = StaffProfile.objects.create(
                 full_name=f"{role_name}回归账号",
@@ -520,16 +531,17 @@ class SplitAuthenticationSessionTests(TestCase):
 
     def setUp(self):
         from django.contrib.auth.models import Permission
+
         from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 
         self.property_obj = Property.objects.get(code="DEFAULT")
         self.pms_user = User.objects.create_user(
-            username="split-pms-user", password="Pms-pass-2026!"
+            username="split-pms-user", password=_TEST_PW_91B03909
         )
         self.admin_user = User.objects.create_superuser(
             username="split-admin-user",
             email="split-admin@example.com",
-            password="Admin-pass-2026!",
+            password=_TEST_PW_E5265C4E,
         )
         profile = StaffProfile.objects.create(
             user=self.pms_user,
@@ -558,14 +570,14 @@ class SplitAuthenticationSessionTests(TestCase):
     def _login_both_entry_points(self, client):
         pms_response = client.post("/login/", {
             "username": "split-pms-user",
-            "password": "Pms-pass-2026!",
+            "password": _TEST_PW_91B03909,
         })
         self.assertEqual(pms_response.status_code, 302)
         pms_session_key = client.cookies["sessionid"].value
 
         admin_response = client.post("/admin/login/", {
             "username": "split-admin-user",
-            "password": "Admin-pass-2026!",
+            "password": _TEST_PW_E5265C4E,
             "next": "/admin/",
         })
         self.assertEqual(admin_response.status_code, 302, admin_response.content)
@@ -609,6 +621,7 @@ class SplitAuthenticationSessionTests(TestCase):
 
     def test_each_entry_point_uses_its_own_session_backed_csrf_secret(self):
         import re
+
         from django.test import Client
 
         client = Client(enforce_csrf_checks=True)
@@ -640,7 +653,7 @@ class SplitAuthenticationSessionTests(TestCase):
             "/admin/login/",
             {
                 "username": "split-admin-user",
-                "password": "Admin-pass-2026!",
+                "password": _TEST_PW_E5265C4E,
                 "next": "/admin/",
                 "csrfmiddlewaretoken": admin_csrf,
             },
@@ -652,7 +665,7 @@ class SplitAuthenticationSessionTests(TestCase):
             "/login/",
             {
                 "username": "split-pms-user",
-                "password": "Pms-pass-2026!",
+                "password": _TEST_PW_91B03909,
                 "csrfmiddlewaretoken": pms_csrf,
             },
         )

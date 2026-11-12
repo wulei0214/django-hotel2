@@ -18,7 +18,12 @@ from django.contrib.auth.models import Group, Permission, User
 from django.test import TestCase
 from django.utils import timezone
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.core.models import AuditEvent, Property
+
 from .models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from .registry import (
     MODULE_ACTIVE,
@@ -38,6 +43,11 @@ from .registry import (
 )
 from .roles import BUSINESS_ROLE_NAMES
 
+_TEST_PW_0F916B80 = get_random_string(24)
+_TEST_PW_1770696C = get_random_string(24)
+
+
+
 _PHASE0_DOCS = ("11-permissions_2026-11-10.md", "12-roles_2026-11-10.md", "20-findings-register_2026-11-10.md")
 
 
@@ -48,7 +58,7 @@ def _phase0_audit_text():
     parts = []
     for name in _PHASE0_DOCS:
         path = os.path.join(root, "docs", "PMS2.0_当前版本", "05_测试审计与缺陷整改", "历史审计", "phase0", name)
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             parts.append(fh.read())
     return "\n".join(parts)
 
@@ -168,7 +178,7 @@ class PlannedModuleGrantGuardTests(TestCase):
 
     def setUp(self):
         self.admin = User.objects.create_superuser(
-            "registry_admin", password="admin-pass123456")
+            "registry_admin", password=_TEST_PW_0F916B80)
         self.client.force_login(self.admin)
         # 矩阵页属平台会话域（platform_sessionid @ /platform/），与 SplitSession §B.1 一致
         self.client.cookies["platform_sessionid"] = self.client.cookies["sessionid"].value
@@ -351,7 +361,7 @@ class ModuleGateRegressionTests(TestCase):
 
     def _make_employed_staff(self, username="registry-gate-user"):
         """DEFAULT 物业在职 + 前台授权的员工（过 staff_required 门）。"""
-        user = User.objects.create_user(username=username, password="gate-pass-123")
+        user = User.objects.create_user(username=username, password=_TEST_PW_1770696C)
         prop, _ = Property.objects.get_or_create(
             code="DEFAULT", defaults={"name": "默认测试酒店"})
         profile = StaffProfile.objects.create(

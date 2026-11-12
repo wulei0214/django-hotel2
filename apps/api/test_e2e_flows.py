@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """PMS2 平台治理 Phase 4 端到端回归测试包（实施方案 §9.3-§9.5）。
 
 三条被测链路（全部走 Django test client 的真实 HTTP 路由级请求，
@@ -32,6 +31,7 @@ from decimal import Decimal
 from django.contrib.auth.models import Group, Permission, User
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
+from django.utils.crypto import get_random_string
 
 from apps.billing.models import (
     ApprovalRecord,
@@ -74,11 +74,14 @@ from apps.reservations.models import (
 NIGHTLY_PRICE = Decimal("300.00")
 NIGHTS = 2
 
+# 测试专用 webhook 密钥：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+E2E_WEBHOOK_SECRET = get_random_string(32)
+
 
 @override_settings(
     DEBUG=True,
     DJANGO_ENV="test",
-    PAYMENT_WEBHOOK_SECRET="e2e-webhook-secret",
+    PAYMENT_WEBHOOK_SECRET=E2E_WEBHOOK_SECRET,
 )
 class E2EFlowTestBase(TestCase):
     """公共基础设施：DEFAULT 物业 + 库存日历 + 员工账号工厂 + HTTP 助手。"""

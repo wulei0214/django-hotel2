@@ -32,6 +32,13 @@ from apps.guests.models import Guest
 from apps.inventory.models import RoomTypeInventory
 from apps.reservations.models import Reservation
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+_TEST_PW_EA5E4F64 = get_random_string(24)
+
+
+
 # 报表 API 端点（§4.5 首期五张只读报表）
 REPORT_ENDPOINTS = (
     "/api/v1/reports/occupancy",
@@ -145,7 +152,7 @@ class ReportPermissionTests(ReportCenterTestBase):
     def test_reports_require_property_membership(self):
         """已登录但无任何物业任职：无物业上下文 → 404（与审计中心同口径）。"""
         outsider = User.objects.create_user(
-            username="report_no_membership", password="No-Membership-2026!")
+            username="report_no_membership", password=_TEST_PW_EA5E4F64)
         self.client.force_login(outsider)
         for url in REPORT_ENDPOINTS:
             response = self.client.get(url)

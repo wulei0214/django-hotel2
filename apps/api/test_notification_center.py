@@ -43,6 +43,14 @@ from apps.inventory.models import Room, RoomType
 from apps.reservations.models import Reservation, ReservationRoom
 from apps.core.services_notifications import refresh_operational_todos
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+_TEST_PW_EA5E4F64 = get_random_string(24)
+_TEST_PW_5A092416 = get_random_string(24)
+
+
+
 
 class NotificationCenterTestBase(E2EFlowTestBase):
     """DEFAULT 物业 + 前台/值班经理/客房服务员三岗位 + 业务工厂。"""
@@ -324,7 +332,7 @@ class NotificationApiTests(NotificationCenterTestBase):
 
     def test_endpoints_require_property_membership(self):
         outsider = User.objects.create_user(
-            username="nt_outsider", password="No-Membership-2026!")
+            username="nt_outsider", password=_TEST_PW_EA5E4F64)
         self._login(outsider)
         for method, url in (("get", "/api/v1/notifications"),
                             ("get", "/api/v1/notifications/unread-count"),
@@ -585,7 +593,7 @@ class NotificationCenterPageTests(NotificationCenterTestBase):
         self.assertIn("/login/", anonymous.url)
 
         outsider = User.objects.create_user(
-            username="nt_page_outsider", password="No-Membership-2026!")
+            username="nt_page_outsider", password=_TEST_PW_EA5E4F64)
         self.client.force_login(outsider)
         forbidden = self.client.get("/manage/notifications/")
         self.assertEqual(forbidden.status_code, 403)
@@ -623,7 +631,7 @@ class NotificationCenterPageTests(NotificationCenterTestBase):
         """无任何岗位授权的在职员工：入口可见（pms_is_staff）、定向通知可达，
         岗位广播不可见（§4.6：按当前有效任职动态授权）。"""
         user = User.objects.create_user(
-            username="nt_norole", password="Nt-NoRole-2026!")
+            username="nt_norole", password=_TEST_PW_5A092416)
         profile = StaffProfile.objects.create(
             user=user, full_name="无岗员工",
             employment_status=StaffProfile.EmploymentStatus.ACTIVE)

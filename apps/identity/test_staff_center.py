@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """员工中心写操作迁移测试（治理方案 §10.1）。
 
 覆盖：
@@ -20,11 +19,25 @@ from django.contrib.auth.models import Group, User
 from django.test import Client, TestCase
 from django.utils import timezone
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.core.models import AuditEvent, Property
 
 from .employee_number import rehire_employee
 from .models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from .services import EmployeeLifecycleService
+
+_TEST_PW_6F616A6D = get_random_string(24)
+_TEST_PW_EF6A7305 = get_random_string(24)
+_PW_TARGET_ORIGINAL = get_random_string(24)
+_PW_BRAND_NEW = get_random_string(24)
+_PW_UNRELATED = get_random_string(24)
+_PW_CROSS_PROP = get_random_string(24)
+_PW_STRONG_REHIRE = get_random_string(24)
+
+
 
 DEFAULT_PROPERTY = None
 
@@ -57,7 +70,7 @@ def _make_target_employee(label, with_account=True):
     kwargs = {}
     if with_account:
         kwargs = {"account_username": f"emp_{label.replace('-', '')}",
-                  "account_password": "target-original-pass"}
+                  "account_password": _PW_TARGET_ORIGINAL}
     return EmployeeLifecycleService.create_employee(
         property_obj=Property.objects.get(code="DEFAULT"),
         full_name=f"员工{label}", department_code="FO",
@@ -331,16 +344,16 @@ class StaffCenterWriteTests(TestCase):
     def test_reset_password_must_change_and_old_password_invalid(self):
         """f. 密码重置：must_change_password=True + 旧密码失效（旧会话失效语义）+ 审计。"""
         profile, _, user = _make_target_employee("F-8811")
-        self.assertTrue(user.check_password("target-original-pass"))
+        self.assertTrue(user.check_password(_PW_TARGET_ORIGINAL))
         response = self.client.post(f"/manage/staff/actions/{profile.pk}/reset_password/", {
-            "password": "brand-new-pass9"})
+            "password": _PW_BRAND_NEW})
         self.assertEqual(response.status_code, 200)
         profile.refresh_from_db()
         user.refresh_from_db()
         self.assertTrue(profile.must_change_password,
                         "迁移等价性：reset 后必须强制改密（旧会话失效语义）")
         self.assertFalse(user.check_password("target-original-pass"))
-        self.assertTrue(user.check_password("brand-new-pass9"))
+        self.assertTrue(user.check_password(_PW_BRAND_NEW))
         self.assertTrue(AuditEvent.objects.filter(
             action="identity.password_reset", entity_type="StaffProfile",
             entity_id=str(profile.pk), actor=self.owner).exists())
@@ -349,7 +362,7 @@ class StaffCenterWriteTests(TestCase):
         """f-校验：未开通账号的员工 → 400 中文提示。"""
         profile, _, _ = _make_target_employee("F-8812", with_account=False)
         response = self.client.post(f"/manage/staff/actions/{profile.pk}/reset_password/", {
-            "password": "whatever-pass1"})
+            "password": _PW_UNRELATED})
         self.assertEqual(response.status_code, 400)
         self.assertIn("尚未开通登录账号", response.json()["error"]["message"])
 
@@ -462,7 +475,7 @@ class StaffCenterSecurityTests(TestCase):
             employee_no="OTHER-001", status="ACTIVE")
         response = self.client.post(
             f"/manage/staff/actions/{other_profile.pk}/reset_password/", {
-                "password": "cross-prop-pass1"})
+                "password": _PW_CROSS_PROP})
         self.assertEqual(response.status_code, 404,
                          "当前物业之外的员工档案不得通过员工中心重置")
 
@@ -475,7 +488,7 @@ class TerminatedEmployeeResetGuardTests(TestCase):
         self.manager = _make_user("term-mgr", "店长")
 
     def _make_terminated(self, username):
-        user = User.objects.create_user(username=username, password="OldPass-2026!")
+        user = User.objects.create_user(username=username, password=_TEST_PW_6F616A6D)
         user.is_active = False
         user.save(update_fields=("is_active",))
         profile = StaffProfile.objects.create(
@@ -486,34 +499,32 @@ class TerminatedEmployeeResetGuardTests(TestCase):
         return profile, user
 
     def test_service_rejects_terminated_employee(self):
-        from apps.identity.services import (
-            EmployeeLifecycleError, EmployeeLifecycleService)
+        from apps.identity.services import EmployeeLifecycleError, EmployeeLifecycleService
         profile, user = self._make_terminated("term-reset-1")
         with self.assertRaises(EmployeeLifecycleError):
             EmployeeLifecycleService.reset_password(
                 profile, property_obj=self.prop,
-                new_password="Str0ng!New2026", reset_by=self.manager)
+                new_password=_TEST_PW_EF6A7305, reset_by=self.manager)
         user.refresh_from_db()
-        self.assertTrue(user.check_password("OldPass-2026!"),
+        self.assertTrue(user.check_password(_TEST_PW_6F616A6D),
                         "被拒绝的重置不得改变旧密码")
 
     def test_service_rejects_deactivated_account(self):
-        from apps.identity.services import (
-            EmployeeLifecycleError, EmployeeLifecycleService)
+        from apps.identity.services import EmployeeLifecycleError, EmployeeLifecycleService
         profile, user = self._make_terminated("term-reset-2")
         profile.employment_status = "ACTIVE"
         profile.save(update_fields=("employment_status",))
         with self.assertRaises(EmployeeLifecycleError):
             EmployeeLifecycleService.reset_password(
                 profile, property_obj=self.prop,
-                new_password="Str0ng!New2026", reset_by=self.manager)
+                new_password=_TEST_PW_EF6A7305, reset_by=self.manager)
 
     def test_view_returns_400_for_terminated_employee(self):
         self.client.force_login(self.manager)
         profile, user = self._make_terminated("term-reset-3")
         response = self.client.post(
             "/manage/staff/actions/%d/reset_password/" % profile.pk,
-            {"password": "Str0ng!New2026"})
+            {"password": _TEST_PW_EF6A7305})
         self.assertEqual(response.status_code, 400)
         self.assertIn("已离职", response.json()["error"]["message"])
 
@@ -526,7 +537,7 @@ class RehireEmployeeLifecycleTests(TestCase):
     PropertyContextMiddleware 视角可解析出 DEFAULT 有效任职。
     """
 
-    STRONG_PASSWORD = "Vb3#nHt8Ks!2"
+    STRONG_PASSWORD = _PW_STRONG_REHIRE
 
     @classmethod
     def setUpTestData(cls):

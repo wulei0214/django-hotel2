@@ -1,5 +1,4 @@
-﻿# -*- coding: utf-8 -*-
-"""白盒回归：收银班次守卫 + FIN-P0 账务对账扫描（WB-092/WB-095/WB-096）。
+﻿"""白盒回归：收银班次守卫 + FIN-P0 账务对账扫描（WB-092/WB-095/WB-096）。
 
 覆盖：
   * WB-092/WB-096 scan_folio_reconciliation 扩展核对：
@@ -594,3 +593,125 @@ class ReconciliationStrictMatchTests(CashierReconcileTestBase):
         diffs = [d for d in self._scan_diffs(folio)
                  if d.entity_type in ("Payment", "Refund")]
         self.assertEqual(len(diffs), 0)
+
+
+class ReconciliationReverseEntryScanTests(CashierReconcileTestBase):
+    """WB-092 反向扫描：每张 PAYMENT/DEPOSIT 凭证必须能追回到白名单
+    状态内的 Payment（ENTRY_NO_PAYMENT），与正向扫描互补——覆盖凭证
+    孤立/伪造、引用命名不合规、渠道类别/状态/金额方向/币种失配方向。
+    """
+
+    def _make_entry(self, folio, entry_type, amount, reference,
+                    currency="CNY"):
+        return LedgerEntry.objects.create(
+            property=self.prop, folio=folio, entry_type=entry_type,
+            amount=_money(amount), currency=currency,
+            business_date=timezone.localdate(), reference=reference)
+
+    def _reverse_diffs(self, folio, entry_id=None):
+        diffs = [
+            d for d in self._scan_diffs(folio)
+            if d.entity_type == "LedgerEntry"
+            and d.diff_type
+            == FolioReconciliationDiff.DiffType.ENTRY_NO_PAYMENT]
+        if entry_id is not None:
+            diffs = [d for d in diffs if d.entity_id == entry_id]
+        return diffs
+
+    def test_payment_entry_without_payment_reported(self):
+        """① PAYMENT 凭证孤立（无任何来源 Payment）→ ENTRY_NO_PAYMENT。"""
+        _, folio = self._make_folio("WBRC-RV-001")
+        entry = self._make_entry(folio, LedgerEntry.EntryType.PAYMENT,
+                                 "-100.00", "payment:WBRC-RV-GHOST-1")
+        diffs = self._reverse_diffs(folio, entry.pk)
+        self.assertEqual(len(diffs), 1)
+        self.assertIn("缺对应 Payment", diffs[0].detail)
+        self.assertIn("provider_ref=WBRC-RV-GHOST-1", diffs[0].detail)
+
+    def test_deposit_entry_without_payment_reported(self):
+        """② DEPOSIT 凭证孤立 → ENTRY_NO_PAYMENT（押金方向）。"""
+        _, folio = self._make_folio("WBRC-RV-002")
+        entry = self._make_entry(folio, LedgerEntry.EntryType.DEPOSIT,
+                                 "-50.00", "deposit:WBRC-RV-GHOST-2")
+        diffs = self._reverse_diffs(folio, entry.pk)
+        self.assertEqual(len(diffs), 1)
+        self.assertIn("deposit:WBRC-RV-GHOST-2", diffs[0].detail)
+        self.assertIn("缺对应 Payment", diffs[0].detail)
+
+    def test_entry_with_out_of_scope_status_reported(self):
+        """③ 凭证对应 Payment 状态 FAILED（不在白名单）→ 报状态失配。"""
+        _, folio = self._make_folio("WBRC-RV-003")
+        self._add_payment(folio, "WBRC-RV-PAY-3", "80.00",
+                          status=Payment.Status.FAILED, with_entry=True)
+        diffs = self._reverse_diffs(folio)
+        self.assertEqual(len(diffs), 1)
+        self.assertIn("不在可核对状态范围", diffs[0].detail)
+        self.assertIn(Payment.Status.FAILED, diffs[0].detail)
+
+    def test_entry_amount_mismatch_with_payment_reported(self):
+        """④ 凭证能追溯到 Payment 但金额方向不符 → ENTRY_NO_PAYMENT。"""
+        _, folio = self._make_folio("WBRC-RV-004")
+        self._add_payment(folio, "WBRC-RV-PAY-4", "100.00", with_entry=False)
+        entry = self._make_entry(folio, LedgerEntry.EntryType.PAYMENT,
+                                 "-90.00", "payment:WBRC-RV-PAY-4")
+        diffs = self._reverse_diffs(folio, entry.pk)
+        self.assertEqual(len(diffs), 1)
+        self.assertIn("与来源 Payment", diffs[0].detail)
+        self.assertIn("金额", diffs[0].detail)
+
+    def test_entry_currency_mismatch_with_payment_reported(self):
+        """⑤ 追溯到 Payment 但币种不符 → ENTRY_NO_PAYMENT。"""
+        _, folio = self._make_folio("WBRC-RV-005")
+        self._add_payment(folio, "WBRC-RV-PAY-5", "70.00", with_entry=False)
+        entry = self._make_entry(folio, LedgerEntry.EntryType.PAYMENT,
+                                 "-70.00", "payment:WBRC-RV-PAY-5",
+                                 currency="USD")
+        diffs = self._reverse_diffs(folio, entry.pk)
+        self.assertEqual(len(diffs), 1)
+        self.assertIn("币种", diffs[0].detail)
+
+    def test_cross_folio_payment_reported(self):
+        """⑥ provider_ref 对应的 Payment 挂在别的账单 → 报归属不一致。"""
+        _, folio = self._make_folio("WBRC-RV-006")
+        other_folio = self._make_folio("WBRC-RV-006B")[1]
+        # 凭证引用全局唯一，跨账单失配形态 = 凭证在本账单、来源 Payment
+        # 挂在别处（无凭证，正向会对其报 PAYMENT_NO_ENTRY）。
+        self._add_payment(other_folio, "WBRC-RV-PAY-6", "120.00",
+                          with_entry=False)
+        entry = self._make_entry(folio, LedgerEntry.EntryType.PAYMENT,
+                                 "-120.00", "payment:WBRC-RV-PAY-6")
+        diffs = self._reverse_diffs(folio, entry.pk)
+        self.assertEqual(len(diffs), 1)
+        self.assertIn("挂在账单 Folio", diffs[0].detail)
+
+    def test_provider_type_mismatch_reported(self):
+        """⑦ payment: 前缀凭证对应押金渠道 Payment → 报渠道类别不符。"""
+        _, folio = self._make_folio("WBRC-RV-007")
+        self._add_payment(folio, "WBRC-RV-PAY-7", "60.00",
+                          provider="frontdesk_deposit", with_entry=False)
+        entry = self._make_entry(folio, LedgerEntry.EntryType.PAYMENT,
+                                 "-60.00", "payment:WBRC-RV-PAY-7")
+        diffs = self._reverse_diffs(folio, entry.pk)
+        self.assertEqual(len(diffs), 1)
+        self.assertIn("渠道类别", diffs[0].detail)
+        self.assertIn("frontdesk_deposit", diffs[0].detail)
+
+    def test_malformed_reference_reported(self):
+        """⑧ 收款类凭证引用不符合命名规范 → 无法追溯，报差异。"""
+        _, folio = self._make_folio("WBRC-RV-008")
+        entry = self._make_entry(folio, LedgerEntry.EntryType.PAYMENT,
+                                 "-30.00", "pos-terminal-abc")
+        diffs = self._reverse_diffs(folio, entry.pk)
+        self.assertEqual(len(diffs), 1)
+        self.assertIn("无法追溯", diffs[0].detail)
+
+    def test_consistent_reverse_pair_not_reported(self):
+        """⑨ 正常配对（收款+押金，引用/金额方向/币种一致）→ 不报。"""
+        _, folio = self._make_folio("WBRC-RV-009")
+        self._add_payment_with_entry(folio, "WBRC-RV-PAY-9", "200.00")
+        # 押金正确形态：frontdesk_deposit Payment + deposit: 前缀凭证。
+        self._add_payment(folio, "WBRC-RV-DP-9", "100.00",
+                          provider="frontdesk_deposit", with_entry=False)
+        self._make_entry(folio, LedgerEntry.EntryType.DEPOSIT, "-100.00",
+                         "deposit:WBRC-RV-DP-9")
+        self.assertEqual(len(self._reverse_diffs(folio)), 0)

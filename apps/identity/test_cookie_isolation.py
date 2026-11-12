@@ -17,10 +17,19 @@ from django.contrib.auth.models import Group
 from django.contrib.sessions.models import Session
 from django.test import Client, TestCase, override_settings
 from django.urls import URLPattern, URLResolver, get_resolver, resolve
+
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
 from django.views.generic import RedirectView
 
 from apps.core.models import AuditEvent
+
 from .test_platform import _pms_staff_user
+
+_TEST_PW_0F916B80 = get_random_string(24)
+
+
 
 User = get_user_model()
 
@@ -106,10 +115,10 @@ class _PlatformLoginMixin:
     def setUp(self):
         super().setUp()
         self.superadmin = User.objects.create_superuser(
-            "ci_admin", password="admin-pass123456")
+            "ci_admin", password=_TEST_PW_0F916B80)
 
     @staticmethod
-    def _admin_login(username="ci_admin", password="admin-pass123456"):
+    def _admin_login(username="ci_admin", password=_TEST_PW_0F916B80):
         client = Client()
         response = client.post("/admin/login/", {
             "username": username, "password": password, "next": "/admin/"})
@@ -165,8 +174,10 @@ class CookieSpecClassificationTests(TestCase):
     def test_spec_table_attributes(self):
         """规格表四行：名称/Path/host-only/HttpOnly/可写与仅清理（§B.1）"""
         from .session_middleware import (
-            legacy_platform_cookie_spec, pms_session_cookie_spec,
-            platform_admin_cookie_spec, platform_portal_cookie_spec,
+            legacy_platform_cookie_spec,
+            platform_admin_cookie_spec,
+            platform_portal_cookie_spec,
+            pms_session_cookie_spec,
         )
         portal = platform_portal_cookie_spec()
         admin = platform_admin_cookie_spec()
@@ -548,7 +559,7 @@ class CsrfIsolationTests(_PlatformLoginMixin, TestCase):
     """CSRF_USE_SESSIONS=True 下 Admin 与平台表单（§7、§11.5）。"""
 
     def _enforced_admin_login(self, username="ci_admin",
-                              password="admin-pass123456"):
+                              password=_TEST_PW_0F916B80):
         """CSRF 强制开启的真实 Admin 登录：GET 取令牌 → POST 登录。"""
         client = Client(enforce_csrf_checks=True)
         page = client.get("/admin/login/")
