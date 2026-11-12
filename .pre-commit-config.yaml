@@ -14,16 +14,18 @@ repos:
       - id: black
         files: ^(apps|hotel)/.+\.py$
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
-    hooks:
-      - id: mypy
-        files: ^(apps|hotel)/.+\.py$
-        additional_dependencies: [django-stubs]
-        args: [--ignore-missing-imports]
-
+  # mypy 触碰文件门禁（本地层，语义与 CI 基线门禁对齐：触碰文件不得引入超出
+  # 基线的错误）。用本地钩子而非 mirrors-mypy 远程钩子：直接使用项目 .venv 的
+  # mypy 1.11.2 与 pyproject [tool.mypy] 配置，与 CI 同版本同配置（此前远程钩子
+  # 的隔离环境与 CI 存在解释器/依赖差异，语义不一致）。脚本对 mypy 缺失/工具
+  # 失败 fail-closed 阻断，并在需要时自动转入 .venv 解释器重执行。
   - repo: local
     hooks:
+      - id: mypy-baseline-touched
+        name: mypy baseline (touched files must not add errors)
+        entry: python scripts/mypy_baseline.py check-files
+        language: system
+        files: ^(apps|hotel)/.+\.py$
       - id: pytest-check
         name: pytest
         entry: pytest -q
