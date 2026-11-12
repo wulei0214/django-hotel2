@@ -180,6 +180,15 @@ def process_mock_payment_callback(*, provider_ref, amount, status,
         raise PaymentConflict("支付金额格式不正确。") from exc
     if status not in {"SUCCESS", "FAILED"}:
         raise PaymentConflict("不支持的模拟支付结果。")
+    # WB-076/089（第 32 轮）：服务层自身必须把「已验签」作为 SUCCESS 资金
+    # 事实的必要前置条件——不能依赖 HTTP 入口的验签，也不能只靠事后
+    # _promote_payment_intent_on_channel_success 拦截意图推进（彼时
+    # Payment/库存/账本已写入）。任何未验签的 SUCCESS 在写入任何资金
+    # 事实前一律拒绝。
+    if status == "SUCCESS" and not signature_verified:
+        raise PaymentConflict(
+            "SUCCESS 回调必须提供验签通过的渠道事实"
+            "（signature_verified=True），拒绝未验签的支付成功。")
 
     # 全局锁顺序必须为 Reservation -> Payment -> Inventory Hold。
     # 先做无锁关联读取取得 reservation_id，再锁预订，最后锁支付行并复核关联；

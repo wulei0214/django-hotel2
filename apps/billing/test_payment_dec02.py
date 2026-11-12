@@ -27,6 +27,7 @@ from apps.billing.payment_intents import (
     record_provider_event,
     replay_dead_letter_task,
 )
+from apps.billing.services import PaymentConflict
 from apps.core.models import AuditEvent, Property
 from apps.reservations.models import Reservation
 
@@ -1024,9 +1025,9 @@ class ProviderEventProgressionTests(TestCase):
     def test_forged_transition_flag_cannot_bypass_immutable_guard(self):
         """WB-125（第 31 轮）：_allow_controlled_transition 实例属性放行
         已废除——伪造该属性不再能绕过不可变保护；状态/验签/确认时间仅
-        允许经 authorized_provider_transition 受控上下文推进，且不可变
-        字段（金额/交易号等）即使持有上下文也不得修改。"""
-        from apps.billing.models import authorized_provider_transition
+        允许经领域服务受控上下文推进，且不可变字段（金额/交易号等）
+        即使持有上下文也不得修改。"""
+        from apps.billing.payment_intents import _provider_transition_authorization
         intent = self._intent("pi-wb125-forged")
         record_provider_event(
             property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
@@ -1047,12 +1048,350 @@ class ProviderEventProgressionTests(TestCase):
         fetched2 = ProviderTransaction.objects.get(
             provider_code="mock", provider_transaction_id="WB125-TXN-2")
         fetched2.amount = Decimal("999.00")
-        with authorized_provider_transition():
+        with _provider_transition_authorization():
             with self.assertRaises(ValueError) as ctx2:
                 fetched2.save(update_fields=("amount",))
         self.assertIn("不可变", str(ctx2.exception))
         fetched2.refresh_from_db()
         self.assertEqual(fetched2.amount, Decimal("200.00"))
+
+    def test_authorized_context_still_validates_status_whitelist_and_matrix(self):
+        """WB-125（第 32 轮）：受控上下文不是无限通行证——即使直接调用
+        领域服务的授权上下文，非法状态与非法跳转仍被模型层二次校验拒绝；
+        models 不再公开 authorized_provider_transition，公开入口已收口。"""
+        from apps.billing.payment_intents import _provider_transition_authorization
+        import apps.billing.models as billing_models
+        # models 不再提供公开的受控上下文（审查要求的收口）
+        self.assertFalse(hasattr(billing_models, "authorized_provider_transition"))
+        intent = self._intent("pi-wb125-matrix")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB125-TXN-3", amount="200.00",
+            currency="CNY", channel_status="PENDING", event_id="evt-wb125-m1")
+        pt = ProviderTransaction.objects.get(
+            provider_code="mock", provider_transaction_id="WB125-TXN-3")
+        # 复现路径 1：持授权上下文写入白名单外状态 → 拒绝
+        with _provider_transition_authorization():
+            pt.channel_status = "INVALID_STATUS"
+            with self.assertRaises(ValueError) as ctx:
+                pt.save(update_fields=("channel_status",))
+        self.assertIn("不在允许取值内", str(ctx.exception))
+        pt.refresh_from_db()
+        self.assertEqual(pt.channel_status, "PENDING")
+        # 复现路径 2：白名单内但矩阵不允许的跳转 FAILED→PENDING → 拒绝
+        # （先合法推进到 FAILED，再尝试倒退）
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB125-TXN-3", amount="200.00",
+            currency="CNY", channel_status="FAILED", event_id="evt-wb125-m2")
+        pt.refresh_from_db()
+        self.assertEqual(pt.channel_status, "FAILED")
+        with _provider_transition_authorization():
+            pt.channel_status = "PENDING"
+            with self.assertRaises(ValueError) as ctx2:
+                pt.save(update_fields=("channel_status",))
+        self.assertIn("不在合法迁移矩阵内", str(ctx2.exception))
+        pt.refresh_from_db()
+        self.assertEqual(pt.channel_status, "FAILED")
+        # 终态矩阵：SUCCESS 只能停留 SUCCESS（合法推进 + 倒退拒绝）
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB125-TXN-3", amount="200.00",
+            currency="CNY", channel_status="SUCCESS", event_id="evt-wb125-m3",
+            signature_verified=True)
+        pt.refresh_from_db()
+        self.assertEqual(pt.channel_status, "SUCCESS")
+        with _provider_transition_authorization():
+            pt.channel_status = "UNKNOWN"
+            with self.assertRaises(ValueError) as ctx3:
+                pt.save(update_fields=("channel_status",))
+        # SUCCESS→UNKNOWN 先被迁移矩阵拒绝（SUCCESS 终态不在合法目标内）
+        self.assertIn("不在合法迁移矩阵内", str(ctx3.exception))
+        self.assertEqual(
+            ProviderTransaction.objects.get(
+                provider_code="mock",
+                provider_transaction_id="WB125-TXN-3").channel_status,
+            "SUCCESS")
+
+
+class UnsignedCallbackFaultInjectionTests(TestCase):
+    """WB-076/089（第 32 轮）：服务层必须把「已验签」作为 SUCCESS 资金
+    事实的必要前置条件——未验签 SUCCESS 在写入任何资金事实前拒绝，
+    Payment/预订/账本/渠道交易事实全部保持原状（故障注入）。"""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.prop = Property.objects.get(code="DEFAULT")
+        cls.owner = User.objects.create_user(username="pi_wb76u", password="x")
+        from apps.guests.models import Guest
+        cls.guest = Guest.objects.create(property=cls.prop, full_name="WB76 客")
+        from apps.reservations.models import ReservationRoom
+        from apps.inventory.models import RoomType, RatePlan
+        cls.rt = RoomType.objects.create(
+            property=cls.prop, code="PI-WB76", name="WB76 房型", capacity=2)
+        cls.rate = RatePlan.objects.create(
+            property=cls.prop, code="PI-WB76-BAR", name="WB76 门市价",
+            valid_from=timezone.localdate())
+        cls.reservation = Reservation.objects.create(
+            property=cls.prop, guest=cls.guest, booking_no="PI-WB76-001",
+            status=Reservation.Status.PENDING,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            room_count=1, total_amount=Decimal("200.00"), currency="CNY",
+            expires_at=timezone.now() + timedelta(minutes=10))
+        ReservationRoom.objects.create(
+            property=cls.prop, reservation=cls.reservation,
+            room_type=cls.rt, rate_plan=cls.rate,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            amount=Decimal("200.00"))
+        cls.folio = Folio.objects.create(
+            property=cls.prop, reservation=cls.reservation,
+            guest=cls.guest, currency="CNY")
+
+    def _pending_payment(self, ref):
+        return Payment.objects.create(
+            property=self.prop, reservation=self.reservation, folio=self.folio,
+            provider="mock", provider_ref=ref, method="MOCK",
+            amount=Decimal("200.00"), currency="CNY",
+            status=Payment.Status.PENDING)
+
+    def test_unsigned_success_rejected_before_any_fact_write(self):
+        """未验签 SUCCESS：服务层直接拒绝，无任何资金事实被写入。"""
+        from apps.billing.services import process_mock_payment_callback
+        payment = self._pending_payment("WB76-UNSIGNED-1")
+        before = {
+            "payment": (payment.status, payment.paid_at),
+            "reservation": self.reservation.status,
+            "ledger": LedgerEntry.objects.count(),
+            "provider_txn": ProviderTransaction.objects.count(),
+        }
+        with self.assertRaises(PaymentConflict) as ctx:
+            process_mock_payment_callback(
+                provider_ref=payment.provider_ref, amount="200.00",
+                status="SUCCESS", signature_verified=False)
+        self.assertIn("验签", str(ctx.exception))
+        payment.refresh_from_db()
+        self.reservation.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PENDING)
+        self.assertIsNone(payment.paid_at)
+        self.assertEqual(self.reservation.status, Reservation.Status.PENDING)
+        # 无渠道交易事实、无账本凭证（注意：排除测试基线中已有的记录差异）
+        self.assertEqual(
+            ProviderTransaction.objects.count(),
+            before["provider_txn"])
+        self.assertEqual(LedgerEntry.objects.count(), before["ledger"])
+
+    def test_signed_success_still_processes_normally(self):
+        """已验签 SUCCESS：正常链路不受新前置校验影响。"""
+        from unittest import mock
+        from apps.billing.services import process_mock_payment_callback
+        payment = self._pending_payment("WB76-SIGNED-1")
+        with mock.patch(
+                "apps.billing.services.confirm_inventory_for_reservation"):
+            result = process_mock_payment_callback(
+                provider_ref=payment.provider_ref, amount="200.00",
+                status="SUCCESS", signature_verified=True)
+        self.assertTrue(result["reservation_confirmed"])
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.SUCCEEDED)
+        self.reservation.refresh_from_db()
+        self.assertEqual(self.reservation.status, Reservation.Status.CONFIRMED)
+
+
+class LateSuccessCompensationE2ETests(TestCase):
+    """WB-087（第 32 轮）：迟到成功补偿链路端到端验收。
+
+    预订已过期 + 渠道迟到 SUCCESS：Payment 成功事实与账本凭证保留、
+    唯一 late-success:payment:{id} 补偿任务、重复回调幂等不重复建任务/
+    凭证、Worker 执行进入人工协调终态（死信），且不得错误释放/消耗
+    其他订单的库存。
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.prop = Property.objects.get(code="DEFAULT")
+        cls.owner = User.objects.create_user(username="pi_wb87", password="x")
+        from apps.guests.models import Guest
+        from apps.reservations.models import ReservationRoom
+        from apps.inventory.models import RoomType, RatePlan, RoomTypeInventory
+        cls.guest = Guest.objects.create(property=cls.prop, full_name="WB87 客")
+        # 订单 A 专属房型：无任何 RoomTypeInventory 行 → Hold 失效
+        cls.rt = RoomType.objects.create(
+            property=cls.prop, code="PI-WB87", name="WB87 房型", capacity=2)
+        cls.rate = RatePlan.objects.create(
+            property=cls.prop, code="PI-WB87-BAR", name="WB87 门市价",
+            valid_from=timezone.localdate())
+        # 订单 B 专属房型：Hold 有效（每晚 held=1）
+        cls.rt_b = RoomType.objects.create(
+            property=cls.prop, code="PI-WB87-B", name="WB87-B 房型",
+            capacity=2)
+        cls.rate_b = RatePlan.objects.create(
+            property=cls.prop, code="PI-WB87-B-BAR", name="WB87-B 门市价",
+            valid_from=timezone.localdate())
+        # 订单 A：PENDING 但已过期（支付截止时间已过），且库存 Hold 已失效
+        # （无 RoomTypeInventory 行）——迟到成功的典型场景。
+        cls.reservation = Reservation.objects.create(
+            property=cls.prop, guest=cls.guest, booking_no="PI-WB87-001",
+            status=Reservation.Status.PENDING,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            room_count=1, total_amount=Decimal("200.00"), currency="CNY",
+            expires_at=timezone.now() - timedelta(minutes=5))
+        ReservationRoom.objects.create(
+            property=cls.prop, reservation=cls.reservation,
+            room_type=cls.rt, rate_plan=cls.rate,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            amount=Decimal("200.00"))
+        cls.folio = Folio.objects.create(
+            property=cls.prop, reservation=cls.reservation,
+            guest=cls.guest, currency="CNY")
+        # 订单 B：健康的 PENDING 订单，Hold 有效（每晚 held=1）——
+        # 用于断言迟到成功补偿绝不误释放/消耗其他订单库存。
+        cls.healthy = Reservation.objects.create(
+            property=cls.prop, guest=cls.guest, booking_no="PI-WB87-002",
+            status=Reservation.Status.PENDING,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            room_count=1, total_amount=Decimal("200.00"), currency="CNY",
+            expires_at=timezone.now() + timedelta(minutes=30))
+        ReservationRoom.objects.create(
+            property=cls.prop, reservation=cls.healthy,
+            room_type=cls.rt_b, rate_plan=cls.rate_b,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            amount=Decimal("200.00"))
+        RoomTypeInventory.objects.create(
+            property=cls.prop, room_type=cls.rt_b,
+            stay_date=timezone.localdate(),
+            total_rooms=10, sold=0, held=1)
+        cls.folio_b = Folio.objects.create(
+            property=cls.prop, reservation=cls.healthy,
+            guest=cls.guest, currency="CNY")
+
+    def _payment(self, ref):
+        return Payment.objects.create(
+            property=self.prop, reservation=self.reservation,
+            folio=self.folio, provider="mock", provider_ref=ref,
+            method="MOCK", amount=Decimal("200.00"), currency="CNY",
+            status=Payment.Status.PENDING)
+
+    def _hold_snapshot(self):
+        from apps.inventory.models import RoomTypeInventory
+        row = RoomTypeInventory.objects.get(
+            property=self.prop, room_type=self.rt_b,
+            stay_date=timezone.localdate())
+        return (row.held, row.sold)
+
+    def test_late_success_full_chain(self):
+        """① 迟到成功 → 事实/凭证/唯一任务 → ② 重放幂等 →
+        ③ Worker 执行到人工协调终态且不动其他订单库存。"""
+        from apps.billing.services import process_mock_payment_callback
+        from apps.billing.management.commands.payment_compensation_worker import (
+            run_worker_cycle, ERROR_REQUIRES_MANUAL_COORDINATION)
+        payment = self._payment("WB87-LATE-1")
+        hold_before = self._hold_snapshot()
+
+        # ---- 第一步：渠道迟到 SUCCESS ----
+        result = process_mock_payment_callback(
+            provider_ref=payment.provider_ref, amount="200.00",
+            status="SUCCESS", signature_verified=True)
+        self.assertFalse(result["duplicate"])
+        self.assertTrue(result["compensation_required"])
+        self.assertFalse(result["reservation_confirmed"])
+        payment.refresh_from_db()
+        self.reservation.refresh_from_db()
+        # 成功资金事实保留（渠道已确认 SUCCESS 不可逆）
+        self.assertEqual(payment.status, Payment.Status.SUCCEEDED)
+        self.assertIsNotNone(payment.paid_at)
+        self.assertEqual(self.reservation.status, Reservation.Status.EXPIRED)
+        # 账本凭证已写入
+        entry_count = LedgerEntry.objects.filter(
+            reference=f"payment:{payment.provider_ref}").count()
+        self.assertEqual(entry_count, 1)
+        # 唯一补偿任务
+        tasks = PaymentCompensationTask.objects.filter(
+            task_type=PaymentCompensationTask.TaskType.HOLD_COORDINATION,
+            aggregate_type="Payment", aggregate_id=payment.pk,
+            idempotency_key=f"late-success:payment:{payment.pk}")
+        self.assertEqual(tasks.count(), 1)
+
+        # ---- 第二步：渠道重放同一回调（幂等）----
+        replay = process_mock_payment_callback(
+            provider_ref=payment.provider_ref, amount="200.00",
+            status="SUCCESS", signature_verified=True)
+        self.assertTrue(replay["duplicate"])
+        self.assertTrue(replay["compensation_required"])
+        self.assertEqual(
+            PaymentCompensationTask.objects.filter(
+                idempotency_key=f"late-success:payment:{payment.pk}").count(),
+            1, "重复回调不得重复创建补偿任务")
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference=f"payment:{payment.provider_ref}").count(),
+            1, "重复回调不得重复写账本凭证")
+
+        # ---- 第三步：Worker 执行补偿任务 ----
+        summary = run_worker_cycle(lease_owner="wb87-test", lease_seconds=60)
+        self.assertEqual(summary["succeeded"], 0)
+        self.assertEqual(summary["retried"], 1)
+        task = tasks.first()
+        task.refresh_from_db()
+        # 预订已 EXPIRED（终态）：库存确认永远不可能成功 → 人工协调死信，
+        # 不允许自动消除差异或无限重试。
+        self.assertEqual(
+            task.status, PaymentCompensationTask.Status.DEAD_LETTER)
+        self.assertEqual(task.last_error_code, ERROR_REQUIRES_MANUAL_COORDINATION)
+        # 支付资金事实保留
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.SUCCEEDED)
+        # 其他订单库存未被错误释放/消耗（held 不减、sold 不增）
+        self.assertEqual(self._hold_snapshot(), hold_before)
+        self.healthy.refresh_from_db()
+        self.assertEqual(self.healthy.status, Reservation.Status.PENDING)
+
+    def test_late_success_worker_confirms_pending_reservation_with_valid_hold(self):
+        """对照路径：迟到成功但预订仍 PENDING 且 Hold 有效 →
+        Worker 协调库存确认成功，订单转 CONFIRMED（终态=成功）。"""
+        from apps.billing.services import process_mock_payment_callback
+        from apps.billing.management.commands.payment_compensation_worker import (
+            run_worker_cycle)
+        # 直接对健康订单 B 构造 Payment 并触发迟到语义（其库存有效，
+        # 回调会正常确认；这里改走过期分支：先清空库存行制造 InventoryUnavailable，
+        # 再由 Worker 重试时库存已被补回的场景）。
+        from apps.inventory.models import RoomTypeInventory
+        payment = Payment.objects.create(
+            property=self.prop, reservation=self.healthy,
+            folio=self.folio_b, provider="mock", provider_ref="WB87-LATE-2",
+            method="MOCK", amount=Decimal("200.00"), currency="CNY",
+            status=Payment.Status.PENDING)
+        # 制造：库存行 held 归零 → 回调确认失败 → 迟到成功补偿任务
+        row = RoomTypeInventory.objects.get(
+            property=self.prop, room_type=self.rt_b,
+            stay_date=timezone.localdate())
+        row.held = 0
+        row.save(update_fields=("held",))
+        result = process_mock_payment_callback(
+            provider_ref=payment.provider_ref, amount="200.00",
+            status="SUCCESS", signature_verified=True)
+        self.assertTrue(result["compensation_required"])
+        self.healthy.refresh_from_db()
+        self.assertEqual(self.healthy.status, Reservation.Status.PENDING)
+        task = PaymentCompensationTask.objects.get(
+            idempotency_key=f"late-success:payment:{payment.pk}")
+        self.assertEqual(
+            task.status, PaymentCompensationTask.Status.PENDING)
+        # 库存补回（模拟人工修复库存/恢复 Hold）→ Worker 重试成功确认
+        row.refresh_from_db()
+        row.held = 1
+        row.save(update_fields=("held",))
+        summary = run_worker_cycle(lease_owner="wb87-test2", lease_seconds=60)
+        self.assertEqual(summary["succeeded"], 1)
+        task.refresh_from_db()
+        self.assertEqual(task.status, PaymentCompensationTask.Status.SUCCEEDED)
+        self.healthy.refresh_from_db()
+        self.assertEqual(self.healthy.status, Reservation.Status.CONFIRMED)
 
 
 import threading

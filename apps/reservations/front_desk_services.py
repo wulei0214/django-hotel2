@@ -207,9 +207,25 @@ def _release_sold_inventory_for_early_departure(line, *, from_date):
     return released
 
 
-@transaction.atomic
 def assign_room(*, property_obj, reservation_room_id, room_id, assigned_by=None):
-    """将已确认预订的一间房分配到同物业、同房型且可售的物理客房。"""
+    """将已确认预订的一间房分配到同物业、同房型且可售的物理客房。
+
+    WB-085（第 32 轮）：可售状态与占用冲突检查属于「锁后校验」——
+    MySQL REPEATABLE READ 下普通读按事务首读快照，先拿锁的并发事务
+    （如续住延长在住区间）提交后，本事务仍会按旧数据放行，产生重叠
+    占用。整个事务必须在 READ COMMITTED 下执行。
+    """
+    from apps.reservations.isolation import use_read_committed
+    use_read_committed()
+    with transaction.atomic():
+        return _assign_room_locked(
+            property_obj=property_obj, reservation_room_id=reservation_room_id,
+            room_id=room_id, assigned_by=assigned_by)
+
+
+@transaction.atomic
+def _assign_room_locked(*, property_obj, reservation_room_id, room_id,
+                        assigned_by=None):
     line = (
         ReservationRoom.objects.select_for_update()
         .filter(
@@ -449,9 +465,23 @@ def collect_manual_payment(
     return payment, existing is None
 
 
-@transaction.atomic
 def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
-    """结清账单后退房；账本只追加，重复请求幂等。"""
+    """结清账单后退房；账本只追加，重复请求幂等。
+
+    WB-085（第 32 轮）：余额结算检查属于「锁后校验」——并发续住提交
+    新增应收后，本事务不得按事务首读旧快照把余额误判为零。整个事务
+    必须在 READ COMMITTED 下执行。
+    """
+    from apps.reservations.isolation import use_read_committed
+    use_read_committed()
+    with transaction.atomic():
+        return _check_out_stay_locked(
+            property_obj=property_obj, stay_id=stay_id,
+            checked_out_by=checked_out_by)
+
+
+@transaction.atomic
+def _check_out_stay_locked(*, property_obj, stay_id, checked_out_by=None):
     stay = (
         Stay.objects.select_for_update()
         .filter(pk=stay_id, property=property_obj)

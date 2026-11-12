@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """白盒回归：收银班次守卫 + FIN-P0 账务对账扫描（WB-092/WB-095/WB-096）。
 
 覆盖：
@@ -23,6 +23,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from apps.billing.models import (
+    ApprovalRecord,
     BillingAdjustment,
     CashierShift,
     CashierShiftMovement,
@@ -461,3 +462,135 @@ class ShiftStatusReconciledRemovalTests(CashierReconcileTestBase):
             property_obj=self.prop, shift_id=shift.pk,
             actual_cash=_money("20.00"), closed_by=self.cashier)
         self.assertEqual(closed.status, CashierShift.ShiftStatus.CLOSED)
+
+
+class ReconciliationStrictMatchTests(CashierReconcileTestBase):
+    """WB-092（第 32 轮）：凭证核对必须校验类型/金额/币种/引用精确匹配，
+    并补齐 ChargeLine 科目行合计核对——不能只按引用存在性判断。"""
+
+    def _refund(self, folio, payment, provider_ref, amount="50.00"):
+        # Refund.save() 有状态机守卫（必须从 PENDING 起步）；对账夹具先建
+        # 合法 PENDING 申请，再按项目约定用 QuerySet.update 直置终态。
+        refund = Refund.objects.create(
+            property=self.prop, payment=payment,
+            provider_ref=provider_ref, amount=_money(amount), currency="CNY",
+            reason="WB092", idempotency_key=f"wbrc-sm-refund-{provider_ref}",
+            requested_by=self.finance)
+        approval = ApprovalRecord.objects.create(
+            property=self.prop, action_code="REFUND_EXECUTE",
+            entity_type="Refund", entity_id=str(refund.pk),
+            requested_by=self.finance, reason="WB092 对账夹具")
+        QuerySet(ApprovalRecord).filter(pk=approval.pk).update(
+            status=ApprovalRecord.Status.APPROVED, approved_by=self.approver)
+        QuerySet(Refund).filter(pk=refund.pk).update(
+            status=Refund.Status.SUCCEEDED, approval_record=approval,
+            approved_by=self.approver, executed_by=self.executor,
+            executed_at=timezone.now(),
+            processed_at=timezone.now(),
+            execution_idempotency_key=f"wbrc-sm-exec-{provider_ref}")
+        refund.refresh_from_db()
+        return refund
+
+    def _entry(self, folio, entry_type, amount, reference, currency="CNY"):
+        return LedgerEntry.objects.create(
+            property=self.prop, folio=folio, entry_type=entry_type,
+            amount=_money(amount), currency=currency,
+            business_date=timezone.localdate(), reference=reference)
+
+    def _diff_types(self, folio):
+        return [d.diff_type for d in self._scan_diffs(folio)]
+
+    def test_payment_entry_amount_mismatch_reported(self):
+        """复现路径：引用存在但金额不符 → 必须报差异（旧实现漏报）。"""
+        _, folio = self._make_folio("WBRC-SM-001")
+        self._add_payment(folio, "WBRC-SM-PAY-1", "100.00", with_entry=False)
+        self._entry(folio, LedgerEntry.EntryType.PAYMENT, "-1.00",
+                    "payment:WBRC-SM-PAY-1")
+        diffs = [d for d in self._scan_diffs(folio)
+                 if d.entity_type == "Payment"]
+        self.assertEqual(len(diffs), 1)
+        self.assertIn("金额", diffs[0].detail)
+
+    def test_payment_entry_currency_mismatch_reported(self):
+        """复现路径：引用/金额正确但币种 USD → 必须报差异。"""
+        _, folio = self._make_folio("WBRC-SM-002")
+        self._add_payment(folio, "WBRC-SM-PAY-2", "100.00", with_entry=False)
+        self._entry(folio, LedgerEntry.EntryType.PAYMENT, "-100.00",
+                    "payment:WBRC-SM-PAY-2", currency="USD")
+        diffs = [d for d in self._scan_diffs(folio)
+                 if d.entity_type == "Payment"]
+        self.assertEqual(len(diffs), 1)
+        self.assertIn("币种", diffs[0].detail)
+
+    def test_payment_entry_wrong_type_reported(self):
+        """复现路径：引用正确但凭证类型是 ADJUSTMENT → 必须报差异。"""
+        _, folio = self._make_folio("WBRC-SM-003")
+        self._add_payment(folio, "WBRC-SM-PAY-3", "100.00", with_entry=False)
+        self._entry(folio, LedgerEntry.EntryType.ADJUSTMENT, "-100.00",
+                    "payment:WBRC-SM-PAY-3")
+        diffs = [d for d in self._scan_diffs(folio)
+                 if d.entity_type == "Payment"]
+        self.assertEqual(len(diffs), 1)
+        self.assertIn("凭证类型", diffs[0].detail)
+
+    def test_refund_exact_reference_not_prefix_match(self):
+        """复现路径：退款 R-10 缺凭证，账本只有 refund:R-100 →
+        无边界前缀匹配误判存在；精确匹配必须报 REFUND_NO_ENTRY。"""
+        _, folio = self._make_folio("WBRC-SM-004")
+        payment = self._add_payment(
+            folio, "WBRC-SM-PAY-4", "200.00", with_entry=True)
+        refund = self._refund(folio, payment, "R-10")
+        # 相似引用凭证（另一笔退款 R-100 的凭证）
+        self._entry(folio, LedgerEntry.EntryType.REFUND, "50.00",
+                    "refund:R-100")
+        diffs = [d for d in self._scan_diffs(folio)
+                 if d.entity_type == "Refund"]
+        self.assertEqual(len(diffs), 1)
+        self.assertEqual(diffs[0].diff_type,
+                         FolioReconciliationDiff.DiffType.REFUND_NO_ENTRY)
+        self.assertEqual(diffs[0].entity_id, refund.pk)
+
+    def test_refund_entry_content_mismatch_reported(self):
+        """退款凭证存在但金额/币种不符 → 必须报差异。"""
+        _, folio = self._make_folio("WBRC-SM-005")
+        payment = self._add_payment(
+            folio, "WBRC-SM-PAY-5", "200.00", with_entry=True)
+        self._refund(folio, payment, "R-20", amount="50.00")
+        self._entry(folio, LedgerEntry.EntryType.REFUND, "60.00",
+                    "refund:R-20", currency="USD")
+        diffs = [d for d in self._scan_diffs(folio)
+                 if d.entity_type == "Refund"]
+        self.assertEqual(len(diffs), 1)
+        self.assertIn("与业务事实不符", diffs[0].detail)
+
+    def test_charge_lines_sum_mismatch_reported(self):
+        """科目行合计 != 凭证金额 → 新差异类型 CHARGE_LINES_MISMATCH。"""
+        _, folio = self._make_folio("WBRC-SM-006")
+        from apps.billing.models import ChargeLine
+        entry = self._entry(folio, LedgerEntry.EntryType.ROOM_CHARGE,
+                            "300.00", "WBRC-SM-CHARGE-1")
+        ChargeLine.objects.create(
+            ledger_entry=entry, charge_type=ChargeLine.ChargeType.ROOM,
+            amount=_money("250.00"))
+        diffs = [d for d in self._scan_diffs(folio)
+                 if d.entity_type == "LedgerEntry"]
+        self.assertEqual(len(diffs), 1)
+        self.assertEqual(
+            diffs[0].diff_type,
+            FolioReconciliationDiff.DiffType.CHARGE_LINES_MISMATCH)
+        self.assertEqual(diffs[0].entity_id, entry.pk)
+
+    def test_consistent_entries_still_not_reported(self):
+        """正向回归：类型/金额方向/币种/引用全部一致时不误报。"""
+        _, folio = self._make_folio("WBRC-SM-007")
+        self._add_payment(folio, "WBRC-SM-PAY-7", "100.00", with_entry=True)
+        self._entry(folio, LedgerEntry.EntryType.PAYMENT, "-100.00",
+                    "payment:WBRC-SM-PAY-7-dup-ref-not-exist")  # 干扰项
+        payment = Payment.objects.get(
+            provider_ref="WBRC-SM-PAY-7", folio=folio)
+        self._refund(folio, payment, "R-30", amount="40.00")
+        self._entry(folio, LedgerEntry.EntryType.REFUND, "40.00",
+                    "refund:R-30")
+        diffs = [d for d in self._scan_diffs(folio)
+                 if d.entity_type in ("Payment", "Refund")]
+        self.assertEqual(len(diffs), 0)

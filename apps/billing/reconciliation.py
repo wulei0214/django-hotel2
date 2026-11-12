@@ -12,10 +12,12 @@
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.billing.models import (
     BillingAdjustment,
+    ChargeLine,
     CheckoutExceptionRelease,
     Folio,
     FolioReconciliationDiff,
@@ -43,15 +45,21 @@ def scan_folio_reconciliation(*, property_obj, checked_by=None, batch_size=200):
 
     核对项：
     1. 每笔成功/已进入退款流程的 Payment/Deposit 必须有对应
-       PAYMENT/DEPOSIT 凭证（引用匹配；缺失报差异）。
-    2. 每笔成功 Refund 必须有对应 REFUND 凭证。
+       PAYMENT/DEPOSIT 凭证（引用精确匹配，且核对凭证类型、金额方向、
+       币种与物业归属；缺失或内容不符报差异，WB-092）。
+    2. 每笔成功 Refund 必须有对应 REFUND 凭证（引用精确匹配——不用
+       无边界前缀匹配，防止 refund:R-10 误配 refund:R-100；同时核对
+       类型/金额/币种，WB-092）。
     3. 每笔已执行 BillingAdjustment 必须有对应 ADJUSTMENT 凭证
        （reference=adjustment:{幂等键}，金额与调整方向一致）。
-    4. 已关闭 Folio 余额重建：账本凭证合计 == −(应退给客人的净额)。
+    4. 凭证科目行核对：LedgerEntry 上挂了 ChargeLine 的，科目行合计
+       必须等于凭证金额（模型层规则 sum(ChargeLine.amount) =
+       LedgerEntry.amount，WB-092 第 32 轮补齐）。
+    5. 已关闭 Folio 余额重建：账本凭证合计 == −(应退给客人的净额)。
        应退净额 = 负债净额（liability_net_snapshot 口径）+ 无负债关联的
        已执行冲销调整。经审批异常放行（B2 离店核销）造成的负余额属于
        账外事实，跳过余额核对，不视为差异。
-    5. RefundLiability 净额重建：remaining_amount == amount − 已成功退款
+    6. RefundLiability 净额重建：remaining_amount == amount − 已成功退款
        − 已执行抵扣 + 已执行增加（未执行/未批准调整不计入）。
     """
     from apps.billing.dec02 import liability_net_snapshot
@@ -69,9 +77,14 @@ def scan_folio_reconciliation(*, property_obj, checked_by=None, batch_size=200):
             if folio is None:
                 continue
             scanned += 1
+            # WB-092（第 32 轮）：凭证核对需要类型/金额/币种/物业全量字段，
+            # 不能只按引用判断存在性；引用建立精确索引（不做前缀匹配）。
             entries = list(LedgerEntry.objects.filter(folio=folio).values(
-                "entry_type", "amount", "reference"))
-            entry_refs = {e["reference"] for e in entries}
+                "pk", "entry_type", "amount", "reference", "currency",
+                "property_id"))
+            entries_by_ref = {}
+            for e in entries:
+                entries_by_ref.setdefault(e["reference"], []).append(e)
             ledger_total = sum(
                 (Decimal(str(e["amount"])) for e in entries),
                 start=Decimal("0.00"))
@@ -80,26 +93,99 @@ def scan_folio_reconciliation(*, property_obj, checked_by=None, batch_size=200):
             for p in payments:
                 if p.provider == "frontdesk_deposit":
                     expected_ref = f"deposit:{p.provider_ref}"
+                    expected_type = LedgerEntry.EntryType.DEPOSIT
                     diff_type = FolioReconciliationDiff.DiffType.DEPOSIT_NO_ENTRY
                 else:
                     expected_ref = f"payment:{p.provider_ref}"
+                    expected_type = LedgerEntry.EntryType.PAYMENT
                     diff_type = FolioReconciliationDiff.DiffType.PAYMENT_NO_ENTRY
-                if expected_ref not in entry_refs:
+                # 收款/押金凭证为负向入账（金额方向：-payment.amount）。
+                expected_amount = -p.amount
+                candidates = entries_by_ref.get(expected_ref, [])
+                if not candidates:
                     FolioReconciliationDiff.objects.create(
                         run=run, folio=folio, diff_type=diff_type,
                         entity_type="Payment", entity_id=p.pk,
                         detail=f"Payment {p.pk} ({p.provider_ref}) 缺对应凭证 {expected_ref}")
                     diff_count += 1
+                    continue
+                # WB-092：凭证存在≠事实正确——逐项核对类型/金额/币种/物业。
+                entry = candidates[0]
+                problems = []
+                if entry["entry_type"] != expected_type:
+                    problems.append(
+                        f"凭证类型 {entry['entry_type']}，应为 {expected_type}")
+                if Decimal(str(entry["amount"])) != expected_amount:
+                    problems.append(
+                        f"金额 {entry['amount']}，按方向应为 {expected_amount}")
+                if entry["currency"] != p.currency:
+                    problems.append(
+                        f"币种 {entry['currency']}，应为 {p.currency}")
+                if entry["property_id"] != p.property_id:
+                    problems.append("物业归属不一致")
+                if problems:
+                    FolioReconciliationDiff.objects.create(
+                        run=run, folio=folio, diff_type=diff_type,
+                        entity_type="Payment", entity_id=p.pk,
+                        detail=(f"Payment {p.pk} ({p.provider_ref}) 凭证 "
+                                f"{expected_ref} 与业务事实不符："
+                                + "；".join(problems)))
+                    diff_count += 1
             refunds = list(Refund.objects.filter(
                 payment__folio=folio, status=Refund.Status.SUCCEEDED))
             for rf in refunds:
-                ref_prefix = f"refund:{rf.provider_ref}"
-                if not any(e["reference"].startswith(ref_prefix) for e in entries):
+                # WB-092：退款凭证引用精确匹配——无边界前缀匹配会把
+                # refund:R-100 误配给 refund:R-10，漏报缺凭证差异。
+                expected_ref = f"refund:{rf.provider_ref}"
+                candidates = entries_by_ref.get(expected_ref, [])
+                if not candidates:
                     FolioReconciliationDiff.objects.create(
                         run=run, folio=folio,
                         diff_type=FolioReconciliationDiff.DiffType.REFUND_NO_ENTRY,
                         entity_type="Refund", entity_id=rf.pk,
                         detail=f"Refund {rf.pk} ({rf.provider_ref}) 缺对应 REFUND 凭证")
+                    diff_count += 1
+                    continue
+                entry = candidates[0]
+                problems = []
+                # 退款凭证为正向出账（金额方向：+refund.amount）。
+                if entry["entry_type"] != LedgerEntry.EntryType.REFUND:
+                    problems.append(
+                        f"凭证类型 {entry['entry_type']}，应为 REFUND")
+                if Decimal(str(entry["amount"])) != rf.amount:
+                    problems.append(
+                        f"金额 {entry['amount']}，应为 {rf.amount}")
+                if entry["currency"] != rf.currency:
+                    problems.append(
+                        f"币种 {entry['currency']}，应为 {rf.currency}")
+                if problems:
+                    FolioReconciliationDiff.objects.create(
+                        run=run, folio=folio,
+                        diff_type=FolioReconciliationDiff.DiffType.REFUND_NO_ENTRY,
+                        entity_type="Refund", entity_id=rf.pk,
+                        detail=(f"Refund {rf.pk} ({rf.provider_ref}) 凭证 "
+                                f"{expected_ref} 与业务事实不符："
+                                + "；".join(problems)))
+                    diff_count += 1
+
+            # WB-092（第 32 轮）：凭证科目行核对——挂了 ChargeLine 的凭证，
+            # 科目行合计必须等于凭证金额（模型层规则）。
+            line_sums = {}
+            for row in ChargeLine.objects.filter(
+                    ledger_entry__folio=folio).values(
+                    "ledger_entry_id").annotate(total=Sum("amount")):
+                line_sums[row["ledger_entry_id"]] = row["total"]
+            for e in entries:
+                if e["pk"] not in line_sums:
+                    continue  # 未拆科目的凭证（如收款/退款）不参与本核对
+                line_total = Decimal(str(line_sums[e["pk"]]))
+                if line_total != Decimal(str(e["amount"])):
+                    FolioReconciliationDiff.objects.create(
+                        run=run, folio=folio,
+                        diff_type=FolioReconciliationDiff.DiffType.CHARGE_LINES_MISMATCH,
+                        entity_type="LedgerEntry", entity_id=e["pk"],
+                        detail=(f"凭证 {e['pk']}（{e['entry_type']}）科目行合计 "
+                                f"{line_total} 与凭证金额 {e['amount']} 不一致"))
                     diff_count += 1
 
             # WB-092：已执行调整 ↔ ADJUSTMENT 凭证（抵扣为正、回增为负）。

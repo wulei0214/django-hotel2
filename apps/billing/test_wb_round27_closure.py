@@ -184,7 +184,7 @@ class Round27ClosureTests(TestCase):
                 "apps.billing.services.confirm_inventory_for_reservation"):
             result = process_mock_payment_callback(
                 provider_ref=payment.provider_ref, amount="200.00",
-                status="SUCCESS", signature_verified=False)
+                status="SUCCESS", signature_verified=True)
         self.assertTrue(result["reservation_confirmed"])
         self.line.refresh_from_db()
         self.assertEqual(

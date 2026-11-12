@@ -8,6 +8,7 @@
 - 支付成功与 Hold 过期竞争时以条件迁移保证单一结果。
 """
 import uuid
+from contextlib import contextmanager
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
@@ -37,15 +38,10 @@ CHANNEL_WINDOW_CONFIG = {
 DEFAULT_WINDOW = CHANNEL_WINDOW_CONFIG["mock"]
 
 # WB-076：ProviderTransaction.channel_status 允许取值（渠道事实状态，
-# 与意图状态机独立；模型未定义 choices，由此处服务层统一约束）
-PROVIDER_CHANNEL_STATUSES = frozenset({
-    "PENDING",      # 渠道侧待支付
-    "PROCESSING",   # 渠道侧处理中（查询返回）
-    "SUCCESS",      # 渠道扣款成功（必须验签）
-    "FAILED",       # 渠道扣款失败
-    "CLOSED",       # 渠道订单关闭（超时未支付）
-    "UNKNOWN",      # 渠道状态未知（须先查询渠道再推进，PAY-P0-02）
-})
+# 与意图状态机独立；模型未定义 choices）。WB-125（第 32 轮）：唯一权威
+# 定义收口到 models.PROVIDER_CHANNEL_STATUSES——模型 save() 与服务层
+# 校验共用同一白名单/迁移矩阵，防止两处口径漂移。
+from apps.billing.models import PROVIDER_CHANNEL_STATUSES  # noqa: E402
 
 
 def get_channel_window(provider_code):
@@ -268,17 +264,31 @@ def _validate_provider_event_facts(intent, provider_code, incoming_amount,
             "（signature_verified=True），拒绝未验签的成功事实。")
 
 
+@contextmanager
+def _provider_transition_authorization():
+    """WB-125（第 32 轮）：受控状态机推进的唯一授权入口，收口在支付领域
+    服务（私有函数）。models 不再公开上下文管理器；即使其他模块直接
+    操作线程本地令牌，模型 save() 仍按白名单 + 迁移矩阵二次校验。
+    """
+    from apps.billing.models import _provider_transition_state
+    _provider_transition_state.authorized = True
+    try:
+        yield
+    finally:
+        _provider_transition_state.authorized = False
+
+
 def _transition_provider_transaction(pt, *, channel_status,
                                      signature_verified):
     """WB-125：唯一允许改写渠道交易主记录的受控路径（状态机推进）。
 
     第 31 轮：不再使用可被任意调用方设置的实例属性放行；改为进入
-    authorized_provider_transition() 线程本地受控上下文，模型 save()
-    同时按事实比对 + 状态机规则校验迁移合法性（双保险）。事件历史
-    另存于 ProviderTransactionEvent，永不修改。
+    _provider_transition_authorization() 线程本地受控上下文，模型 save()
+    同时按事实比对 + 状态机规则校验迁移合法性（双保险）。第 32 轮：
+    受控入口收口为支付领域服务私有函数；模型层在上下文内仍二次校验
+    白名单与迁移矩阵。事件历史另存于 ProviderTransactionEvent，永不修改。
     """
-    from apps.billing.models import authorized_provider_transition
-    with authorized_provider_transition():
+    with _provider_transition_authorization():
         pt.channel_status = channel_status
         pt.signature_verified = signature_verified
         if channel_status == "SUCCESS":

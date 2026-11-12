@@ -1464,22 +1464,46 @@ class PaymentIntent(models.Model):
         return f"{self.intent_no} [{self.status}] {self.amount} {self.currency}"
 
 
-# WB-125（第 31 轮）：渠道交易状态机推进的受控上下文——线程本地令牌，
-# 仅由 payment_intents._transition_provider_transaction 通过
-# authorized_provider_transition() 进入。不再使用可被任意调用方设置的
-# 实例属性作为放行凭证；普通业务代码无法通过属性伪造获得授权，
-# 即使蓄意调用内部上下文，save() 仍会按状态机规则校验迁移合法性。
+# WB-125（第 32 轮）：渠道交易状态白名单与合法迁移矩阵由**模型层**定义为
+# 唯一权威来源（payment_intents 从这里导入，服务层校验与模型校验共用
+# 同一口径）。任何受控推进——即使持有授权上下文——save() 仍会再次按
+# 白名单 + 迁移矩阵校验，非法状态或非法跳转一律拒绝。
+PROVIDER_CHANNEL_STATUSES = frozenset({
+    "PENDING",      # 渠道侧待支付
+    "PROCESSING",   # 渠道侧处理中（查询返回）
+    "SUCCESS",      # 渠道扣款成功（必须验签，终态）
+    "FAILED",       # 渠道扣款失败
+    "CLOSED",       # 渠道订单关闭（超时未支付）
+    "UNKNOWN",      # 渠道状态未知（须先查询渠道再推进，PAY-P0-02）
+})
+
+# 合法迁移矩阵：SUCCESS 为终态；FAILED/CLOSED 仅允许沿「迟到成功」推进
+# （WB-087 场景）；同状态重放视为幂等通知；UNKNOWN 经渠道查询可返回
+# 任意合法状态。
+PROVIDER_CHANNEL_TRANSITIONS = {
+    "PENDING": frozenset({
+        "PENDING", "PROCESSING", "SUCCESS", "FAILED", "CLOSED", "UNKNOWN"}),
+    "PROCESSING": frozenset({
+        "PROCESSING", "SUCCESS", "FAILED", "CLOSED", "UNKNOWN"}),
+    "UNKNOWN": frozenset({
+        "PENDING", "PROCESSING", "SUCCESS", "FAILED", "CLOSED", "UNKNOWN"}),
+    "FAILED": frozenset({"FAILED", "SUCCESS"}),
+    "CLOSED": frozenset({"CLOSED", "SUCCESS"}),
+    "SUCCESS": frozenset({"SUCCESS"}),
+}
+
+
+# WB-125：受控状态机推进的线程本地授权令牌。第 32 轮起不再由 models 提供
+# 公开的 `authorized_provider_transition` 上下文管理器——受控入口收口到
+# 支付领域服务（payment_intents._provider_transition_authorization，私有
+# 函数），其他模块无法从模型层获得公开的放行入口；即使绕过服务层直接
+# 操作线程本地，save() 仍会按白名单 + 迁移矩阵再次校验。
 _provider_transition_state = local()
 
 
-@contextmanager
-def authorized_provider_transition():
-    """受控状态机推进的内部授权上下文（私有 API，仅服务层使用）。"""
-    _provider_transition_state.authorized = True
-    try:
-        yield
-    finally:
-        _provider_transition_state.authorized = False
+def _provider_transition_authorized():
+    """内部检查：当前线程是否处于领域服务的受控推进上下文内。"""
+    return getattr(_provider_transition_state, "authorized", False)
 
 
 class ProviderTransaction(models.Model):
@@ -1575,11 +1599,24 @@ class ProviderTransaction(models.Model):
         if fact_changed:
             # 渠道状态/验签/确认时间只允许在受控上下文内推进；
             # 普通调用方即使伪造放行属性也必须被拒绝。
-            if not getattr(_provider_transition_state, "authorized", False):
+            if not _provider_transition_authorized():
                 raise ValueError(
                     "渠道交易事实不可变（WB-125）：渠道状态、验签结果与"
                     "确认时间仅允许经 record_provider_event 的受控状态机"
                     "推进，不得通过实例 save() 直接修改。")
+            # WB-125（第 32 轮）：受控上下文内仍须二次校验状态白名单与
+            # 迁移矩阵——授权上下文不是无限通行证，非法状态（如
+            # "INVALID_STATUS"）与非法跳转（如 SUCCESS→PENDING）一律拒绝。
+            if self.channel_status not in PROVIDER_CHANNEL_STATUSES:
+                raise ValueError(
+                    f"渠道状态 {self.channel_status} 不在允许取值内"
+                    f"（{sorted(PROVIDER_CHANNEL_STATUSES)}）（WB-125）。")
+            legal_targets = PROVIDER_CHANNEL_TRANSITIONS.get(
+                previous["channel_status"], frozenset())
+            if self.channel_status not in legal_targets:
+                raise ValueError(
+                    f"渠道状态迁移 {previous['channel_status']} → "
+                    f"{self.channel_status} 不在合法迁移矩阵内（WB-125）。")
             if previous["signature_verified"] and not self.signature_verified:
                 raise ValueError(
                     "渠道交易验签结果不可回退（WB-125）：已验签事实不得被"
@@ -1770,6 +1807,7 @@ class FolioReconciliationDiff(models.Model):
         DEPOSIT_NO_ENTRY = "DEPOSIT_NO_ENTRY", "押金 Payment 缺对应 DEPOSIT 凭证"
         REFUND_NO_ENTRY = "REFUND_NO_ENTRY", "退款 Refund 缺对应 REFUND 凭证"
         ADJUSTMENT_NO_ENTRY = "ADJUSTMENT_NO_ENTRY", "已执行调整缺对应 ADJUSTMENT 凭证"
+        CHARGE_LINES_MISMATCH = "CHARGE_LINES_MISMATCH", "凭证科目行合计与凭证金额不一致"
         BALANCE_MISMATCH = "BALANCE_MISMATCH", "Folio 余额与账本合计不一致"
         LIABILITY_NET_MISMATCH = "LIABILITY_NET_MISMATCH", "负债剩余额与重建净额不一致"
 

@@ -133,8 +133,19 @@ def execute_hold_coordination(task):
     if status in HOLD_SETTLED_RESERVATION_STATUSES:
         # 幂等成功：库存确认已达成或无需再做（不重复消耗 Hold）
         return (True, "", "")
-    # PENDING（及其余可确认状态）：按现有语义执行幂等库存确认
+    # PENDING（及其余可确认状态）：按现有语义执行幂等库存确认。
+    # WB-087（第 32 轮）：库存确认成功后必须在同一业务动作内完成预订
+    # 状态迁移（PENDING→CONFIRMED）与 WB-098 政策快照——与支付回调
+    # 正常确认路径完全一致。只确认库存不迁移状态会让任务"成功"而
+    # 订单永远停留 PENDING，随后被维护命令过期、库存/资金事实脱节。
     confirm_inventory_for_reservation(reservation)
+    reservation.refresh_from_db()
+    if reservation.status == Reservation.Status.PENDING:
+        reservation.status = Reservation.Status.CONFIRMED
+        reservation.save(update_fields=("status", "updated_at"))
+        from apps.reservations.front_desk_services import (
+            snapshot_early_departure_policy)
+        snapshot_early_departure_policy(reservation)
     return (True, "", "")
 
 

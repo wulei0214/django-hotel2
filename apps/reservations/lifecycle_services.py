@@ -58,9 +58,26 @@ def _folio_for_update(property_obj, reservation):
     return folio
 
 
-@transaction.atomic
 def extend_stay(*, property_obj, stay_id, new_check_out, reason, extended_by=None):
-    """按新增住宿日的实时日价与库存续住，并更新订单金额快照。"""
+    """按新增住宿日的实时日价与库存续住，并更新订单金额快照。
+
+    WB-085（第 32 轮）：本事务含「锁后冲突/库存/房价校验」——MySQL
+    REPEATABLE READ 下普通读按事务首读快照，先拿锁的并发事务提交后
+    本事务仍会按旧数据放行，产生重叠占用。因此整个事务必须在
+    READ COMMITTED 下执行（见 apps/reservations/isolation.py）。
+    """
+    from apps.reservations.isolation import use_read_committed
+    use_read_committed()
+    with transaction.atomic():
+        return _extend_stay_locked(
+            property_obj=property_obj, stay_id=stay_id,
+            new_check_out=new_check_out, reason=reason,
+            extended_by=extended_by)
+
+
+@transaction.atomic
+def _extend_stay_locked(*, property_obj, stay_id, new_check_out, reason,
+                        extended_by=None):
     reason = str(reason or "").strip()
     if not reason or len(reason) > 240:
         raise LifecycleOperationError("续住必须填写 1 至 240 个字符的原因。")
