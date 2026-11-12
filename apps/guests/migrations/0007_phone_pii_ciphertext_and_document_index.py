@@ -52,15 +52,30 @@ def _encrypt_phone(normalized):
     return fernet.encrypt((normalized or "").strip().encode("utf-8")).decode("ascii")
 
 
+def _rows_with_phone_plaintext(model):
+    """WB-122（第 31 轮）：统一「存在非空手机号明文」的判定条件。
+
+    空字符串与 NULL 一律视为无号码——此前 exclude(isnull=True) 会把
+    phone=""/phone_normalized="" 的空串记录也查出来：回填对它们跳过
+    （标准化后无号码），清明文守卫又用同一条件把它们当作"待回填记录"
+    检查密文，最终因密文缺失误判迁移失败。回填、守卫、清理三方必须
+    采用同一筛选口径，Guest 与 GuestPhone 完全一致。
+    """
+    return model.objects.filter(
+        models.Q(phone__isnull=False) & ~models.Q(phone="")
+        | models.Q(phone_normalized__isnull=False)
+        & ~models.Q(phone_normalized=""))
+
+
 def _iter_guests_with_phone(Guest):
     """WB-122：覆盖 phone 或 phone_normalized 任一字段非空的记录。
 
     历史数据存在 phone 为空但 phone_normalized 有值的 Guest——只扫 phone
     会漏回填这类行，随后的清明文步骤却会清掉它们唯一的号码，造成不可逆
-    数据丢失。标准化优先取 phone_normalized，为空时再从 phone 标准化。
+    数据丢失。标准化优先取 phone_normalized，为空时再从 phone 标准化；
+    空字符串与 NULL 均按无号码处理（见 _rows_with_phone_plaintext）。
     """
-    return Guest.objects.exclude(
-        phone__isnull=True, phone_normalized__isnull=True).iterator()
+    return _rows_with_phone_plaintext(Guest).iterator()
 
 
 def backfill_phone_pii(apps, schema_editor):
@@ -84,8 +99,7 @@ def backfill_phone_pii(apps, schema_editor):
             failures.append(f"Guest#{guest.pk}: {exc}")
 
     occupied = {}
-    for row in GuestPhone.objects.exclude(
-            phone__isnull=True, phone_normalized__isnull=True).iterator():
+    for row in _rows_with_phone_plaintext(GuestPhone).iterator():
         raw_phone = (row.phone or "").strip()
         normalized = ((row.phone_normalized or "").strip()
                       or _normalize_phone(raw_phone))
@@ -124,12 +138,10 @@ def clear_phone_plaintext(apps, schema_editor):
     Guest = apps.get_model("guests", "Guest")
     GuestPhone = apps.get_model("guests", "GuestPhone")
     missing = []
-    for guest in Guest.objects.exclude(
-            phone__isnull=True, phone_normalized__isnull=True).iterator():
+    for guest in _rows_with_phone_plaintext(Guest).iterator():
         if not ((guest.phone_ciphertext or "") and (guest.phone_hash or "")):
             missing.append(f"Guest#{guest.pk}")
-    for row in GuestPhone.objects.exclude(
-            phone__isnull=True, phone_normalized__isnull=True).iterator():
+    for row in _rows_with_phone_plaintext(GuestPhone).iterator():
         if not ((row.phone_ciphertext or "") and (row.phone_hash or "")):
             missing.append(f"GuestPhone#{row.pk}")
     if missing:

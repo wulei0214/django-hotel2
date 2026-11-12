@@ -51,9 +51,10 @@ class PhoneBackfillCoverageTests(TestCase):
         cls.prop = Property.objects.get(code="DEFAULT")
 
     def _guest(self, suffix, *, phone, normalized):
+        # 第 31 轮：不再把空字符串转成 None——必须用真实存量空串验证迁移
         return Guest.objects.create(
             property=self.prop, full_name=f"WB122 客{suffix}",
-            phone=phone or None, phone_normalized=normalized or None)
+            phone=phone, phone_normalized=normalized)
 
     def test_normalized_only_guest_is_backfilled(self):
         """phone 为空、phone_normalized 有值：必须回填，不得清明文丢号码。"""
@@ -85,6 +86,44 @@ class PhoneBackfillCoverageTests(TestCase):
         guest.refresh_from_db()
         self.assertFalse(guest.phone_ciphertext)
         self.assertFalse(guest.phone_hash)
+
+    def test_empty_string_rows_do_not_block_clear_step(self):
+        """WB-122（第 31 轮）：空字符串记录视为无号码——不回填、不伪造，
+        且不再让清明文守卫误判「明文非空但密文缺失」而失败。"""
+        from apps.guests.models import GuestPhone
+
+        g_empty_both = self._guest(31, phone="", normalized="")
+        # ("",NULL) 组合：phone 为空字符串、normalized 为 NULL
+        g_empty_norm = self._guest(32, phone="", normalized=None)
+        g_real = self._guest(33, phone=None, normalized="13800001115")
+        gp_empty = GuestPhone.objects.create(
+            guest=g_empty_both, phone="", phone_normalized=None)
+        gp_real = GuestPhone.objects.create(
+            guest=g_real, phone="138-0000-1115", phone_normalized=None)
+
+        mig0007.backfill_phone_pii(_AppsShim(), None)
+        for row in (g_empty_both, g_empty_norm, gp_empty):
+            row.refresh_from_db()
+            self.assertFalse(row.phone_ciphertext,
+                             "空字符串记录不得伪造密文")
+            self.assertFalse(row.phone_hash)
+        g_real.refresh_from_db()
+        self.assertEqual(guest_services.decrypt_phone(g_real.phone_ciphertext),
+                         "13800001115")
+        gp_real.refresh_from_db()
+        self.assertEqual(guest_services.decrypt_phone(gp_real.phone_ciphertext),
+                         "13800001115")
+
+        # 关键回归：空字符串记录存在时清明文不再被守卫误拦截
+        mig0007.clear_phone_plaintext(_AppsShim(), None)
+        for row in (g_empty_both, g_empty_norm, g_real, gp_empty, gp_real):
+            row.refresh_from_db()
+            self.assertIsNone(row.phone, "明文必须被清空")
+            self.assertIsNone(row.phone_normalized)
+        g_real.refresh_from_db()
+        self.assertTrue(g_real.phone_ciphertext, "密文必须保留")
+        self.assertEqual(guest_services.decrypt_phone(g_real.phone_ciphertext),
+                         "13800001115")
 
     def test_clear_guard_blocks_unbackfilled_plaintext(self):
         """明文非空但密文/哈希缺失：清明文步骤必须显式失败且不丢数据。"""
@@ -145,6 +184,29 @@ class PiiKeyIsolationTests(TestCase):
         with override_settings(DJANGO_PII_KEY="", IS_PRODUCTION=True):
             with self.assertRaises(ImproperlyConfigured):
                 guest_services._pii_key_bytes()
+
+    def test_production_pii_key_validation_uses_normalized_setting(self):
+        """WB-123（第 31 轮）：启动校验必须基于 strip 后的密钥——
+        全空白（如 32 个空格）与长度不足都必须在启动阶段拒绝。"""
+        from hotel.settings import _validate_production_settings
+
+        ok_kwargs = dict(debug=False,
+                         secret_key="s" * 40,
+                         allowed_hosts_raw="pms.example.com")
+        # 合规独立密钥：启动校验通过
+        _validate_production_settings(pii_key="p" * 40, **ok_kwargs)
+        # 32 个空格：strip 后为空串——旧实现读原始环境变量会放行，
+        # 新实现必须拒绝（这正是第 31 轮审查发现的绕过路径）
+        with self.assertRaises(ImproperlyConfigured) as ctx:
+            _validate_production_settings(pii_key=" " * 32, **ok_kwargs)
+        self.assertIn("DJANGO_PII_KEY", str(ctx.exception))
+        # 前后带空白的 32 字符密钥：strip 后不足 32 位，拒绝
+        with self.assertRaises(ImproperlyConfigured):
+            _validate_production_settings(pii_key=" " + "p" * 31 + " ",
+                                          **ok_kwargs)
+        # 长度不足：拒绝
+        with self.assertRaises(ImproperlyConfigured):
+            _validate_production_settings(pii_key="p" * 31, **ok_kwargs)
 
     def test_migration_key_derivation_matches_service(self):
         """迁移内联派生与服务层必须同源（同 PII_KEY 下哈希一致）。"""

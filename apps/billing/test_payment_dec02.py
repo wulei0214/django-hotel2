@@ -987,6 +987,73 @@ class ProviderEventProgressionTests(TestCase):
                 provider_transaction_id="WB125-TXN-1").update(
                 channel_status="FAILED")
 
+    def test_event_history_instance_save_and_delete_are_blocked(self):
+        """WB-119（第 31 轮）：事件历史只追加——实例 save 修改与 delete
+        删除都必须被拒绝，QuerySet 批量旁路同样被拦截。"""
+        from django.core.exceptions import ValidationError
+        from apps.billing.models import ProviderTransactionEvent
+        intent = self._intent("pi-wb119-evt-immutable")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB119-TXN-5", amount="200.00",
+            currency="CNY", channel_status="PENDING", event_id="evt-wb119-i1")
+        event = ProviderTransactionEvent.objects.get(
+            provider_code="mock", event_id="evt-wb119-i1")
+        # 实例级改写：渠道状态/金额/验签结果均不可修改
+        event.channel_status = "FAILED"
+        event.amount = Decimal("999.00")
+        event.signature_verified = True
+        with self.assertRaises(ValueError):
+            event.save()
+        event.refresh_from_db()
+        self.assertEqual(event.channel_status, "PENDING")
+        self.assertEqual(event.amount, Decimal("200.00"))
+        self.assertFalse(event.signature_verified)
+        # 实例级物理删除：拒绝且记录仍在
+        with self.assertRaises(RuntimeError):
+            event.delete()
+        self.assertTrue(
+            ProviderTransactionEvent.objects.filter(pk=event.pk).exists())
+        # QuerySet 批量旁路：ImmutableFinancialFactQuerySet 拦截
+        with self.assertRaises(ValidationError):
+            ProviderTransactionEvent.objects.filter(pk=event.pk).update(
+                channel_status="FAILED")
+        with self.assertRaises(ValidationError):
+            ProviderTransactionEvent.objects.filter(pk=event.pk).delete()
+
+    def test_forged_transition_flag_cannot_bypass_immutable_guard(self):
+        """WB-125（第 31 轮）：_allow_controlled_transition 实例属性放行
+        已废除——伪造该属性不再能绕过不可变保护；状态/验签/确认时间仅
+        允许经 authorized_provider_transition 受控上下文推进，且不可变
+        字段（金额/交易号等）即使持有上下文也不得修改。"""
+        from apps.billing.models import authorized_provider_transition
+        intent = self._intent("pi-wb125-forged")
+        record_provider_event(
+            property_obj=self.prop, intent_id=intent.pk, provider_code="mock",
+            provider_transaction_id="WB125-TXN-2", amount="200.00",
+            currency="CNY", channel_status="PENDING", event_id="evt-wb125-f1")
+        fetched = ProviderTransaction.objects.get(
+            provider_code="mock", provider_transaction_id="WB125-TXN-2")
+        self.assertEqual(fetched.channel_status, "PENDING")
+        # 伪造旧版放行属性（审查复现路径）：必须被拒绝
+        fetched._allow_controlled_transition = True
+        fetched.channel_status = "FAILED"
+        with self.assertRaises(ValueError) as ctx:
+            fetched.save(update_fields=("channel_status",))
+        self.assertIn("受控状态机", str(ctx.exception))
+        fetched.refresh_from_db()
+        self.assertEqual(fetched.channel_status, "PENDING")
+        # 持有受控上下文也改不了不可变事实字段（金额）
+        fetched2 = ProviderTransaction.objects.get(
+            provider_code="mock", provider_transaction_id="WB125-TXN-2")
+        fetched2.amount = Decimal("999.00")
+        with authorized_provider_transition():
+            with self.assertRaises(ValueError) as ctx2:
+                fetched2.save(update_fields=("amount",))
+        self.assertIn("不可变", str(ctx2.exception))
+        fetched2.refresh_from_db()
+        self.assertEqual(fetched2.amount, Decimal("200.00"))
+
 
 import threading
 import unittest

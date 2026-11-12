@@ -311,19 +311,31 @@ SIMPLEUI_CONFIG = {
 }
 
 # Q7 production startup validation (PMS2 quality baseline 2026-11-10)
-if DJANGO_ENV == 'prod':
+# WB-123（第 31 轮）：校验逻辑收敛为独立函数以便启动测试——全空白、
+# 前后空白、长度不足的 PII 密钥必须在启动阶段 fail-fast，而不是等到
+# 加密调用才暴露（原实现读原始环境变量，32 个空格可绕过长度检查）。
+def _validate_production_settings(*, debug, secret_key, pii_key,
+                                  allowed_hosts_raw):
     _prod_errors = []
-    if DEBUG:
+    if debug:
         _prod_errors.append('DEBUG must be False')
-    _sk = os.environ.get('DJANGO_SECRET_KEY', '')
-    if not _sk or len(_sk) < 32 or 'django-insecure' in _sk:
+    if not secret_key or len(secret_key) < 32 or 'django-insecure' in secret_key:
         _prod_errors.append('DJANGO_SECRET_KEY must be >=32 chars strong random')
-    _pii = os.environ.get('DJANGO_PII_KEY', '')
-    if not _pii or len(_pii) < 32:
+    _normalized_pii = (pii_key or '').strip()
+    if not _normalized_pii or len(_normalized_pii) < 32:
         _prod_errors.append('DJANGO_PII_KEY must be >=32 chars independent PII key')
-    _hosts = os.environ.get('DJANGO_ALLOWED_HOSTS', '')
-    if not _hosts or '*' in _hosts:
+    if not allowed_hosts_raw or '*' in allowed_hosts_raw:
         _prod_errors.append('DJANGO_ALLOWED_HOSTS must not use wildcard')
     if _prod_errors:
         raise ImproperlyConfigured(
             'Q7 production validation failed: ' + '; '.join(_prod_errors))
+
+
+if DJANGO_ENV == 'prod':
+    _validate_production_settings(
+        debug=DEBUG,
+        secret_key=os.environ.get('DJANGO_SECRET_KEY', ''),
+        # 直接使用上方已 strip() 规范化的 DJANGO_PII_KEY Setting 校验——
+        # 不再读原始环境变量，保证被校验的值与业务加密实际使用的值一致。
+        pii_key=DJANGO_PII_KEY,
+        allowed_hosts_raw=os.environ.get('DJANGO_ALLOWED_HOSTS', ''))

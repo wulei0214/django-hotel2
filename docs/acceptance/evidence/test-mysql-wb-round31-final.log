@@ -1,0 +1,95 @@
+﻿Found 1178 test(s).
+python : Using existing test database for alias 'default'...
+所在位置 行:508 字符: 297
++ ... _ENV='test'; python manage.py test --keepdb --parallel 1 2>&1 | Out-F ...
++                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Using existing ...as 'default'...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+System check identified no issues (0 silenced).
+.......................................................................login_failed ip=127.0.0.1 username_fp=2942f05b93
+ba reason=disabled
+.login_failed ip=127.0.0.1 username_fp=00bdef82f273 reason=no_employment
+.login_failed ip=127.0.0.1 username_fp=53f88ee8f52f reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=2942f05b93ba reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=fa2a84f5b524 reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=rate_limited
+本次关闭 1 笔审批超时退款。
+退款申请 ID：31
+本次关闭 0 笔审批超时退款。
+.......................................................................................Forbidden (CSRF token from the '
+X-Csrftoken' HTTP header has incorrect length.): /api/v1/billing/shifts/open
+.Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/notifications/refresh
+.........login_failed ip=127.0.0.1 username_fp=1064ae8d7d60 reason=disabled
+补偿任务本轮：扫描 5，成功 3，退避/失败 2，跳过 0。
+支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，1 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+支付/账务维护完成：1 个意图过期，1 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+支付/账务维护完成：0 个意图过期，1 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+已恢复 0 条超时夜审 RUNNING 记录（阈值 15 分钟）。
+.......................................................................................................................
+...............................................................................................................意图 53 过期
+被拒绝：意图状态已被并发修改
+支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，1 个对账差异任务，0 个错误。
+补偿任务本轮：扫描 1，成功 1，退避/失败 0，跳过 0。
+支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，1 个账本修复，0 个对账差异任务，0 个错误。
+补偿任务本轮：扫描 1，成功 1，退避/失败 0，跳过 0。
+支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+支付/账务维护完成：0 个意图过期，1 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+补偿任务本轮：扫描 1，成功 0，退避/失败 1，跳过 0。
+.......................................................................................................................
+.......................................................................................................................
+........................................补偿任务 44 执行异常。
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\billing\management\commands\payment_compensation_worker.py", line 374, in execute_
+compensation_task
+    return execute_reconciliation_diff(task)
+  File "F:\Desktop\django-hotel\apps\billing\management\commands\payment_compensation_worker.py", line 349, in execute_
+reconciliation_diff
+    run = scan_folio_reconciliation(property_obj=property_obj)
+  File "D:\Python39\lib\unittest\mock.py", line 1093, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1097, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1152, in _execute_mock_call
+    raise effect
+RuntimeError: db unavailable
+.......................................................................................................................
+.......................................................................................................................
+.......................................................................................................................
+.........................................................................................................check_unique c
+ache read failed; falling back to DB
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\hotelapp\views.py", line 203, in _unique_field_exists
+    exists = cache.get(key)
+  File "D:\Python39\lib\unittest\mock.py", line 1093, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1097, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1152, in _execute_mock_call
+    raise effect
+RuntimeError: Redis unavailable
+check_unique cache write failed; returning DB result
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\hotelapp\views.py", line 211, in _unique_field_exists
+    cache.set(key, exists, 60)
+  File "D:\Python39\lib\unittest\mock.py", line 1093, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1097, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1152, in _execute_mock_call
+    raise effect
+RuntimeError: Redis unavailable
+...................................
+----------------------------------------------------------------------
+Ran 1178 tests in 334.745s
+
+OK
+Preserving test database for alias 'default'...
+

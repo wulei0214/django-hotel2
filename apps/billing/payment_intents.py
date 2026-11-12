@@ -272,11 +272,13 @@ def _transition_provider_transaction(pt, *, channel_status,
                                      signature_verified):
     """WB-125：唯一允许改写渠道交易主记录的受控路径（状态机推进）。
 
-    模型 save() 对既有记录的实例级修改已被禁止（不可变保护）；仅本函数
-    通过内部标志放行。事件历史另存于 ProviderTransactionEvent，永不修改。
+    第 31 轮：不再使用可被任意调用方设置的实例属性放行；改为进入
+    authorized_provider_transition() 线程本地受控上下文，模型 save()
+    同时按事实比对 + 状态机规则校验迁移合法性（双保险）。事件历史
+    另存于 ProviderTransactionEvent，永不修改。
     """
-    pt._allow_controlled_transition = True
-    try:
+    from apps.billing.models import authorized_provider_transition
+    with authorized_provider_transition():
         pt.channel_status = channel_status
         pt.signature_verified = signature_verified
         if channel_status == "SUCCESS":
@@ -284,8 +286,6 @@ def _transition_provider_transaction(pt, *, channel_status,
                 pt.provider_confirmed_at or timezone.now())
         pt.save(update_fields=("channel_status", "signature_verified",
                                "provider_confirmed_at"))
-    finally:
-        pt._allow_controlled_transition = False
 
 
 @transaction.atomic
@@ -583,7 +583,11 @@ def expire_intent(*, property_obj, intent_id, actor=None):
             task_type=PaymentCompensationTask.TaskType.CHANNEL_QUERY,
             aggregate_type="PaymentIntent", aggregate_id=intent_id,
             idempotency_key=f"intent-expire-channel-query:{intent_id}")
-        raise ValueError(
+        # WB-121（第 31 轮）：继续抛出 ChannelStateUnknownError，不再
+        # 重新包装成普通 ValueError——否则调度层 except
+        # ChannelStateUnknownError 分支永远不可达，真实 UNKNOWN 会被
+        # 误计入状态冲突统计。该异常继承 ValueError，既有调用方语义不变。
+        raise ChannelStateUnknownError(
             "渠道状态未知（UNKNOWN），必须先查询渠道最终结果；"
             "不可直接过期，已创建渠道查询补偿任务。")
 

@@ -1,5 +1,7 @@
 from django.core.exceptions import ValidationError
+from contextlib import contextmanager
 from decimal import Decimal
+from threading import local
 from django.conf import settings
 from django.db import models, transaction
 from django.db.models import F, Q, Sum
@@ -1462,6 +1464,24 @@ class PaymentIntent(models.Model):
         return f"{self.intent_no} [{self.status}] {self.amount} {self.currency}"
 
 
+# WB-125（第 31 轮）：渠道交易状态机推进的受控上下文——线程本地令牌，
+# 仅由 payment_intents._transition_provider_transaction 通过
+# authorized_provider_transition() 进入。不再使用可被任意调用方设置的
+# 实例属性作为放行凭证；普通业务代码无法通过属性伪造获得授权，
+# 即使蓄意调用内部上下文，save() 仍会按状态机规则校验迁移合法性。
+_provider_transition_state = local()
+
+
+@contextmanager
+def authorized_provider_transition():
+    """受控状态机推进的内部授权上下文（私有 API，仅服务层使用）。"""
+    _provider_transition_state.authorized = True
+    try:
+        yield
+    finally:
+        _provider_transition_state.authorized = False
+
+
 class ProviderTransaction(models.Model):
     """渠道交易主记录：同一渠道交易号唯一，承载该交易**最新**渠道状态。
 
@@ -1511,15 +1531,14 @@ class ProviderTransaction(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        # WB-125：渠道交易主记录的既有事实不可通过实例 save() 直接改写——
-        # 任何字段变更必须经 record_provider_event 的事件重放/状态机校验。
-        # 仅服务层受控迁移（状态推进）通过 _allow_controlled_transition 放行。
-        if not self._state.adding and not getattr(
-                self, "_allow_controlled_transition", False):
-            raise ValueError(
-                "渠道交易事实不可变（WB-125）：不得直接修改已存在的渠道交易"
-                "记录；状态变化请通过 record_provider_event 记录新的渠道事件，"
-                "由受控状态机推进。")
+        # WB-125（第 31 轮）：废除 _allow_controlled_transition 实例属性
+        # 放行——任何调用方都能设置该属性，不构成可信授权。改为
+        # 「事实比对 + 状态机校验」：与库中已落盘行逐字段比对，除
+        # _TRANSITIONABLE_FIELDS 白名单外全部不可变；白名单字段仅允许
+        # 在 authorized_provider_transition() 上下文（仅服务层状态机
+        # 使用）内沿合法迁移推进。属性伪造放行标志不再有任何效果。
+        if not self._state.adding:
+            self._validate_controlled_update()
         event_id = (self.event_id or "").strip()
         self.provider_event_key = (
             f"{self.provider_code}:{event_id}" if event_id else None)
@@ -1527,6 +1546,63 @@ class ProviderTransaction(models.Model):
         if update_fields is not None:
             kwargs["update_fields"] = set(update_fields) | {"provider_event_key"}
         return super().save(*args, **kwargs)
+
+    def _validate_controlled_update(self):
+        """WB-125：既有渠道交易记录的实例级保存必须通过事实比对。"""
+        previous = type(self).objects.filter(pk=self.pk).values(
+            "property_id", "intent_id", "provider_code",
+            "provider_transaction_id", "event_id", "amount", "currency",
+            "channel_status", "signature_verified", "provider_event_key",
+            "occurred_at", "provider_confirmed_at", "payload_hash").first()
+        if previous is None:
+            return
+        immutable = ("property_id", "intent_id", "provider_code",
+                     "provider_transaction_id", "event_id", "amount",
+                     "currency", "provider_event_key", "occurred_at",
+                     "payload_hash")
+        changed = [f for f in immutable
+                   if previous[f] != getattr(self, f)]
+        if changed:
+            raise ValueError(
+                "渠道交易事实不可变（WB-125）：字段 "
+                f"{', '.join(changed)} 不得通过实例 save() 修改；"
+                "状态变化请通过 record_provider_event 记录新的渠道事件，"
+                "由受控状态机推进。")
+        fact_changed = (
+            self.channel_status != previous["channel_status"]
+            or bool(self.signature_verified) != bool(previous["signature_verified"])
+            or self.provider_confirmed_at != previous["provider_confirmed_at"])
+        if fact_changed:
+            # 渠道状态/验签/确认时间只允许在受控上下文内推进；
+            # 普通调用方即使伪造放行属性也必须被拒绝。
+            if not getattr(_provider_transition_state, "authorized", False):
+                raise ValueError(
+                    "渠道交易事实不可变（WB-125）：渠道状态、验签结果与"
+                    "确认时间仅允许经 record_provider_event 的受控状态机"
+                    "推进，不得通过实例 save() 直接修改。")
+            if previous["signature_verified"] and not self.signature_verified:
+                raise ValueError(
+                    "渠道交易验签结果不可回退（WB-125）：已验签事实不得被"
+                    "未验签结果覆盖。")
+            if (self.channel_status != previous["channel_status"]
+                    and previous["channel_status"] == "SUCCESS"):
+                raise ValueError(
+                    "渠道交易 SUCCESS 是终态（WB-125）：不得倒退为 "
+                    f"{self.channel_status}。")
+            if (self.channel_status == "SUCCESS"
+                    and not self.signature_verified):
+                raise ValueError(
+                    "未验签事件不能推进渠道交易成功状态（WB-125）。")
+            if (previous["provider_confirmed_at"] is not None
+                    and self.provider_confirmed_at
+                    != previous["provider_confirmed_at"]):
+                raise ValueError(
+                    "渠道确认时间不可修改（WB-125）。")
+            if (previous["provider_confirmed_at"] is None
+                    and self.provider_confirmed_at is not None
+                    and self.channel_status != "SUCCESS"):
+                raise ValueError(
+                    "渠道确认时间只能在确认成功时写入（WB-125）。")
 
     def __str__(self):
         return f"{self.provider_code}:{self.provider_transaction_id} [{self.channel_status}]"
@@ -1576,6 +1652,16 @@ class ProviderTransactionEvent(models.Model):
         ]
 
     def save(self, *args, **kwargs):
+        # WB-119（第 31 轮）：事件历史是只追加的不可变事实——实例已存在
+        # 时拒绝任何 save() 修改（同 LedgerEntry 只追加模式）；批量旁路
+        # （update/bulk_update/bulk_create/delete）由
+        # ImmutableFinancialFactQuerySet 拦截；实例 delete() 一并拒绝。
+        if self.pk is not None and (
+                not self._state.adding
+                or type(self).objects.filter(pk=self.pk).exists()):
+            raise ValueError(
+                "渠道事件历史不可变（WB-119）：禁止修改已存在的渠道事件；"
+                "渠道状态变化请追加新的事件记录。")
         event_id = (self.event_id or "").strip()
         self.provider_event_key = (
             f"{self.provider_code}:{event_id}" if event_id else None)
@@ -1583,6 +1669,11 @@ class ProviderTransactionEvent(models.Model):
         if update_fields is not None:
             kwargs["update_fields"] = set(update_fields) | {"provider_event_key"}
         return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise RuntimeError(
+            "渠道事件历史不可删除（WB-119）：事件只追加，原始支付状态"
+            "证据必须永久保留。")
 
     def __str__(self):
         return f"{self.provider_code}:{self.provider_transaction_id}#{self.event_id} [{self.channel_status}]"

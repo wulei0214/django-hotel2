@@ -849,33 +849,58 @@ class Round29MaintenanceWorkerContractTests(TestCase):
         self.assertEqual(LedgerEntry.objects.filter(folio=folio).count(), 1)
 
     def test_expire_statistics_separate_unknown_from_conflicts(self):
-        """WB-121：渠道 UNKNOWN 计 unknown，状态竞态/业务拒绝计 conflicts。"""
+        """WB-121（第 31 轮）：真实调用链验证——UNKNOWN 意图计入 unknown
+        且不 mock expire_intent；竞态冲突单独计 conflicts。"""
         from io import StringIO
         from unittest.mock import patch
         from apps.billing.management.commands import run_billing_maintenance as maint
-        from apps.billing.payment_intents import ChannelStateUnknownError
 
         r1, f1 = self._make_folio("R29-EXP-U")
         r2, f2 = self._make_folio("R29-EXP-C")
-        for reservation, folio, suffix in ((r1, f1, "U"), (r2, f2, "C")):
-            PaymentIntent.objects.create(
-                property=self.prop, reservation=reservation, folio=folio,
-                intent_no=f"R29-INTENT-{suffix}",
-                idempotency_key=f"R29-INTENT-KEY-{suffix}",
-                amount=Decimal("600.00"), currency="CNY",
-                status=PaymentIntent.Status.PENDING,
-                expires_at=timezone.now() - timedelta(minutes=1))
+        intent_u = PaymentIntent.objects.create(
+            property=self.prop, reservation=r1, folio=f1,
+            intent_no="R29-INTENT-U", idempotency_key="R29-INTENT-KEY-U",
+            amount=Decimal("600.00"), currency="CNY",
+            status=PaymentIntent.Status.PENDING,
+            expires_at=timezone.now() - timedelta(minutes=1))
+        intent_c = PaymentIntent.objects.create(
+            property=self.prop, reservation=r2, folio=f2,
+            intent_no="R29-INTENT-C", idempotency_key="R29-INTENT-KEY-C",
+            amount=Decimal("600.00"), currency="CNY",
+            status=PaymentIntent.Status.PENDING,
+            expires_at=timezone.now() - timedelta(minutes=1))
+        # 真实 UNKNOWN 场景：渠道交易事实 UNKNOWN → expire_intent 走
+        # 真实服务链抛 ChannelStateUnknownError（不再包装成 ValueError）
+        ProviderTransaction.objects.create(
+            property=self.prop, intent=intent_u, provider_code="mock",
+            provider_transaction_id="R29-PT-UNKNOWN-U",
+            amount=Decimal("600.00"), currency="CNY",
+            channel_status="UNKNOWN", signature_verified=False)
 
-        with patch.object(
-                maint, "expire_intent",
-                side_effect=[ChannelStateUnknownError(),
-                             ValueError("意图状态已被并发修改")]):
+        real_expire = maint.expire_intent
+
+        def expire_with_race_conflict(*, property_obj, intent_id, **kwargs):
+            if intent_id == intent_c.pk:
+                # 模拟并发竞态：意图在命令快照后已被迁移出待支付状态
+                raise ValueError("意图状态已被并发修改")
+            return real_expire(property_obj=property_obj,
+                               intent_id=intent_id, **kwargs)
+
+        with patch.object(maint, "expire_intent",
+                          side_effect=expire_with_race_conflict):
             out = StringIO()
             call_command("run_billing_maintenance", "--property", "R29MAINT",
                          "--only", "expire", stdout=out)
         output = out.getvalue()
         self.assertIn("1 个渠道状态未知", output)
         self.assertIn("1 个状态冲突/业务拒绝", output)
+        # 三者一致：意图保持原状态 + CHANNEL_QUERY 任务已落 + 统计正确
+        intent_u.refresh_from_db()
+        self.assertEqual(intent_u.status, PaymentIntent.Status.PENDING)
+        self.assertTrue(PaymentCompensationTask.objects.filter(
+            task_type=PaymentCompensationTask.TaskType.CHANNEL_QUERY,
+            idempotency_key=f"intent-expire-channel-query:{intent_u.pk}",
+        ).exists())
 
     def test_unknown_intent_via_maintenance_creates_channel_query_task(self):
         """真实 UNKNOWN 路径：维护命令不过期意图，落 CHANNEL_QUERY 任务；
