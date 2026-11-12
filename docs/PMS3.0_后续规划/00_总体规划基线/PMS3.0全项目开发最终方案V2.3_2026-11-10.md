@@ -2665,3 +2665,13 @@ PMS2 最终验收报告签署“通过”前，至少归档：
 ## 2026-11-12 PMS2.0 门禁状态更新
 
 当前 PMS2 main 基线为 57d2176b2dec821dd5c82ec71743603a42f44474，MySQL 1178 OK、SQLite 1178 OK（skip 19）；但 dev 数据库迁移、生产 PII 密钥切换、ENTRY_NO_PAYMENT 对账缺口、若干 WB 专项、九角色真实登录、浏览器 E2E 和 G14 独立签署仍未完成。因此本规划继续保持“可评审/可准备，不得启动正式业务代码开发”的门禁状态。不得因 PMS2 CI 通过而提前解除 PMS2 最终验收门禁。
+
+
+## 2026-11-12 当前基线复核补充
+
+- 当前 main HEAD：`b546425912cc5fad730057e368ca36ad2d130725`；业务代码基线：`57d2176b2dec821dd5c82ec71743603a42f44474`。业务代码基线后的提交仅修改 docs/ 和 OpenAPI 同步工作流。
+- 当前 main 对应 Django CI run 43242839234 与 MySQL tests run 43242839197 均 success。
+- OpenAPI 两份 JSON 快照逐字节一致：113 paths / 115 operations，90 verified / 25 partial。
+- 未完成的部署/验收边界仍包括 dev hotel 的 guests.0007 / billing.0030 迁移、生产 PII 密钥受控切换、MySQL 生产恢复演练、ENTRY_NO_PAYMENT 反向扫描、WB-076/089、WB-085、WB-087、WB-092、WB-125 专项复核、九角色真实登录、浏览器 E2E、Apifox 手工报告和 G14 独立签署。
+- 本补充更新文档基线，不改变原历史证据、签署状态或业务代码。
+- PMS3.0 正式业务代码开发门禁仍由 PMS2 G14 独立签署控制。文档校准、OpenAPI 扩充或 CI 成功均不能自动解除门禁。

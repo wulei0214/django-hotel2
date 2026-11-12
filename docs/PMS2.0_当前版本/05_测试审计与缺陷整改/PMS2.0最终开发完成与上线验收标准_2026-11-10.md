@@ -571,3 +571,13 @@ OpenAPI、接口实现和 Apifox 测试资产必须一致；Apifox 的实际导�
 6. 独立验收人完成 96 G14 签署。
 
 因此当前 PMS2.0 仍是“开发持续整改/待独立验收”，不得在 A16 或 G14 中标记最终通过；PMS3.0 正式业务代码开发门禁继续关闭。
+
+
+## 2026-11-12 当前基线复核补充
+
+- 当前 main HEAD：`b546425912cc5fad730057e368ca36ad2d130725`；业务代码基线：`57d2176b2dec821dd5c82ec71743603a42f44474`。业务代码基线后的提交仅修改 docs/ 和 OpenAPI 同步工作流。
+- 当前 main 对应 Django CI run 43242839234 与 MySQL tests run 43242839197 均 success。
+- OpenAPI 两份 JSON 快照逐字节一致：113 paths / 115 operations，90 verified / 25 partial。
+- 未完成的部署/验收边界仍包括 dev hotel 的 guests.0007 / billing.0030 迁移、生产 PII 密钥受控切换、MySQL 生产恢复演练、ENTRY_NO_PAYMENT 反向扫描、WB-076/089、WB-085、WB-087、WB-092、WB-125 专项复核、九角色真实登录、浏览器 E2E、Apifox 手工报告和 G14 独立签署。
+- 本补充更新文档基线，不改变原历史证据、签署状态或业务代码。
+- 最新 CI 的成功状态不能替代本标准中 R1-R10 的人工验收；G14 签署栏必须由独立验收人填写，开发人员不得代签。

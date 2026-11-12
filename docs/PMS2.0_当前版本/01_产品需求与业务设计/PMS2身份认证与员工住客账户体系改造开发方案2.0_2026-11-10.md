@@ -1043,3 +1043,13 @@ Guest 重复档案的业务合并政策仍按第 8 节执行，不允许用“�
 ## 2026-11-12 当前代码核对
 
 当前 main 57d2176b2dec821dd5c82ec71743603a42f44474。员工登录以 User.username 为主标识；StaffProfile、PropertyStaffMembership、StaffRoleAssignment 分层；rehire_employee 与工号计数器服务已实现。手机号不作为员工身份唯一键。公开预订订单访问使用 Booking Access Token 请求头，不以 booking_no + phone 作为访问凭据。Guest 手机号密文/HMAC 与 DJANGO_PII_KEY 生产校验已实现；dev guests.0007 迁移和生产密钥受控切换仍待执行。九角色真实口令登录、浏览器 E2E 和独立验收未完成。
+
+
+## 2026-11-12 当前实现状态校准
+
+- 当前 main HEAD：`b546425912cc5fad730057e368ca36ad2d130725`；业务代码基线：`57d2176b2dec821dd5c82ec71743603a42f44474`。
+- 员工身份主登录标识为 username；StaffProfile.phone 不作为登录身份，未验证的手机号/邮箱别名不作为认证凭据。员工账号由管理员创建/邀请，不开放 PMS 员工自助注册；密码重置由管理员执行，员工首次登录强制改密；MFA 暂缓。
+- 单店运行目标不开放物业切换；多物业数据模型保留不等于当前支持用户切换物业。
+- 住客预约入口与员工登录分离；公开注册不得创建 PMS 员工或后台可访问账户。订单查询仍须保留 booking_no + phone 的限流、审计和脱敏边界。
+- PII 手机号加密/HMAC 迁移代码已存在，但 dev hotel 仍需应用 guests.0007；生产 PII 独立密钥切换必须备份、旧钥验证、重加密、HMAC 重算、对账后受控切换。
+- 最新 main 的 Django CI 与 MySQL tests 均成功（run 43242839234 / 43242839197）；真实九角色登录、浏览器隔离、用户本地数据和生产配置仍待验收。

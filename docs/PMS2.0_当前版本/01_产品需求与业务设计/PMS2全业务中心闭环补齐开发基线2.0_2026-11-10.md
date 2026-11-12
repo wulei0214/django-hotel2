@@ -1233,3 +1233,15 @@ P0 权限测试必须覆盖匿名与跨物业。每一个权限拒绝都应验�
 - PII 手机号加密迁移和独立密钥校验已落地；GuestDocument 法定留存策略/Legal Hold 自动清理尚未落地。
 - 押金当前固定按整单 30% 服务端计算，DepositPolicy 的配置化语义与代码尚未一致；在正式修订决策前，文档不得写成“按 RatePlan 自定义政策自动计算”。
 - 生产部署、数据库迁移、密钥切换和 G14 仍按上线门禁单独验收。
+
+
+## 2026-11-12 当前代码/需求一致性校准
+
+- 当前 main HEAD：`b546425912cc5fad730057e368ca36ad2d130725`；业务代码基线：`57d2176b2dec821dd5c82ec71743603a42f44474`。其后 main 仅有文档和 OpenAPI 同步工作流变化。
+- 当前 OpenAPI 为 113 paths / 115 operations（90 verified / 25 partial）；partial 不能当作已完整验收的业务闭环。
+- 双引擎 CI 在当前 main 对应 run 43242839234（Django/SQLite）与 43242839197（MySQL）均成功；CI 不等于真实浏览器、九角色实账号、dev 数据库或生产验收。
+- 当前财务对账尚未生成 ENTRY_NO_PAYMENT 反向差异；Payment/Refund 仍需补精确金额、币种、凭证类型、来源对象和 ChargeLine 核验。不得称为双向完整对账。
+- DepositPolicy 模型存在，但当前押金服务按整单金额 30% 服务端计算，未消费模型中的配置值/版本；需求目标与现状必须分开描述。
+- GuestDocument 的 retention_until 字段不等于完整 RetentionPolicy、LegalHold、审批与自动清理能力；法务参数未冻结前不得自动清理。
+- Walk-in 已有原子化领域服务，但服务存在不等于 UI/API/属地登记规则/HTTP E2E 全部验收。
+- dev 数据库 guests.0007 / billing.0030 迁移、生产 PII 密钥受控切换、WB-076/089、WB-085、WB-087、WB-092、WB-125 专项复测均保持未完成状态。
