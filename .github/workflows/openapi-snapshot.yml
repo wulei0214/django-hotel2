@@ -27,24 +27,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Export current runtime schema
-        run: python manage.py export_openapi_schema
-      - name: Commit refreshed OpenAPI snapshot
+        run: |
+          python manage.py export_openapi_schema
+          cp docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/openapi.json docs/接口文档/openapi.json
+      - name: Commit refreshed OpenAPI snapshots
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/接口文档/openapi.json
+          git add docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/openapi.json docs/接口文档/openapi.json
           if git diff --cached --quiet; then
-            echo "OpenAPI snapshot is already current."
+            echo "OpenAPI snapshots are already current."
           else
-            git commit -m "docs(api): refresh generated OpenAPI snapshot"
+            git commit -m "docs(api): refresh synchronized OpenAPI snapshots"
             git fetch origin main
             git rebase origin/main
             git push origin HEAD:main
           fi
-      - name: Upload generated OpenAPI snapshot
+      - name: Upload generated OpenAPI snapshots
         uses: actions/upload-artifact@v4
         with:
-          name: pms2-openapi-snapshot
-          path: docs/接口文档/openapi.json
+          name: pms2-openapi-snapshots
+          path: |
+            docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/openapi.json
+            docs/接口文档/openapi.json
           if-no-files-found: error
           retention-days: 7
