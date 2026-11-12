@@ -76,7 +76,7 @@ security.W002 XFrameOptions / W004 HSTS / W008 SSL_REDIRECT / W010 SESSION_COOKI
 
 ## 2026-11-09 最新 main 补充说明
 
-- 最新代码 SHA：57d2176b2dec821dd5c82ec71743603a42f44474；SQLite 与 MySQL 8 Actions 各 887 项通过。
+- 当前待验收代码 SHA：57d2176b2dec821dd5c82ec71743603a42f44474；SQLite 与 MySQL 8 Actions 各 1178 项通过（SQLite skip 19）。
 - 最新业务代码已覆盖 PENDING 预订由前台押金/人工收款成功后自动确认、夜审按营业日过账、退房按 Stay 补记未入账房费差额、清洁放行和退款三方分离。
 - 白盒复核发现 scripts/e2e_full_chain.py 有导入缺失、凭据硬编码、清库保护不足和空断言；该脚本未纳入 CI，36/36 不作为有效验收结论。
 - 九角色真实登录、用户业务走查、真实浏览器 E2E 和 G14 独立签署仍未完成。A16 仍为开发者申报，不是最终验收通过。
