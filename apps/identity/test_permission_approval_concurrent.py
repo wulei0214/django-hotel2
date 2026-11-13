@@ -81,18 +81,27 @@ class PermissionApprovalConcurrencyTestBase(TransactionTestCase):
         }
 
     def _create_pending_record(self):
-        """直接构造一条待审批记录（并发测试聚焦决策端点竞争）。"""
+        """构造一条与真实状态一致的待审批记录（并发测试聚焦决策端点竞争）。
+
+        version 必须是组当前权限码全集的真实内容 hash——执行端
+        _execute_approved_matrix 会复核 version/diff/allowed（治理设计），
+        伪造 version 会让并发双批准全部 409 version_conflict（首轮 CI 实证）。
+        """
+        from apps.identity.permission_center import content_version, diff_hash
+
+        requested = sorted(self._held() | {self.special_code})
+        added, removed = [self.special_code], []
         return PermissionMatrixApproval.objects.create(
             group=self.group,
             requested_by=self.requester,
             reason="真实并发竞争测试",
-            diff_hash="0123456789abcdef",
+            diff_hash=diff_hash(added, removed),
             payload_snapshot={
-                "added": [self.special_code],
-                "removed": [],
+                "added": added,
+                "removed": removed,
                 "preserved": [],
-                "requested": sorted(self._held() | {self.special_code}),
-                "version": "concurrent-test",
+                "requested": requested,
+                "version": content_version(self._held()),
             },
         )
 
