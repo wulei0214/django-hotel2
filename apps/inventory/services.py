@@ -1,10 +1,11 @@
-from django.utils import timezone
 from datetime import datetime as dt_datetime
-from datetime import time as _time, timedelta
+from datetime import time as _time
+from datetime import timedelta
 
 from django.db import transaction
+from django.utils import timezone
 
-from .models import DailyRate, Room, RoomTypeInventory
+from .models import DailyRate, RatePlan, Room, RoomTypeInventory
 
 
 class InventoryUnavailable(Exception):
@@ -21,48 +22,62 @@ class HousekeepingOperationError(Exception):
 # 清洁链正向流转（接单→清洁→待检查→净房放行），INSPECTING→DIRTY 为检查不通过
 # 返工；CLEAN 之后弄脏（退房/住中）由 reservations 退房服务负责，不在本工作台。
 HOUSEKEEPING_TRANSITIONS = {
-    Room.HousekeepingStatus.DIRTY: frozenset({
-        Room.HousekeepingStatus.CLEANING,
-    }),
-    Room.HousekeepingStatus.CLEANING: frozenset({
-        Room.HousekeepingStatus.INSPECTING,
-    }),
-    Room.HousekeepingStatus.INSPECTING: frozenset({
-        Room.HousekeepingStatus.CLEAN,   # 检查通过：净房放行（需 room_release_ready）
-        Room.HousekeepingStatus.DIRTY,   # 检查不通过：返工
-    }),
+    Room.HousekeepingStatus.DIRTY: frozenset(
+        {
+            Room.HousekeepingStatus.CLEANING,
+        }
+    ),
+    Room.HousekeepingStatus.CLEANING: frozenset(
+        {
+            Room.HousekeepingStatus.INSPECTING,
+        }
+    ),
+    Room.HousekeepingStatus.INSPECTING: frozenset(
+        {
+            Room.HousekeepingStatus.CLEAN,  # 检查通过：净房放行（需 room_release_ready）
+            Room.HousekeepingStatus.DIRTY,  # 检查不通过：返工
+        }
+    ),
     Room.HousekeepingStatus.CLEAN: frozenset(),
 }
 
 # 维修维度：报修停用（NORMAL→OUT_OF_ORDER/OUT_OF_SERVICE）、停用级别互换、
 # 维修完成恢复（→NORMAL）。恢复不联动清洁状态——净房与否由清洁链独立判断。
 MAINTENANCE_TRANSITIONS = {
-    Room.MaintenanceStatus.NORMAL: frozenset({
-        Room.MaintenanceStatus.OUT_OF_ORDER,
-        Room.MaintenanceStatus.OUT_OF_SERVICE,
-    }),
-    Room.MaintenanceStatus.OUT_OF_ORDER: frozenset({
-        Room.MaintenanceStatus.NORMAL,
-        Room.MaintenanceStatus.OUT_OF_SERVICE,
-    }),
-    Room.MaintenanceStatus.OUT_OF_SERVICE: frozenset({
-        Room.MaintenanceStatus.NORMAL,
-        Room.MaintenanceStatus.OUT_OF_ORDER,
-    }),
+    Room.MaintenanceStatus.NORMAL: frozenset(
+        {
+            Room.MaintenanceStatus.OUT_OF_ORDER,
+            Room.MaintenanceStatus.OUT_OF_SERVICE,
+        }
+    ),
+    Room.MaintenanceStatus.OUT_OF_ORDER: frozenset(
+        {
+            Room.MaintenanceStatus.NORMAL,
+            Room.MaintenanceStatus.OUT_OF_SERVICE,
+        }
+    ),
+    Room.MaintenanceStatus.OUT_OF_SERVICE: frozenset(
+        {
+            Room.MaintenanceStatus.NORMAL,
+            Room.MaintenanceStatus.OUT_OF_ORDER,
+        }
+    ),
 }
 
 
 def _release_ready_permitted(user, property_obj):
     """净房放行权限判定（F-08 补执行点：hotelapp.room_release_ready）。"""
     from apps.identity.authorization import AuthorizationService
-    return AuthorizationService.has_permission(
-        user, property_obj, "hotelapp.room_release_ready")
+
+    return AuthorizationService.has_permission(user, property_obj, "hotelapp.room_release_ready")
 
 
 def _property_today(property_obj):
     """物业时区当前日期（与夜审 property_date 同口径）。"""
     from zoneinfo import ZoneInfo
+
     from django.utils import timezone
+
     try:
         tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")
     except Exception:
@@ -71,8 +86,9 @@ def _property_today(property_obj):
 
 
 @transaction.atomic
-def change_housekeeping_status(*, property_obj, room_id, target_status,
-                               changed_by=None, request=None, notes=""):
+def change_housekeeping_status(
+    *, property_obj, room_id, target_status, changed_by=None, request=None, notes=""
+):
     """清洁状态流转唯一写入口（§4.3 链式规则 + 审计）。
 
     规则：
@@ -90,12 +106,12 @@ def change_housekeeping_status(*, property_obj, room_id, target_status,
     from apps.identity.authorization import AuthorizationService
 
     if changed_by is None or not AuthorizationService.has_permission(
-            changed_by, property_obj, "inventory.housekeeping_update"):
+        changed_by, property_obj, "inventory.housekeeping_update"
+    ):
         raise HousekeepingOperationError("当前岗位没有清洁状态流转权限。")
 
     if target_status not in Room.HousekeepingStatus.values:
-        raise HousekeepingOperationError(
-            "清洁状态必须是 DIRTY/CLEANING/INSPECTING/CLEAN 之一。")
+        raise HousekeepingOperationError("清洁状态必须是 DIRTY/CLEANING/INSPECTING/CLEAN 之一。")
 
     room = (
         Room.objects.select_for_update()
@@ -114,28 +130,37 @@ def change_housekeeping_status(*, property_obj, room_id, target_status,
         raise HousekeepingOperationError(
             f"清洁状态不允许从 {current} 流转到 {target_status}"
             f"（合法链路：DIRTY→CLEANING→INSPECTING→CLEAN，"
-            f"待检查可退回 DIRTY 返工）。")
+            f"待检查可退回 DIRTY 返工）。"
+        )
 
-    if (target_status == Room.HousekeepingStatus.CLEAN
-            and not _release_ready_permitted(changed_by, property_obj)):
+    if target_status == Room.HousekeepingStatus.CLEAN and not _release_ready_permitted(
+        changed_by, property_obj
+    ):
         raise HousekeepingOperationError(
-            "净房放行需要 hotelapp.room_release_ready 权限"
-            "（值班经理/店长）。")
+            "净房放行需要 hotelapp.room_release_ready 权限" "（值班经理/店长）。"
+        )
 
     room.housekeeping_status = target_status
     room.save(update_fields=("housekeeping_status", "updated_at"))
     AuditEvent.record(
         action="housekeeping.status_changed",
-        entity_type="Room", entity_id=str(room.pk),
-        actor=changed_by, property_obj=property_obj,
-        before={"housekeeping_status": current,
-                "occupancy_status": room.occupancy_status,
-                "maintenance_status": room.maintenance_status},
-        after={"housekeeping_status": target_status,
-               "occupancy_status": room.occupancy_status,
-               "maintenance_status": room.maintenance_status,
-               "is_sellable_now": room.is_sellable_now},
-        reason=str(notes or "")[:240], request=request,
+        entity_type="Room",
+        entity_id=str(room.pk),
+        actor=changed_by,
+        property_obj=property_obj,
+        before={
+            "housekeeping_status": current,
+            "occupancy_status": room.occupancy_status,
+            "maintenance_status": room.maintenance_status,
+        },
+        after={
+            "housekeeping_status": target_status,
+            "occupancy_status": room.occupancy_status,
+            "maintenance_status": room.maintenance_status,
+            "is_sellable_now": room.is_sellable_now,
+        },
+        reason=str(notes or "")[:240],
+        request=request,
     )
 
     # WB-056：清洁任务与房态链闭环（此前任务实体无任何状态联动）。
@@ -143,13 +168,17 @@ def change_housekeeping_status(*, property_obj, room_id, target_status,
     #   （PENDING/IN_PROGRESS）→ CANCELLED，避免放行后任务永久悬挂。
     #   检查返工（INSPECTING→DIRTY）：DONE→REJECTED（检查退回）。
     from .models import HousekeepingTask
+
     open_tasks = list(
         HousekeepingTask.objects.select_for_update()
         .filter(
-            property=property_obj, room=room,
-            status__in=(HousekeepingTask.TaskStatus.PENDING,
-                        HousekeepingTask.TaskStatus.IN_PROGRESS,
-                        HousekeepingTask.TaskStatus.DONE),
+            property=property_obj,
+            room=room,
+            status__in=(
+                HousekeepingTask.TaskStatus.PENDING,
+                HousekeepingTask.TaskStatus.IN_PROGRESS,
+                HousekeepingTask.TaskStatus.DONE,
+            ),
         )
         .order_by("pk")
     )
@@ -159,27 +188,38 @@ def change_housekeeping_status(*, property_obj, room_id, target_status,
             was_done = task.status == HousekeepingTask.TaskStatus.DONE
             before_status = task.status
             task.status = (
-                HousekeepingTask.TaskStatus.INSPECTED if was_done
-                else HousekeepingTask.TaskStatus.CANCELLED)
+                HousekeepingTask.TaskStatus.INSPECTED
+                if was_done
+                else HousekeepingTask.TaskStatus.CANCELLED
+            )
             task.inspected_by = changed_by if was_done else None
             task.inspected_at = now if was_done else None
             if task.completed_at is None:
                 task.completed_at = now
-            task.save(update_fields=(
-                "status", "inspected_by", "inspected_at",
-                "completed_at", "updated_at"))
+            task.save(
+                update_fields=(
+                    "status",
+                    "inspected_by",
+                    "inspected_at",
+                    "completed_at",
+                    "updated_at",
+                )
+            )
             AuditEvent.record(
                 action="housekeeping.task_released",
-                entity_type="HousekeepingTask", entity_id=str(task.pk),
-                actor=changed_by, property_obj=property_obj,
+                entity_type="HousekeepingTask",
+                entity_id=str(task.pk),
+                actor=changed_by,
+                property_obj=property_obj,
                 before={"status": before_status, "room_id": room.pk},
-                after={"status": task.status,
-                       "inspected": bool(was_done)},
+                after={"status": task.status, "inspected": bool(was_done)},
                 reason="净房放行联动关闭清洁任务（WB-056）",
                 request=request,
             )
-    elif (target_status == Room.HousekeepingStatus.DIRTY
-            and current == Room.HousekeepingStatus.INSPECTING):
+    elif (
+        target_status == Room.HousekeepingStatus.DIRTY
+        and current == Room.HousekeepingStatus.INSPECTING
+    ):
         for task in open_tasks:
             if task.status != HousekeepingTask.TaskStatus.DONE:
                 continue
@@ -187,8 +227,10 @@ def change_housekeeping_status(*, property_obj, room_id, target_status,
             task.save(update_fields=("status", "updated_at"))
             AuditEvent.record(
                 action="housekeeping.task_rejected",
-                entity_type="HousekeepingTask", entity_id=str(task.pk),
-                actor=changed_by, property_obj=property_obj,
+                entity_type="HousekeepingTask",
+                entity_id=str(task.pk),
+                actor=changed_by,
+                property_obj=property_obj,
                 after={"status": "REJECTED", "room_id": room.pk},
                 reason="检查返工联动退回清洁任务（WB-056）",
                 request=request,
@@ -228,12 +270,12 @@ def _sync_inventory_out_of_service(room, delta, *, property_obj):
         if new_value < 0:
             # 口径保护：不把停用计数减成负数（如命令先行归零后的人工恢复）
             new_value = 0
-        if delta > 0 and stock.total_rooms < (
-                stock.held + stock.sold + new_value):
+        if delta > 0 and stock.total_rooms < (stock.held + stock.sold + new_value):
             raise HousekeepingOperationError(
                 f"{stock.stay_date.isoformat()} 库存不足：总房量 "
                 f"{stock.total_rooms}，已 Hold/Sold {stock.held + stock.sold}，"
-                f"无法再停用 1 间；请先处理该日期的预订或库存。")
+                f"无法再停用 1 间；请先处理该日期的预订或库存。"
+            )
         stock.out_of_service = new_value
         stock.version = (stock.version or 0) + 1
         stock.save(update_fields=("out_of_service", "version", "updated_at"))
@@ -242,8 +284,9 @@ def _sync_inventory_out_of_service(room, delta, *, property_obj):
 
 
 @transaction.atomic
-def change_maintenance_status(*, property_obj, room_id, target_status, reason,
-                              changed_by=None, request=None):
+def change_maintenance_status(
+    *, property_obj, room_id, target_status, reason, changed_by=None, request=None
+):
     """维修状态登记唯一写入口（§4.3 维修停用/恢复 + 审计）。
 
     规则：
@@ -262,15 +305,15 @@ def change_maintenance_status(*, property_obj, room_id, target_status, reason,
     from apps.identity.authorization import AuthorizationService
 
     if changed_by is None or not AuthorizationService.has_permission(
-            changed_by, property_obj, "inventory.maintenance_manage"):
+        changed_by, property_obj, "inventory.maintenance_manage"
+    ):
         raise HousekeepingOperationError("当前岗位没有维修状态登记权限。")
 
     reason = str(reason or "").strip()
     if not reason or len(reason) > 240:
         raise HousekeepingOperationError("维修登记必须填写 1 至 240 个字符的原因。")
     if target_status not in Room.MaintenanceStatus.values:
-        raise HousekeepingOperationError(
-            "维修状态必须是 NORMAL/OUT_OF_ORDER/OUT_OF_SERVICE 之一。")
+        raise HousekeepingOperationError("维修状态必须是 NORMAL/OUT_OF_ORDER/OUT_OF_SERVICE 之一。")
 
     room = (
         Room.objects.select_for_update()
@@ -286,8 +329,7 @@ def change_maintenance_status(*, property_obj, room_id, target_status, reason,
         return room, False
     allowed = MAINTENANCE_TRANSITIONS.get(current, frozenset())
     if target_status not in allowed:
-        raise HousekeepingOperationError(
-            f"维修状态不允许从 {current} 变更为 {target_status}。")
+        raise HousekeepingOperationError(f"维修状态不允许从 {current} 变更为 {target_status}。")
 
     entering = target_status in (
         Room.MaintenanceStatus.OUT_OF_ORDER,
@@ -304,24 +346,30 @@ def change_maintenance_status(*, property_obj, room_id, target_status, reason,
         delta = -1
 
     # 先同步库存（可能因容量不足抛错回滚），再落房间状态，保证原子一致
-    synced_rows = _sync_inventory_out_of_service(
-        room, delta, property_obj=property_obj)
+    synced_rows = _sync_inventory_out_of_service(room, delta, property_obj=property_obj)
 
     room.maintenance_status = target_status
     room.save(update_fields=("maintenance_status", "updated_at"))
     AuditEvent.record(
         action="maintenance.status_changed",
-        entity_type="Room", entity_id=str(room.pk),
-        actor=changed_by, property_obj=property_obj,
-        before={"maintenance_status": current,
-                "occupancy_status": room.occupancy_status,
-                "housekeeping_status": room.housekeeping_status},
-        after={"maintenance_status": target_status,
-               "occupancy_status": room.occupancy_status,
-               "housekeeping_status": room.housekeeping_status,
-               "is_sellable_now": room.is_sellable_now,
-               "inventory_out_of_service_rows_synced": synced_rows},
-        reason=reason, request=request,
+        entity_type="Room",
+        entity_id=str(room.pk),
+        actor=changed_by,
+        property_obj=property_obj,
+        before={
+            "maintenance_status": current,
+            "occupancy_status": room.occupancy_status,
+            "housekeeping_status": room.housekeeping_status,
+        },
+        after={
+            "maintenance_status": target_status,
+            "occupancy_status": room.occupancy_status,
+            "housekeeping_status": room.housekeeping_status,
+            "is_sellable_now": room.is_sellable_now,
+            "inventory_out_of_service_rows_synced": synced_rows,
+        },
+        reason=reason,
+        request=request,
     )
     return room, True
 
@@ -329,22 +377,28 @@ def change_maintenance_status(*, property_obj, room_id, target_status, reason,
 def housekeeping_summary(property_obj):
     """今日清洁/维修统计（§4.3 工作台统计卡）：各状态计数 + 待放行 + 今日流转。"""
     from django.db.models import Count
-    from django.utils import timezone
 
     rooms = Room.objects.filter(property=property_obj, is_active=True)
     housekeeping, maintenance = {}, {}
     by_floor = {}
-    for row in rooms.values(
-            "floor", "housekeeping_status", "maintenance_status"
-    ).annotate(total=Count("id")):
-        hk, mt, total = (row["housekeeping_status"], row["maintenance_status"],
-                         row["total"])
+    for row in rooms.values("floor", "housekeeping_status", "maintenance_status").annotate(
+        total=Count("id")
+    ):
+        hk, mt, total = (row["housekeeping_status"], row["maintenance_status"], row["total"])
         housekeeping[hk] = housekeeping.get(hk, 0) + total
         maintenance[mt] = maintenance.get(mt, 0) + total
-        bucket = by_floor.setdefault(row["floor"] or "", {
-            "floor": row["floor"] or "", "total": 0,
-            "CLEAN": 0, "DIRTY": 0, "CLEANING": 0, "INSPECTING": 0,
-            "maintenance_abnormal": 0})
+        bucket = by_floor.setdefault(
+            row["floor"] or "",
+            {
+                "floor": row["floor"] or "",
+                "total": 0,
+                "CLEAN": 0,
+                "DIRTY": 0,
+                "CLEANING": 0,
+                "INSPECTING": 0,
+                "maintenance_abnormal": 0,
+            },
+        )
         bucket["total"] += total
         bucket[hk] = bucket.get(hk, 0) + total
         if mt != Room.MaintenanceStatus.NORMAL:
@@ -354,25 +408,25 @@ def housekeeping_summary(property_obj):
     # 用 settings.TIME_ZONE 解释物业日历日期，跨时区物业会把昨天/明天的
     # 流转错记进“今天”。
     from zoneinfo import ZoneInfo
+
     try:
         tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")
     except Exception:
         tz = ZoneInfo("Asia/Shanghai")
-    day_start = dt_datetime.combine(
-        _property_today(property_obj), _time.min, tzinfo=tz)
+    day_start = dt_datetime.combine(_property_today(property_obj), _time.min, tzinfo=tz)
     from apps.core.models import AuditEvent
-    today_events = AuditEvent.objects.filter(
-        property=property_obj, created_at__gte=day_start)
-    housekeeping_changes = today_events.filter(
-        action="housekeeping.status_changed").count()
+
+    today_events = AuditEvent.objects.filter(property=property_obj, created_at__gte=day_start)
+    housekeeping_changes = today_events.filter(action="housekeeping.status_changed").count()
     released_today = today_events.filter(
         action="housekeeping.status_changed",
-        after_json__housekeeping_status=Room.HousekeepingStatus.CLEAN).count()
+        after_json__housekeeping_status=Room.HousekeepingStatus.CLEAN,
+    ).count()
     reworked_today = today_events.filter(
         action="housekeeping.status_changed",
-        after_json__housekeeping_status=Room.HousekeepingStatus.DIRTY).count()
-    maintenance_changes = today_events.filter(
-        action="maintenance.status_changed").count()
+        after_json__housekeeping_status=Room.HousekeepingStatus.DIRTY,
+    ).count()
+    maintenance_changes = today_events.filter(action="maintenance.status_changed").count()
 
     return {
         "housekeeping": housekeeping,
@@ -381,7 +435,8 @@ def housekeeping_summary(property_obj):
         "sellable_now": rooms.filter(
             occupancy_status=Room.OccupancyStatus.VACANT,
             housekeeping_status=Room.HousekeepingStatus.CLEAN,
-            maintenance_status=Room.MaintenanceStatus.NORMAL).count(),
+            maintenance_status=Room.MaintenanceStatus.NORMAL,
+        ).count(),
         "total_rooms": sum(housekeeping.values()),
         "by_floor": sorted(by_floor.values(), key=lambda item: item["floor"]),
         "today": {
@@ -408,28 +463,47 @@ def models_q_valid_to(last_night):
     return Q(valid_to__isnull=True) | Q(valid_to__gte=last_night)
 
 
-def get_room_type_availability(property_obj, room_type, check_in, check_out, rooms=1, rate_plan=None):
+def select_rate_plan_for_room_type(property_obj, room_type, check_in, check_out, rate_plan_id=None):
+    """挑选覆盖住宿区间的有效房价计划（查询侧与下单侧共用的唯一口径）。
+
+    口径：
+      * 指定 ``rate_plan_id`` → 只在该计划内匹配（调用方显式指定，不替换）；
+      * 未指定 → 优先选择"该房型在住宿区间实际有价格行"的计划，再按
+        (valid_from, id) 取最早；
+      * 兜底 → 取覆盖区间的第一个有效计划（此时该房型可能无价，调用方须按
+        "暂不可预订"处理，不得静默按 0 价成交）。
+
+    为什么要共用：房价计划与房型不是 1:1 时，若查询侧与下单侧各选各的，
+    会出现"公开查询显示有房价、有可售量，点预订却报房量不足"的错配——
+    下单按全局第一个计划取价 → 该房型无价格行 → 可售量被算成 0。
+    """
+    scoped = RatePlan.objects.filter(
+        property=property_obj,
+        is_active=True,
+        valid_from__lte=check_in,
+    ).filter(models_q_valid_to(check_out - timedelta(days=1)))
+    if rate_plan_id is not None:
+        return scoped.filter(pk=rate_plan_id).order_by("valid_from", "id").first()
+    with_prices = scoped.filter(
+        daily_rates__room_type=room_type,
+        daily_rates__stay_date__gte=check_in,
+        daily_rates__stay_date__lt=check_out,
+    ).order_by("valid_from", "id")
+    return with_prices.first() or scoped.order_by("valid_from", "id").first()
+
+
+def get_room_type_availability(
+    property_obj, room_type, check_in, check_out, rooms=1, rate_plan=None
+):
     dates = list(stay_dates(check_in, check_out))
     if room_type.property_id != property_obj.pk or not room_type.is_active:
         raise ValueError("房型不存在或未启用。")
 
     if rate_plan is None:
         # 自动选择房价计划必须落在"该房型在住宿区间实际有价格行"的计划上；
-        # 全局取第一个会导致只有碰巧挂在默认计划下的房型可售（其余房型恒 0 间）
-        scoped = room_type.property.rate_plans.filter(
-            is_active=True,
-            valid_from__lte=check_in,
-        ).filter(models_q_valid_to(check_out - timedelta(days=1)))
-        rate_plan = (
-            scoped.filter(
-                daily_rates__room_type=room_type,
-                daily_rates__stay_date__gte=check_in,
-                daily_rates__stay_date__lt=check_out,
-            )
-            .order_by("valid_from", "id")
-            .first()
-            or scoped.order_by("valid_from", "id").first()
-        )
+        # 全局取第一个会导致只有碰巧挂在默认计划下的房型可售（其余房型恒 0 间）。
+        # 口径与下单侧共用 select_rate_plan_for_room_type，避免两侧漂移。
+        rate_plan = select_rate_plan_for_room_type(property_obj, room_type, check_in, check_out)
     if (
         rate_plan is None
         or rate_plan.property_id != property_obj.pk
@@ -506,16 +580,15 @@ def get_room_type_availability(property_obj, room_type, check_in, check_out, roo
 
 def _group_reservation_room_quantities(reservation):
     quantities = {}
-    for line in reservation.reservation_rooms.values(
-        "room_type_id", "check_in", "check_out"
-    ):
+    for line in reservation.reservation_rooms.values("room_type_id", "check_in", "check_out"):
         key = (line["room_type_id"], line["check_in"], line["check_out"])
         quantities[key] = quantities.get(key, 0) + 1
     return quantities
 
 
-def sync_inventory_hold_details(*, property_obj, lines, target_status,
-                                only_dates=None, expires_at=None):
+def sync_inventory_hold_details(
+    *, property_obj, lines, target_status, only_dates=None, expires_at=None
+):
     """RSV-01：库存冻结明细与 held/sold 计数变更必须在同一事务内落库。
 
     ``InventoryHold`` 是「这一间被哪张订单冻结」的逐日逐单可追溯事实。
@@ -538,11 +611,16 @@ def sync_inventory_hold_details(*, property_obj, lines, target_status,
         for stay_date in stay_dates(line.check_in, line.check_out):
             if only_dates is not None and stay_date not in only_dates:
                 continue
-            hold = (InventoryHold.objects
-                    .filter(property=property_obj,
-                            room_type_id=line.room_type_id,
-                            stay_date=stay_date, reservation_room=line)
-                    .order_by("pk").first())
+            hold = (
+                InventoryHold.objects.filter(
+                    property=property_obj,
+                    room_type_id=line.room_type_id,
+                    stay_date=stay_date,
+                    reservation_room=line,
+                )
+                .order_by("pk")
+                .first()
+            )
             if released:
                 if hold is not None and hold.status != target_status:
                     hold.status = target_status
@@ -552,9 +630,14 @@ def sync_inventory_hold_details(*, property_obj, lines, target_status,
                 continue
             if hold is None:
                 InventoryHold.objects.create(
-                    property=property_obj, room_type_id=line.room_type_id,
-                    stay_date=stay_date, reservation_room=line,
-                    quantity=1, status=target_status, expires_at=expires_at)
+                    property=property_obj,
+                    room_type_id=line.room_type_id,
+                    stay_date=stay_date,
+                    reservation_room=line,
+                    quantity=1,
+                    status=target_status,
+                    expires_at=expires_at,
+                )
             elif hold.status != target_status:
                 hold.status = target_status
                 hold.save(update_fields=("status",))
@@ -590,11 +673,13 @@ def hold_inventory_for_reservation(reservation):
 
     # RSV-01：冻结明细与计数同事务落库，使对账有独立可重建的真值来源。
     from apps.reservations.models import InventoryHold
+
     sync_inventory_hold_details(
         property_obj=reservation.property,
         lines=list(reservation.reservation_rooms.all()),
         target_status=InventoryHold.HoldStatus.HELD,
-        expires_at=getattr(reservation, "expires_at", None))
+        expires_at=getattr(reservation, "expires_at", None),
+    )
 
 
 @transaction.atomic
@@ -607,14 +692,13 @@ def confirm_inventory_for_reservation(reservation):
     from apps.reservations.models import Reservation
 
     reservation = (
-        Reservation.objects.select_for_update()
-        .select_related("property")
-        .get(pk=reservation.pk)
+        Reservation.objects.select_for_update().select_related("property").get(pk=reservation.pk)
     )
     if reservation.status in (
-            Reservation.Status.CONFIRMED,
-            Reservation.Status.CHECKED_IN,
-            Reservation.Status.CHECKED_OUT):
+        Reservation.Status.CONFIRMED,
+        Reservation.Status.CHECKED_IN,
+        Reservation.Status.CHECKED_OUT,
+    ):
         return False
     if reservation.status != Reservation.Status.PENDING:
         raise InventoryUnavailable("当前预订状态不允许确认库存。")
@@ -644,10 +728,12 @@ def confirm_inventory_for_reservation(reservation):
 
     # RSV-01：冻结明细同步转 CONFIRMED（不再计入 held；sold 由明细行重算）。
     from apps.reservations.models import InventoryHold
+
     sync_inventory_hold_details(
         property_obj=reservation.property,
         lines=list(reservation.reservation_rooms.all()),
-        target_status=InventoryHold.HoldStatus.CONFIRMED)
+        target_status=InventoryHold.HoldStatus.CONFIRMED,
+    )
     return True
 
 
@@ -679,10 +765,12 @@ def release_inventory_hold(reservation):
             row.save(update_fields=("held", "version", "updated_at"))
 
     from apps.reservations.models import InventoryHold
+
     sync_inventory_hold_details(
         property_obj=reservation.property,
         lines=list(reservation.reservation_rooms.all()),
-        target_status=InventoryHold.HoldStatus.RELEASED)
+        target_status=InventoryHold.HoldStatus.RELEASED,
+    )
 
 
 @transaction.atomic
@@ -710,21 +798,26 @@ def release_sold_inventory_for_room_line(line, *, from_date):
         row.save(update_fields=("sold", "version", "updated_at"))
 
     from apps.reservations.models import InventoryHold
+
     sync_inventory_hold_details(
-        property_obj=line.property, lines=[line],
+        property_obj=line.property,
+        lines=[line],
         target_status=InventoryHold.HoldStatus.RELEASED,
-        only_dates=set(dates))
+        only_dates=set(dates),
+    )
     return len(rows)
 
 
-def adjust_daily_rate(*, property_obj, rate_id, price, reason,
-                      updated_by=None, request=None):
+def adjust_daily_rate(*, property_obj, rate_id, price, reason, updated_by=None, request=None):
     """调价唯一写入口：物业校验、价格精度、历史保护和审计。"""
     from decimal import Decimal, InvalidOperation
     from zoneinfo import ZoneInfo
+
     from django.db import transaction
     from django.utils import timezone
+
     from apps.core.models import AuditEvent
+
     from .models import DailyRate
 
     reason = str(reason or "").strip()
@@ -736,8 +829,8 @@ def adjust_daily_rate(*, property_obj, rate_id, price, reason,
         raise ValueError("价格格式无效。") from exc
     try:
         exact_to_cent = (
-            amount.is_finite() and amount >= 0
-            and amount == amount.quantize(Decimal("0.01")))
+            amount.is_finite() and amount >= 0 and amount == amount.quantize(Decimal("0.01"))
+        )
     except InvalidOperation as exc:
         # WB-01：超出 Decimal 上下文精度的超大值统一拒绝为校验错误。
         raise ValueError("价格必须是非负且精确到分的金额。") from exc
@@ -750,11 +843,16 @@ def adjust_daily_rate(*, property_obj, rate_id, price, reason,
     today = timezone.localdate(timezone.now(), tz)
 
     with transaction.atomic():
-        rate = DailyRate.objects.select_for_update().filter(
-            pk=rate_id, property=property_obj,
-            rate_plan__property=property_obj,
-            room_type__property=property_obj,
-        ).first()
+        rate = (
+            DailyRate.objects.select_for_update()
+            .filter(
+                pk=rate_id,
+                property=property_obj,
+                rate_plan__property=property_obj,
+                room_type__property=property_obj,
+            )
+            .first()
+        )
         if rate is None:
             raise ValueError("每日房价不存在或不属于当前物业。")
         if rate.closed:
@@ -768,10 +866,13 @@ def adjust_daily_rate(*, property_obj, rate_id, price, reason,
         rate.save(update_fields=("price", "updated_at"))
         AuditEvent.record(
             action="inventory.daily_rate_adjust",
-            entity_type="DailyRate", entity_id=rate.pk,
-            actor=updated_by, property_obj=property_obj,
+            entity_type="DailyRate",
+            entity_id=rate.pk,
+            actor=updated_by,
+            property_obj=property_obj,
             before={"price": str(before), "stay_date": rate.stay_date.isoformat()},
             after={"price": str(amount), "stay_date": rate.stay_date.isoformat()},
-            reason=reason, request=request,
+            reason=reason,
+            request=request,
         )
         return rate, True

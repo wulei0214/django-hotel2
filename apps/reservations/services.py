@@ -10,14 +10,18 @@ from django.utils import timezone
 
 from apps.billing.models import Folio
 from apps.guests.services import GuestService, phone_hash
-from apps.inventory.models import RatePlan, RoomType
+from apps.inventory.models import RoomType
 from apps.inventory.services import (
     InventoryUnavailable,
     get_room_type_availability,
     hold_inventory_for_reservation,
-    models_q_valid_to,
+    # 收敛护栏（apps.api.test_dup_convergence_guards）以对象同一性钉住
+    # "唯一权威"：本模块必须暴露 inventory 侧实现，不得本地复制。
+    models_q_valid_to,  # noqa: F401
     release_inventory_hold,
+    select_rate_plan_for_room_type,
 )
+
 from .models import BookingAccessToken, PendingBookingGate, Reservation, ReservationRoom
 
 
@@ -37,17 +41,18 @@ def _fingerprint(payload):
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def _get_rate_plan(property_obj, check_in, check_out, rate_plan_id=None):
-    queryset = RatePlan.objects.filter(
-        property=property_obj,
-        is_active=True,
-        valid_from__lte=check_in,
-    ).filter(
-        models_q_valid_to(check_out - timedelta(days=1))
+def _get_rate_plan(property_obj, room_type, check_in, check_out, rate_plan_id=None):
+    """挑选覆盖住宿区间的有效房价计划（与公开可售查询同口径）。
+
+    共用 apps.inventory.services.select_rate_plan_for_room_type：不传
+    rate_plan_id 时按"该房型在住宿区间实际有价格行"的计划选择，而不是
+    全局第一个计划。否则房价计划与房型非 1:1 时，公开查询会显示该房型的
+    房价与可售量，而下单按全局第一个计划取价 → 该房型无价格行 → 可售量算成
+    0 → 误报"所选日期房量不足"（409）。
+    """
+    plan = select_rate_plan_for_room_type(
+        property_obj, room_type, check_in, check_out, rate_plan_id
     )
-    if rate_plan_id is not None:
-        queryset = queryset.filter(pk=rate_plan_id)
-    plan = queryset.order_by("valid_from", "id").first()
     if plan is None:
         raise ValueError("没有覆盖所选入住日期的有效房价计划。")
     return plan
@@ -84,14 +89,15 @@ def _create_reservation(
     try:
         with transaction.atomic():
             gate = PendingBookingGate.objects.get_or_create(
-                property=property_obj, gate_key=gate_key)[0]
+                property=property_obj, gate_key=gate_key
+            )[0]
     except IntegrityError:
-        gate = PendingBookingGate.objects.get(
-            property=property_obj, gate_key=gate_key)
+        gate = PendingBookingGate.objects.get(property=property_obj, gate_key=gate_key)
     # 行锁：后续同手机号创建事务在此排队；首次创建无锁行竞争，直接通过。
     PendingBookingGate.objects.select_for_update().get(pk=gate.pk)
 
     from django.conf import settings as _settings
+
     pending_cap = int(getattr(_settings, "PUBLIC_PENDING_RESERVATION_CAP", 2))
     pending_count = Reservation.objects.filter(
         property=property_obj,
@@ -99,8 +105,7 @@ def _create_reservation(
         status=Reservation.Status.PENDING,
     ).count()
     if pending_count >= pending_cap:
-        raise ReservationConflict(
-            "该手机号存在过多未支付预订，请先完成支付或取消后再预订。")
+        raise ReservationConflict("该手机号存在过多未支付预订，请先完成支付或取消后再预订。")
 
     check_in = payload["check_in"]
     check_out = payload["check_out"]
@@ -113,15 +118,18 @@ def _create_reservation(
     if payload["adults"] + payload["children"] > room_type.capacity * rooms:
         raise ValueError("入住人数超过所选房型的最大容纳人数。")
     rate_plan = _get_rate_plan(
-        property_obj, check_in, check_out, payload.get("rate_plan_id")
+        property_obj, room_type, check_in, check_out, payload.get("rate_plan_id")
     )
     availability = get_room_type_availability(
         property_obj, room_type, check_in, check_out, rooms=rooms, rate_plan=rate_plan
     )
-    if availability["available_count"] < rooms:
-        raise InventoryUnavailable("所选日期房量不足，请重新查询。")
+    # 顺序有意：total_amount 为 None 表示"该日期区间没有价格行/已关房/
+    # 停售/库存日历缺失"，与"确有价格但房量售罄"是两类不同原因；
+    # 先判房量会把前者误报成"房量不足"，误导排查方向。
     if availability["total_amount"] is None:
         raise InventoryUnavailable("所选日期暂不可预订。")
+    if availability["available_count"] < rooms:
+        raise InventoryUnavailable("所选日期房量不足，请重新查询。")
 
     phone = normalize_phone(payload["phone"])
     # 手机号只用于检索，不把两个使用共享号码的人自动合并为同一自然人。
@@ -138,13 +146,14 @@ def _create_reservation(
         property_obj=property_obj,
         full_name=payload["full_name"].strip(),
         phone=phone,
-        source="官网预订")
+        source="官网预订",
+    )
     booking_no = "R" + secrets.token_hex(10).upper()
     amount = Decimal(availability["total_amount"])
     # RSV-07：与支付意图窗口共用同一时限常量，避免两处硬编码漂移。
     from apps.core.booking_constants import PENDING_RESERVATION_TTL_MINUTES
-    expires_at = timezone.now() + timedelta(
-        minutes=PENDING_RESERVATION_TTL_MINUTES)
+
+    expires_at = timezone.now() + timedelta(minutes=PENDING_RESERVATION_TTL_MINUTES)
 
     reservation = Reservation.objects.create(
         property=property_obj,
@@ -242,7 +251,7 @@ def create_reservation(
                 idempotency_key=idempotency_key,
                 fingerprint=fingerprint,
             )
-    except IntegrityError:
+    except IntegrityError as exc:
         # 并发重复请求可能同时通过首次查询；唯一约束负责最终仲裁。
         existing = Reservation.objects.filter(
             property=property_obj,
@@ -250,7 +259,9 @@ def create_reservation(
         ).first()
         if existing:
             if existing.request_fingerprint != fingerprint:
-                raise ReservationConflict("相同 Idempotency-Key 已用于其他预订内容。")
+                # 保留异常因果链：本次冲突的根因是幂等键唯一约束被并发触发的
+                # IntegrityError（B904：except 内 raise 必须显式 from）。
+                raise ReservationConflict("相同 Idempotency-Key 已用于其他预订内容。") from exc
             return existing, False, None
         raise
 
@@ -277,15 +288,14 @@ def cancel_pending_reservation(*, property_obj, booking_no, reservation_pk):
         try:
             release_inventory_hold(reservation)
         except InventoryUnavailable as exc:
-            raise ReservationConflict(
-                f"库存记录与预订状态不一致，暂不能取消：{exc}"
-            ) from exc
+            raise ReservationConflict(f"库存记录与预订状态不一致，暂不能取消：{exc}") from exc
         if reservation.expires_at and reservation.expires_at <= timezone.now():
             reservation.status = Reservation.Status.EXPIRED
         else:
             reservation.status = Reservation.Status.CANCELLED
         reservation.save(update_fields=("status", "updated_at"))
         from apps.billing.services import cancel_open_payment_intents_for_reservation
+
         cancel_open_payment_intents_for_reservation(reservation)
         return reservation, True
     if reservation.status == Reservation.Status.EXPIRED:
