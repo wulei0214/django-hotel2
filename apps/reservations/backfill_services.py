@@ -13,6 +13,7 @@ legacy 分支），但为提升数据完整性与可审计性，提供治理回�
 安全纪律（与 P-08 一致）：默认 dry_run=True 不写库；apply 才落库；幂等
 （已有快照跳过）；每次回填按预订记 AuditEvent；回滚仅作用于 backfilled 标记行。
 """
+
 from apps.core.models import AuditEvent
 
 from .front_desk_services import snapshot_early_departure_policy
@@ -20,7 +21,11 @@ from .models import Reservation, ReservationRoom
 
 
 def backfill_early_departure_snapshots(
-    *, dry_run=True, property_obj=None, rate_plan_id=None, batch_size=500,
+    *,
+    dry_run=True,
+    property_obj=None,
+    rate_plan_id=None,
+    batch_size=500,
 ):
     """为缺 early_departure_snapshot 的 ReservationRoom 补快照。
 
@@ -44,7 +49,7 @@ def backfill_early_departure_snapshots(
     scanned = len(reservation_ids)
     would_backfill = 0
     backfilled = 0
-    by_policy_type = {}
+    by_policy_type: dict[str, int] = {}
     for rid in reservation_ids:
         reservation = Reservation.objects.filter(pk=rid).first()
         if reservation is None:
@@ -72,7 +77,11 @@ def backfill_early_departure_snapshots(
 
 
 def clear_backfilled_early_departure_snapshots(
-    *, dry_run=True, property_obj=None, rate_plan_id=None, batch_size=500,
+    *,
+    dry_run=True,
+    property_obj=None,
+    rate_plan_id=None,
+    batch_size=500,
 ):
     """A8 回滚：清除 backfilled 标记的快照，恢复 NULL（NONE 兜底）。
 
@@ -91,7 +100,8 @@ def clear_backfilled_early_departure_snapshots(
     if rate_plan_id is not None:
         qs = qs.filter(rate_plan_id=rate_plan_id)
     candidates = [
-        line for line in qs
+        line
+        for line in qs
         if isinstance(line.early_departure_snapshot, dict)
         and line.early_departure_snapshot.get("backfilled")
     ]
@@ -104,10 +114,12 @@ def clear_backfilled_early_departure_snapshots(
             cleared += 1
         AuditEvent.record(
             action="reservation.early_departure_policy_backfill_cleared",
-            entity_type="ReservationRoom", entity_id="bulk",
+            entity_type="ReservationRoom",
+            entity_id="bulk",
             property_obj=property_obj,
             after={"cleared": cleared},
-            reason="A8 历史快照回填回滚：清除 backfilled 标记快照，恢复 NONE 兜底")
+            reason="A8 历史快照回填回滚：清除 backfilled 标记快照，恢复 NONE 兜底",
+        )
     return {
         "affected": affected,
         "cleared": cleared,
