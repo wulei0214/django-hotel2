@@ -6,12 +6,16 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('identity', '0010_permission_matrix_approval'),
+        ("identity", "0010_permission_matrix_approval"),
     ]
 
     operations = [
         migrations.AddConstraint(
-            model_name='permissionmatrixapproval',
-            constraint=models.UniqueConstraint(condition=models.Q(('status', 'PENDING')), fields=('group', 'diff_hash'), name='uq_permatrix_pending_diff'),
+            model_name="permissionmatrixapproval",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("status", "PENDING")),
+                fields=("group", "diff_hash"),
+                name="uq_permatrix_pending_diff",
+            ),
         ),
     ]
