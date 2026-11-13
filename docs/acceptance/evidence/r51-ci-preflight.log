@@ -1,0 +1,96 @@
+# R51 推送前 CI 门禁逐提交预演 证据留档
+# 代码基线 SHA: 207a937bf3ee0d4f82360c6489d21aff48c38500（其后为纯文档提交）
+# 证据来源: 本机实跑（2026-11-13），完整记录见
+#           docs/共享规范/主线变基与推送准备记录_2026-11-13.md §七.6
+# -----------------------------------------------------------
+# 预演方法：对推送区间每个提交 C，取 `git diff --name-only C~1 C -- apps hotel` 的 .py 文件，
+# 抽出 C 时点的内容（git show C:<file>），在隔离目录内按根 pyproject.toml 配置执行
+# `ruff check` 与 `black --check`（本机 ruff 0.6.9 / black 24.8.0，与 CI 固定版本一致）。
+#
+# 为什么必须逐提交预演：CI 的 lint job 在 push 路径上判定的是 `HEAD~1..HEAD` 的文件内容，
+# 即「该提交时点的文件是否合规」，而非最终状态；本次推送一次性带上 19 个此前未推送过的
+# 提交，每个提交都会各自触发一次 CI run。
+
+$ git rev-list --count origin/main..HEAD
+19
+
+=== 推送区间逐提交预演结果 ===
+0125d912  [skip ] no changed .py under apps/ or hotel/  | docs(index): refresh baseline to dc029fb; sign off phase1/2
+925c6f09  [FAIL ]  5 file(s) | feat(api): A1 散客直入 Walk-in 前台端点接线（DEC-WALKIN-01）
+e5b49172  [FAIL ]  3 file(s) | P-08: IdempotencyRecord 清理任务（支持 Dry-run/审计，不删除）
+de50140e  [FAIL ]  4 file(s) | A8: 历史快照回填（dry-run/幂等/审计/可回滚）
+0dee3b86  [skip ] no changed .py under apps/ or hotel/  | #51: DEC 编号映射 + 统一状态模型
+5b03f6b3  [skip ] no changed .py under apps/ or hotel/  | #48 报表口径核验
+9633d0f9  [skip ] no changed .py under apps/ or hotel/  | #42 文档签收
+4333d42e  [PASS ]  3 file(s) | #45 A3 Guest 重复档案治理（只读候选报告 + 影响面盘点 + 人工关联留痕）
+9118acec  [skip ] no changed .py under apps/ or hotel/  | #49 种子命令：修复 seed_hotel_data UnboundLocalError
+751f7755  [PASS ]  3 file(s) | #49 选价口径统一
+c67de2c5  [PASS ]  1 file(s)  | #49 p0 冒烟装置：隔离环境代理 + 实例可达前置探针
+c9cbd5e2  [skip ] no changed .py under apps/ or hotel/  | #49 A7 验证报告
+c54cdb05  [skip ] no changed .py under apps/ or hotel/  | #49 A7 证据留档
+f8b7286f  [skip ] no changed .py under apps/ or hotel/  | #49 索引同步
+c7d6c878  [PASS ]  2 file(s)  | fix(lint): 清除变基后 mypy 全量门禁暴露的 2 个新增错误
+207a937b  [PASS ] 14 file(s)  | refactor(identity): 安置并发 WIP + 触及文件 lint 差异门禁清偿
+21c87477  [skip ] no changed .py under apps/ or hotel/  | docs: 证据留档
+604dadd9  [skip ] no changed .py under apps/ or hotel/  | chore: 计数订正 + .gitignore
+de1294ff  [skip ] no changed .py under apps/ or hotel/  | docs: 分叉计数改用 SHA 锚定表述
+
+checked python files across commits: 35
+PER-COMMIT CI LINT: 16 PASS / 3 FAIL
+
+=== 3 个失败提交的具体问题 ===
+925c6f09（ruff + black）
+  apps/api/front_desk.py:6:1                 I001  Import block is un-sorted or un-formatted
+  apps/api/front_desk.py:113:9               B904  raise without `from err`
+  apps/api/front_desk.py:1036:39             F841  Local variable `exc` is assigned to but never used
+  apps/api/openapi_schema.py:1:1             UP009 UTF-8 encoding declaration is unnecessary
+  apps/api/openapi_schema.py:101:19          F541  f-string without any placeholders
+  apps/api/openapi_schema.py:961:10          C416  Unnecessary `dict` comprehension
+  apps/api/test_openapi_schema.py:14:1       I001  Import block is un-sorted
+  apps/api/test_openapi_schema.py:277:19     B007  Loop control variable `method` not used
+  apps/api/test_openapi_schema.py:481:13/19  B007  Loop control variable `path`/`method` not used
+  apps/api/urls.py:1:1                       I001  Import block is un-sorted
+  black: 5 files would be reformatted
+
+de50140e（ruff + black）
+  apps/reservations/front_desk_services.py:2:1    I001
+  apps/reservations/front_desk_services.py:473:1  I001
+  black: 4 files would be reformatted
+
+e5b49172（black）
+  ruff: All checks passed!
+  black: 3 files would be reformatted
+
+=== 对照基线：origin/main 最近 30 个已推送提交 ===
+已推送提交：lint 通过 9，跳过 16，失败 5
+  FAIL a7448f29 [ruff,black] 24 file(s) | fix(pms): 白盒整改第33轮——ENTRY_NO_PAYMENT反向扫描/dev迁移落地/PII切换
+  FAIL a317ca2e [ruff,black]  6 file(s) | fix(pms): 第三路全面审查收口
+  FAIL 90ea51a5 [ruff,black]  7 file(s) | feat(identity): 迭代-1 变更A——权限矩阵高危变更第二人审批流
+  FAIL 852db49f [black]       1 file(s) | style(identity): 迁移 0010 import 排序（CI lint 差异门禁清偿）
+  FAIL f23a0383 [black]       4 file(s) | fix(identity): 迭代-1 验收整改
+
+→ 仓库既有基线本就是历史提交不全绿（最近 30 个已推送提交仅 9 个通过该判定，
+  其中 852db49f 本身即「CI lint 差异门禁清偿」提交却仍不满足 black）。
+  本次 3 个红 run 与之一致，非本次引入的回归。
+
+=== 其余 CI 工作流预演 ===
+
+$ python manage.py export_openapi_schema
+已生成 OpenAPI 快照：...\接口文档\openapi.json（114 paths）
+$ git diff --stat -- <两份 openapi.json>
+（空 —— 零差异）
+→ OpenAPI snapshot 工作流（本次推送会命中触发路径）将报「already current」，不会自动提交。
+
+$ python manage.py install_mysql_append_only_guards     # 在 test_hotel 上
+django.db.utils.OperationalError: (1419, 'You do not have the SUPER privilege and binary
+logging is enabled (you *might* want to use the less safe log_bin_trust_function_creators
+variable)')
+$ 本机 MySQL 事实
+  MySQL 8.0.33；log_bin=ON；log_bin_trust_function_creators=OFF
+  GRANT ALL PRIVILEGES ON `hotel`.* TO `hotelhotel`@`localhost`
+  GRANT ALL PRIVILEGES ON `test_hotel`.* TO `hotelhotel`@`localhost`
+  GRANT ALL PRIVILEGES ON `test_empty_acceptance`.* TO `hotelhotel`@`localhost`
+  （无 SUPER / 无全局权限）
+→ 本地不可验为环境与账号权限所致；CI 的 tests 工作流用 root 账号（MYSQL_ROOT_PASSWORD: root），
+  具备 SUPER，可正常安装并校验 7 条触发器。触发器覆盖 core_auditevent / billing_ledgerentry /
+  billing_cashiershiftmovement，与本次改动无关，上游 da571b0 的 CI 已通过该步骤。
