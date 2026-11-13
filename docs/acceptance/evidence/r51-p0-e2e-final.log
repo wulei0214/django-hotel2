@@ -1,0 +1,24 @@
+# R51 并发 WIP 安置 + lint 差异门禁清偿 证据留档
+# 代码基线 SHA: 207a937bf3ee0d4f82360c6489d21aff48c38500
+# 证据来源: 本机实跑（2026-11-13），完整记录见
+#           docs/共享规范/主线变基与推送准备记录_2026-11-13.md
+# 本文件为裁剪版（保留头尾关键段），完整原始输出未入库。
+# -----------------------------------------------------------
+命令: pytest apps/api/tests_p0 -m p0 --junitxml=reports/junit-p0-r51.xml -v
+被测实例: runserver 127.0.0.1:8000 (DJANGO_ENV=dev, _pytest_smoke_r51.sqlite3, 全新重建+种子)
+实例准备: manage.py migrate → manage.py seed_hotel_data → 员工授权夹具（demo_owner / 店长岗位）
+
+apps/api/tests_p0/test_p0_smoke.py::test_public_reserve_page_200 PASSED  [ 11%]
+apps/api/tests_p0/test_p0_smoke.py::test_public_availability_structure PASSED [ 22%]
+apps/api/tests_p0/test_p0_smoke.py::test_public_reservation_create_and_idempotent_replay PASSED [ 33%]
+apps/api/tests_p0/test_p0_smoke.py::test_booking_token_query_masking PASSED [ 44%]
+apps/api/tests_p0/test_p0_smoke.py::test_booking_token_cancel_releases_inventory PASSED [ 55%]
+apps/api/tests_p0/test_p0_smoke.py::test_staff_home_and_unauthenticated_front_desk_denied PASSED [ 66%]
+apps/api/tests_p0/test_p0_smoke.py::test_permission_denied_on_platform_permissions PASSED [ 77%]
+apps/api/tests_p0/test_p0_smoke.py::test_legacy_routes_retired PASSED    [ 88%]
+apps/api/tests_p0/test_p0_smoke.py::test_openapi_contract PASSED         [100%]
+======================== 9 passed, 1 warning in 1.23s =========================
+---- generated xml file: F:\Desktop\django-hotel\reports\junit-p0-r51.xml ----
+
+# 前置探针：运行前已用 Invoke-WebRequest 探测 http://127.0.0.1:8000/reserve/ → 200。
+# 环境代理隔离沿用 apps/api/tests_p0/conftest.py 对回环地址的显式绕过。

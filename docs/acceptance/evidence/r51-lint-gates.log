@@ -1,0 +1,88 @@
+# R51 并发 WIP 安置 + lint 差异门禁清偿 证据留档（门禁部分）
+# 代码基线 SHA: 207a937bf3ee0d4f82360c6489d21aff48c38500
+# 证据来源: 本机实跑（2026-11-13），完整记录见
+#           docs/共享规范/主线变基与推送准备记录_2026-11-13.md
+# -----------------------------------------------------------
+# 本机 linter 版本与 CI 固定版本一致（CI: ruff==0.6.9, black==24.8.0）：
+#   ruff 0.6.9
+#   python -m black, 24.8.0 (compiled: yes)
+#   Python (CPython) 3.9.0
+#
+# CI lint job 的作用域（.github/workflows/django-ci.yml）：
+#   git diff --name-only HEAD~1 --diff-filter=ACMR -- apps hotel | grep '\.py$'
+#   → 只检查本次变更的 apps/、hotel/ 下 .py 文件；hotelapp/ 不在作用域
+#   （ruff 与 mypy 的 pyproject 配置亦 exclude hotelapp）。
+#   本次变更落在作用域内的文件共 14 个（apps/identity/*）；
+#   hotelapp/views.py 不被 CI lint 检查，故不做全量格式化以免产生巨大无关 diff。
+
+$ git diff --name-only HEAD --diff-filter=ACMR -- apps hotel | grep '\.py$'
+apps/identity/authorization.py
+apps/identity/employee_number.py
+apps/identity/invitation_services.py
+apps/identity/invitation_views.py
+apps/identity/management/commands/bind_staff_user.py
+apps/identity/management/commands/expire_invitations.py
+apps/identity/middleware.py
+apps/identity/permission_admin.py
+apps/identity/platform.py
+apps/identity/services.py
+apps/identity/session_middleware.py
+apps/identity/staff_center_views.py
+apps/identity/test_module_gates.py
+apps/identity/test_mysql_concurrency.py
+
+$ ruff check <上述 14 个文件>
+All checks passed!
+
+$ black --check <上述 14 个文件>
+All done!
+14 files would be left unchanged.
+
+$ ruff format --check <上述 14 个文件>
+14 files already formatted
+
+$ python scripts/mypy_baseline.py check-files <上述 14 个文件>
+mypy 基线门禁(触碰文件): 通过——14 个触碰文件无新增错误。
+
+$ python scripts/mypy_baseline.py check
+mypy 基线门禁: 通过——无新增错误。当前总错误数 2205（基线 2206）。
+增量提示: 1 个条件数量下降，可在澄清提交中执行 generate 收紧基线：
+  FIX  hotelapp/views.py [name-defined] 1 → 0
+
+$ python manage.py check
+System check identified no issues (0 silenced).
+
+$ python manage.py makemigrations --check --dry-run
+No changes detected
+
+# ---------------------------------------------------------------------------
+# 门禁债务清偿前后的对照（实测）：
+#   HEAD(c7d6c87) 未含 WIP 时，14 个文件共 32 项 ruff 错误、14 个文件 black-dirty、
+#   14 个文件 ruff-format-dirty；
+#   安置 WIP 后降至 12 项 ruff 错误（WIP 本身即清理了 20 项 import 排序/UP009/F401），
+#   再经 black + ruff format + 12 项规则人工清偿后：ruff/black/ruff-format 全绿。
+#
+# 12 项人工清偿明细：
+#   SIM102×1  apps/identity/authorization.py:48        合并嵌套 if
+#   UP031×4   apps/identity/invitation_views.py:57      %-格式化 → f-string
+#             apps/identity/platform.py:71               %-格式化 → f-string
+#             apps/identity/session_middleware.py:73     %-格式化 → f-string
+#             apps/identity/session_middleware.py:322    %-格式化 → f-string
+#   F841×1    apps/identity/services.py:361              删除未使用的局部变量 now
+#   B904×5    apps/identity/staff_center_views.py:84     raise ... from exc
+#             apps/identity/staff_center_views.py:200    raise ... from exc
+#             apps/identity/staff_center_views.py:302    raise ... from exc
+#             apps/identity/staff_center_views.py:327    raise ... from exc
+#             apps/identity/staff_center_views.py:347    raise ... from exc
+#   B017×1    apps/identity/test_module_gates.py:129     assertRaises(Exception)
+#                                                        → assertRaises(PermissionDenied)
+#
+# black 与 ruff-format 的一致性探测：services.py 上 ruff-format 输出补一行空行后，
+# black --check 与 ruff format --check 同时通过且幂等 → 两个格式化器无冲突。
+#
+# pre-commit 钩子仓库在本机不可达：
+#   git ls-remote https://github.com/astral-sh/ruff-pre-commit
+#   → 经代理：Received HTTP code 502 from proxy after CONNECT
+#   → 直连（清空 http_proxy/https_proxy）：OpenSSL SSL_read: Connection was reset
+#   故钩子环境无法初始化；ruff/ruff-format/black/mypy-baseline 四类钩子
+#   已用同版本本地二进制逐项等价执行（结果见上），本次以 --no-verify 提交。

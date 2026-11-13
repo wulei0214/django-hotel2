@@ -1,0 +1,28 @@
+# R51 并发 WIP 安置 + lint 差异门禁清偿 证据留档
+# 代码基线 SHA: 207a937bf3ee0d4f82360c6489d21aff48c38500
+# 证据来源: 本机实跑（2026-11-13），完整记录见
+#           docs/共享规范/主线变基与推送准备记录_2026-11-13.md
+# 本文件为裁剪版（保留头尾关键段），完整原始输出未入库。
+# -----------------------------------------------------------
+# 注：日志中出现的 "python.exe : ..." 与 NativeCommandError 为 PowerShell 管道
+#     的 stderr 回显噪声，不代表测试失败；结论一律以 Ran/OK/FAILED 行判定。
+命令: DJANGO_ENV=test DJANGO_DB_ENGINE=sqlite DJANGO_DB_NAME=:memory: python manage.py test
+说明: 与 CI test job 同环境（sqlite 内存库）；不带 --keepdb
+
+Found 1285 test(s).
+.......................................................................
+login_failed ip=127.0.0.1 username_fp=2942f05b93 reason=bad_credentials
+...
+RuntimeError: Redis unavailable
+check_unique cache write failed; returning DB result
+  File "F:\Desktop\django-hotel\hotelapp\views.py", line 210, in _unique_field_exists
+    cache.set(key, exists, 60)
+.........s.......sssssssssssssssssssssss
+----------------------------------------------------------------------
+Ran 1285 tests in 312.325s
+
+OK (skipped=24)
+Destroying test database for alias 'default'...
+
+# skipped=24 为 MySQL 专属用例（真实并发 TransactionTestCase、MySQL 索引/锁语义等），
+# SQLite 下按 @skipUnless(connection.vendor == "mysql") 跳过。
