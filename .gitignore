@@ -63,3 +63,8 @@ reports/
 # docs/acceptance/evidence/ 后再入库。
 _wbi_*
 _pytest_smoke*.sqlite3
+
+# ===== 本地工作区与 Python 工具缓存（不入库）=====
+.work/
+.ruff_cache/
+.mypy_cache/
