@@ -42,6 +42,8 @@ MYPY_TARGETS = ["apps/"]
 
 # 形如: apps\core\rate_limit.py:115: error: Incompatible types ...  [assignment]
 ERROR_LINE_RE = re.compile(r"^(.+?):\d+: error: .+\[([a-z0-9_-]+)\]\s*$", re.IGNORECASE)
+# 汇总行: Found 2205 errors in 149 files (checked 260 source files)
+SUMMARY_LINE_RE = re.compile(r"Found (\d+) errors? in \d+ files? \(checked \d+ source files?\)")
 TOOL_FAILURE_MARKERS = ("mypy: error:", "Traceback (most recent call last)", "Fatal error")
 EXIT_OK = 0
 EXIT_NEW_ERRORS = 1
@@ -69,9 +71,13 @@ def classify_mypy_result(returncode: int, output: str) -> tuple[Counter | None, 
       * 退出码不在 {0, 1}（mypy 约定 2+ 为命令行/内部错误）；
       * 输出含 mypy fatal/CLI 错误或 traceback 标记；
       * 退出码与解析结果矛盾（rc==0 却解析到错误；rc==1 却解析不到任何错误——
-        后者意味着错误输出格式变化导致解析失效，不能当作"零错误"放行）。
+        后者意味着错误输出格式变化导致解析失效，不能当作"零错误"放行）；
+      * **汇总行交叉校验（迭代-2 工具链任务，负责人要求）**：rc==1 时解析到的
+        结构化错误行总数必须等于 mypy 汇总行"Found N errors"的 N——部分格式
+        漂移（部分错误行漏解析）会被该交叉校验捕获，防止漏解析导致放行。
     """
     counter: Counter = Counter()
+    summary_total: int | None = None
     for line in output.splitlines():
         match = ERROR_LINE_RE.match(line.strip())
         if not match:
@@ -80,15 +86,27 @@ def classify_mypy_result(returncode: int, output: str) -> tuple[Counter | None, 
         code = match.group(2).lower()
         counter[(path, code)] += 1
 
+    summary_match = SUMMARY_LINE_RE.search(output)
+    if summary_match:
+        summary_total = int(summary_match.group(1))
+
     if returncode not in (EXIT_OK, EXIT_NEW_ERRORS):
         return None, f"mypy 退出码 {returncode} 不在预期范围 {{0, 1}}"
     for marker in TOOL_FAILURE_MARKERS:
         if marker in output:
             return None, f"输出包含工具失败标记: {marker!r}"
+    parsed_total = sum(counter.values())
     if returncode == EXIT_OK and counter:
-        return None, f"退出码 0 但解析到 {sum(counter.values())} 个错误——解析与退出码矛盾"
+        return None, f"退出码 0 但解析到 {parsed_total} 个错误——解析与退出码矛盾"
     if returncode == EXIT_NEW_ERRORS and not counter:
         return None, "退出码 1（有错误）但未解析到任何结构化错误行——输出格式可能已变化"
+    if returncode == EXIT_NEW_ERRORS and summary_total is None:
+        return None, "退出码 1（有错误）但未找到汇总行 'Found N errors'——输出格式可能已变化"
+    if summary_total is not None and parsed_total != summary_total:
+        return None, (
+            f"解析错误行总数 {parsed_total} 与汇总行声明 {summary_total} 不一致——"
+            "存在漏解析的错误行（fail-closed，迭代-2 工具链任务加固）"
+        )
     return counter, None
 
 
@@ -239,7 +257,8 @@ def cmd_selftest() -> int:
         (
             "正常带错误",
             EXIT_NEW_ERRORS,
-            "apps/core/a.py:1: error: bad [name-defined]\nFound 1 error\n",
+            "apps/core/a.py:1: error: bad [name-defined]\n"
+            "Found 1 error in 1 file (checked 10 source files)\n",
             False,
         ),
         ("退出码 2（CLI/内部错误）", 2, "mypy: error: unrecognized arguments\n", True),
@@ -261,6 +280,29 @@ def cmd_selftest() -> int:
             "rc=1 纯文本错误无 [code]",
             EXIT_NEW_ERRORS,
             "apps/core/a.py:1: error: bad\nFound 1 error\n",
+            True,
+        ),
+        (
+            "混合格式部分漏解析（汇总 5 vs 解析 2）",
+            EXIT_NEW_ERRORS,
+            "apps/core/a.py:1: error: bad [name-defined]\n"
+            "apps/core/b.py:2: error: worse [assignment]\n"
+            "Found 5 errors in 2 files (checked 20 source files)\n",
+            True,
+        ),
+        (
+            "解析与汇总行一致",
+            EXIT_NEW_ERRORS,
+            "apps/core/a.py:1: error: bad [name-defined]\n"
+            "apps/core/b.py:2: error: worse [assignment]\n"
+            "apps/core/c.py:3: error: worst [truthiness]\n"
+            "Found 3 errors in 3 files (checked 20 source files)\n",
+            False,
+        ),
+        (
+            "rc=1 有解析但无汇总行",
+            EXIT_NEW_ERRORS,
+            "apps/core/a.py:1: error: bad [name-defined]\n",
             True,
         ),
     ]
