@@ -625,7 +625,7 @@ def permission_save(request, group_id):
         # 记录保持待审批——此处行锁已释放产生的竞态由执行端复核兜底。
         with transaction.atomic():
             # A-03 并发幂等：对同组 PENDING 行加锁串行化"查重→取代→创建"，
-            # uq_permatrix_pending_diff 部分唯一约束兜底残余竞态
+            # pending_diff_key 唯一约束兜底残余竞态
             # （并发撞约束 → IntegrityError → 复用既有 PENDING 记录返回）。
             record_status = PermissionMatrixApproval.Status
             group_for_approval = Group.objects.select_for_update().get(

@@ -483,8 +483,10 @@ class ApprovalConcurrencyRemediationTests(PermissionApprovalTestBase):
     # ------------------------------------------------------------------
 
     def test_duplicate_pending_same_diff_blocked_by_db_constraint(self):
-        """同组同 diff 第二条 PENDING 被 uq_permatrix_pending_diff 拒绝
-        （绕过应用层查重直接 create 的并发路径兜底）。"""
+        """同组同 diff 第二条 PENDING 被 pending_diff_key 唯一约束拒绝
+        （绕过应用层查重直接 create 的并发路径兜底；约束为普通唯一索引，
+        SQLite/MySQL 行为一致——首轮 MySQL CI 实证条件唯一索引在 MySQL 被
+        Django 静默跳过，已改用 pending_diff_key 结构）。"""
         from django.db import IntegrityError, transaction
 
         _, record, _ = self._request_approval()
@@ -504,6 +506,26 @@ class ApprovalConcurrencyRemediationTests(PermissionApprovalTestBase):
             ).count(),
             1,
         )
+
+    def test_decided_record_releases_pending_key(self):
+        """决策/撤销后 pending_diff_key 置 NULL：同 diff 可重新申请，
+        且决策记录不占用唯一键（释放语义验证）。"""
+        _, record, proposed = self._request_approval()
+        self.assertIsNotNone(record.pending_diff_key)
+        self.approver_client.post(
+            self._reject_url(record.pk), data="{}", content_type="application/json"
+        )
+        record.refresh_from_db()
+        self.assertIsNone(record.pending_diff_key)
+        # 释放后同 diff 可再创建新 PENDING
+        new_record = PermissionMatrixApproval.objects.create(
+            group=self.group,
+            requested_by=self.approver,
+            reason="释放后同 diff 重新申请",
+            diff_hash=record.diff_hash,
+            payload_snapshot=record.payload_snapshot,
+        )
+        self.assertIsNotNone(new_record.pending_diff_key)
 
     def test_supersede_semantics_still_work_after_unique_constraint(self):
         """取代语义在唯一约束下不变：旧 diff PENDING → CANCELLED 后，

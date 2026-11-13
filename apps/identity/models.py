@@ -444,6 +444,19 @@ class PermissionMatrixApproval(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="申请时间")
     approved_at = models.DateTimeField(null=True, blank=True, verbose_name="审批时间")
+    # A-03 并发幂等键（MySQL 兼容方案）：仅 PENDING 记录持有
+    # "<group_id>:<diff_hash>"，决策/撤销时置 NULL。普通唯一约束对 NULL 不去重
+    # ——天然实现"同组同 diff 至多一条 PENDING"，且 SQLite/MySQL 行为一致
+    # （Django 4.1 MySQL 后端不支持条件唯一索引，UniqueConstraint(condition=…)
+    # 会在 MySQL 静默跳过——首轮整改 CI 已实证该平台差异，故改用此结构）。
+    pending_diff_key = models.CharField(
+        max_length=80,
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="待审批幂等键",
+        help_text="PENDING 态持有 '<group_id>:<diff_hash>'；决策后置 NULL",
+    )
 
     class Meta:
         verbose_name = "权限矩阵审批记录"
@@ -461,13 +474,13 @@ class PermissionMatrixApproval(models.Model):
                 check=~Q(status__in=["APPROVED", "REJECTED"]) | Q(approved_at__isnull=False),
                 name="ck_permatrix_decided_has_time",
             ),
-            # A-03 并发幂等：同组同 diff 至多一条 PENDING（部分唯一约束，
-            # SQLite/MySQL 8.0.16+ 均支持）；取代语义（先 CANCELLED 旧记录再
-            # create）在应用层单事务内保证顺序。
-            models.UniqueConstraint(
-                fields=("group", "diff_hash"),
-                condition=Q(status="PENDING"),
-                name="uq_permatrix_pending_diff",
+            # A-03 并发幂等：pending_diff_key 唯一约束保证同组同 diff 至多一条
+            # PENDING（见字段注释，MySQL 兼容结构）；取代语义（先 CANCELLED 旧
+            # 记录再 create）在应用层单事务内保证顺序。
+            models.CheckConstraint(
+                check=Q(status="PENDING", pending_diff_key__isnull=False)
+                | (~Q(status="PENDING") & Q(pending_diff_key__isnull=True)),
+                name="ck_permatrix_pending_key_matches_status",
             ),
         ]
         indexes = [
@@ -482,6 +495,8 @@ class PermissionMatrixApproval(models.Model):
                 raise ValidationError("审批记录必须从待审批状态创建。")
             if not self.reason or not self.diff_hash:
                 raise ValidationError("审批记录必须携带变更理由与 diff 哈希。")
+            # A-03：PENDING 态自动持有幂等键（唯一约束防并发重复申请）
+            self.pending_diff_key = f"{self.group.pk}:{self.diff_hash}"
         else:
             previous = (
                 type(self)
@@ -523,6 +538,9 @@ class PermissionMatrixApproval(models.Model):
                         raise ValidationError("申请人不能审批自己的申请。")
                 elif self.approved_by:
                     raise ValidationError("撤销审批不得伪造审批人。")
+        # A-03：离开 PENDING 即释放幂等键（唯一约束只作用于 PENDING 生命周期）
+        if self.status != self.Status.PENDING:
+            self.pending_diff_key = None
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
