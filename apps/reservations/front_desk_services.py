@@ -26,7 +26,32 @@ ACTIVE_RESERVATION_STATUSES = (
 MANUAL_PAYMENT_METHODS = {"CASH", "CARD", "BANK_TRANSFER", "OTHER"}
 
 
-def snapshot_early_departure_policy(reservation):
+def _compute_early_departure_snapshot(line, *, now_iso):
+    """WB-098（DEC-ED-01 §2.1）：计算单条 ReservationRoom 应写入的提前离店
+    政策快照字典（不含 backfilled 标记）。确认与回填共用同一查询口径，避免
+    两套逻辑漂移。"""
+    policy = EarlyDeparturePolicy.objects.filter(
+        rate_plan_id=line.rate_plan_id, is_active=True,
+    ).order_by("-created_at", "-pk").first()
+    return {
+        "policy_type": (policy.policy_type if policy is not None
+                        else EarlyDeparturePolicy.PolicyType.NONE),
+        "policy_value": (str(policy.policy_value)
+                         if policy is not None
+                         and policy.policy_value is not None else None),
+        "rate_plan_id": line.rate_plan_id,
+        "snapshot_at": now_iso,
+    }
+
+
+def snapshot_early_departure_policy(
+    reservation,
+    *,
+    backfilled=False,
+    dry_run=False,
+    audit_action="reservation.early_departure_policy_snapshotted",
+    audit_reason="预订确认时保存提前离店政策快照（WB-098/DEC-ED-01）",
+):
     """WB-098（DEC-ED-01 §2.1/§11.3-A）：预订确认时保存提前离店政策快照。
 
     文档第 38 行口径："预订确认时保存政策版本快照、逐晚房价快照和适用规则"。
@@ -46,29 +71,30 @@ def snapshot_early_departure_policy(reservation):
       * billing.services_v2.record_deposit（前台收押金确认）。
     legacy 分支仅用于历史订单（确认时尚无快照字段），按 NONE 兜底并审计，
     不得成为新增确认路径跳过快照的默认值。
+
+    扩展参数（不改变上述确认语义）：
+      * backfilled=True：回填行追加 "backfilled": True 标记，便于 A8 治理
+        回填溯源与回滚（仅回填路径使用，确认路径恒为 False）。
+      * dry_run=True：仅内存计算并挂载快照、用于扫描预览与统计，不落库、
+        不写审计（回滚安全的第一道闸门）。
+      * audit_action / audit_reason：确认与回填写入不同的审计动作，便于
+        区分两类写入来源。
     """
     now_iso = timezone.now().isoformat()
     snapshotted = []
     for line in reservation.reservation_rooms.all().order_by("pk"):
         if line.early_departure_snapshot:
             continue
-        policy = EarlyDeparturePolicy.objects.filter(
-            rate_plan_id=line.rate_plan_id, is_active=True,
-        ).order_by("-created_at", "-pk").first()
-        line.early_departure_snapshot = {
-            "policy_type": (policy.policy_type if policy is not None
-                            else EarlyDeparturePolicy.PolicyType.NONE),
-            "policy_value": (str(policy.policy_value)
-                             if policy is not None
-                             and policy.policy_value is not None else None),
-            "rate_plan_id": line.rate_plan_id,
-            "snapshot_at": now_iso,
-        }
-        line.save(update_fields=("early_departure_snapshot",))
+        snap = _compute_early_departure_snapshot(line, now_iso=now_iso)
+        if backfilled:
+            snap["backfilled"] = True
+        line.early_departure_snapshot = snap
+        if not dry_run:
+            line.save(update_fields=("early_departure_snapshot",))
         snapshotted.append(line)
-    if snapshotted:
+    if snapshotted and not dry_run:
         AuditEvent.record(
-            action="reservation.early_departure_policy_snapshotted",
+            action=audit_action,
             entity_type="Reservation", entity_id=reservation.pk,
             property_obj=reservation.property,
             after={
@@ -76,8 +102,9 @@ def snapshot_early_departure_policy(reservation):
                 "policy_types": {
                     str(line.pk): line.early_departure_snapshot["policy_type"]
                     for line in snapshotted},
+                "backfilled": backfilled,
             },
-            reason="预订确认时保存提前离店政策快照（WB-098/DEC-ED-01）")
+            reason=audit_reason)
     return snapshotted
 
 
