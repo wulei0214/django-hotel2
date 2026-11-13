@@ -1,0 +1,237 @@
+{
+ "known": {
+  "docs/PMS2.0_当前版本/00_项目基线与决策/PMS后台管理体系专项评审_第12节决策审核结论_2026-11-10.md": [
+   "docs/backup_table_audit_log…sql",
+   "docs/db_backup_pre_pms2_20261030.sql"
+  ],
+  "docs/PMS2.0_当前版本/01_产品需求与业务设计/PMS2身份认证与员工住客账户体系改造开发方案2.0_2026-11-10.md": [
+   "docs/UI_GUIDE.md"
+  ],
+  "docs/PMS2.0_当前版本/02_技术架构与数据模型/PMS2平台身份权限与业务全链路治理开发实施方案_2026-11-10.md": [
+   "docs/audit/phase0/（工作流",
+   "docs/：员工中心操作手册",
+   "docs/：平台身份域设计与运行手册",
+   "docs/：权限矩阵使用说明",
+   "docs/：跨"
+  ],
+  "docs/PMS2.0_当前版本/02_技术架构与数据模型/PMS2技术功能说明文档_2026-11-12.md": [
+   "docs/\"|"
+  ],
+  "docs/PMS2.0_当前版本/02_技术架构与数据模型/PMS2统一业务模型与数据库治理实施方案_2026-11-10.md": [
+   "docs/PMS2统一业务模型与数据库治理实施方案.md",
+   "docs/database/data_quality_report_<date>.md",
+   "docs/database/legacy_mapping_plan_<date>.md",
+   "docs/database/schema_inventory_<date>.md",
+   "docs/database/table_dependency_graph_<date>.json",
+   "docs/development/PMS2_PAGE_API_SERVICE_MATRIX.md"
+  ],
+  "docs/PMS2.0_当前版本/05_测试审计与缺陷整改/PMS2文档与当前代码全量一致性复审报告_2026-11-06.md": [
+   "docs/PMS2.0本轮缺陷复审与白盒测试整改清单.md",
+   "docs/PMS2接口文档与测试人员使用指南.md",
+   "docs/PMS2文档全目录审查与一致性校准报告_2026-11-05.md",
+   "docs/PMS2第一阶段平台底座开发记录.md",
+   "docs/PMS2第二阶段预订与库存闭环开发记录.md",
+   "docs/acceptance/A16-final-acceptance-report.md",
+   "docs/audit/phase0",
+   "docs/audit/phase0/00-baseline.md",
+   "docs/audit/phase0/10-routes.md",
+   "docs/audit/phase0/11-permissions.md",
+   "docs/audit/phase0/13-identity-sessions.md",
+   "docs/代码与文档审查报告_2026-11-04.md",
+   "docs/角色权限验证指南.md"
+  ],
+  "docs/PMS2.0_当前版本/05_测试审计与缺陷整改/PMS2文档全目录审查与一致性校准报告_2026-11-05.md": [
+   "docs/UI_GUIDE.md"
+  ],
+  "docs/PMS2.0_当前版本/05_测试审计与缺陷整改/代码与文档审查报告_2026-11-04.md": [
+   "docs/开发指南.md",
+   "docs/系统架构说明.md",
+   "docs/角色权限验证指南.md"
+  ],
+  "docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/25-rbac-registry_2026-11-10.md": [
+   "docs/audit/phase0/25-rbac-registry.md"
+  ],
+  "docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/30-phase5-gates-pii_2026-11-10.md": [
+   "docs/audit/phase0/10-routes.md"
+  ],
+  "docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/35-cookie-isolation-impl_2026-11-10.md": [
+   "docs/PMS2平台与业务Session_Cookie网络隔离专项设计与验收基线.md"
+  ],
+  "docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/46-whitebox-api_2026-11-10.md": [
+   "docs/audit/phase0/50-ui-staff-center.md"
+  ],
+  "docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/55-four-domain-verification_2026-11-10.md": [
+   "docs/PMS2补充问题复核与整改进度报告_2026-11-06.md",
+   "docs/PMS2财务权限数据库与业务闭环整改实施记录.md"
+  ],
+  "docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/80-architecture-review_2026-11-10.md": [
+   "docs/PMS2.0最终开发完成与上线验收标准.md",
+   "docs/PMS2全业务中心闭环补齐开发基线2.0.md",
+   "docs/acceptance/A16-final-acceptance-report.md",
+   "docs/audit/phase0/10-routes.md",
+   "docs/接口文档/apifox-env-template.json"
+  ],
+  "docs/PMS2.0_当前版本/06_验收与发布/96-g14-signoff_2026-11-10.md": [
+   "docs/acceptance/*.md"
+  ],
+  "docs/PMS2.0_当前版本/06_验收与发布/A16-final-acceptance-report_2026-11-10.md": [
+   "docs/PMS2文档全目录审查与一致性校准报告_2026-11-05.md",
+   "docs/PMS2最新代码单元测试与白盒全链路审查报告_2026-11-09.md",
+   "docs/audit/phase0/30-phase5-gates-pii.md",
+   "docs/audit/phase0/40-five-centers-closure.md",
+   "docs/角色权限验证指南.md"
+  ],
+  "docs/PMS2.0_当前版本/07_部署运维与数据治理/PMS2上线前未决事项与开发测试数据治理执行基线_2026-11-10.md": [
+   "docs/audit/phase0"
+  ],
+  "docs/PMS2.0_当前版本/07_部署运维与数据治理/PMS2生产PII独立密钥备份重加密与切换手册_2026-11-12.md": [
+   "docs/PMS2.0_当前版本/07_部署运维与数据治理/PMS2",
+   "docs/acceptance/evidence/pii-rekey-prod-round<N>-<YYYYMMDD>.log"
+  ],
+  "docs/PMS3.0_后续规划/99_历史版本/PMS3.0全项目开发最终方案_历史版本_2026-11-10.md": [
+   "docs/PMS3.0全项目开发最终方案.md",
+   "docs/acceptance/95-gate-closure-evidence-20261107.md",
+   "docs/acceptance/96-g14-signoff.md",
+   "docs/acceptance/A16-final-acceptance-report.md",
+   "docs/acceptance/evidence/test-mysql-c402a37.log",
+   "docs/audit/phase0/80-architecture-review.md",
+   "docs/audit/phase0/90-public-booking-order-lifecycle-review.md"
+  ],
+  "docs/共享规范/DEC编号映射与统一状态模型治理_2026-11-13.md": [
+   "docs/验收"
+  ],
+  "docs/共享规范/Markdown文档清单与维护状态_2026-11-09.md": [
+   "acceptance/96-g14-signoff.md",
+   "docs/Markdown文档清单与维护状态_2026-11-09.md",
+   "docs/PMS2",
+   "docs/PMS2.0最终开发完成与上线验收标准.md",
+   "docs/PMS2.0本轮缺陷复审与白盒测试整改清单.md",
+   "docs/PMS2三大系统入口与后台管理界面整合设计方案.md",
+   "docs/PMS2上线前未决事项与开发测试数据治理执行基线.md",
+   "docs/PMS2全业务中心闭环补齐开发基线2.0.md",
+   "docs/PMS2员工中心最终UI规范与权限管理入住管理一致性审查.md",
+   "docs/PMS2工程质量整改正式决策与实施基线_2026-11-10.md",
+   "docs/PMS2平台与业务Session_Cookie网络隔离专项设计与验收基线.md",
+   "docs/PMS2平台身份权限与业务全链路治理开发实施方案.md",
+   "docs/PMS2接口文档与测试人员使用指南.md",
+   "docs/PMS2数据结构与数据治理问题审计及开发排期建议.md",
+   "docs/PMS2文档与当前代码全量一致性复审报告_2026-11-06.md",
+   "docs/PMS2文档全目录审查与一致性校准报告_2026-11-05.md",
+   "docs/PMS2最新代码单元测试与白盒全链路审查报告_2026-11-09.md",
+   "docs/PMS2硬冻结决策待确认清单.md",
+   "docs/PMS2第一阶段平台底座开发记录.md",
+   "docs/PMS2第一阶段现状审计与权限数据流基线任务书.md",
+   "docs/PMS2第二阶段预订与库存闭环开发记录.md",
+   "docs/PMS2统一业务模型与数据库治理实施方案.md",
+   "docs/PMS2补充问题复核与整改进度报告_2026-11-06.md",
+   "docs/PMS2财务权限数据库与业务闭环整改实施记录.md",
+   "docs/PMS2身份认证与员工住客账户体系改造开发方案2.0.md",
+   "docs/PMS3.0全项目开发最终方案.md",
+   "docs/PMS3.0全项目开发最终方案V2.3.md",
+   "docs/PMS业务流程与名词说明.md",
+   "docs/PMS后台管理体系专项评审_第12节决策审核结论.md",
+   "docs/acceptance/95-gate-closure-evidence-20261107.md",
+   "docs/acceptance/96-g14-signoff.md",
+   "docs/acceptance/A16-final-acceptance-report.md",
+   "docs/audit/phase0/00-baseline.md",
+   "docs/audit/phase0/10-routes.md",
+   "docs/audit/phase0/11-permissions.md",
+   "docs/audit/phase0/12-roles.md",
+   "docs/audit/phase0/13-identity-sessions.md",
+   "docs/audit/phase0/14-dataflows.md",
+   "docs/audit/phase0/15-audit-coverage.md",
+   "docs/audit/phase0/20-findings-register.md",
+   "docs/audit/phase0/25-rbac-registry.md",
+   "docs/audit/phase0/30-phase5-gates-pii.md",
+   "docs/audit/phase0/35-cookie-isolation-impl.md",
+   "docs/audit/phase0/40-five-centers-closure.md",
+   "docs/audit/phase0/45-whitebox-services.md",
+   "docs/audit/phase0/46-whitebox-api.md",
+   "docs/audit/phase0/50-ui-staff-center.md",
+   "docs/audit/phase0/51-ui-permission-center.md",
+   "docs/audit/phase0/52-ui-frontdesk.md",
+   "docs/audit/phase0/55-four-domain-verification.md",
+   "docs/audit/phase0/60-review-finance-permissions.md",
+   "docs/audit/phase0/61-review-db-closure.md",
+   "docs/audit/phase0/70-cleanup-services.md",
+   "docs/audit/phase0/80-architecture-review.md",
+   "docs/audit/phase0/90-public-booking-order-lifecycle-review.md",
+   "docs/audit/phase0/README.md",
+   "docs/五大模块重构需求设计方案.md",
+   "docs/代码与文档审查报告_2026-11-04.md",
+   "docs/值班经理授权场景设计.md",
+   "docs/官网预订页面改造说明.md",
+   "docs/开发指南.md",
+   "docs/敏感字段权限边界设计.md",
+   "docs/系统架构说明.md",
+   "docs/角色权限验证指南.md"
+  ],
+  "docs/共享规范/PMS文档分类与版本效力治理总表_2026-11-10.md": [
+   "docs/PMS2.0_当前版本/07_部署运维与数据治理/PMS2"
+  ],
+  "docs/共享规范/docs全量一致性校准报告_2026-11-12.md": [
+   "docs/工作流"
+  ],
+  "docs/共享规范/主线变基与推送准备记录_2026-11-13.md": [
+   "docs/.../openapi.json"
+  ],
+  "docs/共享规范/文档治理阶段一_文档引用关系清单_2026-11-14.md": [
+   "docs/Markdown文档清单与维护状态_2026-11-09.md",
+   "docs/PMS2\"（行内截断",
+   "docs/PMS2.0_当前版本/04_开发实施记录/\"（目录导航",
+   "docs/PMS2三项业务政策",
+   "docs/PMS2三项业务政策DEC待确认说明_2026-11-09.md",
+   "docs/PMS2工程质量整改正式决策与实施基线_2026-11-10.md",
+   "docs/PMS2文档与当前代码全量一致性复审报告_2026-11-06.md",
+   "docs/PMS2文档全目录审查与一致性校准报告_2026-11-05.md",
+   "docs/PMS2最新代码单元测试与白盒全链路审查报告_2026-11-09.md",
+   "docs/PMS2补充问题复核与整改进度报告_2026-11-06.md",
+   "docs/UI_GUIDE.md",
+   "docs/acceptance/*.md",
+   "docs/acceptance/evidence/*.log",
+   "docs/acceptance/evidence/pii-rekey-prod-round<N>-<YYYYMMDD>.log",
+   "docs/acceptance/evidence/test-*.log",
+   "docs/acceptance/evidence/test-mysql-c402a37.log",
+   "docs/acceptance/evidence/test-mysql-e2e-fix.log",
+   "docs/acceptance/evidence/test-sqlite-c402a37.log",
+   "docs/acceptance/evidence/（证据归档规则",
+   "docs/audit/phase0/00-baseline.md",
+   "docs/audit/phase0/README.md",
+   "docs/database/schema_inventory_<date>.md",
+   "docs/代码与文档审查报告_2026-11-04.md",
+   "docs/接口文档/apifox-env-template.json",
+   "docs/系统架构说明.md"
+  ],
+  "docs/共享规范/文档治理阶段一_文档总台账_2026-11-14.md": [
+   "docs/PMS2.0_当前版本/01_产品需求与业务设计/PMS2文档...报告_2026-11-05/06.md",
+   "docs/PMS2.0_当前版本/03_.../接口文档/openapi.json",
+   "docs/PMS2.0_当前版本/05_.../PMS2",
+   "docs/PMS2.0_当前版本/07_部署运维与数据治理/PMS2"
+  ],
+  "docs/共享规范/文档治理阶段一_重复文档及冲突清单_2026-11-14.md": [
+   "docs/接口文档镜像"
+  ],
+  "docs/共享规范/文档治理阶段一_附件A_重复识别核查报告_2026-11-14.md": [
+   "docs/PMS2.0_当前版本/01_产品需求与业务设计/PMS2文档与当前代码全量一致性复审报告_2026-11-06.md",
+   "docs/PMS2.0_当前版本/01_产品需求与业务设计/PMS2文档全目录审查与一致性校准报告_2026-11-05.md",
+   "docs/PMS2.0_当前版本/01_产品需求与业务设计/PMS2补充问题复核与整改进度报告_2026-11-06.md"
+  ],
+  "docs/共享规范/文档治理阶段一_附件B_冲突核查报告_2026-11-14.md": [
+   "docs/…/96-g14-signoff_2026-11-10.md",
+   "docs/…/A16-final-acceptance-report_2026-11-10.md",
+   "docs/…/PMS2九角色验收执行手册与G14签署_2026-11-12.md",
+   "docs/共享规范/A7_"
+  ],
+  "docs/共享规范/文档治理阶段二_文档移动合并归档删除计划_2026-11-14.md": [
+   "共享规范/性能优化与生产部署升级说明.md"
+  ],
+  "docs/共享规范/文档治理阶段二_文档自动化门禁设计_2026-11-14.md": [
+   "docs/**",
+   "docs/共享规范/docs_gate_baseline.json"
+  ],
+  "docs/共享规范/第一阶段_仓库现状盘点报告.md": [
+   "docs/acceptance/evidence/*.log",
+   "docs/schema_only"
+  ]
+ }
+}

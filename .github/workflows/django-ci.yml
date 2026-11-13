@@ -102,3 +102,18 @@ jobs:
         run: python manage.py makemigrations --check --dry-run
       - name: Run tests
         run: python manage.py test --verbosity 2
+
+  docs-lint:
+    # 文档治理阶段三批次 5：docs 链接门禁（C1）。存量断链冻结于
+    # docs/共享规范/docs_gate_baseline.json，仅拦截新增断链；
+    # 基线更新须与修复同一提交（修一条删一条），禁止清空基线伪造通过。
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Docs link check (new broken links are blocking)
+        run: python scripts/docs_link_check.py check

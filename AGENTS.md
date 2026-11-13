@@ -26,3 +26,4 @@
 - 业务功能退役时同步迁移或退役对应测试与 CI 引用，不留双入口测试体系。
 - 临时验证脚本与冒烟库在交付前删除或转为正式工具（`scripts/` 或 `apps/*/management/commands/`）；一次性中间产物放 `_wbi_*` 或 Temp 并在交付前清理。
 - 正式验收证据先归档 `docs/acceptance/evidence/` 再入库；`reports/`、`logs/` 只允许 gitignored 的本机运行产物。
+- 交付涉及 docs/ 或根目录 Markdown 时，推送前本地运行 `python scripts/docs_link_check.py check`；基线 `docs/共享规范/docs_gate_baseline.json` 只拦新增断链，更新须与修复同提交，禁止清空基线伪造通过。
