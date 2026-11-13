@@ -68,7 +68,10 @@ class PermissionApprovalConcurrencyTestBase(TransactionTestCase):
         self.client_b = Client()
         self._platform_login(self.client_a, self.approver_a)
         self._platform_login(self.client_b, self.approver_b)
-        self.group = Group.objects.get(name="客房服务员")
+        # TransactionTestCase 的 truncate 式清理会删除迁移 0001 种子的角色组
+        # 且不恢复（MySQL CI 实证 DoesNotExist）——并发夹具自持建组，不依赖
+        # 迁移种子数据（与 test_mysql_concurrency 自行 create Property 同原则）。
+        self.group, _ = Group.objects.get_or_create(name="客房服务员")
         self.special_code = "billing.refund_approve"
 
     def _held(self):
