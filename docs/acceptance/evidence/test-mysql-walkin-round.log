@@ -1,42 +1,53 @@
-Found 1303 test(s).
-Creating test database for alias 'default'...
+证据生成时间：2026-11-14T02:38:06
+被测 Git SHA：0df34df4f4f186af9ccf8ddd5fd5415463aee85e
+Python：3.9.0    Django：4.1.13
+数据库：MySQL 8.0.33
+执行命令：F:\Desktop\django-hotel\.venv\Scripts\python.exe manage.py test（DJANGO_ENV=test，engine=mysql）
+测试总数：1307    最终判定：OK
+退出码：0
+========================================================================
+Found 1307 test(s).
 System check identified no issues (0 silenced).
-.......................................................................login_failed ip=127.0.0.1 username_fp=b6b1f6dde733 reason=disabled
-.login_failed ip=127.0.0.1 username_fp=af04b162cffc reason=no_employment
-.login_failed ip=127.0.0.1 username_fp=a0c366823bfe reason=bad_credentials
-.login_failed ip=127.0.0.1 username_fp=b6b1f6dde733 reason=bad_credentials
-.login_failed ip=127.0.0.1 username_fp=9123db882006 reason=bad_credentials
-.login_failed ip=127.0.0.1 username_fp=a185be89a81c reason=bad_credentials
-login_failed ip=127.0.0.1 username_fp=a185be89a81c reason=bad_credentials
-login_failed ip=127.0.0.1 username_fp=a185be89a81c reason=bad_credentials
-login_failed ip=127.0.0.1 username_fp=a185be89a81c reason=bad_credentials
-login_failed ip=127.0.0.1 username_fp=a185be89a81c reason=bad_credentials
-login_failed ip=127.0.0.1 username_fp=a185be89a81c reason=rate_limited
-...................................................本次关闭 1 笔审批超时退款。
+本次关闭 1 笔审批超时退款。
 退款申请 ID：31
 本次关闭 0 笔审批超时退款。
-....................................Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/billing/shifts/open
-.Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/notifications/refresh
-.........login_failed ip=127.0.0.1 username_fp=e8e03f32c5a9 reason=disabled
-.....................................................................................................................................................................................................................................................补偿任务本轮：扫描 5，成功 3，退避/失败 2，跳过 0。
-.........支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，1 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+补偿任务本轮：扫描 5，成功 3，退避/失败 2，跳过 0。
+支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，1 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
 支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
-.支付/账务维护完成：1 个意图过期，1 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+支付/账务维护完成：1 个意图过期，1 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
 支付/账务维护完成：0 个意图过期，1 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
-.已恢复 0 条超时夜审 RUNNING 记录（阈值 15 分钟）。
-.意图 58 过期被拒绝：意图状态已被并发修改
-.支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，1 个对账差异任务，0 个错误。
+已恢复 0 条超时夜审 RUNNING 记录（阈值 15 分钟）。
+支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，1 个对账差异任务，0 个错误。
 补偿任务本轮：扫描 1，成功 1，退避/失败 0，跳过 0。
-.支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，1 个账本修复，0 个对账差异任务，0 个错误。
+支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，1 个账本修复，0 个对账差异任务，0 个错误。
 补偿任务本轮：扫描 1，成功 1，退避/失败 0，跳过 0。
 支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
-.支付/账务维护完成：0 个意图过期，1 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+支付/账务维护完成：0 个意图过期，1 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
 补偿任务本轮：扫描 1，成功 0，退避/失败 1，跳过 0。
-........................................................................................................................................................................................................................................................................................................补偿任务 46 执行异常。
+Creating test database for alias 'default'...
+
+.......................................................................login_failed ip=127.0.0.1 username_fp=59c8ad1cdd68 reason=disabled
+.login_failed ip=127.0.0.1 username_fp=f8a2e26a7668 reason=no_employment
+.login_failed ip=127.0.0.1 username_fp=9a188cfc8f33 reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=59c8ad1cdd68 reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=d627096154f8 reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=685ad16fc91a reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=685ad16fc91a reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=685ad16fc91a reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=685ad16fc91a reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=685ad16fc91a reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=685ad16fc91a reason=rate_limited
+.......................................................................................Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/billing/shifts/open
+.Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/notifications/refresh
+.........login_failed ip=127.0.0.1 username_fp=98c2cf14e34c reason=disabled
+..........................................................................................................................................................................................................................................DEC-DEP-01 押金金额不一致：前端展示 999.00，服务端计算 90.00（以服务端为准）
+............DEC-DEP-01 押金金额不一致：前端展示 0，服务端计算 90.00（以服务端为准）
+..............意图 58 过期被拒绝：意图状态已被并发修改
+...........................................................................................................................................................................................................................................................................................................补偿任务 46 执行异常。
 Traceback (most recent call last):
-  File "F:\Desktop\django-hotel\apps\billing\management\commands\payment_compensation_worker.py", line 385, in execute_compensation_task
+  File "F:\Desktop\django-hotel\apps\billing\management\commands\payment_compensation_worker.py", line 383, in execute_compensation_task
     return execute_reconciliation_diff(task)
-  File "F:\Desktop\django-hotel\apps\billing\management\commands\payment_compensation_worker.py", line 360, in execute_reconciliation_diff
+  File "F:\Desktop\django-hotel\apps\billing\management\commands\payment_compensation_worker.py", line 358, in execute_reconciliation_diff
     run = scan_folio_reconciliation(property_obj=property_obj)
   File "D:\Python39\lib\unittest\mock.py", line 1093, in __call__
     return self._mock_call(*args, **kwargs)
@@ -67,9 +78,10 @@ Traceback (most recent call last):
   File "D:\Python39\lib\unittest\mock.py", line 1152, in _execute_mock_call
     raise effect
 RuntimeError: Redis unavailable
-........................................
+.........................................
 ----------------------------------------------------------------------
-Ran 1303 tests in 333.412s
+Ran 1307 tests in 325.783s
 
 OK
-Destroying test database for alias 'default'...
+Destroying test database for alias 'default'...
+

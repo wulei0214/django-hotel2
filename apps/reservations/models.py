@@ -246,8 +246,12 @@ class StayRoomSegment(models.Model):
         verbose_name_plural = "入住换房历史"
         ordering = ("started_at", "id")
         constraints = [
+            # 2026-11-14：gt → gte——Windows 时钟粒度（~15.6ms）下同一瞬
+            # 换房（check_in 与 change_stay_room 落在同一时钟刻度）会出现
+            # ended_at == started_at 的合法零时长段，严格 gt 造成偶发
+            # IntegrityError flake（复现：全量套件内偶发、单测隔离必过）。
             models.CheckConstraint(
-                check=models.Q(ended_at__isnull=True) | models.Q(ended_at__gt=models.F("started_at")),
+                check=models.Q(ended_at__isnull=True) | models.Q(ended_at__gte=models.F("started_at")),
                 name="ck_stay_room_segment_time_order",
             ),
         ]

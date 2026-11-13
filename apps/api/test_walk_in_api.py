@@ -62,6 +62,15 @@ class WalkInApiTestBase(WhiteboxApiTestBase):
     def _auth(self, codenames=("view_accommodation", "change_accommodation")):
         user = self._make_staff(codenames=set(codenames))
         self.client.force_login(user)
+        # R1-02：押金强制化后 Walk-in 创建必经 record_deposit（CASH 需本人
+        # OPEN 班次）——为登录用户预开班次，避免未开班次的 409 掩盖契约断言。
+        from apps.billing.services_v2 import BillingService
+        try:
+            BillingService.open_shift(
+                property_obj=self.property, cashier=user, opening_cash=Decimal("0.00")
+            )
+        except Exception:
+            pass  # 该用户已有进行中班次则沿用
         return user
 
     def _payload(self, **overrides):

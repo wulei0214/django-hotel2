@@ -225,6 +225,14 @@ class WalkInDeterminismTests(FrontDeskFlowBase):
             stay_date=self.today, total_rooms=3)
 
     def _walk_in(self, key, full_name="白盒散客", phone=""):
+        # R1-02：押金强制化后必经 record_deposit（CASH 需本人 OPEN 班次）。
+        from apps.billing.services_v2 import BillingService
+        try:
+            BillingService.open_shift(
+                property_obj=self.property, cashier=self.operator,
+                opening_cash=Decimal("0.00"))
+        except Exception:
+            pass  # 已有进行中班次则沿用
         return create_walk_in(
             property_obj=self.property, full_name=full_name, phone=phone,
             room_type_id=self.room_type.pk, rate_plan_id=self.rate_plan.pk,

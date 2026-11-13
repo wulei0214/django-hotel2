@@ -27,8 +27,9 @@ from django.utils import timezone
 
 from apps.billing.models import Folio, Payment, PaymentIntent
 from apps.billing.services_v2 import BillingService
+from apps.core.models import Property
 from apps.guests.models import Guest
-from apps.inventory.models import Room, RoomTypeInventory
+from apps.inventory.models import Room, RoomType, RoomTypeInventory
 from apps.reservations.models import Reservation, Stay
 from apps.reservations.walkin import create_walk_in
 
@@ -402,7 +403,6 @@ class WalkInsDepositPolicyTests(WalkInApiTestBase):
         self.assertEqual(self._deposits().count(), 0)
 
 
-@override_settings(DEBUG=True)
 @unittest.skipUnless(
     connection.vendor == "mysql",
     "真实并发幂等验证需 MySQL 行锁语义；SQLite 的 select_for_update 为 no-op "
@@ -478,7 +478,10 @@ class WalkInsConcurrentIdempotencyTests(TransactionTestCase):
                 try:
                     result = create_walk_in(
                         property_obj=property_obj,
-                        full_name=f"并发散客{index}",
+                        # R1-01 验收口径：并发重放必须是"相同请求体"——
+                        # 同键不同内容会按指纹仲裁走 409（语义正确但不在
+                        # 本用例范围）。
+                        full_name="并发散客",
                         phone="",
                         room_type_id=self.room_type.pk,
                         rate_plan_id=self.rate_plan.pk,
@@ -499,8 +502,12 @@ class WalkInsConcurrentIdempotencyTests(TransactionTestCase):
         for thread in threads:
             thread.join(timeout=30)
 
-        self.assertEqual(outcomes["errors"], [], "并发 Walk-in 不得出现任何异常")
-        self.assertEqual(len(outcomes["created"]), 1, "恰有一个 created=True 写入者")
+        self.assertEqual(outcomes["errors"], [], f"并发 Walk-in 不得出现任何异常：{outcomes}")
+        self.assertEqual(
+            len(outcomes["created"]), 1,
+            f"恰有一个 created=True 写入者：created={outcomes['created']} "
+            f"replayed={outcomes['replayed']} errors={outcomes['errors']}",
+        )
         self.assertEqual(
             len(outcomes["replayed"]), 1, "另一个必须得到 created=False 重放仲裁"
         )

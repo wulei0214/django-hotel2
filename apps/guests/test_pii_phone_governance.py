@@ -474,6 +474,14 @@ class WebsiteBookingFunnelTests(TestCase):
 
         from apps.reservations.models import Stay
         from apps.reservations.walkin import create_walk_in
+        # R1-02：押金强制化后必经 record_deposit（CASH 需本人 OPEN 班次）。
+        from apps.billing.services_v2 import BillingService
+        try:
+            BillingService.open_shift(
+                property_obj=self.property, cashier=self.operator,
+                opening_cash=Decimal("0.00"))
+        except Exception:
+            pass
         self.room_type, self.rate_plan = self._setup_inventory()
         result = create_walk_in(
             property_obj=self.property, full_name="占位散客", phone="",

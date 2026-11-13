@@ -146,11 +146,41 @@ def calculate_early_departure(*, line, actual_check_out):
 # ---------------------------------------------------------------------------
 # DEC-WALKIN-01 Walk-in 原子化创建
 # ---------------------------------------------------------------------------
-@transaction.atomic
 def create_walk_in(*, property_obj, full_name, phone, room_type_id,
                    rate_plan_id, nights=1, adults=1, children=0,
                    deposit_amount=None, created_by=None,
                    idempotency_key=""):
+    """Walk-in 散客创建入口（R1-01：MySQL 1213 死锁瞬态重试包装）。
+
+    并发首建窗口内，Gate 行锁/库存行锁/预订幂等键的锁交叉可能触发 InnoDB
+    死锁（1213）——这是瞬态仲裁而非业务错误：被击杀方的整个事务已回滚，
+    原地重试必然命中赢家已提交的幂等键 → 走重放路径（created=False）。
+    重试 2 次后仍死锁则原样抛出（调用方可见的真实系统异常）。
+    """
+    from django.db import OperationalError
+
+    last_exc = None
+    for attempt in range(3):
+        try:
+            return _create_walk_in_once(
+                property_obj=property_obj, full_name=full_name, phone=phone,
+                room_type_id=room_type_id, rate_plan_id=rate_plan_id,
+                nights=nights, adults=adults, children=children,
+                deposit_amount=deposit_amount,
+                created_by=created_by, idempotency_key=idempotency_key,
+            )
+        except OperationalError as exc:
+            if not exc.args or exc.args[0] != 1213:
+                raise
+            last_exc = exc
+    raise last_exc
+
+
+@transaction.atomic
+def _create_walk_in_once(*, property_obj, full_name, phone, room_type_id,
+                         rate_plan_id, nights=1, adults=1, children=0,
+                         deposit_amount=None, created_by=None,
+                         idempotency_key=""):
     """Walk-in 散客原子化创建（同一事务内全链路）。
 
     Guest → Reservation(source=WALK_IN) → ReservationRoom → Folio
