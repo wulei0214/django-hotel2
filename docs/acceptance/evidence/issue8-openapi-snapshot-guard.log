@@ -1,0 +1,75 @@
+==============================================================================
+Issue #8 OpenAPI 双快照逐字节一致性守卫 —— 验证证据
+生成时间：2026-11-13
+==============================================================================
+
+## 0. 版本与基线事实
+
+基线 SHA（执行前 main HEAD）: 4a9997ae2e24b02e7d2b14a2365a76db5efd606a
+origin/main                  : 4a9997ae2e24b02e7d2b14a2365a76db5efd606a
+基线提交标题                : 4a9997ae2e24b02e7d2b14a2365a76db5efd606a docs: 订正 OpenAPI 工作流预判错误并登记镜像快照守卫缺口
+
+## 1. 修改前 lint 存量债务（基线快照）
+
+目标文件: apps/api/test_openapi_schema.py
+Ruff        returncode = 1
+  apps\api\test_openapi_schema.py:14:1: I001 [*] Import block is un-sorted or un-formatted
+  apps\api\test_openapi_schema.py:277:19: B007 Loop control variable `method` not used within loop body
+  apps\api\test_openapi_schema.py:481:13: B007 Loop control variable `path` not used within loop body
+  apps\api\test_openapi_schema.py:481:19: B007 Loop control variable `method` not used within loop body
+Black       returncode = 1（188 增 / 116 删）
+Ruff Format returncode = 1（188 增 / 116 删）
+
+## 2. CI 阻断链路静态核验
+
+ci.yml      test 命令       : ['python manage.py test --noinput -v 2']
+django-ci.yml test 命令     : ['python manage.py test --verbosity 2']
+新测试可被 Django 发现器采集: True
+两个工作流触发事件           : ['pull_request', 'push']
+OpenAPI snapshot 触发路径    : ['apps/api/openapi_schema.py', 'apps/api/urls.py', 'apps/api/management/commands/export_openapi_schema.py', '.github/workflows/openapi-snapshot.yml']
+  → 覆盖本次改动的测试文件   : False（False = 本次改动不触发自动复制）
+  → 覆盖 schema 生成器      : True
+workflow 会自动复制并提交    : True
+main 分支保护                : False（{"message":"Branch not protected","documentation_url":"https://docs.github.com/rest/branches/branch-protection#get-branch-protection","status":"404"}）
+
+## 3. 守卫测试正/负向验证
+
+### 3.1 正向：新增测试单独通过
+
+  Ran 43 tests in 0.616s
+  OK
+
+### 3.2 负向 A：注入 1 字节差异（长度不同）
+
+  预期：测试 FAIL，且长度断言先行捕获
+  实测：AssertionError: 903292 != 903293（权威 903292 字节 / 镜像 903293 字节）
+  FAILED (failures=1)；验证后镜像已还原，SHA256 = a79b205d...665cb1e
+
+### 3.3 负向 B：等长单字节差异（偏移定位路径）
+
+  预期：测试 FAIL，且报出首个差异字节偏移
+  实测：AssertionError 权威快照与镜像快照未逐字节一致（镜像漂移）：首个差异位于第 50000 字节
+  FAILED (failures=1)；验证后镜像已还原，RESTORED_EQUALS_AUTH = True
+
+  结论：守卫对「长度不同」与「等长字节不同」两类漂移均能拦截，且均能定位差异偏移。
+
+## 4. 双库全量回归
+
+### MySQL
+  Ran 1286 tests in 352.127s
+  OK
+
+### SQLite
+  Ran 1286 tests in 297.410s
+  OK (skipped=24)
+
+## 5. 静态门禁
+
+Ruff check apps/api/test_openapi_schema.py        : All checks passed!
+Black --check apps/api/test_openapi_schema.py     : 1 file would be left unchanged
+Ruff Format --check apps/api/test_openapi_schema.py: 1 file already formatted
+mypy_baseline.py check-files apps/api/test_openapi_schema.py : 通过（无新增错误）
+manage.py check                                   : System check identified no issues
+manage.py makemigrations --check --dry-run         : No changes detected
+manage.py export_openapi_schema                   : 重导后两份快照零差异
+

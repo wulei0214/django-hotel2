@@ -11,12 +11,12 @@
 6. 公开预订三端点特别标注：Idempotency-Key 幂等、§6.3 限流阈值（与
    apps.core.rate_limit.DEFAULT_LIMITS 对齐）、Booking Access Token、审计事件。
 """
+
 import json
 import re
 from pathlib import Path
 
 from django.conf import settings
-
 from django.test import TestCase
 from django.urls import URLPattern, resolve
 
@@ -25,20 +25,40 @@ from apps.core.rate_limit import DEFAULT_LIMITS
 
 CONTRACT_STATUSES = {"verified", "partial", "planned"}
 
+# OpenAPI 双快照：
+# - 权威快照：契约唯一事实来源，由 `manage.py export_openapi_schema` 生成；
+# - 镜像快照：面向外部交付的同步副本，由 OpenAPI snapshot workflow 事后复制。
+# 二者必须逐字节一致；漂移守卫见 PMS2OpenApiStructureValidityTests。
+OPENAPI_AUTHORITATIVE_SNAPSHOT = (
+    Path(settings.BASE_DIR)
+    / "docs"
+    / "PMS2.0_当前版本"
+    / "03_API接口与前后端规范"
+    / "接口文档"
+    / "openapi.json"
+)
+OPENAPI_MIRROR_SNAPSHOT = Path(settings.BASE_DIR) / "docs" / "接口文档" / "openapi.json"
+
 # 与视图源码逐条核对后的权限码矩阵（视图装饰器/AuthorizationService 调用点）。
 PERMISSION_MATRIX = {
     ("get", "/front-desk/overview"): "hotelapp.view_accommodation",
     ("get", "/front-desk/arrivals"): "hotelapp.view_accommodation",
     ("get", "/front-desk/reservations"): "hotelapp.view_accommodation",
     ("get", "/front-desk/rooms"): "hotelapp.view_accommodation",
-    ("post", "/front-desk/reservation-rooms/{reservation_room_id}/assign"):
-        "hotelapp.change_accommodation",
-    ("post", "/front-desk/reservation-rooms/{reservation_room_id}/check-in"):
-        "hotelapp.change_accommodation",
+    (
+        "post",
+        "/front-desk/reservation-rooms/{reservation_room_id}/assign",
+    ): "hotelapp.change_accommodation",
+    (
+        "post",
+        "/front-desk/reservation-rooms/{reservation_room_id}/check-in",
+    ): "hotelapp.change_accommodation",
     ("post", "/front-desk/stays/{stay_id}/check-out"): "hotelapp.change_accommodation",
     ("post", "/front-desk/walk-in"): "hotelapp.change_accommodation",
-    ("post", "/front-desk/reservation-rooms/{reservation_room_id}/no-show"):
-        "hotelapp.no_show_handle",
+    (
+        "post",
+        "/front-desk/reservation-rooms/{reservation_room_id}/no-show",
+    ): "hotelapp.no_show_handle",
     ("post", "/front-desk/payments/{payment_id}/refunds"): "billing.refund_request",
     ("post", "/front-desk/refunds/{refund_id}/approve"): "billing.refund_approve",
     ("get", "/night-audit/preview"): "core.night_audit_view",
@@ -49,17 +69,17 @@ PERMISSION_MATRIX = {
     ("get", "/night-audit/break-glass"): "core.night_audit_view",
     ("get", "/night-audit/runs"): "core.night_audit_view",
     ("get", "/night-audit/runs/{run_id}"): "core.night_audit_view",
-    ("post", "/night-audit/business-dates/{business_date_id}/reopen-request"):
-        "hotelapp.business_date_reopen",
+    (
+        "post",
+        "/night-audit/business-dates/{business_date_id}/reopen-request",
+    ): "hotelapp.business_date_reopen",
     ("post", "/night-audit/break-glass/{record_id}/review"): "core.breakglass_review",
     ("get", "/guests"): "hotelapp.view_client",
     ("get", "/guests/{guest_id}"): "hotelapp.view_client",
     ("post", "/guests/create"): "hotelapp.add_client",
     ("post", "/guests/{guest_id}/update"): "hotelapp.change_client",
-    ("post", "/guests/{guest_id}/documents/{document_id}/reveal"):
-        "hotelapp.guest_document_reveal",
-    ("post", "/guests/{guest_id}/phones/{phone_id}/reveal"):
-        "hotelapp.guest_phone_reveal",
+    ("post", "/guests/{guest_id}/documents/{document_id}/reveal"): "hotelapp.guest_document_reveal",
+    ("post", "/guests/{guest_id}/phones/{phone_id}/reveal"): "hotelapp.guest_phone_reveal",
     ("get", "/rooms/status"): "hotelapp.view_room",
     ("get", "/room-types"): "hotelapp.view_room",
     ("get", "/housekeeping/rooms"): "inventory.housekeeping_view",
@@ -120,6 +140,7 @@ def _iter_operations(spec):
 def _route_paths():
     """把 apps.api.urls 的路由渲染成 OpenAPI path 形式（/api/v1 前缀 + {var}）。"""
     from apps.api import urls as api_urls
+
     result = set()
     for pattern in api_urls.urlpatterns:
         if isinstance(pattern, URLPattern):
@@ -135,7 +156,9 @@ class PMS2OpenApiDocumentationTests(TestCase):
         spec = response.json()
         self.assertEqual(spec["openapi"], "3.1.0")
         paths = spec["paths"]
-        self.assertEqual(set(paths), _route_paths(), "OpenAPI paths 必须与 apps.api.urls 注册路由集合完全一致")
+        self.assertEqual(
+            set(paths), _route_paths(), "OpenAPI paths 必须与 apps.api.urls 注册路由集合完全一致"
+        )
         expected = {
             "/api/v1/availability": {"get"},
             "/api/v1/reservations": {"post"},
@@ -208,13 +231,70 @@ class PMS2OpenApiStructureValidityTests(TestCase):
 
     def test_committed_openapi_snapshot_matches_runtime_contract(self):
         snapshot_path = (
-            Path(settings.BASE_DIR) / "docs" / "PMS2.0_当前版本" / "03_API接口与前后端规范" / "接口文档" / "openapi.json")
+            Path(settings.BASE_DIR)
+            / "docs"
+            / "PMS2.0_当前版本"
+            / "03_API接口与前后端规范"
+            / "接口文档"
+            / "openapi.json"
+        )
         self.assertTrue(snapshot_path.exists(), "必须提交运行时 OpenAPI 快照")
         snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
         self.assertEqual(snapshot["openapi"], self.spec["openapi"])
         self.assertEqual(snapshot["paths"], self.spec["paths"])
         self.assertEqual(snapshot["components"], self.spec["components"])
         self.assertEqual(snapshot["tags"], self.spec["tags"])
+
+    def test_authoritative_and_mirror_snapshots_are_byte_identical(self):
+        """权威快照与镜像快照必须逐字节完全一致（阻断镜像漂移）。
+
+        权威快照（docs/PMS2.0_当前版本/.../接口文档/openapi.json）是契约唯一事实来源，
+        由 `manage.py export_openapi_schema` 生成；镜像快照（docs/接口文档/openapi.json）
+        是面向外部交付的同步副本，由 OpenAPI snapshot workflow 事后复制。
+
+        守卫要点：
+        1. 必须用 read_bytes() 逐字节比较，不能只比较 JSON 解析对象——
+           后者会放过空格、换行、缩进、末尾空行、编码（BOM）等字节级差异。
+        2. 任一快照缺失即失败，避免"只有一份"的降级状态被误判为通过。
+        3. 失败信息给出首个差异字节的偏移，便于直接定位漂移来源。
+        """
+        for label, snapshot_path in (
+            ("权威快照", OPENAPI_AUTHORITATIVE_SNAPSHOT),
+            ("镜像快照", OPENAPI_MIRROR_SNAPSHOT),
+        ):
+            self.assertTrue(
+                snapshot_path.is_file(),
+                f"{label}缺失：{snapshot_path}；"
+                f"权威快照由 manage.py export_openapi_schema 生成，"
+                f"镜像快照须与权威快照逐字节一致",
+            )
+
+        authoritative_bytes = OPENAPI_AUTHORITATIVE_SNAPSHOT.read_bytes()
+        mirror_bytes = OPENAPI_MIRROR_SNAPSHOT.read_bytes()
+
+        self.assertEqual(
+            len(authoritative_bytes),
+            len(mirror_bytes),
+            "权威快照与镜像快照字节长度不一致，镜像已漂移："
+            f"权威 {len(authoritative_bytes)} 字节，镜像 {len(mirror_bytes)} 字节",
+        )
+        if authoritative_bytes != mirror_bytes:
+            offset = next(
+                (
+                    index
+                    for index, (left, right) in enumerate(zip(authoritative_bytes, mirror_bytes))
+                    if left != right
+                ),
+                min(len(authoritative_bytes), len(mirror_bytes)),
+            )
+            self.fail(
+                "权威快照与镜像快照未逐字节一致（镜像漂移）："
+                f"首个差异位于第 {offset} 字节；"
+                f"权威={authoritative_bytes[offset:offset + 20]!r}，"
+                f"镜像={mirror_bytes[offset:offset + 20]!r}。"
+                f"请将权威快照原样复制到镜像路径，"
+                f"或执行 manage.py export_openapi_schema 后同步镜像"
+            )
 
     def test_document_is_parseable_and_openapi_31(self):
         raw = json.dumps(self.spec, ensure_ascii=False)  # 可 JSON 序列化
@@ -250,9 +330,7 @@ class PMS2OpenApiStructureValidityTests(TestCase):
             if isinstance(node, dict):
                 if "$ref" in node:
                     name = node["$ref"].rsplit("/", 1)[-1]
-                    self.assertIn(
-                        name, declared,
-                        f"未解析的 $ref：{node['$ref']}")
+                    self.assertIn(name, declared, f"未解析的 $ref：{node['$ref']}")
                 for value in node.values():
                     walk(value)
             elif isinstance(node, list):
@@ -264,28 +342,33 @@ class PMS2OpenApiStructureValidityTests(TestCase):
     def test_post_operations_have_request_body_or_explicit_no_body_marker(self):
         for path, method, operation in _iter_operations(self.spec):
             if method != "post":
-                self.assertNotIn("requestBody", operation,
-                                 f"GET {path} 不应声明 requestBody")
+                self.assertNotIn("requestBody", operation, f"GET {path} 不应声明 requestBody")
                 continue
             has_body = "requestBody" in operation
             has_marker = operation.get("x-no-request-body") is True
             self.assertTrue(
-                has_body or has_marker,
-                f"POST {path} 既无 requestBody 也无 x-no-request-body 标记")
+                has_body or has_marker, f"POST {path} 既无 requestBody 也无 x-no-request-body 标记"
+            )
 
     def test_security_declarations_session_or_anonymous(self):
-        for path, method, operation in _iter_operations(self.spec):
+        for path, _method, operation in _iter_operations(self.spec):
             security = operation.get("security")
             self.assertIsNotNone(security, f"{operation['operationId']} 缺少 security 声明")
             if security == []:
-                self.assertNotIn("x-required-permission", operation,
-                                 f"匿名端点 {path} 不应声明权限码")
+                self.assertNotIn(
+                    "x-required-permission", operation, f"匿名端点 {path} 不应声明权限码"
+                )
             else:
                 self.assertEqual(
-                    security, [{"PMS2Session": []}],
-                    f"{operation['operationId']} 只能使用 PMS2Session cookie")
-                self.assertIn("x-required-permission", operation,
-                              f"Session 端点 {path} 必须声明 x-required-permission")
+                    security,
+                    [{"PMS2Session": []}],
+                    f"{operation['operationId']} 只能使用 PMS2Session cookie",
+                )
+                self.assertIn(
+                    "x-required-permission",
+                    operation,
+                    f"Session 端点 {path} 必须声明 x-required-permission",
+                )
 
 
 class PMS2ContractStatusTests(TestCase):
@@ -299,8 +382,8 @@ class PMS2ContractStatusTests(TestCase):
         for path, method, operation in _iter_operations(self.spec):
             status = operation.get("x-contract-status")
             self.assertIn(
-                status, CONTRACT_STATUSES,
-                f"{method.upper()} {path} 缺少合法 x-contract-status")
+                status, CONTRACT_STATUSES, f"{method.upper()} {path} 缺少合法 x-contract-status"
+            )
             if path != BASE + "/openapi.json":
                 business += 1
         # §4.3 客房服务中心 +4、§4.4 审计与合规中心 +4、§4.5 报表分析中心 +5、
@@ -328,15 +411,19 @@ class PMS2ContractStatusTests(TestCase):
                 schema = operation["responses"][code]["content"]["application/json"]["schema"]
                 self.assertTrue(
                     schema.get("type") or "$ref" in schema or "properties" in schema,
-                    f"{operation['operationId']} {code} 响应 schema 为空")
+                    f"{operation['operationId']} {code} 响应 schema 为空",
+                )
             if method == "post" and "requestBody" in operation:
                 body_schema = operation["requestBody"]["content"]["application/json"]["schema"]
-                self.assertEqual(body_schema.get("type"), "object",
-                                 f"{operation['operationId']} 请求体必须是 JSON 对象")
+                self.assertEqual(
+                    body_schema.get("type"),
+                    "object",
+                    f"{operation['operationId']} 请求体必须是 JSON 对象",
+                )
             if method == "post" and operation.get("x-no-request-body") is not True:
                 self.assertIn(
-                    "requestBody", operation,
-                    f"POST {path} 缺少 requestBody（视图读取请求体）")
+                    "requestBody", operation, f"POST {path} 缺少 requestBody（视图读取请求体）"
+                )
 
     def test_verified_operations_exceed_partial(self):
         """verified 端点必须有明确的字段级 schema/参数描述（partial 为补测目标）。"""
@@ -374,14 +461,25 @@ class PMS2PublicBookingContractTests(TestCase):
 
     def test_create_request_fields_match_view_payload(self):
         """POST /api/v1/reservations 请求字段必须与 views.reservations_create 一致。"""
-        body = self.spec["paths"][BASE + "/reservations"]["post"]["requestBody"][
-            "content"]["application/json"]["schema"]
+        body = self.spec["paths"][BASE + "/reservations"]["post"]["requestBody"]["content"][
+            "application/json"
+        ]["schema"]
         self.assertEqual(
             sorted(body["required"]),
-            ["check_in", "check_out", "full_name", "phone", "room_type_id"])
+            ["check_in", "check_out", "full_name", "phone", "room_type_id"],
+        )
         props = body["properties"]
-        for name in ("full_name", "phone", "room_type_id", "rate_plan_id",
-                     "check_in", "check_out", "rooms", "adults", "children"):
+        for name in (
+            "full_name",
+            "phone",
+            "room_type_id",
+            "rate_plan_id",
+            "check_in",
+            "check_out",
+            "rooms",
+            "adults",
+            "children",
+        ):
             self.assertIn(name, props, f"创建预订缺少视图实际读取的字段：{name}")
         self.assertEqual(props["rooms"]["minimum"], 1)
         self.assertEqual(props["rooms"]["maximum"], 10)
@@ -397,8 +495,9 @@ class PMS2PublicBookingContractTests(TestCase):
         header = [p for p in create["parameters"] if p["name"] == "Idempotency-Key"]
         self.assertTrue(header, "创建预订必须声明 Idempotency-Key 头")
         self.assertEqual(header[0]["in"], "header")
-        self.assertTrue(header[0]["required"],
-                        "create_reservation 服务强校验幂等键，必须声明为必填")
+        self.assertTrue(
+            header[0]["required"], "create_reservation 服务强校验幂等键，必须声明为必填"
+        )
         self.assertLessEqual(header[0]["schema"]["maxLength"], 128)
         self.assertIn("x-idempotency", create)
         replay = create["responses"]["200"]
@@ -413,17 +512,15 @@ class PMS2PublicBookingContractTests(TestCase):
             self.assertEqual(annotation["action"], action)
             self.assertTrue(annotation["fail_closed"])
             expected = {
-                (frozenset(dims), limit, window)
-                for dims, limit, window in DEFAULT_LIMITS[action]
+                (frozenset(dims), limit, window) for dims, limit, window in DEFAULT_LIMITS[action]
             }
             actual = {
-                (frozenset(rule["dimensions"]),
-                 rule["limit"], rule["window_seconds"])
+                (frozenset(rule["dimensions"]), rule["limit"], rule["window_seconds"])
                 for rule in annotation["rules"]
             }
             self.assertEqual(
-                actual, expected,
-                f"{path} 的限流标注与 apps.core.rate_limit.DEFAULT_LIMITS 不一致")
+                actual, expected, f"{path} 的限流标注与 apps.core.rate_limit.DEFAULT_LIMITS 不一致"
+            )
 
     def test_public_endpoints_declare_audit_events(self):
         create = self.spec["paths"][BASE + "/reservations"]["post"]
@@ -445,7 +542,8 @@ class PMS2PublicBookingContractTests(TestCase):
         self.assertIn("token", token_props)
         self.assertEqual(
             cancel["responses"]["404"]["content"]["application/json"]["schema"]["$ref"],
-            "#/components/schemas/PublicApiError")
+            "#/components/schemas/PublicApiError",
+        )
         self.assertIn("x-booking-access-token", cancel)
 
     def test_mock_payment_endpoints_kept_local_only_and_signed(self):
@@ -454,8 +552,7 @@ class PMS2PublicBookingContractTests(TestCase):
         self.assertIn("PERMISSION_DENIED", intents["responses"]["403"]["description"])
         callback = self.spec["paths"][BASE + "/payments/callback"]["post"]
         self.assertIn("x-signature", callback)
-        signature_headers = [p for p in callback["parameters"]
-                             if p["name"] == "X-Signature"]
+        signature_headers = [p for p in callback["parameters"] if p["name"] == "X-Signature"]
         self.assertTrue(signature_headers)
         self.assertTrue(signature_headers[0]["required"])
         csrf_headers = [p for p in callback["parameters"] if p["name"] == "X-CSRFToken"]
@@ -474,11 +571,12 @@ class PMS2ErrorEnvelopeContractTests(TestCase):
         self.assertIn("code", detail["required"])
         self.assertIn("message", detail["required"])
         envelope = self.spec["components"]["schemas"]["ApiErrorEnvelope"]
-        self.assertEqual(envelope["properties"]["error"]["$ref"],
-                         "#/components/schemas/ErrorDetail")
+        self.assertEqual(
+            envelope["properties"]["error"]["$ref"], "#/components/schemas/ErrorDetail"
+        )
 
     def test_staff_error_responses_use_unified_envelope(self):
-        for path, method, operation in _iter_operations(self.spec):
+        for _path, _method, operation in _iter_operations(self.spec):
             if operation["security"] == []:
                 continue
             for code, response in operation["responses"].items():
@@ -486,18 +584,25 @@ class PMS2ErrorEnvelopeContractTests(TestCase):
                     continue
                 ref = response["content"]["application/json"]["schema"].get("$ref", "")
                 self.assertEqual(
-                    ref, "#/components/schemas/ApiErrorEnvelope",
-                    f"{operation['operationId']} {code} 未使用统一错误封套")
+                    ref,
+                    "#/components/schemas/ApiErrorEnvelope",
+                    f"{operation['operationId']} {code} 未使用统一错误封套",
+                )
 
     def test_public_429_uses_retry_after_schema(self):
-        for path in ("/reservations", "/reservations/{booking_no}",
-                     "/reservations/{booking_no}/cancel", "/payments/intents"):
+        for path in (
+            "/reservations",
+            "/reservations/{booking_no}",
+            "/reservations/{booking_no}/cancel",
+            "/payments/intents",
+        ):
             method = "get" if path.endswith("{booking_no}") and "cancel" not in path else "post"
             response = self.spec["paths"][BASE + path][method]["responses"]["429"]
             self.assertEqual(
                 response["content"]["application/json"]["schema"]["$ref"],
                 "#/components/schemas/PublicRateLimitError",
-                f"{path} 429 必须声明 retry_after 结构")
+                f"{path} 429 必须声明 retry_after 结构",
+            )
         schema = self.spec["components"]["schemas"]["PublicRateLimitError"]
         self.assertIn("retry_after", schema["properties"])
 
@@ -507,7 +612,8 @@ class PMS2ErrorEnvelopeContractTests(TestCase):
         cancel = self.spec["paths"][BASE + "/reservations/{booking_no}/cancel"]["post"]
         self.assertEqual(
             cancel["responses"]["409"]["content"]["application/json"]["schema"]["$ref"],
-            "#/components/schemas/PublicApiError")
+            "#/components/schemas/PublicApiError",
+        )
 
 
 class PMS2PermissionAnnotationTests(TestCase):
@@ -522,13 +628,15 @@ class PMS2PermissionAnnotationTests(TestCase):
             declared = operation.get("x-required-permission")
             if permission is None:
                 self.assertIsNone(
-                    declared,
-                    f"{method.upper()} {path} 视图未做专项权限码校验，契约不得虚构")
+                    declared, f"{method.upper()} {path} 视图未做专项权限码校验，契约不得虚构"
+                )
             else:
                 self.assertIsNotNone(declared, f"{method.upper()} {path} 缺少权限声明")
                 self.assertIn(
-                    permission, declared,
-                    f"{method.upper()} {path} 权限声明应包含 {permission}（视图实际校验值）")
+                    permission,
+                    declared,
+                    f"{method.upper()} {path} 权限声明应包含 {permission}（视图实际校验值）",
+                )
 
     def test_shift_list_declares_both_personal_and_property_wide_access_paths(self):
         permission = self.spec["paths"][BASE + "/billing/shifts"]["get"]["x-required-permission"]
@@ -536,8 +644,9 @@ class PMS2PermissionAnnotationTests(TestCase):
         self.assertIn("hotelapp.finance_access", permission)
 
     def test_shift_close_contract_documents_supervisor_delegation(self):
-        permission = self.spec["paths"][
-            BASE + "/billing/shifts/{shift_id}/close"]["post"]["x-required-permission"]
+        permission = self.spec["paths"][BASE + "/billing/shifts/{shift_id}/close"]["post"][
+            "x-required-permission"
+        ]
         self.assertIn("billing.cashier_shift_manage", permission)
         self.assertIn("hotelapp.finance_access", permission)
 
@@ -546,8 +655,7 @@ class PMS2PermissionAnnotationTests(TestCase):
             if method != "post" or path.endswith("/payments/callback"):
                 continue
             csrf = [p for p in operation["parameters"] if p["name"] == "X-CSRFToken"]
-            self.assertTrue(
-                csrf, f"POST {path} 必须声明 X-CSRFToken（CSRF_USE_SESSIONS=True）")
+            self.assertTrue(csrf, f"POST {path} 必须声明 X-CSRFToken（CSRF_USE_SESSIONS=True）")
             self.assertTrue(csrf[0]["required"])
 
     def test_break_glass_review_declares_strict_body_fields(self):
@@ -557,7 +665,8 @@ class PMS2PermissionAnnotationTests(TestCase):
         self.assertIn("CONFIRMED", body["properties"]["decision"]["description"])
         execute = self.spec["paths"][
             BASE + "/night-audit/business-dates/{business_date_id}/break-glass/"
-                   "{record_id}/execute"]["post"]
+            "{record_id}/execute"
+        ]["post"]
         execute_data = execute["responses"]["200"]["content"]["application/json"]["schema"]
         execute_component = execute_data["properties"]["data"]["$ref"].rsplit("/", 1)[-1]
         result = self.spec["components"]["schemas"][execute_component]
@@ -571,28 +680,32 @@ class PMS2IdempotencyContractTests(TestCase):
         self.spec = build_openapi()
 
     def test_service_enforced_idempotency_endpoints_declare_required_key(self):
-        for path in ("/front-desk/reservations/{booking_no}/payments",
-                     "/front-desk/reservations/{booking_no}/deposits",
-                     "/front-desk/payments/{payment_id}/refunds"):
+        for path in (
+            "/front-desk/reservations/{booking_no}/payments",
+            "/front-desk/reservations/{booking_no}/deposits",
+            "/front-desk/payments/{payment_id}/refunds",
+        ):
             operation = self.spec["paths"][BASE + path]["post"]
-            header = [p for p in operation["parameters"]
-                      if p["name"] == "Idempotency-Key"]
+            header = [p for p in operation["parameters"] if p["name"] == "Idempotency-Key"]
             self.assertTrue(header, f"{path} 缺少 Idempotency-Key 声明")
-            self.assertTrue(header[0]["required"],
-                            f"{path} 服务层强校验幂等键，必须声明必填")
+            self.assertTrue(header[0]["required"], f"{path} 服务层强校验幂等键，必须声明必填")
             self.assertIn("x-idempotency", operation)
 
     def test_api_contract_idempotent_endpoints_declare_optional_key(self):
-        for path in ("/guests/create", "/guests/{guest_id}/update",
-                     "/approvals/request", "/memberships/create",
-                     "/memberships/{membership_id}/level",
-                     "/daily-rates/{rate_id}/adjust"):
+        for path in (
+            "/guests/create",
+            "/guests/{guest_id}/update",
+            "/approvals/request",
+            "/memberships/create",
+            "/memberships/{membership_id}/level",
+            "/daily-rates/{rate_id}/adjust",
+        ):
             operation = self.spec["paths"][BASE + path]["post"]
-            header = [p for p in operation["parameters"]
-                      if p["name"] == "Idempotency-Key"]
+            header = [p for p in operation["parameters"] if p["name"] == "Idempotency-Key"]
             self.assertTrue(header, f"{path} 缺少 Idempotency-Key 声明")
-            self.assertFalse(header[0]["required"],
-                             f"{path} 的 @idempotent 装饰器在缺少幂等键时放行，应声明可选")
+            self.assertFalse(
+                header[0]["required"], f"{path} 的 @idempotent 装饰器在缺少幂等键时放行，应声明可选"
+            )
             self.assertIn("x-idempotency", operation)
 
 
@@ -606,38 +719,53 @@ class PMS2FieldLevelConsistencyTests(TestCase):
     def test_staff_dto_matches_staff_center_dto(self):
         """StaffDto 必须覆盖 staff_center._staff_dto 的全部键（AUTH-14/17）。"""
         props = self.schemas["StaffDto"]["properties"]
-        for name in ("id", "full_name", "phone_masked", "employee_no",
-                     "position_code", "employment_status",
-                     "employment_status_label", "membership_status",
-                     "membership_status_label", "account", "invitation",
-                     "active_roles", "assignments", "source_system"):
+        for name in (
+            "id",
+            "full_name",
+            "phone_masked",
+            "employee_no",
+            "position_code",
+            "employment_status",
+            "employment_status_label",
+            "membership_status",
+            "membership_status_label",
+            "account",
+            "invitation",
+            "active_roles",
+            "assignments",
+            "source_system",
+        ):
             self.assertIn(name, props, f"StaffDto 缺少视图实际返回字段：{name}")
         account = props["account"]["anyOf"][0]
         self.assertIn("username", account["properties"])
         self.assertIn("is_active", account["properties"])
-        self.assertIn("password_pending", account["properties"],
-                      "AUTH-14：unusable password 邀请待激活标记必须入契约")
+        self.assertIn(
+            "password_pending",
+            account["properties"],
+            "AUTH-14：unusable password 邀请待激活标记必须入契约",
+        )
         self.assertIn("last_login", account["properties"])
         invitation = props["invitation"]["anyOf"][0]
         for name in ("id", "status", "status_label", "expires_at", "resend_count"):
-            self.assertIn(name, invitation["properties"],
-                          f"AUTH-17 邀请摘要缺少字段：{name}")
+            self.assertIn(name, invitation["properties"], f"AUTH-17 邀请摘要缺少字段：{name}")
 
     def test_folio_detail_data_declares_nullable_folio_and_summary(self):
         props = self.schemas["FolioDetailData"]["properties"]
         for name in ("folio", "summary", "entries", "payments", "allowed_actions"):
             self.assertIn(name, props, f"FolioDetailData 缺少视图实际返回键：{name}")
         self.assertEqual(
-            props["summary"]["anyOf"][0]["$ref"],
-            "#/components/schemas/FolioSummaryDto")
+            props["summary"]["anyOf"][0]["$ref"], "#/components/schemas/FolioSummaryDto"
+        )
 
     def test_availability_query_params_match_view_reads(self):
         """availability 视图只读取 check_in/check_out/rooms/room_type_id。"""
         operation = self.spec["paths"][BASE + "/availability"]["get"]
         params = {p["name"]: p for p in operation["parameters"]}
         self.assertEqual(
-            sorted(params), ["check_in", "check_out", "room_type_id", "rooms"],
-            "availability 契约参数与视图实际读取不一致")
+            sorted(params),
+            ["check_in", "check_out", "room_type_id", "rooms"],
+            "availability 契约参数与视图实际读取不一致",
+        )
         self.assertTrue(params["check_in"]["required"])
         self.assertTrue(params["check_out"]["required"])
         self.assertFalse(params["rooms"]["required"])
@@ -648,22 +776,21 @@ class PMS2FieldLevelConsistencyTests(TestCase):
     def test_night_audit_preview_query_and_run_body_match_view(self):
         preview = self.spec["paths"][BASE + "/night-audit/preview"]["get"]
         self.assertEqual(
-            {p["name"] for p in preview["parameters"]}, {"date"},
-            "夜审预览视图只读取 date 查询参数")
+            {p["name"] for p in preview["parameters"]}, {"date"}, "夜审预览视图只读取 date 查询参数"
+        )
         run = self.spec["paths"][BASE + "/night-audit/run"]["post"]
         body = run["requestBody"]["content"]["application/json"]["schema"]
-        self.assertEqual(
-            sorted(body["properties"]), ["date"],
-            "夜审执行视图只读取 body.date")
-        self.assertFalse(run["requestBody"]["required"],
-                         "视图对空请求体兼容（json.loads('' or '{}')）")
+        self.assertEqual(sorted(body["properties"]), ["date"], "夜审执行视图只读取 body.date")
+        self.assertFalse(
+            run["requestBody"]["required"], "视图对空请求体兼容（json.loads('' or '{}')）"
+        )
 
     def test_error_detail_codes_cover_api_error_status_codes(self):
         from apps.core.api_contract import ApiError
+
         description = self.schemas["ErrorDetail"]["properties"]["code"]["description"]
         for code in ApiError.STATUS_CODES:
-            self.assertIn(code, description,
-                          f"ErrorDetail.code 说明缺少稳定错误码 {code}")
+            self.assertIn(code, description, f"ErrorDetail.code 说明缺少稳定错误码 {code}")
 
 
 class PMS2ParameterConsistencyTests(TestCase):
@@ -675,28 +802,37 @@ class PMS2ParameterConsistencyTests(TestCase):
     def test_path_template_variables_have_matching_path_parameters(self):
         for path, path_item in self.spec["paths"].items():
             for method, operation in path_item.items():
-                declared = {p["name"] for p in operation.get("parameters", [])
-                            if p["in"] == "path"}
+                declared = {p["name"] for p in operation.get("parameters", []) if p["in"] == "path"}
                 variables = set(re.findall(r"\{(\w+)\}", path))
                 self.assertEqual(
-                    variables, declared,
+                    variables,
+                    declared,
                     f"{method.upper()} {path} 路径变量 {variables} 与 "
-                    f"path 参数声明 {declared} 不一致")
+                    f"path 参数声明 {declared} 不一致",
+                )
 
     def test_idempotency_key_max_length_matches_validation_site(self):
         """公开面 128（idempotent 装饰器截断）；前台收款/押金/退款 64（服务强校验）。"""
         create = self.spec["paths"][BASE + "/reservations"]["post"]
-        header = next(p for p in create["parameters"]
-                      if p["name"] == "Idempotency-Key")
+        header = next(p for p in create["parameters"] if p["name"] == "Idempotency-Key")
         self.assertEqual(header["schema"]["maxLength"], 128)
-        collect = self.spec["paths"][
-            BASE + "/front-desk/reservations/{booking_no}/payments"]["post"]
-        header = next(p for p in collect["parameters"]
-                      if p["name"] == "Idempotency-Key")
+        collect = self.spec["paths"][BASE + "/front-desk/reservations/{booking_no}/payments"][
+            "post"
+        ]
+        header = next(p for p in collect["parameters"] if p["name"] == "Idempotency-Key")
         self.assertEqual(header["schema"]["maxLength"], 64)
 
     def test_tags_cover_required_business_domains(self):
         declared = {t["name"] for t in self.spec["tags"]}
-        for domain in ("公开预订", "前台接待", "住客中心", "房态库存", "会员中心",
-                       "员工中心", "审批", "夜审与紧急访问", "支付"):
+        for domain in (
+            "公开预订",
+            "前台接待",
+            "住客中心",
+            "房态库存",
+            "会员中心",
+            "员工中心",
+            "审批",
+            "夜审与紧急访问",
+            "支付",
+        ):
             self.assertIn(domain, declared, f"缺少业务域分组 tag：{domain}")
