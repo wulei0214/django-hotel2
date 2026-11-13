@@ -28,7 +28,7 @@ import json
 from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
@@ -624,8 +624,13 @@ def permission_save(request, group_id):
         # 执行端（approve）在组行锁事务内复核 version/diff/allowed，漂移即 409 且
         # 记录保持待审批——此处行锁已释放产生的竞态由执行端复核兜底。
         with transaction.atomic():
+            # A-03 并发幂等：对同组 PENDING 行加锁串行化"查重→取代→创建"，
+            # uq_permatrix_pending_diff 部分唯一约束兜底残余竞态
+            # （并发撞约束 → IntegrityError → 复用既有 PENDING 记录返回）。
             record_status = PermissionMatrixApproval.Status
-            group_for_approval = Group.objects.get(pk=approval_payload["group_pk"])
+            group_for_approval = Group.objects.select_for_update().get(
+                pk=approval_payload["group_pk"]
+            )
             record = PermissionMatrixApproval.objects.filter(
                 group=group_for_approval,
                 diff_hash=approval_payload["digest"],
@@ -639,19 +644,28 @@ def permission_save(request, group_id):
                 ).exclude(diff_hash=approval_payload["digest"]):
                     stale.status = record_status.CANCELLED
                     stale.save()
-                record = PermissionMatrixApproval.objects.create(
-                    group=group_for_approval,
-                    requested_by=request.user,
-                    reason=reason,
-                    diff_hash=approval_payload["digest"],
-                    payload_snapshot={
-                        "added": approval_payload["added"],
-                        "removed": approval_payload["removed"],
-                        "preserved": approval_payload["preserved"],
-                        "requested": approval_payload["requested"],
-                        "version": approval_payload["version"],
-                    },
-                )
+                try:
+                    with transaction.atomic():
+                        record = PermissionMatrixApproval.objects.create(
+                            group=group_for_approval,
+                            requested_by=request.user,
+                            reason=reason,
+                            diff_hash=approval_payload["digest"],
+                            payload_snapshot={
+                                "added": approval_payload["added"],
+                                "removed": approval_payload["removed"],
+                                "preserved": approval_payload["preserved"],
+                                "requested": approval_payload["requested"],
+                                "version": approval_payload["version"],
+                            },
+                        )
+                except IntegrityError:
+                    # 并发同 diff 申请已抢先创建 PENDING（唯一约束兜底生效）
+                    record = PermissionMatrixApproval.objects.get(
+                        group=group_for_approval,
+                        diff_hash=approval_payload["digest"],
+                        status=record_status.PENDING,
+                    )
                 AuditEvent.record(
                     action="permissions.approval_requested",
                     entity_type="Group",
@@ -731,9 +745,16 @@ def permission_confirm_token(request, group_id):
 # ---------------------------------------------------------------------------
 
 
-def _load_pending_approval(group, record_id):
-    """加载指定组的待审批记录；缺失/不属于该组/非待审批 → 404/409。"""
-    record = PermissionMatrixApproval.objects.filter(pk=record_id, group=group).first()
+def _load_pending_approval(group, record_id, lock=False):
+    """加载指定组的待审批记录；缺失/不属于该组/非待审批 → 404/409。
+
+    lock=True 时（决策端点）以 select_for_update 取行锁——A-01 并发互斥：
+    同一记录的并发批准/驳回在此串行化，锁内状态重检保证"仅一个最终决策"。
+    锁顺序统一为：先锁审批记录行 → 再锁 Group 行（approve 执行矩阵需要；
+    reject 不需要组锁但保持同一获取次序，避免与 approve 死锁）。
+    """
+    qs = PermissionMatrixApproval.objects.filter(pk=record_id, group=group)
+    record = qs.select_for_update().first() if lock else qs.first()
     if record is None:
         raise _ApiError(
             JsonResponse(
@@ -842,7 +863,10 @@ def permission_approval_approve(request, group_id, record_id):
         return exc.response
     try:
         with transaction.atomic():
-            record = _load_pending_approval(group, record_id)
+            # A-01 并发互斥：锁顺序统一（先审批记录行锁 → 再 Group 行锁），
+            # 锁内状态重检（_load_pending_approval(lock=True)）保证并发
+            # approve/reject 只有一个最终决策落库，其余方得到 409。
+            record = _load_pending_approval(group, record_id, lock=True)
             group_locked = Group.objects.select_for_update().get(pk=group.pk)
             _execute_approved_matrix(group_locked, record, request.user, request)
     except _ApiError as exc:
@@ -864,14 +888,19 @@ def permission_approval_approve(request, group_id, record_id):
 @platform_superadmin_required
 def permission_approval_reject(request, group_id, record_id):
     """POST /platform/api/permissions/<group_id>/approvals/<record_id>/reject/
-    （第二人驳回：记录转 REJECTED，矩阵不变更）。"""
+    （第二人驳回：记录转 REJECTED，矩阵不变更）。
+
+    A-01：与 approve 相同的锁顺序（记录行锁 → Group 行锁）与锁内状态重检；
+    并发 reject/approve 竞争时，后到者在锁内重检得到 409 record_already_decided。
+    """
     try:
         group = _get_registry_group(group_id)
     except _ApiError as exc:
         return exc.response
     try:
         with transaction.atomic():
-            record = _load_pending_approval(group, record_id)
+            record = _load_pending_approval(group, record_id, lock=True)
+            Group.objects.select_for_update().get(pk=group.pk)
             record.status = PermissionMatrixApproval.Status.REJECTED
             record.approved_by = request.user
             record.approved_at = timezone.now()

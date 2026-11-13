@@ -299,7 +299,7 @@ class PermissionApprovalModelGuardTests(PermissionApprovalTestBase):
 
     def test_self_approval_blocked_by_model_and_db(self):
         from django.core.exceptions import ValidationError
-        from django.db import IntegrityError, transaction
+        from django.db import IntegrityError, connection, transaction
 
         record = self._make_pending(requester=self.requester)
         record.status = PermissionMatrixApproval.Status.APPROVED
@@ -307,10 +307,18 @@ class PermissionApprovalModelGuardTests(PermissionApprovalTestBase):
         record.approved_at = record.created_at or None
         with self.assertRaises(ValidationError):
             record.save()
-        # DB CheckConstraint 双保险：绕过应用层直接 update 也被库拒绝
-        with transaction.atomic(), self.assertRaises(IntegrityError):
-            PermissionMatrixApproval.objects.filter(pk=record.pk).update(
-                status="APPROVED", approved_by=self.requester, approved_at=record.created_at
+        # DB CheckConstraint 双保险：绕过应用层（QuerySet 守卫 + save 守卫）
+        # 用原生 SQL 直改数据库，验证 ck_permatrix_sod_approver 库级拒绝
+        table = connection.ops.quote_name(PermissionMatrixApproval._meta.db_table)
+        with (
+            transaction.atomic(),
+            connection.cursor() as cursor,
+            self.assertRaises(IntegrityError),
+        ):
+            cursor.execute(
+                f"UPDATE {table} SET status = %s, approved_by_id = %s, "
+                "approved_at = %s WHERE id = %s",
+                ["APPROVED", self.requester.pk, record.created_at, record.pk],
             )
 
     def test_decision_requires_approver_and_time(self):
@@ -339,3 +347,191 @@ class PermissionApprovalModelGuardTests(PermissionApprovalTestBase):
         record = self._make_pending()
         with self.assertRaises(RuntimeError):
             record.delete()
+
+
+class ApprovalConcurrencyRemediationTests(PermissionApprovalTestBase):
+    """验收整改 A-01/A-02/A-03：并发互斥、批量操作保护、并发申请幂等。"""
+
+    # ------------------------------------------------------------------
+    # A-01：批准/驳回并发互斥（锁内状态重检）
+    # ------------------------------------------------------------------
+
+    def test_reject_then_approve_gets_already_decided_409(self):
+        """驳回先落库 → 并发批准在锁内重检得 409，矩阵不变（状态与矩阵一致）。"""
+        _, record, _ = self._request_approval()
+        held = self._held()
+        reject = self.approver_client.post(
+            self._reject_url(record.pk), data="{}", content_type="application/json"
+        )
+        self.assertEqual(reject.status_code, 200)
+        approve = self.requester_client.post(
+            self._approve_url(record.pk), data="{}", content_type="application/json"
+        )
+        self.assertEqual(approve.status_code, 409)
+        self.assertEqual(approve.json()["code"], "record_already_decided")
+        record.refresh_from_db()
+        self.assertEqual(record.status, PermissionMatrixApproval.Status.REJECTED)
+        self.assertEqual(_held(self.group), held, "已驳回记录不得再执行矩阵变更")
+
+    def test_approve_then_reject_gets_already_decided_409(self):
+        """批准先落库（矩阵已变更）→ 并发驳回 409，批准结果不被驳回覆盖。"""
+        _, record, proposed = self._request_approval()
+        approve = self.approver_client.post(
+            self._approve_url(record.pk), data="{}", content_type="application/json"
+        )
+        self.assertEqual(approve.status_code, 200)
+        held_after_approve = self._held()
+        self.assertTrue({"billing.refund_approve"} <= held_after_approve)
+        reject = self.requester_client.post(
+            self._reject_url(record.pk), data="{}", content_type="application/json"
+        )
+        self.assertEqual(reject.status_code, 409)
+        self.assertEqual(reject.json()["code"], "record_already_decided")
+        record.refresh_from_db()
+        self.assertEqual(record.status, PermissionMatrixApproval.Status.APPROVED)
+        self.assertEqual(
+            self._held(),
+            held_after_approve,
+            "已批准的矩阵结果不得被并发驳回改变",
+        )
+
+    def test_double_approve_single_execution(self):
+        """重复批准：第二次 409，矩阵仅执行一次（无重复 set/审计副作用）。"""
+        _, record, _ = self._request_approval()
+        first = self.approver_client.post(
+            self._approve_url(record.pk), data="{}", content_type="application/json"
+        )
+        self.assertEqual(first.status_code, 200)
+        second = self.requester_client.post(
+            self._approve_url(record.pk), data="{}", content_type="application/json"
+        )
+        self.assertEqual(second.status_code, 409)
+        self.assertEqual(
+            AuditEvent.objects.filter(
+                action="permissions.matrix_saved", entity_type="Group", entity_id=str(self.group.pk)
+            ).count(),
+            1,
+            "同一次批准只允许一次 matrix_saved 审计",
+        )
+
+    # ------------------------------------------------------------------
+    # A-02：批量操作保护（QuerySet 层负向）
+    # ------------------------------------------------------------------
+
+    def test_queryset_update_blocked(self):
+        from django.core.exceptions import ValidationError
+
+        self._make_pending_for_queryset_test()
+        with self.assertRaises(ValidationError):
+            PermissionMatrixApproval.objects.update(status="APPROVED")
+
+    def test_queryset_delete_blocked(self):
+        from django.core.exceptions import ValidationError
+
+        self._make_pending_for_queryset_test()
+        with self.assertRaises(ValidationError):
+            PermissionMatrixApproval.objects.delete()
+
+    def test_filtered_queryset_update_blocked(self):
+        from django.core.exceptions import ValidationError
+
+        record = self._make_pending_for_queryset_test()
+        with self.assertRaises(ValidationError):
+            PermissionMatrixApproval.objects.filter(pk=record.pk).update(
+                status="APPROVED", approved_by=self.approver
+            )
+        record.refresh_from_db()
+        self.assertEqual(record.status, PermissionMatrixApproval.Status.PENDING)
+
+    def test_bulk_create_blocked(self):
+        from django.core.exceptions import ValidationError
+
+        with self.assertRaises(ValidationError):
+            PermissionMatrixApproval.objects.bulk_create(
+                [
+                    PermissionMatrixApproval(
+                        group=self.group,
+                        requested_by=self.requester,
+                        reason="批量绕过",
+                        diff_hash="deadbeefdeadbeef",
+                        payload_snapshot={"added": [], "removed": []},
+                    )
+                ]
+            )
+
+    def test_bulk_update_blocked(self):
+        from django.core.exceptions import ValidationError
+
+        record = self._make_pending_for_queryset_test()
+        record.status = PermissionMatrixApproval.Status.REJECTED
+        with self.assertRaises(ValidationError):
+            PermissionMatrixApproval.objects.bulk_update([record], ["status", "approved_by"])
+        record.refresh_from_db()
+        self.assertEqual(record.status, PermissionMatrixApproval.Status.PENDING)
+
+    def _make_pending_for_queryset_test(self):
+        return PermissionMatrixApproval.objects.create(
+            group=self.group,
+            requested_by=self.requester,
+            reason="批量保护测试",
+            diff_hash="feedfacefeedface",
+            payload_snapshot={"added": [], "removed": [], "version": "v"},
+        )
+
+    # ------------------------------------------------------------------
+    # A-03：并发重复申请幂等（唯一约束兜底 + 取代语义不变）
+    # ------------------------------------------------------------------
+
+    def test_duplicate_pending_same_diff_blocked_by_db_constraint(self):
+        """同组同 diff 第二条 PENDING 被 uq_permatrix_pending_diff 拒绝
+        （绕过应用层查重直接 create 的并发路径兜底）。"""
+        from django.db import IntegrityError, transaction
+
+        _, record, _ = self._request_approval()
+        with transaction.atomic(), self.assertRaises(IntegrityError):
+            PermissionMatrixApproval.objects.create(
+                group=self.group,
+                requested_by=self.approver,
+                reason="并发第二条同 diff 申请",
+                diff_hash=record.diff_hash,
+                payload_snapshot=record.payload_snapshot,
+            )
+        self.assertEqual(
+            PermissionMatrixApproval.objects.filter(
+                group=self.group,
+                diff_hash=record.diff_hash,
+                status=PermissionMatrixApproval.Status.PENDING,
+            ).count(),
+            1,
+        )
+
+    def test_supersede_semantics_still_work_after_unique_constraint(self):
+        """取代语义在唯一约束下不变：旧 diff PENDING → CANCELLED 后，
+        新 diff PENDING 可正常创建（不同 diff 不受约束影响）。"""
+        _, old_record, _ = self._request_approval()
+        alternative = sorted(self._held() | {"identity.staff_manage"})
+        token_payload = self._confirm_token(alternative)
+        response = self._save(alternative, confirm_token=token_payload["token"])
+        self.assertEqual(response.status_code, 409)
+        old_record.refresh_from_db()
+        self.assertEqual(old_record.status, PermissionMatrixApproval.Status.CANCELLED)
+        new_record = PermissionMatrixApproval.objects.get(pk=response.json()["approval_id"])
+        self.assertEqual(new_record.status, PermissionMatrixApproval.Status.PENDING)
+        self.assertNotEqual(new_record.diff_hash, old_record.diff_hash)
+
+    def test_same_diff_after_approval_can_re_request(self):
+        """同 diff 在前次已 APPROVED 后可再次申请（约束仅限 PENDING 态，
+        不阻断"撤销后重新申请"等合法生命周期）。"""
+        from django.core.exceptions import ValidationError  # noqa: F401
+
+        _, record, proposed = self._request_approval()
+        approve = self.approver_client.post(
+            self._approve_url(record.pk), data="{}", content_type="application/json"
+        )
+        self.assertEqual(approve.status_code, 200)
+        # 反向 diff 申请（移除刚授予的专项码）走完整流程 → 新 PENDING
+        without_special = sorted(self._held() - {"billing.refund_approve"})
+        token_payload = self._confirm_token(without_special)
+        response = self._save(without_special, confirm_token=token_payload["token"])
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "approval_required")

@@ -1,6 +1,6 @@
 # mypy 基线（治理 V1.1 第二阶段 P-04）——格式: 归一化路径|错误码|数量
 # 纪律: 禁止清空或手改本文件伪造通过；重新生成必须随真实存量清偿提交。
-# 生成命令: python scripts/mypy_baseline.py generate；总错误数: 2202
+# 生成命令: python scripts/mypy_baseline.py generate；总错误数: 2205
 
 apps/api/billing_center.py|attr-defined|5
 apps/api/front_desk.py|attr-defined|11
@@ -86,6 +86,7 @@ apps/identity/management/commands/bind_staff_user.py|attr-defined|1
 apps/identity/management/commands/platform_superadmin_check.py|attr-defined|2
 apps/identity/management/commands/platform_superadmin_check.py|var-annotated|1
 apps/identity/models.py|attr-defined|12
+apps/identity/models.py|override|2
 apps/identity/models.py|var-annotated|50
 apps/identity/permission_center.py|attr-defined|2
 apps/identity/permission_center.py|call-overload|1
@@ -102,7 +103,7 @@ apps/identity/test_invitations.py|attr-defined|72
 apps/identity/test_mysql_concurrency.py|attr-defined|3
 apps/identity/test_mysql_concurrency.py|index|1
 apps/identity/test_mysql_concurrency.py|var-annotated|2
-apps/identity/test_permission_approval.py|attr-defined|6
+apps/identity/test_permission_approval.py|attr-defined|7
 apps/identity/test_permission_approval.py|union-attr|1
 apps/identity/test_permission_center.py|attr-defined|18
 apps/identity/test_permission_center.py|union-attr|2

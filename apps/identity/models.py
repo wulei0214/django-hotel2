@@ -371,6 +371,30 @@ class Invitation(models.Model):
         )
 
 
+class ImmutablePermissionApprovalQuerySet(models.QuerySet):
+    """权限矩阵审批事实禁止绕过模型守卫的批量修改/删除/生命周期外创建。
+
+    边界声明（与 billing ImmutableFinancialFactQuerySet 同口径）：
+      * 拦截 QuerySet 级 update / delete / bulk_create / bulk_update；
+      * 单实例 save() 生命周期校验由模型 save() 守卫承担（此处不重复）；
+      * 数据库层兜底 = ck_permatrix_* CheckConstraint（SoD/决策时间）与
+        uq_permatrix_pending_diff 部分唯一约束（并发幂等）；触发器类保护不在
+        本层范围（MySQL 触发器属部署面，identity 域未部署）。
+    """
+
+    def update(self, **kwargs):
+        raise ValidationError("审批事实禁止 QuerySet.update；请走 approve/reject 端点。")
+
+    def delete(self):
+        raise ValidationError("审批事实禁止批量删除；保留审批审计轨迹。")
+
+    def bulk_create(self, objs, **kwargs):
+        raise ValidationError("审批事实禁止 bulk_create；创建必须走单实例 save 守卫。")
+
+    def bulk_update(self, objs, fields, **kwargs):
+        raise ValidationError("审批事实禁止 bulk_update；决策必须走 approve/reject 端点。")
+
+
 class PermissionMatrixApproval(models.Model):
     """平台权限矩阵高危变更的第二人审批事实（治理 V1.1 第三阶段迭代-1 变更 A）。
 
@@ -379,6 +403,8 @@ class PermissionMatrixApproval(models.Model):
     故不挂 property 外键，也不进入 billing 的 ApprovalActionRegistry 白名单；
     payload 快照保存 added/removed/version，执行时在组行锁事务内复核。
     """
+
+    objects = models.Manager.from_queryset(ImmutablePermissionApprovalQuerySet)()
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "待审批"
@@ -434,6 +460,14 @@ class PermissionMatrixApproval(models.Model):
             models.CheckConstraint(
                 check=~Q(status__in=["APPROVED", "REJECTED"]) | Q(approved_at__isnull=False),
                 name="ck_permatrix_decided_has_time",
+            ),
+            # A-03 并发幂等：同组同 diff 至多一条 PENDING（部分唯一约束，
+            # SQLite/MySQL 8.0.16+ 均支持）；取代语义（先 CANCELLED 旧记录再
+            # create）在应用层单事务内保证顺序。
+            models.UniqueConstraint(
+                fields=("group", "diff_hash"),
+                condition=Q(status="PENDING"),
+                name="uq_permatrix_pending_diff",
             ),
         ]
         indexes = [
