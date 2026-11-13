@@ -22,6 +22,7 @@
 | Django check / 迁移漂移 | ✅ 通过 / 无漂移 |
 | MySQL 全量回归 | ✅ **1286 tests OK**（352.1s） |
 | SQLite 全量回归 | ✅ **1286 tests OK (skipped=24)**（297.4s） |
+| **CI 实跑** | ✅ 两个 CI run 均 `success` 且日志含守卫测试实际执行记录（§六） |
 | CI 阻断链路 | ✅ 两个工作流的 test 步骤均覆盖新守卫；⚠️ 但 `main` **无分支保护**，阻断依赖流程纪律 |
 
 ---
@@ -175,12 +176,16 @@ Issue #8 要求"触碰该文件时一并清偿存量债务，且不得扩大格�
 
 | 项 | 值 |
 |----|-----|
-| 基线 SHA | `4a9997ae2e24b02e7d2b14a2365a76db5efd606a` |
-| 提交 SHA | 见 §七（提交后回填） |
-| 推送区间 | 见 §七（提交后回填） |
-| CI run（`tests` / MySQL） | 见 §七（推送后回填） |
-| CI run（`Django CI` / SQLite） | 见 §七（推送后回填） |
-| OpenAPI snapshot workflow | 本次改动**不触发**（触发路径不含 `apps/api/test_openapi_schema.py`） |
+| 基线 SHA（执行前 main HEAD） | `4a9997ae2e24b02e7d2b14a2365a76db5efd606a` |
+| 提交 SHA | `bc27e6e9160c79eee3f9c1149e6c3b40014019bf` |
+| 提交标题 | `test(api): 增加 OpenAPI 权威快照与镜像逐字节一致性守卫（Issue #8）` |
+| 推送 | `9e4692b..bc27e6e  main -> main`（干净 fast-forward，1 个提交） |
+| 变基说明 | 推送前远端新增 2 个他人 DEC-16 文档提交（`f6de285`、`9e4692b`），变基**零冲突**，提交 SHA 由 `9cb0e3a` 重写为 `bc27e6e` |
+| CI run `tests`（MySQL） | **43440624901** — `success`，job `django-tests` success，`Ran 1286 tests`，无 FAILED<br>URL: https://github.com/wulei0214/django-hotel2/actions/runs/43440624901 |
+| CI run `Django CI`（SQLite） | **43440624759** — `success`，jobs `lint` / `type-check` / `test` 全部 success，`Ran 1286 tests`，无 FAILED<br>URL: https://github.com/wulei0214/django-hotel2/actions/runs/43440624759 |
+| **守卫测试在 CI 中实际执行** | ✅ 两个 run 的日志均含 `test_authoritative_and_mirror_snapshots_are_byte_identical (apps.api.test_openapi_schema.PMS2OpenApiStructureValidityTests)` —— **证明守卫已进入 CI 契约测试链路，而非仅存在于本地** |
+| OpenAPI snapshot workflow | **未触发**（其 `paths` 触发条件为 `apps/api/openapi_schema.py` / `apps/api/urls.py` / `apps/api/management/commands/export_openapi_schema.py` / `.github/workflows/openapi-snapshot.yml`，不含本次改动的 `apps/api/test_openapi_schema.py`）→ 本次推送**没有**发生事后自动复制掩盖漂移的情况 |
+| CI lint 预演 | 提交时点文件内容上复现 CI lint 判定：ruff / black / ruff-format 三门禁全绿（`VERDICT=PASS`），变基后复验仍 PASS |
 
 ---
 

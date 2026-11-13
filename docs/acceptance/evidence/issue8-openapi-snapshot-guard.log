@@ -5,9 +5,9 @@ Issue #8 OpenAPI 双快照逐字节一致性守卫 —— 验证证据
 
 ## 0. 版本与基线事实
 
-基线 SHA（执行前 main HEAD）: 4a9997ae2e24b02e7d2b14a2365a76db5efd606a
-origin/main                  : 4a9997ae2e24b02e7d2b14a2365a76db5efd606a
-基线提交标题                : 4a9997ae2e24b02e7d2b14a2365a76db5efd606a docs: 订正 OpenAPI 工作流预判错误并登记镜像快照守卫缺口
+基线 SHA（执行前 main HEAD）: bc27e6e9160c79eee3f9c1149e6c3b40014019bf
+origin/main                  : bc27e6e9160c79eee3f9c1149e6c3b40014019bf
+基线提交标题                : bc27e6e9160c79eee3f9c1149e6c3b40014019bf test(api): 增加 OpenAPI 权威快照与镜像逐字节一致性守卫（Issue #8）
 
 ## 1. 修改前 lint 存量债务（基线快照）
 
@@ -72,4 +72,37 @@ mypy_baseline.py check-files apps/api/test_openapi_schema.py : 通过（无新�
 manage.py check                                   : System check identified no issues
 manage.py makemigrations --check --dry-run         : No changes detected
 manage.py export_openapi_schema                   : 重导后两份快照零差异
+
+## 6. CI run 记录（推送后实测）
+
+### tests (MySQL)
+  run id      : 43440624901
+  conclusion  : success
+  head sha    : bc27e6e9160c79eee3f9c1149e6c3b40014019bf
+  url         : https://github.com/wulei0214/django-hotel2/actions/runs/43440624901
+  jobs        : [('django-tests', 'success')]
+  Ran tests   : ['1286']
+  FAILED      : 无
+  守卫测试在 CI 日志中实际执行: True
+    > django-tests	Run test suite	2026-11-13T14:16:46.7405626Z test_authoritative_and_mirror_snapshots_are_byte_identical (apps.api.test_openapi_schema.PMS2OpenApiStructureValidityTests)
+
+### Django CI (SQLite)
+  run id      : 43440624759
+  conclusion  : success
+  head sha    : bc27e6e9160c79eee3f9c1149e6c3b40014019bf
+  url         : https://github.com/wulei0214/django-hotel2/actions/runs/43440624759
+  jobs        : [('type-check', 'success'), ('test', 'success'), ('lint', 'success')]
+  Ran tests   : ['1286']
+  FAILED      : 无
+  守卫测试在 CI 日志中实际执行: True
+    > test	Run tests	2026-11-13T14:14:33.8148336Z test_authoritative_and_mirror_snapshots_are_byte_identical (apps.api.test_openapi_schema.PMS2OpenApiStructureValidityTests)
+
+## 7. 提交与推送
+
+基线 SHA（执行前 main HEAD）: 4a9997ae2e24b02e7d2b14a2365a76db5efd606a
+提交 SHA                    : bc27e6e9160c79eee3f9c1149e6c3b40014019bf
+推送                        : 9e4692b..bc27e6e  main -> main（干净 fast-forward，1 提交）
+变基                        : 推送前远端新增 2 个他人 DEC-16 文档提交（f6de285、9e4692b），
+                              变基零冲突，提交 SHA 由 9cb0e3a 重写为 bc27e6e
+OpenAPI snapshot workflow   : 未触发（paths 不含 apps/api/test_openapi_schema.py）
 
