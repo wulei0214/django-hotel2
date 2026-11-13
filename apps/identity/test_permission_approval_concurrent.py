@@ -90,7 +90,8 @@ class PermissionApprovalConcurrencyTestBase(TransactionTestCase):
         from apps.identity.permission_center import content_version, diff_hash
 
         requested = sorted(self._held() | {self.special_code})
-        added, removed = [self.special_code], []
+        added: list[str] = [self.special_code]
+        removed: list[str] = []
         return PermissionMatrixApproval.objects.create(
             group=self.group,
             requested_by=self.requester,
