@@ -164,6 +164,7 @@ class ReservationCreationTests(TestCase):
             [0, 0],
         )
 
+
     def test_guest_capacity_is_enforced(self):
         changed = dict(self.payload, adults=3)
         self.room_type.capacity = 2
@@ -201,14 +202,10 @@ class ReservationCreationTests(TestCase):
                 idempotency_key="wb106-cap-003",
             )
         self.assertIn("过多未支付预订", str(ctx.exception))
-        self.assertEqual(
-            Reservation.objects.filter(
-                property=self.property,
-                guest__phone_hash=phone_hash("13800000000"),
-            ).count(),
-            2,
-            "超限请求不得新增预订",
-        )
+        self.assertEqual(Reservation.objects.filter(
+            property=self.property,
+            guest__phone_hash=phone_hash("13800000000"),
+        ).count(), 2, "超限请求不得新增预订")
 
     def test_pending_gate_row_created_on_first_booking(self):
         """WB-106：锁行缺失时首次创建成功，并按（物业, phone_hash）落锁行。"""
@@ -320,10 +317,9 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             username="stay-operator", password=_TEST_PW_FC11BD50
         )
         from apps.billing.services_v2 import BillingService
-
         BillingService.open_shift(
-            property_obj=self.property, cashier=self.operator, opening_cash=Decimal("0.00")
-        )
+            property_obj=self.property, cashier=self.operator,
+            opening_cash=Decimal("0.00"))
 
     def test_assign_room_is_property_and_room_type_scoped(self):
         line, changed = assign_room(
@@ -464,7 +460,9 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
                 checked_out_by=self.operator,
             )
         self.assertFalse(
-            LedgerEntry.objects.filter(reference=f"stay-room-charge:{stay.pk}").exists()
+            LedgerEntry.objects.filter(
+                reference=f"stay-room-charge:{stay.pk}"
+            ).exists()
         )
         collect_manual_payment(
             property_obj=self.property,
@@ -527,19 +525,18 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         )
         self.assertTrue(changed)
         tasks = HousekeepingTask.objects.filter(
-            property=self.property, room=self.room, task_type=HousekeepingTask.TaskType.DEPARTURE
-        )
+            property=self.property, room=self.room,
+            task_type=HousekeepingTask.TaskType.DEPARTURE)
         self.assertEqual(tasks.count(), 1)
         task = tasks.first()
         self.assertEqual(task.status, HousekeepingTask.TaskStatus.PENDING)
         self.assertIn(f"stay {stay.pk}", task.notes)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="housekeeping.task_created", entity_id=task.pk, actor=self.operator
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="housekeeping.task_created",
+            entity_id=task.pk, actor=self.operator).exists())
         self.room.refresh_from_db()
-        self.assertEqual(self.room.housekeeping_status, Room.HousekeepingStatus.DIRTY)
+        self.assertEqual(self.room.housekeeping_status,
+                         Room.HousekeepingStatus.DIRTY)
         # 重复退房幂等：不重复生成任务
         _, changed_again = check_out_stay(
             property_obj=self.property,
@@ -548,6 +545,8 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         )
         self.assertFalse(changed_again)
         self.assertEqual(tasks.count(), 1)
+
+
 
     def test_final_checkout_registers_refund_liability_without_creating_refund(self):
         assign_room(
@@ -601,9 +600,8 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             list(liability.source_payments.order_by("pk")),
             [payment],
         )
-        self.assertFalse(
-            Refund.objects.filter(payment=payment, refund_liability=liability).exists()
-        )
+        self.assertFalse(Refund.objects.filter(
+            payment=payment, refund_liability=liability).exists())
         self.folio.refresh_from_db()
         self.assertEqual(self.folio.status, Folio.Status.CLOSED)
 
@@ -630,23 +628,16 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             checked_in_by=self.operator,
         )
         payment = Payment.objects.create(
-            property=self.property,
-            reservation=self.reservation,
-            folio=self.folio,
-            provider="frontdesk_deposit",
-            provider_ref="REFUND-LIABILITY-DEPOSIT-001",
-            method="CARD",
-            amount=Decimal("700.00"),
-            currency="CNY",
-            status=Payment.Status.SUCCEEDED,
-            paid_at=timezone.now(),
+            property=self.property, reservation=self.reservation,
+            folio=self.folio, provider="frontdesk_deposit",
+            provider_ref="REFUND-LIABILITY-DEPOSIT-001", method="CARD",
+            amount=Decimal("700.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now(),
         )
         LedgerEntry.objects.create(
-            property=self.property,
-            folio=self.folio,
+            property=self.property, folio=self.folio,
             entry_type=LedgerEntry.EntryType.DEPOSIT,
-            amount=Decimal("-700.00"),
-            currency="CNY",
+            amount=Decimal("-700.00"), currency="CNY",
             business_date=self.today,
             reference=f"deposit:{payment.provider_ref}",
             description="前台押金，退房后形成待退款负债",
@@ -654,8 +645,7 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         )
 
         checked_out, changed = check_out_stay(
-            property_obj=self.property,
-            stay_id=stay.pk,
+            property_obj=self.property, stay_id=stay.pk,
             checked_out_by=self.operator,
         )
 
@@ -668,9 +658,8 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             list(liability.source_payments.order_by("pk").values_list("pk", flat=True)),
             [payment.pk],
         )
-        self.assertFalse(
-            Refund.objects.filter(payment=payment, refund_liability=liability).exists()
-        )
+        self.assertFalse(Refund.objects.filter(
+            payment=payment, refund_liability=liability).exists())
         self.folio.refresh_from_db()
         self.assertEqual(self.folio.status, Folio.Status.CLOSED)
 
@@ -701,41 +690,31 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             maintenance_status=Room.MaintenanceStatus.NORMAL,
         )
         assign_room(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
-            room_id=self.room.pk,
-            assigned_by=self.operator,
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            room_id=self.room.pk, assigned_by=self.operator,
         )
         assign_room(
-            property_obj=self.property,
-            reservation_room_id=second_line.pk,
-            room_id=second_room.pk,
-            assigned_by=self.operator,
+            property_obj=self.property, reservation_room_id=second_line.pk,
+            room_id=second_room.pk, assigned_by=self.operator,
         )
         first_stay, _ = check_in_stay(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
+            property_obj=self.property, reservation_room_id=self.line.pk,
             checked_in_by=self.operator,
         )
         second_stay, _ = check_in_stay(
-            property_obj=self.property,
-            reservation_room_id=second_line.pk,
+            property_obj=self.property, reservation_room_id=second_line.pk,
             checked_in_by=self.operator,
         )
         LedgerEntry.objects.create(
-            property=self.property,
-            folio=self.folio,
+            property=self.property, folio=self.folio,
             entry_type=LedgerEntry.EntryType.PAYMENT,
-            amount=Decimal("-1200.00"),
-            currency="CNY",
-            business_date=self.today,
-            reference="STAY-PREPAID-MULTI-001",
+            amount=Decimal("-1200.00"), currency="CNY",
+            business_date=self.today, reference="STAY-PREPAID-MULTI-001",
             description="多房预付测试",
         )
 
         first_out, changed = check_out_stay(
-            property_obj=self.property,
-            stay_id=first_stay.pk,
+            property_obj=self.property, stay_id=first_stay.pk,
             checked_out_by=self.operator,
         )
         self.assertTrue(changed)
@@ -751,8 +730,7 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         self.assertEqual(interim_balance, Decimal("-600.00"))
 
         second_out, changed = check_out_stay(
-            property_obj=self.property,
-            stay_id=second_stay.pk,
+            property_obj=self.property, stay_id=second_stay.pk,
             checked_out_by=self.operator,
         )
         self.assertTrue(changed)
@@ -802,6 +780,7 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         )
         self.assertEqual(balance, Decimal("0.00"))
 
+
     def test_extension_updates_new_night_price_inventory_and_total_snapshot(self):
         extension_date = self.tomorrow
         new_check_out = extension_date + timedelta(days=1)
@@ -819,22 +798,17 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             total_rooms=2,
         )
         assign_room(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
-            room_id=self.room.pk,
-            assigned_by=self.operator,
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            room_id=self.room.pk, assigned_by=self.operator,
         )
         stay, _ = check_in_stay(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
+            property_obj=self.property, reservation_room_id=self.line.pk,
             checked_in_by=self.operator,
         )
 
         _, line, extension_amount = extend_stay(
-            property_obj=self.property,
-            stay_id=stay.pk,
-            new_check_out=new_check_out,
-            reason="客人申请延住一晚",
+            property_obj=self.property, stay_id=stay.pk,
+            new_check_out=new_check_out, reason="客人申请延住一晚",
             extended_by=self.operator,
         )
 
@@ -851,93 +825,66 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         extension_date = self.tomorrow
         new_check_out = extension_date + timedelta(days=1)
         DailyRate.objects.create(
-            property=self.property,
-            rate_plan=self.rate_plan,
-            room_type=self.room_type,
-            stay_date=extension_date,
+            property=self.property, rate_plan=self.rate_plan,
+            room_type=self.room_type, stay_date=extension_date,
             price=Decimal("650.00"),
         )
         RoomTypeInventory.objects.create(
-            property=self.property,
-            room_type=self.room_type,
-            stay_date=extension_date,
-            total_rooms=2,
+            property=self.property, room_type=self.room_type,
+            stay_date=extension_date, total_rooms=2,
         )
         other_guest = Guest.objects.create(
-            property=self.property,
-            full_name="后续预订住客",
-            phone="13800001111",
-            phone_normalized="13800001111",
+            property=self.property, full_name="后续预订住客",
+            phone="13800001111", phone_normalized="13800001111",
         )
         other_reservation = Reservation.objects.create(
-            property=self.property,
-            booking_no="RSTAY-FUTURE-ROOM",
-            guest=other_guest,
-            status=Reservation.Status.CONFIRMED,
-            check_in=extension_date,
-            check_out=new_check_out,
-            room_count=1,
-            adult_count=1,
-            total_amount=Decimal("650.00"),
+            property=self.property, booking_no="RSTAY-FUTURE-ROOM",
+            guest=other_guest, status=Reservation.Status.CONFIRMED,
+            check_in=extension_date, check_out=new_check_out,
+            room_count=1, adult_count=1, total_amount=Decimal("650.00"),
         )
         ReservationRoom.objects.create(
-            property=self.property,
-            reservation=other_reservation,
-            room_type=self.room_type,
-            rate_plan=self.rate_plan,
-            assigned_room=self.room,
-            check_in=extension_date,
-            check_out=new_check_out,
-            nightly_rates=[],
+            property=self.property, reservation=other_reservation,
+            room_type=self.room_type, rate_plan=self.rate_plan,
+            assigned_room=self.room, check_in=extension_date,
+            check_out=new_check_out, nightly_rates=[],
             amount=Decimal("650.00"),
         )
         assign_room(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
-            room_id=self.room.pk,
-            assigned_by=self.operator,
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            room_id=self.room.pk, assigned_by=self.operator,
         )
         stay, _ = check_in_stay(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
+            property_obj=self.property, reservation_room_id=self.line.pk,
             checked_in_by=self.operator,
         )
         with self.assertRaises(LifecycleOperationError):
             extend_stay(
-                property_obj=self.property,
-                stay_id=stay.pk,
-                new_check_out=new_check_out,
-                reason="延住申请",
+                property_obj=self.property, stay_id=stay.pk,
+                new_check_out=new_check_out, reason="延住申请",
                 extended_by=self.operator,
             )
 
     def test_in_house_room_change_preserves_room_segment_history(self):
         assign_room(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
-            room_id=self.room.pk,
-            assigned_by=self.operator,
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            room_id=self.room.pk, assigned_by=self.operator,
         )
         stay, _ = check_in_stay(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
+            property_obj=self.property, reservation_room_id=self.line.pk,
             checked_in_by=self.operator,
         )
         target = Room.objects.create(
-            property=self.property,
-            room_type=self.room_type,
-            number="ST103",
-            floor="1",
+            property=self.property, room_type=self.room_type,
+            number="ST103", floor="1",
             occupancy_status=Room.OccupancyStatus.VACANT,
             housekeeping_status=Room.HousekeepingStatus.CLEAN,
             maintenance_status=Room.MaintenanceStatus.NORMAL,
         )
 
         moved, changed = change_stay_room(
-            property_obj=self.property,
-            stay_id=stay.pk,
-            new_room_id=target.pk,
-            reason="空调故障换房",
+            property_obj=self.property, stay_id=stay.pk,
+            new_room_id=target.pk, reason="空调故障换房",
             moved_by=self.operator,
         )
 
@@ -957,17 +904,12 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
 
     def test_no_show_releases_remaining_sold_inventory_and_blocks_later_checkin(self):
         stock = RoomTypeInventory.objects.create(
-            property=self.property,
-            room_type=self.room_type,
-            stay_date=self.today,
-            total_rooms=2,
-            sold=1,
+            property=self.property, room_type=self.room_type,
+            stay_date=self.today, total_rooms=2, sold=1,
         )
         record, created = mark_reservation_room_no_show(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
-            reason="客人未在规定时间到店",
-            processed_by=self.operator,
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            reason="客人未在规定时间到店", processed_by=self.operator,
         )
         self.assertTrue(created)
         self.assertEqual(record.released_nights, 1)
@@ -978,45 +920,34 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         self.assertTrue(NoShowRecord.objects.filter(reservation_room=self.line).exists())
         with self.assertRaises(FrontDeskOperationError):
             assign_room(
-                property_obj=self.property,
-                reservation_room_id=self.line.pk,
-                room_id=self.room.pk,
-                assigned_by=self.operator,
+                property_obj=self.property, reservation_room_id=self.line.pk,
+                room_id=self.room.pk, assigned_by=self.operator,
             )
         duplicate, changed_again = mark_reservation_room_no_show(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
-            reason="重复处理",
-            processed_by=self.operator,
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            reason="重复处理", processed_by=self.operator,
         )
         self.assertFalse(changed_again)
         self.assertEqual(duplicate.pk, record.pk)
 
     def test_deposit_refund_requires_separate_approver_and_posts_immutable_entries(self):
         deposit, created = receive_manual_deposit(
-            property_obj=self.property,
-            booking_no=self.reservation.booking_no,
-            amount="200.00",
-            method="CASH",
-            idempotency_key="deposit-001",
+            property_obj=self.property, booking_no=self.reservation.booking_no,
+            amount="200.00", method="CASH", idempotency_key="deposit-001",
             received_by=self.operator,
         )
         self.assertTrue(created)
         self.assertEqual(deposit.status, Payment.Status.SUCCEEDED)
 
         refund, created = request_refund(
-            property_obj=self.property,
-            payment_id=deposit.pk,
-            amount="100.00",
-            reason="客人提前离店退还部分押金",
-            idempotency_key="refund-001",
-            requested_by=self.operator,
+            property_obj=self.property, payment_id=deposit.pk,
+            amount="100.00", reason="客人提前离店退还部分押金",
+            idempotency_key="refund-001", requested_by=self.operator,
         )
         self.assertTrue(created)
         with self.assertRaises(LifecycleOperationError):
             approve_refund(
-                property_obj=self.property,
-                refund_id=refund.pk,
+                property_obj=self.property, refund_id=refund.pk,
                 approved_by=self.operator,
             )
 
@@ -1024,33 +955,26 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             username="stay-refund-supervisor", password=_TEST_PW_878D14F8
         )
         approved, changed = approve_refund(
-            property_obj=self.property,
-            refund_id=refund.pk,
+            property_obj=self.property, refund_id=refund.pk,
             approved_by=supervisor,
         )
         self.assertTrue(changed)
         self.assertEqual(approved.status, Refund.Status.APPROVED)
-        self.assertFalse(
-            LedgerEntry.objects.filter(reference=f"refund:{refund.provider_ref}").exists()
-        )
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
 
         executor = User.objects.create_user(
-            username="stay-refund-executor", password=_TEST_PW_24A4B483
-        )
+            username="stay-refund-executor", password=_TEST_PW_24A4B483)
         from apps.billing.services_v2 import BillingService
-
         # 现金退款必须来自真实可用现金；本测试为执行班次准备 100 元备用现金。
         BillingService.open_shift(
-            property_obj=self.property, cashier=executor, opening_cash=Decimal("100.00")
-        )
+            property_obj=self.property, cashier=executor,
+            opening_cash=Decimal("100.00"))
         executed, did_execute = BillingService.execute_refund(
-            property_obj=self.property,
-            refund_id=refund.pk,
-            executed_by=executor,
-            confirm_refund_paid=True,
+            property_obj=self.property, refund_id=refund.pk,
+            executed_by=executor, confirm_refund_paid=True,
             execution_reference="STAY-MANUAL-REFUND-001",
-            idempotency_key="stay-refund-exec-001",
-        )
+            idempotency_key="stay-refund-exec-001")
         self.assertTrue(did_execute)
         self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
         self.assertEqual(executed.approved_by_id, supervisor.pk)
@@ -1070,58 +994,46 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             Decimal("100.00"),
         )
 
+
     def test_partial_no_show_then_last_stay_checkout_closes_multi_room_folio(self):
         self.reservation.room_count = 2
         self.reservation.total_amount = Decimal("1200.00")
         self.reservation.save(update_fields=("room_count", "total_amount", "updated_at"))
         second_line = ReservationRoom.objects.create(
-            property=self.property,
-            reservation=self.reservation,
-            room_type=self.room_type,
-            rate_plan=self.rate_plan,
-            check_in=self.today,
-            check_out=self.tomorrow,
-            nightly_rates=[{"date": self.today.isoformat(), "price": "600.00", "currency": "CNY"}],
+            property=self.property, reservation=self.reservation,
+            room_type=self.room_type, rate_plan=self.rate_plan,
+            check_in=self.today, check_out=self.tomorrow,
+            nightly_rates=[{
+                "date": self.today.isoformat(), "price": "600.00", "currency": "CNY"
+            }],
             amount=Decimal("600.00"),
         )
         RoomTypeInventory.objects.create(
-            property=self.property,
-            room_type=self.room_type,
-            stay_date=self.today,
-            total_rooms=2,
-            sold=1,
+            property=self.property, room_type=self.room_type,
+            stay_date=self.today, total_rooms=2, sold=1,
         )
         assign_room(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
-            room_id=self.room.pk,
-            assigned_by=self.operator,
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            room_id=self.room.pk, assigned_by=self.operator,
         )
         stay, _ = check_in_stay(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
+            property_obj=self.property, reservation_room_id=self.line.pk,
             checked_in_by=self.operator,
         )
         mark_reservation_room_no_show(
-            property_obj=self.property,
-            reservation_room_id=second_line.pk,
-            reason="第二间房住客未到",
-            processed_by=self.operator,
+            property_obj=self.property, reservation_room_id=second_line.pk,
+            reason="第二间房住客未到", processed_by=self.operator,
         )
         LedgerEntry.objects.create(
-            property=self.property,
-            folio=self.folio,
+            property=self.property, folio=self.folio,
             entry_type=LedgerEntry.EntryType.PAYMENT,
-            amount=Decimal("-600.00"),
-            currency="CNY",
-            business_date=self.today,
-            reference="STAY-PARTIAL-NOSHOW-001",
+            amount=Decimal("-600.00"), currency="CNY",
+            business_date=self.today, reference="STAY-PARTIAL-NOSHOW-001",
             description="已入住客房预付款",
         )
 
         checked_out, changed = check_out_stay(
-            property_obj=self.property,
-            stay_id=stay.pk,
+            property_obj=self.property, stay_id=stay.pk,
             checked_out_by=self.operator,
         )
         self.assertTrue(changed)
@@ -1131,45 +1043,35 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         self.assertEqual(self.folio.status, Folio.Status.CLOSED)
         self.assertEqual(self.reservation.status, Reservation.Status.CHECKED_OUT)
 
+
     def test_repeating_the_same_extension_target_is_idempotent(self):
         extension_date = self.tomorrow
         new_check_out = extension_date + timedelta(days=1)
         DailyRate.objects.create(
-            property=self.property,
-            rate_plan=self.rate_plan,
-            room_type=self.room_type,
-            stay_date=extension_date,
+            property=self.property, rate_plan=self.rate_plan,
+            room_type=self.room_type, stay_date=extension_date,
             price=Decimal("650.00"),
         )
         inventory = RoomTypeInventory.objects.create(
-            property=self.property,
-            room_type=self.room_type,
-            stay_date=extension_date,
-            total_rooms=2,
+            property=self.property, room_type=self.room_type,
+            stay_date=extension_date, total_rooms=2,
         )
         assign_room(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
-            room_id=self.room.pk,
-            assigned_by=self.operator,
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            room_id=self.room.pk, assigned_by=self.operator,
         )
         stay, _ = check_in_stay(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
+            property_obj=self.property, reservation_room_id=self.line.pk,
             checked_in_by=self.operator,
         )
         extend_stay(
-            property_obj=self.property,
-            stay_id=stay.pk,
-            new_check_out=new_check_out,
-            reason="延住",
+            property_obj=self.property, stay_id=stay.pk,
+            new_check_out=new_check_out, reason="延住",
             extended_by=self.operator,
         )
         _, line, replay_amount = extend_stay(
-            property_obj=self.property,
-            stay_id=stay.pk,
-            new_check_out=new_check_out,
-            reason="延住",
+            property_obj=self.property, stay_id=stay.pk,
+            new_check_out=new_check_out, reason="延住",
             extended_by=self.operator,
         )
         inventory.refresh_from_db()
@@ -1182,54 +1084,40 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         first_extension = self.tomorrow
         second_extension = self.tomorrow + timedelta(days=1)
         DailyRate.objects.create(
-            property=self.property,
-            rate_plan=self.rate_plan,
-            room_type=self.room_type,
-            stay_date=first_extension,
+            property=self.property, rate_plan=self.rate_plan,
+            room_type=self.room_type, stay_date=first_extension,
             price=Decimal("650.00"),
         )
         DailyRate.objects.create(
-            property=self.property,
-            rate_plan=self.rate_plan,
-            room_type=self.room_type,
-            stay_date=second_extension,
+            property=self.property, rate_plan=self.rate_plan,
+            room_type=self.room_type, stay_date=second_extension,
             price=Decimal("700.00"),
         )
         RoomTypeInventory.objects.create(
-            property=self.property,
-            room_type=self.room_type,
-            stay_date=first_extension,
-            total_rooms=2,
+            property=self.property, room_type=self.room_type,
+            stay_date=first_extension, total_rooms=2,
         )
         RoomTypeInventory.objects.create(
-            property=self.property,
-            room_type=self.room_type,
-            stay_date=second_extension,
-            total_rooms=2,
+            property=self.property, room_type=self.room_type,
+            stay_date=second_extension, total_rooms=2,
         )
         assign_room(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
-            room_id=self.room.pk,
-            assigned_by=self.operator,
+            property_obj=self.property, reservation_room_id=self.line.pk,
+            room_id=self.room.pk, assigned_by=self.operator,
         )
         stay, _ = check_in_stay(
-            property_obj=self.property,
-            reservation_room_id=self.line.pk,
+            property_obj=self.property, reservation_room_id=self.line.pk,
             checked_in_by=self.operator,
         )
 
         _, line, extension_amount = extend_stay(
-            property_obj=self.property,
-            stay_id=stay.pk,
+            property_obj=self.property, stay_id=stay.pk,
             new_check_out=first_extension + timedelta(days=1),
-            reason="客人申请延住一晚",
-            extended_by=self.operator,
+            reason="客人申请延住一晚", extended_by=self.operator,
         )
         self.assertEqual(extension_amount, Decimal("650.00"))
         entry = LedgerEntry.objects.get(
-            reference=f"stay-extension:{stay.pk}:{first_extension.isoformat()}"
-        )
+            reference=f"stay-extension:{stay.pk}:{first_extension.isoformat()}")
         self.assertEqual(entry.entry_type, LedgerEntry.EntryType.ROOM_CHARGE)
         self.assertEqual(entry.amount, Decimal("650.00"))
         self.assertEqual(entry.currency, "CNY")
@@ -1238,43 +1126,44 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         self.assertEqual(entry.posted_by_id, self.operator.pk)
         # 续住后 folio 应收余额增加 extension_amount
         self.assertEqual(
-            sum(self.folio.entries.values_list("amount", flat=True), Decimal("0.00")),
+            sum(self.folio.entries.values_list("amount", flat=True),
+                Decimal("0.00")),
             Decimal("650.00"),
         )
 
         # 重复提交同一目标日：no-op，不重复记账
         _, line, replay_amount = extend_stay(
-            property_obj=self.property,
-            stay_id=stay.pk,
+            property_obj=self.property, stay_id=stay.pk,
             new_check_out=first_extension + timedelta(days=1),
-            reason="重复提交续住",
-            extended_by=self.operator,
+            reason="重复提交续住", extended_by=self.operator,
         )
         self.assertEqual(replay_amount, Decimal("0.00"))
         self.assertEqual(
-            LedgerEntry.objects.filter(reference__startswith=f"stay-extension:{stay.pk}:").count(),
+            LedgerEntry.objects.filter(
+                reference__startswith=f"stay-extension:{stay.pk}:").count(),
             1,
         )
         self.assertEqual(
-            sum(self.folio.entries.values_list("amount", flat=True), Decimal("0.00")),
+            sum(self.folio.entries.values_list("amount", flat=True),
+                Decimal("0.00")),
             Decimal("650.00"),
         )
 
         # 再续一晚：新增一晚一张凭证，应收余额按晚累计
         _, line, second_amount = extend_stay(
-            property_obj=self.property,
-            stay_id=stay.pk,
+            property_obj=self.property, stay_id=stay.pk,
             new_check_out=second_extension + timedelta(days=1),
-            reason="客人再延住一晚",
-            extended_by=self.operator,
+            reason="客人再延住一晚", extended_by=self.operator,
         )
         self.assertEqual(second_amount, Decimal("700.00"))
         self.assertEqual(
-            LedgerEntry.objects.filter(reference__startswith=f"stay-extension:{stay.pk}:").count(),
+            LedgerEntry.objects.filter(
+                reference__startswith=f"stay-extension:{stay.pk}:").count(),
             2,
         )
         self.assertEqual(
-            sum(self.folio.entries.values_list("amount", flat=True), Decimal("0.00")),
+            sum(self.folio.entries.values_list("amount", flat=True),
+                Decimal("0.00")),
             Decimal("1350.00"),
         )
         self.assertEqual(line.amount, Decimal("1950.00"))
@@ -1285,75 +1174,51 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
         check_in = self.today - timedelta(days=2)
         check_out = self.today + timedelta(days=3)
         nightly = [
-            {
-                "date": (check_in + timedelta(days=offset)).isoformat(),
-                "price": "300.00",
-                "currency": "CNY",
-            }
+            {"date": (check_in + timedelta(days=offset)).isoformat(),
+             "price": "300.00", "currency": "CNY"}
             for offset in range(5)
         ]
         reservation = Reservation.objects.create(
-            property=self.property,
-            booking_no="RSTAY-EARLY-DEP-001",
-            guest=self.guest,
-            status=Reservation.Status.CONFIRMED,
-            check_in=check_in,
-            check_out=check_out,
-            room_count=1,
-            adult_count=1,
-            child_count=0,
-            total_amount=Decimal("1500.00"),
-            currency="CNY",
+            property=self.property, booking_no="RSTAY-EARLY-DEP-001",
+            guest=self.guest, status=Reservation.Status.CONFIRMED,
+            check_in=check_in, check_out=check_out, room_count=1,
+            adult_count=1, child_count=0,
+            total_amount=Decimal("1500.00"), currency="CNY",
         )
         line = ReservationRoom.objects.create(
-            property=self.property,
-            reservation=reservation,
-            room_type=self.room_type,
-            rate_plan=self.rate_plan,
-            check_in=check_in,
-            check_out=check_out,
-            nightly_rates=nightly,
-            amount=Decimal("1500.00"),
+            property=self.property, reservation=reservation,
+            room_type=self.room_type, rate_plan=self.rate_plan,
+            check_in=check_in, check_out=check_out,
+            nightly_rates=nightly, amount=Decimal("1500.00"),
         )
         Folio.objects.create(
-            property=self.property,
-            reservation=reservation,
-            guest=self.guest,
-            currency="CNY",
+            property=self.property, reservation=reservation,
+            guest=self.guest, currency="CNY",
         )
         stocks = {}
         for offset in range(5):
             day = check_in + timedelta(days=offset)
             stocks[day] = RoomTypeInventory.objects.create(
-                property=self.property,
-                room_type=self.room_type,
-                stay_date=day,
-                total_rooms=3,
-                sold=1,
+                property=self.property, room_type=self.room_type,
+                stay_date=day, total_rooms=3, sold=1,
             )
         assign_room(
-            property_obj=self.property,
-            reservation_room_id=line.pk,
-            room_id=self.room.pk,
-            assigned_by=self.operator,
+            property_obj=self.property, reservation_room_id=line.pk,
+            room_id=self.room.pk, assigned_by=self.operator,
         )
         stay, _ = check_in_stay(
-            property_obj=self.property,
-            reservation_room_id=line.pk,
+            property_obj=self.property, reservation_room_id=line.pk,
             checked_in_by=self.operator,
         )
         collect_manual_payment(
-            property_obj=self.property,
-            booking_no=reservation.booking_no,
-            amount="1500.00",
-            method="CASH",
+            property_obj=self.property, booking_no=reservation.booking_no,
+            amount="1500.00", method="CASH",
             idempotency_key="early-dep-payment-001",
             received_by=self.operator,
         )
 
         checked_out, changed = check_out_stay(
-            property_obj=self.property,
-            stay_id=stay.pk,
+            property_obj=self.property, stay_id=stay.pk,
             checked_out_by=self.operator,
         )
         self.assertTrue(changed)
@@ -1363,28 +1228,30 @@ class FrontDeskStayLifecycleServiceTests(TestCase):
             day = check_in + timedelta(days=offset)
             stocks[day].refresh_from_db()
             if day < self.today:
-                self.assertEqual(stocks[day].sold, 1, f"{day.isoformat()} 已住晚 sold 应保持")
+                self.assertEqual(
+                    stocks[day].sold, 1, f"{day.isoformat()} 已住晚 sold 应保持")
                 self.assertEqual(stocks[day].version, 0)
             else:
-                self.assertEqual(stocks[day].sold, 0, f"{day.isoformat()} 未住晚 sold 应归还")
+                self.assertEqual(
+                    stocks[day].sold, 0, f"{day.isoformat()} 未住晚 sold 应归还")
                 self.assertEqual(stocks[day].version, 1)
 
         event = AuditEvent.objects.filter(
-            action="frontdesk.checked_out", entity_id=str(stay.pk)
-        ).first()
+            action="frontdesk.checked_out", entity_id=str(stay.pk)).first()
         self.assertIsNotNone(event)
-        self.assertEqual(event.after_json["early_departure_released_nights"], 3)
-        self.assertEqual(event.after_json["early_departure_release_from"], self.today.isoformat())
         self.assertEqual(
-            event.after_json["early_departure_release_to_exclusive"], check_out.isoformat()
-        )
+            event.after_json["early_departure_released_nights"], 3)
+        self.assertEqual(
+            event.after_json["early_departure_release_from"],
+            self.today.isoformat())
+        self.assertEqual(
+            event.after_json["early_departure_release_to_exclusive"],
+            check_out.isoformat())
         self.assertIn("提前离店", event.reason)
 
 
-@unittest.skipUnless(
-    connection.vendor == "mysql",
-    "WB-106 真并发上限验收仅在 MySQL/InnoDB 执行（SQLite 逻辑口径见 ReservationCreationTests）",
-)
+@unittest.skipUnless(connection.vendor == "mysql",
+                     "WB-106 真并发上限验收仅在 MySQL/InnoDB 执行（SQLite 逻辑口径见 ReservationCreationTests）")
 class PendingCapConcurrentCreationTests(TransactionTestCase):
     """WB-106：真实并发下同一手机号创建不超过 PENDING 上限。
 
@@ -1397,39 +1264,28 @@ class PendingCapConcurrentCreationTests(TransactionTestCase):
 
     def setUp(self):
         from apps.inventory.models import DailyRate, RatePlan, RoomType, RoomTypeInventory
-
         # 并发夹具自建独立物业，不依赖迁移 seed 的 DEFAULT，避免测试顺序
         # 下前置 TransactionTestCase 污染全局物业导致 setUp DoesNotExist。
         self.property, _ = Property.objects.get_or_create(
             code="WB106-PROP",
-            defaults={
-                "name": "并发上限测试酒店",
-                "timezone": "Asia/Shanghai",
-                "currency": "CNY",
-                "status": "ACTIVE",
-            },
-        )
+            defaults={"name": "并发上限测试酒店", "timezone": "Asia/Shanghai",
+                       "currency": "CNY", "status": "ACTIVE"})
         self.today = timezone.localdate()
         self.room_type = RoomType.objects.create(
-            property=self.property, code="WB106-CONCURRENT", name="并发上限测试房型", capacity=2
-        )
+            property=self.property, code="WB106-CONCURRENT",
+            name="并发上限测试房型", capacity=2)
         self.rate_plan = RatePlan.objects.create(
-            property=self.property, code="WB106-BAR", name="并发上限门市价", valid_from=self.today
-        )
+            property=self.property, code="WB106-BAR", name="并发上限门市价",
+            valid_from=self.today)
         for offset in (0, 1):
             DailyRate.objects.create(
-                property=self.property,
-                rate_plan=self.rate_plan,
+                property=self.property, rate_plan=self.rate_plan,
                 room_type=self.room_type,
                 stay_date=self.today + timedelta(days=offset),
-                price=Decimal("300.00"),
-            )
+                price=Decimal("300.00"))
             RoomTypeInventory.objects.create(
-                property=self.property,
-                room_type=self.room_type,
-                stay_date=self.today + timedelta(days=offset),
-                total_rooms=5,
-            )
+                property=self.property, room_type=self.room_type,
+                stay_date=self.today + timedelta(days=offset), total_rooms=5)
         self.phone = "13899990000"
         self.payload = {
             "full_name": "并发上限测试住客",
@@ -1457,21 +1313,24 @@ class PendingCapConcurrentCreationTests(TransactionTestCase):
                     create_reservation(
                         property_obj=property_obj,
                         payload=self.payload,
-                        idempotency_key=f"wb106-concurrent-{index}",
-                    )
+                        idempotency_key=f"wb106-concurrent-{index}")
                     results["created"].append(index)
                 except ReservationConflict:
                     results["conflicts"].append(index)
             finally:
                 close_old_connections()
 
-        threads = [Thread(target=create_once, args=(i,)) for i in range(2)]
+        threads = [
+            Thread(target=create_once, args=(i,))
+            for i in range(2)
+        ]
         for thread in threads:
             thread.start()
         for thread in threads:
             thread.join(timeout=20)
-        self.assertEqual(len(results["created"]), 1, "并发双创建最多只允许 1 笔通过上限")
-        self.assertEqual(len(results["conflicts"]), 1, "超限并发请求必须收到 ReservationConflict")
-        self.assertEqual(
-            Reservation.objects.filter(guest__phone_hash=phone_hash(self.phone)).count(), 1
-        )
+        self.assertEqual(len(results["created"]), 1,
+                         "并发双创建最多只允许 1 笔通过上限")
+        self.assertEqual(len(results["conflicts"]), 1,
+                         "超限并发请求必须收到 ReservationConflict")
+        self.assertEqual(Reservation.objects.filter(
+            guest__phone_hash=phone_hash(self.phone)).count(), 1)

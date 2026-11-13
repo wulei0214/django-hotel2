@@ -7,12 +7,11 @@ def grant(apps, schema_editor):
     Group = apps.get_model("auth", "Group")
     Permission = apps.get_model("auth", "Permission")
     ContentType = apps.get_model("contenttypes", "ContentType")
-    ct, _ = ContentType.objects.get_or_create(app_label="billing", model="cashiershift")
+    ct, _ = ContentType.objects.get_or_create(
+        app_label="billing", model="cashiershift")
     permission, _ = Permission.objects.get_or_create(
-        content_type=ct,
-        codename="cashier_shift_manage",
-        defaults={"name": "可以开立和关闭收银班次"},
-    )
+        content_type=ct, codename="cashier_shift_manage",
+        defaults={"name": "可以开立和关闭收银班次"})
     for role_name in ("前台", "财务", "值班经理", "店长"):
         group = Group.objects.filter(name=role_name).first()
         if group:
@@ -23,10 +22,12 @@ def revoke(apps, schema_editor):
     Group = apps.get_model("auth", "Group")
     Permission = apps.get_model("auth", "Permission")
     ContentType = apps.get_model("contenttypes", "ContentType")
-    ct = ContentType.objects.filter(app_label="billing", model="cashiershift").first()
+    ct = ContentType.objects.filter(
+        app_label="billing", model="cashiershift").first()
     if ct is None:
         return
-    permission = Permission.objects.filter(content_type=ct, codename="cashier_shift_manage").first()
+    permission = Permission.objects.filter(
+        content_type=ct, codename="cashier_shift_manage").first()
     if permission is not None:
         for group in Group.objects.all():
             group.permissions.remove(permission)
@@ -41,8 +42,7 @@ class Migration(migrations.Migration):
         migrations.AlterModelOptions(
             name="cashiershift",
             options={
-                "verbose_name": "现金班次",
-                "verbose_name_plural": "现金班次",
+                "verbose_name": "现金班次", "verbose_name_plural": "现金班次",
                 "ordering": ("-opened_at",),
                 "permissions": (
                     ("cashier_shift_manage", "可以开立和关闭收银班次"),

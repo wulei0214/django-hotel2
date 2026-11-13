@@ -22,7 +22,6 @@
     营业日 CLOSED 后入住 409（排房不受限），见 test_night_audit_center.py；
   * 冲账（BillingService.reverse_entry）：无 HTTP 入口（F-08），服务级调用验证。
 """
-
 import json
 import re
 import uuid
@@ -148,40 +147,35 @@ class E2EFlowTestBase(TestCase):
         """User + StaffProfile + DEFAULT Membership + RoleAssignment，不用 is_staff。"""
         user = User.objects.create_user(username=username, password=f"{username}-pass123")
         profile = StaffProfile.objects.create(
-            user=user, full_name=username, employment_status=StaffProfile.EmploymentStatus.ACTIVE
-        )
+            user=user, full_name=username,
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE)
         membership = PropertyStaffMembership.objects.create(
-            staff_profile=profile,
-            property=self.property,
+            staff_profile=profile, property=self.property,
             employee_no=f"E2E-{username}",
-            status=PropertyStaffMembership.Status.ACTIVE,
-        )
+            status=PropertyStaffMembership.Status.ACTIVE)
         group = Group.objects.get(name=group_name)
         StaffRoleAssignment.objects.create(
-            membership=membership, group=group, starts_at=timezone.now() - timedelta(minutes=1)
-        )
+            membership=membership, group=group,
+            starts_at=timezone.now() - timedelta(minutes=1))
         return user
 
     def _make_finance_view_only(self, username):
         """仅持有 hotelapp.finance_access 的账号（P1-02 权限分离断言用）。"""
         group, _ = Group.objects.get_or_create(name="E2E-仅财务查看")
         permission = Permission.objects.get(
-            content_type__app_label="hotelapp", codename="finance_access"
-        )
+            content_type__app_label="hotelapp", codename="finance_access")
         group.permissions.add(permission)
         user = User.objects.create_user(username=username, password=f"{username}-pass123")
         profile = StaffProfile.objects.create(
-            user=user, full_name=username, employment_status=StaffProfile.EmploymentStatus.ACTIVE
-        )
+            user=user, full_name=username,
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE)
         membership = PropertyStaffMembership.objects.create(
-            staff_profile=profile,
-            property=self.property,
+            staff_profile=profile, property=self.property,
             employee_no=f"E2E-{username}",
-            status=PropertyStaffMembership.Status.ACTIVE,
-        )
+            status=PropertyStaffMembership.Status.ACTIVE)
         StaffRoleAssignment.objects.create(
-            membership=membership, group=group, starts_at=timezone.now() - timedelta(minutes=1)
-        )
+            membership=membership, group=group,
+            starts_at=timezone.now() - timedelta(minutes=1))
         return user
 
     # ------------------------------------------------------------------
@@ -190,8 +184,7 @@ class E2EFlowTestBase(TestCase):
     def _post_json(self, url, payload=None, idempotency_key=""):
         extra = {"HTTP_IDEMPOTENCY_KEY": idempotency_key} if idempotency_key else {}
         return self.client.post(
-            url, data=json.dumps(payload or {}), content_type="application/json", **extra
-        )
+            url, data=json.dumps(payload or {}), content_type="application/json", **extra)
 
     def _next_phone(self):
         self._seq += 1
@@ -204,19 +197,17 @@ class E2EFlowTestBase(TestCase):
         check_out = self.today + timedelta(days=nights)
         response = self.client.post(
             "/api/v1/reservations",
-            data=json.dumps(
-                {
-                    "full_name": "E2E 测试住客",
-                    "phone": self._next_phone(),
-                    "room_type_id": self.room_type.pk,
-                    "rate_plan_id": self.rate_plan.pk,
-                    "check_in": check_in.isoformat(),
-                    "check_out": check_out.isoformat(),
-                    "rooms": 1,
-                    "adults": 1,
-                    "children": 0,
-                }
-            ),
+            data=json.dumps({
+                "full_name": "E2E 测试住客",
+                "phone": self._next_phone(),
+                "room_type_id": self.room_type.pk,
+                "rate_plan_id": self.rate_plan.pk,
+                "check_in": check_in.isoformat(),
+                "check_out": check_out.isoformat(),
+                "rooms": 1,
+                "adults": 1,
+                "children": 0,
+            }),
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY=f"e2e-create-{uuid.uuid4().hex[:16]}",
         )
@@ -255,13 +246,14 @@ class E2EFlowTestBase(TestCase):
 
     def _assign(self, line, room):
         response = self._post_json(
-            f"/api/v1/front-desk/reservation-rooms/{line.pk}/assign", {"room_id": room.pk}
-        )
+            f"/api/v1/front-desk/reservation-rooms/{line.pk}/assign",
+            {"room_id": room.pk})
         self.assertEqual(response.status_code, 201, response.content)
         return response
 
     def _check_in(self, line):
-        response = self._post_json(f"/api/v1/front-desk/reservation-rooms/{line.pk}/check-in")
+        response = self._post_json(
+            f"/api/v1/front-desk/reservation-rooms/{line.pk}/check-in")
         self.assertEqual(response.status_code, 201, response.content)
         return response.json()["data"]["stay_id"]
 
@@ -269,16 +261,11 @@ class E2EFlowTestBase(TestCase):
         self._assign(line, room)
         stay_id = self._check_in(line)
         # F-03 六个前台核心动作的 DB 审计（排房/入住在链路助手上统一断言）
-        self.assertTrue(
-            self._audit_exists(
-                "frontdesk.room_assigned", entity_id=line.pk, property_obj=self.property
-            )
-        )
-        self.assertTrue(
-            self._audit_exists(
-                "frontdesk.checked_in", entity_id=stay_id, property_obj=self.property
-            )
-        )
+        self.assertTrue(self._audit_exists(
+            "frontdesk.room_assigned", entity_id=line.pk,
+            property_obj=self.property))
+        self.assertTrue(self._audit_exists(
+            "frontdesk.checked_in", entity_id=stay_id, property_obj=self.property))
         return stay_id
 
     def _booking_checked_in(self, staff_user=None):
@@ -307,19 +294,16 @@ class E2EFlowTestBase(TestCase):
         stay_id = self._assign_and_check_in(line, self.room1)
         extended = self._post_json(
             f"/api/v1/front-desk/stays/{stay_id}/extend",
-            {
-                "new_check_out": (self.today + timedelta(days=2)).isoformat(),
-                "reason": "客人续住一晚，到店补收房费",
-            },
-        )
+            {"new_check_out": (self.today + timedelta(days=2)).isoformat(),
+             "reason": "客人续住一晚，到店补收房费"})
         self.assertEqual(extended.status_code, 200, extended.content)
         return booking_no, token, line, stay_id
 
     def _open_cashier_shift(self, key):
         """现金交易前显式开班；班次归属当前登录收银员。"""
         return self._post_json(
-            "/api/v1/billing/shifts/open", {"opening_cash": "0.00"}, idempotency_key=key
-        )
+            "/api/v1/billing/shifts/open", {"opening_cash": "0.00"},
+            idempotency_key=key)
 
     def _collect_payment(self, booking_no, amount, key):
         """前台人工收款（当前登录账号须为前台写权限账号）。"""
@@ -329,15 +313,15 @@ class E2EFlowTestBase(TestCase):
         return self._post_json(
             f"/api/v1/front-desk/reservations/{booking_no}/payments",
             {"amount": amount, "method": "CASH"},
-            idempotency_key=key,
-        )
+            idempotency_key=key)
 
     def _folio(self, booking_no):
         return Folio.objects.get(reservation__booking_no=booking_no)
 
     @staticmethod
     def _folio_balance(folio):
-        return sum((entry.amount for entry in folio.entries.all()), Decimal("0.00"))
+        return sum(
+            (entry.amount for entry in folio.entries.all()), Decimal("0.00"))
 
     @staticmethod
     def _audit_exists(action, entity_id=None, property_obj=None):
@@ -360,24 +344,22 @@ class SessionCsrfTemplateTokenTests(E2EFlowTestBase):
 
         page = client.get("/manage/notifications/")
         self.assertEqual(page.status_code, 200, page.content)
-        match = re.search(rb'name="csrfmiddlewaretoken" value="([^"]+)"', page.content)
+        match = re.search(
+            rb'name="csrfmiddlewaretoken" value="([^"]+)"',
+            page.content)
         self.assertIsNotNone(match, "通知页面必须渲染 Session CSRF 隐藏字段")
         token = match.group(1).decode("ascii")
 
         accepted = client.post(
             "/api/v1/notifications/read-all",
-            data="{}",
-            content_type="application/json",
-            HTTP_X_CSRFTOKEN=token,
-        )
+            data="{}", content_type="application/json",
+            HTTP_X_CSRFTOKEN=token)
         self.assertEqual(accepted.status_code, 200, accepted.content)
 
         rejected = client.post(
             "/api/v1/notifications/refresh",
-            data="{}",
-            content_type="application/json",
-            HTTP_X_CSRFTOKEN="invalid-csrf-token",
-        )
+            data="{}", content_type="application/json",
+            HTTP_X_CSRFTOKEN="invalid-csrf-token")
         self.assertEqual(rejected.status_code, 403)
 
     @override_settings(CSRF_USE_SESSIONS=True)
@@ -388,7 +370,9 @@ class SessionCsrfTemplateTokenTests(E2EFlowTestBase):
 
         page = client.get("/manage/finance/")
         self.assertEqual(page.status_code, 200, page.content)
-        match = re.search(rb'name="csrfmiddlewaretoken" value="([^"]+)"', page.content)
+        match = re.search(
+            rb'name="csrfmiddlewaretoken" value="([^"]+)"',
+            page.content)
         self.assertIsNotNone(match, "财务页面必须渲染 Session CSRF 隐藏字段")
         token = match.group(1).decode("ascii")
 
@@ -396,8 +380,7 @@ class SessionCsrfTemplateTokenTests(E2EFlowTestBase):
             "/api/v1/billing/shifts/open",
             data=json.dumps({"opening_cash": "0.00"}),
             content_type="application/json",
-            HTTP_X_CSRFTOKEN="invalid-csrf-token",
-        )
+            HTTP_X_CSRFTOKEN="invalid-csrf-token")
         self.assertEqual(rejected.status_code, 403)
 
         accepted = client.post(
@@ -405,8 +388,7 @@ class SessionCsrfTemplateTokenTests(E2EFlowTestBase):
             data=json.dumps({"opening_cash": "0.00"}),
             content_type="application/json",
             HTTP_X_CSRFTOKEN=token,
-            HTTP_IDEMPOTENCY_KEY="session-csrf-billing-shift-001",
-        )
+            HTTP_IDEMPOTENCY_KEY="session-csrf-billing-shift-001")
         self.assertEqual(accepted.status_code, 201, accepted.content)
 
 
@@ -420,46 +402,32 @@ class FrontDeskDrawerStatusDtoTests(E2EFlowTestBase):
     def test_frontdesk_summary_aggregates_open_folios_and_excludes_closed_folios(self):
         booking_no, _, _, _ = self._booking_checked_in()
         reservation = Reservation.objects.get(booking_no=booking_no)
-        master = Folio.objects.get(reservation=reservation, folio_type=Folio.FolioType.MASTER)
+        master = Folio.objects.get(
+            reservation=reservation, folio_type=Folio.FolioType.MASTER)
 
         guest_folio = Folio.objects.create(
-            property=self.property,
-            reservation=reservation,
-            folio_type=Folio.FolioType.GUEST,
-            guest=reservation.guest,
-            status=Folio.Status.OPEN,
-            currency=reservation.currency,
-        )
+            property=self.property, reservation=reservation,
+            folio_type=Folio.FolioType.GUEST, guest=reservation.guest,
+            status=Folio.Status.OPEN, currency=reservation.currency)
         LedgerEntry.objects.create(
-            property=self.property,
-            folio=guest_folio,
+            property=self.property, folio=guest_folio,
             entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-            amount=Decimal("100.00"),
-            currency=reservation.currency,
-            business_date=self.today,
-            reference="e2e-extra-open-folio-charge",
-        )
+            amount=Decimal("100.00"), currency=reservation.currency,
+            business_date=self.today, reference="e2e-extra-open-folio-charge")
 
         closed_folio = Folio.objects.create(
-            property=self.property,
-            reservation=reservation,
-            folio_type=Folio.FolioType.COMPANY,
-            guest=reservation.guest,
-            status=Folio.Status.CLOSED,
-            currency=reservation.currency,
-        )
+            property=self.property, reservation=reservation,
+            folio_type=Folio.FolioType.COMPANY, guest=reservation.guest,
+            status=Folio.Status.CLOSED, currency=reservation.currency)
         LedgerEntry.objects.create(
-            property=self.property,
-            folio=closed_folio,
+            property=self.property, folio=closed_folio,
             entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-            amount=Decimal("999.00"),
-            currency=reservation.currency,
-            business_date=self.today,
-            reference="e2e-closed-folio-charge",
-        )
+            amount=Decimal("999.00"), currency=reservation.currency,
+            business_date=self.today, reference="e2e-closed-folio-charge")
 
         self.client.force_login(self.fd)
-        response = self.client.get(f"/api/v1/front-desk/reservations/{booking_no}")
+        response = self.client.get(
+            f"/api/v1/front-desk/reservations/{booking_no}")
         self.assertEqual(response.status_code, 200, response.content)
         summary = response.json()["data"]["folio_summary"]
         self.assertEqual(summary["folio_id"], master.pk)
@@ -467,7 +435,9 @@ class FrontDeskDrawerStatusDtoTests(E2EFlowTestBase):
         self.assertEqual(summary["open_folio_count"], 2)
         self.assertEqual(Decimal(summary["charges"]), Decimal("100.00"))
         self.assertEqual(Decimal(summary["credits"]), reservation.total_amount)
-        self.assertEqual(Decimal(summary["balance"]), Decimal("100.00") - reservation.total_amount)
+        self.assertEqual(
+            Decimal(summary["balance"]),
+            Decimal("100.00") - reservation.total_amount)
 
     def test_confirmed_reservation_shows_pending_stay_until_check_in(self):
         booking_no, token = self._create_reservation()
@@ -535,30 +505,23 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         folio = self._folio(booking_no)
         # WB-084 后余额口径：0（预付-300+续住+300）- 300（本次收款）= -300
         self.assertEqual(self._folio_balance(folio), Decimal("-300.00"))
-        self.assertTrue(
-            self._audit_exists("billing.collect", entity_id=payment.pk, property_obj=self.property)
-        )
+        self.assertTrue(self._audit_exists(
+            "billing.collect", entity_id=payment.pk, property_obj=self.property))
 
         replay = self._collect_payment(booking_no, "300.00", "e2e-pay-001")
         self.assertEqual(replay.status_code, 200, replay.content)
         self.assertFalse(replay.json()["created"])
         manual_payments = Payment.objects.filter(
-            reservation__booking_no=booking_no, provider="frontdesk_manual"
-        )
+            reservation__booking_no=booking_no, provider="frontdesk_manual")
         self.assertEqual(manual_payments.count(), 1)
         self.assertEqual(
             LedgerEntry.objects.filter(
-                folio=folio, reference=f"payment:FD{self.property.pk}-e2e-pay-001"
-            ).count(),
-            1,
-        )
+                folio=folio,
+                reference=f"payment:FD{self.property.pk}-e2e-pay-001").count(), 1)
         # 预付（mock）+ 人工收款各一条 PAYMENT 贷方凭证
         self.assertEqual(
             LedgerEntry.objects.filter(
-                folio=folio, entry_type=LedgerEntry.EntryType.PAYMENT
-            ).count(),
-            2,
-        )
+                folio=folio, entry_type=LedgerEntry.EntryType.PAYMENT).count(), 2)
 
     # ------------------------------------------------------------------
     # 2) 押金：record_deposit 语义（押金凭证 + reservation.deposit_amount）
@@ -568,13 +531,13 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.client.force_login(self.fd)
         reservation = Reservation.objects.get(booking_no=booking_no)
         self.assertEqual(reservation.deposit_amount, Decimal("0.00"))
-        self.assertIn(self._open_cashier_shift("e2e-shift-deposit-001").status_code, (200, 201))
+        self.assertIn(self._open_cashier_shift("e2e-shift-deposit-001").status_code,
+                      (200, 201))
 
         response = self._post_json(
             f"/api/v1/front-desk/reservations/{booking_no}/deposits",
             {"amount": "200.00", "method": "CASH"},
-            idempotency_key="e2e-dep-001",
-        )
+            idempotency_key="e2e-dep-001")
         self.assertEqual(response.status_code, 201, response.content)
         body = response.json()
         self.assertTrue(body["created"])
@@ -592,17 +555,14 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(entry.amount, Decimal("-180.00"))
         reservation.refresh_from_db()
         self.assertEqual(reservation.deposit_amount, Decimal("180.00"))
-        self.assertTrue(
-            self._audit_exists(
-                "billing.deposit_collect", entity_id=payment.pk, property_obj=self.property
-            )
-        )
+        self.assertTrue(self._audit_exists(
+            "billing.deposit_collect", entity_id=payment.pk,
+            property_obj=self.property))
 
         replay = self._post_json(
             f"/api/v1/front-desk/reservations/{booking_no}/deposits",
             {"amount": "200.00", "method": "CASH"},
-            idempotency_key="e2e-dep-001",
-        )
+            idempotency_key="e2e-dep-001")
         self.assertEqual(replay.status_code, 200)
         self.assertFalse(replay.json()["created"])
         reservation.refresh_from_db()
@@ -612,14 +572,12 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         second = self._post_json(
             f"/api/v1/front-desk/reservations/{booking_no}/deposits",
             {"amount": "180.00", "method": "CASH"},
-            idempotency_key="e2e-dep-002",
-        )
+            idempotency_key="e2e-dep-002")
         self.assertEqual(second.status_code, 201, second.content)
         third = self._post_json(
             f"/api/v1/front-desk/reservations/{booking_no}/deposits",
             {"amount": "180.00", "method": "CASH"},
-            idempotency_key="e2e-dep-003",
-        )
+            idempotency_key="e2e-dep-003")
         self.assertEqual(third.status_code, 201, third.content)
         reservation.refresh_from_db()
         self.assertEqual(reservation.deposit_amount, Decimal("540.00"))
@@ -628,18 +586,14 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         over = self._post_json(
             f"/api/v1/front-desk/reservations/{booking_no}/deposits",
             {"amount": "180.00", "method": "CASH"},
-            idempotency_key="e2e-dep-004",
-        )
+            idempotency_key="e2e-dep-004")
         self.assertEqual(over.status_code, 409, over.content)
         self.assertEqual(over.json()["error"]["code"], "BUSINESS_CONFLICT")
         reservation.refresh_from_db()
         self.assertEqual(reservation.deposit_amount, Decimal("540.00"))
-        self.assertEqual(
-            Payment.objects.filter(
-                reservation__booking_no=booking_no, provider="frontdesk_deposit"
-            ).count(),
-            3,
-        )
+        self.assertEqual(Payment.objects.filter(
+            reservation__booking_no=booking_no,
+            provider="frontdesk_deposit").count(), 3)
 
     # ------------------------------------------------------------------
     # 3) 退款链路：前台申请挂起 → 店长（refund_approve）审批完成
@@ -649,18 +603,15 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.client.force_login(self.fd)
         payment = self._collect_payment(booking_no, "300.00", "e2e-pay-rf1").json()["data"]
         payment_id = payment["payment_id"]
-        self.assertTrue(
-            AuthorizationService.has_permission(self.fd, self.property, "billing.refund_request")
-        )
-        self.assertTrue(
-            AuthorizationService.has_permission(self.owner, self.property, "billing.refund_approve")
-        )
+        self.assertTrue(AuthorizationService.has_permission(
+            self.fd, self.property, "billing.refund_request"))
+        self.assertTrue(AuthorizationService.has_permission(
+            self.owner, self.property, "billing.refund_approve"))
 
         request_resp = self._post_json(
             f"/api/v1/front-desk/payments/{payment_id}/refunds",
             {"amount": "100.00", "reason": "客人多付一晚房费，协商退款"},
-            idempotency_key="e2e-rf-001",
-        )
+            idempotency_key="e2e-rf-001")
         self.assertEqual(request_resp.status_code, 201, request_resp.content)
         refund_id = request_resp.json()["data"]["refund_id"]
 
@@ -668,24 +619,21 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(refund.status, Refund.Status.PENDING)
         self.assertEqual(refund.amount, Decimal("100.00"))
         self.assertEqual(refund.requested_by_id, self.fd.pk)
-        approval = ApprovalRecord.objects.get(entity_type="Refund", entity_id=str(refund_id))
+        approval = ApprovalRecord.objects.get(
+            entity_type="Refund", entity_id=str(refund_id))
         self.assertEqual(approval.action_code, "billing.refund")
         self.assertEqual(approval.status, ApprovalRecord.Status.PENDING)
         self.assertEqual(approval.requested_by_id, self.fd.pk)
-        self.assertTrue(
-            self._audit_exists(
-                "billing.refund_request", entity_id=refund_id, property_obj=self.property
-            )
-        )
-        self.assertEqual(
-            Reservation.objects.get(pk=refund.payment.reservation_id).deposit_amount,
-            Decimal("0.00"),
-        )
+        self.assertTrue(self._audit_exists(
+            "billing.refund_request", entity_id=refund_id,
+            property_obj=self.property))
+        self.assertEqual(Reservation.objects.get(
+            pk=refund.payment.reservation_id).deposit_amount, Decimal("0.00"))
 
         # 前台只有申请权没有审批权 → 403，状态不迁移
         denied = self._post_json(
-            f"/api/v1/front-desk/refunds/{refund_id}/approve", {"confirm_refund_paid": True}
-        )
+            f"/api/v1/front-desk/refunds/{refund_id}/approve",
+            {"confirm_refund_paid": True})
         self.assertEqual(denied.status_code, 403, denied.content)
         self.assertEqual(denied.json()["error"]["code"], "PERMISSION_DENIED")
         refund.refresh_from_db()
@@ -693,7 +641,8 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
 
         # 店长仅审批，不得写退款凭证；财务作为独立执行人完成退款。
         self.client.force_login(self.owner)
-        approve = self._post_json(f"/api/v1/front-desk/refunds/{refund_id}/approve", {})
+        approve = self._post_json(
+            f"/api/v1/front-desk/refunds/{refund_id}/approve", {})
         self.assertEqual(approve.status_code, 200, approve.content)
         self.assertTrue(approve.json()["changed"])
         refund.refresh_from_db()
@@ -703,15 +652,13 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         self.assertIsNone(refund.executed_by_id)
         self.assertEqual(approval.status, ApprovalRecord.Status.APPROVED)
         self.assertEqual(approval.approved_by_id, self.owner.pk)
-        self.assertFalse(
-            LedgerEntry.objects.filter(reference=f"refund:{refund.provider_ref}").exists()
-        )
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
 
         self.client.force_login(self.fin)
         executor_shift_response = self._open_cashier_shift("e2e-shift-refund-exec-001")
-        self.assertIn(
-            executor_shift_response.status_code, (200, 201), executor_shift_response.content
-        )
+        self.assertIn(executor_shift_response.status_code, (200, 201),
+                      executor_shift_response.content)
         executor_shift_id = executor_shift_response.json()["data"]["id"]
         execute_payload = {
             "confirm_refund_paid": True,
@@ -721,30 +668,23 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         # 执行班次无现金时不得先付后补，失败必须零账本副作用。
         insufficient_cash = self._post_json(
             f"/api/v1/billing/refunds/{refund_id}/execute",
-            {
-                "confirm_refund_paid": True,
-                "execution_reference": "E2E-MANUAL-REFUND-INSUFFICIENT",
-                "idempotency_key": "e2e-refund-exec-no-cash-001",
-            },
-        )
+            {"confirm_refund_paid": True,
+             "execution_reference": "E2E-MANUAL-REFUND-INSUFFICIENT",
+             "idempotency_key": "e2e-refund-exec-no-cash-001"})
         self.assertEqual(insufficient_cash.status_code, 400, insufficient_cash.content)
         refund.refresh_from_db()
         self.assertEqual(refund.status, Refund.Status.APPROVED)
-        self.assertFalse(
-            LedgerEntry.objects.filter(reference=f"refund:{refund.provider_ref}").exists()
-        )
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"refund:{refund.provider_ref}").exists())
         # 现金退款先从保险柜领取备用金，记录到执行班次后才允许实际退款。
         cash_float = self._post_json(
             f"/api/v1/billing/shifts/{executor_shift_id}/movements",
-            {
-                "direction": "IN",
-                "amount": "100.00",
-                "reason": "从保险柜领取退款现金",
-                "idempotency_key": "e2e-refund-cash-float-001",
-            },
-        )
+            {"direction": "IN", "amount": "100.00",
+             "reason": "从保险柜领取退款现金",
+             "idempotency_key": "e2e-refund-cash-float-001"})
         self.assertEqual(cash_float.status_code, 201, cash_float.content)
-        execute = self._post_json(f"/api/v1/billing/refunds/{refund_id}/execute", execute_payload)
+        execute = self._post_json(
+            f"/api/v1/billing/refunds/{refund_id}/execute", execute_payload)
         self.assertEqual(execute.status_code, 201, execute.content)
         refund.refresh_from_db()
         self.assertEqual(refund.status, Refund.Status.SUCCEEDED)
@@ -755,14 +695,17 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
 
         refund_list = self.client.get("/api/v1/billing/refunds")
         self.assertEqual(refund_list.status_code, 200, refund_list.content)
-        refund_dto = next(row for row in refund_list.json()["data"] if row["id"] == refund_id)
+        refund_dto = next(
+            row for row in refund_list.json()["data"]
+            if row["id"] == refund_id)
         self.assertEqual(refund_dto["requested_by"], self.fd.username)
         self.assertEqual(refund_dto["approved_by"], self.owner.username)
         self.assertEqual(refund_dto["executed_by"], self.fin.username)
         self.assertTrue(refund_dto["executed_at"])
         self.assertFalse(refund_dto["legacy_workflow"])
 
-        refund_entry = LedgerEntry.objects.get(reference=f"refund:{refund.provider_ref}")
+        refund_entry = LedgerEntry.objects.get(
+            reference=f"refund:{refund.provider_ref}")
         self.assertEqual(refund_entry.entry_type, LedgerEntry.EntryType.REFUND)
         self.assertEqual(refund_entry.amount, Decimal("100.00"))
         payment_obj = Payment.objects.get(pk=payment_id)
@@ -770,44 +713,41 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         folio = self._folio(booking_no)
         # WB-084 后余额口径：-300 预付 +300 续住凭证 -300 收款 +100 退款 = -200
         self.assertEqual(self._folio_balance(folio), Decimal("-200.00"))
-        self.assertTrue(
-            self._audit_exists("approval.approve", entity_id=refund_id, property_obj=self.property)
-        )
-        self.assertTrue(
-            self._audit_exists(
-                "billing.refund_executed", entity_id=refund_id, property_obj=self.property
-            )
-        )
+        self.assertTrue(self._audit_exists(
+            "approval.approve", entity_id=refund_id, property_obj=self.property))
+        self.assertTrue(self._audit_exists(
+            "billing.refund_executed", entity_id=refund_id,
+            property_obj=self.property))
 
         # 同一执行幂等键重放：不得重复追加退款凭证。
-        repeat = self._post_json(f"/api/v1/billing/refunds/{refund_id}/execute", execute_payload)
+        repeat = self._post_json(
+            f"/api/v1/billing/refunds/{refund_id}/execute", execute_payload)
         self.assertEqual(repeat.status_code, 200, repeat.content)
-        self.assertEqual(
-            LedgerEntry.objects.filter(
-                entry_type=LedgerEntry.EntryType.REFUND, folio=folio
-            ).count(),
-            1,
-        )
+        self.assertEqual(LedgerEntry.objects.filter(
+            entry_type=LedgerEntry.EntryType.REFUND, folio=folio).count(), 1)
 
         # 现金退款必须计入实际执行班次；备用金补入 100 - 现金退款 100 = 应有 0。
         executor_close = self._post_json(
-            f"/api/v1/billing/shifts/{executor_shift_id}/close", {"actual_cash": "0.00"}
-        )
+            f"/api/v1/billing/shifts/{executor_shift_id}/close",
+            {"actual_cash": "0.00"})
         self.assertEqual(executor_close.status_code, 200, executor_close.content)
-        self.assertEqual(Decimal(executor_close.json()["data"]["expected_cash"]), Decimal("0.00"))
-        self.assertEqual(Decimal(executor_close.json()["data"]["variance"]), Decimal("0.00"))
+        self.assertEqual(
+            Decimal(executor_close.json()["data"]["expected_cash"]),
+            Decimal("0.00"))
+        self.assertEqual(
+            Decimal(executor_close.json()["data"]["variance"]), Decimal("0.00"))
 
         # 原现金收款仍归属前台收款班次，不得转移到退款执行班次。
         payment_obj.refresh_from_db()
         frontdesk_shift = CashierShift.objects.get(pk=payment_obj.cashier_shift_id)
         self.assertEqual(frontdesk_shift.cashier_id, self.fd.pk)
         frontdesk_close = self._post_json(
-            f"/api/v1/billing/shifts/{frontdesk_shift.pk}/close", {"actual_cash": "300.00"}
-        )
+            f"/api/v1/billing/shifts/{frontdesk_shift.pk}/close",
+            {"actual_cash": "300.00"})
         self.assertEqual(frontdesk_close.status_code, 200, frontdesk_close.content)
         self.assertEqual(
-            Decimal(frontdesk_close.json()["data"]["expected_cash"]), Decimal("300.00")
-        )
+            Decimal(frontdesk_close.json()["data"]["expected_cash"]),
+            Decimal("300.00"))
 
     # ------------------------------------------------------------------
     # 4) 退款申请超额 → 409 且无副作用
@@ -820,12 +760,12 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         response = self._post_json(
             f"/api/v1/front-desk/payments/{payment['payment_id']}/refunds",
             {"amount": "700.00", "reason": "超额退款必须被拒绝"},
-            idempotency_key="e2e-rf-002",
-        )
+            idempotency_key="e2e-rf-002")
         self.assertEqual(response.status_code, 409, response.content)
         self.assertEqual(response.json()["error"]["code"], "BUSINESS_CONFLICT")
         self.assertEqual(Refund.objects.count(), 0)
-        self.assertEqual(ApprovalRecord.objects.filter(action_code="billing.refund").count(), 0)
+        self.assertEqual(ApprovalRecord.objects.filter(
+            action_code="billing.refund").count(), 0)
         self.assertFalse(self._audit_exists("billing.refund_request"))
 
     # ------------------------------------------------------------------
@@ -838,22 +778,18 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         refund = self._post_json(
             f"/api/v1/front-desk/payments/{payment['payment_id']}/refunds",
             {"amount": "50.00", "reason": "小额零头退款"},
-            idempotency_key="e2e-rf-003",
-        ).json()["data"]
+            idempotency_key="e2e-rf-003").json()["data"]
 
         viewer = self._make_finance_view_only("e2e_b_finview")
-        self.assertTrue(
-            AuthorizationService.has_permission(viewer, self.property, "hotelapp.finance_access")
-        )
-        self.assertFalse(
-            AuthorizationService.has_permission(viewer, self.property, "billing.refund_approve")
-        )
+        self.assertTrue(AuthorizationService.has_permission(
+            viewer, self.property, "hotelapp.finance_access"))
+        self.assertFalse(AuthorizationService.has_permission(
+            viewer, self.property, "billing.refund_approve"))
 
         self.client.force_login(viewer)
         response = self._post_json(
             f"/api/v1/front-desk/refunds/{refund['refund_id']}/approve",
-            {"confirm_refund_paid": True},
-        )
+            {"confirm_refund_paid": True})
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
@@ -861,14 +797,11 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         refund_obj = Refund.objects.get(pk=refund["refund_id"])
         self.assertEqual(refund_obj.status, Refund.Status.PENDING)
         approval = ApprovalRecord.objects.get(
-            entity_type="Refund", entity_id=str(refund["refund_id"])
-        )
+            entity_type="Refund", entity_id=str(refund["refund_id"]))
         self.assertEqual(approval.status, ApprovalRecord.Status.PENDING)
-        self.assertFalse(
-            LedgerEntry.objects.filter(
-                folio=self._folio(booking_no), entry_type=LedgerEntry.EntryType.REFUND
-            ).exists()
-        )
+        self.assertFalse(LedgerEntry.objects.filter(
+            folio=self._folio(booking_no),
+            entry_type=LedgerEntry.EntryType.REFUND).exists())
         self.assertFalse(self._audit_exists("billing.refund_completed"))
 
     # ------------------------------------------------------------------
@@ -881,70 +814,53 @@ class PaymentDepositRefundReversalE2EFlowTests(E2EFlowTestBase):
         folio = self._folio(booking_no)
         # WB-084 后余额口径：-300 预付 +300 续住凭证 -300 收款 = -300
         self.assertEqual(self._folio_balance(folio), Decimal("-300.00"))
-        original = LedgerEntry.objects.get(reference=f"payment:FD{self.property.pk}-e2e-pay-rev")
+        original = LedgerEntry.objects.get(
+            reference=f"payment:FD{self.property.pk}-e2e-pay-rev")
         self.client.logout()
 
         reversal_reason = "收款金额录入错误，红字冲销重收"
         approval, approval_created = ApprovalService.request_approval(
-            property_obj=self.property,
-            action_code="billing.reversal",
-            entity_type="LedgerEntry",
-            entity_id=str(original.pk),
-            requested_by=self.fin,
-            reason=reversal_reason,
-            payload={},
-        )
+            property_obj=self.property, action_code="billing.reversal",
+            entity_type="LedgerEntry", entity_id=str(original.pk),
+            requested_by=self.fin, reason=reversal_reason, payload={})
         self.assertTrue(approval_created)
         approval = ApprovalService.approve(
-            approval.pk, approved_by=self.owner, property_obj=self.property
-        )
+            approval.pk, approved_by=self.owner, property_obj=self.property)
         self.assertEqual(approval.status, ApprovalRecord.Status.APPROVED)
 
         reversal, created = BillingService.reverse_entry(
-            property_obj=self.property,
-            entry_id=original.pk,
-            approval_id=approval.pk,
-            reason=reversal_reason,
-            reversed_by=self.fin,
-        )
+            property_obj=self.property, entry_id=original.pk,
+            approval_id=approval.pk, reason=reversal_reason,
+            reversed_by=self.fin)
         self.assertTrue(created)
         self.assertEqual(reversal.entry_type, LedgerEntry.EntryType.REVERSAL)
         self.assertEqual(reversal.amount, -original.amount)
         self.assertEqual(
-            reversal.reference, f"reversal:{original.reference}", "冲销凭证以固定引用与原凭证配对"
-        )
+            reversal.reference, f"reversal:{original.reference}",
+            "冲销凭证以固定引用与原凭证配对")
         self.assertEqual(reversal.folio_id, folio.pk)
         original.refresh_from_db()
         self.assertEqual(original.amount, Decimal("-300.00"), "原凭证不可修改")
         folio = self._folio(booking_no)
         # WB-084 后余额口径：冲销 +300 后 0（-300 预付 +300 续住 -300 收款 +300 冲销）
         self.assertEqual(self._folio_balance(folio), Decimal("0.00"))
-        self.assertTrue(
-            self._audit_exists(
-                "billing.reverse_entry", entity_id=original.pk, property_obj=self.property
-            )
-        )
+        self.assertTrue(self._audit_exists(
+            "billing.reverse_entry", entity_id=original.pk,
+            property_obj=self.property))
 
         # 同一原凭证重复冲销幂等：返回既有红字凭证
         again, created_again = BillingService.reverse_entry(
-            property_obj=self.property,
-            entry_id=original.pk,
-            approval_id=approval.pk,
-            reason=reversal_reason,
-            reversed_by=self.fin,
-        )
+            property_obj=self.property, entry_id=original.pk,
+            approval_id=approval.pk, reason=reversal_reason,
+            reversed_by=self.fin)
         self.assertFalse(created_again)
         self.assertEqual(again.pk, reversal.pk)
 
         # 红字凭证本身不可再冲销
         with self.assertRaises(ValueError):
             BillingService.reverse_entry(
-                property_obj=self.property,
-                entry_id=reversal.pk,
-                approval_id=approval.pk,
-                reason=reversal_reason,
-                reversed_by=self.fin,
-            )
+                property_obj=self.property, entry_id=reversal.pk,
+                approval_id=approval.pk, reason=reversal_reason, reversed_by=self.fin)
 
 
 class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
@@ -971,11 +887,8 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
     # ------------------------------------------------------------------
     def test_night_audit_endpoints_require_night_audit_execute_permission(self):
         self.client.force_login(self.fd)
-        self.assertFalse(
-            AuthorizationService.has_permission(
-                self.fd, self.property, "hotelapp.night_audit_execute"
-            )
-        )
+        self.assertFalse(AuthorizationService.has_permission(
+            self.fd, self.property, "hotelapp.night_audit_execute"))
 
         preview = self.client.get("/api/v1/night-audit/preview")
         self.assertEqual(preview.status_code, 403, preview.content)
@@ -994,11 +907,8 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
     # ------------------------------------------------------------------
     def test_duty_manager_run_posts_room_charge_and_replay_is_idempotent(self):
         self.client.force_login(self.dm)
-        self.assertTrue(
-            AuthorizationService.has_permission(
-                self.dm, self.property, "hotelapp.night_audit_execute"
-            )
-        )
+        self.assertTrue(AuthorizationService.has_permission(
+            self.dm, self.property, "hotelapp.night_audit_execute"))
 
         preview = self.client.get("/api/v1/night-audit/preview")
         self.assertEqual(preview.status_code, 200, preview.content)
@@ -1021,17 +931,15 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(run_record.executed_by_id, self.dm.pk)
 
         charge_reference = (
-            f"night-audit:{self.property.pk}:{self.today.isoformat()}:stay:{self.stay.pk}"
-        )
+            f"night-audit:{self.property.pk}:{self.today.isoformat()}:stay:{self.stay.pk}")
         charge = LedgerEntry.objects.get(reference=charge_reference)
         self.assertEqual(charge.entry_type, LedgerEntry.EntryType.ROOM_CHARGE)
         self.assertEqual(charge.amount, Decimal("300.00"))
         self.assertEqual(charge.stay_id, self.stay.pk)
         folio = self._folio(self.booking_no)
         self.assertEqual(self._folio_balance(folio), Decimal("-300.00"))
-        self.assertTrue(
-            self._audit_exists("night_audit.run", entity_id=bd.pk, property_obj=self.property)
-        )
+        self.assertTrue(self._audit_exists(
+            "night_audit.run", entity_id=bd.pk, property_obj=self.property))
 
         # 同营业日重复执行：现有实现为幂等成功（200 + created=false），不回 400/409
         replay = self._run_night_audit()
@@ -1039,16 +947,10 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
         self.assertFalse(replay.json()["data"]["created"])
         self.assertEqual(
             NightAuditRun.objects.filter(
-                business_date=bd, status=NightAuditRun.RunStatus.SUCCESS
-            ).count(),
-            1,
-        )
+                business_date=bd, status=NightAuditRun.RunStatus.SUCCESS).count(), 1)
         self.assertEqual(
             LedgerEntry.objects.filter(
-                folio=folio, entry_type=LedgerEntry.EntryType.ROOM_CHARGE
-            ).count(),
-            1,
-        )
+                folio=folio, entry_type=LedgerEntry.EntryType.ROOM_CHARGE).count(), 1)
         bd.refresh_from_db()
         self.assertEqual(bd.status, BusinessDate.Status.CLOSED)
 
@@ -1066,18 +968,17 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
 
         # 缺理由：现有实现返回 409 BUSINESS_CONFLICT（§9.4 草稿预期 400，差异已登记）
         no_reason = self._post_json(
-            f"/api/v1/night-audit/business-dates/{bd.pk}/reopen-request", {}
-        )
+            f"/api/v1/night-audit/business-dates/{bd.pk}/reopen-request", {})
         self.assertEqual(no_reason.status_code, 409, no_reason.content)
         self.assertEqual(no_reason.json()["error"]["code"], "BUSINESS_CONFLICT")
-        self.assertEqual(ApprovalRecord.objects.filter(action_code="night_audit.reopen").count(), 0)
+        self.assertEqual(ApprovalRecord.objects.filter(
+            action_code="night_audit.reopen").count(), 0)
         bd.refresh_from_db()
         self.assertEqual(bd.status, BusinessDate.Status.CLOSED)
 
         request_resp = self._post_json(
             f"/api/v1/night-audit/business-dates/{bd.pk}/reopen-request",
-            {"reason": "夜审后发现漏记房费需要补记凭证"},
-        )
+            {"reason": "夜审后发现漏记房费需要补记凭证"})
         self.assertEqual(request_resp.status_code, 201, request_resp.content)
         approval_id = request_resp.json()["data"]["approval_id"]
         approval = ApprovalRecord.objects.get(pk=approval_id)
@@ -1089,8 +990,7 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
 
         # 申请人不能自批（Q-05 SoD）→ 409，营业日保持关账
         self_approve = self._post_json(
-            f"/api/v1/night-audit/business-dates/{bd.pk}/approvals/{approval_id}/approve"
-        )
+            f"/api/v1/night-audit/business-dates/{bd.pk}/approvals/{approval_id}/approve")
         self.assertEqual(self_approve.status_code, 409, self_approve.content)
         approval.refresh_from_db()
         self.assertEqual(approval.status, ApprovalRecord.Status.PENDING)
@@ -1100,8 +1000,7 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
         # 店长批准 → REOPENED + 审计
         self.client.force_login(owner)
         approve = self._post_json(
-            f"/api/v1/night-audit/business-dates/{bd.pk}/approvals/{approval_id}/approve"
-        )
+            f"/api/v1/night-audit/business-dates/{bd.pk}/approvals/{approval_id}/approve")
         self.assertEqual(approve.status_code, 200, approve.content)
         self.assertEqual(approve.json()["data"]["status"], BusinessDate.Status.REOPENED)
         bd.refresh_from_db()
@@ -1110,9 +1009,8 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(bd.reopen_reason, "夜审后发现漏记房费需要补记凭证")
         approval.refresh_from_db()
         self.assertEqual(approval.status, ApprovalRecord.Status.APPROVED)
-        self.assertTrue(
-            self._audit_exists("night_audit.reopen", entity_id=bd.pk, property_obj=self.property)
-        )
+        self.assertTrue(self._audit_exists(
+            "night_audit.reopen", entity_id=bd.pk, property_obj=self.property))
 
         # 重开后的营业日可以再次夜审；过租凭证按引用幂等，不重复入账
         self.client.force_login(self.dm)
@@ -1122,10 +1020,8 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(bd.status, BusinessDate.Status.CLOSED)
         self.assertEqual(
             LedgerEntry.objects.filter(
-                folio=self._folio(self.booking_no), entry_type=LedgerEntry.EntryType.ROOM_CHARGE
-            ).count(),
-            1,
-        )
+                folio=self._folio(self.booking_no),
+                entry_type=LedgerEntry.EntryType.ROOM_CHARGE).count(), 1)
 
     # ------------------------------------------------------------------
     # 4) break-glass：申请（二次密码）→ 申请人执行 → 独立复核
@@ -1140,37 +1036,34 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
 
         wrong_password = self._post_json(
             f"/api/v1/night-audit/business-dates/{bd.pk}/break-glass",
-            {"password": "not-the-password", "reason": "夜审后发现重大账务差错需要紧急重开修正"},
-        )
+            {"password": "not-the-password",
+             "reason": "夜审后发现重大账务差错需要紧急重开修正"})
         self.assertEqual(wrong_password.status_code, 409, wrong_password.content)
         self.assertEqual(BreakGlassRecord.objects.count(), 0)
 
         granted = self._post_json(
             f"/api/v1/night-audit/business-dates/{bd.pk}/break-glass",
-            {"password": "e2e_c_duty-pass123", "reason": "夜审后发现重大账务差错需要紧急重开修正"},
-        )
+            {"password": "e2e_c_duty-pass123",
+             "reason": "夜审后发现重大账务差错需要紧急重开修正"})
         self.assertEqual(granted.status_code, 201, granted.content)
         record_id = granted.json()["data"]["break_glass_id"]
         record = BreakGlassRecord.objects.get(pk=record_id)
         self.assertEqual(record.status, BreakGlassRecord.Status.GRANTED)
         self.assertEqual(record.requested_by_id, self.dm.pk)
-        self.assertEqual(record.expires_at - record.password_verified_at, timedelta(minutes=10))
-        self.assertTrue(
-            self._audit_exists(
-                "night_audit.break_glass_requested", entity_id=record_id, property_obj=self.property
-            )
-        )
+        self.assertEqual(
+            record.expires_at - record.password_verified_at, timedelta(minutes=10))
+        self.assertTrue(self._audit_exists(
+            "night_audit.break_glass_requested", entity_id=record_id,
+            property_obj=self.property))
 
         # 非申请人不能执行
         reviewer = self._make_staff("e2e_c_reviewer", "店长")
         review_permission = Permission.objects.get(
-            content_type__app_label="core", codename="breakglass_review"
-        )
+            content_type__app_label="core", codename="breakglass_review")
         Group.objects.get(name="店长").permissions.add(review_permission)
         self.client.force_login(reviewer)
         wrong_actor = self._post_json(
-            f"/api/v1/night-audit/business-dates/{bd.pk}/break-glass/{record_id}/execute"
-        )
+            f"/api/v1/night-audit/business-dates/{bd.pk}/break-glass/{record_id}/execute")
         self.assertEqual(wrong_actor.status_code, 409, wrong_actor.content)
         bd.refresh_from_db()
         self.assertEqual(bd.status, BusinessDate.Status.CLOSED)
@@ -1178,8 +1071,7 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
         # 申请人限时单次执行 → REOPENED
         self.client.force_login(self.dm)
         execute = self._post_json(
-            f"/api/v1/night-audit/business-dates/{bd.pk}/break-glass/{record_id}/execute"
-        )
+            f"/api/v1/night-audit/business-dates/{bd.pk}/break-glass/{record_id}/execute")
         self.assertEqual(execute.status_code, 200, execute.content)
         self.assertEqual(execute.json()["data"]["status"], BusinessDate.Status.REOPENED)
         bd.refresh_from_db()
@@ -1187,17 +1079,14 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(bd.reopened_by_id, self.dm.pk)
         record.refresh_from_db()
         self.assertEqual(record.status, BreakGlassRecord.Status.USED)
-        self.assertTrue(
-            self._audit_exists(
-                "night_audit.break_glass_executed", entity_id=bd.pk, property_obj=self.property
-            )
-        )
+        self.assertTrue(self._audit_exists(
+            "night_audit.break_glass_executed", entity_id=bd.pk,
+            property_obj=self.property))
 
         # 操作人本人不能复核 → 409
         self_review = self._post_json(
             f"/api/v1/night-audit/break-glass/{record_id}/review",
-            {"decision": "CONFIRMED", "reason": "本人复核不符合独立复核要求"},
-        )
+            {"decision": "CONFIRMED", "reason": "本人复核不符合独立复核要求"})
         self.assertEqual(self_review.status_code, 409, self_review.content)
         record.refresh_from_db()
         self.assertEqual(record.status, BreakGlassRecord.Status.USED)
@@ -1206,21 +1095,19 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
         self.client.force_login(reviewer)
         review = self._post_json(
             f"/api/v1/night-audit/break-glass/{record_id}/review",
-            {"decision": "CONFIRMED", "reason": "已核对紧急重开原因与事后账务修正凭证"},
-        )
+            {"decision": "CONFIRMED",
+             "reason": "已核对紧急重开原因与事后账务修正凭证"})
         self.assertEqual(review.status_code, 200, review.content)
         self.assertEqual(review.json()["data"]["status"], BreakGlassRecord.Status.REVIEWED)
         self.assertEqual(
-            review.json()["data"]["review_decision"], BreakGlassRecord.ReviewDecision.CONFIRMED
-        )
+            review.json()["data"]["review_decision"],
+            BreakGlassRecord.ReviewDecision.CONFIRMED)
         record.refresh_from_db()
         self.assertEqual(record.status, BreakGlassRecord.Status.REVIEWED)
         self.assertEqual(record.reviewed_by_id, reviewer.pk)
-        self.assertTrue(
-            self._audit_exists(
-                "night_audit.break_glass_reviewed", entity_id=record_id, property_obj=self.property
-            )
-        )
+        self.assertTrue(self._audit_exists(
+            "night_audit.break_glass_reviewed", entity_id=record_id,
+            property_obj=self.property))
 
     # ------------------------------------------------------------------
     # 5) 夜审后新入住：营业日关账后入住被阻挡（§4.2 阻挡规则，P0-C 缺口已收口）
@@ -1239,18 +1126,18 @@ class NightAuditBusinessDateE2EFlowTests(E2EFlowTestBase):
         line = self._line(booking_no)
         self.client.force_login(self.fd)
         assign = self._post_json(
-            f"/api/v1/front-desk/reservation-rooms/{line.pk}/assign", {"room_id": self.room2.pk}
-        )
+            f"/api/v1/front-desk/reservation-rooms/{line.pk}/assign",
+            {"room_id": self.room2.pk})
         self.assertEqual(assign.status_code, 201, assign.content)
 
-        blocked = self._post_json(f"/api/v1/front-desk/reservation-rooms/{line.pk}/check-in")
+        blocked = self._post_json(
+            f"/api/v1/front-desk/reservation-rooms/{line.pk}/check-in")
         self.assertEqual(blocked.status_code, 409, blocked.content)
         self.assertEqual(blocked.json()["error"]["code"], "BUSINESS_CONFLICT")
         self.assertIn("已完成夜审关账", blocked.json()["error"]["message"])
         self.assertFalse(Stay.objects.filter(reservation_room=line).exists())
-        self.assertEqual(
-            Reservation.objects.get(booking_no=booking_no).status, Reservation.Status.CONFIRMED
-        )
+        self.assertEqual(Reservation.objects.get(
+            booking_no=booking_no).status, Reservation.Status.CONFIRMED)
         bd.refresh_from_db()
         self.assertEqual(bd.status, BusinessDate.Status.CLOSED)
 
@@ -1265,8 +1152,7 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
 
     def _inventory_row(self, day):
         return RoomTypeInventory.objects.get(
-            property=self.property, room_type=self.room_type, stay_date=day
-        )
+            property=self.property, room_type=self.room_type, stay_date=day)
 
     # ------------------------------------------------------------------
     # 1) 已入住订单自助取消 → 409 状态冲突，库存与订单状态零变更
@@ -1274,24 +1160,23 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
     def test_cancel_checked_in_reservation_conflicts(self):
         booking_no, token, _, _ = self._booking_checked_in()
         self.client.logout()
-        self.assertEqual(
-            Reservation.objects.get(booking_no=booking_no).status, Reservation.Status.CHECKED_IN
-        )
+        self.assertEqual(Reservation.objects.get(
+            booking_no=booking_no).status, Reservation.Status.CHECKED_IN)
 
-        response = self._post_json(f"/api/v1/reservations/{booking_no}/cancel", {"token": token})
+        response = self._post_json(
+            f"/api/v1/reservations/{booking_no}/cancel", {"token": token})
         self.assertEqual(response.status_code, 409, response.content)
 
         reservation = Reservation.objects.get(booking_no=booking_no)
         self.assertEqual(reservation.status, Reservation.Status.CHECKED_IN)
-        self.assertTrue(self._audit_exists("guest.booking_cancelled", entity_id=booking_no[:32]))
+        self.assertTrue(self._audit_exists(
+            "guest.booking_cancelled", entity_id=booking_no[:32]))
         # 库存不变（模拟支付已将 hold 转为 sold；取消冲突不得释放或回退）
         self.assertEqual(self._inventory_row(self.today).held, 0)
         self.assertEqual(self._inventory_row(self.today).sold, 1)
-        self.assertTrue(
-            Stay.objects.filter(
-                reservation_room=self._line(booking_no), status=Stay.Status.IN_HOUSE
-            ).exists()
-        )
+        self.assertTrue(Stay.objects.filter(
+            reservation_room=self._line(booking_no),
+            status=Stay.Status.IN_HOUSE).exists())
 
     # ------------------------------------------------------------------
     # 2) No-Show：已到店未入住明细 → 成功 + 库存释放 + 整单 NO_SHOW
@@ -1307,8 +1192,7 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
         self.client.force_login(self.dm)
         response = self._post_json(
             f"/api/v1/front-desk/reservation-rooms/{line.pk}/no-show",
-            {"reason": "客人电话确认不再到店"},
-        )
+            {"reason": "客人电话确认不再到店"})
         self.assertEqual(response.status_code, 201, response.content)
         self.assertTrue(response.json()["created"])
         self.assertEqual(response.json()["data"]["released_nights"], 2)
@@ -1321,17 +1205,14 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(self._inventory_row(self.today + timedelta(days=1)).sold, 0)
         reservation = Reservation.objects.get(booking_no=booking_no)
         self.assertEqual(reservation.status, Reservation.Status.NO_SHOW)
-        self.assertTrue(
-            self._audit_exists(
-                "frontdesk.no_show_processed", entity_id=line.pk, property_obj=self.property
-            )
-        )
+        self.assertTrue(self._audit_exists(
+            "frontdesk.no_show_processed", entity_id=line.pk,
+            property_obj=self.property))
 
         # 重复处理幂等：200 + created=false，库存不再多释放
         repeat = self._post_json(
             f"/api/v1/front-desk/reservation-rooms/{line.pk}/no-show",
-            {"reason": "客人电话确认不再到店"},
-        )
+            {"reason": "客人电话确认不再到店"})
         self.assertEqual(repeat.status_code, 200)
         self.assertFalse(repeat.json()["created"])
         self.assertEqual(self._inventory_row(self.today).sold, 0)
@@ -1346,25 +1227,22 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
         self.client.force_login(self.dm)
         pending_resp = self._post_json(
             f"/api/v1/front-desk/reservation-rooms/{pending_line.pk}/no-show",
-            {"reason": "订单尚未确认"},
-        )
+            {"reason": "订单尚未确认"})
         self.assertEqual(pending_resp.status_code, 409, pending_resp.content)
 
         # 已入住明细不能补做 No-Show
         booking_no, _, line, _ = self._booking_checked_in()
         self.client.force_login(self.dm)
         checked_in_resp = self._post_json(
-            f"/api/v1/front-desk/reservation-rooms/{line.pk}/no-show", {"reason": "客人已在住"}
-        )
+            f"/api/v1/front-desk/reservation-rooms/{line.pk}/no-show",
+            {"reason": "客人已在住"})
         self.assertEqual(checked_in_resp.status_code, 409, checked_in_resp.content)
 
         self.assertEqual(NoShowRecord.objects.count(), 0)
-        self.assertTrue(
-            Stay.objects.filter(reservation_room=line, status=Stay.Status.IN_HOUSE).exists()
-        )
-        self.assertEqual(
-            Reservation.objects.get(booking_no=booking_no).status, Reservation.Status.CHECKED_IN
-        )
+        self.assertTrue(Stay.objects.filter(
+            reservation_room=line, status=Stay.Status.IN_HOUSE).exists())
+        self.assertEqual(Reservation.objects.get(
+            booking_no=booking_no).status, Reservation.Status.CHECKED_IN)
         self.assertFalse(self._audit_exists("frontdesk.no_show_processed"))
 
     # ------------------------------------------------------------------
@@ -1377,11 +1255,8 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
 
         response = self._post_json(
             f"/api/v1/front-desk/stays/{stay_id}/extend",
-            {
-                "new_check_out": (self.today + timedelta(days=3)).isoformat(),
-                "reason": "客人要求多住一晚",
-            },
-        )
+            {"new_check_out": (self.today + timedelta(days=3)).isoformat(),
+             "reason": "客人要求多住一晚"})
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json()["data"]["extension_amount"], "300.00")
 
@@ -1392,19 +1267,14 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(reservation.check_out, self.today + timedelta(days=3))
         self.assertEqual(reservation.total_amount, Decimal("900.00"))
         self.assertEqual(self._inventory_row(self.today + timedelta(days=2)).sold, 1)
-        self.assertTrue(
-            self._audit_exists(
-                "frontdesk.stay_extended", entity_id=stay_id, property_obj=self.property
-            )
-        )
+        self.assertTrue(self._audit_exists(
+            "frontdesk.stay_extended", entity_id=stay_id,
+            property_obj=self.property))
 
         earlier = self._post_json(
             f"/api/v1/front-desk/stays/{stay_id}/extend",
-            {
-                "new_check_out": (self.today + timedelta(days=1)).isoformat(),
-                "reason": "试图缩短住宿",
-            },
-        )
+            {"new_check_out": (self.today + timedelta(days=1)).isoformat(),
+             "reason": "试图缩短住宿"})
         self.assertEqual(earlier.status_code, 409, earlier.content)
         line.refresh_from_db()
         self.assertEqual(line.check_out, self.today + timedelta(days=3))
@@ -1420,8 +1290,7 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
 
         response = self._post_json(
             f"/api/v1/front-desk/stays/{stay_id}/change-room",
-            {"room_id": self.room2.pk, "reason": "空调噪音投诉换房"},
-        )
+            {"room_id": self.room2.pk, "reason": "空调噪音投诉换房"})
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(response.json()["changed"])
 
@@ -1441,20 +1310,18 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(self.room2.occupancy_status, Room.OccupancyStatus.OCCUPIED)
         line.refresh_from_db()
         self.assertEqual(line.assigned_room_id, self.room2.pk)
-        self.assertTrue(
-            self._audit_exists(
-                "frontdesk.stay_room_changed", entity_id=stay_id, property_obj=self.property
-            )
-        )
+        self.assertTrue(self._audit_exists(
+            "frontdesk.stay_room_changed", entity_id=stay_id,
+            property_obj=self.property))
 
         # 同房换房：现有实现返回 200 + changed=false 且无副作用
         same = self._post_json(
             f"/api/v1/front-desk/stays/{stay_id}/change-room",
-            {"room_id": self.room2.pk, "reason": "重复提交同房请求"},
-        )
+            {"room_id": self.room2.pk, "reason": "重复提交同房请求"})
         self.assertEqual(same.status_code, 200, same.content)
         self.assertFalse(same.json()["changed"])
-        self.assertEqual(StayRoomSegment.objects.filter(stay=stay).count(), 2)
+        self.assertEqual(
+            StayRoomSegment.objects.filter(stay=stay).count(), 2)
         self.room2.refresh_from_db()
         self.assertEqual(self.room2.occupancy_status, Room.OccupancyStatus.OCCUPIED)
 
@@ -1468,11 +1335,8 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
         # Folio"意图，改为构造已住 1 晚（600）事实再退房。
         line.check_in = self.today - timedelta(days=1)
         line.nightly_rates = [
-            {
-                "date": (self.today - timedelta(days=1)).isoformat(),
-                "price": "600.00",
-                "currency": "CNY",
-            },
+            {"date": (self.today - timedelta(days=1)).isoformat(),
+             "price": "600.00", "currency": "CNY"},
         ]
         line.save(update_fields=("check_in", "nightly_rates"))
         self.client.force_login(self.fd)
@@ -1501,11 +1365,8 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
         self.assertEqual(charge.entry_type, LedgerEntry.EntryType.ROOM_CHARGE)
         self.assertEqual(charge.amount, Decimal("600.00"))
         self.assertEqual(self._folio_balance(folio), Decimal("0.00"))
-        self.assertTrue(
-            self._audit_exists(
-                "frontdesk.checked_out", entity_id=stay_id, property_obj=self.property
-            )
-        )
+        self.assertTrue(self._audit_exists(
+            "frontdesk.checked_out", entity_id=stay_id, property_obj=self.property))
 
         # 重复退房幂等
         repeat = self._post_json(f"/api/v1/front-desk/stays/{stay_id}/check-out")
@@ -1520,8 +1381,8 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
         self.client.force_login(self.fd)
         self._collect_payment(booking_no, "600.00", "e2e-pay-uc")
         self.assertEqual(
-            self._post_json(f"/api/v1/front-desk/stays/{stay_id}/check-out").status_code, 200
-        )
+            self._post_json(f"/api/v1/front-desk/stays/{stay_id}/check-out").status_code,
+            200)
 
         self.client.force_login(self.dm)
         legacy = self._post_json("/uncheckout/", {"id": stay_id})
@@ -1534,6 +1395,5 @@ class ExceptionFulfillmentE2EFlowTests(E2EFlowTestBase):
         stay = Stay.objects.get(pk=stay_id)
         self.assertEqual(stay.status, Stay.Status.CHECKED_OUT)
         self.assertEqual(self._folio(booking_no).status, Folio.Status.CLOSED)
-        self.assertEqual(
-            Reservation.objects.get(booking_no=booking_no).status, Reservation.Status.CHECKED_OUT
-        )
+        self.assertEqual(Reservation.objects.get(
+            booking_no=booking_no).status, Reservation.Status.CHECKED_OUT)

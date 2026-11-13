@@ -9,7 +9,6 @@ from django.utils import timezone
 
 from apps.inventory.services import InventoryUnavailable, confirm_inventory_for_reservation
 from apps.reservations.models import Reservation
-
 from .models import LedgerEntry, Payment, PaymentCompensationTask, PaymentIntent
 from .payment_intents import (
     confirm_intent_success,
@@ -47,14 +46,10 @@ def cancel_open_payment_intents_for_reservation(reservation):
     渠道迟到 SUCCESS 仍由回调处理为成功资金事实并进入补偿流程。
     """
     cancelled = 0
-    payments = (
-        Payment.objects.select_for_update()
-        .filter(
-            reservation=reservation,
-            status__in=(Payment.Status.CREATED, Payment.Status.PENDING),
-        )
-        .order_by("pk")
-    )
+    payments = Payment.objects.select_for_update().filter(
+        reservation=reservation,
+        status__in=(Payment.Status.CREATED, Payment.Status.PENDING),
+    ).order_by("pk")
     for payment in payments:
         payment.status = Payment.Status.CANCELLED
         payment.save(update_fields=("status", "updated_at"))
@@ -98,29 +93,23 @@ def _promote_payment_intent_on_channel_success(payment, *, signature_verified):
     """
     from apps.core.models import AuditEvent
 
-    intent = (
-        PaymentIntent.objects.filter(
-            reservation_id=payment.reservation_id,
-            folio_id=payment.folio_id,
-            amount=payment.amount,
-            currency=payment.currency,
-            provider_code=payment.provider or "mock",
-            status__in=(PaymentIntent.Status.PENDING, PaymentIntent.Status.PROCESSING),
-        )
-        .order_by("pk")
-        .first()
-    )
+    intent = PaymentIntent.objects.filter(
+        reservation_id=payment.reservation_id,
+        folio_id=payment.folio_id,
+        amount=payment.amount,
+        currency=payment.currency,
+        provider_code=payment.provider or "mock",
+        status__in=(PaymentIntent.Status.PENDING, PaymentIntent.Status.PROCESSING),
+    ).order_by("pk").first()
     if intent is None:
         return
     if not signature_verified:
         AuditEvent.record(
             action="billing.mock_callback_intent_skipped_unsigned",
-            entity_type="Payment",
-            entity_id=str(payment.pk),
+            entity_type="Payment", entity_id=str(payment.pk),
             property_obj=payment.property,
             after={"intent_id": intent.pk, "provider_ref": payment.provider_ref},
-            reason="渠道回调未验签，跳过支付意图推进（成功事实必须验签）",
-        )
+            reason="渠道回调未验签，跳过支付意图推进（成功事实必须验签）")
         return
     record_provider_event(
         property_obj=payment.property,
@@ -144,11 +133,9 @@ def _promote_payment_intent_on_channel_success(payment, *, signature_verified):
 
 def create_mock_payment_intent(reservation, idempotency_key=""):
     with transaction.atomic():
-        reservation = (
-            Reservation.objects.select_for_update()
-            .select_related("property")
-            .get(pk=reservation.pk)
-        )
+        reservation = Reservation.objects.select_for_update().select_related(
+            "property"
+        ).get(pk=reservation.pk)
         if reservation.status != Reservation.Status.PENDING:
             raise PaymentConflict("只有待支付预订可以创建支付模拟单。")
         if reservation.expires_at and reservation.expires_at <= timezone.now():
@@ -185,7 +172,8 @@ def create_mock_payment_intent(reservation, idempotency_key=""):
 
 
 @transaction.atomic
-def process_mock_payment_callback(*, provider_ref, amount, status, signature_verified=False):
+def process_mock_payment_callback(*, provider_ref, amount, status,
+                                  signature_verified=False):
     try:
         amount = Decimal(str(amount))
     except (InvalidOperation, TypeError, ValueError) as exc:
@@ -200,15 +188,14 @@ def process_mock_payment_callback(*, provider_ref, amount, status, signature_ver
     if status == "SUCCESS" and not signature_verified:
         raise PaymentConflict(
             "SUCCESS 回调必须提供验签通过的渠道事实"
-            "（signature_verified=True），拒绝未验签的支付成功。"
-        )
+            "（signature_verified=True），拒绝未验签的支付成功。")
 
     # 全局锁顺序必须为 Reservation -> Payment -> Inventory Hold。
     # 先做无锁关联读取取得 reservation_id，再锁预订，最后锁支付行并复核关联；
     # 不得先锁 Payment 再锁 Reservation，否则会与取消/过期路径形成反向死锁。
-    payment_probe = (
-        Payment.objects.filter(provider_ref=provider_ref).values("reservation_id").first()
-    )
+    payment_probe = Payment.objects.filter(
+        provider_ref=provider_ref
+    ).values("reservation_id").first()
     if payment_probe is None:
         raise PaymentConflict("支付流水不存在。")
     try:
@@ -233,7 +220,6 @@ def process_mock_payment_callback(*, provider_ref, amount, status, signature_ver
         # 幂等重放必须返回与首次处理一致的业务结果，不能把此前已进入补偿
         # 的迟到成功错误报告成“无需补偿”。
         from apps.core.models import AuditEvent
-
         compensation_required = AuditEvent.objects.filter(
             action="billing.payment_late_success_requires_reconciliation",
             entity_type="Payment",
@@ -246,15 +232,17 @@ def process_mock_payment_callback(*, provider_ref, amount, status, signature_ver
         )
         return {
             "duplicate": True,
-            "expired": bool(reservation.expires_at and reservation.expires_at <= timezone.now()),
+            "expired": bool(
+                reservation.expires_at and reservation.expires_at <= timezone.now()
+            ),
             "compensation_required": compensation_required,
             "reservation_confirmed": reservation_confirmed,
             "payment": payment,
             "reservation": reservation,
         }
     if payment.status != Payment.Status.PENDING and not (
-        status == "SUCCESS" and payment.status in (Payment.Status.FAILED, Payment.Status.CANCELLED)
-    ):
+            status == "SUCCESS" and payment.status in (
+                Payment.Status.FAILED, Payment.Status.CANCELLED)):
         raise PaymentConflict("当前支付流水状态不接受该回调结果。")
 
     if status == "FAILED":
@@ -285,8 +273,8 @@ def process_mock_payment_callback(*, provider_ref, amount, status, signature_ver
             # WB-098：在线支付回调确认是 PENDING→CONFIRMED 的正式确认路径，
             # 必须在确认事实落库的同一事务内保存提前离店政策快照，否则该
             # 渠道订单恒走 legacy NONE 分支，RatePlan 已配置的政策不生效。
-            from apps.reservations.front_desk_services import snapshot_early_departure_policy
-
+            from apps.reservations.front_desk_services import (
+                snapshot_early_departure_policy)
             snapshot_early_departure_policy(reservation)
         except InventoryUnavailable:
             if expired:
@@ -301,7 +289,6 @@ def process_mock_payment_callback(*, provider_ref, amount, status, signature_ver
 
     if compensation_required:
         from apps.core.models import AuditEvent
-
         AuditEvent.record(
             action="billing.payment_late_success_requires_reconciliation",
             entity_type="Payment",
@@ -340,7 +327,6 @@ def process_mock_payment_callback(*, provider_ref, amount, status, signature_ver
             task.save(update_fields=("last_error_code", "last_error_summary"))
 
     from apps.billing.services_v2 import BillingService
-
     BillingService.post_entry(
         property_obj=payment.property,
         folio=payment.folio,
@@ -357,7 +343,8 @@ def process_mock_payment_callback(*, provider_ref, amount, status, signature_ver
     )
     # WB-088：渠道成功事实同步推进 PaymentIntent 状态机（同一事务），
     # 保证公开入口创建的意图与 Payment/渠道交易事实不再脱节。
-    _promote_payment_intent_on_channel_success(payment, signature_verified=signature_verified)
+    _promote_payment_intent_on_channel_success(
+        payment, signature_verified=signature_verified)
     return {
         "duplicate": False,
         "expired": expired,
@@ -366,6 +353,7 @@ def process_mock_payment_callback(*, provider_ref, amount, status, signature_ver
         "payment": payment,
         "reservation": reservation,
     }
+
 
 
 @transaction.atomic
@@ -380,5 +368,4 @@ def reverse_ledger_entry(*, entry_id, reason, posted_by=None):
     raise PaymentConflict(
         "该旧冲销入口已退役：请调用 BillingService.reverse_entry()，"
         "它要求当前物业已批准的冲销审批记录、执行权限与申请/审批/执行"
-        "职责分离，并是关账日调整的唯一合法账务写入链路。"
-    )
+        "职责分离，并是关账日调整的唯一合法账务写入链路。")

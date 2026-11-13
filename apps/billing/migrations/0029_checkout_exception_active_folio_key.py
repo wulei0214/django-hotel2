@@ -15,13 +15,15 @@ ACTIVE = ("REQUESTED", "APPROVED", "RELEASED")
 def backfill(apps, schema_editor):
     Model = apps.get_model("billing", "CheckoutExceptionRelease")
     seen = set()
-    for row in Model.objects.filter(status__in=ACTIVE).order_by("pk").only("pk", "folio_id"):
+    for row in (Model.objects.filter(status__in=ACTIVE)
+                .order_by("pk").only("pk", "folio_id")):
         if row.folio_id in seen:
             # 历史脏数据：同一账单多笔在途只保留首笔的键，其余留 NULL，
             # 避免迁移因唯一键冲突失败；由人工核对处置。
             continue
         seen.add(row.folio_id)
-        Model.objects.filter(pk=row.pk).update(active_folio_key=f"cxr:folio:{row.folio_id}")
+        Model.objects.filter(pk=row.pk).update(
+            active_folio_key=f"cxr:folio:{row.folio_id}")
 
 
 def clear(apps, schema_editor):
@@ -32,21 +34,16 @@ def clear(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("billing", "0028_mysql_conditional_unique_keys"),
+        ('billing', '0028_mysql_conditional_unique_keys'),
     ]
 
     operations = [
         migrations.AddField(
-            model_name="checkoutexceptionrelease",
-            name="active_folio_key",
+            model_name='checkoutexceptionrelease',
+            name='active_folio_key',
             field=models.CharField(
-                blank=True,
-                editable=False,
-                max_length=64,
-                null=True,
-                unique=True,
-                verbose_name="在途放行唯一键",
-            ),
+                blank=True, editable=False, max_length=64, null=True,
+                unique=True, verbose_name='在途放行唯一键'),
         ),
         migrations.RunPython(backfill, clear),
     ]

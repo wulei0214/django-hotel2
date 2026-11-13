@@ -30,20 +30,18 @@ def _assert_unique_active(apps, schema_editor):
     if duplicates:
         raise RuntimeError(
             "存在同一物业同一员工的多条 ACTIVE 任职，启用数据库唯一键前"
-            f"必须先人工核对并保留唯一有效任职：{duplicates}"
-        )
+            f"必须先人工核对并保留唯一有效任职：{duplicates}")
 
 
 def backfill_active_key(apps, schema_editor):
     _assert_unique_active(apps, schema_editor)
     Membership = apps.get_model("identity", "PropertyStaffMembership")
-    rows = list(
-        Membership.objects.filter(status="ACTIVE").values("id", "property_id", "staff_profile_id")
-    )
+    rows = list(Membership.objects.filter(status="ACTIVE").values(
+        "id", "property_id", "staff_profile_id"))
     for row in rows:
         Membership.objects.filter(pk=row["id"]).update(
-            active_membership_key=(f"{row['property_id']}:{row['staff_profile_id']}")
-        )
+            active_membership_key=(
+                f"{row['property_id']}:{row['staff_profile_id']}"))
 
 
 def drop_partial_index(apps, schema_editor):
@@ -51,13 +49,15 @@ def drop_partial_index(apps, schema_editor):
     table = model._meta.db_table
     name = "uq_membership_property_staff_active"
     with schema_editor.connection.cursor() as cursor:
-        constraints = schema_editor.connection.introspection.get_constraints(cursor, table)
+        constraints = schema_editor.connection.introspection.get_constraints(
+            cursor, table)
     if name not in constraints:
         # MySQL 上该部分索引从未创建（W036），无需处理。
         return
     q = schema_editor.quote_name
     if schema_editor.connection.vendor == "mysql":
-        schema_editor.execute(f"ALTER TABLE {q(table)} DROP INDEX {q(name)}")
+        schema_editor.execute(
+            f"ALTER TABLE {q(table)} DROP INDEX {q(name)}")
     else:
         schema_editor.execute(f"DROP INDEX IF EXISTS {q(name)}")
 
@@ -73,18 +73,14 @@ class Migration(migrations.Migration):
             model_name="propertystaffmembership",
             name="active_membership_key",
             field=models.CharField(
-                blank=True,
-                editable=False,
-                max_length=64,
-                null=True,
-                unique=True,
-                verbose_name="有效任职唯一键",
-            ),
+                blank=True, editable=False, max_length=64, null=True,
+                unique=True, verbose_name="有效任职唯一键"),
         ),
         migrations.RunPython(backfill_active_key, migrations.RunPython.noop),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunPython(drop_partial_index, migrations.RunPython.noop),
+                migrations.RunPython(drop_partial_index,
+                                     migrations.RunPython.noop),
             ],
             state_operations=[
                 migrations.RemoveConstraint(

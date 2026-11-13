@@ -8,187 +8,62 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0013_notification_per_user_read_receipts"),
+        ('core', '0013_notification_per_user_read_receipts'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ("inventory", "0006_align_maintenance_manage_role_grants"),
+        ('inventory', '0006_align_maintenance_manage_role_grants'),
     ]
 
     operations = [
         migrations.CreateModel(
-            name="InventoryReconciliationRun",
+            name='InventoryReconciliationRun',
             fields=[
-                (
-                    "id",
-                    models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
-                    ),
-                ),
-                (
-                    "status",
-                    models.CharField(
-                        choices=[("COMPLETED", "已完成"), ("IN_PROGRESS", "进行中")],
-                        default="COMPLETED",
-                        max_length=16,
-                        verbose_name="状态",
-                    ),
-                ),
-                ("scan_time", models.DateTimeField(auto_now_add=True, verbose_name="扫描时间")),
-                ("scanned_dates", models.PositiveIntegerField(default=0, verbose_name="扫描天数")),
-                (
-                    "scanned_types",
-                    models.PositiveIntegerField(default=0, verbose_name="扫描房型数"),
-                ),
-                ("diff_count", models.PositiveIntegerField(default=0, verbose_name="差异数")),
-                (
-                    "checked_by",
-                    models.ForeignKey(
-                        blank=True,
-                        null=True,
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="inventory_reconciliation_runs",
-                        to=settings.AUTH_USER_MODEL,
-                        verbose_name="扫描人",
-                    ),
-                ),
-                (
-                    "property",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="inventory_reconciliation_runs",
-                        to="core.property",
-                        verbose_name="所属酒店",
-                    ),
-                ),
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('status', models.CharField(choices=[('COMPLETED', '已完成'), ('IN_PROGRESS', '进行中')], default='COMPLETED', max_length=16, verbose_name='状态')),
+                ('scan_time', models.DateTimeField(auto_now_add=True, verbose_name='扫描时间')),
+                ('scanned_dates', models.PositiveIntegerField(default=0, verbose_name='扫描天数')),
+                ('scanned_types', models.PositiveIntegerField(default=0, verbose_name='扫描房型数')),
+                ('diff_count', models.PositiveIntegerField(default=0, verbose_name='差异数')),
+                ('checked_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='inventory_reconciliation_runs', to=settings.AUTH_USER_MODEL, verbose_name='扫描人')),
+                ('property', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='inventory_reconciliation_runs', to='core.property', verbose_name='所属酒店')),
             ],
             options={
-                "verbose_name": "库存对账运行",
-                "verbose_name_plural": "库存对账运行",
-                "ordering": ("-scan_time",),
+                'verbose_name': '库存对账运行',
+                'verbose_name_plural': '库存对账运行',
+                'ordering': ('-scan_time',),
             },
         ),
         migrations.CreateModel(
-            name="InventoryDiscrepancy",
+            name='InventoryDiscrepancy',
             fields=[
-                (
-                    "id",
-                    models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
-                    ),
-                ),
-                ("stay_date", models.DateField(verbose_name="住宿日期")),
-                ("current_total", models.PositiveIntegerField(verbose_name="当前库存总数")),
-                ("recomputed_total", models.PositiveIntegerField(verbose_name="重算应有总数")),
-                ("diff", models.IntegerField(verbose_name="差额（当前-应有）")),
-                ("held_count", models.PositiveIntegerField(default=0, verbose_name="有效 Hold 数")),
-                ("sold_count", models.PositiveIntegerField(default=0, verbose_name="已确认占用数")),
-                ("oos_count", models.PositiveIntegerField(default=0, verbose_name="维修/停用数")),
-                (
-                    "status",
-                    models.CharField(
-                        choices=[
-                            ("OPEN", "待处理"),
-                            ("FIX_REQUESTED", "修复申请中"),
-                            ("FIX_APPROVED", "修复已批准"),
-                            ("FIXED", "已修复"),
-                            ("DISMISSED", "已关闭（无差异）"),
-                        ],
-                        default="OPEN",
-                        max_length=20,
-                        verbose_name="状态",
-                    ),
-                ),
-                (
-                    "fix_reason",
-                    models.CharField(
-                        blank=True, default="", max_length=500, verbose_name="修复原因"
-                    ),
-                ),
-                (
-                    "fix_evidence",
-                    models.CharField(
-                        blank=True, default="", max_length=500, verbose_name="修复证据"
-                    ),
-                ),
-                (
-                    "requested_at",
-                    models.DateTimeField(blank=True, null=True, verbose_name="申请时间"),
-                ),
-                (
-                    "approved_at",
-                    models.DateTimeField(blank=True, null=True, verbose_name="审批时间"),
-                ),
-                ("fixed_at", models.DateTimeField(blank=True, null=True, verbose_name="修复时间")),
-                (
-                    "approved_by",
-                    models.ForeignKey(
-                        blank=True,
-                        null=True,
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="approved_inventory_fixes",
-                        to=settings.AUTH_USER_MODEL,
-                        verbose_name="修复审批人",
-                    ),
-                ),
-                (
-                    "executed_by",
-                    models.ForeignKey(
-                        blank=True,
-                        null=True,
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="executed_inventory_fixes",
-                        to=settings.AUTH_USER_MODEL,
-                        verbose_name="修复执行人",
-                    ),
-                ),
-                (
-                    "property",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="inventory_discrepancies",
-                        to="core.property",
-                        verbose_name="所属酒店",
-                    ),
-                ),
-                (
-                    "requested_by",
-                    models.ForeignKey(
-                        blank=True,
-                        null=True,
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="requested_inventory_fixes",
-                        to=settings.AUTH_USER_MODEL,
-                        verbose_name="修复申请人",
-                    ),
-                ),
-                (
-                    "room_type",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="inventory_discrepancies",
-                        to="inventory.roomtype",
-                        verbose_name="房型",
-                    ),
-                ),
-                (
-                    "run",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="discrepancies",
-                        to="inventory.inventoryreconciliationrun",
-                        verbose_name="对账运行",
-                    ),
-                ),
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('stay_date', models.DateField(verbose_name='住宿日期')),
+                ('current_total', models.PositiveIntegerField(verbose_name='当前库存总数')),
+                ('recomputed_total', models.PositiveIntegerField(verbose_name='重算应有总数')),
+                ('diff', models.IntegerField(verbose_name='差额（当前-应有）')),
+                ('held_count', models.PositiveIntegerField(default=0, verbose_name='有效 Hold 数')),
+                ('sold_count', models.PositiveIntegerField(default=0, verbose_name='已确认占用数')),
+                ('oos_count', models.PositiveIntegerField(default=0, verbose_name='维修/停用数')),
+                ('status', models.CharField(choices=[('OPEN', '待处理'), ('FIX_REQUESTED', '修复申请中'), ('FIX_APPROVED', '修复已批准'), ('FIXED', '已修复'), ('DISMISSED', '已关闭（无差异）')], default='OPEN', max_length=20, verbose_name='状态')),
+                ('fix_reason', models.CharField(blank=True, default='', max_length=500, verbose_name='修复原因')),
+                ('fix_evidence', models.CharField(blank=True, default='', max_length=500, verbose_name='修复证据')),
+                ('requested_at', models.DateTimeField(blank=True, null=True, verbose_name='申请时间')),
+                ('approved_at', models.DateTimeField(blank=True, null=True, verbose_name='审批时间')),
+                ('fixed_at', models.DateTimeField(blank=True, null=True, verbose_name='修复时间')),
+                ('approved_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='approved_inventory_fixes', to=settings.AUTH_USER_MODEL, verbose_name='修复审批人')),
+                ('executed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='executed_inventory_fixes', to=settings.AUTH_USER_MODEL, verbose_name='修复执行人')),
+                ('property', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='inventory_discrepancies', to='core.property', verbose_name='所属酒店')),
+                ('requested_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='requested_inventory_fixes', to=settings.AUTH_USER_MODEL, verbose_name='修复申请人')),
+                ('room_type', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='inventory_discrepancies', to='inventory.roomtype', verbose_name='房型')),
+                ('run', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='discrepancies', to='inventory.inventoryreconciliationrun', verbose_name='对账运行')),
             ],
             options={
-                "verbose_name": "库存差异记录",
-                "verbose_name_plural": "库存差异记录",
-                "ordering": ("-stay_date",),
+                'verbose_name': '库存差异记录',
+                'verbose_name_plural': '库存差异记录',
+                'ordering': ('-stay_date',),
             },
         ),
         migrations.AddConstraint(
-            model_name="inventorydiscrepancy",
-            constraint=models.UniqueConstraint(
-                fields=("run", "room_type", "stay_date"), name="uq_inv_disc_run_type_date"
-            ),
+            model_name='inventorydiscrepancy',
+            constraint=models.UniqueConstraint(fields=('run', 'room_type', 'stay_date'), name='uq_inv_disc_run_type_date'),
         ),
     ]

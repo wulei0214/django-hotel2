@@ -11,7 +11,9 @@ def mark_shared_phones(apps, schema_editor):
         .filter(total__gt=1)
         .values_list("phone_normalized", flat=True)
     )
-    GuestPhone.objects.filter(phone_normalized__in=list(shared)).update(shared_review_required=True)
+    GuestPhone.objects.filter(phone_normalized__in=list(shared)).update(
+        shared_review_required=True
+    )
 
 
 class Migration(migrations.Migration):
@@ -21,8 +23,7 @@ class Migration(migrations.Migration):
     ]
     operations = [
         migrations.RemoveConstraint(
-            model_name="guest",
-            name="uq_guest_property_phone",
+            model_name="guest", name="uq_guest_property_phone",
         ),
         migrations.AddIndex(
             model_name="guest",
@@ -35,9 +36,7 @@ class Migration(migrations.Migration):
             model_name="guest",
             name="phone_normalized",
             field=models.CharField(
-                blank=True,
-                max_length=24,
-                null=True,
+                blank=True, max_length=24, null=True,
                 help_text="去分隔符后的标准化号码；仅用于检索与候选匹配，不代表自然人唯一身份",
                 verbose_name="标准化手机号",
             ),

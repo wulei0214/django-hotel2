@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """清洁与维修工作台 API（基线 2.0 §4.3）。
 
 围绕 Room 三维状态（占用/清洁/维修互相独立）提供工作清单、统计与两个写入口；
@@ -17,6 +18,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from apps.core.api_contract import ApiError, api_response, api_view, paginate
 from apps.identity.authorization import AuthorizationService
+from .night_audit import _body  # 与夜审中心同口径的 JSON 请求体解析
 from apps.inventory.models import Room
 from apps.inventory.services import (
     HousekeepingOperationError,
@@ -24,8 +26,6 @@ from apps.inventory.services import (
     change_maintenance_status,
     housekeeping_summary,
 )
-
-from .night_audit import _body  # 与夜审中心同口径的 JSON 请求体解析
 
 
 def _context(request, permission):
@@ -47,21 +47,17 @@ def _room_dto(room, labels=None):
         "id": room.pk,
         "number": room.number,
         "floor": room.floor or "",
-        "room_type": {
-            "id": room.room_type_id,
-            "code": room.room_type.code,
-            "name": room.room_type.name,
-        },
+        "room_type": {"id": room.room_type_id, "code": room.room_type.code,
+                      "name": room.room_type.name},
         "occupancy_status": room.occupancy_status,
-        "occupancy_label": labels["occupancy"].get(room.occupancy_status, room.occupancy_status),
+        "occupancy_label": labels["occupancy"].get(
+            room.occupancy_status, room.occupancy_status),
         "housekeeping_status": room.housekeeping_status,
         "housekeeping_label": labels["housekeeping"].get(
-            room.housekeeping_status, room.housekeeping_status
-        ),
+            room.housekeeping_status, room.housekeeping_status),
         "maintenance_status": room.maintenance_status,
         "maintenance_label": labels["maintenance"].get(
-            room.maintenance_status, room.maintenance_status
-        ),
+            room.maintenance_status, room.maintenance_status),
         "is_sellable_now": room.is_sellable_now,
         "source_system": "PMS2",
     }
@@ -69,7 +65,6 @@ def _room_dto(room, labels=None):
 
 def _room_labels():
     from apps.core import labels as L
-
     return L.room_label_maps()
 
 
@@ -82,7 +77,6 @@ def _require_room(property_obj, room_id):
 # ---------------------------------------------------------------------------
 # 读取端点
 # ---------------------------------------------------------------------------
-
 
 @require_GET
 @api_view
@@ -101,15 +95,15 @@ def housekeeping_rooms(request):
     if housekeeping:
         if housekeeping not in Room.HousekeepingStatus.values:
             raise ApiError(
-                "VALIDATION_ERROR", "housekeeping 只支持 CLEAN/DIRTY/CLEANING/INSPECTING。"
-            )
+                "VALIDATION_ERROR",
+                "housekeeping 只支持 CLEAN/DIRTY/CLEANING/INSPECTING。")
         queryset = queryset.filter(housekeeping_status=housekeeping)
     maintenance = (request.GET.get("maintenance") or "").strip()
     if maintenance:
         if maintenance not in Room.MaintenanceStatus.values:
             raise ApiError(
-                "VALIDATION_ERROR", "maintenance 只支持 NORMAL/OUT_OF_ORDER/OUT_OF_SERVICE。"
-            )
+                "VALIDATION_ERROR",
+                "maintenance 只支持 NORMAL/OUT_OF_ORDER/OUT_OF_SERVICE。")
         queryset = queryset.filter(maintenance_status=maintenance)
     occupancy = (request.GET.get("occupancy") or "").strip()
     if occupancy:
@@ -119,7 +113,9 @@ def housekeeping_rooms(request):
 
     items, pagination = paginate(queryset, request)
     labels = _room_labels()
-    return api_response(request, [_room_dto(room, labels) for room in items], pagination=pagination)
+    return api_response(
+        request, [_room_dto(room, labels) for room in items],
+        pagination=pagination)
 
 
 @require_GET
@@ -136,7 +132,6 @@ def housekeeping_summary_api(request):
 # 写入端点（领域服务唯一入口）
 # ---------------------------------------------------------------------------
 
-
 @require_POST
 @api_view
 def housekeeping_status_change(request, room_id):
@@ -151,25 +146,23 @@ def housekeeping_status_change(request, room_id):
     if not target:
         raise ApiError("VALIDATION_ERROR", "status 不能为空。")
     if target not in Room.HousekeepingStatus.values:
-        raise ApiError("VALIDATION_ERROR", "status 只支持 CLEAN/DIRTY/CLEANING/INSPECTING。")
-
-    if target == Room.HousekeepingStatus.CLEAN and not AuthorizationService.has_permission(
-        request.user, property_obj, "hotelapp.room_release_ready"
-    ):
         raise ApiError(
-            "PERMISSION_DENIED", "净房放行需要 hotelapp.room_release_ready 权限（值班经理/店长）。"
-        )
+            "VALIDATION_ERROR",
+            "status 只支持 CLEAN/DIRTY/CLEANING/INSPECTING。")
+
+    if (target == Room.HousekeepingStatus.CLEAN
+            and not AuthorizationService.has_permission(
+                request.user, property_obj, "hotelapp.room_release_ready")):
+        raise ApiError(
+            "PERMISSION_DENIED",
+            "净房放行需要 hotelapp.room_release_ready 权限（值班经理/店长）。")
 
     _require_room(property_obj, room_id)
     try:
         room, changed = change_housekeeping_status(
-            property_obj=property_obj,
-            room_id=room_id,
-            target_status=target,
-            changed_by=request.user,
-            request=request,
-            notes=body.get("notes") or "",
-        )
+            property_obj=property_obj, room_id=room_id,
+            target_status=target, changed_by=request.user, request=request,
+            notes=body.get("notes") or "")
     except HousekeepingOperationError as exc:
         raise ApiError("BUSINESS_CONFLICT", str(exc))
     data = _room_dto(room)
@@ -190,21 +183,20 @@ def housekeeping_maintenance_change(request, room_id):
     if not target:
         raise ApiError("VALIDATION_ERROR", "status 不能为空。")
     if target not in Room.MaintenanceStatus.values:
-        raise ApiError("VALIDATION_ERROR", "status 只支持 NORMAL/OUT_OF_ORDER/OUT_OF_SERVICE。")
+        raise ApiError(
+            "VALIDATION_ERROR",
+            "status 只支持 NORMAL/OUT_OF_ORDER/OUT_OF_SERVICE。")
     reason = str(body.get("reason") or "").strip()
     if not reason or len(reason) > 240:
-        raise ApiError("VALIDATION_ERROR", "维修登记必须填写 1 至 240 个字符的原因。")
+        raise ApiError(
+            "VALIDATION_ERROR", "维修登记必须填写 1 至 240 个字符的原因。")
 
     _require_room(property_obj, room_id)
     try:
         room, changed = change_maintenance_status(
-            property_obj=property_obj,
-            room_id=room_id,
-            target_status=target,
-            reason=reason,
-            changed_by=request.user,
-            request=request,
-        )
+            property_obj=property_obj, room_id=room_id,
+            target_status=target, reason=reason,
+            changed_by=request.user, request=request)
     except HousekeepingOperationError as exc:
         raise ApiError("BUSINESS_CONFLICT", str(exc))
     data = _room_dto(room)

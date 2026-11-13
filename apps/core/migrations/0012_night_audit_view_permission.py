@@ -14,7 +14,8 @@ def grant_night_audit_view(apps, schema_editor):
     ContentType = apps.get_model("contenttypes", "ContentType")
     GroupPermission = Group.permissions.through
 
-    content_type, _ = ContentType.objects.get_or_create(app_label="core", model="businessdate")
+    content_type, _ = ContentType.objects.get_or_create(
+        app_label="core", model="businessdate")
     view_permission, _ = Permission.objects.get_or_create(
         content_type=content_type,
         codename="night_audit_view",
@@ -33,7 +34,8 @@ def grant_night_audit_view(apps, schema_editor):
         permission_id=execute_permission.pk
     ).values_list("group_id", flat=True)
     for group_id in source_group_ids.iterator():
-        GroupPermission.objects.get_or_create(group_id=group_id, permission_id=view_permission.pk)
+        GroupPermission.objects.get_or_create(
+            group_id=group_id, permission_id=view_permission.pk)
 
 
 def keep_grants_on_reverse(apps, schema_editor):

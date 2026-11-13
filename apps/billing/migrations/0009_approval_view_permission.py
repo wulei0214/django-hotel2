@@ -19,10 +19,11 @@ def grant(apps, schema_editor):
     Group = apps.get_model("auth", "Group")
     Permission = apps.get_model("auth", "Permission")
     ContentType = apps.get_model("contenttypes", "ContentType")
-    ct, _ = ContentType.objects.get_or_create(app_label="billing", model="approvalrecord")
+    ct, _ = ContentType.objects.get_or_create(
+        app_label="billing", model="approvalrecord")
     perm, _ = Permission.objects.get_or_create(
-        content_type=ct, codename="approval_view", defaults={"name": "能查看高危审批记录"}
-    )
+        content_type=ct, codename="approval_view",
+        defaults={"name": "能查看高危审批记录"})
     for name in ("店长", "值班经理", "财务"):
         group = Group.objects.filter(name=name).first()
         if group:
@@ -33,9 +34,11 @@ def revoke(apps, schema_editor):
     Group = apps.get_model("auth", "Group")
     Permission = apps.get_model("auth", "Permission")
     ContentType = apps.get_model("contenttypes", "ContentType")
-    ct, _ = ContentType.objects.get_or_create(app_label="billing", model="approvalrecord")
+    ct, _ = ContentType.objects.get_or_create(
+        app_label="billing", model="approvalrecord")
     try:
-        perm = Permission.objects.get(content_type=ct, codename="approval_view")
+        perm = Permission.objects.get(
+            content_type=ct, codename="approval_view")
     except Permission.DoesNotExist:
         return
     for group in Group.objects.all():

@@ -7,7 +7,9 @@ from django.db.models import Q
 def validate_existing_shift_cash(apps, schema_editor):
     CashierShift = apps.get_model("billing", "CashierShift")
     invalid = CashierShift.objects.filter(
-        Q(opening_cash__lt=0) | Q(expected_cash__lt=0) | Q(actual_cash__lt=0)
+        Q(opening_cash__lt=0)
+        | Q(expected_cash__lt=0)
+        | Q(actual_cash__lt=0)
     )
     if invalid.exists():
         sample_ids = list(invalid.values_list("pk", flat=True)[:20])
@@ -27,21 +29,19 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="cashiershift",
             constraint=models.CheckConstraint(
-                check=Q(opening_cash__gte=0), name="ck_cashier_shift_opening_cash_nonnegative"
-            ),
+                check=Q(opening_cash__gte=0),
+                name="ck_cashier_shift_opening_cash_nonnegative"),
         ),
         migrations.AddConstraint(
             model_name="cashiershift",
             constraint=models.CheckConstraint(
                 check=Q(expected_cash__isnull=True) | Q(expected_cash__gte=0),
-                name="ck_cashier_shift_expected_cash_nonnegative",
-            ),
+                name="ck_cashier_shift_expected_cash_nonnegative"),
         ),
         migrations.AddConstraint(
             model_name="cashiershift",
             constraint=models.CheckConstraint(
                 check=Q(actual_cash__isnull=True) | Q(actual_cash__gte=0),
-                name="ck_cashier_shift_actual_cash_nonnegative",
-            ),
+                name="ck_cashier_shift_actual_cash_nonnegative"),
         ),
     ]

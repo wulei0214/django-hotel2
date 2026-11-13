@@ -10,15 +10,10 @@ def reconcile_expired_refunds(apps, schema_editor):
     Payment = apps.get_model("billing", "Payment")
 
     expired_ids = []
-    candidates = (
-        Refund.objects.filter(
-            status="PENDING",
-            legacy_workflow=False,
-            approval_record__status="EXPIRED",
-        )
-        .select_related("approval_record")
-        .order_by("pk")
-    )
+    candidates = Refund.objects.filter(
+        status="PENDING", legacy_workflow=False,
+        approval_record__status="EXPIRED",
+    ).select_related("approval_record").order_by("pk")
     for refund in candidates.iterator():
         # 只使用审批事实中真实存在的到期时间，不伪造历史处理时间。
         if refund.approval_record.approved_at is None:
@@ -31,7 +26,8 @@ def reconcile_expired_refunds(apps, schema_editor):
         expired_ids.append(refund.pk)
 
     payment_ids = list(
-        Refund.objects.filter(pk__in=expired_ids).values_list("payment_id", flat=True).distinct()
+        Refund.objects.filter(pk__in=expired_ids)
+        .values_list("payment_id", flat=True).distinct()
     )
     for payment in Payment.objects.filter(pk__in=payment_ids).order_by("pk"):
         has_pending = Refund.objects.filter(
@@ -41,12 +37,9 @@ def reconcile_expired_refunds(apps, schema_editor):
         if has_pending:
             target_status = "REFUND_PENDING"
         else:
-            refunded_total = (
-                Refund.objects.filter(payment_id=payment.pk, status="SUCCEEDED").aggregate(
-                    total=Sum("amount")
-                )["total"]
-                or 0
-            )
+            refunded_total = Refund.objects.filter(
+                payment_id=payment.pk, status="SUCCEEDED"
+            ).aggregate(total=Sum("amount"))["total"] or 0
             if refunded_total >= payment.amount:
                 target_status = "REFUNDED"
             elif refunded_total > 0:
@@ -67,9 +60,12 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveConstraint(model_name="refund", name="ck_refund_approval_facts"),
-        migrations.RemoveConstraint(model_name="refund", name="ck_refund_execution_facts"),
-        migrations.RemoveConstraint(model_name="refund", name="ck_refund_processed_at_state"),
+        migrations.RemoveConstraint(
+            model_name="refund", name="ck_refund_approval_facts"),
+        migrations.RemoveConstraint(
+            model_name="refund", name="ck_refund_execution_facts"),
+        migrations.RemoveConstraint(
+            model_name="refund", name="ck_refund_processed_at_state"),
         migrations.AlterField(
             model_name="refund",
             name="status",
@@ -86,7 +82,8 @@ class Migration(migrations.Migration):
                 verbose_name="退款状态",
             ),
         ),
-        migrations.RunPython(reconcile_expired_refunds, preserve_expired_refund_facts),
+        migrations.RunPython(
+            reconcile_expired_refunds, preserve_expired_refund_facts),
         migrations.AddConstraint(
             model_name="refund",
             constraint=models.CheckConstraint(

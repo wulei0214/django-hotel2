@@ -9,187 +9,70 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ("core", "0002_alter_property_address_alter_property_code_and_more"),
+        ('core', '0002_alter_property_address_alter_property_code_and_more'),
     ]
 
     operations = [
         migrations.CreateModel(
-            name="LegacyRecordLink",
+            name='LegacyRecordLink',
             fields=[
-                (
-                    "id",
-                    models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
-                    ),
-                ),
-                (
-                    "source_system",
-                    models.CharField(default="HOTELAPP_V1", max_length=32, verbose_name="来源系统"),
-                ),
-                (
-                    "source_model",
-                    models.CharField(
-                        help_text="Client / Vip / Room / Accommodation / Staff",
-                        max_length=64,
-                        verbose_name="来源模型",
-                    ),
-                ),
-                ("source_pk", models.CharField(max_length=64, verbose_name="来源主键")),
-                ("target_model", models.CharField(max_length=64, verbose_name="目标模型")),
-                ("target_pk", models.CharField(max_length=64, verbose_name="目标主键")),
-                (
-                    "mapping_status",
-                    models.CharField(
-                        choices=[
-                            ("UNREVIEWED", "待核验"),
-                            ("MATCH_CANDIDATE", "候选匹配"),
-                            ("LINKED", "已链接"),
-                            ("CONFLICT", "冲突待人工"),
-                            ("IGNORED", "忽略"),
-                        ],
-                        default="UNREVIEWED",
-                        max_length=20,
-                        verbose_name="映射状态",
-                    ),
-                ),
-                (
-                    "match_method",
-                    models.CharField(
-                        blank=True,
-                        help_text="人工确认 / 业务键验证 / 规则候选",
-                        max_length=32,
-                        verbose_name="匹配方式",
-                    ),
-                ),
-                (
-                    "reviewed_at",
-                    models.DateTimeField(blank=True, null=True, verbose_name="核验时间"),
-                ),
-                (
-                    "review_note",
-                    models.CharField(blank=True, max_length=240, verbose_name="核验备注"),
-                ),
-                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
-                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="更新时间")),
-                (
-                    "property",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="legacy_record_links",
-                        to="core.property",
-                        verbose_name="物业",
-                    ),
-                ),
-                (
-                    "reviewed_by",
-                    models.ForeignKey(
-                        blank=True,
-                        null=True,
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="legacy_links_reviewed",
-                        to=settings.AUTH_USER_MODEL,
-                        verbose_name="核验人",
-                    ),
-                ),
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('source_system', models.CharField(default='HOTELAPP_V1', max_length=32, verbose_name='来源系统')),
+                ('source_model', models.CharField(help_text='Client / Vip / Room / Accommodation / Staff', max_length=64, verbose_name='来源模型')),
+                ('source_pk', models.CharField(max_length=64, verbose_name='来源主键')),
+                ('target_model', models.CharField(max_length=64, verbose_name='目标模型')),
+                ('target_pk', models.CharField(max_length=64, verbose_name='目标主键')),
+                ('mapping_status', models.CharField(choices=[('UNREVIEWED', '待核验'), ('MATCH_CANDIDATE', '候选匹配'), ('LINKED', '已链接'), ('CONFLICT', '冲突待人工'), ('IGNORED', '忽略')], default='UNREVIEWED', max_length=20, verbose_name='映射状态')),
+                ('match_method', models.CharField(blank=True, help_text='人工确认 / 业务键验证 / 规则候选', max_length=32, verbose_name='匹配方式')),
+                ('reviewed_at', models.DateTimeField(blank=True, null=True, verbose_name='核验时间')),
+                ('review_note', models.CharField(blank=True, max_length=240, verbose_name='核验备注')),
+                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
+                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='更新时间')),
+                ('property', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='legacy_record_links', to='core.property', verbose_name='物业')),
+                ('reviewed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='legacy_links_reviewed', to=settings.AUTH_USER_MODEL, verbose_name='核验人')),
             ],
             options={
-                "verbose_name": "历史数据映射",
-                "verbose_name_plural": "历史数据映射",
+                'verbose_name': '历史数据映射',
+                'verbose_name_plural': '历史数据映射',
             },
         ),
         migrations.CreateModel(
-            name="AuditEvent",
+            name='AuditEvent',
             fields=[
-                (
-                    "id",
-                    models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
-                    ),
-                ),
-                (
-                    "action",
-                    models.CharField(
-                        help_text="如 guest.pii_reveal / identity.role_assign / billing.refund_approve",
-                        max_length=64,
-                        verbose_name="动作代码",
-                    ),
-                ),
-                ("entity_type", models.CharField(max_length=64, verbose_name="实体类型")),
-                ("entity_id", models.CharField(max_length=64, verbose_name="实体ID")),
-                (
-                    "before_json",
-                    models.JSONField(
-                        blank=True, help_text="敏感字段写入前脱敏", null=True, verbose_name="变更前"
-                    ),
-                ),
-                (
-                    "after_json",
-                    models.JSONField(
-                        blank=True, help_text="敏感字段写入前脱敏", null=True, verbose_name="变更后"
-                    ),
-                ),
-                ("reason", models.CharField(blank=True, max_length=240, verbose_name="原因")),
-                (
-                    "request_id",
-                    models.CharField(blank=True, max_length=64, verbose_name="请求链路ID"),
-                ),
-                ("ip", models.GenericIPAddressField(blank=True, null=True, verbose_name="来源IP")),
-                (
-                    "user_agent",
-                    models.CharField(blank=True, max_length=240, verbose_name="User-Agent"),
-                ),
-                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="时间")),
-                (
-                    "actor",
-                    models.ForeignKey(
-                        blank=True,
-                        help_text="系统操作为空",
-                        null=True,
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="audit_events",
-                        to=settings.AUTH_USER_MODEL,
-                        verbose_name="操作人",
-                    ),
-                ),
-                (
-                    "property",
-                    models.ForeignKey(
-                        blank=True,
-                        null=True,
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="audit_events",
-                        to="core.property",
-                        verbose_name="物业",
-                    ),
-                ),
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('action', models.CharField(help_text='如 guest.pii_reveal / identity.role_assign / billing.refund_approve', max_length=64, verbose_name='动作代码')),
+                ('entity_type', models.CharField(max_length=64, verbose_name='实体类型')),
+                ('entity_id', models.CharField(max_length=64, verbose_name='实体ID')),
+                ('before_json', models.JSONField(blank=True, help_text='敏感字段写入前脱敏', null=True, verbose_name='变更前')),
+                ('after_json', models.JSONField(blank=True, help_text='敏感字段写入前脱敏', null=True, verbose_name='变更后')),
+                ('reason', models.CharField(blank=True, max_length=240, verbose_name='原因')),
+                ('request_id', models.CharField(blank=True, max_length=64, verbose_name='请求链路ID')),
+                ('ip', models.GenericIPAddressField(blank=True, null=True, verbose_name='来源IP')),
+                ('user_agent', models.CharField(blank=True, max_length=240, verbose_name='User-Agent')),
+                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='时间')),
+                ('actor', models.ForeignKey(blank=True, help_text='系统操作为空', null=True, on_delete=django.db.models.deletion.PROTECT, related_name='audit_events', to=settings.AUTH_USER_MODEL, verbose_name='操作人')),
+                ('property', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='audit_events', to='core.property', verbose_name='物业')),
             ],
             options={
-                "verbose_name": "审计事件",
-                "verbose_name_plural": "审计事件",
-                "ordering": ("-created_at", "-id"),
+                'verbose_name': '审计事件',
+                'verbose_name_plural': '审计事件',
+                'ordering': ('-created_at', '-id'),
             },
         ),
         migrations.AddIndex(
-            model_name="legacyrecordlink",
-            index=models.Index(
-                fields=["source_model", "mapping_status"], name="idx_legacy_src_status"
-            ),
+            model_name='legacyrecordlink',
+            index=models.Index(fields=['source_model', 'mapping_status'], name='idx_legacy_src_status'),
         ),
         migrations.AddConstraint(
-            model_name="legacyrecordlink",
-            constraint=models.UniqueConstraint(
-                fields=("property", "source_system", "source_model", "source_pk"),
-                name="uq_legacy_link_source",
-            ),
+            model_name='legacyrecordlink',
+            constraint=models.UniqueConstraint(fields=('property', 'source_system', 'source_model', 'source_pk'), name='uq_legacy_link_source'),
         ),
         migrations.AddIndex(
-            model_name="auditevent",
-            index=models.Index(
-                fields=["entity_type", "entity_id", "-created_at"], name="idx_audit_entity_time"
-            ),
+            model_name='auditevent',
+            index=models.Index(fields=['entity_type', 'entity_id', '-created_at'], name='idx_audit_entity_time'),
         ),
         migrations.AddIndex(
-            model_name="auditevent",
-            index=models.Index(fields=["action", "-created_at"], name="idx_audit_action_time"),
+            model_name='auditevent',
+            index=models.Index(fields=['action', '-created_at'], name='idx_audit_action_time'),
         ),
     ]

@@ -30,7 +30,6 @@ class GuestAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     def phone_masked(self, obj):
         """WB-103：Admin 只展示掩码；完整号码必须走 reveal_phone（权限+审计）。"""
         from .services import _mask, guest_phone_plain
-
         try:
             return _mask(guest_phone_plain(obj)) or "—"
         except Exception:

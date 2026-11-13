@@ -6,19 +6,13 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("reservations", "0007_early_departure_policy"),
+        ('reservations', '0007_early_departure_policy'),
     ]
 
     operations = [
         migrations.AddField(
-            model_name="reservationroom",
-            name="early_departure_snapshot",
-            field=models.JSONField(
-                blank=True,
-                default=None,
-                help_text='预订确认时写入：{policy_type, policy_value, rate_plan_id, snapshot_at}；无政策配置写 {"policy_type": "NONE"}。退房结算优先读本快照，修改 RatePlan 当前政策不影响已确认订单。',
-                null=True,
-                verbose_name="提前离店政策快照",
-            ),
+            model_name='reservationroom',
+            name='early_departure_snapshot',
+            field=models.JSONField(blank=True, default=None, help_text='预订确认时写入：{policy_type, policy_value, rate_plan_id, snapshot_at}；无政策配置写 {"policy_type": "NONE"}。退房结算优先读本快照，修改 RatePlan 当前政策不影响已确认订单。', null=True, verbose_name='提前离店政策快照'),
         ),
     ]

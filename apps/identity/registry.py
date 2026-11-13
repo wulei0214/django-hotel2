@@ -34,7 +34,6 @@
     actions/extra_codes 的完整 "app_label.codename" 为准，这才是跨 App
     注册表的价值：模块 → 多个 Django app 的权限面映射。
 """
-
 from django.contrib.auth.models import Group, Permission
 
 # ---------------------------------------------------------------------------
@@ -44,9 +43,9 @@ from django.contrib.auth.models import Group, Permission
 NOT_APPLICABLE = "not_applicable"
 
 # 模块状态
-MODULE_ACTIVE = "ACTIVE"  # 在营：路由可达、权限码有真实执行点
-MODULE_PLANNED = "PLANNED"  # 预留：对接第三方/人员到位后启用（当前隐藏）
-MODULE_RETIRED = "RETIRED"  # 退役方向：入口已 410/冻结，剩余只读面待 Phase 5 收口
+MODULE_ACTIVE = "ACTIVE"      # 在营：路由可达、权限码有真实执行点
+MODULE_PLANNED = "PLANNED"    # 预留：对接第三方/人员到位后启用（当前隐藏）
+MODULE_RETIRED = "RETIRED"    # 退役方向：入口已 410/冻结，剩余只读面待 Phase 5 收口
 
 # 角色状态
 ROLE_ACTIVE = "ACTIVE"
@@ -56,15 +55,14 @@ ROLE_PLANNED = "PLANNED"
 RISK_LEVELS = ("low", "medium", "high")
 
 # 高危/敏感专项权限点结构键（防御拼写漂移）
-_SPECIAL_KEYS = frozenset(
-    {"key", "codename", "module", "risk", "requires_reason", "requires_confirm", "note"}
-)
+_SPECIAL_KEYS = frozenset({"key", "codename", "module", "risk",
+                           "requires_reason", "requires_confirm", "note"})
 
 # 旧 module_gate 门禁键 → 注册表模块 code（hotelapp/views.py 派生开关用）
 LEGACY_MODULE_GATE_KEYS = {
-    "food": "fnb",  # 餐饮管理（菜品）
-    "order": "fnb",  # 餐饮订单（依赖菜品，同属餐饮模块）
-    "park": "parking",  # 停车场管理
+    "food": "fnb",     # 餐饮管理（菜品）
+    "order": "fnb",    # 餐饮订单（依赖菜品，同属餐饮模块）
+    "park": "parking", # 停车场管理
 }
 
 # ---------------------------------------------------------------------------
@@ -96,7 +94,7 @@ MODULE_REGISTRY_V2 = {
         },
         "extra_codes": (),
         "notes": "PMS2 前台工作台 22 条 API 全部门禁在本模块权限码上；"
-        "数据模型 apps/reservations（Reservation/Stay）。",
+                 "数据模型 apps/reservations（Reservation/Stay）。",
     },
     "guests": {
         "code": "guests",
@@ -113,12 +111,13 @@ MODULE_REGISTRY_V2 = {
             "change": "hotelapp.change_client",
             "delete": "hotelapp.delete_client",
             "approve": NOT_APPLICABLE,
-            "special": ("hotelapp.guest_document_reveal", "hotelapp.guest_phone_reveal"),
+            "special": ("hotelapp.guest_document_reveal",
+                        "hotelapp.guest_phone_reveal"),
         },
         "extra_codes": (),
         "notes": "运行时门禁用 hotelapp.*_client 码（11-permissions §3.1）；"
-        "guests 应用自身 CRUD 码 20 个为仅定义未执行（§4 设计预期），"
-        "孤儿点 guests.document_reveal 见 F-07/P-C-1，不登记为本模块权限。",
+                 "guests 应用自身 CRUD 码 20 个为仅定义未执行（§4 设计预期），"
+                 "孤儿点 guests.document_reveal 见 F-07/P-C-1，不登记为本模块权限。",
     },
     "rooms": {
         "code": "rooms",
@@ -138,22 +137,20 @@ MODULE_REGISTRY_V2 = {
             # F-08 补执行点（基线 2.0 §4.3 清洁与维修工作台）：
             # room_release_ready 重新登记（净房放行 /api/v1/housekeeping/rooms/{id}/status）
             "special": (
-                "inventory.manage_rates",
-                "hotelapp.room_release_ready",
-                "inventory.housekeeping_view",
-                "inventory.housekeeping_update",
+                "inventory.manage_rates", "hotelapp.room_release_ready",
+                "inventory.housekeeping_view", "inventory.housekeeping_update",
                 "inventory.maintenance_manage",
             ),
         },
         "extra_codes": (),
         "notes": "房态图/房型/房价日历 API 门禁 view_room；调价走 "
-        "inventory.manage_rates（F-05：OpenAPI 误标 change_room）。"
-        "§4.3 清洁与维修工作台（/manage/housekeeping/，挂本模块权限面，"
-        "不另立模块避免 view_room/change_room 双记）：读（工作清单/统计）"
-        "门禁 view_room；清洁维修工作台读取使用 housekeeping_view；"
-        "清洁链流转使用 housekeeping_update（客房服务员及管理者）；"
-        "净房放行（→CLEAN）使用 room_release_ready；维修停用/恢复使用 "
-        "maintenance_manage（值班经理/店长），不再复用未到处理权限。",
+                 "inventory.manage_rates（F-05：OpenAPI 误标 change_room）。"
+                 "§4.3 清洁与维修工作台（/manage/housekeeping/，挂本模块权限面，"
+                 "不另立模块避免 view_room/change_room 双记）：读（工作清单/统计）"
+                 "门禁 view_room；清洁维修工作台读取使用 housekeeping_view；"
+                 "清洁链流转使用 housekeeping_update（客房服务员及管理者）；"
+                 "净房放行（→CLEAN）使用 room_release_ready；维修停用/恢复使用 "
+                 "maintenance_manage（值班经理/店长），不再复用未到处理权限。",
     },
     "memberships": {
         "code": "memberships",
@@ -174,7 +171,7 @@ MODULE_REGISTRY_V2 = {
         },
         "extra_codes": (),
         "notes": "会员等级变更 API 门禁 view/add/change_vip；PMS2 数据在 "
-        "guests.GuestMembership，历史数据在 hotelapp.Vip。",
+                 "guests.GuestMembership，历史数据在 hotelapp.Vip。",
     },
     "staff": {
         "code": "staff",
@@ -191,12 +188,13 @@ MODULE_REGISTRY_V2 = {
             "change": "hotelapp.change_staff",
             "delete": "hotelapp.delete_staff",
             "approve": NOT_APPLICABLE,
-            "special": ("identity.staff_manage", "hotelapp.export_pii", "hotelapp.export_approve"),
+            "special": ("identity.staff_manage", "hotelapp.export_pii",
+                        "hotelapp.export_approve"),
         },
         "extra_codes": (),
         "notes": "员工与账号工作台（8 视图 + staff API）门禁 identity.staff_manage；"
-        "敏感薪酬导出审批走 hotelapp.export_approve（F-06：原 _has_role 硬编码已迁入权限码）"
-        "_has_role，待 Phase 2/3 迁移到权限码）。",
+                 "敏感薪酬导出审批走 hotelapp.export_approve（F-06：原 _has_role 硬编码已迁入权限码）"
+                 "_has_role，待 Phase 2/3 迁移到权限码）。",
     },
     "finance": {
         "code": "finance",
@@ -210,25 +208,20 @@ MODULE_REGISTRY_V2 = {
         "actions": {
             # 财务页入口/流水读均查 finance_access（页读同码）
             "view": "hotelapp.finance_access",
-            "add": NOT_APPLICABLE,  # 账务经服务层写入，无独立 CRUD 码
+            "add": NOT_APPLICABLE,   # 账务经服务层写入，无独立 CRUD 码
             "change": NOT_APPLICABLE,
             "delete": NOT_APPLICABLE,  # 冲账语义归 accommodation/order 的 delete 列
             "approve": "billing.refund_approve",
-            "special": (
-                "hotelapp.finance_access",
-                "billing.refund_request",
-                "billing.refund_approve",
-                "billing.refund_execute",
-                "billing.reverse_entry",
-                "billing.reversal_approve",
-                "billing.cashier_shift_manage",
-                "billing.cash_movement_manage",
-            ),
+            "special": ("hotelapp.finance_access",
+                        "billing.refund_request", "billing.refund_approve",
+                        "billing.refund_execute", "billing.reverse_entry",
+                        "billing.reversal_approve", "billing.cashier_shift_manage",
+                        "billing.cash_movement_manage"),
         },
         "extra_codes": (),
         "notes": "跨 App 模块：入口码 hotelapp.finance_access；退款三方分离；红字冲销由财务申请/执行、管理岗位审批；"
-        "billing.refund_request/refund_approve/refund_execute 三方分离（SoD），"
-        "夜审复核 core.breakglass_review 归 night_audit 模块。",
+                 "billing.refund_request/refund_approve/refund_execute 三方分离（SoD），"
+                 "夜审复核 core.breakglass_review 归 night_audit 模块。",
     },
     "night_audit": {
         "code": "night_audit",
@@ -245,18 +238,16 @@ MODULE_REGISTRY_V2 = {
             "change": NOT_APPLICABLE,
             "delete": NOT_APPLICABLE,
             "approve": "hotelapp.business_date_reopen",  # 重开营业日申请/批准
-            "special": (
-                "hotelapp.night_audit_execute",
-                "hotelapp.business_date_reopen",
-                "core.breakglass_review",
-            ),
+            "special": ("hotelapp.night_audit_execute",
+                        "hotelapp.business_date_reopen",
+                        "core.breakglass_review"),
         },
         "extra_codes": (),
         "notes": "§4.2 营业日中心 /manage/night-audit/（旧 /nightaudit/ 已 302 迁移）；"
-        "夜审 preview/run 与营业日重开/break-glass 写 API 共 7 条，"
-        "营业日/夜审历史/break-glass 只读 API 6 条（core.night_audit_view）；"
-        "夜审执行仍要求 hotelapp.night_audit_execute；break-glass 复核独立权限 "
-        "core.breakglass_review。",
+                 "夜审 preview/run 与营业日重开/break-glass 写 API 共 7 条，"
+                 "营业日/夜审历史/break-glass 只读 API 6 条（core.night_audit_view）；"
+                 "夜审执行仍要求 hotelapp.night_audit_execute；break-glass 复核独立权限 "
+                 "core.breakglass_review。",
     },
     # -- 预留模块（对接第三方，module_gate 隐藏，2 个） ------------------------
     "fnb": {
@@ -276,15 +267,11 @@ MODULE_REGISTRY_V2 = {
             "approve": NOT_APPLICABLE,
             "special": NOT_APPLICABLE,
         },
-        "extra_codes": (
-            "hotelapp.view_order",
-            "hotelapp.add_order",
-            "hotelapp.change_order",
-            "hotelapp.delete_order",
-        ),
+        "extra_codes": ("hotelapp.view_order", "hotelapp.add_order",
+                        "hotelapp.change_order", "hotelapp.delete_order"),
         "notes": "module_gate 键 food/order；菜品+订单两套旧模型权限码同属本模块；"
-        "入口隐藏但历史权限授予仍在（见 validate_registry 的 PLANNED "
-        "授权基线告警，Phase 3 矩阵迁移时回收）。",
+                 "入口隐藏但历史权限授予仍在（见 validate_registry 的 PLANNED "
+                 "授权基线告警，Phase 3 矩阵迁移时回收）。",
     },
     "parking": {
         "code": "parking",
@@ -317,7 +304,7 @@ MODULE_REGISTRY_V2 = {
         "risk_level": "low",
         "property_scoped": True,
         "actions": {
-            "view": NOT_APPLICABLE,  # 旧只读页复用各在营模块的 view_* 码
+            "view": NOT_APPLICABLE,   # 旧只读页复用各在营模块的 view_* 码
             "add": NOT_APPLICABLE,
             "change": NOT_APPLICABLE,
             "delete": NOT_APPLICABLE,
@@ -326,8 +313,8 @@ MODULE_REGISTRY_V2 = {
         },
         "extra_codes": (),
         "notes": "35 条旧写入口已 410（10-routes §E），15 条旧只读路由仍以各模块 "
-        "view_* 码放行待 Phase 5 退役；旧 /export/staff/ 通道已关。"
-        "不登记独立权限码——授权面归属各在营模块，避免双记。",
+                 "view_* 码放行待 Phase 5 退役；旧 /export/staff/ 通道已关。"
+                 "不登记独立权限码——授权面归属各在营模块，避免双记。",
     },
     # -- 平台模块（1 个） ------------------------------------------------------
     "platform": {
@@ -338,7 +325,7 @@ MODULE_REGISTRY_V2 = {
         "route_prefix": "/platform",
         "landing_url": "/platform/permissions/",
         "risk_level": "high",
-        "property_scoped": False,  # 平台域不吃物业任职链
+        "property_scoped": False,   # 平台域不吃物业任职链
         "actions": {
             "view": NOT_APPLICABLE,  # 矩阵页 superuser-only（三项不变量），无权限码
             "add": NOT_APPLICABLE,
@@ -349,8 +336,8 @@ MODULE_REGISTRY_V2 = {
         },
         "extra_codes": (),
         "notes": "/platform/permissions/ 四区矩阵页 + Django Admin（is_staff+模型权限）；"
-        "Phase 3 起矩阵读写走 permission_center JSON API，授权面由本注册表派生"
-        "（旧 41 点白名单已移除，N-1 修复）。",
+                 "Phase 3 起矩阵读写走 permission_center JSON API，授权面由本注册表派生"
+                 "（旧 41 点白名单已移除，N-1 修复）。",
     },
 }
 
@@ -360,96 +347,61 @@ MODULE_REGISTRY_V2 = {
 
 ROLE_REGISTRY = (
     {
-        "key": "front_desk",
-        "name": "前台",
-        "group_name": "前台",
-        "status": ROLE_ACTIVE,
-        "editable": True,
-        "builtin": True,
+        "key": "front_desk", "name": "前台", "group_name": "前台",
+        "status": ROLE_ACTIVE, "editable": True, "builtin": True,
         "risk_level": "medium",
         "description": "预订/入住/退房/客人档案/退款申请；持 20 项授权",
     },
     {
-        "key": "duty_manager",
-        "name": "值班经理",
-        "group_name": "值班经理",
-        "status": ROLE_ACTIVE,
-        "editable": True,
-        "builtin": True,
+        "key": "duty_manager", "name": "值班经理", "group_name": "值班经理",
+        "status": ROLE_ACTIVE, "editable": True, "builtin": True,
         "risk_level": "high",
         "description": "当日管理者：夜审执行/净房放行/未到处理/退款与冲销审批/"
-        "break-glass；持 31 项授权",
+                       "break-glass；持 31 项授权",
     },
     {
-        "key": "finance",
-        "name": "财务",
-        "group_name": "财务",
-        "status": ROLE_ACTIVE,
-        "editable": True,
-        "builtin": True,
+        "key": "finance", "name": "财务", "group_name": "财务",
+        "status": ROLE_ACTIVE, "editable": True, "builtin": True,
         "risk_level": "high",
         "description": "财务页/敏感导出申请/退款申请/冲账申请与执行权（delete 列）；"
-        "持 13 项授权",
+                       "持 13 项授权",
     },
     {
-        "key": "owner",
-        "name": "店长",
-        "group_name": "店长",
-        "status": ROLE_ACTIVE,
-        "editable": True,
-        "builtin": True,
+        "key": "owner", "name": "店长", "group_name": "店长",
+        "status": ROLE_ACTIVE, "editable": True, "builtin": True,
         "risk_level": "high",
         "description": "全模块管理者 + 员工账号管理 identity.staff_manage + "
-        "调价 inventory.manage_rates；持 39 项授权",
+                       "调价 inventory.manage_rates；持 39 项授权",
     },
     {
-        "key": "housekeeping",
-        "name": "客房服务员",
-        "group_name": "客房服务员",
-        "status": ROLE_ACTIVE,
-        "editable": True,
-        "builtin": True,
+        "key": "housekeeping", "name": "客房服务员", "group_name": "客房服务员",
+        "status": ROLE_ACTIVE, "editable": True, "builtin": True,
         "risk_level": "low",
-        "description": "清洁链流转（待清洁→清洁中→待检查）；净房放行不在内；" "持 2 项授权",
+        "description": "清洁链流转（待清洁→清洁中→待检查）；净房放行不在内；"
+                       "持 2 项授权",
     },
     {
-        "key": "night_auditor",
-        "name": "夜审员",
-        "group_name": "夜审员",
-        "status": ROLE_PLANNED,
-        "editable": True,
-        "builtin": True,
+        "key": "night_auditor", "name": "夜审员", "group_name": "夜审员",
+        "status": ROLE_PLANNED, "editable": True, "builtin": True,
         "risk_level": "high",
         "description": "预留空组（0014 决策 5）：夜审由值班经理/店长兼岗，"
-        "人员到位后在矩阵页授权",
+                       "人员到位后在矩阵页授权",
     },
     {
-        "key": "fnb_waiter",
-        "name": "餐饮服务员",
-        "group_name": "餐饮服务员",
-        "status": ROLE_PLANNED,
-        "editable": True,
-        "builtin": True,
+        "key": "fnb_waiter", "name": "餐饮服务员", "group_name": "餐饮服务员",
+        "status": ROLE_PLANNED, "editable": True, "builtin": True,
         "risk_level": "low",
         "description": "预留空组：餐饮模块（fnb）启用时随矩阵页授权",
     },
     {
-        "key": "fnb_supervisor",
-        "name": "餐饮主管",
-        "group_name": "餐饮主管",
-        "status": ROLE_PLANNED,
-        "editable": True,
-        "builtin": True,
+        "key": "fnb_supervisor", "name": "餐饮主管", "group_name": "餐饮主管",
+        "status": ROLE_PLANNED, "editable": True, "builtin": True,
         "risk_level": "medium",
         "description": "预留空组：餐饮模块启用时的管理者角色",
     },
     {
-        "key": "parking_guard",
-        "name": "停车安保",
-        "group_name": "停车安保",
-        "status": ROLE_PLANNED,
-        "editable": True,
-        "builtin": True,
+        "key": "parking_guard", "name": "停车安保", "group_name": "停车安保",
+        "status": ROLE_PLANNED, "editable": True, "builtin": True,
         "risk_level": "low",
         "description": "预留空组：停车模块（parking）启用时授权",
     },
@@ -471,82 +423,64 @@ SPECIAL_PERMISSIONS = (
     {
         "key": "guest_document_reveal",
         "codename": "hotelapp.guest_document_reveal",
-        "module": "guests",
-        "risk": "high",
-        "requires_reason": True,
-        "requires_confirm": True,
+        "module": "guests", "risk": "high",
+        "requires_reason": True, "requires_confirm": True,
         "note": "证件完整值揭示：三层复核（装饰器/服务层/API），每次落 AuditEvent",
     },
     {
         "key": "guest_phone_reveal",
         "codename": "hotelapp.guest_phone_reveal",
-        "module": "guests",
-        "risk": "high",
-        "requires_reason": True,
-        "requires_confirm": True,
+        "module": "guests", "risk": "high",
+        "requires_reason": True, "requires_confirm": True,
         "note": "电话完整值揭示：同上双权分离，原因必填并留审计",
     },
     {
         "key": "refund_request",
         "codename": "billing.refund_request",
-        "module": "finance",
-        "risk": "medium",
-        "requires_reason": True,
-        "requires_confirm": False,
+        "module": "finance", "risk": "medium",
+        "requires_reason": True, "requires_confirm": False,
         "note": "退款申请（前台/财务）；与审批权 SoD 分离",
     },
     {
         "key": "refund_approve",
         "codename": "billing.refund_approve",
-        "module": "finance",
-        "risk": "high",
-        "requires_reason": True,
-        "requires_confirm": False,
+        "module": "finance", "risk": "high",
+        "requires_reason": True, "requires_confirm": False,
         "note": "退款审批（值班经理/店长）；approval 通用门 _check_approver",
     },
     {
         "key": "refund_execute",
         "codename": "billing.refund_execute",
-        "module": "finance",
-        "risk": "high",
-        "requires_reason": True,
-        "requires_confirm": True,
+        "module": "finance", "risk": "high",
+        "requires_reason": True, "requires_confirm": True,
         "note": "已批准退款的独立执行权；执行人必须区别于申请人和审批人",
     },
     {
         "key": "reversal_request_execute",
         "codename": "billing.reverse_entry",
-        "module": "finance",
-        "risk": "high",
-        "requires_reason": True,
-        "requires_confirm": True,
+        "module": "finance", "risk": "high",
+        "requires_reason": True, "requires_confirm": True,
         "note": "财务申请并执行红字冲销；必须关联值班经理/店长已批准的审批记录",
     },
     {
         "key": "reversal_approve",
         "codename": "billing.reversal_approve",
-        "module": "finance",
-        "risk": "high",
-        "requires_reason": True,
-        "requires_confirm": False,
+        "module": "finance", "risk": "high",
+        "requires_reason": True, "requires_confirm": False,
         "note": "值班经理/店长审批红字冲销；审批人与执行人必须不同",
     },
     {
         "key": "cashier_shift_manage",
         "codename": "billing.cashier_shift_manage",
-        "module": "finance",
-        "risk": "medium",
-        "requires_reason": False,
-        "requires_confirm": True,
+        "module": "finance", "risk": "medium",
+        "requires_reason": False, "requires_confirm": True,
         "note": "前台/财务/管理岗位开立和关闭收银班次",
     },
     {
         "key": "cash_movement_manage",
         "codename": "billing.cash_movement_manage",
-        "module": "finance",
-        "risk": "high",
-        "requires_reason": True,
-        "requires_confirm": True,
+        "module": "finance", "risk": "high",
+        "requires_reason": True, "requires_confirm": True,
         "note": "班次现金补入/支出登记；金额、原因、操作人和幂等键必须留存",
     },
     # P0-04 清理（缺口登记册 F-08）：hotelapp.reverse_checkout 唯一检查点已随
@@ -557,122 +491,97 @@ SPECIAL_PERMISSIONS = (
     {
         "key": "room_release_ready",
         "codename": "hotelapp.room_release_ready",
-        "module": "rooms",
-        "risk": "high",
-        "requires_reason": False,
-        "requires_confirm": True,
+        "module": "rooms", "risk": "high",
+        "requires_reason": False, "requires_confirm": True,
         "note": "净房放行（待检查→净房，重回可售）：§4.3 清洁与维修工作台 "
-        "POST /api/v1/housekeeping/rooms/{id}/status；F-08 补执行点，"
-        "服务层+API 层双重校验（值班经理/店长）",
+                "POST /api/v1/housekeeping/rooms/{id}/status；F-08 补执行点，"
+                "服务层+API 层双重校验（值班经理/店长）",
     },
     {
         "key": "housekeeping_view",
         "codename": "inventory.housekeeping_view",
-        "module": "rooms",
-        "risk": "low",
-        "requires_reason": False,
-        "requires_confirm": False,
+        "module": "rooms", "risk": "low",
+        "requires_reason": False, "requires_confirm": False,
         "note": "清洁与维修工作台只读查看；与房型/库存主数据权限分离",
     },
     {
         "key": "housekeeping_update",
         "codename": "inventory.housekeeping_update",
-        "module": "rooms",
-        "risk": "medium",
-        "requires_reason": False,
-        "requires_confirm": True,
+        "module": "rooms", "risk": "medium",
+        "requires_reason": False, "requires_confirm": True,
         "note": "清洁链流转（脏房→清洁中→待检查/退回）；净房放行仍需 room_release_ready",
     },
     {
         "key": "maintenance_manage",
         "codename": "inventory.maintenance_manage",
-        "module": "rooms",
-        "risk": "high",
-        "requires_reason": True,
-        "requires_confirm": True,
+        "module": "rooms", "risk": "high",
+        "requires_reason": True, "requires_confirm": True,
         "note": "维修停用/停售/恢复登记；独立于未到订单处理 no_show_handle",
     },
     {
         "key": "no_show_handle",
         "codename": "hotelapp.no_show_handle",
-        "module": "accommodation",
-        "risk": "medium",
-        "requires_reason": False,
-        "requires_confirm": True,
+        "module": "accommodation", "risk": "medium",
+        "requires_reason": False, "requires_confirm": True,
         "note": "未到订单处理并释放预订库存；维修停用/恢复已独立使用 "
-        "inventory.maintenance_manage，不复用此权限",
+                "inventory.maintenance_manage，不复用此权限",
     },
     {
         "key": "finance_access",
         "codename": "hotelapp.finance_access",
-        "module": "finance",
-        "risk": "medium",
-        "requires_reason": False,
-        "requires_confirm": False,
+        "module": "finance", "risk": "medium",
+        "requires_reason": False, "requires_confirm": False,
         "note": "财务页入口/流水读（财务/值班经理/店长）",
     },
     {
         "key": "night_audit_execute",
         "codename": "hotelapp.night_audit_execute",
-        "module": "night_audit",
-        "risk": "high",
-        "requires_reason": False,
-        "requires_confirm": True,
+        "module": "night_audit", "risk": "high",
+        "requires_reason": False, "requires_confirm": True,
         "note": "营业日结：未到处理、房费过租、日结记录",
     },
     {
         "key": "business_date_reopen",
         "codename": "hotelapp.business_date_reopen",
-        "module": "night_audit",
-        "risk": "high",
-        "requires_reason": True,
-        "requires_confirm": True,
+        "module": "night_audit", "risk": "high",
+        "requires_reason": True, "requires_confirm": True,
         "note": "重开营业日申请/批准 + break-glass 申请/执行（附二次密码验证）",
     },
     {
         "key": "breakglass_review",
         "codename": "core.breakglass_review",
-        "module": "night_audit",
-        "risk": "high",
-        "requires_reason": True,
-        "requires_confirm": False,
+        "module": "night_audit", "risk": "high",
+        "requires_reason": True, "requires_confirm": False,
         "note": "break-glass 事后复核（值班经理/店长）；矩阵外点（F-09）",
     },
     {
         "key": "export_approve",
         "codename": "hotelapp.export_approve",
-        "module": "staff",
-        "risk": "high",
-        "requires_reason": True,
-        "requires_confirm": True,
+        "module": "staff", "risk": "high",
+        "requires_reason": True, "requires_confirm": True,
         "note": "敏感导出审批（F-06：原 _has_role 硬编码迁入权限码，值班经理/店长语义不变）",
     },
     {
         "key": "export_pii",
         "codename": "hotelapp.export_pii",
-        "module": "staff",
-        "risk": "high",
-        "requires_reason": True,
-        "requires_confirm": False,
+        "module": "staff", "risk": "high",
+        "requires_reason": True, "requires_confirm": False,
         "note": "敏感数据导出申请（身份证/薪酬/联系方式）；F-06：审批/下载侧仍 "
-        "_has_role 硬编码，待迁移到权限码",
+                "_has_role 硬编码，待迁移到权限码",
     },
     {
         "key": "manage_rates",
         "codename": "inventory.manage_rates",
-        "module": "rooms",
-        "risk": "medium",
-        "requires_reason": False,
-        "requires_confirm": False,
-        "note": "每日房价调整（店长）；矩阵外点（F-09）；OpenAPI 文档误标 " "change_room（F-05）",
+        "module": "rooms", "risk": "medium",
+        "requires_reason": False, "requires_confirm": False,
+        "note": "每日房价调整（店长）；矩阵外点（F-09）；OpenAPI 文档误标 "
+                "change_room（F-05）",
     },
     {
         "key": "staff_manage",
         "codename": "identity.staff_manage",
-        "module": "staff",
-        "risk": "high",
-        "requires_reason": False,
-        "requires_confirm": False,
+        "module": "staff", "risk": "high",
+        "requires_reason": False, "requires_confirm": False,
         "note": "员工与账号工作台全门禁（店长）；矩阵外点（F-09）",
     },
 )
@@ -681,7 +590,6 @@ SPECIAL_PERMISSIONS = (
 # ---------------------------------------------------------------------------
 # 派生视图与查询辅助
 # ---------------------------------------------------------------------------
-
 
 def module_gate_open(gate_key):
     """module_gate 开关语义：门禁键对应模块是否开放。
@@ -711,7 +619,8 @@ def get_special(key):
 
 def special_codenames_by_module(module_code):
     """某模块登记的专项权限码元组（供矩阵/UI 汇总展示）。"""
-    return tuple(item["codename"] for item in SPECIAL_PERMISSIONS if item["module"] == module_code)
+    return tuple(item["codename"] for item in SPECIAL_PERMISSIONS
+                 if item["module"] == module_code)
 
 
 def iter_module_permission_codes(module):
@@ -734,23 +643,21 @@ def permission_exists(code):
         app_label, codename = code.split(".", 1)
     except (AttributeError, ValueError):
         return False
-    return Permission.objects.filter(content_type__app_label=app_label, codename=codename).exists()
+    return Permission.objects.filter(
+        content_type__app_label=app_label, codename=codename).exists()
 
 
 def groups_holding(code):
     """持有某权限码的组名列表。"""
     app_label, _, codename = code.partition(".")
-    return list(
-        Group.objects.filter(
-            permissions__content_type__app_label=app_label, permissions__codename=codename
-        ).values_list("name", flat=True)
-    )
+    return list(Group.objects.filter(
+        permissions__content_type__app_label=app_label,
+        permissions__codename=codename).values_list("name", flat=True))
 
 
 # ---------------------------------------------------------------------------
 # 一致性校验
 # ---------------------------------------------------------------------------
-
 
 def validate_registry():
     """注册表 ↔ 权限数据库一致性校验，返回发现清单（不抛异常）。
@@ -781,7 +688,8 @@ def validate_registry():
     for module in MODULE_REGISTRY_V2.values():
         code = module["code"]
         if code in seen:
-            add("ERROR", "duplicate_module_code", f"模块 code 重复：{code}")
+            add("ERROR", "duplicate_module_code",
+                f"模块 code 重复：{code}")
         seen[code] = True
     role_keys, role_groups = set(), set()
     for role in ROLE_REGISTRY:
@@ -789,7 +697,8 @@ def validate_registry():
             add("ERROR", "duplicate_role_key", f"角色 key 重复：{role['key']}")
         role_keys.add(role["key"])
         if role["group_name"] in role_groups:
-            add("ERROR", "duplicate_role_group_name", f"角色 group_name 重复：{role['group_name']}")
+            add("ERROR", "duplicate_role_group_name",
+                f"角色 group_name 重复：{role['group_name']}")
         role_groups.add(role["group_name"])
     special_keys, special_codenames = set(), set()
     for item in SPECIAL_PERMISSIONS:
@@ -797,126 +706,89 @@ def validate_registry():
             add("ERROR", "duplicate_special_key", f"专项权限 key 重复：{item['key']}")
         special_keys.add(item["key"])
         if item["codename"] in special_codenames:
-            add(
-                "ERROR", "duplicate_special_codename", f"专项权限 codename 重复：{item['codename']}"
-            )
+            add("ERROR", "duplicate_special_codename",
+                f"专项权限 codename 重复：{item['codename']}")
         special_codenames.add(item["codename"])
         unknown_keys = set(item) - _SPECIAL_KEYS
         if unknown_keys:
-            add(
-                "ERROR",
-                "special_unknown_field",
-                f"专项权限 {item['key']} 含未声明字段：{sorted(unknown_keys)}",
-            )
+            add("ERROR", "special_unknown_field",
+                f"专项权限 {item['key']} 含未声明字段：{sorted(unknown_keys)}")
 
     # ---- E2/W4 模块权限码解析 ----
     # 同一模块内 actions 与 special 元组引用同一权限码是预期（如 approve 列与
     # 专项登记同码）；跨模块重复登记才构成治理歧义
-    mapped_codes = {}  # code -> module code
+    mapped_codes = {}   # code -> module code
     for module in MODULE_REGISTRY_V2.values():
         status = module.get("status")
         for code in iter_module_permission_codes(module):
             owner = mapped_codes.get(code)
             if owner is not None and owner != module["code"]:
-                add(
-                    "ERROR",
-                    "duplicate_permission_reference",
-                    f"权限码被多个模块重复登记：{code}（{owner} 与 {module['code']}）",
-                )
+                add("ERROR", "duplicate_permission_reference",
+                    f"权限码被多个模块重复登记：{code}（{owner} 与 {module['code']}）")
             mapped_codes.setdefault(code, module["code"])
             if permission_exists(code):
                 continue
             if status == MODULE_ACTIVE:
-                add(
-                    "ERROR",
-                    "unknown_permission_code",
-                    f"ACTIVE 模块 {module['code']} 引用了不存在的权限码：{code}",
-                )
+                add("ERROR", "unknown_permission_code",
+                    f"ACTIVE 模块 {module['code']} 引用了不存在的权限码：{code}")
             else:
-                add(
-                    "WARNING",
-                    "planned_code_not_yet_defined",
-                    f"{status} 模块 {module['code']} 引用的权限码尚不存在：{code}",
-                )
+                add("WARNING", "planned_code_not_yet_defined",
+                    f"{status} 模块 {module['code']} 引用的权限码尚不存在：{code}")
 
     # ---- E3/E4 专项权限 ----
     for item in SPECIAL_PERMISSIONS:
         code = item["codename"]
         if not permission_exists(code):
-            add(
-                "ERROR",
-                "unknown_special_permission",
-                f"专项权限 {item['key']}（{code}）未解析到真实 Permission",
-            )
+            add("ERROR", "unknown_special_permission",
+                f"专项权限 {item['key']}（{code}）未解析到真实 Permission")
         if item["module"] not in MODULE_REGISTRY_V2:
-            add(
-                "ERROR",
-                "special_unknown_module",
-                f"专项权限 {item['key']} 指向未登记模块：{item['module']}",
-            )
+            add("ERROR", "special_unknown_module",
+                f"专项权限 {item['key']} 指向未登记模块：{item['module']}")
         if item["risk"] not in RISK_LEVELS:
-            add("ERROR", "special_bad_risk", f"专项权限 {item['key']} 风险等级非法：{item['risk']}")
+            add("ERROR", "special_bad_risk",
+                f"专项权限 {item['key']} 风险等级非法：{item['risk']}")
         if item["module"] in MODULE_REGISTRY_V2:
             actions = MODULE_REGISTRY_V2[item["module"]]["actions"]
             special_tuple = actions.get("special")
             if not (isinstance(special_tuple, tuple) and item["codename"] in special_tuple):
-                add(
-                    "ERROR",
-                    "special_not_in_module_tuple",
+                add("ERROR", "special_not_in_module_tuple",
                     f"专项权限 {item['key']}（{code}）未列入模块 "
-                    f"{item['module']} 的 actions.special 元组",
-                )
+                    f"{item['module']} 的 actions.special 元组")
     for module in MODULE_REGISTRY_V2.values():
         special_tuple = module["actions"].get("special")
         if special_tuple == NOT_APPLICABLE:
             continue
         if not isinstance(special_tuple, tuple):
-            add(
-                "ERROR",
-                "special_tuple_type",
-                f"模块 {module['code']} 的 special 必须是权限码元组或哨兵",
-            )
+            add("ERROR", "special_tuple_type",
+                f"模块 {module['code']} 的 special 必须是权限码元组或哨兵")
             continue
         for code in special_tuple:
             item = get_special(code)
             if item is None:
-                add(
-                    "ERROR",
-                    "special_tuple_unregistered",
-                    f"模块 {module['code']} 的 special 引用了未登记专项权限：{code}",
-                )
+                add("ERROR", "special_tuple_unregistered",
+                    f"模块 {module['code']} 的 special 引用了未登记专项权限：{code}")
             elif item["module"] != module["code"]:
-                add(
-                    "ERROR",
-                    "special_tuple_module_mismatch",
+                add("ERROR", "special_tuple_module_mismatch",
                     f"模块 {module['code']} 的 special 引用了归属 "
-                    f"{item['module']} 的专项权限：{code}",
-                )
+                    f"{item['module']} 的专项权限：{code}")
 
     # ---- E5/W2/W3 角色与 Group 一一对应 ----
-    db_groups = {
-        g.name: g for g in Group.objects.filter(name__in=[r["group_name"] for r in ROLE_REGISTRY])
-    }
+    db_groups = {g.name: g for g in Group.objects.filter(
+        name__in=[r["group_name"] for r in ROLE_REGISTRY])}
     for role in ROLE_REGISTRY:
         group = db_groups.get(role["group_name"])
         if group is None:
-            add(
-                "ERROR",
-                "missing_role_group",
-                f"角色 {role['name']}（{role['group_name']}）在数据库无对应 Group",
-            )
+            add("ERROR", "missing_role_group",
+                f"角色 {role['name']}（{role['group_name']}）在数据库无对应 Group")
             continue
         if role["status"] == ROLE_PLANNED and group.permissions.exists():
-            add(
-                "WARNING",
-                "planned_role_has_permissions",
-                f"预留角色 {role['name']} 意外持有 {group.permissions.count()} 项权限",
-            )
-    extra = Group.objects.exclude(name__in=list(db_groups)).values_list("name", flat=True)
+            add("WARNING", "planned_role_has_permissions",
+                f"预留角色 {role['name']} 意外持有 {group.permissions.count()} 项权限")
+    extra = (Group.objects.exclude(name__in=list(db_groups))
+             .values_list("name", flat=True))
     for name in extra:
-        add(
-            "WARNING", "unregistered_group", f"数据库存在注册表之外的组：{name}（测试组或历史遗留）"
-        )
+        add("WARNING", "unregistered_group",
+            f"数据库存在注册表之外的组：{name}（测试组或历史遗留）")
 
     # ---- W1 PLANNED 模块授权基线 ----
     for module in MODULE_REGISTRY_V2.values():
@@ -925,29 +797,22 @@ def validate_registry():
         for code in iter_module_permission_codes(module):
             holders = groups_holding(code)
             if holders:
-                add(
-                    "WARNING",
-                    "planned_module_granted",
+                add("WARNING", "planned_module_granted",
                     f"PLANNED 模块 {module['code']} 的权限码 {code} 仍被组持有："
-                    f"{'、'.join(holders)}（历史授予基线，Phase 3 矩阵迁移时回收）",
-                )
+                    f"{'、'.join(holders)}（历史授予基线，Phase 3 矩阵迁移时回收）")
 
     # ---- I1 未映射权限点（完整性盘点，INFO 不阻塞） ----
-    mapped_codenames = {
-        (code.split(".", 1)[0], code.split(".", 1)[1]) for code in mapped_codes if "." in code
-    }
+    mapped_codenames = {(code.split(".", 1)[0], code.split(".", 1)[1])
+                        for code in mapped_codes if "." in code}
     unmapped = []
     for perm in Permission.objects.select_related("content_type"):
         pair = (perm.content_type.app_label, perm.codename)
         if pair not in mapped_codenames:
             unmapped.append(f"{pair[0]}.{pair[1]}")
     if unmapped:
-        add(
-            "INFO",
-            "unmapped_permissions",
+        add("INFO", "unmapped_permissions",
             f"{len(unmapped)} 个权限点未纳入注册表（Django 内建/PMS2 CRUD 仅定义"
-            f"未执行/孤儿点，政策见 25-rbac-registry.md）：{'、'.join(sorted(unmapped))}",
-        )
+            f"未执行/孤儿点，政策见 25-rbac-registry.md）：{'、'.join(sorted(unmapped))}")
 
     return findings
 

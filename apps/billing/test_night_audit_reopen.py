@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """营业日重开闭环审查回归（61-review-db-closure）。
 
 覆盖：
@@ -6,7 +7,6 @@
   * D-02：营业日再次关账后，旧的已批准审批不得重放驱动第二次重开；
   * 待审批申请的幂等重放契约保持不变。
 """
-
 from datetime import timedelta
 
 from django.contrib.auth.models import User
@@ -26,28 +26,22 @@ class ReopenReRequestTests(TestCase):
         self.property = Property.objects.create(code="RR", name="重开回归酒店")
         self.day = timezone.localdate() - timedelta(days=1)
         self.bd = BusinessDate.objects.create(
-            property=self.property, business_date=self.day, status=BusinessDate.Status.CLOSED
-        )
+            property=self.property, business_date=self.day,
+            status=BusinessDate.Status.CLOSED)
         self.requester = User.objects.create_user(username="rr-requester")
         self.approver = User.objects.create_user(username="rr-approver")
 
     def _request(self, reason="夜审后发现漏记房费需要补记凭证"):
         return NightAuditService.request_reopen(
-            property_obj=self.property,
-            business_date_id=self.bd.pk,
-            requested_by=self.requester,
-            reason=reason,
-        )
+            property_obj=self.property, business_date_id=self.bd.pk,
+            requested_by=self.requester, reason=reason)
 
     def test_rejected_reopen_request_can_be_resubmitted(self):
         approval, created = self._request()
         self.assertTrue(created)
         ApprovalService.reject(
-            approval.pk,
-            approved_by=self.approver,
-            property_obj=self.property,
-            reason="证据不足驳回",
-        )
+            approval.pk, approved_by=self.approver,
+            property_obj=self.property, reason="证据不足驳回")
 
         resubmitted, created2 = self._request(reason="补充证据后再次申请重开")
         self.assertTrue(created2)
@@ -56,11 +50,8 @@ class ReopenReRequestTests(TestCase):
 
         # 审批人通过夜审专用审批入口批准重开（PENDING → 本次批准）
         reopened = NightAuditService.approve_reopen(
-            property_obj=self.property,
-            business_date_id=self.bd.pk,
-            approval_id=resubmitted.pk,
-            approved_by=self.approver,
-        )
+            property_obj=self.property, business_date_id=self.bd.pk,
+            approval_id=resubmitted.pk, approved_by=self.approver)
         self.assertEqual(reopened.status, BusinessDate.Status.REOPENED)
         resubmitted.refresh_from_db()
         self.assertEqual(resubmitted.status, ApprovalRecord.Status.APPROVED)
@@ -69,11 +60,9 @@ class ReopenReRequestTests(TestCase):
     def test_expired_reopen_request_can_be_resubmitted(self):
         approval, _ = self._request()
         type(approval)._base_manager.filter(pk=approval.pk).update(
-            expires_at=timezone.now() - timedelta(minutes=1)
-        )
+            expires_at=timezone.now() - timedelta(minutes=1))
         expired = ApprovalService.approve(
-            approval.pk, approved_by=self.approver, property_obj=self.property
-        )
+            approval.pk, approved_by=self.approver, property_obj=self.property)
         self.assertEqual(expired.status, ApprovalRecord.Status.EXPIRED)
 
         resubmitted, created = self._request(reason="审批超时后重新申请重开")
@@ -91,11 +80,8 @@ class ReopenReRequestTests(TestCase):
     def test_stale_approved_reopen_approval_cannot_replay_after_reclose(self):
         approval, _ = self._request()
         NightAuditService.approve_reopen(
-            property_obj=self.property,
-            business_date_id=self.bd.pk,
-            approval_id=approval.pk,
-            approved_by=self.approver,
-        )
+            property_obj=self.property, business_date_id=self.bd.pk,
+            approval_id=approval.pk, approved_by=self.approver)
         self.bd.refresh_from_db()
         self.assertEqual(self.bd.status, BusinessDate.Status.REOPENED)
 
@@ -105,11 +91,8 @@ class ReopenReRequestTests(TestCase):
 
         with self.assertRaises(NightAuditError):
             NightAuditService.approve_reopen(
-                property_obj=self.property,
-                business_date_id=self.bd.pk,
-                approval_id=approval.pk,
-                approved_by=self.approver,
-            )
+                property_obj=self.property, business_date_id=self.bd.pk,
+                approval_id=approval.pk, approved_by=self.approver)
         self.bd.refresh_from_db()
         self.assertEqual(self.bd.status, BusinessDate.Status.CLOSED)
 
@@ -124,20 +107,16 @@ class ApprovalTerminalReRequestTests(TestCase):
 
     def _request(self, entity_id=501):
         return ApprovalService.request_approval(
-            property_obj=self.property,
-            action_code="billing.reversal",
-            entity_type="LedgerEntry",
-            entity_id=entity_id,
-            requested_by=self.requester,
-            reason="重复扣款需要红字冲销",
-        )
+            property_obj=self.property, action_code="billing.reversal",
+            entity_type="LedgerEntry", entity_id=entity_id,
+            requested_by=self.requester, reason="重复扣款需要红字冲销")
 
     def test_rejected_approval_does_not_block_new_request(self):
         first, created = self._request()
         self.assertTrue(created)
         ApprovalService.reject(
-            first.pk, approved_by=self.approver, property_obj=self.property, reason="凭证核对未通过"
-        )
+            first.pk, approved_by=self.approver,
+            property_obj=self.property, reason="凭证核对未通过")
 
         second, created2 = self._request()
         self.assertTrue(created2)
@@ -146,7 +125,8 @@ class ApprovalTerminalReRequestTests(TestCase):
 
     def test_cancelled_approval_does_not_block_new_request(self):
         first, _ = self._request(entity_id=601)
-        type(first)._base_manager.filter(pk=first.pk).update(status=ApprovalRecord.Status.CANCELLED)
+        type(first)._base_manager.filter(pk=first.pk).update(
+            status=ApprovalRecord.Status.CANCELLED)
 
         second, created = self._request(entity_id=601)
         self.assertTrue(created)

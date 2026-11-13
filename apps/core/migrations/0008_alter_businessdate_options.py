@@ -11,7 +11,9 @@ class Migration(migrations.Migration):
             options={
                 "verbose_name": "营业日",
                 "verbose_name_plural": "营业日",
-                "permissions": (("breakglass_review", "可以复核紧急营业日重开"),),
+                "permissions": (
+                    ("breakglass_review", "可以复核紧急营业日重开"),
+                ),
             },
         ),
     ]

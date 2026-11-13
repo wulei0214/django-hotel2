@@ -10,7 +10,6 @@
   * /permissions* 兼容跳转零平台会话、零写库 + 路由唯一性（§E、H.3）
   * CSRF_USE_SESSIONS 下 Admin 登录与平台 API 保存（§7、§11.5）
 """
-
 import json
 
 from django.contrib.auth import get_user_model
@@ -29,6 +28,7 @@ from apps.core.models import AuditEvent
 from .test_platform import _pms_staff_user
 
 _TEST_PW_0F916B80 = get_random_string(24)
+
 
 
 User = get_user_model()
@@ -59,24 +59,26 @@ def _morsels_by_name(response):
 def _delete_morsels(response, name):
     """响应中 name 的过期删除指令（Max-Age=0 且值为空）。"""
     return [
-        m
-        for m in _morsels_by_name(response).get(name, [])
+        m for m in _morsels_by_name(response).get(name, [])
         if str(m["max-age"]) == str(DELETE_MAX_AGE) and m.value == ""
     ]
 
 
 def _set_morsels(response, name):
     """响应中 name 的写入指令（非空值）。"""
-    return [m for m in _morsels_by_name(response).get(name, []) if m.value != ""]
+    return [
+        m for m in _morsels_by_name(response).get(name, [])
+        if m.value != ""
+    ]
 
 
 def _assert_platform_pair_set(response, message_prefix=""):
     """登录/轮换响应：两份平台 Set-Cookie 同键、Path 精确、HttpOnly（§C.1）。"""
     portal = _set_morsels(response, PORTAL_COOKIE)
     admin = _set_morsels(response, ADMIN_COOKIE)
-    assert portal and admin, message_prefix + " 响应必须同时写入两份平台 Cookie，实际 %s" % sorted(
-        _morsels_by_name(response)
-    )
+    assert portal and admin, (
+        message_prefix + " 响应必须同时写入两份平台 Cookie，实际 %s"
+        % sorted(_morsels_by_name(response)))
     portal, admin = portal[-1], admin[-1]
     assert portal.value == admin.value != "", "两份平台 Cookie 值必须相同"
     assert portal["path"] == PORTAL_PATH, portal["path"]
@@ -98,12 +100,10 @@ def _assert_platform_pair_deleted(response):
 def _assert_legacy_deleted(response, paths=None):
     """历史 admin_sessionid 的每个 Name×Path 组合均有过期删除指令（§D.1）。"""
     from django.conf import settings
-
     paths = paths if paths is not None else settings.LEGACY_PLATFORM_COOKIE_PATHS
     deletes = _delete_morsels(response, LEGACY_COOKIE)
-    assert {m["path"] for m in deletes} >= set(paths), "历史组合删除指令不完整：实际 %s" % sorted(
-        m["path"] for m in deletes
-    )
+    assert {m["path"] for m in deletes} >= set(paths), (
+        "历史组合删除指令不完整：实际 %s" % sorted(m["path"] for m in deletes))
     for morsel in deletes:
         assert morsel["max-age"] == DELETE_MAX_AGE or str(morsel["max-age"]) == "0"
         assert "1970" in morsel["expires"], morsel["expires"]
@@ -114,14 +114,14 @@ class _PlatformLoginMixin:
 
     def setUp(self):
         super().setUp()
-        self.superadmin = User.objects.create_superuser("ci_admin", password=_TEST_PW_0F916B80)
+        self.superadmin = User.objects.create_superuser(
+            "ci_admin", password=_TEST_PW_0F916B80)
 
     @staticmethod
     def _admin_login(username="ci_admin", password=_TEST_PW_0F916B80):
         client = Client()
-        response = client.post(
-            "/admin/login/", {"username": username, "password": password, "next": "/admin/"}
-        )
+        response = client.post("/admin/login/", {
+            "username": username, "password": password, "next": "/admin/"})
         assert response.status_code == 302, response.status_code
         return client, response
 
@@ -131,34 +131,32 @@ class CookieSpecClassificationTests(TestCase):
 
     def _resolve(self, path):
         from .session_middleware import resolve_session_cookie_spec
-
         return resolve_session_cookie_spec(path)
 
     def test_platform_boundary_classification(self):
         """/platform 边界匹配；/platform-foo 不算平台（§F.1）"""
-        for path in (
-            "/platform",
-            "/platform/",
-            "/platform/permissions/",
-            "/platform/system/",
-            "/platform/logout/",
-        ):
-            self.assertEqual(self._resolve(path).category, "platform-portal", path)
+        for path in ("/platform", "/platform/", "/platform/permissions/",
+                     "/platform/system/", "/platform/logout/"):
+            self.assertEqual(self._resolve(path).category, "platform-portal",
+                             path)
             self.assertEqual(self._resolve(path).name, PORTAL_COOKIE)
-        for path in ("/platform-foo", "/platform-foo/", "/platformfoo/", "/platformx/permissions/"):
+        for path in ("/platform-foo", "/platform-foo/", "/platformfoo/",
+                     "/platformx/permissions/"):
             self.assertEqual(self._resolve(path).category, "pms", path)
 
     def test_admin_boundary_classification(self):
         """/admin 边界匹配；/administrator 不算（§F.1）"""
         for path in ("/admin", "/admin/", "/admin/login/", "/admin/logout/"):
-            self.assertEqual(self._resolve(path).category, "platform-admin", path)
+            self.assertEqual(self._resolve(path).category, "platform-admin",
+                             path)
             self.assertEqual(self._resolve(path).name, ADMIN_COOKIE)
         for path in ("/administrator", "/administrator/", "/adminx/"):
             self.assertEqual(self._resolve(path).category, "pms", path)
 
     def test_legacy_permissions_classification(self):
         """/permissions* 是兼容跳转分类，cleanup_only（§E.1）"""
-        for path in ("/permissions", "/permissions/", "/permissions/save/", "/permissions/save"):
+        for path in ("/permissions", "/permissions/", "/permissions/save/",
+                     "/permissions/save"):
             spec = self._resolve(path)
             self.assertEqual(spec.category, "legacy-redirect", path)
             self.assertTrue(spec.cleanup_only, path)
@@ -166,17 +164,9 @@ class CookieSpecClassificationTests(TestCase):
 
     def test_unknown_paths_default_pms(self):
         """未知路径默认 PMS——"未知即平台"禁止（§F.1）"""
-        for path in (
-            "/",
-            "/login/",
-            "/home/",
-            "/system/",
-            "/reserve/",
-            "/api/v1/unknown/",
-            "/manage/staff/",
-            "/invite/accept/",
-            "/permissionsx/",
-        ):
+        for path in ("/", "/login/", "/home/", "/system/", "/reserve/",
+                     "/api/v1/unknown/", "/manage/staff/", "/invite/accept/",
+                     "/permissionsx/"):
             spec = self._resolve(path)
             self.assertEqual(spec.category, "pms", path)
             self.assertEqual(spec.name, "sessionid", path)
@@ -189,7 +179,6 @@ class CookieSpecClassificationTests(TestCase):
             platform_portal_cookie_spec,
             pms_session_cookie_spec,
         )
-
         portal = platform_portal_cookie_spec()
         admin = platform_admin_cookie_spec()
         legacy = legacy_platform_cookie_spec()
@@ -211,8 +200,9 @@ class CookieSpecClassificationTests(TestCase):
         self.assertTrue(legacy.cleanup_only)
         self.assertFalse(legacy.writable)
         self.assertEqual(
-            legacy.paths, ("/", "/admin/", "/platform/", "/permissions/", "/permissions/save/")
-        )
+            legacy.paths,
+            ("/", "/admin/", "/platform/", "/permissions/",
+             "/permissions/save/"))
 
         self.assertEqual(pms.name, "sessionid")
         self.assertEqual(pms.path, "/")
@@ -222,11 +212,10 @@ class CookieSpecClassificationTests(TestCase):
     def test_cookie_names_configurable_via_settings(self):
         """Cookie 名称可由 settings 覆盖（规格表随设置派生）"""
         with override_settings(
-            PLATFORM_PORTAL_COOKIE_NAME="portal_x",
-            ADMIN_SESSION_COOKIE_NAME="admin_x",
-            LEGACY_PLATFORM_COOKIE_NAME="old_x",
-            LEGACY_PLATFORM_COOKIE_PATHS=["/", "/old-admin/"],
-        ):
+                PLATFORM_PORTAL_COOKIE_NAME="portal_x",
+                ADMIN_SESSION_COOKIE_NAME="admin_x",
+                LEGACY_PLATFORM_COOKIE_NAME="old_x",
+                LEGACY_PLATFORM_COOKIE_PATHS=["/", "/old-admin/"]):
             portal = self._resolve("/platform/")
             admin = self._resolve("/admin/")
             legacy = self._resolve("/permissions/")
@@ -297,9 +286,8 @@ class LoginAndSessionConsistencyTests(_PlatformLoginMixin, TestCase):
         """PMS 登录响应不写平台 Cookie，也不发 legacy 清理（PMS 域行为不变）"""
         staff = _pms_staff_user("ci_staff2", full_name="隔离测试员工2")
         client = Client()
-        response = client.post(
-            "/login/", {"username": staff.username, "password": "ci_staff2-pass123"}
-        )
+        response = client.post("/login/", {
+            "username": staff.username, "password": "ci_staff2-pass123"})
         self.assertEqual(response.status_code, 302)
         names = {m.key for m in response.cookies.values()}
         self.assertIn("sessionid", names)
@@ -429,20 +417,13 @@ class LogoutTests(_PlatformLoginMixin, TestCase):
         user.is_superuser = True
         user.save(update_fields=["is_staff", "is_superuser"])
         client = Client()
-        self.assertEqual(
-            client.post(
-                "/login/", {"username": "ci_both", "password": "ci_both-pass123"}
-            ).status_code,
-            302,
-        )
+        self.assertEqual(client.post("/login/", {
+            "username": "ci_both", "password": "ci_both-pass123"}).status_code,
+            302)
         pms_key = client.cookies["sessionid"].value
-        self.assertEqual(
-            client.post(
-                "/admin/login/",
-                {"username": "ci_both", "password": "ci_both-pass123", "next": "/admin/"},
-            ).status_code,
-            302,
-        )
+        self.assertEqual(client.post("/admin/login/", {
+            "username": "ci_both", "password": "ci_both-pass123",
+            "next": "/admin/"}).status_code, 302)
         platform_key = client.cookies[PORTAL_COOKIE].value
 
         # PMS 登出（GET /logout/，PMS 域）
@@ -455,7 +436,8 @@ class LogoutTests(_PlatformLoginMixin, TestCase):
         # 平台 Cookie 值未被触碰；平台入口仍然有效
         self.assertEqual(client.cookies[PORTAL_COOKIE].value, platform_key)
         self.assertEqual(client.get("/platform/").status_code, 200)
-        self.assertEqual(client.get("/home/").status_code, 302, "PMS 会话已失效")
+        self.assertEqual(client.get("/home/").status_code, 302,
+                         "PMS 会话已失效")
 
     def test_platform_logout_does_not_touch_pms_cookie(self):
         """平台登出只失效平台会话，PMS 会话保持登录（§5.4）"""
@@ -464,20 +446,13 @@ class LogoutTests(_PlatformLoginMixin, TestCase):
         user.is_superuser = True
         user.save(update_fields=["is_staff", "is_superuser"])
         client = Client()
-        self.assertEqual(
-            client.post(
-                "/login/", {"username": "ci_both2", "password": "ci_both2-pass123"}
-            ).status_code,
-            302,
-        )
+        self.assertEqual(client.post("/login/", {
+            "username": "ci_both2", "password": "ci_both2-pass123"}).status_code,
+            302)
         pms_key = client.cookies["sessionid"].value
-        self.assertEqual(
-            client.post(
-                "/admin/login/",
-                {"username": "ci_both2", "password": "ci_both2-pass123", "next": "/admin/"},
-            ).status_code,
-            302,
-        )
+        self.assertEqual(client.post("/admin/login/", {
+            "username": "ci_both2", "password": "ci_both2-pass123",
+            "next": "/admin/"}).status_code, 302)
 
         response = client.post("/platform/logout/")
         self.assertEqual(response.status_code, 302)
@@ -506,11 +481,10 @@ class LegacyMigrationTests(_PlatformLoginMixin, TestCase):
     def test_legacy_paths_cover_known_history(self):
         """历史组合清单至少覆盖 §D.1 已知 Path"""
         from django.conf import settings
-
         self.assertEqual(
             set(settings.LEGACY_PLATFORM_COOKIE_PATHS),
-            {"/", "/admin/", "/platform/", "/permissions/", "/permissions/save/"},
-        )
+            {"/", "/admin/", "/platform/", "/permissions/",
+             "/permissions/save/"})
 
     def test_legacy_redirect_carries_no_platform_cookie_ops(self):
         """/permissions/ 兼容跳转：不读平台会话、不写不删平台 Cookie（§E）"""
@@ -535,15 +509,15 @@ class PermissionsRouteTests(_PlatformLoginMixin, TestCase):
         无权限变更审计（H.3 防回归）"""
         group = Group.objects.get(name="前台")
         before = set(group.permissions.values_list("codename", flat=True))
-        response = Client().post(
-            "/permissions/save/", {"role": str(group.id), "perm": ["view_room", "delete_room"]}
-        )
+        response = Client().post("/permissions/save/", {
+            "role": str(group.id), "perm": ["view_room", "delete_room"]})
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/platform/permissions/save/")
         group.refresh_from_db()
         after = set(group.permissions.values_list("codename", flat=True))
         self.assertEqual(before, after, "旧入口 POST 不得变更角色权限")
-        self.assertFalse(AuditEvent.objects.filter(action="permissions.matrix_saved").exists())
+        self.assertFalse(AuditEvent.objects.filter(
+            action="permissions.matrix_saved").exists())
 
     def test_permissions_routes_resolve_to_redirectview_uniquely(self):
         """resolve('/permissions/save/') 命中 RedirectView 且同名 path 仅一条
@@ -555,14 +529,16 @@ class PermissionsRouteTests(_PlatformLoginMixin, TestCase):
                 if isinstance(pattern, URLPattern):
                     routes.append(prefix + str(pattern.pattern))
                 elif isinstance(pattern, URLResolver):
-                    routes.extend(collect_routes(pattern, prefix + str(pattern.pattern)))
+                    routes.extend(
+                        collect_routes(pattern, prefix + str(pattern.pattern)))
             return routes
 
         routes = collect_routes(get_resolver(None))
         self.assertEqual(routes.count("permissions/"), 1)
         self.assertEqual(routes.count("permissions/save/"), 1)
         self.assertIs(resolve("/permissions/").func.view_class, RedirectView)
-        self.assertIs(resolve("/permissions/save/").func.view_class, RedirectView)
+        self.assertIs(resolve("/permissions/save/").func.view_class,
+                      RedirectView)
 
     def test_platform_permissions_save_gate_then_redirect(self):
         """/platform/permissions/save/（POST）经平台门禁后 302 回矩阵页，
@@ -570,34 +546,29 @@ class PermissionsRouteTests(_PlatformLoginMixin, TestCase):
         client, _ = self._admin_login()
         group = Group.objects.get(name="前台")
         before = set(group.permissions.values_list("codename", flat=True))
-        response = client.post(
-            "/platform/permissions/save/",
-            {"role": str(group.id), "perm": ["view_room", "delete_room"]},
-        )
+        response = client.post("/platform/permissions/save/", {
+            "role": str(group.id), "perm": ["view_room", "delete_room"]})
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/platform/permissions/")
         group.refresh_from_db()
-        self.assertEqual(before, set(group.permissions.values_list("codename", flat=True)))
+        self.assertEqual(
+            before, set(group.permissions.values_list("codename", flat=True)))
 
 
 class CsrfIsolationTests(_PlatformLoginMixin, TestCase):
     """CSRF_USE_SESSIONS=True 下 Admin 与平台表单（§7、§11.5）。"""
 
-    def _enforced_admin_login(self, username="ci_admin", password=_TEST_PW_0F916B80):
+    def _enforced_admin_login(self, username="ci_admin",
+                              password=_TEST_PW_0F916B80):
         """CSRF 强制开启的真实 Admin 登录：GET 取令牌 → POST 登录。"""
         client = Client(enforce_csrf_checks=True)
         page = client.get("/admin/login/")
         self.assertEqual(page.status_code, 200)
-        token = page.content.decode("utf-8").split(CSRF_MARKER, 1)[1].split('"', 1)[0]
-        response = client.post(
-            "/admin/login/",
-            {
-                "username": username,
-                "password": password,
-                "next": "/admin/",
-                "csrfmiddlewaretoken": token,
-            },
-        )
+        token = page.content.decode("utf-8").split(CSRF_MARKER, 1)[1].split(
+            '"', 1)[0]
+        response = client.post("/admin/login/", {
+            "username": username, "password": password,
+            "next": "/admin/", "csrfmiddlewaretoken": token})
         self.assertEqual(response.status_code, 302, response.content)
         return client, response
 
@@ -614,8 +585,10 @@ class CsrfIsolationTests(_PlatformLoginMixin, TestCase):
         client, _ = self._enforced_admin_login()
         page = client.get("/platform/")
         self.assertEqual(page.status_code, 200)
-        token = page.content.decode("utf-8").split(CSRF_MARKER, 1)[1].split('"', 1)[0]
-        response = client.post("/platform/logout/", {"csrfmiddlewaretoken": token})
+        token = page.content.decode("utf-8").split(CSRF_MARKER, 1)[1].split(
+            '"', 1)[0]
+        response = client.post("/platform/logout/",
+                               {"csrfmiddlewaretoken": token})
         self.assertEqual(response.status_code, 302)
         _assert_platform_pair_deleted(response)
 
@@ -628,19 +601,16 @@ class CsrfIsolationTests(_PlatformLoginMixin, TestCase):
         self.assertEqual(read.status_code, 200)
         payload = read.json()
         page = client.get("/platform/permissions/")
-        token = page.content.decode("utf-8").split(CSRF_MARKER, 1)[1].split('"', 1)[0]
+        token = page.content.decode("utf-8").split(CSRF_MARKER, 1)[1].split(
+            '"', 1)[0]
         save = client.post(
             f"/platform/api/permissions/{group.id}/save/",
-            data=json.dumps(
-                {
-                    "permissions": payload["permissions"],
-                    "version": payload["version"],
-                    "reason": "Cookie 隔离专项 CSRF 验证",
-                }
-            ),
-            content_type="application/json",
-            HTTP_X_CSRFTOKEN=token,
-        )
+            data=json.dumps({
+                "permissions": payload["permissions"],
+                "version": payload["version"],
+                "reason": "Cookie 隔离专项 CSRF 验证",
+            }),
+            content_type="application/json", HTTP_X_CSRFTOKEN=token)
         self.assertEqual(save.status_code, 200)
         self.assertTrue(save.json()["saved"])
 
@@ -652,15 +622,12 @@ class CsrfIsolationTests(_PlatformLoginMixin, TestCase):
         payload = read.json()
         response = client.post(
             f"/platform/api/permissions/{group.id}/save/",
-            data=json.dumps(
-                {
-                    "permissions": payload["permissions"],
-                    "version": payload["version"],
-                    "reason": "无令牌请求",
-                }
-            ),
-            content_type="application/json",
-        )
+            data=json.dumps({
+                "permissions": payload["permissions"],
+                "version": payload["version"],
+                "reason": "无令牌请求",
+            }),
+            content_type="application/json")
         self.assertEqual(response.status_code, 403)
 
 
@@ -671,13 +638,13 @@ class PmsBehaviorNoRegressionTests(TestCase):
         staff = _pms_staff_user("ci_pms", full_name="回归员工")
         client = Client()
         # 登录
-        response = client.post("/login/", {"username": "ci_pms", "password": "ci_pms-pass123"})
+        response = client.post("/login/", {
+            "username": "ci_pms", "password": "ci_pms-pass123"})
         self.assertEqual(response.status_code, 302)
         self.assertTrue(client.cookies["sessionid"].value)
         # /system/ 自助改密
-        response = client.post(
-            "/system/", {"new_password1": "brand-new-pms-9", "new_password2": "brand-new-pms-9"}
-        )
+        response = client.post("/system/", {
+            "new_password1": "brand-new-pms-9", "new_password2": "brand-new-pms-9"})
         self.assertEqual(response.status_code, 302)
         staff.refresh_from_db()
         self.assertTrue(staff.check_password("brand-new-pms-9"))
@@ -705,7 +672,6 @@ class SettingsDefaultsSanityTests(TestCase):
 
     def test_settings_match_target_defaults(self):
         from django.conf import settings
-
         self.assertEqual(settings.PLATFORM_PORTAL_COOKIE_NAME, PORTAL_COOKIE)
         self.assertEqual(settings.ADMIN_SESSION_COOKIE_NAME, ADMIN_COOKIE)
         self.assertEqual(settings.LEGACY_PLATFORM_COOKIE_NAME, LEGACY_COOKIE)

@@ -12,7 +12,6 @@
   * 审计：invitation_created/resent/revoked/accepted + account_provision，
     明文 token / 摘要不落任何审计字段。
 """
-
 import hashlib
 from datetime import timedelta
 from io import StringIO
@@ -42,6 +41,7 @@ from .test_staff_center import _make_target_employee, _make_user
 _TEST_PW_412432D8 = get_random_string(24)
 
 
+
 STRONG_PASSWORD = "Str0ng-Pass-2026!"
 
 
@@ -49,8 +49,8 @@ def _past_expiry(invitation, hours=1):
     """模拟邀请过期：同时移动 created_at/expires_at（满足有效期约束）。"""
     now = timezone.now()
     Invitation.objects.filter(pk=invitation.pk).update(
-        created_at=now - timedelta(hours=hours + 1), expires_at=now - timedelta(hours=hours)
-    )
+        created_at=now - timedelta(hours=hours + 1),
+        expires_at=now - timedelta(hours=hours))
 
 
 class InvitationServiceTestBase(TestCase):
@@ -59,12 +59,13 @@ class InvitationServiceTestBase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.owner = _make_user("iv_owner")
-        cls.profile, cls.membership, _ = _make_target_employee("IV-9001", with_account=False)
+        cls.profile, cls.membership, _ = _make_target_employee(
+            "IV-9001", with_account=False)
 
     def _invite(self, username="iv_target_user", profile=None, membership=None):
         return EmployeeInvitationService.create_invitation(
-            profile or self.profile, membership or self.membership, self.owner, username=username
-        )
+            profile or self.profile, membership or self.membership,
+            self.owner, username=username)
 
 
 class InvitationTokenSecurityTests(InvitationServiceTestBase):
@@ -87,12 +88,11 @@ class InvitationTokenSecurityTests(InvitationServiceTestBase):
         self.assertIsNotNone(inv2.last_sent_at)
         # 两条记录 token_hash 互不相同（第二次创建会撤销第一条，见生命周期测试）
         self.assertNotEqual(inv1.token_hash, inv2.token_hash)
-        self.assertTrue(Invitation.objects.filter(token_hash=inv1.token_hash).exists())
-        self.assertTrue(
-            Invitation.objects.filter(
-                token_hash=inv2.token_hash, status=Invitation.Status.PENDING
-            ).exists()
-        )
+        self.assertTrue(Invitation.objects.filter(
+            token_hash=inv1.token_hash).exists())
+        self.assertTrue(Invitation.objects.filter(
+            token_hash=inv2.token_hash,
+            status=Invitation.Status.PENDING).exists())
 
     def test_pending_account_unusable_password_cannot_login(self):
         """§5.1/§5.4：待激活账号已预开通但 unusable password，激活前不可登录。"""
@@ -105,7 +105,8 @@ class InvitationTokenSecurityTests(InvitationServiceTestBase):
         self.assertFalse(profile.must_change_password)
         self.assertIsNone(profile.last_password_change)
         # 任意密码都不能登录（unusable password 永不匹配）
-        self.assertFalse(self.client.login(username="iv_pending_user", password=STRONG_PASSWORD))
+        self.assertFalse(self.client.login(username="iv_pending_user",
+                                           password=STRONG_PASSWORD))
 
     def test_create_rejects_employee_with_active_account(self):
         """已开通可用密码账号的员工 → 拒绝邀请（走密码重置而非邀请）。"""
@@ -114,9 +115,7 @@ class InvitationTokenSecurityTests(InvitationServiceTestBase):
             EmployeeInvitationService.create_invitation(
                 profile,
                 PropertyStaffMembership.objects.get(staff_profile=profile),
-                self.owner,
-                username="iv_no_need",
-            )
+                self.owner, username="iv_no_need")
         self.assertIn("已开通登录账号", str(ctx.exception))
         self.assertFalse(Invitation.objects.filter(staff_profile=profile).exists())
 
@@ -125,8 +124,8 @@ class InvitationTokenSecurityTests(InvitationServiceTestBase):
         other_profile, _, _ = _make_target_employee("IV-9003", with_account=False)
         with self.assertRaises(InvitationError) as ctx:
             EmployeeInvitationService.create_invitation(
-                other_profile, self.membership, self.owner, username="iv_mismatch"  # 他人任职
-            )
+                other_profile, self.membership,  # 他人任职
+                self.owner, username="iv_mismatch")
         self.assertIn("不匹配", str(ctx.exception))
         self.assertFalse(Invitation.objects.exists())
 
@@ -180,30 +179,24 @@ class InvitationOneTimeConsumeTests(InvitationServiceTestBase):
         self.assertEqual(inv.status, Invitation.Status.ACCEPTED)
         self.assertIsNotNone(inv.consumed_at)
         self.assertTrue(self.profile.user.check_password(STRONG_PASSWORD))
-        self.assertFalse(self.profile.must_change_password, "§5.4：员工自设密码后不强制首登改密")
+        self.assertFalse(self.profile.must_change_password,
+                         "§5.4：员工自设密码后不强制首登改密")
         self.assertIsNotNone(self.profile.last_password_change)
         self.assertGreaterEqual(self.profile.last_password_change, before)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="identity.invitation_accepted",
-                entity_type="StaffProfile",
-                entity_id=str(self.profile.pk),
-            ).exists()
-        )
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="identity.account_provision",
-                entity_type="StaffProfile",
-                entity_id=str(self.profile.pk),
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="identity.invitation_accepted", entity_type="StaffProfile",
+            entity_id=str(self.profile.pk)).exists())
+        self.assertTrue(AuditEvent.objects.filter(
+            action="identity.account_provision", entity_type="StaffProfile",
+            entity_id=str(self.profile.pk)).exists())
 
     def test_activated_employee_can_login(self):
         """激活成功后可正常登录工作台账号。"""
         _, raw = self._invite(username="iv_login_user")
         EmployeeInvitationService.consume(raw, STRONG_PASSWORD)
         self.client.logout()
-        self.assertTrue(self.client.login(username="iv_login_user", password=STRONG_PASSWORD))
+        self.assertTrue(self.client.login(username="iv_login_user",
+                                          password=STRONG_PASSWORD))
 
     def test_repeated_consume_rejected_unified(self):
         """一次性消费：同一 token 第二次提交 → 统一文案，状态不变。"""
@@ -212,12 +205,9 @@ class InvitationOneTimeConsumeTests(InvitationServiceTestBase):
         with self.assertRaises(InvitationError) as ctx:
             EmployeeInvitationService.consume(raw, STRONG_PASSWORD)
         self.assertEqual(str(ctx.exception), UNIFIED_INVALID_MESSAGE)
-        self.assertEqual(
-            Invitation.objects.filter(
-                token_hash=token_digest(raw), status=Invitation.Status.ACCEPTED
-            ).count(),
-            1,
-        )
+        self.assertEqual(Invitation.objects.filter(
+            token_hash=token_digest(raw),
+            status=Invitation.Status.ACCEPTED).count(), 1)
 
     def test_wrong_token_unified_no_accepted_audit(self):
         """错误 token → 统一文案；不产生接受审计；不影响既有邀请。"""
@@ -227,7 +217,8 @@ class InvitationOneTimeConsumeTests(InvitationServiceTestBase):
         self.assertEqual(str(ctx.exception), UNIFIED_INVALID_MESSAGE)
         inv.refresh_from_db()
         self.assertEqual(inv.status, Invitation.Status.PENDING)
-        self.assertFalse(AuditEvent.objects.filter(action="identity.invitation_accepted").exists())
+        self.assertFalse(AuditEvent.objects.filter(
+            action="identity.invitation_accepted").exists())
 
     def test_empty_password_rejected_but_token_kept_pending(self):
         """有效 token 未提交密码 → 明确提示；邀请保持 PENDING 可重试。"""
@@ -235,20 +226,18 @@ class InvitationOneTimeConsumeTests(InvitationServiceTestBase):
         with self.assertRaises(InvitationError) as ctx:
             EmployeeInvitationService.consume(raw, "")
         self.assertIn("请设置登录密码", str(ctx.exception))
-        self.assertEqual(
-            Invitation.objects.filter(
-                token_hash=token_digest(raw), status=Invitation.Status.PENDING
-            ).count(),
-            1,
-        )
+        self.assertEqual(Invitation.objects.filter(
+            token_hash=token_digest(raw),
+            status=Invitation.Status.PENDING).count(), 1)
 
     def test_binding_token_cannot_activate_other_employee(self):
         """token 不能跨员工/任职使用：消费 A 的 token 只激活 A，B 不受影响。"""
         other_profile, _, _ = _make_target_employee("IV-9010", with_account=False)
-        other_membership = PropertyStaffMembership.objects.get(staff_profile=other_profile)
+        other_membership = PropertyStaffMembership.objects.get(
+            staff_profile=other_profile)
         inv_b, raw_b = EmployeeInvitationService.create_invitation(
-            other_profile, other_membership, self.owner, username="iv_other_user"
-        )
+            other_profile, other_membership, self.owner,
+            username="iv_other_user")
         _, raw_a = self._invite(username="iv_bind_user")
         EmployeeInvitationService.consume(raw_a, STRONG_PASSWORD)
         other_profile.refresh_from_db()
@@ -256,31 +245,24 @@ class InvitationOneTimeConsumeTests(InvitationServiceTestBase):
         self.assertFalse(other_profile.user.has_usable_password())
         self.assertFalse(other_profile.user.check_password(STRONG_PASSWORD))
         self.assertEqual(inv_b.status, Invitation.Status.PENDING)
-        self.assertFalse(
-            AuditEvent.objects.filter(
-                action="identity.invitation_accepted", entity_id=str(other_profile.pk)
-            ).exists()
-        )
+        self.assertFalse(AuditEvent.objects.filter(
+            action="identity.invitation_accepted",
+            entity_id=str(other_profile.pk)).exists())
 
     def test_conditional_update_guard_allows_single_success(self):
         """并发防线（select_for_update + 状态条件更新断言）：PENDING→ACCEPTED 只放行一次。"""
         _, raw = self._invite()
         now = timezone.now()
         with transaction.atomic():
-            self.assertEqual(
-                Invitation.objects.filter(
-                    pk=Invitation.objects.get(token_hash=token_digest(raw)).pk,
-                    status=Invitation.Status.PENDING,
-                ).update(status=Invitation.Status.ACCEPTED, consumed_at=now),
-                1,
-            )
+            self.assertEqual(Invitation.objects.filter(
+                pk=Invitation.objects.get(token_hash=token_digest(raw)).pk,
+                status=Invitation.Status.PENDING).update(
+                status=Invitation.Status.ACCEPTED, consumed_at=now), 1)
             # 并发后到者：同一行条件更新命中 0 行 → 不可能二次成功
-            self.assertEqual(
-                Invitation.objects.filter(
-                    token_hash=token_digest(raw), status=Invitation.Status.PENDING
-                ).update(status=Invitation.Status.ACCEPTED, consumed_at=now),
-                0,
-            )
+            self.assertEqual(Invitation.objects.filter(
+                token_hash=token_digest(raw),
+                status=Invitation.Status.PENDING).update(
+                status=Invitation.Status.ACCEPTED, consumed_at=now), 0)
 
     def test_loser_of_consume_race_gets_unified_error(self):
         """并发消费：抢先者落定 ACCEPTED 后，后到者 consume 得到统一失败。"""
@@ -288,8 +270,10 @@ class InvitationOneTimeConsumeTests(InvitationServiceTestBase):
         with transaction.atomic():
             # 模拟并发对手在同一行锁串行化下先行提交（同事务内先行落定）
             Invitation.objects.filter(
-                token_hash=token_digest(raw), status=Invitation.Status.PENDING
-            ).update(status=Invitation.Status.ACCEPTED, consumed_at=timezone.now())
+                token_hash=token_digest(raw),
+                status=Invitation.Status.PENDING).update(
+                status=Invitation.Status.ACCEPTED,
+                consumed_at=timezone.now())
             with self.assertRaises(InvitationError) as ctx:
                 EmployeeInvitationService.consume(raw, STRONG_PASSWORD)
         self.assertEqual(str(ctx.exception), UNIFIED_INVALID_MESSAGE)
@@ -304,10 +288,11 @@ class InvitationLifecycleTests(InvitationServiceTestBase):
         # 第二位员工：验证扫描只影响超时行（同一员工重复创建会撤销旧邀请，
         # 见 test_recreate_revokes_previous_pending）
         other_profile, _, _ = _make_target_employee("IV-9020", with_account=False)
-        other_membership = PropertyStaffMembership.objects.get(staff_profile=other_profile)
+        other_membership = PropertyStaffMembership.objects.get(
+            staff_profile=other_profile)
         inv2, _ = EmployeeInvitationService.create_invitation(
-            other_profile, other_membership, self.owner, username="iv_exp_user2"
-        )
+            other_profile, other_membership, self.owner,
+            username="iv_exp_user2")
         _past_expiry(inv1)
         self.assertEqual(EmployeeInvitationService.expire_stale(), 1)
         inv1.refresh_from_db()
@@ -348,14 +333,9 @@ class InvitationLifecycleTests(InvitationServiceTestBase):
         with self.assertRaises(InvitationError) as ctx:
             EmployeeInvitationService.consume(raw, STRONG_PASSWORD)
         self.assertEqual(str(ctx.exception), UNIFIED_INVALID_MESSAGE)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="identity.invitation_revoked",
-                entity_type="Invitation",
-                entity_id=str(inv.pk),
-                actor=self.owner,
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="identity.invitation_revoked", entity_type="Invitation",
+            entity_id=str(inv.pk), actor=self.owner).exists())
 
     def test_revoke_rejected_for_non_pending(self):
         """非 PENDING（已撤销/已接受）邀请不可再撤销。"""
@@ -372,8 +352,10 @@ class InvitationLifecycleTests(InvitationServiceTestBase):
     def test_resend_rotates_token_and_counts(self):
         """重发 = 撤销旧 token + 新 token；resend_count 链上递增 + 审计。"""
         inv1, raw1 = self._invite(username="iv_resend_user")
-        inv2, raw2 = EmployeeInvitationService.resend(inv1, resent_by=self.owner)
-        inv3, raw3 = EmployeeInvitationService.resend(inv2, resent_by=self.owner)
+        inv2, raw2 = EmployeeInvitationService.resend(
+            inv1, resent_by=self.owner)
+        inv3, raw3 = EmployeeInvitationService.resend(
+            inv2, resent_by=self.owner)
         self.assertNotIn(raw2, {raw1, raw3})
         inv1.refresh_from_db()
         inv2.refresh_from_db()
@@ -387,7 +369,8 @@ class InvitationLifecycleTests(InvitationServiceTestBase):
             with self.assertRaises(InvitationError):
                 EmployeeInvitationService.consume(stale, STRONG_PASSWORD)
         EmployeeInvitationService.consume(raw3, STRONG_PASSWORD)
-        self.assertEqual(AuditEvent.objects.filter(action="identity.invitation_resent").count(), 2)
+        self.assertEqual(AuditEvent.objects.filter(
+            action="identity.invitation_resent").count(), 2)
 
     def test_resend_from_expired_keeps_expired_archive(self):
         """对已过期邀请重发：旧邀请保持 EXPIRED 归档，新邀请 PENDING。"""
@@ -425,9 +408,8 @@ class InvitationPasswordPolicyTests(InvitationServiceTestBase):
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.user.username, "iv_weak_user")
         self.assertFalse(self.profile.user.has_usable_password())
-        self.assertEqual(
-            Invitation.objects.get(token_hash=token_digest(raw)).status, Invitation.Status.PENDING
-        )
+        self.assertEqual(Invitation.objects.get(
+            token_hash=token_digest(raw)).status, Invitation.Status.PENDING)
         # 改用强密码后同一 token 可成功激活
         EmployeeInvitationService.consume(raw, STRONG_PASSWORD)
         self.profile.refresh_from_db()
@@ -465,24 +447,15 @@ class InvitationAuditMinimizationTests(InvitationServiceTestBase):
         EmployeeInvitationService.revoke(inv2, revoked_by=self.owner)
         inv3, raw3 = EmployeeInvitationService.resend(inv2, resent_by=self.owner)
         EmployeeInvitationService.consume(raw3, STRONG_PASSWORD)
-        actions = set(
-            AuditEvent.objects.filter(action__startswith="identity.invitation").values_list(
-                "action", flat=True
-            )
-        )
-        self.assertEqual(
-            actions,
-            {
-                "identity.invitation_created",
-                "identity.invitation_resent",
-                "identity.invitation_revoked",
-                "identity.invitation_accepted",
-            },
-        )
+        actions = set(AuditEvent.objects.filter(
+            action__startswith="identity.invitation")
+            .values_list("action", flat=True))
+        self.assertEqual(actions, {
+            "identity.invitation_created", "identity.invitation_resent",
+            "identity.invitation_revoked", "identity.invitation_accepted"})
         blob = "".join(
             f"{e.after_json or ''}{e.before_json or ''}{e.reason or ''}"
-            for e in AuditEvent.objects.all()
-        )
+            for e in AuditEvent.objects.all())
         for secret in (raw1, raw2, raw3, inv1.token_hash):
             self.assertNotIn(secret, blob, "token 明文/摘要不得写入审计")
 
@@ -494,14 +467,10 @@ class InviteAcceptPageTests(InvitationServiceTestBase):
         return self.client.get(f"/invite/accept/?token={token}")
 
     def _page_post(self, token, password=STRONG_PASSWORD, confirm=None):
-        return self.client.post(
-            "/invite/accept/",
-            {
-                "token": token,
-                "password": password,
-                "password_confirm": confirm if confirm is not None else password,
-            },
-        )
+        return self.client.post("/invite/accept/", {
+            "token": token, "password": password,
+            "password_confirm": confirm if confirm is not None else password,
+        })
 
     def test_get_valid_token_renders_password_form(self):
         """有效 token：渲染设置密码表单并展示姓名/账号/有效期。"""
@@ -518,8 +487,8 @@ class InviteAcceptPageTests(InvitationServiceTestBase):
         """无效/过期/撤销/已消费 token GET → 统一文案、无表单、不泄露存在性。"""
         _, raw = self._invite(username="iv_invalid_user")
         EmployeeInvitationService.revoke(
-            Invitation.objects.get(token_hash=token_digest(raw)), revoked_by=self.owner
-        )
+            Invitation.objects.get(token_hash=token_digest(raw)),
+            revoked_by=self.owner)
         expired_inv, expired_raw = self._invite(username="iv_invalid_user2")
         _past_expiry(expired_inv)
         consumed_inv, consumed_raw = self._invite(username="iv_invalid_user3")
@@ -542,10 +511,12 @@ class InviteAcceptPageTests(InvitationServiceTestBase):
         response = self._page_post(raw)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(urlparse(response["Location"]).path, "/login/")
-        self.assertEqual(parse_qs(urlparse(response["Location"]).query).get("activated"), ["1"])
+        self.assertEqual(parse_qs(urlparse(response["Location"]).query)
+                         .get("activated"), ["1"])
         banner = self.client.get("/login/?activated=1")
         self.assertContains(banner, "账号已激活")
-        self.assertTrue(self.client.login(username="iv_post_user", password=STRONG_PASSWORD))
+        self.assertTrue(self.client.login(username="iv_post_user",
+                                          password=STRONG_PASSWORD))
 
     def test_post_weak_password_keeps_form_and_pending(self):
         """POST 弱密码 → 400 + 策略消息；邀请未消费可重试。"""
@@ -553,9 +524,8 @@ class InviteAcceptPageTests(InvitationServiceTestBase):
         response = self._page_post(raw, password="12345678")
         self.assertEqual(response.status_code, 400)
         self.assertContains(response, "密码", status_code=400)
-        self.assertEqual(
-            Invitation.objects.get(token_hash=token_digest(raw)).status, Invitation.Status.PENDING
-        )
+        self.assertEqual(Invitation.objects.get(
+            token_hash=token_digest(raw)).status, Invitation.Status.PENDING)
         # 随后强密码成功
         self.assertEqual(self._page_post(raw).status_code, 302)
 
@@ -565,9 +535,8 @@ class InviteAcceptPageTests(InvitationServiceTestBase):
         response = self._page_post(raw, confirm="Different-Pass-1")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "两次输入的密码不一致")
-        self.assertEqual(
-            Invitation.objects.get(token_hash=token_digest(raw)).status, Invitation.Status.PENDING
-        )
+        self.assertEqual(Invitation.objects.get(
+            token_hash=token_digest(raw)).status, Invitation.Status.PENDING)
 
     def test_post_invalid_token_unified(self):
         """POST 无效 token → 统一文案，不产生账号变化。"""
@@ -596,17 +565,14 @@ class InviteAcceptPageTests(InvitationServiceTestBase):
         self.assertEqual(sixth.status_code, 429)
         self.assertIn("Retry-After", sixth)
         # 429 与公共面限流同口径：public.rate_limited 审计事件
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="public.rate_limited",
-                entity_type="PublicEndpoint",
-                entity_id="public.invitation_activate",
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="public.rate_limited", entity_type="PublicEndpoint",
+            entity_id="public.invitation_activate").exists())
 
     def test_untrusted_host_rejected_on_activation_page(self):
         """§5.3/§15.1：激活页只允许受信任 Host（ALLOWED_HOSTS 之外 → 400）。"""
-        response = self.client.get("/invite/accept/?token=whatever", HTTP_HOST="evil.example")
+        response = self.client.get("/invite/accept/?token=whatever",
+                                   HTTP_HOST="evil.example")
         self.assertEqual(response.status_code, 400)
 
 
@@ -618,11 +584,8 @@ class StaffCenterInvitationAPITests(InvitationServiceTestBase):
 
     def test_invite_anonymous_redirects_to_login(self):
         """未登录 POST 创建/撤销/重发 → 302 登录页。"""
-        for url in (
-            self._invite_url(),
-            self._invite_url() + "revoke/",
-            self._invite_url() + "resend/",
-        ):
+        for url in (self._invite_url(),
+                    self._invite_url() + "revoke/", self._invite_url() + "resend/"):
             response = self.client.post(url, {"username": "anon_user"})
             self.assertEqual(response.status_code, 302, url)
             self.assertIn("/login/", response["Location"], url)
@@ -632,11 +595,8 @@ class StaffCenterInvitationAPITests(InvitationServiceTestBase):
         """无 identity.staff_manage（前台）→ 403，且无任何写副作用。"""
         fd = _make_user("iv_front", "前台")
         self.client.force_login(fd)
-        for url in (
-            self._invite_url(),
-            self._invite_url() + "revoke/",
-            self._invite_url() + "resend/",
-        ):
+        for url in (self._invite_url(),
+                    self._invite_url() + "revoke/", self._invite_url() + "resend/"):
             response = self.client.post(url, {"username": "front_user"})
             self.assertEqual(response.status_code, 403, url)
         self.assertFalse(Invitation.objects.exists())
@@ -647,18 +607,14 @@ class StaffCenterInvitationAPITests(InvitationServiceTestBase):
         """越店员工档案 → 404（数据范围隔离）。"""
         self.client.force_login(self.owner)
         other_prop = Property.objects.create(
-            code="OTHER-IV", name="其他物业-IV", status=Property.Status.ACTIVE
-        )
+            code="OTHER-IV", name="其他物业-IV", status=Property.Status.ACTIVE)
         other_profile = StaffProfile.objects.create(
-            user=None, full_name="别店员工IV", employment_status="ACTIVE"
-        )
+            user=None, full_name="别店员工IV", employment_status="ACTIVE")
         PropertyStaffMembership.objects.create(
-            property=other_prop,
-            staff_profile=other_profile,
-            employee_no="OTHER-IV-1",
-            status="ACTIVE",
-        )
-        response = self.client.post(self._invite_url(other_profile), {"username": "cross_user"})
+            property=other_prop, staff_profile=other_profile,
+            employee_no="OTHER-IV-1", status="ACTIVE")
+        response = self.client.post(self._invite_url(other_profile),
+                                    {"username": "cross_user"})
         self.assertEqual(response.status_code, 404)
         self.assertFalse(Invitation.objects.exists())
 
@@ -679,14 +635,9 @@ class StaffCenterInvitationAPITests(InvitationServiceTestBase):
         self.assertEqual(invitation.token_hash, token_digest(raw_token))
         self.assertEqual(invitation.created_by, self.owner)
         self.assertEqual(invitation.status, Invitation.Status.PENDING)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="identity.invitation_created",
-                entity_type="Invitation",
-                entity_id=str(invitation.pk),
-                actor=self.owner,
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="identity.invitation_created", entity_type="Invitation",
+            entity_id=str(invitation.pk), actor=self.owner).exists())
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.user.username, "iv_api_user")
         self.assertFalse(self.profile.user.has_usable_password())
@@ -695,8 +646,8 @@ class StaffCenterInvitationAPITests(InvitationServiceTestBase):
         """§15.1：不可信 Host/X-Forwarded-Host 不能污染邀请链接。"""
         self.client.force_login(self.owner)
         response = self.client.post(
-            self._invite_url(), {"username": "iv_host_user"}, HTTP_X_FORWARDED_HOST="evil.example"
-        )
+            self._invite_url(), {"username": "iv_host_user"},
+            HTTP_X_FORWARDED_HOST="evil.example")
         self.assertEqual(response.status_code, 200)
         invite_url = response.json()["data"]["invite_url"]
         parsed = urlparse(invite_url)
@@ -708,7 +659,8 @@ class StaffCenterInvitationAPITests(InvitationServiceTestBase):
     def test_invite_url_prefers_canonical_host(self):
         """配置规范 Host 时优先使用（§5.3 canonical host）。"""
         self.client.force_login(self.owner)
-        response = self.client.post(self._invite_url(), {"username": "iv_canon_user"})
+        response = self.client.post(self._invite_url(),
+                                    {"username": "iv_canon_user"})
         invite_url = response.json()["data"]["invite_url"]
         self.assertTrue(invite_url.startswith("http://pms.example.com/invite/accept"))
 
@@ -721,11 +673,9 @@ class StaffCenterInvitationAPITests(InvitationServiceTestBase):
         invitation = Invitation.objects.get(token_hash=token_digest(raw))
         self.assertEqual(invitation.status, Invitation.Status.REVOKED)
         self.assertEqual(invitation.revoked_by, self.owner)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="identity.invitation_revoked", entity_id=str(invitation.pk)
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="identity.invitation_revoked",
+            entity_id=str(invitation.pk)).exists())
         with self.assertRaises(InvitationError):
             EmployeeInvitationService.consume(raw, STRONG_PASSWORD)
 
@@ -751,11 +701,9 @@ class StaffCenterInvitationAPITests(InvitationServiceTestBase):
         new_inv = Invitation.objects.get(token_hash=token_digest(new_raw))
         self.assertEqual(old_inv.status, Invitation.Status.REVOKED)
         self.assertEqual(new_inv.status, Invitation.Status.PENDING)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="identity.invitation_resent", entity_id=str(new_inv.pk)
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="identity.invitation_resent",
+            entity_id=str(new_inv.pk)).exists())
 
     def test_resend_endpoint_without_invitation_404(self):
         """无任何邀请记录时重发 → 404（提示先创建邀请）。"""
@@ -771,12 +719,14 @@ class StaffCenterInvitationAPITests(InvitationServiceTestBase):
         self.assertEqual(response.status_code, 403)
         self.assertFalse(Invitation.objects.exists())
 
-    @override_settings(PUBLIC_RATE_LIMITS={"identity.invitation_manage": [(("ip",), 2, 600)]})
+    @override_settings(PUBLIC_RATE_LIMITS={
+        "identity.invitation_manage": [(("ip",), 2, 600)]})
     def test_invite_manage_rate_limited(self):
         """§5.3：邀请创建接口限流——超限 429 RATE_LIMITED。"""
         self.client.force_login(self.owner)
         for i in range(2):
-            response = self.client.post(self._invite_url(), {"username": f"iv_rate_user{i}"})
+            response = self.client.post(
+                self._invite_url(), {"username": f"iv_rate_user{i}"})
             self.assertEqual(response.status_code, 200)
         third = self.client.post(self._invite_url(), {"username": "iv_rate_user9"})
         self.assertEqual(third.status_code, 429)

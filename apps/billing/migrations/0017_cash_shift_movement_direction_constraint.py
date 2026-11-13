@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="cashiershiftmovement",
             constraint=models.CheckConstraint(
-                check=Q(direction__in=("IN", "OUT")), name="ck_shift_movement_direction"
-            ),
+                check=Q(direction__in=("IN", "OUT")),
+                name="ck_shift_movement_direction"),
         ),
     ]

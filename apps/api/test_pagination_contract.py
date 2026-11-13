@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """P0-03 统一分页契约 + P0-07 排序与列表一致性 回归测试包。
 
 =====================================================================
@@ -74,22 +75,17 @@ P0-03 分页契约统一规则（所有列表接口同一口径）：
   * page 上限 PAGE_NUMBER_MAX=100000（防御病态 OFFSET）。
 =====================================================================
 """
-
 from datetime import timedelta
 
 from django.contrib.auth.models import Group, Permission, User
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
-# --- test-only generated passwords (no literals in source) ---
-# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
-from django.utils.crypto import get_random_string  # noqa: E402
-
 from apps.billing.models import ApprovalRecord
 from apps.core.api_contract import (
+    ApiError,
     PAGE_NUMBER_MAX,
     PAGE_SIZE_MAX,
-    ApiError,
     ensure_stable_ordering,
     paginate,
     parse_page_args,
@@ -99,7 +95,11 @@ from apps.guests.models import Guest
 from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from apps.reservations.models import Reservation
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
 _TEST_PW_510C52C1 = get_random_string(24)
+
 
 
 ENVELOPE_ENDPOINTS = (
@@ -132,38 +132,26 @@ class PaginationContractTestBase(TestCase):
     def setUp(self):
         self.property = Property.objects.get(code="DEFAULT")
         self.user = User.objects.create_user(
-            username="p0-contract-user", password=_TEST_PW_510C52C1
-        )
+            username="p0-contract-user", password=_TEST_PW_510C52C1)
         self.profile = StaffProfile.objects.create(
-            user=self.user,
-            full_name="契约测试员工",
+            user=self.user, full_name="契约测试员工",
             employment_status=StaffProfile.EmploymentStatus.ACTIVE,
         )
         self.membership = PropertyStaffMembership.objects.create(
-            property=self.property,
-            staff_profile=self.profile,
+            property=self.property, staff_profile=self.profile,
             employee_no="P0-001",
             status=PropertyStaffMembership.Status.ACTIVE,
         )
         self.role = Group.objects.get(name="前台")
-        self.role.permissions.add(
-            *Permission.objects.filter(
-                content_type__app_label__in=("identity", "hotelapp", "billing", "core"),
-                codename__in=(
-                    "staff_manage",
-                    "view_client",
-                    "view_room",
-                    "view_vip",
-                    "view_accommodation",
-                    "finance_access",
-                    "approval_view",
-                    "audit_view",
-                ),  # P0-04：审计查看专项权
-            )
-        )
+        self.role.permissions.add(*Permission.objects.filter(
+            content_type__app_label__in=("identity", "hotelapp", "billing",
+                                         "core"),
+            codename__in=("staff_manage", "view_client", "view_room",
+                          "view_vip", "view_accommodation", "finance_access",
+                          "approval_view", "audit_view"),  # P0-04：审计查看专项权
+        ))
         StaffRoleAssignment.objects.create(
-            membership=self.membership,
-            group=self.role,
+            membership=self.membership, group=self.role,
             starts_at=timezone.now() - timedelta(minutes=1),
         )
         self.client.force_login(self.user)
@@ -175,8 +163,7 @@ class PaginationContractTestBase(TestCase):
             employment_status=StaffProfile.EmploymentStatus.ACTIVE,
         )
         PropertyStaffMembership.objects.create(
-            property=self.property,
-            staff_profile=profile,
+            property=self.property, staff_profile=profile,
             employee_no=f"P0-{index:03d}",
             status=PropertyStaffMembership.Status.ACTIVE,
         )
@@ -198,35 +185,22 @@ class ParsePageArgsContractTests(PaginationContractTestBase):
     def test_valid_boundaries(self):
         self.assertEqual(self._args({"page": "1", "page_size": "1"}), (1, 1))
         self.assertEqual(
-            self._args({"page": "2", "page_size": str(PAGE_SIZE_MAX)}), (2, PAGE_SIZE_MAX)
-        )
+            self._args({"page": "2", "page_size": str(PAGE_SIZE_MAX)}),
+            (2, PAGE_SIZE_MAX))
 
     def test_zero_negative_and_overflow_rejected(self):
-        for bad in (
-            {"page": "0"},
-            {"page": "-1"},
-            {"page": "-100"},
-            {"page_size": "0"},
-            {"page_size": "-3"},
-            {"page_size": "101"},
-            {"page_size": "10000000"},
-        ):
+        for bad in ({"page": "0"}, {"page": "-1"}, {"page": "-100"},
+                    {"page_size": "0"}, {"page_size": "-3"},
+                    {"page_size": "101"}, {"page_size": "10000000"}):
             with self.assertRaises(ApiError) as ctx:
                 self._args(bad)
             self.assertEqual(ctx.exception.code, "VALIDATION_ERROR")
 
     def test_non_integer_empty_and_huge_rejected(self):
-        for bad in (
-            {"page": "abc"},
-            {"page": "1.5"},
-            {"page": ""},
-            {"page": " "},
-            {"page_size": "abc"},
-            {"page_size": ""},
-            {"page": "9" * 30},
-            {"page_size": "9" * 30},
-            {"page": str(PAGE_NUMBER_MAX + 1)},
-        ):
+        for bad in ({"page": "abc"}, {"page": "1.5"}, {"page": ""},
+                    {"page": " "}, {"page_size": "abc"}, {"page_size": ""},
+                    {"page": "9" * 30}, {"page_size": "9" * 30},
+                    {"page": str(PAGE_NUMBER_MAX + 1)}):
             with self.assertRaises(ApiError) as ctx:
                 self._args(bad)
             self.assertEqual(ctx.exception.code, "VALIDATION_ERROR")
@@ -253,7 +227,9 @@ class EnsureStableOrderingTests(PaginationContractTestBase):
     def test_meta_ordering_without_pk_gets_pk_appended(self):
         # PropertyStaffMembership Meta.ordering = ("property_id", "employee_no")
         ordered = ensure_stable_ordering(PropertyStaffMembership.objects.all())
-        self.assertEqual(tuple(ordered.query.order_by), ("property_id", "employee_no", "id"))
+        self.assertEqual(
+            tuple(ordered.query.order_by),
+            ("property_id", "employee_no", "id"))
 
     def test_ordering_with_pk_unchanged(self):
         queryset = Guest.objects.order_by("-created_at", "-id")
@@ -265,26 +241,23 @@ class EnsureStableOrderingTests(PaginationContractTestBase):
         guest_qs = Guest.objects.all()
         self.assertIs(ensure_stable_ordering(guest_qs), guest_qs)
         approval_qs = ensure_stable_ordering(ApprovalRecord.objects.all())
-        self.assertEqual(tuple(approval_qs.query.order_by), ("-created_at", "id"))
+        self.assertEqual(
+            tuple(approval_qs.query.order_by), ("-created_at", "id"))
 
     def test_paginate_returns_stable_meta(self):
         for index in range(3):
             Guest.objects.create(
-                property=self.property,
-                full_name=f"分页客人{index}",
+                property=self.property, full_name=f"分页客人{index}",
                 phone=f"13800000{index:03d}",
-                phone_normalized=f"13800000{index:03d}",
-            )
+                phone_normalized=f"13800000{index:03d}")
         request = RequestFactory().get("/x", {"page": "2", "page_size": "2"})
         items, meta = paginate(Guest.objects.order_by("-created_at"), request)
-        self.assertEqual(
-            meta, {"page": 2, "page_size": 2, "total": 3, "has_next": False, "has_previous": True}
-        )
+        self.assertEqual(meta, {"page": 2, "page_size": 2, "total": 3,
+                                "has_next": False, "has_previous": True})
         # 解析器兜底追加升序主键；created_at 打平时顺序确定。
-        self.assertEqual(
-            [g.pk for g in items],
-            list(Guest.objects.order_by("-created_at", "id").values_list("pk", flat=True))[2:3],
-        )
+        self.assertEqual([g.pk for g in items],
+                         list(Guest.objects.order_by("-created_at", "id")
+                              .values_list("pk", flat=True))[2:3])
 
 
 class StaffListPaginationContractTests(PaginationContractTestBase):
@@ -309,26 +282,20 @@ class StaffListPaginationContractTests(PaginationContractTestBase):
         self.assertEqual(ok.status_code, 200)
         self.assertEqual(ok.json()["meta"]["pagination"]["page_size"], PAGE_SIZE_MAX)
         # page 翻过全部数据 → 空页仍 200
-        ok = self.client.get(self.ENDPOINT, {"page": "2", "page_size": str(baseline + 3)})
+        ok = self.client.get(
+            self.ENDPOINT, {"page": "2", "page_size": str(baseline + 3)})
         self.assertEqual(ok.status_code, 200)
         self.assertEqual(ok.json()["data"], [])
         # 0/负数/超过最大/字母/空字符串/超大数字 → 400 VALIDATION_ERROR
-        for bad in (
-            {"page": "0"},
-            {"page": "-1"},
-            {"page": "abc"},
-            {"page": ""},
-            {"page": "9" * 30},
-            {"page_size": "0"},
-            {"page_size": "-2"},
-            {"page_size": "101"},
-            {"page_size": "abc"},
-            {"page_size": ""},
-            {"page_size": "9" * 30},
-        ):
+        for bad in ({"page": "0"}, {"page": "-1"}, {"page": "abc"},
+                    {"page": ""}, {"page": "9" * 30},
+                    {"page_size": "0"}, {"page_size": "-2"},
+                    {"page_size": "101"}, {"page_size": "abc"},
+                    {"page_size": ""}, {"page_size": "9" * 30}):
             bad_response = self.client.get(self.ENDPOINT, bad)
             self.assertEqual(bad_response.status_code, 400, bad)
-            self.assertEqual(bad_response.json()["error"]["code"], "VALIDATION_ERROR", bad)
+            self.assertEqual(
+                bad_response.json()["error"]["code"], "VALIDATION_ERROR", bad)
 
     def test_ordering_is_deterministic_when_created_at_ties(self):
         baseline = self.client.get(self.ENDPOINT).json()["meta"]["pagination"]["total"]
@@ -351,11 +318,9 @@ class FrontDeskPaginationContractTests(PaginationContractTestBase):
 
     def _make_reservation(self, index):
         guest = Guest.objects.create(
-            property=self.property,
-            full_name=f"前台契约客人{index}",
+            property=self.property, full_name=f"前台契约客人{index}",
             phone=f"13800110{index:03d}",
-            phone_normalized=f"13800110{index:03d}",
-        )
+            phone_normalized=f"13800110{index:03d}")
         return Reservation.objects.create(
             property=self.property,
             booking_no=f"P0CONTRACT-{index:04d}",
@@ -379,22 +344,15 @@ class FrontDeskPaginationContractTests(PaginationContractTestBase):
         self.assertEqual(ok.status_code, 200)
         self.assertEqual(ok.json()["meta"]["page_size"], PAGE_SIZE_MAX)
         # 0/负数/超过最大/字母/空字符串/超大数字 → 400 VALIDATION_ERROR
-        for bad in (
-            {"page": "0"},
-            {"page": "-1"},
-            {"page": "abc"},
-            {"page": ""},
-            {"page": "9" * 30},
-            {"page_size": "0"},
-            {"page_size": "-2"},
-            {"page_size": "101"},
-            {"page_size": "abc"},
-            {"page_size": ""},
-            {"page_size": "9" * 30},
-        ):
+        for bad in ({"page": "0"}, {"page": "-1"}, {"page": "abc"},
+                    {"page": ""}, {"page": "9" * 30},
+                    {"page_size": "0"}, {"page_size": "-2"},
+                    {"page_size": "101"}, {"page_size": "abc"},
+                    {"page_size": ""}, {"page_size": "9" * 30}):
             bad_response = self.client.get(self.ENDPOINT, bad)
             self.assertEqual(bad_response.status_code, 400, bad)
-            self.assertEqual(bad_response.json()["error"]["code"], "VALIDATION_ERROR", bad)
+            self.assertEqual(
+                bad_response.json()["error"]["code"], "VALIDATION_ERROR", bad)
 
     def test_reservations_ordering_is_deterministic_when_created_at_ties(self):
         for index in range(5):
@@ -403,23 +361,26 @@ class FrontDeskPaginationContractTests(PaginationContractTestBase):
         first = self.client.get(self.ENDPOINT, {"page_size": "100"}).json()
         second = self.client.get(self.ENDPOINT, {"page_size": "100"}).json()
         nos_first = [row["booking_no"] for row in first["data"]]
-        self.assertEqual(nos_first, [row["booking_no"] for row in second["data"]])
-        ids = list(
-            Reservation.objects.filter(property=self.property)
-            .order_by("-created_at", "-id")
-            .values_list("booking_no", flat=True)
-        )
+        self.assertEqual(nos_first,
+                         [row["booking_no"] for row in second["data"]])
+        ids = list(Reservation.objects.filter(property=self.property)
+                   .order_by("-created_at", "-id")
+                   .values_list("booking_no", flat=True))
         self.assertEqual(nos_first, ids)
 
     def test_arrivals_rejects_invalid_page_before_business_logic(self):
-        bad_response = self.client.get("/api/v1/front-desk/arrivals", {"page": "abc"})
+        bad_response = self.client.get(
+            "/api/v1/front-desk/arrivals", {"page": "abc"})
         self.assertEqual(bad_response.status_code, 400)
-        self.assertEqual(bad_response.json()["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(
+            bad_response.json()["error"]["code"], "VALIDATION_ERROR")
 
     def test_legacy_reservations_boundary(self):
-        ok = self.client.get("/api/v1/front-desk/legacy-reservations", {"page": "-3"})
+        ok = self.client.get(
+            "/api/v1/front-desk/legacy-reservations", {"page": "-3"})
         self.assertEqual(ok.status_code, 400)
-        self.assertEqual(ok.json()["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(
+            ok.json()["error"]["code"], "VALIDATION_ERROR")
 
 
 class MultiEndpointPaginationSamplingTests(PaginationContractTestBase):
@@ -436,11 +397,13 @@ class MultiEndpointPaginationSamplingTests(PaginationContractTestBase):
                 # page_size=100（上限）合法
                 ok = self.client.get(url, {"page_size": str(PAGE_SIZE_MAX)})
                 self.assertEqual(ok.status_code, 200, url)
-                self.assertEqual(ok.json()["meta"]["pagination"]["page_size"], PAGE_SIZE_MAX)
+                self.assertEqual(
+                    ok.json()["meta"]["pagination"]["page_size"], PAGE_SIZE_MAX)
 
     def test_invalid_params_rejected_identically_across_envelope_endpoints(self):
         for url in ENVELOPE_ENDPOINTS:
-            for bad in ({"page": "abc"}, {"page": "0"}, {"page_size": "-1"}, {"page_size": "101"}):
+            for bad in ({"page": "abc"}, {"page": "0"},
+                        {"page_size": "-1"}, {"page_size": "101"}):
                 with self.subTest(endpoint=url, params=bad):
                     response = self.client.get(url, bad)
                     self.assertEqual(response.status_code, 400, (url, bad))
@@ -449,7 +412,8 @@ class MultiEndpointPaginationSamplingTests(PaginationContractTestBase):
 
     def test_invalid_params_rejected_identically_across_front_desk_endpoints(self):
         for url in FRONT_DESK_ENDPOINTS:
-            for bad in ({"page": "abc"}, {"page": "-1"}, {"page_size": "0"}, {"page_size": "101"}):
+            for bad in ({"page": "abc"}, {"page": "-1"},
+                        {"page_size": "0"}, {"page_size": "101"}):
                 with self.subTest(endpoint=url, params=bad):
                     response = self.client.get(url, bad)
                     self.assertEqual(response.status_code, 400, (url, bad))
@@ -469,11 +433,9 @@ class MultiEndpointPaginationSamplingTests(PaginationContractTestBase):
             ApprovalRecord.objects.create(
                 property=self.property,
                 action_code="billing.refund",
-                entity_type="Payment",
-                entity_id=str(index),
+                entity_type="Payment", entity_id=str(index),
                 requested_by=self.user,
-                reason="契约测试",
-                idempotency_key=f"p0-contract-{index}",
+                reason="契约测试", idempotency_key=f"p0-contract-{index}",
             )
         ApprovalRecord._base_manager.all().update(created_at=timezone.now())
         first = self.client.get("/api/v1/approvals", {"page_size": "100"}).json()
@@ -482,9 +444,7 @@ class MultiEndpointPaginationSamplingTests(PaginationContractTestBase):
         self.assertEqual(ids_first, [row["id"] for row in second["data"]])
         expected = list(
             ApprovalRecord.objects.filter(requested_by=self.user)
-            .order_by("-created_at", "-id")
-            .values_list("id", flat=True)
-        )
+            .order_by("-created_at", "-id").values_list("id", flat=True))
         self.assertEqual(ids_first, expected)
         self.assertEqual(len(ids_first), 3)
 
@@ -501,15 +461,15 @@ class AuditTimelineOrderingTests(PaginationContractTestBase):
                 entity_id=str(index),
             )
         AuditEvent._base_manager.all().update(created_at=timezone.now())
-        first = self.client.get("/api/v1/audit-timeline", {"page_size": "100"}).json()
-        second = self.client.get("/api/v1/audit-timeline", {"page_size": "100"}).json()
+        first = self.client.get(
+            "/api/v1/audit-timeline", {"page_size": "100"}).json()
+        second = self.client.get(
+            "/api/v1/audit-timeline", {"page_size": "100"}).json()
         ids_first = [row["id"] for row in first["data"]]
         self.assertEqual(ids_first, [row["id"] for row in second["data"]])
         expected = list(
             AuditEvent.objects.filter(action="contract.test.event")
-            .order_by("-created_at", "-id")
-            .values_list("id", flat=True)
-        )
+            .order_by("-created_at", "-id").values_list("id", flat=True))
         self.assertEqual(ids_first, expected)
 
 
@@ -519,11 +479,9 @@ class GuestsListOrderingTests(PaginationContractTestBase):
     def test_ordering_is_deterministic_and_search_still_works(self):
         for index in range(5):
             Guest.objects.create(
-                property=self.property,
-                full_name=f"契约客人{index}",
+                property=self.property, full_name=f"契约客人{index}",
                 phone=f"13800220{index:03d}",
-                phone_normalized=f"13800220{index:03d}",
-            )
+                phone_normalized=f"13800220{index:03d}")
         Guest.objects.update(created_at=timezone.now())
         first = self.client.get("/api/v1/guests", {"page_size": "100"}).json()
         second = self.client.get("/api/v1/guests", {"page_size": "100"}).json()
@@ -531,14 +489,13 @@ class GuestsListOrderingTests(PaginationContractTestBase):
         self.assertEqual(ids_first, [row["id"] for row in second["data"]])
         self.assertEqual(
             ids_first,
-            list(
-                Guest.objects.filter(property=self.property)
-                .order_by("-created_at", "-id")
-                .values_list("id", flat=True)
-            ),
-        )
-        searched = self.client.get("/api/v1/guests", {"q": "契约客人3"}).json()
-        self.assertEqual([row["full_name"] for row in searched["data"]], ["契约客人3"])
+            list(Guest.objects.filter(property=self.property)
+                 .order_by("-created_at", "-id")
+                 .values_list("id", flat=True)))
+        searched = self.client.get(
+            "/api/v1/guests", {"q": "契约客人3"}).json()
+        self.assertEqual([row["full_name"] for row in searched["data"]],
+                         ["契约客人3"])
 
 
 class FinancialSummaryMetadataTests(PaginationContractTestBase):
@@ -565,21 +522,16 @@ class CrossPropertyFilterSamplingTests(PaginationContractTestBase):
 
     def setUp(self):
         super().setUp()
-        self.other_property = Property.objects.create(code="P0OTHER", name="契约测试外店")
+        self.other_property = Property.objects.create(
+            code="P0OTHER", name="契约测试外店")
 
     def test_guest_list_excludes_other_property(self):
         foreign = Guest.objects.create(
-            property=self.other_property,
-            full_name="外店契约客人",
-            phone="13899000001",
-            phone_normalized="13899000001",
-        )
+            property=self.other_property, full_name="外店契约客人",
+            phone="13899000001", phone_normalized="13899000001")
         internal = Guest.objects.create(
-            property=self.property,
-            full_name="本店契约客人",
-            phone="13899000002",
-            phone_normalized="13899000002",
-        )
+            property=self.property, full_name="本店契约客人",
+            phone="13899000002", phone_normalized="13899000002")
         response = self.client.get("/api/v1/guests", {"page_size": "100"})
         ids = {row["id"] for row in response.json()["data"]}
         self.assertIn(internal.pk, ids)
@@ -587,17 +539,14 @@ class CrossPropertyFilterSamplingTests(PaginationContractTestBase):
 
     def test_reservation_mgmt_list_excludes_other_property(self):
         guest = Guest.objects.create(
-            property=self.other_property,
-            full_name="外店预订客人",
-            phone="13899000003",
-            phone_normalized="13899000003",
-        )
+            property=self.other_property, full_name="外店预订客人",
+            phone="13899000003", phone_normalized="13899000003")
         Reservation.objects.create(
-            property=self.other_property,
-            booking_no="P0OTHER-0001",
+            property=self.other_property, booking_no="P0OTHER-0001",
             guest=guest,
             check_in=timezone.localdate() + timedelta(days=1),
-            check_out=timezone.localdate() + timedelta(days=2),
-        )
-        response = self.client.get("/api/v1/reservations-mgmt", {"page_size": "100"})
-        self.assertEqual([row["booking_no"] for row in response.json()["data"]], [])
+            check_out=timezone.localdate() + timedelta(days=2))
+        response = self.client.get(
+            "/api/v1/reservations-mgmt", {"page_size": "100"})
+        self.assertEqual(
+            [row["booking_no"] for row in response.json()["data"]], [])

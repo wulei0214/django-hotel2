@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """支付/账务维护调度入口（生产可达性收尾）。
 
 此前以下能力虽已实现，但没有任何生产调用方：
@@ -14,7 +15,6 @@
   python manage.py run_billing_maintenance
   python manage.py run_billing_maintenance --property DEFAULT --only recon
 """
-
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -32,6 +32,7 @@ from apps.billing.payment_intents import (
 from apps.billing.reconciliation import scan_folio_reconciliation
 from apps.core.models import Property
 
+
 # WB-120：只有「Payment 缺凭证」类差异可交给 PAYMENT_LEDGER_REPAIR 执行器
 # （其契约是 aggregate_type="Payment"；Deposit 也是 Payment 事实）。其余差异
 # （退款/调整/余额/负债）一律走 RECONCILIATION_DIFF 只读核对转人工，
@@ -46,33 +47,19 @@ class Command(BaseCommand):
     help = "支付意图过期 / 回调确认重试 / 账务对账差异转补偿任务"
 
     def add_arguments(self, parser):
-        parser.add_argument(
-            "--property",
-            dest="property_code",
-            default=None,
-            help="只处理指定物业 code；缺省处理全部物业。",
-        )
-        parser.add_argument(
-            "--only",
-            default="all",
-            choices=("all", "expire", "stuck", "recon"),
-            help="只执行某一类维护动作。",
-        )
+        parser.add_argument("--property", dest="property_code", default=None,
+                            help="只处理指定物业 code；缺省处理全部物业。")
+        parser.add_argument("--only", default="all",
+                            choices=("all", "expire", "stuck", "recon"),
+                            help="只执行某一类维护动作。")
 
     def handle(self, *args, **options):
         only = options["only"]
         props = Property.objects.all().order_by("pk")
         if options["property_code"]:
             props = props.filter(code=options["property_code"])
-        totals = {
-            "expired": 0,
-            "unknown": 0,
-            "conflicts": 0,
-            "callback": 0,
-            "ledger_repair": 0,
-            "recon_diff": 0,
-            "errors": 0,
-        }
+        totals = {"expired": 0, "unknown": 0, "conflicts": 0, "callback": 0,
+                  "ledger_repair": 0, "recon_diff": 0, "errors": 0}
         for prop in props:
             if only in ("all", "expire"):
                 self._expire_intents(prop, totals)
@@ -80,26 +67,20 @@ class Command(BaseCommand):
                 self._stuck_callbacks(prop, totals)
             if only in ("all", "recon"):
                 self._reconcile(prop, totals)
-        self.stdout.write(
-            self.style.SUCCESS(
-                "支付/账务维护完成：%(expired)s 个意图过期，%(unknown)s 个渠道状态未知"
-                "（已转 CHANNEL_QUERY），%(conflicts)s 个状态冲突/业务拒绝，"
-                "%(callback)s 个回调确认重试，"
-                "%(ledger_repair)s 个账本修复，%(recon_diff)s 个对账差异任务，"
-                "%(errors)s 个错误。" % totals
-            )
-        )
+        self.stdout.write(self.style.SUCCESS(
+            "支付/账务维护完成：%(expired)s 个意图过期，%(unknown)s 个渠道状态未知"
+            "（已转 CHANNEL_QUERY），%(conflicts)s 个状态冲突/业务拒绝，"
+            "%(callback)s 个回调确认重试，"
+            "%(ledger_repair)s 个账本修复，%(recon_diff)s 个对账差异任务，"
+            "%(errors)s 个错误。" % totals))
 
     def _expire_intents(self, prop, totals):
-        due = list(
-            PaymentIntent.objects.filter(
-                property=prop,
-                status__in=(PaymentIntent.Status.CREATED, PaymentIntent.Status.PENDING),
-                expires_at__lte=timezone.now(),
-            )
-            .order_by("pk")
-            .values_list("pk", flat=True)
-        )
+        due = list(PaymentIntent.objects.filter(
+            property=prop,
+            status__in=(PaymentIntent.Status.CREATED,
+                        PaymentIntent.Status.PENDING),
+            expires_at__lte=timezone.now(),
+        ).order_by("pk").values_list("pk", flat=True))
         for intent_id in due:
             try:
                 expire_intent(property_obj=prop, intent_id=intent_id)
@@ -120,24 +101,16 @@ class Command(BaseCommand):
 
     def _stuck_callbacks(self, prop, totals):
         """渠道已成功验签但意图未达 SUCCEEDED → 回调确认重试任务。"""
-        stuck = (
-            ProviderTransaction.objects.filter(
-                property=prop,
-                channel_status="SUCCESS",
-                signature_verified=True,
-                intent__isnull=False,
-            )
+        stuck = (ProviderTransaction.objects.filter(
+            property=prop, channel_status="SUCCESS", signature_verified=True,
+            intent__isnull=False)
             .exclude(intent__status=PaymentIntent.Status.SUCCEEDED)
-            .values_list("intent_id", flat=True)
-            .distinct()
-        )
+            .values_list("intent_id", flat=True).distinct())
         for intent_id in stuck:
             _, created = create_compensation_task(
                 task_type=PaymentCompensationTask.TaskType.CALLBACK_CONFIRM_RETRY,
-                aggregate_type="PaymentIntent",
-                aggregate_id=intent_id,
-                idempotency_key=f"callback-confirm-retry:{intent_id}",
-            )
+                aggregate_type="PaymentIntent", aggregate_id=intent_id,
+                idempotency_key=f"callback-confirm-retry:{intent_id}")
             if created:
                 totals["callback"] += 1
 
@@ -154,7 +127,8 @@ class Command(BaseCommand):
             # aggregate_type="Payment"（差异的 entity_type/entity_id 即为
             # 缺凭证的 Payment）；其余差异统一 RECONCILIATION_DIFF，聚合为
             # 对账运行，Worker 解析其物业做只读重扫，绝不自动改账。
-            if diff.diff_type in PAYMENT_REPAIR_DIFF_TYPES and diff.entity_type == "Payment":
+            if (diff.diff_type in PAYMENT_REPAIR_DIFF_TYPES
+                    and diff.entity_type == "Payment"):
                 task_type = PaymentCompensationTask.TaskType.PAYMENT_LEDGER_REPAIR
                 counter = "ledger_repair"
                 aggregate_type = "Payment"
@@ -170,9 +144,7 @@ class Command(BaseCommand):
                 aggregate_id=aggregate_id,
                 # 稳定键：同一实体的同一类差异只建一次任务，重复调度不刷屏；
                 # 修复后新扫描不再产生该 diff，任务完成后由人工归档/重放。
-                idempotency_key=(
-                    f"{diff.diff_type}:{diff.folio_id}:" f"{diff.entity_type}:{diff.entity_id}"
-                ),
-            )
+                idempotency_key=(f"{diff.diff_type}:{diff.folio_id}:"
+                                 f"{diff.entity_type}:{diff.entity_id}"))
             if created:
                 totals[counter] += 1

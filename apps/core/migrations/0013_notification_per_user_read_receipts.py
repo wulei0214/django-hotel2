@@ -16,17 +16,18 @@ def migrate_legacy_reads(apps, schema_editor):
     NotificationRead = apps.get_model("core", "NotificationRead")
 
     # 运营待办的旧全局 is_read=True 由源业务解决自动写入，迁移为 resolved_at。
-    resolved = Notification.objects.filter(is_read=True, dedupe_key__isnull=False).exclude(
-        dedupe_key=""
-    )
+    resolved = Notification.objects.filter(
+        is_read=True, dedupe_key__isnull=False).exclude(dedupe_key="")
     for row in resolved.only("id", "read_at", "created_at").iterator():
-        Notification.objects.filter(pk=row.pk).update(resolved_at=row.read_at or row.created_at)
+        Notification.objects.filter(pk=row.pk).update(
+            resolved_at=row.read_at or row.created_at)
 
     # 定向通知可以确定唯一接收员工，安全迁移其个人已读状态。
-    direct_reads = Notification.objects.filter(is_read=True, recipient__isnull=False).filter(
-        Q(dedupe_key__isnull=True) | Q(dedupe_key="")
-    )
-    for row in direct_reads.only("id", "recipient_id", "read_at", "created_at").iterator():
+    direct_reads = Notification.objects.filter(
+        is_read=True, recipient__isnull=False
+    ).filter(Q(dedupe_key__isnull=True) | Q(dedupe_key=""))
+    for row in direct_reads.only(
+            "id", "recipient_id", "read_at", "created_at").iterator():
         NotificationRead.objects.get_or_create(
             notification_id=row.pk,
             staff_profile_id=row.recipient_id,
@@ -53,45 +54,25 @@ class Migration(migrations.Migration):
             model_name="notification",
             name="resolved_at",
             field=models.DateTimeField(
-                blank=True,
-                help_text="仅运营待办源业务解决时写入；与员工个人已读状态分离",
-                null=True,
-                verbose_name="待办解决时间",
-            ),
+                blank=True, help_text="仅运营待办源业务解决时写入；与员工个人已读状态分离",
+                null=True, verbose_name="待办解决时间"),
         ),
         migrations.CreateModel(
             name="NotificationRead",
             fields=[
-                (
-                    "id",
-                    models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
-                    ),
-                ),
-                (
-                    "read_at",
-                    models.DateTimeField(
-                        default=django.utils.timezone.now, verbose_name="个人已读时间"
-                    ),
-                ),
-                (
-                    "notification",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE,
-                        related_name="read_receipts",
-                        to="core.notification",
-                        verbose_name="通知",
-                    ),
-                ),
-                (
-                    "staff_profile",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="notification_reads",
-                        to="identity.staffprofile",
-                        verbose_name="员工档案",
-                    ),
-                ),
+                ("id", models.BigAutoField(
+                    auto_created=True, primary_key=True, serialize=False,
+                    verbose_name="ID")),
+                ("read_at", models.DateTimeField(
+                    default=django.utils.timezone.now, verbose_name="个人已读时间")),
+                ("notification", models.ForeignKey(
+                    on_delete=django.db.models.deletion.CASCADE,
+                    related_name="read_receipts", to="core.notification",
+                    verbose_name="通知")),
+                ("staff_profile", models.ForeignKey(
+                    on_delete=django.db.models.deletion.PROTECT,
+                    related_name="notification_reads", to="identity.staffprofile",
+                    verbose_name="员工档案")),
             ],
             options={
                 "verbose_name": "通知个人已读回执",
@@ -101,20 +82,20 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="notification",
             index=models.Index(
-                fields=["property", "resolved_at", "-created_at"], name="idx_notif_prop_resolved"
-            ),
+                fields=["property", "resolved_at", "-created_at"],
+                name="idx_notif_prop_resolved"),
         ),
         migrations.AddConstraint(
             model_name="notificationread",
             constraint=models.UniqueConstraint(
-                fields=("notification", "staff_profile"), name="uq_notification_read_staff"
-            ),
+                fields=("notification", "staff_profile"),
+                name="uq_notification_read_staff"),
         ),
         migrations.AddIndex(
             model_name="notificationread",
             index=models.Index(
-                fields=["staff_profile", "-read_at"], name="idx_notifread_staff_time"
-            ),
+                fields=["staff_profile", "-read_at"],
+                name="idx_notifread_staff_time"),
         ),
         migrations.RunPython(migrate_legacy_reads, keep_legacy_reads_on_reverse),
     ]

@@ -6,63 +6,43 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0001_initial"),
+        ('core', '0001_initial'),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name="property",
-            name="address",
-            field=models.TextField(blank=True, verbose_name="酒店地址"),
+            model_name='property',
+            name='address',
+            field=models.TextField(blank=True, verbose_name='酒店地址'),
         ),
         migrations.AlterField(
-            model_name="property",
-            name="code",
-            field=models.CharField(
-                help_text="酒店唯一编码，如 DEMO；创建后不要修改（预订号/账务引用它）",
-                max_length=32,
-                unique=True,
-                verbose_name="物业编码",
-            ),
+            model_name='property',
+            name='code',
+            field=models.CharField(help_text='酒店唯一编码，如 DEMO；创建后不要修改（预订号/账务引用它）', max_length=32, unique=True, verbose_name='物业编码'),
         ),
         migrations.AlterField(
-            model_name="property",
-            name="created_at",
-            field=models.DateTimeField(auto_now_add=True, verbose_name="创建时间"),
+            model_name='property',
+            name='created_at',
+            field=models.DateTimeField(auto_now_add=True, verbose_name='创建时间'),
         ),
         migrations.AlterField(
-            model_name="property",
-            name="currency",
-            field=models.CharField(
-                default="CNY",
-                help_text="ISO 4217 三位币种代码",
-                max_length=3,
-                verbose_name="结算币种",
-            ),
+            model_name='property',
+            name='currency',
+            field=models.CharField(default='CNY', help_text='ISO 4217 三位币种代码', max_length=3, verbose_name='结算币种'),
         ),
         migrations.AlterField(
-            model_name="property",
-            name="status",
-            field=models.CharField(
-                choices=[("ACTIVE", "营业中"), ("INACTIVE", "停用")],
-                default="ACTIVE",
-                max_length=16,
-                verbose_name="营业状态",
-            ),
+            model_name='property',
+            name='status',
+            field=models.CharField(choices=[('ACTIVE', '营业中'), ('INACTIVE', '停用')], default='ACTIVE', max_length=16, verbose_name='营业状态'),
         ),
         migrations.AlterField(
-            model_name="property",
-            name="timezone",
-            field=models.CharField(
-                default="Asia/Shanghai",
-                help_text="IANA 时区名，决定营业日（夜审）切换时间",
-                max_length=64,
-                verbose_name="营业时区",
-            ),
+            model_name='property',
+            name='timezone',
+            field=models.CharField(default='Asia/Shanghai', help_text='IANA 时区名，决定营业日（夜审）切换时间', max_length=64, verbose_name='营业时区'),
         ),
         migrations.AlterField(
-            model_name="property",
-            name="updated_at",
-            field=models.DateTimeField(auto_now=True, verbose_name="更新时间"),
+            model_name='property',
+            name='updated_at',
+            field=models.DateTimeField(auto_now=True, verbose_name='更新时间'),
         ),
     ]

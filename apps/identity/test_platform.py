@@ -5,7 +5,6 @@ F-10（平台路径不产生 property_context_denied 审计）、/system/ 拆分
 （PMS 个人页 vs 平台环境信息页）、旧 /permissions/ 302 兼容、
 platform_superadmin_check 体检命令。
 """
-
 import io
 from contextlib import redirect_stdout
 
@@ -32,17 +31,16 @@ def _pms_staff_user(username="pf_staff", group_name="前台", full_name="王前�
     """创建 PMS 员工：User + DEFAULT 任职 + 岗位角色（不使用 is_staff/全局组）。"""
     user = User.objects.create_user(username=username, password=f"{username}-pass123")
     group = Group.objects.filter(name=group_name).first()
-    prop, _ = Property.objects.get_or_create(code="DEFAULT", defaults={"name": "测试酒店"})
+    prop, _ = Property.objects.get_or_create(
+        code="DEFAULT", defaults={"name": "测试酒店"})
     profile = StaffProfile.objects.create(
-        user=user, full_name=full_name, employment_status="ACTIVE"
-    )
+        user=user, full_name=full_name, employment_status="ACTIVE")
     membership = PropertyStaffMembership.objects.create(
-        property=prop, staff_profile=profile, employee_no=f"E-{username}", status="ACTIVE"
-    )
+        property=prop, staff_profile=profile,
+        employee_no=f"E-{username}", status="ACTIVE")
     if group is not None:
         StaffRoleAssignment.objects.create(
-            membership=membership, group=group, starts_at=timezone.now()
-        )
+            membership=membership, group=group, starts_at=timezone.now())
     return user
 
 
@@ -50,7 +48,8 @@ class PlatformAccessTests(TestCase):
     """/platform/* 门禁：平台会话域 + 三项不变量。"""
 
     def setUp(self):
-        self.superadmin = User.objects.create_superuser("pf_admin", password=PLATFORM_TEST_PASSWORD)
+        self.superadmin = User.objects.create_superuser(
+            "pf_admin", password=PLATFORM_TEST_PASSWORD)
 
     def _platform_login(self, user):
         """模拟平台登录：force_login 后把会话键复制到两份平台 Cookie
@@ -68,8 +67,7 @@ class PlatformAccessTests(TestCase):
             self.assertEqual(response.status_code, 302, f"匿名访问 {url} 必须 302")
             self.assertTrue(
                 response["Location"].startswith("/admin/login/"),
-                f"匿名访问 {url} 必须跳转平台登录页，实际 {response['Location']}",
-            )
+                f"匿名访问 {url} 必须跳转平台登录页，实际 {response['Location']}")
 
     def test_pms_session_only_is_not_admitted(self):
         """仅 PMS sessionid（员工登录）→ 平台页 302，不因员工登录放行"""
@@ -93,13 +91,8 @@ class PlatformAccessTests(TestCase):
         self._platform_login(self.superadmin)
         response = self.client.get("/platform/")
         self.assertEqual(response.status_code, 200)
-        for label in (
-            "权限与角色",
-            "平台运行与安全",
-            "数据维护（Django Admin）",
-            "/reserve/",
-            "/login/",
-        ):
+        for label in ("权限与角色", "平台运行与安全", "数据维护（Django Admin）",
+                      "/reserve/", "/login/"):
             self.assertContains(response, label)
         self.assertNotContains(response, "审计记录")
 
@@ -110,8 +103,7 @@ class PlatformAccessTests(TestCase):
         self.assertEqual(self.client.get("/admin/").status_code, 200)
         self.assertEqual(
             self.client.cookies["platform_sessionid"].value,
-            self.client.cookies["django_admin_sessionid"].value,
-        )
+            self.client.cookies["django_admin_sessionid"].value)
 
     def test_superuser_without_staff_flag_gets_403_and_audit(self):
         """is_staff=False 的 superuser（半状态）→ 403 + security.platform_denied 审计"""
@@ -121,8 +113,8 @@ class PlatformAccessTests(TestCase):
         response = self.client.get("/platform/")
         self.assertEqual(response.status_code, 403)
         event = AuditEvent.objects.filter(
-            action="security.platform_denied", entity_type="User", entity_id=str(self.superadmin.pk)
-        ).first()
+            action="security.platform_denied",
+            entity_type="User", entity_id=str(self.superadmin.pk)).first()
         self.assertIsNotNone(event, "半状态超管必须落 security.platform_denied 审计")
         self.assertIn("is_staff", event.reason)
 
@@ -150,11 +142,9 @@ class PlatformAccessTests(TestCase):
         # 直调视图：PermissionDenied 等价于经 URL 处理后的 403
         with self.assertRaises(PermissionDenied):
             view(request)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="security.platform_denied", entity_id=str(self.superadmin.pk)
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="security.platform_denied",
+            entity_id=str(self.superadmin.pk)).exists())
         # 会话路径（默认后端）：inactive 超管即使持平台 Cookie 也绝不放行
         self._platform_login(self.superadmin)
         self.assertNotEqual(self.client.get("/platform/").status_code, 200)
@@ -167,10 +157,9 @@ class PlatformAccessTests(TestCase):
         self._platform_login(staff)
         response = self.client.get("/platform/")
         self.assertEqual(response.status_code, 403)
-        self.assertFalse(
-            AuditEvent.objects.filter(action="security.platform_denied").exists(),
-            "非超管 403 属常规拒绝，不写 security.platform_denied",
-        )
+        self.assertFalse(AuditEvent.objects.filter(
+            action="security.platform_denied").exists(),
+            "非超管 403 属常规拒绝，不写 security.platform_denied")
 
     def test_half_state_platform_post_also_denied(self):
         """半状态超管 POST 保存权限 → 403（写操作同样被门禁拦截，授权不变）"""
@@ -179,10 +168,8 @@ class PlatformAccessTests(TestCase):
         self._platform_login(self.superadmin)
         group = Group.objects.get(name="前台")
         before = set(group.permissions.values_list("codename", flat=True))
-        response = self.client.post(
-            "/platform/permissions/save/",
-            {"role": str(group.id), "perm": ["view_room", "delete_room"]},
-        )
+        response = self.client.post("/platform/permissions/save/", {
+            "role": str(group.id), "perm": ["view_room", "delete_room"]})
         self.assertEqual(response.status_code, 403)
         after = set(group.permissions.values_list("codename", flat=True))
         self.assertEqual(before, after, "半状态超管的写请求不得变更角色权限")
@@ -192,7 +179,8 @@ class PlatformCsrfTests(TestCase):
     """平台 POST 的 CSRF 防护。"""
 
     def setUp(self):
-        self.superadmin = User.objects.create_superuser("pf_csrf", password=PLATFORM_TEST_PASSWORD)
+        self.superadmin = User.objects.create_superuser(
+            "pf_csrf", password=PLATFORM_TEST_PASSWORD)
         self.group = Group.objects.get(name="前台")
 
     def _csrf_client(self):
@@ -206,9 +194,8 @@ class PlatformCsrfTests(TestCase):
     def test_platform_post_without_csrf_token_is_403(self):
         """平台 POST 无 CSRF 令牌 → 403"""
         client = self._csrf_client()
-        response = client.post(
-            "/platform/permissions/save/", {"role": str(self.group.id), "perm": ["view_room"]}
-        )
+        response = client.post("/platform/permissions/save/", {
+            "role": str(self.group.id), "perm": ["view_room"]})
         self.assertEqual(response.status_code, 403)
 
     def test_platform_post_with_csrf_token_redirects_without_saving(self):
@@ -225,23 +212,22 @@ class PlatformCsrfTests(TestCase):
         marker = 'name="csrfmiddlewaretoken" value="'
         self.assertIn(marker, content, "权限矩阵页必须渲染 CSRF 令牌（JS 依赖）")
         token = content.split(marker, 1)[1].split('"', 1)[0]
-        response = client.post(
-            "/platform/permissions/save/",
-            {"role": str(self.group.id), "csrfmiddlewaretoken": token, "perm": ["add_food"]},
-        )
+        response = client.post("/platform/permissions/save/", {
+            "role": str(self.group.id), "csrfmiddlewaretoken": token,
+            "perm": ["add_food"]})
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/platform/permissions/")
         self.assertFalse(
             self.group.permissions.filter(codename="add_food").exists(),
-            "旧 form 保存入口不得再变更角色权限",
-        )
+            "旧 form 保存入口不得再变更角色权限")
 
 
 class PlatformContextNoiseTests(TestCase):
     """F-10：平台路径不做 PMS 物业上下文解析，不产生 property_context_denied 审计。"""
 
     def setUp(self):
-        self.superadmin = User.objects.create_superuser("pf_noise", password=PLATFORM_TEST_PASSWORD)
+        self.superadmin = User.objects.create_superuser(
+            "pf_noise", password=PLATFORM_TEST_PASSWORD)
 
     def _platform_login(self):
         self.client.force_login(self.superadmin)
@@ -256,9 +242,9 @@ class PlatformContextNoiseTests(TestCase):
             self.client.get(url)
         self.client.get("/admin/")
         self.assertFalse(
-            AuditEvent.objects.filter(action="security.property_context_denied").exists(),
-            "平台请求不得产生 property_context_denied 审计噪声（F-10）",
-        )
+            AuditEvent.objects.filter(
+                action="security.property_context_denied").exists(),
+            "平台请求不得产生 property_context_denied 审计噪声（F-10）")
 
     def test_pms_page_without_membership_still_audits(self):
         """回归保护：PMS 路径的 property_context_denied 审计行为保持不变"""
@@ -266,9 +252,9 @@ class PlatformContextNoiseTests(TestCase):
         self.client.force_login(user)
         self.client.get("/home/")
         self.assertTrue(
-            AuditEvent.objects.filter(action="security.property_context_denied").exists(),
-            "PMS 路径无任职拒绝审计必须保留（F-10 只消除平台路径噪声）",
-        )
+            AuditEvent.objects.filter(
+                action="security.property_context_denied").exists(),
+            "PMS 路径无任职拒绝审计必须保留（F-10 只消除平台路径噪声）")
 
 
 class LegacyPermissionRedirectTests(TestCase):
@@ -289,7 +275,8 @@ class SystemPageSplitTests(TestCase):
     """/system/ 拆分：PMS 员工个人页 vs /platform/system/ 平台环境信息页。"""
 
     def setUp(self):
-        self.superadmin = User.objects.create_superuser("pf_split", password=PLATFORM_TEST_PASSWORD)
+        self.superadmin = User.objects.create_superuser(
+            "pf_split", password=PLATFORM_TEST_PASSWORD)
         self.staff = _pms_staff_user("pf_me", full_name="李测试")
         self.other = _pms_staff_user("pf_other", full_name="赵同事")
 
@@ -313,34 +300,29 @@ class SystemPageSplitTests(TestCase):
         self.assertNotIn("系统环境配置信息", content)
         self.assertNotIn("运行模式", content)
         self.assertIn("修改我的密码", content)
-        self.assertNotIn('href="/platform/permissions/"', content, "PMS 侧栏不得暴露平台权限入口")
+        self.assertNotIn('href="/platform/permissions/"', content,
+                         "PMS 侧栏不得暴露平台权限入口")
 
     def test_pms_system_page_self_password_change(self):
         """/system/ 自助改密：POST 新密码 → 成功、审计、当前会话保持、可新密码登录"""
         self.client.force_login(self.staff)
-        response = self.client.post(
-            "/system/",
-            {
-                "new_password1": "brand-new-pass-9",
-                "new_password2": "brand-new-pass-9",
-            },
-        )
+        response = self.client.post("/system/", {
+            "new_password1": "brand-new-pass-9",
+            "new_password2": "brand-new-pass-9",
+        })
         self.assertEqual(response.status_code, 302)
         self.staff.refresh_from_db()
         self.assertTrue(self.staff.check_password("brand-new-pass-9"))
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="identity.password_changed", entity_type="StaffProfile"
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="identity.password_changed",
+            entity_type="StaffProfile").exists())
         # 当前会话保持登录（update_session_auth_hash）
         self.assertEqual(self.client.get("/system/").status_code, 200)
 
     def test_pms_system_page_password_mismatch_rejected(self):
         self.client.force_login(self.staff)
-        response = self.client.post(
-            "/system/", {"new_password1": "abcdef", "new_password2": "abcdeg"}
-        )
+        response = self.client.post("/system/", {
+            "new_password1": "abcdef", "new_password2": "abcdeg"})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "两次输入的密码不一致")
         self.staff.refresh_from_db()
@@ -356,17 +338,8 @@ class SystemPageSplitTests(TestCase):
         response = client.get("/platform/system/")
         self.assertEqual(response.status_code, 200)
         content = response.content.decode("utf-8")
-        for marker in (
-            "李测试",
-            "赵同事",
-            "pf_me",
-            "pf_other",
-            "E-pf_me",
-            "AD-",
-            "工号",
-            "姓名",
-            "任职",
-        ):
+        for marker in ("李测试", "赵同事", "pf_me", "pf_other", "E-pf_me",
+                       "AD-", "工号", "姓名", "任职"):
             self.assertNotIn(marker, content, f"平台环境页不得包含 PII：{marker}")
         for env_marker in ("DEBUG", "运行环境", "时区", "会话", "安全", "部署"):
             self.assertIn(env_marker, content)
@@ -389,9 +362,9 @@ class PlatformBoundaryTests(TestCase):
     def test_platform_access_grants_no_pms_authorization(self):
         """访问 /platform/* 不创建任职/角色，也不写全局权限"""
         from .authorization import AuthorizationService
-
         admin = User.objects.create_superuser("pf_bnd", password=PLATFORM_TEST_PASSWORD)
-        prop, _ = Property.objects.get_or_create(code="DEFAULT", defaults={"name": "测试酒店"})
+        prop, _ = Property.objects.get_or_create(
+            code="DEFAULT", defaults={"name": "测试酒店"})
         client = Client()
         client.force_login(admin)
         sessionid = client.cookies["sessionid"].value
@@ -401,11 +374,12 @@ class PlatformBoundaryTests(TestCase):
         client.get("/platform/permissions/")
         client.get("/platform/system/")
         admin.refresh_from_db()
-        self.assertFalse(
-            StaffProfile.objects.filter(user=admin).exists(), "平台访问不得为超管创建员工档案/任职"
-        )
-        self.assertFalse(AuthorizationService.has_permission(admin, prop, "hotelapp.view_room"))
-        self.assertFalse(Group.objects.filter(user=admin).exists(), "平台超管不得被写入业务角色组")
+        self.assertFalse(StaffProfile.objects.filter(user=admin).exists(),
+                         "平台访问不得为超管创建员工档案/任职")
+        self.assertFalse(AuthorizationService.has_permission(
+            admin, prop, "hotelapp.view_room"))
+        self.assertFalse(Group.objects.filter(user=admin).exists(),
+                         "平台超管不得被写入业务角色组")
 
     def test_superuser_without_employment_still_blocked_from_pms(self):
         """平台会话不改变 PMS 门禁：无任职超管访问 PMS 业务页仍 403"""

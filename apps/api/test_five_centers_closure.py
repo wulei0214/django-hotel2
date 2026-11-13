@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """五大中心闭环补齐回归测试包（基线 2.0 §3.1-§3.5 闭环验收对照）。
 
 对照《PMS2全业务中心闭环补齐开发基线2.0.md》五大中心闭环验收清单，
@@ -17,7 +18,6 @@
     （差异说明强校验、幂等、物业隔离）；Folio 余额 vs LedgerEntry 合计 vs
     收款/退款三方对账一致性（结账门禁）。
 """
-
 import json
 from datetime import timedelta
 from decimal import Decimal
@@ -47,14 +47,14 @@ from .test_e2e_flows import E2EFlowTestBase
 
 def _post_json(client, url, payload=None, idempotency_key=""):
     extra = {"HTTP_IDEMPOTENCY_KEY": idempotency_key} if idempotency_key else {}
-    return client.post(
-        url, data=json.dumps(payload or {}), content_type="application/json", **extra
-    )
+    return client.post(url, data=json.dumps(payload or {}),
+                       content_type="application/json", **extra)
 
 
 def _service_guest(property_obj, full_name="闭环测试住客", phone="13911112222"):
     """测试夹具：经 GuestService 建档（不直接写模型）。"""
-    return GuestService.create_guest(property_obj=property_obj, full_name=full_name, phone=phone)
+    return GuestService.create_guest(
+        property_obj=property_obj, full_name=full_name, phone=phone)
 
 
 @override_settings(DEBUG=True, DJANGO_ENV="test")
@@ -71,87 +71,72 @@ class EmployeeTerminationClosureTests(E2EFlowTestBase):
         self.client.force_login(self.manager)
         response = self.client.post(
             f"/manage/staff/actions/{profile.pk}/set_status/",
-            {"status": "TERMINATED", "reason": reason},
-        )
+            {"status": "TERMINATED", "reason": reason})
         self.assertEqual(response.status_code, 200, response.content)
         return profile
 
     def test_terminate_kills_session_revokes_permissions_and_audits(self):
         # 目标员工真实登录（非 force_login），持有可用会话与前台权限
         target_client = Client()
-        logged_in = target_client.post(
-            "/login/",
-            {
-                "username": "closure_tc_target",
-                "password": "closure_tc_target-pass123",
-            },
-        )
+        logged_in = target_client.post("/login/", {
+            "username": "closure_tc_target",
+            "password": "closure_tc_target-pass123",
+        })
         self.assertEqual(logged_in.status_code, 302)
         overview = target_client.get("/api/v1/front-desk/overview")
         self.assertEqual(overview.status_code, 200, overview.content)
-        self.assertTrue(
-            AuthorizationService.has_permission(self.target, self.property, "hotelapp.view_client")
-        )
+        self.assertTrue(AuthorizationService.has_permission(
+            self.target, self.property, "hotelapp.view_client"))
 
         active_assignments = StaffRoleAssignment.objects.filter(
-            membership__staff_profile__user=self.target, ends_at__isnull=True
-        )
-        self.assertEqual(active_assignments.count(), 1, "前置：目标员工应有 1 条长期有效岗位授权")
+            membership__staff_profile__user=self.target,
+            ends_at__isnull=True)
+        self.assertEqual(active_assignments.count(), 1,
+                         "前置：目标员工应有 1 条长期有效岗位授权")
 
         profile = self._terminate_target()
 
         # 1) 档案/任职/账号：TERMINATED + 任职终止 + 账号停用
         profile.refresh_from_db()
-        self.assertEqual(profile.employment_status, StaffProfile.EmploymentStatus.TERMINATED)
+        self.assertEqual(profile.employment_status,
+                         StaffProfile.EmploymentStatus.TERMINATED)
         self.target.refresh_from_db()
         self.assertFalse(self.target.is_active, "离职必须同步停用登录账号")
         self.assertEqual(
             StaffRoleAssignment.objects.filter(
-                membership__staff_profile=profile, ends_at__isnull=False
-            ).count(),
-            1,
-            "离职必须终止全部有效岗位授权（保留历史）",
-        )
+                membership__staff_profile=profile,
+                ends_at__isnull=False).count(),
+            1, "离职必须终止全部有效岗位授权（保留历史）")
 
         # 2) 权限即时撤销：AuthorizationService 口径为 False
-        self.assertFalse(
-            AuthorizationService.has_permission(self.target, self.property, "hotelapp.view_client")
-        )
-        self.assertFalse(
-            AuthorizationService.has_permission(
-                self.target, self.property, "hotelapp.change_accommodation"
-            )
-        )
+        self.assertFalse(AuthorizationService.has_permission(
+            self.target, self.property, "hotelapp.view_client"))
+        self.assertFalse(AuthorizationService.has_permission(
+            self.target, self.property, "hotelapp.change_accommodation"))
 
         # 3) 旧会话失效：同一 Cookie 再访问员工面 → 401（无半授权状态）
         stale = target_client.get("/api/v1/front-desk/overview")
         self.assertEqual(stale.status_code, 401, stale.content)
-        self.assertEqual(stale.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(
+            stale.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
         # 4) 全程审计：identity.employment_status 记录离职事实
-        event = (
-            AuditEvent.objects.filter(
-                action="identity.employment_status",
-                entity_type="StaffProfile",
-                entity_id=str(profile.pk),
-            )
-            .order_by("-id")
-            .first()
-        )
+        event = AuditEvent.objects.filter(
+            action="identity.employment_status",
+            entity_type="StaffProfile",
+            entity_id=str(profile.pk)).order_by("-id").first()
         self.assertIsNotNone(event)
         self.assertEqual(event.after_json.get("status"), "TERMINATED")
 
     def test_terminated_employee_cannot_login_again(self):
         self._terminate_target(reason="离职测试")
-        login = Client().post(
-            "/login/", {"username": "closure_tc_target", "password": "closure_tc_target-pass123"}
-        )
+        login = Client().post("/login/", {
+            "username": "closure_tc_target",
+            "password": "closure_tc_target-pass123"})
         self.assertEqual(login.status_code, 200)
         self.assertContains(
-            login,
-            "账号或密码不正确，或账号暂不可用",
-            msg_prefix="离职账号再次登录必须统一拒绝文案: ",
-        )
+            login, "账号或密码不正确，或账号暂不可用",
+            msg_prefix="离职账号再次登录必须统一拒绝文案: ")
 
 
 @override_settings(DEBUG=True, DJANGO_ENV="test")
@@ -170,15 +155,11 @@ class Guest360ClosureTests(E2EFlowTestBase):
         booking_no, token, line, stay_id = self._booking_checked_in(self.fd)
         guest = self._guest_of(booking_no)
         LegacyRecordLink.objects.create(
-            property=self.property,
-            source_system="HOTELAPP_V1",
-            source_model="Client",
-            source_pk="900001",
-            target_model="Guest",
-            target_pk=str(guest.pk),
+            property=self.property, source_system="HOTELAPP_V1",
+            source_model="Client", source_pk="900001",
+            target_model="Guest", target_pk=str(guest.pk),
             mapping_status=LegacyRecordLink.MappingStatus.LINKED,
-            match_method="人工确认",
-        )
+            match_method="人工确认")
 
         response = self.client.get(f"/api/v1/guests/{guest.pk}")
         self.assertEqual(response.status_code, 200, response.content)
@@ -194,7 +175,8 @@ class Guest360ClosureTests(E2EFlowTestBase):
         # Folio 摘要（账本口径余额）
         self.assertEqual(len(data["folios"]), 1)
         folio = Folio.objects.get(reservation__booking_no=booking_no)
-        expected_balance = sum((e.amount for e in folio.entries.all()), Decimal("0.00"))
+        expected_balance = sum(
+            (e.amount for e in folio.entries.all()), Decimal("0.00"))
         self.assertEqual(Decimal(data["folios"][0]["balance"]), expected_balance)
         # 旧 Client 映射可追溯
         self.assertEqual(len(data["legacy_links"]), 1)
@@ -208,8 +190,8 @@ class Guest360ClosureTests(E2EFlowTestBase):
         self.client.force_login(self.fd)
         # 客人档案更新（写 guest.update 审计，entity_type=Guest）
         updated = _post_json(
-            self.client, f"/api/v1/guests/{guest.pk}/update", {"notes": "客人要求高楼层安静房间"}
-        )
+            self.client, f"/api/v1/guests/{guest.pk}/update",
+            {"notes": "客人要求高楼层安静房间"})
         self.assertEqual(updated.status_code, 200, updated.content)
 
         response = self.client.get(f"/api/v1/guests/{guest.pk}/timeline")
@@ -223,7 +205,8 @@ class Guest360ClosureTests(E2EFlowTestBase):
         self.assertIn("audit", kinds)
         # 审计事件包含档案更新动作；不返回 before/after 原文
         audit_items = [i for i in data["items"] if i["kind"] == "audit"]
-        self.assertTrue(any(i["summary"]["action"] == "guest.update" for i in audit_items))
+        self.assertTrue(any(
+            i["summary"]["action"] == "guest.update" for i in audit_items))
         for item in data["items"]:
             self.assertIn("time", item)
             self.assertIn("summary", item)
@@ -241,7 +224,8 @@ class Guest360ClosureTests(E2EFlowTestBase):
         rows = body["data"]
         self.assertEqual(len(rows), 1)
         folio = Folio.objects.get(reservation__booking_no=booking_no)
-        expected_balance = sum((e.amount for e in folio.entries.all()), Decimal("0.00"))
+        expected_balance = sum(
+            (e.amount for e in folio.entries.all()), Decimal("0.00"))
         self.assertEqual(Decimal(rows[0]["balance"]), expected_balance)
 
     def test_guest_360_read_endpoints_permission_matrix(self):
@@ -258,18 +242,17 @@ class Guest360ClosureTests(E2EFlowTestBase):
         for path in (url, f"{url}/timeline", f"{url}/folios"):
             response = self.client.get(path)
             self.assertEqual(response.status_code, 403, path)
-            self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED", path)
+            self.assertEqual(
+                response.json()["error"]["code"], "PERMISSION_DENIED", path)
         # 跨物业客人 → 404（不泄露存在性）
-        other_property = Property.objects.create(code="CLOSURE-OTHER", name="对照测试他店")
+        other_property = Property.objects.create(code="CLOSURE-OTHER",
+                                                 name="对照测试他店")
         other_guest = Guest.objects.create(
-            property=other_property, full_name="他店住客", phone="13900000001"
-        )
+            property=other_property, full_name="他店住客", phone="13900000001")
         self.client.force_login(self.fd)
-        for path in (
-            f"/api/v1/guests/{other_guest.pk}",
-            f"/api/v1/guests/{other_guest.pk}/timeline",
-            f"/api/v1/guests/{other_guest.pk}/folios",
-        ):
+        for path in (f"/api/v1/guests/{other_guest.pk}",
+                     f"/api/v1/guests/{other_guest.pk}/timeline",
+                     f"/api/v1/guests/{other_guest.pk}/folios"):
             response = self.client.get(path)
             self.assertEqual(response.status_code, 404, path)
 
@@ -284,20 +267,16 @@ class MembershipStatusClosureTests(E2EFlowTestBase):
         self.fin = self._make_staff("closure_m_finance", "财务")
         self.client.force_login(self.fd)
         self.guest = _service_guest(self.property, phone="13911112222")
-        response = _post_json(
-            self.client,
-            "/api/v1/memberships/create",
-            {"guest_id": self.guest.pk, "member_no": "CLOSURE-M-0001", "level_code": "STANDARD"},
-        )
+        response = _post_json(self.client, "/api/v1/memberships/create", {
+            "guest_id": self.guest.pk, "member_no": "CLOSURE-M-0001",
+            "level_code": "STANDARD"})
         self.assertEqual(response.status_code, 201, response.content)
         self.membership_id = response.json()["data"]["id"]
 
     def _status(self, action, reason="业务原因：客人申请暂停会员权益"):
         return _post_json(
-            self.client,
-            f"/api/v1/memberships/{self.membership_id}/status",
-            {"action": action, "reason": reason},
-        )
+            self.client, f"/api/v1/memberships/{self.membership_id}/status",
+            {"action": action, "reason": reason})
 
     def test_suspend_restore_roundtrip_with_audit_and_idempotency(self):
         # 暂停：ACTIVE → SUSPENDED
@@ -308,13 +287,10 @@ class MembershipStatusClosureTests(E2EFlowTestBase):
         self.assertEqual(data["status"], GuestMembership.Status.SUSPENDED)
         membership = GuestMembership.objects.get(pk=self.membership_id)
         self.assertEqual(membership.status, GuestMembership.Status.SUSPENDED)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="membership.suspend",
-                entity_type="GuestMembership",
-                entity_id=str(self.membership_id),
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="membership.suspend",
+            entity_type="GuestMembership",
+            entity_id=str(self.membership_id)).exists())
         # 幂等：重复暂停 changed=false
         again = self._status("suspend", reason="重复暂停请求")
         self.assertEqual(again.status_code, 200)
@@ -322,26 +298,22 @@ class MembershipStatusClosureTests(E2EFlowTestBase):
         # 恢复：SUSPENDED → ACTIVE
         restored = self._status("restore")
         self.assertEqual(restored.status_code, 200, restored.content)
-        self.assertEqual(restored.json()["data"]["status"], GuestMembership.Status.ACTIVE)
+        self.assertEqual(restored.json()["data"]["status"],
+                         GuestMembership.Status.ACTIVE)
         membership.refresh_from_db()
         self.assertEqual(membership.status, GuestMembership.Status.ACTIVE)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="membership.restore",
-                entity_type="GuestMembership",
-                entity_id=str(self.membership_id),
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="membership.restore",
+            entity_type="GuestMembership",
+            entity_id=str(self.membership_id)).exists())
 
     def test_restore_conflicts_when_guest_has_other_active_membership(self):
         suspended = self._status("suspend")
         self.assertEqual(suspended.status_code, 200)
         # 暂停后同客人可再建有效会员（有效唯一键语义）
-        second = _post_json(
-            self.client,
-            "/api/v1/memberships/create",
-            {"guest_id": self.guest.pk, "member_no": "CLOSURE-M-0002", "level_code": "GOLD"},
-        )
+        second = _post_json(self.client, "/api/v1/memberships/create", {
+            "guest_id": self.guest.pk, "member_no": "CLOSURE-M-0002",
+            "level_code": "GOLD"})
         self.assertEqual(second.status_code, 201, second.content)
         # 恢复旧会员 → 与新有效会员冲突（人工处理，不静默覆盖）
         conflict = self._status("restore")
@@ -352,15 +324,14 @@ class MembershipStatusClosureTests(E2EFlowTestBase):
 
     def test_status_requires_reason_and_known_action(self):
         missing_reason = _post_json(
-            self.client, f"/api/v1/memberships/{self.membership_id}/status", {"action": "suspend"}
-        )
+            self.client, f"/api/v1/memberships/{self.membership_id}/status",
+            {"action": "suspend"})
         self.assertEqual(missing_reason.status_code, 409)
-        self.assertEqual(missing_reason.json()["error"]["code"], "BUSINESS_CONFLICT")
+        self.assertEqual(
+            missing_reason.json()["error"]["code"], "BUSINESS_CONFLICT")
         unknown = _post_json(
-            self.client,
-            f"/api/v1/memberships/{self.membership_id}/status",
-            {"action": "freeze", "reason": "未知动作"},
-        )
+            self.client, f"/api/v1/memberships/{self.membership_id}/status",
+            {"action": "freeze", "reason": "未知动作"})
         self.assertEqual(unknown.status_code, 400)
         self.assertEqual(unknown.json()["error"]["code"], "VALIDATION_ERROR")
 
@@ -372,10 +343,8 @@ class MembershipStatusClosureTests(E2EFlowTestBase):
 
     def test_level_change_writes_history_visible_in_detail(self):
         changed = _post_json(
-            self.client,
-            f"/api/v1/memberships/{self.membership_id}/level",
-            {"level_code": "GOLD", "reason": "累计房晚达标升级"},
-        )
+            self.client, f"/api/v1/memberships/{self.membership_id}/level",
+            {"level_code": "GOLD", "reason": "累计房晚达标升级"})
         self.assertEqual(changed.status_code, 200, changed.content)
         detail = self.client.get(f"/api/v1/memberships/{self.membership_id}")
         self.assertEqual(detail.status_code, 200)
@@ -396,19 +365,15 @@ class HousekeepingInventoryClosureTests(E2EFlowTestBase):
         self.dm = self._make_staff("closure_hk_duty", "值班经理")
 
     def _inventory_rows(self):
-        return list(
-            RoomTypeInventory.objects.filter(
-                property=self.property, room_type=self.room_type
-            ).order_by("stay_date")
-        )
+        return list(RoomTypeInventory.objects.filter(
+            property=self.property, room_type=self.room_type).order_by("stay_date"))
 
     def _maintain(self, room, target, reason):
         self.client.force_login(self.dm)
         return self.client.post(
             f"/api/v1/housekeeping/rooms/{room.pk}/maintenance",
             data=json.dumps({"status": target, "reason": reason}),
-            content_type="application/json",
-        )
+            content_type="application/json")
 
     def test_maintenance_out_of_order_syncs_future_inventory_out_of_service(self):
         room = self.room1
@@ -417,14 +382,15 @@ class HousekeepingInventoryClosureTests(E2EFlowTestBase):
         rows = self._inventory_rows()
         self.assertTrue(rows)
         for stock in rows:
-            self.assertEqual(stock.out_of_service, 1, f"{stock.stay_date} 库存应同步 +1 停用")
+            self.assertEqual(stock.out_of_service, 1,
+                             f"{stock.stay_date} 库存应同步 +1 停用")
             self.assertEqual(stock.available_count, stock.total_rooms - 1)
-        event = (
-            AuditEvent.objects.filter(action="maintenance.status_changed", entity_id=str(room.pk))
-            .order_by("-id")
-            .first()
-        )
-        self.assertEqual(event.after_json.get("inventory_out_of_service_rows_synced"), len(rows))
+        event = AuditEvent.objects.filter(
+            action="maintenance.status_changed",
+            entity_id=str(room.pk)).order_by("-id").first()
+        self.assertEqual(
+            event.after_json.get("inventory_out_of_service_rows_synced"),
+            len(rows))
         room.refresh_from_db()
         self.assertFalse(room.is_sellable_now)
 
@@ -435,43 +401,47 @@ class HousekeepingInventoryClosureTests(E2EFlowTestBase):
         restore = self._maintain(room, "NORMAL", "检修完成验收恢复")
         self.assertEqual(restore.status_code, 200, restore.content)
         for stock in self._inventory_rows():
-            self.assertEqual(stock.out_of_service, 0, f"{stock.stay_date} 恢复后应回 0")
+            self.assertEqual(stock.out_of_service, 0,
+                             f"{stock.stay_date} 恢复后应回 0")
 
     def test_maintenance_fails_closed_when_inventory_exhausted(self):
         room = self.room1
         # 造一个"满房 + 1 间 Hold"的库存日（夹具直接排布库存行）
         stock = self._inventory_rows()[0]
         RoomTypeInventory.objects.filter(pk=stock.pk).update(
-            total_rooms=1, held=1, out_of_service=0
-        )
+            total_rooms=1, held=1, out_of_service=0)
         response = self._maintain(room, "OUT_OF_ORDER", "漏水需停用维修")
         self.assertEqual(response.status_code, 409, response.content)
         self.assertEqual(response.json()["error"]["code"], "BUSINESS_CONFLICT")
         room.refresh_from_db()
-        self.assertEqual(
-            room.maintenance_status,
-            Room.MaintenanceStatus.NORMAL,
-            "fail-closed：库存不足时房间状态不得变更",
-        )
+        self.assertEqual(room.maintenance_status,
+                         Room.MaintenanceStatus.NORMAL,
+                         "fail-closed：库存不足时房间状态不得变更")
         stock.refresh_from_db()
-        self.assertEqual(stock.out_of_service, 0, "fail-closed：库存计数不得部分写入")
+        self.assertEqual(stock.out_of_service, 0,
+                         "fail-closed：库存计数不得部分写入")
 
     def test_checkout_marks_dirty_then_cleaning_chain_restores_sellable(self):
         booking_no, token, line, stay_id = self._booking_checked_in(self.fd)
         line.refresh_from_db()  # 助手返回的是排房前取出的实例
         room = Room.objects.get(pk=line.assigned_room_id)
-        self.assertEqual(room.housekeeping_status, Room.HousekeepingStatus.CLEAN)
+        self.assertEqual(room.housekeeping_status,
+                         Room.HousekeepingStatus.CLEAN)
         # 结清余额后退房
-        balance = sum((e.amount for e in self._folio(booking_no).entries.all()), Decimal("0.00"))
+        balance = sum((e.amount for e in self._folio(booking_no).entries.all()),
+                      Decimal("0.00"))
         if balance > 0:
-            paid = self._collect_payment(booking_no, str(balance), f"closure-co-{booking_no}")
+            paid = self._collect_payment(
+                booking_no, str(balance), f"closure-co-{booking_no}")
             self.assertEqual(paid.status_code, 201, paid.content)
-        checkout = _post_json(self.client, f"/api/v1/front-desk/stays/{stay_id}/check-out")
+        checkout = _post_json(
+            self.client, f"/api/v1/front-desk/stays/{stay_id}/check-out")
         self.assertEqual(checkout.status_code, 200, checkout.content)
         room.refresh_from_db()
         # 退房自动转 DIRTY（§3.3 闭环锚点）
         self.assertEqual(room.occupancy_status, Room.OccupancyStatus.VACANT)
-        self.assertEqual(room.housekeeping_status, Room.HousekeepingStatus.DIRTY)
+        self.assertEqual(room.housekeeping_status,
+                         Room.HousekeepingStatus.DIRTY)
         self.assertFalse(room.is_sellable_now)
         # 清洁链：客房服务员流转 → 值班经理净房放行 → 恢复可售
         self.client.force_login(self.hk)
@@ -479,21 +449,21 @@ class HousekeepingInventoryClosureTests(E2EFlowTestBase):
             step = self.client.post(
                 f"/api/v1/housekeeping/rooms/{room.pk}/status",
                 data=json.dumps({"status": target}),
-                content_type="application/json",
-            )
+                content_type="application/json")
             self.assertEqual(step.status_code, 200, step.content)
         self.client.force_login(self.dm)
         release = self.client.post(
             f"/api/v1/housekeeping/rooms/{room.pk}/status",
             data=json.dumps({"status": "CLEAN"}),
-            content_type="application/json",
-        )
+            content_type="application/json")
         self.assertEqual(release.status_code, 200, release.content)
         room.refresh_from_db()
-        self.assertEqual(room.housekeeping_status, Room.HousekeepingStatus.CLEAN)
+        self.assertEqual(room.housekeeping_status,
+                         Room.HousekeepingStatus.CLEAN)
         # is_sellable_now 是 cached_property：取新实例核对（此前访问过旧值）
         room = Room.objects.get(pk=room.pk)
-        self.assertTrue(room.is_sellable_now, "净房放行后必须恢复可售口径")
+        self.assertTrue(room.is_sellable_now,
+                        "净房放行后必须恢复可售口径")
 
 
 @override_settings(DEBUG=True, DJANGO_ENV="test")
@@ -509,104 +479,84 @@ class CashierShiftClosureTests(E2EFlowTestBase):
 
     def test_open_shift_creates_and_replay_is_idempotent(self):
         self.client.force_login(self.fin)
-        first = _post_json(self.client, "/api/v1/billing/shifts/open", {"opening_cash": "200.00"})
+        first = _post_json(self.client, "/api/v1/billing/shifts/open",
+                           {"opening_cash": "200.00"})
         self.assertEqual(first.status_code, 201, first.content)
         data = first.json()["data"]
         self.assertTrue(data["created"])
         self.assertEqual(data["status"], CashierShift.ShiftStatus.OPEN)
         self.assertEqual(Decimal(data["opening_cash"]), Decimal("200.00"))
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="billing.shift_open", entity_type="CashierShift", entity_id=str(data["id"])
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="billing.shift_open",
+            entity_type="CashierShift",
+            entity_id=str(data["id"])).exists())
         # 同一收银员重复开班 → 幂等返回原班次
-        replay = _post_json(self.client, "/api/v1/billing/shifts/open", {"opening_cash": "200.00"})
+        replay = _post_json(self.client, "/api/v1/billing/shifts/open",
+                            {"opening_cash": "200.00"})
         self.assertEqual(replay.status_code, 200, replay.content)
         self.assertFalse(replay.json()["data"]["created"])
         self.assertEqual(replay.json()["data"]["id"], data["id"])
 
     def test_close_shift_records_variance_and_requires_reason(self):
         self.client.force_login(self.fin)
-        opened = _post_json(self.client, "/api/v1/billing/shifts/open", {"opening_cash": "100.00"})
+        opened = _post_json(self.client, "/api/v1/billing/shifts/open",
+                            {"opening_cash": "100.00"})
         shift_id = opened.json()["data"]["id"]
         # 差异非零且无说明 → 400，班次保持 OPEN
         denied = _post_json(
-            self.client, f"/api/v1/billing/shifts/{shift_id}/close", {"actual_cash": "80.00"}
-        )
+            self.client, f"/api/v1/billing/shifts/{shift_id}/close",
+            {"actual_cash": "80.00"})
         self.assertEqual(denied.status_code, 400, denied.content)
         self.assertEqual(denied.json()["error"]["code"], "VALIDATION_ERROR")
         self.assertEqual(
-            CashierShift.objects.get(pk=shift_id).status, CashierShift.ShiftStatus.OPEN
-        )
+            CashierShift.objects.get(pk=shift_id).status,
+            CashierShift.ShiftStatus.OPEN)
         # 补充差异说明后关班成功
         closed = _post_json(
-            self.client,
-            f"/api/v1/billing/shifts/{shift_id}/close",
-            {"actual_cash": "80.00", "variance_reason": "现金短缺 20 元待查"},
-        )
+            self.client, f"/api/v1/billing/shifts/{shift_id}/close",
+            {"actual_cash": "80.00", "variance_reason": "现金短缺 20 元待查"})
         self.assertEqual(closed.status_code, 200, closed.content)
         data = closed.json()["data"]
         self.assertEqual(data["status"], CashierShift.ShiftStatus.CLOSED)
         self.assertEqual(Decimal(data["variance"]), Decimal("-20.00"))
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="billing.shift_close", entity_type="CashierShift", entity_id=str(shift_id)
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="billing.shift_close",
+            entity_type="CashierShift",
+            entity_id=str(shift_id)).exists())
         # 重复关班 → 400
         again = _post_json(
-            self.client,
-            f"/api/v1/billing/shifts/{shift_id}/close",
-            {"actual_cash": "80.00", "variance_reason": "重复关班"},
-        )
+            self.client, f"/api/v1/billing/shifts/{shift_id}/close",
+            {"actual_cash": "80.00", "variance_reason": "重复关班"})
         self.assertEqual(again.status_code, 400)
 
     def test_expected_cash_uses_cash_payments_refunds_and_cash_movements(self):
         from apps.reservations.models import Reservation
-
         booking_no, _, _, _ = self._booking_with_outstanding()
         reservation = Reservation.objects.get(booking_no=booking_no)
         self.client.force_login(self.fin)
-        opened = _post_json(self.client, "/api/v1/billing/shifts/open", {"opening_cash": "100.00"})
+        opened = _post_json(
+            self.client, "/api/v1/billing/shifts/open",
+            {"opening_cash": "100.00"})
         self.assertEqual(opened.status_code, 201, opened.content)
         shift_id = opened.json()["data"]["id"]
 
         collected = _post_json(
-            self.client,
-            "/api/v1/billing/payments",
-            {
-                "reservation_id": reservation.pk,
-                "amount": "100.00",
-                "method": "CASH",
-                "reference": "closure-cash-payment-001",
-            },
-        )
+            self.client, "/api/v1/billing/payments",
+            {"reservation_id": reservation.pk, "amount": "100.00",
+             "method": "CASH", "reference": "closure-cash-payment-001"})
         self.assertEqual(collected.status_code, 201, collected.content)
         payment = Payment.objects.get(pk=collected.json()["data"]["payment_id"])
         self.assertEqual(payment.cashier_shift_id, shift_id)
 
         cash_in = _post_json(
-            self.client,
-            f"/api/v1/billing/shifts/{shift_id}/movements",
-            {
-                "direction": "IN",
-                "amount": "5.00",
-                "reason": "补入备用现金",
-                "idempotency_key": "closure-cash-in-001",
-            },
-        )
+            self.client, f"/api/v1/billing/shifts/{shift_id}/movements",
+            {"direction": "IN", "amount": "5.00", "reason": "补入备用现金",
+             "idempotency_key": "closure-cash-in-001"})
         self.assertEqual(cash_in.status_code, 201, cash_in.content)
         cash_out = _post_json(
-            self.client,
-            f"/api/v1/billing/shifts/{shift_id}/movements",
-            {
-                "direction": "OUT",
-                "amount": "10.00",
-                "reason": "现金支出",
-                "idempotency_key": "closure-cash-out-001",
-            },
-        )
+            self.client, f"/api/v1/billing/shifts/{shift_id}/movements",
+            {"direction": "OUT", "amount": "10.00", "reason": "现金支出",
+             "idempotency_key": "closure-cash-out-001"})
         self.assertEqual(cash_out.status_code, 201, cash_out.content)
         movement = CashierShiftMovement.objects.get(pk=cash_out.json()["data"]["id"])
         movement.reason = "篡改后的原因"
@@ -620,25 +570,16 @@ class CashierShiftClosureTests(E2EFlowTestBase):
 
         # 当前应有现金为 100 + 100 + 5 - 10 = 195，超额支出必须被拒绝。
         overdraw = _post_json(
-            self.client,
-            f"/api/v1/billing/shifts/{shift_id}/movements",
-            {
-                "direction": "OUT",
-                "amount": "196.00",
-                "reason": "超出抽屉余额",
-                "idempotency_key": "closure-cash-overdraw-001",
-            },
-        )
+            self.client, f"/api/v1/billing/shifts/{shift_id}/movements",
+            {"direction": "OUT", "amount": "196.00", "reason": "超出抽屉余额",
+             "idempotency_key": "closure-cash-overdraw-001"})
         self.assertEqual(overdraw.status_code, 400, overdraw.content)
-        self.assertFalse(
-            CashierShiftMovement.objects.filter(
-                shift_id=shift_id, idempotency_key="closure-cash-overdraw-001"
-            ).exists()
-        )
+        self.assertFalse(CashierShiftMovement.objects.filter(
+            shift_id=shift_id, idempotency_key="closure-cash-overdraw-001").exists())
 
         closed = _post_json(
-            self.client, f"/api/v1/billing/shifts/{shift_id}/close", {"actual_cash": "195.00"}
-        )
+            self.client, f"/api/v1/billing/shifts/{shift_id}/close",
+            {"actual_cash": "195.00"})
         self.assertEqual(closed.status_code, 200, closed.content)
         data = closed.json()["data"]
         self.assertEqual(Decimal(data["expected_cash"]), Decimal("195.00"))
@@ -653,78 +594,83 @@ class CashierShiftClosureTests(E2EFlowTestBase):
 
         # 关班后不能继续登记现金支出或把新收款归入已关闭班次。
         rejected = _post_json(
-            self.client,
-            f"/api/v1/billing/shifts/{shift_id}/movements",
-            {
-                "direction": "OUT",
-                "amount": "1.00",
-                "reason": "关班后不得追加",
-                "idempotency_key": "closure-cash-out-after-close",
-            },
-        )
+            self.client, f"/api/v1/billing/shifts/{shift_id}/movements",
+            {"direction": "OUT", "amount": "1.00", "reason": "关班后不得追加",
+             "idempotency_key": "closure-cash-out-after-close"})
         self.assertEqual(rejected.status_code, 400)
 
     def test_open_shift_idempotency_rejects_different_opening_float(self):
         self.client.force_login(self.fin)
-        first = _post_json(self.client, "/api/v1/billing/shifts/open", {"opening_cash": "50.00"})
+        first = _post_json(
+            self.client, "/api/v1/billing/shifts/open",
+            {"opening_cash": "50.00"})
         self.assertEqual(first.status_code, 201, first.content)
         shift_id = first.json()["data"]["id"]
 
-        replay = _post_json(self.client, "/api/v1/billing/shifts/open", {"opening_cash": "50.00"})
+        replay = _post_json(
+            self.client, "/api/v1/billing/shifts/open",
+            {"opening_cash": "50.00"})
         self.assertEqual(replay.status_code, 200, replay.content)
         self.assertEqual(replay.json()["data"]["id"], shift_id)
         self.assertFalse(replay.json()["data"]["created"])
 
-        mismatch = _post_json(self.client, "/api/v1/billing/shifts/open", {"opening_cash": "55.00"})
+        mismatch = _post_json(
+            self.client, "/api/v1/billing/shifts/open",
+            {"opening_cash": "55.00"})
         self.assertEqual(mismatch.status_code, 400, mismatch.content)
-        self.assertEqual(CashierShift.objects.get(pk=shift_id).opening_cash, Decimal("50.00"))
+        self.assertEqual(
+            CashierShift.objects.get(pk=shift_id).opening_cash,
+            Decimal("50.00"))
 
     def test_frontdesk_cannot_close_another_cashiers_shift(self):
         self.client.force_login(self.fin)
-        opened = _post_json(self.client, "/api/v1/billing/shifts/open", {"opening_cash": "50.00"})
+        opened = _post_json(
+            self.client, "/api/v1/billing/shifts/open",
+            {"opening_cash": "50.00"})
         self.assertEqual(opened.status_code, 201, opened.content)
         shift_id = opened.json()["data"]["id"]
 
         self.client.force_login(self.nofin)
         denied = _post_json(
-            self.client, f"/api/v1/billing/shifts/{shift_id}/close", {"actual_cash": "50.00"}
-        )
+            self.client, f"/api/v1/billing/shifts/{shift_id}/close",
+            {"actual_cash": "50.00"})
         self.assertEqual(denied.status_code, 403, denied.content)
         self.assertEqual(denied.json()["error"]["code"], "PERMISSION_DENIED")
         self.assertEqual(
-            CashierShift.objects.get(pk=shift_id).status, CashierShift.ShiftStatus.OPEN
-        )
+            CashierShift.objects.get(pk=shift_id).status,
+            CashierShift.ShiftStatus.OPEN)
 
         # 有财务查看/管理权限的主管可代关，但关班审计仍记录实际操作人。
         self.client.force_login(self.fin)
         closed = _post_json(
-            self.client, f"/api/v1/billing/shifts/{shift_id}/close", {"actual_cash": "50.00"}
-        )
+            self.client, f"/api/v1/billing/shifts/{shift_id}/close",
+            {"actual_cash": "50.00"})
         self.assertEqual(closed.status_code, 200, closed.content)
-        self.assertEqual(CashierShift.objects.get(pk=shift_id).closed_by_id, self.fin.pk)
+        self.assertEqual(
+            CashierShift.objects.get(pk=shift_id).closed_by_id, self.fin.pk)
 
     def test_shift_endpoints_use_cashier_permission_and_property_scope(self):
         # 前台没有 finance_access，但拥有本人班次开闭专项权。
         self.client.force_login(self.nofin)
-        response = _post_json(self.client, "/api/v1/billing/shifts/open", {"opening_cash": "0.00"})
+        response = _post_json(self.client, "/api/v1/billing/shifts/open",
+                              {"opening_cash": "0.00"})
         self.assertEqual(response.status_code, 201, response.content)
         shift_id = response.json()["data"]["id"]
         closed = _post_json(
-            self.client, f"/api/v1/billing/shifts/{shift_id}/close", {"actual_cash": "0.00"}
-        )
+            self.client, f"/api/v1/billing/shifts/{shift_id}/close",
+            {"actual_cash": "0.00"})
         self.assertEqual(closed.status_code, 200, closed.content)
 
         # 跨物业班次仍然默认拒绝 → 404
         self.client.force_login(self.fin)
-        other_property = Property.objects.create(
-            code="CLOSURE-SHIFT-OTHER", name="班次隔离测试他店"
-        )
+        other_property = Property.objects.create(code="CLOSURE-SHIFT-OTHER",
+                                                 name="班次隔离测试他店")
         other_shift = CashierShift.objects.create(
-            property=other_property, cashier=self.fin, opening_cash=Decimal("50.00")
-        )
+            property=other_property, cashier=self.fin,
+            opening_cash=Decimal("50.00"))
         response = _post_json(
-            self.client, f"/api/v1/billing/shifts/{other_shift.pk}/close", {"actual_cash": "50.00"}
-        )
+            self.client, f"/api/v1/billing/shifts/{other_shift.pk}/close",
+            {"actual_cash": "50.00"})
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
         other_shift.refresh_from_db()
@@ -750,7 +696,8 @@ class ReconciliationConsistencyTests(E2EFlowTestBase):
         """以财务账号读账单余额（finance_access 门禁）；不影响调用方会话。"""
         finance_client = Client()
         finance_client.force_login(self.fin)
-        response = finance_client.get("/api/v1/billing/folios", {"booking_no": booking_no})
+        response = finance_client.get("/api/v1/billing/folios",
+                                      {"booking_no": booking_no})
         self.assertEqual(response.status_code, 200, response.content)
         rows = response.json()["data"]
         self.assertEqual(len(rows), 1)
@@ -759,26 +706,20 @@ class ReconciliationConsistencyTests(E2EFlowTestBase):
     def _refund_hundred(self, booking_no):
         """前台申请退 100 → 店长审批执行（双人分离）；返回后恢复前台会话。"""
         folio = self._folio(booking_no)
-        payment = (
-            Payment.objects.filter(folio=folio, status=Payment.Status.SUCCEEDED)
-            .order_by("-id")
-            .first()
-        )
+        payment = Payment.objects.filter(
+            folio=folio, status=Payment.Status.SUCCEEDED).order_by("-id").first()
         self.assertIsNotNone(payment)
         request_resp = _post_json(
             self.client,
             f"/api/v1/front-desk/payments/{payment.pk}/refunds",
             {"amount": "100.00", "reason": "客人多付房费，协商退款 100 元"},
-            idempotency_key=f"closure-refund-{booking_no}",
-        )
+            idempotency_key=f"closure-refund-{booking_no}")
         self.assertEqual(request_resp.status_code, 201, request_resp.content)
         refund_id = request_resp.json()["data"]["refund_id"]
         self.client.force_login(self.owner)
         approved = _post_json(
-            self.client,
-            f"/api/v1/front-desk/refunds/{refund_id}/approve",
-            {"confirm_refund_paid": True},
-        )
+            self.client, f"/api/v1/front-desk/refunds/{refund_id}/approve",
+            {"confirm_refund_paid": True})
         self.assertEqual(approved.status_code, 200, approved.content)
         self.client.force_login(self.fd)
         return refund_id
@@ -793,19 +734,14 @@ class ReconciliationConsistencyTests(E2EFlowTestBase):
         # line.amount 仍为 600，其中 300 为续住时已入账的 stay-extension）。
         line.check_in = self.today - timedelta(days=2)
         line.nightly_rates = [
-            {
-                "date": (self.today - timedelta(days=2)).isoformat(),
-                "price": "300.00",
-                "currency": "CNY",
-            },
-            {
-                "date": (self.today - timedelta(days=1)).isoformat(),
-                "price": "300.00",
-                "currency": "CNY",
-            },
+            {"date": (self.today - timedelta(days=2)).isoformat(),
+             "price": "300.00", "currency": "CNY"},
+            {"date": (self.today - timedelta(days=1)).isoformat(),
+             "price": "300.00", "currency": "CNY"},
         ]
         line.save(update_fields=("check_in", "nightly_rates"))
-        collected = self._collect_payment(booking_no, "200.00", f"closure-rc1-{booking_no}")
+        collected = self._collect_payment(
+            booking_no, "200.00", f"closure-rc1-{booking_no}")
         self.assertEqual(collected.status_code, 201, collected.content)
         self._refund_hundred(booking_no)
 
@@ -820,26 +756,19 @@ class ReconciliationConsistencyTests(E2EFlowTestBase):
         def cash_flow_totals(f):
             # 实收现金流入：SUCCEEDED 及其后退款衍生状态（部分退款/全额退款
             # 的资金仍已到账；失败/未付意图不计——基线 §4.5 实收口径）
-            delivered = (
-                Payment.Status.SUCCEEDED,
-                Payment.Status.REFUND_PENDING,
-                Payment.Status.PARTIALLY_REFUNDED,
-                Payment.Status.REFUNDED,
-            )
-            paid = Payment.objects.filter(folio=f, status__in=delivered).aggregate(
-                total=Sum("amount")
-            )["total"] or Decimal("0.00")
+            delivered = (Payment.Status.SUCCEEDED, Payment.Status.REFUND_PENDING,
+                         Payment.Status.PARTIALLY_REFUNDED,
+                         Payment.Status.REFUNDED)
+            paid = Payment.objects.filter(
+                folio=f, status__in=delivered).aggregate(
+                total=Sum("amount"))["total"] or Decimal("0.00")
             refunded = Refund.objects.filter(
-                payment__folio=f, status=Refund.Status.SUCCEEDED
-            ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+                payment__folio=f, status=Refund.Status.SUCCEEDED).aggregate(
+                total=Sum("amount"))["total"] or Decimal("0.00")
             charges_posted = sum(
-                (
-                    e.amount
-                    for e in f.entries.all()
-                    if e.entry_type == LedgerEntry.EntryType.ROOM_CHARGE
-                ),
-                Decimal("0.00"),
-            )
+                (e.amount for e in f.entries.all()
+                 if e.entry_type == LedgerEntry.EntryType.ROOM_CHARGE),
+                Decimal("0.00"))
             return paid, refunded, charges_posted
 
         paid, refunded, charges_posted = cash_flow_totals(folio)
@@ -850,55 +779,60 @@ class ReconciliationConsistencyTests(E2EFlowTestBase):
         self.assertEqual(charges_posted, Decimal("300.00"))
         self.assertEqual(ledger_sum, charges_posted - paid + refunded)
         # 一致 3：账本正负分项自洽（正项合计 - 负项合计 == 余额）
-        positive = sum((e.amount for e in entries if e.amount > 0), Decimal("0.00"))
-        negative = sum((-e.amount for e in entries if e.amount < 0), Decimal("0.00"))
+        positive = sum((e.amount for e in entries if e.amount > 0),
+                       Decimal("0.00"))
+        negative = sum((-e.amount for e in entries if e.amount < 0),
+                       Decimal("0.00"))
         self.assertEqual(ledger_sum, positive - negative)
         # 未结清（退房未入账的房费 + 退款后余额）→ 退房被账本门禁阻断
-        blocked = _post_json(self.client, f"/api/v1/front-desk/stays/{stay_id}/check-out")
+        blocked = _post_json(
+            self.client, f"/api/v1/front-desk/stays/{stay_id}/check-out")
         self.assertEqual(blocked.status_code, 409, blocked.content)
         # 退房房费入账后应收 = ReservationRoom 成交合计 - 已收 + 已退；
         # 按独立事实源结清（不读账本推算，避免循环口径）
         reservation_total = ReservationRoom.objects.filter(
-            property=self.property, reservation=folio.reservation
-        ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+            property=self.property,
+            reservation=folio.reservation).aggregate(
+            total=Sum("amount"))["total"] or Decimal("0.00")
         folio.refresh_from_db()
         paid, refunded, _ = cash_flow_totals(folio)
         outstanding = reservation_total - paid + refunded
         self.assertGreater(outstanding, Decimal("0.00"))
-        final_pay = self._collect_payment(booking_no, str(outstanding), f"closure-rc2-{booking_no}")
+        final_pay = self._collect_payment(
+            booking_no, str(outstanding), f"closure-rc2-{booking_no}")
         self.assertEqual(final_pay.status_code, 201, final_pay.content)
-        checkout = _post_json(self.client, f"/api/v1/front-desk/stays/{stay_id}/check-out")
+        checkout = _post_json(
+            self.client, f"/api/v1/front-desk/stays/{stay_id}/check-out")
         self.assertEqual(checkout.status_code, 200, checkout.content)
         folio.refresh_from_db()
         self.assertEqual(folio.status, Folio.Status.CLOSED)
         # 结账后三方归零：账本 == 房费 - 全部收款 + 全部退款 == 0
         paid, refunded, charges_posted = cash_flow_totals(folio)
         self.assertEqual(charges_posted, reservation_total)
-        self.assertEqual(self._ledger_sum(folio), charges_posted - paid + refunded)
+        self.assertEqual(
+            self._ledger_sum(folio), charges_posted - paid + refunded)
         self.assertEqual(self._ledger_sum(folio), Decimal("0.00"))
         self.assertEqual(self._api_folio_balance(booking_no), Decimal("0.00"))
 
     def test_refund_amount_capped_at_payment_prevents_ledger_drift(self):
         booking_no, token, line, stay_id = self._booking_with_outstanding(self.fd)
-        collected = self._collect_payment(booking_no, "100.00", f"closure-rc3-{booking_no}")
+        collected = self._collect_payment(
+            booking_no, "100.00", f"closure-rc3-{booking_no}")
         self.assertEqual(collected.status_code, 201, collected.content)
         folio = self._folio(booking_no)
-        payment = (
-            Payment.objects.filter(folio=folio, status=Payment.Status.SUCCEEDED)
-            .order_by("-id")
-            .first()
-        )
+        payment = Payment.objects.filter(
+            folio=folio, status=Payment.Status.SUCCEEDED).order_by("-id").first()
         # 超额退款申请 → 拒绝且无账本副作用
         before_sum = self._ledger_sum(folio)
         over = _post_json(
             self.client,
             f"/api/v1/front-desk/payments/{payment.pk}/refunds",
             {"amount": "999.00", "reason": "超额退款必须被拒绝"},
-            idempotency_key=f"closure-rc3-over-{booking_no}",
-        )
+            idempotency_key=f"closure-rc3-over-{booking_no}")
         self.assertEqual(over.status_code, 409, over.content)
         folio.refresh_from_db()
         self.assertEqual(self._ledger_sum(folio), before_sum)
+
 
 
 class ManagementCenterPaginationPageTests(E2EFlowTestBase):
@@ -913,5 +847,5 @@ class ManagementCenterPaginationPageTests(E2EFlowTestBase):
         self.assertIn('id="pms-page-size"', content)
         self.assertIn('id="pms-goto-page"', content)
         self.assertIn('id="pms-goto-btn"', content)
-        self.assertIn("page_size:String(currentPageSize)", content)
+        self.assertIn('page_size:String(currentPageSize)', content)
         self.assertIn("gotoPageInput.setCustomValidity", content)

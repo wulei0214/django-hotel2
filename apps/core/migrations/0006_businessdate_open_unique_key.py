@@ -7,7 +7,8 @@ def backfill_open_key(apps, schema_editor):
     BusinessDate = apps.get_model("core", "BusinessDate")
     opened = BusinessDate.objects.filter(status="OPEN")
     duplicates = list(
-        opened.values("property_id").annotate(total=Count("id")).filter(total__gt=1)[:5]
+        opened.values("property_id").annotate(total=Count("id"))
+        .filter(total__gt=1)[:5]
     )
     if duplicates:
         raise RuntimeError(
@@ -25,7 +26,9 @@ def drop_partial_index(apps, schema_editor):
     table = model._meta.db_table
     name = "uq_business_date_one_open"
     with schema_editor.connection.cursor() as cursor:
-        constraints = schema_editor.connection.introspection.get_constraints(cursor, table)
+        constraints = schema_editor.connection.introspection.get_constraints(
+            cursor, table
+        )
     if name not in constraints:
         return
     q = schema_editor.quote_name
@@ -43,13 +46,8 @@ class Migration(migrations.Migration):
             model_name="businessdate",
             name="open_property_key",
             field=models.CharField(
-                blank=True,
-                editable=False,
-                max_length=32,
-                null=True,
-                unique=True,
-                verbose_name="开放营业日唯一键",
-            ),
+                blank=True, editable=False, max_length=32, null=True,
+                unique=True, verbose_name="开放营业日唯一键"),
         ),
         migrations.RunPython(backfill_open_key, migrations.RunPython.noop),
         migrations.SeparateDatabaseAndState(

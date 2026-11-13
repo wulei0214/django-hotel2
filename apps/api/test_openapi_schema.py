@@ -56,7 +56,8 @@ PERMISSION_MATRIX = {
     ("post", "/front-desk/stays/{stay_id}/check-out"): "hotelapp.change_accommodation",
     ("post", "/front-desk/walk-in"): "hotelapp.change_accommodation",
     ("post", "/front-desk/walk-ins"): "hotelapp.change_accommodation",
-    ("post", "/billing/payment-intents/{intent_id}/window-extension"): "hotelapp.finance_access",
+    ("post", "/billing/payment-intents/{intent_id}/window-extension"):
+        "hotelapp.finance_access",
     (
         "post",
         "/front-desk/reservation-rooms/{reservation_room_id}/no-show",

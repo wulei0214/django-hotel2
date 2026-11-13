@@ -9,18 +9,23 @@ def backfill_keys(apps, schema_editor):
 
     primary = GuestPhone.objects.filter(is_primary=True)
     duplicates = list(
-        primary.values("guest_id").annotate(total=Count("id")).filter(total__gt=1)[:5]
+        primary.values("guest_id").annotate(total=Count("id"))
+        .filter(total__gt=1)[:5]
     )
     if duplicates:
         raise RuntimeError(
-            "A Guest has multiple primary phone records; reconcile manually: " f"{duplicates}"
+            "A Guest has multiple primary phone records; reconcile manually: "
+            f"{duplicates}"
         )
     for item in list(primary.values("id", "guest_id")):
-        GuestPhone.objects.filter(pk=item["id"]).update(primary_guest_key=str(item["guest_id"]))
+        GuestPhone.objects.filter(pk=item["id"]).update(
+            primary_guest_key=str(item["guest_id"])
+        )
 
     active = GuestMembership.objects.filter(status="ACTIVE")
     duplicates = list(
-        active.values("property_id", "guest_id").annotate(total=Count("id")).filter(total__gt=1)[:5]
+        active.values("property_id", "guest_id").annotate(total=Count("id"))
+        .filter(total__gt=1)[:5]
     )
     if duplicates:
         raise RuntimeError(
@@ -37,24 +42,28 @@ def drop_partial_index(apps, schema_editor, model_name, constraint_name):
     model = apps.get_model("guests", model_name)
     table = model._meta.db_table
     with schema_editor.connection.cursor() as cursor:
-        constraints = schema_editor.connection.introspection.get_constraints(cursor, table)
+        constraints = schema_editor.connection.introspection.get_constraints(
+            cursor, table
+        )
     if constraint_name not in constraints:
         return
     q = schema_editor.quote_name
     if schema_editor.connection.vendor == "mysql":
-        schema_editor.execute(f"ALTER TABLE {q(table)} DROP INDEX {q(constraint_name)}")
+        schema_editor.execute(
+            f"ALTER TABLE {q(table)} DROP INDEX {q(constraint_name)}"
+        )
     else:
         schema_editor.execute(f"DROP INDEX IF EXISTS {q(constraint_name)}")
 
 
 def drop_phone_partial(apps, schema_editor):
-    drop_partial_index(apps, schema_editor, "GuestPhone", "uq_guest_phone_primary")
+    drop_partial_index(apps, schema_editor, "GuestPhone",
+                       "uq_guest_phone_primary")
 
 
 def drop_membership_partial(apps, schema_editor):
-    drop_partial_index(
-        apps, schema_editor, "GuestMembership", "uq_membership_property_guest_active"
-    )
+    drop_partial_index(apps, schema_editor, "GuestMembership",
+                       "uq_membership_property_guest_active")
 
 
 class Migration(migrations.Migration):
@@ -65,25 +74,15 @@ class Migration(migrations.Migration):
             model_name="guestphone",
             name="primary_guest_key",
             field=models.CharField(
-                blank=True,
-                editable=False,
-                max_length=32,
-                null=True,
-                unique=True,
-                verbose_name="主号码唯一键",
-            ),
+                blank=True, editable=False, max_length=32, null=True,
+                unique=True, verbose_name="主号码唯一键"),
         ),
         migrations.AddField(
             model_name="guestmembership",
             name="active_guest_key",
             field=models.CharField(
-                blank=True,
-                editable=False,
-                max_length=64,
-                null=True,
-                unique=True,
-                verbose_name="有效会员唯一键",
-            ),
+                blank=True, editable=False, max_length=64, null=True,
+                unique=True, verbose_name="有效会员唯一键"),
         ),
         migrations.RunPython(backfill_keys, migrations.RunPython.noop),
         migrations.SeparateDatabaseAndState(

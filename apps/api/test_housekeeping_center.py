@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """§4.3 清洁与维修工作台回归测试包。
 
 覆盖：
@@ -13,24 +14,19 @@
   * /manage/housekeeping/ 页面门禁与按钮显隐标志；
   * 注册表同步：room_release_ready 恢复登记且 validate_registry 无 ERROR。
 """
-
 import json
 
 from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.core.models import AuditEvent, Property
 from apps.identity.authorization import AuthorizationService
 from apps.identity.registry import (
-    MODULE_REGISTRY_V2,
-    SPECIAL_PERMISSIONS,
-    get_special,
-    registry_errors,
+    MODULE_REGISTRY_V2, SPECIAL_PERMISSIONS, get_special, registry_errors,
     validate_registry,
 )
 from apps.inventory.models import HousekeepingTask, Room
 from apps.inventory.services import (
-    HousekeepingOperationError,
-    change_housekeeping_status,
-)
+    HousekeepingOperationError, change_housekeeping_status,
+    )
 
 
 class HousekeepingCenterTestBase(E2EFlowTestBase):
@@ -49,9 +45,8 @@ class HousekeepingCenterTestBase(E2EFlowTestBase):
             room_type=self.room_type,
             number=number,
             floor=floor,
-            occupancy_status=(
-                Room.OccupancyStatus.OCCUPIED if occupied else Room.OccupancyStatus.VACANT
-            ),
+            occupancy_status=(Room.OccupancyStatus.OCCUPIED if occupied
+                              else Room.OccupancyStatus.VACANT),
             housekeeping_status=Room.HousekeepingStatus.DIRTY,
             maintenance_status=Room.MaintenanceStatus.NORMAL,
         )
@@ -62,8 +57,7 @@ class HousekeepingCenterTestBase(E2EFlowTestBase):
         return self.client.post(
             f"/api/v1/housekeeping/rooms/{room.pk}/status",
             data=json.dumps({"status": target}),
-            content_type="application/json",
-        )
+            content_type="application/json")
 
     def _maintain(self, room, target, reason="空调漏水需停用维修", user=None):
         if user is not None:
@@ -71,8 +65,7 @@ class HousekeepingCenterTestBase(E2EFlowTestBase):
         return self.client.post(
             f"/api/v1/housekeeping/rooms/{room.pk}/maintenance",
             data=json.dumps({"status": target, "reason": reason}),
-            content_type="application/json",
-        )
+            content_type="application/json")
 
 
 class HousekeepingReadApiTests(HousekeepingCenterTestBase):
@@ -80,33 +73,31 @@ class HousekeepingReadApiTests(HousekeepingCenterTestBase):
 
     def test_read_endpoints_require_authentication(self):
         self.client.logout()
-        for url in ("/api/v1/housekeeping/rooms", "/api/v1/housekeeping/summary"):
+        for url in ("/api/v1/housekeeping/rooms",
+                    "/api/v1/housekeeping/summary"):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 401, url)
-            self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED", url)
+            self.assertEqual(response.json()["error"]["code"],
+                             "AUTHENTICATION_REQUIRED", url)
 
     def test_read_endpoints_require_housekeeping_view_permission(self):
         """读取清洁维修工作台使用独立 inventory.housekeeping_view；财务只读账号 403。"""
         self.client.force_login(self.no_perm)
-        self.assertFalse(
-            AuthorizationService.has_permission(
-                self.no_perm, self.property, "inventory.housekeeping_view"
-            )
-        )
-        for url in ("/api/v1/housekeeping/rooms", "/api/v1/housekeeping/summary"):
+        self.assertFalse(AuthorizationService.has_permission(
+            self.no_perm, self.property, "inventory.housekeeping_view"))
+        for url in ("/api/v1/housekeeping/rooms",
+                    "/api/v1/housekeeping/summary"):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 403, url)
-            self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED", url)
+            self.assertEqual(response.json()["error"]["code"],
+                             "PERMISSION_DENIED", url)
 
     def test_room_list_pagination_order_filters_and_isolation(self):
         other_property = Property.objects.create(code="HK-OTHER", name="其他物业")
         Room.objects.create(
-            property=other_property,
-            room_type=self.room_type,
-            number="X-9001",
-            floor="9",
-            housekeeping_status=Room.HousekeepingStatus.DIRTY,
-        )
+            property=other_property, room_type=self.room_type,
+            number="X-9001", floor="9",
+            housekeeping_status=Room.HousekeepingStatus.DIRTY)
         room_b1 = self._make_dirty_room("HK-8101", floor="8")
         room_b2 = self._make_dirty_room("HK-8102", floor="8")
         room_b2.maintenance_status = Room.MaintenanceStatus.OUT_OF_ORDER
@@ -118,25 +109,32 @@ class HousekeepingReadApiTests(HousekeepingCenterTestBase):
         payload = response.json()
         # 稳定排序 floor→number→id（含基础夹具 3 间 E2E-82xx，楼层 "8"）；
         # 跨物业房间不出现
-        self.assertEqual(
-            [item["number"] for item in payload["data"]],
-            ["HK-0501", "E2E-8201", "E2E-8202", "E2E-8203", "HK-8101", "HK-8102"],
-        )
-        self.assertTrue(all(item["number"] != "X-9001" for item in payload["data"]))
+        self.assertEqual([item["number"] for item in payload["data"]],
+                         ["HK-0501", "E2E-8201", "E2E-8202", "E2E-8203",
+                          "HK-8101", "HK-8102"])
+        self.assertTrue(all(item["number"] != "X-9001"
+                            for item in payload["data"]))
         self.assertEqual(payload["meta"]["pagination"]["total"], 6)
         # 分页 page_size=1 → 第 2 页
-        paged = self.client.get("/api/v1/housekeeping/rooms?page=2&page_size=1").json()
+        paged = self.client.get(
+            "/api/v1/housekeeping/rooms?page=2&page_size=1").json()
         self.assertEqual(paged["data"][0]["number"], "E2E-8201")
         self.assertTrue(paged["meta"]["pagination"]["has_previous"])
         self.assertTrue(paged["meta"]["pagination"]["has_next"])
         # 筛选：楼层 / 清洁 / 维修 / 占用
-        floor5 = self.client.get("/api/v1/housekeeping/rooms?floor=5").json()
-        self.assertEqual([item["number"] for item in floor5["data"]], ["HK-0501"])
-        dirty = self.client.get("/api/v1/housekeeping/rooms?housekeeping=DIRTY").json()
+        floor5 = self.client.get(
+            "/api/v1/housekeeping/rooms?floor=5").json()
+        self.assertEqual([item["number"] for item in floor5["data"]],
+                         ["HK-0501"])
+        dirty = self.client.get(
+            "/api/v1/housekeeping/rooms?housekeeping=DIRTY").json()
         self.assertEqual(dirty["meta"]["pagination"]["total"], 3)
-        abnormal = self.client.get("/api/v1/housekeeping/rooms?maintenance=OUT_OF_ORDER").json()
-        self.assertEqual([item["number"] for item in abnormal["data"]], ["HK-8102"])
-        vacant = self.client.get("/api/v1/housekeeping/rooms?occupancy=VACANT").json()
+        abnormal = self.client.get(
+            "/api/v1/housekeeping/rooms?maintenance=OUT_OF_ORDER").json()
+        self.assertEqual([item["number"] for item in abnormal["data"]],
+                         ["HK-8102"])
+        vacant = self.client.get(
+            "/api/v1/housekeeping/rooms?occupancy=VACANT").json()
         self.assertEqual(vacant["meta"]["pagination"]["total"], 6)
         # 非法筛选与非法分页参数 → 400
         bad = self.client.get("/api/v1/housekeeping/rooms?housekeeping=NOPE")
@@ -168,8 +166,8 @@ class HousekeepingReadApiTests(HousekeepingCenterTestBase):
         self.assertEqual(response.status_code, 200, response.content)
         data = response.json()["data"]
         # E2E 基础夹具 room1/2/3 默认 CLEAN（楼层 "8"），加上本测试创建的 6 间
-        self.assertEqual(data["housekeeping"]["CLEAN"], 5)  # 3 夹具 + 2 本测
-        self.assertEqual(data["housekeeping"]["DIRTY"], 2)  # 脏房 + 维修房
+        self.assertEqual(data["housekeeping"]["CLEAN"], 5)   # 3 夹具 + 2 本测
+        self.assertEqual(data["housekeeping"]["DIRTY"], 2)   # 脏房 + 维修房
         self.assertEqual(data["housekeeping"]["CLEANING"], 1)
         self.assertEqual(data["housekeeping"]["INSPECTING"], 1)
         self.assertEqual(data["maintenance"]["OUT_OF_ORDER"], 1)
@@ -183,7 +181,7 @@ class HousekeepingReadApiTests(HousekeepingCenterTestBase):
 
     def test_summary_today_audit_counts(self):
         room = self._make_dirty_room("HK-8301")
-        self._flow(room, "CLEANING")  # 客房服务员
+        self._flow(room, "CLEANING")           # 客房服务员
         self._flow(room, "INSPECTING")
         self._flow(room, "CLEAN", user=self.dm)  # 净房放行
         other = self._make_dirty_room("HK-8302")
@@ -205,10 +203,10 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
         response = self.client.post(
             f"/api/v1/housekeeping/rooms/{room.pk}/status",
             data=json.dumps({"status": "CLEANING"}),
-            content_type="application/json",
-        )
+            content_type="application/json")
         self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["error"]["code"],
+                         "AUTHENTICATION_REQUIRED")
 
     def test_status_change_requires_change_room_permission(self):
         room = self._make_dirty_room("HK-8402")
@@ -216,7 +214,8 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
         room.refresh_from_db()
-        self.assertEqual(room.housekeeping_status, Room.HousekeepingStatus.DIRTY)
+        self.assertEqual(room.housekeeping_status,
+                         Room.HousekeepingStatus.DIRTY)
 
     def test_housekeeping_chain_legal_flow_by_cleaner(self):
         """DIRTY→CLEANING→INSPECTING 由客房服务员完成；每次落审计。"""
@@ -228,18 +227,19 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
             self.assertEqual(response.status_code, 200, response.content)
             self.assertTrue(response.json()["data"]["changed"])
         room.refresh_from_db()
-        self.assertEqual(room.housekeeping_status, Room.HousekeepingStatus.INSPECTING)
+        self.assertEqual(room.housekeeping_status,
+                         Room.HousekeepingStatus.INSPECTING)
         # 占用维度不变（入住/退房服务负责）
         self.assertEqual(room.occupancy_status, Room.OccupancyStatus.OCCUPIED)
-        events = list(
-            AuditEvent.objects.filter(
-                action="housekeeping.status_changed", entity_id=str(room.pk), property=self.property
-            ).order_by("created_at", "id")
-        )
+        events = list(AuditEvent.objects.filter(
+            action="housekeeping.status_changed", entity_id=str(room.pk),
+            property=self.property).order_by("created_at", "id"))
         self.assertEqual(len(events), 2)
         self.assertEqual(events[0].before_json["housekeeping_status"], "DIRTY")
-        self.assertEqual(events[0].after_json["housekeeping_status"], "CLEANING")
-        self.assertEqual(events[1].after_json["housekeeping_status"], "INSPECTING")
+        self.assertEqual(events[0].after_json["housekeeping_status"],
+                         "CLEANING")
+        self.assertEqual(events[1].after_json["housekeeping_status"],
+                         "INSPECTING")
 
     def test_inspection_reject_rework_to_dirty(self):
         """INSPECTING→DIRTY 检查不通过返工（change_room 权限内）。"""
@@ -249,7 +249,8 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
         response = self._flow(room, "DIRTY", user=self.hk)
         self.assertEqual(response.status_code, 200, response.content)
         room.refresh_from_db()
-        self.assertEqual(room.housekeeping_status, Room.HousekeepingStatus.DIRTY)
+        self.assertEqual(room.housekeeping_status,
+                         Room.HousekeepingStatus.DIRTY)
 
     def test_status_skip_transitions_rejected(self):
         """跳步拒绝（DIRTY→CLEAN / DIRTY→INSPECTING / CLEANING→CLEAN）→ 409。"""
@@ -257,14 +258,16 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
         for target in ("CLEAN", "INSPECTING"):
             response = self._flow(dirty, target, user=self.dm)  # dm 有放行权
             self.assertEqual(response.status_code, 409, target)
-            self.assertEqual(response.json()["error"]["code"], "BUSINESS_CONFLICT", target)
+            self.assertEqual(response.json()["error"]["code"],
+                             "BUSINESS_CONFLICT", target)
         cleaning = self._make_dirty_room("HK-8406")
         cleaning.housekeeping_status = Room.HousekeepingStatus.CLEANING
         cleaning.save(update_fields=("housekeeping_status",))
         response = self._flow(cleaning, "CLEAN", user=self.dm)
         self.assertEqual(response.status_code, 409)
         dirty.refresh_from_db()
-        self.assertEqual(dirty.housekeeping_status, Room.HousekeepingStatus.DIRTY)
+        self.assertEqual(dirty.housekeeping_status,
+                         Room.HousekeepingStatus.DIRTY)
         # CLEAN 为终态（弄脏由退房服务负责）→ 409
         clean = self._make_dirty_room("HK-8407")
         clean.housekeeping_status = Room.HousekeepingStatus.CLEAN
@@ -282,34 +285,25 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
         room = self._make_dirty_room("HK-8408")
         room.housekeeping_status = Room.HousekeepingStatus.INSPECTING
         room.save(update_fields=("housekeeping_status",))
-        self.assertTrue(
-            AuthorizationService.has_permission(
-                self.hk, self.property, "inventory.housekeeping_update"
-            )
-        )
-        self.assertFalse(
-            AuthorizationService.has_permission(
-                self.hk, self.property, "hotelapp.room_release_ready"
-            )
-        )
+        self.assertTrue(AuthorizationService.has_permission(
+            self.hk, self.property, "inventory.housekeeping_update"))
+        self.assertFalse(AuthorizationService.has_permission(
+            self.hk, self.property, "hotelapp.room_release_ready"))
         response = self._flow(room, "CLEAN", user=self.hk)
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
         # 服务层防御：绕过 API 直调服务同样拒绝
         with self.assertRaises(HousekeepingOperationError):
             change_housekeeping_status(
-                property_obj=self.property,
-                room_id=room.pk,
+                property_obj=self.property, room_id=room.pk,
                 target_status=Room.HousekeepingStatus.CLEAN,
-                changed_by=self.hk,
-            )
+                changed_by=self.hk)
         room.refresh_from_db()
-        self.assertEqual(room.housekeeping_status, Room.HousekeepingStatus.INSPECTING)
-        self.assertFalse(
-            AuditEvent.objects.filter(
-                action="housekeeping.status_changed", entity_id=str(room.pk), property=self.property
-            ).exists()
-        )
+        self.assertEqual(room.housekeeping_status,
+                         Room.HousekeepingStatus.INSPECTING)
+        self.assertFalse(AuditEvent.objects.filter(
+            action="housekeeping.status_changed", entity_id=str(room.pk),
+            property=self.property).exists())
 
     def test_release_by_duty_manager_flips_sellable_semantics(self):
         """值班经理净房放行：INSPECTING→CLEAN；空闲+净房+无维修 → 可售。"""
@@ -324,38 +318,33 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
         self.assertEqual(data["housekeeping_status"], "CLEAN")
         self.assertTrue(data["is_sellable_now"])
         room.refresh_from_db()
-        self.assertEqual(room.housekeeping_status, Room.HousekeepingStatus.CLEAN)
+        self.assertEqual(room.housekeeping_status,
+                         Room.HousekeepingStatus.CLEAN)
         self.assertTrue(room.is_sellable_now)
-        event = AuditEvent.objects.get(action="housekeeping.status_changed", entity_id=str(room.pk))
+        event = AuditEvent.objects.get(
+            action="housekeeping.status_changed", entity_id=str(room.pk))
         self.assertEqual(event.after_json["is_sellable_now"], True)
         self.assertEqual(event.actor_id, self.dm.pk)
         # 幂等空操作：重复放行 changed=false，不新增审计
         repeat = self._flow(room, "CLEAN", user=self.dm)
         self.assertEqual(repeat.status_code, 200)
         self.assertFalse(repeat.json()["data"]["changed"])
-        self.assertEqual(
-            AuditEvent.objects.filter(
-                action="housekeeping.status_changed", entity_id=str(room.pk)
-            ).count(),
-            1,
-        )
+        self.assertEqual(AuditEvent.objects.filter(
+            action="housekeeping.status_changed",
+            entity_id=str(room.pk)).count(), 1)
 
     def test_release_closes_departure_task_with_inspector(self):
         """WB-056：净房放行联动关闭清洁任务——DONE→INSPECTED（检查人=放行人），
         未开工任务→CANCELLED（不悬挂）；各落 housekeeping.task_released 审计。"""
         room = self._make_dirty_room("HK-8411")
         done_task = HousekeepingTask.objects.create(
-            property=self.property,
-            room=room,
+            property=self.property, room=room,
             task_type=HousekeepingTask.TaskType.DEPARTURE,
-            status=HousekeepingTask.TaskStatus.DONE,
-        )
+            status=HousekeepingTask.TaskStatus.DONE)
         pending_task = HousekeepingTask.objects.create(
-            property=self.property,
-            room=room,
+            property=self.property, room=room,
             task_type=HousekeepingTask.TaskType.STAYOVER,
-            status=HousekeepingTask.TaskStatus.PENDING,
-        )
+            status=HousekeepingTask.TaskStatus.PENDING)
         room.housekeeping_status = Room.HousekeepingStatus.INSPECTING
         room.save(update_fields=("housekeeping_status",))
         self.client.force_login(self.dm)
@@ -369,26 +358,20 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
         self.assertIsNotNone(done_task.completed_at)
         self.assertEqual(pending_task.status, HousekeepingTask.TaskStatus.CANCELLED)
         self.assertIsNone(pending_task.inspected_by_id)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="housekeeping.task_released", entity_id=str(done_task.pk), actor=self.dm
-            ).exists()
-        )
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="housekeeping.task_released", entity_id=str(pending_task.pk)
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="housekeeping.task_released",
+            entity_id=str(done_task.pk), actor=self.dm).exists())
+        self.assertTrue(AuditEvent.objects.filter(
+            action="housekeeping.task_released",
+            entity_id=str(pending_task.pk)).exists())
 
     def test_rework_rejects_done_tasks(self):
         """WB-056：检查返工（INSPECTING→DIRTY）联动 DONE→REJECTED。"""
         room = self._make_dirty_room("HK-8412")
         done_task = HousekeepingTask.objects.create(
-            property=self.property,
-            room=room,
+            property=self.property, room=room,
             task_type=HousekeepingTask.TaskType.DEPARTURE,
-            status=HousekeepingTask.TaskStatus.DONE,
-        )
+            status=HousekeepingTask.TaskStatus.DONE)
         room.housekeeping_status = Room.HousekeepingStatus.INSPECTING
         room.save(update_fields=("housekeeping_status",))
         self.client.force_login(self.hk)
@@ -396,11 +379,9 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
         self.assertEqual(response.status_code, 200, response.content)
         done_task.refresh_from_db()
         self.assertEqual(done_task.status, HousekeepingTask.TaskStatus.REJECTED)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="housekeeping.task_rejected", entity_id=str(done_task.pk), actor=self.hk
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="housekeeping.task_rejected",
+            entity_id=str(done_task.pk), actor=self.hk).exists())
 
     def test_release_on_occupied_room_stays_not_sellable(self):
         """净房放行不改占用：在住房间放行为 CLEAN 后仍不可售（语义核对）。"""
@@ -410,19 +391,17 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
         response = self._flow(room, "CLEAN", user=self.dm)
         self.assertEqual(response.status_code, 200, response.content)
         room.refresh_from_db()
-        self.assertEqual(room.housekeeping_status, Room.HousekeepingStatus.CLEAN)
+        self.assertEqual(room.housekeeping_status,
+                         Room.HousekeepingStatus.CLEAN)
         self.assertEqual(room.occupancy_status, Room.OccupancyStatus.OCCUPIED)
         self.assertFalse(room.is_sellable_now)
 
     def test_status_change_cross_property_room_404(self):
         other_property = Property.objects.create(code="HK-OTHER2", name="其他物业")
         foreign = Room.objects.create(
-            property=other_property,
-            room_type=self.room_type,
-            number="F-0001",
-            floor="1",
-            housekeeping_status=Room.HousekeepingStatus.DIRTY,
-        )
+            property=other_property, room_type=self.room_type,
+            number="F-0001", floor="1",
+            housekeeping_status=Room.HousekeepingStatus.DIRTY)
         response = self._flow(foreign, "CLEANING", user=self.dm)
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
@@ -430,19 +409,15 @@ class HousekeepingStatusFlowTests(HousekeepingCenterTestBase):
     def test_service_rejects_unknown_room_and_bad_target(self):
         with self.assertRaises(HousekeepingOperationError):
             change_housekeeping_status(
-                property_obj=self.property,
-                room_id=999999,
+                property_obj=self.property, room_id=999999,
                 target_status=Room.HousekeepingStatus.CLEANING,
-                changed_by=self.hk,
-            )
+                changed_by=self.hk)
         room = self._make_dirty_room("HK-8411")
         with self.assertRaises(HousekeepingOperationError):
             change_housekeeping_status(
-                property_obj=self.property,
-                room_id=room.pk,
+                property_obj=self.property, room_id=room.pk,
                 target_status="WATER",
-                changed_by=self.hk,
-            )
+                changed_by=self.hk)
 
 
 class HousekeepingMaintenanceTests(HousekeepingCenterTestBase):
@@ -454,8 +429,7 @@ class HousekeepingMaintenanceTests(HousekeepingCenterTestBase):
         response = self.client.post(
             f"/api/v1/housekeeping/rooms/{room.pk}/maintenance",
             data=json.dumps({"status": "OUT_OF_ORDER", "reason": "测试"}),
-            content_type="application/json",
-        )
+            content_type="application/json")
         self.assertEqual(response.status_code, 401)
 
     def test_maintenance_requires_maintenance_manage_permission(self):
@@ -465,7 +439,8 @@ class HousekeepingMaintenanceTests(HousekeepingCenterTestBase):
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
         room.refresh_from_db()
-        self.assertEqual(room.maintenance_status, Room.MaintenanceStatus.NORMAL)
+        self.assertEqual(room.maintenance_status,
+                         Room.MaintenanceStatus.NORMAL)
 
     def test_maintenance_reason_required(self):
         room = self._make_dirty_room("HK-8503")
@@ -476,18 +451,16 @@ class HousekeepingMaintenanceTests(HousekeepingCenterTestBase):
                 payload["reason"] = reason
             response = self.client.post(
                 f"/api/v1/housekeeping/rooms/{room.pk}/maintenance",
-                data=json.dumps(payload),
-                content_type="application/json",
-            )
+                data=json.dumps(payload), content_type="application/json")
             self.assertEqual(response.status_code, 400, payload)
-            self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
+            self.assertEqual(response.json()["error"]["code"],
+                             "VALIDATION_ERROR")
         room.refresh_from_db()
-        self.assertEqual(room.maintenance_status, Room.MaintenanceStatus.NORMAL)
-        self.assertFalse(
-            AuditEvent.objects.filter(
-                action="maintenance.status_changed", entity_id=str(room.pk)
-            ).exists()
-        )
+        self.assertEqual(room.maintenance_status,
+                         Room.MaintenanceStatus.NORMAL)
+        self.assertFalse(AuditEvent.objects.filter(
+            action="maintenance.status_changed",
+            entity_id=str(room.pk)).exists())
 
     def test_maintenance_invalid_status_value(self):
         room = self._make_dirty_room("HK-8504")
@@ -500,36 +473,42 @@ class HousekeepingMaintenanceTests(HousekeepingCenterTestBase):
         审计含 reason 与可售翻转。"""
         room = self._make_dirty_room("HK-8505")
         self.client.force_login(self.dm)
-        response = self._maintain(room, "OUT_OF_ORDER", reason="空调漏水停用维修")
+        response = self._maintain(room, "OUT_OF_ORDER",
+                                  reason="空调漏水停用维修")
         self.assertEqual(response.status_code, 200, response.content)
         data = response.json()["data"]
         self.assertTrue(data["changed"])
         self.assertFalse(data["is_sellable_now"])
         room.refresh_from_db()
-        self.assertEqual(room.maintenance_status, Room.MaintenanceStatus.OUT_OF_ORDER)
+        self.assertEqual(room.maintenance_status,
+                         Room.MaintenanceStatus.OUT_OF_ORDER)
         # 停用仍可继续清洁链（维修与清洁维度独立）
         flow = self._flow(room, "CLEANING", user=self.hk)
         self.assertEqual(flow.status_code, 200, flow.content)
         # 升级停售 OUT_OF_SERVICE（OUT_OF_ORDER→OUT_OF_SERVICE 合法）
-        upgrade = self._maintain(room, "OUT_OF_SERVICE", reason="结构问题停售", user=self.dm)
+        upgrade = self._maintain(room, "OUT_OF_SERVICE",
+                                 reason="结构问题停售", user=self.dm)
         self.assertEqual(upgrade.status_code, 200, upgrade.content)
         # 恢复 NORMAL
-        restore = self._maintain(room, "NORMAL", reason="维修完成验收恢复", user=self.dm)
+        restore = self._maintain(room, "NORMAL",
+                                 reason="维修完成验收恢复", user=self.dm)
         self.assertEqual(restore.status_code, 200, restore.content)
         self.assertTrue(restore.json()["data"]["changed"])
         room.refresh_from_db()
-        self.assertEqual(room.maintenance_status, Room.MaintenanceStatus.NORMAL)
-        self.assertEqual(room.housekeeping_status, Room.HousekeepingStatus.CLEANING)  # 清洁状态独立
-        events = list(
-            AuditEvent.objects.filter(
-                action="maintenance.status_changed", entity_id=str(room.pk)
-            ).order_by("created_at", "id")
-        )
+        self.assertEqual(room.maintenance_status,
+                         Room.MaintenanceStatus.NORMAL)
+        self.assertEqual(room.housekeeping_status,
+                         Room.HousekeepingStatus.CLEANING)  # 清洁状态独立
+        events = list(AuditEvent.objects.filter(
+            action="maintenance.status_changed",
+            entity_id=str(room.pk)).order_by("created_at", "id"))
         self.assertEqual(len(events), 3)
         self.assertEqual(events[0].reason, "空调漏水停用维修")
         self.assertEqual(events[0].before_json["maintenance_status"], "NORMAL")
-        self.assertEqual(events[0].after_json["maintenance_status"], "OUT_OF_ORDER")
-        self.assertEqual(events[2].after_json["maintenance_status"], "NORMAL")
+        self.assertEqual(
+            events[0].after_json["maintenance_status"], "OUT_OF_ORDER")
+        self.assertEqual(
+            events[2].after_json["maintenance_status"], "NORMAL")
 
     def test_maintenance_idempotent_same_status(self):
         room = self._make_dirty_room("HK-8506")
@@ -537,69 +516,55 @@ class HousekeepingMaintenanceTests(HousekeepingCenterTestBase):
         response = self._maintain(room, "NORMAL", reason="重复恢复")
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["data"]["changed"])
-        self.assertFalse(
-            AuditEvent.objects.filter(
-                action="maintenance.status_changed", entity_id=str(room.pk)
-            ).exists()
-        )
+        self.assertFalse(AuditEvent.objects.filter(
+            action="maintenance.status_changed",
+            entity_id=str(room.pk)).exists())
 
     def test_maintenance_cross_property_room_404(self):
         other_property = Property.objects.create(code="HK-OTHER3", name="其他物业")
         foreign = Room.objects.create(
-            property=other_property, room_type=self.room_type, number="F-0002", floor="1"
-        )
+            property=other_property, room_type=self.room_type,
+            number="F-0002", floor="1")
         response = self._maintain(foreign, "OUT_OF_ORDER", user=self.dm)
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
+
 
     def test_store_manager_can_register_maintenance(self):
         """店长岗位必须拥有维修停用/恢复专项权限，不能出现全权员工 403。"""
         owner = self._make_staff("hk_center_owner", "店长")
         room = self._make_dirty_room("HK-OWNER-01")
-        response = self._maintain(room, "OUT_OF_ORDER", reason="店长权限回归测试", user=owner)
+        response = self._maintain(
+            room, "OUT_OF_ORDER", reason="店长权限回归测试", user=owner)
         self.assertEqual(response.status_code, 200, response.content)
         room.refresh_from_db()
-        self.assertEqual(room.maintenance_status, Room.MaintenanceStatus.OUT_OF_ORDER)
+        self.assertEqual(
+            room.maintenance_status, Room.MaintenanceStatus.OUT_OF_ORDER)
+
 
     def test_maintenance_grants_are_role_aligned_and_not_copied_from_no_show(self):
         """维修权限按维修职责授予，不再从未到处理权限复制授权。"""
         from django.contrib.auth.models import Group
-
         from apps.identity.authorization import AuthorizationService
 
         front_desk = self._make_staff("hk_center_frontdesk", "前台")
         owner = self._make_staff("hk_center_owner_alignment", "店长")
-        self.assertFalse(
-            AuthorizationService.has_permission(
-                front_desk, self.property, "inventory.maintenance_manage"
-            )
-        )
-        self.assertFalse(
-            AuthorizationService.has_permission(
-                self.hk, self.property, "inventory.maintenance_manage"
-            )
-        )
-        self.assertTrue(
-            AuthorizationService.has_permission(
-                self.dm, self.property, "inventory.maintenance_manage"
-            )
-        )
-        self.assertTrue(
-            AuthorizationService.has_permission(
-                owner, self.property, "inventory.maintenance_manage"
-            )
-        )
+        self.assertFalse(AuthorizationService.has_permission(
+            front_desk, self.property, "inventory.maintenance_manage"))
+        self.assertFalse(AuthorizationService.has_permission(
+            self.hk, self.property, "inventory.maintenance_manage"))
+        self.assertTrue(AuthorizationService.has_permission(
+            self.dm, self.property, "inventory.maintenance_manage"))
+        self.assertTrue(AuthorizationService.has_permission(
+            owner, self.property, "inventory.maintenance_manage"))
 
         # 权限点与旧 no_show_handle 不再存在授权复制关系；
         # 验证维修权限实际仅出现在正式管理角色组。
-        maintenance_groups = set(
-            Group.objects.filter(
-                permissions__content_type__app_label="inventory",
-                permissions__codename="maintenance_manage",
-            ).values_list("name", flat=True)
-        )
+        maintenance_groups = set(Group.objects.filter(
+            permissions__content_type__app_label="inventory",
+            permissions__codename="maintenance_manage"
+        ).values_list("name", flat=True))
         self.assertEqual(maintenance_groups, {"值班经理", "店长"})
-
 
 class HousekeepingPageAndRegistryTests(HousekeepingCenterTestBase):
     """/manage/housekeeping/ 页面门禁与注册表同步。"""
@@ -670,15 +635,12 @@ class HousekeepingPageAndRegistryTests(HousekeepingCenterTestBase):
         item = get_special("hotelapp.room_release_ready")
         self.assertIsNotNone(item)
         self.assertEqual(item["module"], "rooms")
+        self.assertIn("hotelapp.room_release_ready",
+                      MODULE_REGISTRY_V2["rooms"]["actions"]["special"])
         self.assertIn(
-            "hotelapp.room_release_ready", MODULE_REGISTRY_V2["rooms"]["actions"]["special"]
-        )
-        self.assertIn(
-            "hotelapp.room_release_ready", {entry["codename"] for entry in SPECIAL_PERMISSIONS}
-        )
+            "hotelapp.room_release_ready",
+            {entry["codename"] for entry in SPECIAL_PERMISSIONS})
         findings = validate_registry()
-        self.assertEqual(
-            registry_errors(findings),
-            [],
-            "注册表校验不应有 ERROR：" + "；".join(f["message"] for f in registry_errors(findings)),
-        )
+        self.assertEqual(registry_errors(findings), [],
+                         "注册表校验不应有 ERROR："
+                         + "；".join(f["message"] for f in registry_errors(findings)))

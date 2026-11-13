@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """ApprovalRecord REST API（V1.2 Q-05/Q-06/Q-14 P0；P0-01/P0-02 加固）。
 
 高危动作的双人审批 SoD 流程：申请人≠审批人；同一审批只能执行一次。
@@ -16,7 +17,6 @@ P0-02（审批动作白名单）：
   * entity 目标对象必须存在、属于当前物业、状态允许申请（注册表校验器）；
   * 每个动作的申请/审批权限码由注册表绑定（双层校验：Service 层同样复核）。
 """
-
 import json as _json
 
 from django.db import transaction
@@ -26,11 +26,7 @@ from apps.billing.approval_registry import ApprovalActionRegistry
 from apps.billing.models import ApprovalRecord
 from apps.billing.services_v2 import ApprovalService
 from apps.core.api_contract import (
-    ApiError,
-    api_response,
-    api_view,
-    idempotent,
-    paginate,
+    ApiError, api_view, api_response, idempotent, paginate,
 )
 from apps.identity.authorization import AuthorizationService
 
@@ -48,7 +44,8 @@ def _require_membership(request):
         raise ApiError("PERMISSION_DENIED", "账号已停用，无法访问审批功能。")
     property_obj = getattr(request, "property", None)
     if property_obj is not None:
-        membership = AuthorizationService.get_active_membership(user, property_obj)
+        membership = AuthorizationService.get_active_membership(
+            user, property_obj)
         if membership is not None:
             return property_obj
     raise ApiError("PERMISSION_DENIED", "员工任职验证失败，无法访问审批功能。")
@@ -58,8 +55,7 @@ def _has_any_approver_permission(user, property_obj):
     """是否持有任一已注册动作的审批权（决定列表可见范围）。"""
     return any(
         AuthorizationService.has_permission(user, property_obj, code)
-        for code in ApprovalActionRegistry.approver_permissions()
-    )
+        for code in ApprovalActionRegistry.approver_permissions())
 
 
 def _json_body(request):
@@ -71,7 +67,8 @@ def _json_body(request):
 
 def _get_property_record(record_id, property_obj):
     """对象级物业校验：非本物业 / 不存在的记录一律 404。"""
-    record = ApprovalRecord.objects.filter(pk=record_id, property=property_obj).first()
+    record = ApprovalRecord.objects.filter(
+        pk=record_id, property=property_obj).first()
     if record is None:
         raise ApiError("RESOURCE_NOT_FOUND", "审批记录不存在或不属于当前物业。")
     return record
@@ -88,13 +85,12 @@ def _approve_permission_for(record):
 def approval_list(request):
     """审批记录列表（P0-01：专项只读权限 + 物业过滤 + 可见范围收敛）。"""
     property_obj = _require_membership(request)
-    if not AuthorizationService.has_permission(request.user, property_obj, "billing.approval_view"):
+    if not AuthorizationService.has_permission(
+            request.user, property_obj, "billing.approval_view"):
         raise ApiError("PERMISSION_DENIED", "查看审批记录需要专项只读权限。")
-    qs = (
-        ApprovalRecord.objects.filter(property=property_obj)
-        .select_related("requested_by", "approved_by")
-        .prefetch_related("reversal_entries__posted_by")
-    )
+    qs = ApprovalRecord.objects.filter(
+        property=property_obj).select_related(
+            "requested_by", "approved_by").prefetch_related("reversal_entries__posted_by")
     if not _has_any_approver_permission(request.user, property_obj):
         # 保守口径：无审批权者只看自己发起的审批
         qs = qs.filter(requested_by=request.user)
@@ -110,30 +106,19 @@ def approval_list(request):
     items, pagination = paginate(qs.order_by("-created_at", "-id"), request)
     data = []
     for a in items:
-        reversal = (
-            next(iter(a.reversal_entries.all()), None)
-            if a.action_code == "billing.reversal"
-            else None
-        )
-        data.append(
-            {
-                "id": a.pk,
-                "action_code": a.action_code,
-                "entity_type": a.entity_type,
-                "entity_id": a.entity_id,
-                "status": a.status,
-                "execution_status": "EXECUTED" if reversal else a.status,
-                "requested_by": a.requested_by.username if a.requested_by else None,
-                "approved_by": a.approved_by.username if a.approved_by else None,
-                "executed_by": (
-                    reversal.posted_by.username if reversal and reversal.posted_by else None
-                ),
-                "reason": a.reason,
-                "created_at": a.created_at.isoformat(),
-                "approved_at": a.approved_at.isoformat() if a.approved_at else None,
-                "executed_at": reversal.created_at.isoformat() if reversal else None,
-            }
-        )
+        reversal = next(iter(a.reversal_entries.all()), None) if a.action_code == "billing.reversal" else None
+        data.append({
+            "id": a.pk, "action_code": a.action_code,
+            "entity_type": a.entity_type, "entity_id": a.entity_id,
+            "status": a.status,
+            "execution_status": "EXECUTED" if reversal else a.status,
+            "requested_by": a.requested_by.username if a.requested_by else None,
+            "approved_by": a.approved_by.username if a.approved_by else None,
+            "executed_by": reversal.posted_by.username if reversal and reversal.posted_by else None,
+            "reason": a.reason, "created_at": a.created_at.isoformat(),
+            "approved_at": a.approved_at.isoformat() if a.approved_at else None,
+            "executed_at": reversal.created_at.isoformat() if reversal else None,
+        })
     return api_response(request, data, pagination=pagination)
 
 
@@ -157,13 +142,13 @@ def approval_request(request):
     if not spec.api_requestable:
         raise ApiError(
             "VALIDATION_ERROR",
-            f"审批动作 {action_code} 不接受通用审批面申请，请使用其专用业务入口。",
-        )
+            f"审批动作 {action_code} 不接受通用审批面申请，请使用其专用业务入口。")
     if entity_type != spec.entity_type:
         raise ApiError(
-            "VALIDATION_ERROR", f"审批动作 {action_code} 的目标实体类型必须为 {spec.entity_type}。"
-        )
-    if not AuthorizationService.has_permission(request.user, property_obj, spec.request_permission):
+            "VALIDATION_ERROR",
+            f"审批动作 {action_code} 的目标实体类型必须为 {spec.entity_type}。")
+    if not AuthorizationService.has_permission(
+            request.user, property_obj, spec.request_permission):
         raise ApiError("PERMISSION_DENIED", "当前岗位没有该项审批申请权限。")
     entity_id = str(entity_id).strip()
     if not entity_id or len(entity_id) > 64:
@@ -175,37 +160,26 @@ def approval_request(request):
             if spec.validate_entity is not None:
                 entity = spec.validate_entity(property_obj, entity_id, request.user)
             record, created = ApprovalService.request_approval(
-                property_obj=property_obj,
-                action_code=action_code,
-                entity_type=entity_type,
-                entity_id=entity_id,
-                requested_by=request.user,
-                reason=reason,
-                payload=body.get("payload"),
-                expires_hours=spec.expires_hours,
-            )
+                property_obj=property_obj, action_code=action_code,
+                entity_type=entity_type, entity_id=entity_id,
+                requested_by=request.user, reason=reason,
+                payload=body.get("payload"), expires_hours=spec.expires_hours)
             if action_code == "billing.refund":
                 # 通用审批入口允许为历史/待处理退款补建审批，但不能留下孤立记录。
                 from apps.billing.models import Refund
-
-                refund = (
-                    Refund.objects.select_for_update()
-                    .filter(
-                        pk=entity_id,
-                        property=property_obj,
-                        requested_by=request.user,
-                        status=Refund.Status.PENDING,
-                    )
-                    .first()
-                )
+                refund = Refund.objects.select_for_update().filter(
+                    pk=entity_id, property=property_obj,
+                    requested_by=request.user,
+                    status=Refund.Status.PENDING).first()
                 if refund is None:
-                    raise ApiError("BUSINESS_CONFLICT", "退款状态已变化，不能关联审批记录。")
+                    raise ApiError(
+                        "BUSINESS_CONFLICT", "退款状态已变化，不能关联审批记录。")
                 if record.status != ApprovalRecord.Status.PENDING:
                     raise ApiError(
-                        "BUSINESS_CONFLICT", "已有审批记录不是待审批状态，不能关联到待处理退款。"
-                    )
+                        "BUSINESS_CONFLICT", "已有审批记录不是待审批状态，不能关联到待处理退款。")
                 if refund.approval_record_id not in (None, record.pk):
-                    raise ApiError("BUSINESS_CONFLICT", "退款已关联其他审批记录，拒绝覆盖。")
+                    raise ApiError(
+                        "BUSINESS_CONFLICT", "退款已关联其他审批记录，拒绝覆盖。")
                 if refund.approval_record_id is None:
                     refund.approval_record = record
                     refund.save(update_fields=("approval_record",))
@@ -215,8 +189,7 @@ def approval_request(request):
     return api_response(
         request,
         {"id": record.pk, "status": record.status, "created": created},
-        status=201 if created else 200,
-    )
+        status=201 if created else 200)
 
 
 @require_POST
@@ -227,19 +200,16 @@ def approval_approve(request, record_id):
     property_obj = _require_membership(request)
     record = _get_property_record(record_id, property_obj)
     if not AuthorizationService.has_permission(
-        request.user, property_obj, _approve_permission_for(record)
-    ):
+            request.user, property_obj, _approve_permission_for(record)):
         raise ApiError("PERMISSION_DENIED", "当前岗位没有该项审批权限。")
     if record.action_code == "billing.refund":
         raise ApiError(
             "BUSINESS_CONFLICT",
             "退款审批必须通过 /api/v1/billing/refunds/{id}/approve，"
-            "以便同步 Refund 状态、审批事实和支付状态。",
-        )
+            "以便同步 Refund 状态、审批事实和支付状态。")
     try:
-        record = ApprovalService.approve(
-            record_id, approved_by=request.user, property_obj=property_obj
-        )
+        record = ApprovalService.approve(record_id, approved_by=request.user,
+                                         property_obj=property_obj)
     except ValueError as exc:
         raise ApiError("BUSINESS_CONFLICT", str(exc))
     return api_response(request, {"id": record.pk, "status": record.status})
@@ -253,21 +223,19 @@ def approval_reject(request, record_id):
     property_obj = _require_membership(request)
     record = _get_property_record(record_id, property_obj)
     if not AuthorizationService.has_permission(
-        request.user, property_obj, _approve_permission_for(record)
-    ):
+            request.user, property_obj, _approve_permission_for(record)):
         raise ApiError("PERMISSION_DENIED", "当前岗位没有该项审批权限。")
     if record.action_code == "billing.refund":
         raise ApiError(
             "BUSINESS_CONFLICT",
             "退款驳回必须通过 /api/v1/billing/refunds/{id}/reject，"
-            "以便同步 Refund 状态、审批事实和支付状态。",
-        )
+            "以便同步 Refund 状态、审批事实和支付状态。")
     body = _json_body(request)
     reason = body.get("reason") or "驳回"
     try:
         record = ApprovalService.reject(
-            record_id, approved_by=request.user, property_obj=property_obj, reason=reason
-        )
+            record_id, approved_by=request.user,
+            property_obj=property_obj, reason=reason)
     except ValueError as exc:
         raise ApiError("BUSINESS_CONFLICT", str(exc))
     return api_response(request, {"id": record.pk, "status": record.status})

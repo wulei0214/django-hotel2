@@ -55,13 +55,19 @@ class AuthorizationServiceTests(TestCase):
 
     def test_permission_is_scoped_to_property_membership(self):
         code = f"{self.permission.content_type.app_label}.{self.permission.codename}"
-        self.assertTrue(AuthorizationService.has_permission(self.user, self.property_a, code))
-        self.assertFalse(AuthorizationService.has_permission(self.user, self.property_b, code))
+        self.assertTrue(
+            AuthorizationService.has_permission(self.user, self.property_a, code)
+        )
+        self.assertFalse(
+            AuthorizationService.has_permission(self.user, self.property_b, code)
+        )
 
     def test_property_role_does_not_become_global_user_permission(self):
         code = f"{self.permission.content_type.app_label}.{self.permission.codename}"
         self.assertFalse(self.user.has_perm(code))
-        self.assertTrue(AuthorizationService.has_permission(self.user, self.property_a, code))
+        self.assertTrue(
+            AuthorizationService.has_permission(self.user, self.property_a, code)
+        )
 
     def test_expired_role_assignment_is_rejected(self):
         StaffRoleAssignment.objects.filter(membership=self.membership_a).update(
@@ -69,7 +75,9 @@ class AuthorizationServiceTests(TestCase):
             ends_at=timezone.now() - timedelta(days=1),
         )
         code = f"{self.permission.content_type.app_label}.{self.permission.codename}"
-        self.assertFalse(AuthorizationService.has_permission(self.user, self.property_a, code))
+        self.assertFalse(
+            AuthorizationService.has_permission(self.user, self.property_a, code)
+        )
 
     def test_object_from_another_property_is_rejected(self):
         code = f"{self.permission.content_type.app_label}.{self.permission.codename}"
@@ -84,7 +92,9 @@ class AuthorizationServiceTests(TestCase):
         self.membership_a.status = PropertyStaffMembership.Status.SUSPENDED
         self.membership_a.save(update_fields=("status", "updated_at"))
         code = f"{self.permission.content_type.app_label}.{self.permission.codename}"
-        self.assertFalse(AuthorizationService.has_permission(self.user, self.property_a, code))
+        self.assertFalse(
+            AuthorizationService.has_permission(self.user, self.property_a, code)
+        )
 
 
 class EmployeeLifecycleServiceTests(TestCase):
@@ -101,21 +111,16 @@ class EmployeeLifecycleServiceTests(TestCase):
             username="lifecycle-employee", password=_TEST_PW_E024079B
         )
         self.profile = StaffProfile.objects.create(
-            user=self.employee,
-            full_name="同名员工",
-            phone="13800001111",
+            user=self.employee, full_name="同名员工", phone="13800001111",
             employment_status=StaffProfile.EmploymentStatus.ACTIVE,
         )
         self.membership = PropertyStaffMembership.objects.create(
-            staff_profile=self.profile,
-            property=self.property_obj,
-            employee_no="LIFE-001",
-            status=PropertyStaffMembership.Status.ACTIVE,
+            staff_profile=self.profile, property=self.property_obj,
+            employee_no="LIFE-001", status=PropertyStaffMembership.Status.ACTIVE,
         )
         self.group, _ = Group.objects.get_or_create(name="前台")
         self.assignment = StaffRoleAssignment.objects.create(
-            membership=self.membership,
-            group=self.group,
+            membership=self.membership, group=self.group,
             starts_at=timezone.now() - timedelta(minutes=1),
         )
 
@@ -124,21 +129,19 @@ class EmployeeLifecycleServiceTests(TestCase):
         # 每名员工自动获得不同工号；手机号可共享（C-03）。
         profile, membership, _ = EmployeeLifecycleService.create_employee(
             property_obj=self.property_obj,
-            full_name="同名员工",
-            department_code="MG",
+            full_name="同名员工", department_code="MG",
             phone=" 13800001111 ",
         )
         self.assertEqual(profile.phone, "13800001111")
         self.assertRegex(membership.employee_no, r"^MG-\d{4}$")
-        self.assertEqual(StaffProfile.objects.filter(phone="13800001111").count(), 2)
+        self.assertEqual(
+            StaffProfile.objects.filter(phone="13800001111").count(), 2
+        )
 
     def test_suspended_status_maps_to_inactive_profile_and_suspended_membership(self):
         EmployeeLifecycleService.set_employment_status(
-            self.profile,
-            property_obj=self.property_obj,
-            status="SUSPENDED",
-            ended_by=self.manager,
-            reason="测试暂停",
+            self.profile, property_obj=self.property_obj,
+            status="SUSPENDED", ended_by=self.manager, reason="测试暂停"
         )
         self.profile.refresh_from_db()
         self.membership.refresh_from_db()
@@ -152,7 +155,8 @@ class EmployeeLifecycleServiceTests(TestCase):
     def test_invalid_employment_status_is_rejected_without_mutation(self):
         with self.assertRaises(EmployeeLifecycleError):
             EmployeeLifecycleService.set_employment_status(
-                self.profile, property_obj=self.property_obj, status="PAUSED", ended_by=self.manager
+                self.profile, property_obj=self.property_obj,
+                status="PAUSED", ended_by=self.manager
             )
         self.profile.refresh_from_db()
         self.membership.refresh_from_db()
@@ -163,21 +167,16 @@ class EmployeeLifecycleServiceTests(TestCase):
         now = timezone.now()
         with self.assertRaises(EmployeeLifecycleError):
             EmployeeLifecycleService.assign_role(
-                membership=self.membership,
-                group=self.group,
-                starts_at=now,
-                ends_at=now,
-                granted_by=self.manager,
+                membership=self.membership, group=self.group,
+                starts_at=now, ends_at=now, granted_by=self.manager,
             )
 
     def test_role_assignment_normalizes_naive_end_datetime(self):
         end_at = (timezone.localtime() + timedelta(days=1)).replace(tzinfo=None)
         future_group, _ = Group.objects.get_or_create(name="值班经理")
         assignment = EmployeeLifecycleService.assign_role(
-            membership=self.membership,
-            group=future_group,
-            ends_at=end_at,
-            granted_by=self.manager,
+            membership=self.membership, group=future_group,
+            ends_at=end_at, granted_by=self.manager,
         )
         self.assertTrue(timezone.is_aware(assignment.ends_at))
 
@@ -233,11 +232,11 @@ class EmployeeNumberCounterTests(TestCase):
     def test_empty_department_two_generations_fo_0001_then_0002(self):
         """①空部门两次生成：FO-0001 → FO-0002，计数器行随之递增。"""
         from apps.identity.employee_number import generate_employee_no
-
         no1 = generate_employee_no(property_obj=self.prop, department_code="FO")
         no2 = generate_employee_no(property_obj=self.prop, department_code="FO")
         self.assertEqual((no1, no2), ("FO-0001", "FO-0002"))
-        counter = EmployeeNumberCounter.objects.get(property=self.prop, department_code="FO")
+        counter = EmployeeNumberCounter.objects.get(
+            property=self.prop, department_code="FO")
         self.assertEqual(counter.next_seq, 3)
 
     def test_concurrent_counter_row_lock_serializes_generation(self):
@@ -251,72 +250,64 @@ class EmployeeNumberCounterTests(TestCase):
         from django.test.utils import CaptureQueriesContext
 
         from apps.identity.employee_number import generate_employee_no
-
         with CaptureQueriesContext(connection) as ctx:
             with transaction.atomic():
-                no_a = generate_employee_no(property_obj=self.prop, department_code="FO")
-                no_b = generate_employee_no(property_obj=self.prop, department_code="FO")
+                no_a = generate_employee_no(
+                    property_obj=self.prop, department_code="FO")
+                no_b = generate_employee_no(
+                    property_obj=self.prop, department_code="FO")
         self.assertEqual((no_a, no_b), ("FO-0001", "FO-0002"))
-        counter = EmployeeNumberCounter.objects.get(property=self.prop, department_code="FO")
+        counter = EmployeeNumberCounter.objects.get(
+            property=self.prop, department_code="FO")
         self.assertEqual(counter.next_seq, 3)
         if connection.features.has_select_for_update:
             counter_table = EmployeeNumberCounter._meta.db_table
             counter_selects = [
-                q["sql"]
-                for q in ctx.captured_queries
-                if counter_table in q["sql"] and q["sql"].lstrip().upper().startswith("SELECT")
-            ]
+                q["sql"] for q in ctx.captured_queries
+                if counter_table in q["sql"]
+                and q["sql"].lstrip().upper().startswith("SELECT")]
             self.assertTrue(
                 any("FOR UPDATE" in sql.upper() for sql in counter_selects),
-                f"行锁必须真实下发 SELECT ... FOR UPDATE：{counter_selects}",
-            )
+                f"行锁必须真实下发 SELECT ... FOR UPDATE：{counter_selects}")
 
     def test_counter_rolls_back_with_failed_membership_creation(self):
         """③计数器与 Membership 同事务回滚：建档失败后编号不消耗。"""
         from apps.identity.employee_number import generate_employee_no
-
-        User.objects.create_user(username="rollback-dup-user", password=_TEST_PW_2432CB73)
+        User.objects.create_user(username="rollback-dup-user",
+                                 password=_TEST_PW_2432CB73)
         with self.assertRaises(EmployeeLifecycleError):
             # 建档在生成工号之后才因登录账号占用失败 → 编号必须随事务回滚
             EmployeeLifecycleService.create_employee(
-                property_obj=self.prop,
-                full_name="回滚员工",
-                department_code="FO",
-                account_username="rollback-dup-user",
-                account_password=_TEST_PW_2432CB73,
-            )
+                property_obj=self.prop, full_name="回滚员工",
+                department_code="FO", account_username="rollback-dup-user",
+                account_password=_TEST_PW_2432CB73)
         self.assertFalse(
-            EmployeeNumberCounter.objects.filter(property=self.prop, department_code="FO").exists(),
-            "失败的建档不得留下已消耗的计数器行",
-        )
+            EmployeeNumberCounter.objects.filter(
+                property=self.prop, department_code="FO").exists(),
+            "失败的建档不得留下已消耗的计数器行")
         self.assertEqual(
             generate_employee_no(property_obj=self.prop, department_code="FO"),
-            "FO-0001",
-            "回滚后重新生成必须从 0001 开始（编号未消耗）",
-        )
+            "FO-0001", "回滚后重新生成必须从 0001 开始（编号未消耗）")
 
     def test_next_seq_rolls_back_within_same_transaction(self):
         """③同一事务内抛异常：next_seq 递增随事务回滚（编号不消耗）。"""
         from apps.identity.employee_number import generate_employee_no
-
         with self.assertRaises(RuntimeError):
             with transaction.atomic():
-                no = generate_employee_no(property_obj=self.prop, department_code="FO")
+                no = generate_employee_no(
+                    property_obj=self.prop, department_code="FO")
                 self.assertEqual(no, "FO-0001")
                 counter = EmployeeNumberCounter.objects.get(
-                    property=self.prop, department_code="FO"
-                )
+                    property=self.prop, department_code="FO")
                 self.assertEqual(counter.next_seq, 2)
                 raise RuntimeError("建档失败：计数器必须随事务回滚")
         remaining = EmployeeNumberCounter.objects.filter(
-            property=self.prop, department_code="FO"
-        ).first()
-        self.assertTrue(
-            remaining is None or remaining.next_seq == 1, f"回滚后计数器不得残留递增值：{remaining}"
-        )
+            property=self.prop, department_code="FO").first()
+        self.assertTrue(remaining is None or remaining.next_seq == 1,
+                        f"回滚后计数器不得残留递增值：{remaining}")
         self.assertEqual(
-            generate_employee_no(property_obj=self.prop, department_code="FO"), "FO-0001"
-        )
+            generate_employee_no(property_obj=self.prop, department_code="FO"),
+            "FO-0001")
 
     def test_missing_counter_row_seeds_once_from_existing_employee_numbers(self):
         """计数器行缺失时按存量工号一次性种子初始化（旧 MAX+1 语义仅作种子）。
@@ -325,48 +316,40 @@ class EmployeeNumberCounterTests(TestCase):
         不影响后续递增——并发正确性由行锁承担，不依赖 MAX+1 查询。
         """
         from apps.identity.employee_number import generate_employee_no
-
-        profile = StaffProfile.objects.create(user=None, full_name="存量工号员工")
+        profile = StaffProfile.objects.create(
+            user=None, full_name="存量工号员工")
         PropertyStaffMembership.objects.create(
-            property=self.prop,
-            staff_profile=profile,
-            employee_no="FO-9007",
-            position_code="FO",
-            status=PropertyStaffMembership.Status.ACTIVE,
-        )
-        self.assertEqual(
-            generate_employee_no(property_obj=self.prop, department_code="FO"), "FO-9008"
-        )
-        counter = EmployeeNumberCounter.objects.get(property=self.prop, department_code="FO")
-        self.assertEqual(counter.next_seq, 9009)
-        PropertyStaffMembership.objects.create(
-            property=self.prop,
-            staff_profile=profile,
-            employee_no="FO-9900",
-            position_code="FO",
-            status=PropertyStaffMembership.Status.TERMINATED,
-            started_at=timezone.localdate(),
-        )
+            property=self.prop, staff_profile=profile,
+            employee_no="FO-9007", position_code="FO",
+            status=PropertyStaffMembership.Status.ACTIVE)
         self.assertEqual(
             generate_employee_no(property_obj=self.prop, department_code="FO"),
-            "FO-9009",
-            "计数器行存在后不再按 MAX+1 取号",
-        )
+            "FO-9008")
+        counter = EmployeeNumberCounter.objects.get(
+            property=self.prop, department_code="FO")
+        self.assertEqual(counter.next_seq, 9009)
+        PropertyStaffMembership.objects.create(
+            property=self.prop, staff_profile=profile,
+            employee_no="FO-9900", position_code="FO",
+            status=PropertyStaffMembership.Status.TERMINATED,
+            started_at=timezone.localdate())
+        self.assertEqual(
+            generate_employee_no(property_obj=self.prop, department_code="FO"),
+            "FO-9009", "计数器行存在后不再按 MAX+1 取号")
 
     def test_counter_unique_constraint_blocks_duplicate_rows(self):
         """(property, department_code) 唯一约束兜底并发 get_or_create 竞态。"""
-        EmployeeNumberCounter.objects.create(property=self.prop, department_code="HK", next_seq=41)
+        EmployeeNumberCounter.objects.create(
+            property=self.prop, department_code="HK", next_seq=41)
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 EmployeeNumberCounter.objects.create(
-                    property=self.prop, department_code="HK", next_seq=99
-                )
+                    property=self.prop, department_code="HK", next_seq=99)
         # 已有计数器行时直接按行内 next_seq 取号（不重新种子、不查 MAX）
         from apps.identity.employee_number import generate_employee_no
-
         self.assertEqual(
-            generate_employee_no(property_obj=self.prop, department_code="HK"), "HK-0041"
-        )
+            generate_employee_no(property_obj=self.prop, department_code="HK"),
+            "HK-0041")
 
 
 class IdentityAdminReadOnlyTests(TestCase):
@@ -384,14 +367,18 @@ class IdentityAdminReadOnlyTests(TestCase):
             full_name="只读 Admin 员工",
             employment_status=StaffProfile.EmploymentStatus.ACTIVE,
         )
-        prop, _ = Property.objects.get_or_create(code="DEFAULT", defaults={"name": "默认测试酒店"})
+        prop, _ = Property.objects.get_or_create(
+            code="DEFAULT", defaults={"name": "默认测试酒店"}
+        )
         membership = PropertyStaffMembership.objects.create(
             staff_profile=profile,
             property=prop,
             employee_no="ADMIN-READ-001",
         )
         group, _ = Group.objects.get_or_create(name="前台")
-        assignment = StaffRoleAssignment.objects.create(membership=membership, group=group)
+        assignment = StaffRoleAssignment.objects.create(
+            membership=membership, group=group
+        )
 
         for model in (StaffProfile, PropertyStaffMembership, StaffRoleAssignment):
             model_admin = django_admin.site._registry[model]
@@ -414,23 +401,20 @@ class IdentityAdminReadOnlyTests(TestCase):
         self.assertIsNone(assignment.ends_at)
 
 
+
 class NineRoleCrossModulePermissionRegressionTests(TestCase):
     """九个业务角色的跨模块关键权限隔离回归。"""
 
     ROLE_NAMES = (
-        "前台",
-        "值班经理",
-        "财务",
-        "店长",
-        "客房服务员",
-        "夜审员",
-        "餐饮服务员",
-        "餐饮主管",
-        "停车安保",
+        "前台", "值班经理", "财务", "店长", "客房服务员",
+        "夜审员", "餐饮服务员", "餐饮主管", "停车安保",
     )
 
     def test_all_nine_business_role_groups_exist(self):
-        present = set(Group.objects.filter(name__in=self.ROLE_NAMES).values_list("name", flat=True))
+        present = set(
+            Group.objects.filter(name__in=self.ROLE_NAMES)
+            .values_list("name", flat=True)
+        )
         self.assertEqual(present, set(self.ROLE_NAMES))
 
     def test_no_show_and_refund_permissions_follow_separation_of_duties(self):
@@ -443,20 +427,20 @@ class NineRoleCrossModulePermissionRegressionTests(TestCase):
         refund_approve = Permission.objects.get(
             content_type__app_label="billing", codename="refund_approve"
         )
-        groups = {name: Group.objects.get(name=name) for name in self.ROLE_NAMES}
+        groups = {
+            name: Group.objects.get(name=name)
+            for name in self.ROLE_NAMES
+        }
         no_show_roles = {
-            name
-            for name, group in groups.items()
+            name for name, group in groups.items()
             if group.permissions.filter(pk=no_show.pk).exists()
         }
         refund_request_roles = {
-            name
-            for name, group in groups.items()
+            name for name, group in groups.items()
             if group.permissions.filter(pk=refund_request.pk).exists()
         }
         refund_approve_roles = {
-            name
-            for name, group in groups.items()
+            name for name, group in groups.items()
             if group.permissions.filter(pk=refund_approve.pk).exists()
         }
         self.assertEqual(no_show_roles, {"值班经理", "店长"})
@@ -481,45 +465,30 @@ class NineRoleCrossModulePermissionRegressionTests(TestCase):
         )
         expected = {
             "前台": {
-                "hotelapp.view_accommodation",
-                "hotelapp.change_accommodation",
-                "hotelapp.view_room",
-                "billing.refund_request",
+                "hotelapp.view_accommodation", "hotelapp.change_accommodation",
+                "hotelapp.view_room", "billing.refund_request",
             },
             "值班经理": {
-                "hotelapp.view_accommodation",
-                "hotelapp.change_accommodation",
-                "hotelapp.view_room",
-                "hotelapp.change_room",
-                "hotelapp.no_show_handle",
-                "hotelapp.night_audit_execute",
-                "hotelapp.room_release_ready",
-                "hotelapp.finance_access",
-                "hotelapp.export_pii",
-                "billing.refund_approve",
+                "hotelapp.view_accommodation", "hotelapp.change_accommodation",
+                "hotelapp.view_room", "hotelapp.change_room",
+                "hotelapp.no_show_handle", "hotelapp.night_audit_execute",
+                "hotelapp.room_release_ready", "hotelapp.finance_access",
+                "hotelapp.export_pii", "billing.refund_approve",
             },
             "财务": {
-                "hotelapp.view_accommodation",
-                "hotelapp.view_room",
-                "hotelapp.finance_access",
-                "hotelapp.export_pii",
+                "hotelapp.view_accommodation", "hotelapp.view_room",
+                "hotelapp.finance_access", "hotelapp.export_pii",
                 "billing.refund_request",
             },
             "店长": {
-                "hotelapp.view_accommodation",
-                "hotelapp.change_accommodation",
-                "hotelapp.view_room",
-                "hotelapp.change_room",
-                "hotelapp.no_show_handle",
-                "hotelapp.night_audit_execute",
-                "hotelapp.room_release_ready",
-                "hotelapp.finance_access",
-                "hotelapp.export_pii",
-                "billing.refund_approve",
+                "hotelapp.view_accommodation", "hotelapp.change_accommodation",
+                "hotelapp.view_room", "hotelapp.change_room",
+                "hotelapp.no_show_handle", "hotelapp.night_audit_execute",
+                "hotelapp.room_release_ready", "hotelapp.finance_access",
+                "hotelapp.export_pii", "billing.refund_approve",
             },
             "客房服务员": {
-                "hotelapp.view_room",
-                "hotelapp.change_room",
+                "hotelapp.view_room", "hotelapp.change_room",
             },
             "夜审员": set(),
             "餐饮服务员": set(),
@@ -599,24 +568,18 @@ class SplitAuthenticationSessionTests(TestCase):
         )
 
     def _login_both_entry_points(self, client):
-        pms_response = client.post(
-            "/login/",
-            {
-                "username": "split-pms-user",
-                "password": _TEST_PW_91B03909,
-            },
-        )
+        pms_response = client.post("/login/", {
+            "username": "split-pms-user",
+            "password": _TEST_PW_91B03909,
+        })
         self.assertEqual(pms_response.status_code, 302)
         pms_session_key = client.cookies["sessionid"].value
 
-        admin_response = client.post(
-            "/admin/login/",
-            {
-                "username": "split-admin-user",
-                "password": _TEST_PW_E5265C4E,
-                "next": "/admin/",
-            },
-        )
+        admin_response = client.post("/admin/login/", {
+            "username": "split-admin-user",
+            "password": _TEST_PW_E5265C4E,
+            "next": "/admin/",
+        })
         self.assertEqual(admin_response.status_code, 302, admin_response.content)
         admin_session_key = client.cookies["django_admin_sessionid"].value
 

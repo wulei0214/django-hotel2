@@ -14,14 +14,16 @@ def grant(apps, schema_editor):
     Permission = apps.get_model("auth", "Permission")
     ContentType = apps.get_model("contenttypes", "ContentType")
     GroupPermission = Group.permissions.through
-    ct, _ = ContentType.objects.get_or_create(app_label="core", model="auditevent")
+    ct, _ = ContentType.objects.get_or_create(
+        app_label="core", model="auditevent")
     perm, _ = Permission.objects.get_or_create(
-        content_type=ct, codename="audit_view", defaults={"name": "能查看审计时间线与合规记录"}
-    )
+        content_type=ct, codename="audit_view",
+        defaults={"name": "能查看审计时间线与合规记录"})
     for name in ("店长", "值班经理"):
         group = Group.objects.filter(name=name).first()
         if group:
-            GroupPermission.objects.get_or_create(group_id=group.pk, permission_id=perm.pk)
+            GroupPermission.objects.get_or_create(
+                group_id=group.pk, permission_id=perm.pk)
 
 
 def revoke(apps, schema_editor):

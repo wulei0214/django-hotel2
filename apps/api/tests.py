@@ -2,24 +2,26 @@ import json
 from datetime import timedelta
 from decimal import Decimal
 
-from django.contrib.auth.models import Group, Permission, User
 from django.test import TestCase, override_settings
 from django.utils import timezone
+
+from apps.core.models import Property
+from django.contrib.auth.models import Group, Permission, User
+from apps.billing.models import Folio, LedgerEntry
+from apps.guests.models import Guest
+from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
+from apps.inventory.models import Room
+from apps.reservations.models import Reservation, ReservationRoom
+from apps.inventory.models import DailyRate, RatePlan, RoomType, RoomTypeInventory
 
 # --- test-only generated passwords (no literals in source) ---
 # 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
 from django.utils.crypto import get_random_string  # noqa: E402
-
-from apps.billing.models import Folio, LedgerEntry
-from apps.core.models import Property
-from apps.guests.models import Guest
-from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
-from apps.inventory.models import DailyRate, RatePlan, Room, RoomType, RoomTypeInventory
-from apps.reservations.models import Reservation, ReservationRoom
-
 _TEST_PW_510C52C1 = get_random_string(24)
 _TEST_PW_29AF8666 = get_random_string(24)
 _TEST_PW_C9A8E88B = get_random_string(24)
+
+
 
 
 @override_settings(DEBUG=True, DJANGO_ENV="test", PAYMENT_WEBHOOK_SECRET="api-test-webhook-secret")
@@ -119,17 +121,18 @@ class PublicBookingApiTests(TestCase):
         access_token = created.json()["access_token"]
         self.assertTrue(access_token, "创建成功必须一次性返回访问令牌")
         wrong_token = self.client.get(
-            f"/api/v1/reservations/{booking_no}", HTTP_X_BOOKING_TOKEN="wrong-token-value"
-        )
+            f"/api/v1/reservations/{booking_no}",
+            HTTP_X_BOOKING_TOKEN="wrong-token-value")
         self.assertEqual(wrong_token.status_code, 404)
         correct = self.client.get(
-            f"/api/v1/reservations/{booking_no}", HTTP_X_BOOKING_TOKEN=access_token
-        )
+            f"/api/v1/reservations/{booking_no}",
+            HTTP_X_BOOKING_TOKEN=access_token)
         self.assertEqual(correct.status_code, 200)
         body = correct.json()
         self.assertIn("*", body["guest_name"], "姓名必须脱敏")
         self.assertNotIn("provider_ref", body, "不得暴露支付流水标识")
-        self.assertNotIn("13800000002", correct.content.decode(), "不得返回完整手机号")
+        self.assertNotIn("13800000002", correct.content.decode(),
+                         "不得返回完整手机号")
 
     def test_pending_reservation_can_be_cancelled_and_releases_stock(self):
         payload = self._reservation_payload()
@@ -171,6 +174,7 @@ class PublicBookingApiTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()["provider"], "mock")
         self.assertIn("mock_callback_example", response.json())
+
 
     def test_public_reserve_page_renders_template(self):
         response = self.client.get("/reserve/")
@@ -256,11 +260,7 @@ class FrontDeskReadApiTests(TestCase):
             check_out=self.check_out,
             nightly_rates=[
                 {"date": self.check_in.isoformat(), "price": "300.00", "currency": "CNY"},
-                {
-                    "date": (self.check_in + timedelta(days=1)).isoformat(),
-                    "price": "300.00",
-                    "currency": "CNY",
-                },
+                {"date": (self.check_in + timedelta(days=1)).isoformat(), "price": "300.00", "currency": "CNY"},
             ],
             amount=Decimal("600.00"),
         )
@@ -329,17 +329,23 @@ class FrontDeskReadApiTests(TestCase):
 
     def test_front_desk_folio_detail_uses_signed_ledger_balance(self):
         self.client.force_login(self.user)
-        response = self.client.get(f"/api/v1/front-desk/folios/{self.reservation.booking_no}")
+        response = self.client.get(
+            f"/api/v1/front-desk/folios/{self.reservation.booking_no}"
+        )
         self.assertEqual(response.status_code, 200)
         summary = response.json()["data"]["summary"]
         self.assertEqual(summary["charges"], "600.00")
         self.assertEqual(summary["balance"], "600.00")
 
+
     def test_front_desk_overview_rejects_invalid_business_date(self):
         self.client.force_login(self.user)
-        response = self.client.get("/api/v1/front-desk/overview", {"date": "not-a-date"})
+        response = self.client.get(
+            "/api/v1/front-desk/overview", {"date": "not-a-date"}
+        )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
+
 
 
 class FrontDeskWriteApiTests(TestCase):
@@ -414,13 +420,11 @@ class FrontDeskWriteApiTests(TestCase):
             rate_plan=self.rate_plan,
             check_in=self.today,
             check_out=self.tomorrow,
-            nightly_rates=[
-                {
-                    "date": self.today.isoformat(),
-                    "price": "500.00",
-                    "currency": "CNY",
-                }
-            ],
+            nightly_rates=[{
+                "date": self.today.isoformat(),
+                "price": "500.00",
+                "currency": "CNY",
+            }],
             amount=Decimal("500.00"),
         )
         self.folio = Folio.objects.create(
@@ -497,6 +501,7 @@ class FrontDeskWriteApiTests(TestCase):
         self.assertEqual(self.room.housekeeping_status, Room.HousekeepingStatus.DIRTY)
         self.assertEqual(self.folio.status, Folio.Status.CLOSED)
         self.assertEqual(self.reservation.status, Reservation.Status.CHECKED_OUT)
+
 
     def test_front_desk_can_request_but_cannot_no_show_or_approve_refunds(self):
         self.client.force_login(self.user)

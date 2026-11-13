@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """P0-06（闭环补齐 2.0）：AuditEvent 数据库层不可变性验收。
 
 模型层：save（pk 非空拒绝）与 delete（一律拒绝）已实现；
@@ -7,7 +8,6 @@ DB 层（运维部署项，apps/core/sql/audit_immutability.sql）：
 应用账号对 core_auditevent 的 UPDATE/DELETE 由 MySQL 触发器拒绝；
 迁移/运维账号单独保管，不在应用 settings 中。
 """
-
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
@@ -18,13 +18,9 @@ class AuditEventImmutabilityTests(TestCase):
     def setUp(self):
         self.prop = Property.objects.get(code="DEFAULT")
         self.event = AuditEvent.record(
-            action="test.immutability",
-            entity_type="Test",
-            entity_id="1",
-            property_obj=self.prop,
-            after={"k": "v"},
-            reason="不可变性测试",
-        )
+            action="test.immutability", entity_type="Test",
+            entity_id="1", property_obj=self.prop,
+            after={"k": "v"}, reason="不可变性测试")
 
     def test_model_save_rejects_update(self):
         self.event.reason = "篡改"
@@ -50,8 +46,7 @@ class AuditEventImmutabilityTests(TestCase):
     def test_record_is_append_only_utility(self):
         """record() 只创建新行；同 action 重复记录不合并（审计事实链）"""
         before = AuditEvent.objects.filter(action="test.immutability").count()
-        AuditEvent.record(
-            action="test.immutability", entity_type="Test", entity_id="1", property_obj=self.prop
-        )
+        AuditEvent.record(action="test.immutability", entity_type="Test",
+                          entity_id="1", property_obj=self.prop)
         after = AuditEvent.objects.filter(action="test.immutability").count()
         self.assertEqual(after, before + 1)

@@ -1,9 +1,9 @@
+# -*- coding: utf-8 -*-
 """统一 API 响应封套与幂等装饰器（V1.1 §5 契约标准）。
 
 所有新模块 API 采用同一响应结构（{data, meta}）、同一错误结构（{error, meta}）、
 同一分页格式、同一幂等语义。旧 API 逐步迁移到此处。
 """
-
 import functools
 import hashlib
 import json
@@ -67,40 +67,25 @@ def api_response(request, data, status=200, pagination=None, extra_meta=None):
     if extra_meta:
         meta.update(extra_meta)
     return JsonResponse(
-        {"data": data, "meta": meta}, status=status, json_dumps_params={"ensure_ascii": False}
-    )
+        {"data": data, "meta": meta},
+        status=status, json_dumps_params={"ensure_ascii": False})
 
 
 def api_error_response(request, exc):
     """统一错误响应封套：{error, meta}。"""
     if isinstance(exc, ApiError):
         return JsonResponse(
-            {
-                "error": {
-                    "code": exc.code,
-                    "message": exc.message,
-                    "field_errors": exc.field_errors,
-                    "retryable": exc.retryable,
-                },
-                "meta": _meta(request),
-            },
-            status=exc.status_code,
-            json_dumps_params={"ensure_ascii": False},
-        )
+            {"error": {"code": exc.code, "message": exc.message,
+                       "field_errors": exc.field_errors, "retryable": exc.retryable},
+             "meta": _meta(request)},
+            status=exc.status_code, json_dumps_params={"ensure_ascii": False})
     logger.exception("API 未预期错误：%s %s", request.method, request.path)
     return JsonResponse(
-        {
-            "error": {
-                "code": "INTERNAL_ERROR",
-                "message": "服务器内部错误，请稍后重试或联系管理员。",
-                "field_errors": {},
-                "retryable": True,
-            },
-            "meta": _meta(request),
-        },
-        status=500,
-        json_dumps_params={"ensure_ascii": False},
-    )
+        {"error": {"code": "INTERNAL_ERROR",
+                   "message": "服务器内部错误，请稍后重试或联系管理员。",
+                   "field_errors": {}, "retryable": True},
+         "meta": _meta(request)},
+        status=500, json_dumps_params={"ensure_ascii": False})
 
 
 def api_view(view):
@@ -130,7 +115,8 @@ PAGE_SIZE_MAX = 100
 PAGE_NUMBER_MAX = 100000
 
 
-def parse_page_args(request, page_size_default=PAGE_SIZE_DEFAULT, page_size_max=PAGE_SIZE_MAX):
+def parse_page_args(request, page_size_default=PAGE_SIZE_DEFAULT,
+                    page_size_max=PAGE_SIZE_MAX):
     """解析 page/page_size 查询参数，返回 (page, page_size)。
 
     统一规则（所有接口同一口径，不做静默截断或静默回退）：
@@ -144,15 +130,23 @@ def parse_page_args(request, page_size_default=PAGE_SIZE_DEFAULT, page_size_max=
     try:
         page = int(str(raw_page).strip())
     except (TypeError, ValueError):
-        raise ApiError("VALIDATION_ERROR", "page 必须是 1 至 %d 之间的整数。" % PAGE_NUMBER_MAX)
+        raise ApiError(
+            "VALIDATION_ERROR",
+            "page 必须是 1 至 %d 之间的整数。" % PAGE_NUMBER_MAX)
     try:
         size = int(str(raw_size).strip())
     except (TypeError, ValueError):
-        raise ApiError("VALIDATION_ERROR", "page_size 必须是 1 至 %d 之间的整数。" % page_size_max)
+        raise ApiError(
+            "VALIDATION_ERROR",
+            "page_size 必须是 1 至 %d 之间的整数。" % page_size_max)
     if not 1 <= page <= PAGE_NUMBER_MAX:
-        raise ApiError("VALIDATION_ERROR", "page 必须是 1 至 %d 之间的整数。" % PAGE_NUMBER_MAX)
+        raise ApiError(
+            "VALIDATION_ERROR",
+            "page 必须是 1 至 %d 之间的整数。" % PAGE_NUMBER_MAX)
     if not 1 <= size <= page_size_max:
-        raise ApiError("VALIDATION_ERROR", "page_size 必须是 1 至 %d 之间的整数。" % page_size_max)
+        raise ApiError(
+            "VALIDATION_ERROR",
+            "page_size 必须是 1 至 %d 之间的整数。" % page_size_max)
     return page, size
 
 
@@ -188,23 +182,21 @@ def ensure_stable_ordering(queryset):
     return clone
 
 
-def paginate(queryset, request, page_size_default=PAGE_SIZE_DEFAULT, page_size_max=PAGE_SIZE_MAX):
+def paginate(queryset, request, page_size_default=PAGE_SIZE_DEFAULT,
+             page_size_max=PAGE_SIZE_MAX):
     """统一分页（P0-03 唯一权威实现）：返回 (items, pagination_meta)。
 
     - 参数解析走 parse_page_args：非法 page/page_size 统一 400 VALIDATION_ERROR；
     - 稳定排序走 ensure_stable_ordering：调用方未写主键兜底时自动追加。
     """
     page, size = parse_page_args(
-        request, page_size_default=page_size_default, page_size_max=page_size_max
-    )
+        request, page_size_default=page_size_default, page_size_max=page_size_max)
     queryset = ensure_stable_ordering(queryset)
     total = queryset.count()
     offset = (page - 1) * size
-    items = queryset[offset : offset + size]
+    items = queryset[offset:offset + size]
     return items, {
-        "page": page,
-        "page_size": size,
-        "total": total,
+        "page": page, "page_size": size, "total": total,
         "has_next": offset + size < total,
         "has_previous": page > 1,
     }
@@ -224,42 +216,30 @@ def idempotent(view):
         key = request.headers.get("Idempotency-Key", "").strip()
         if not key:
             return view(request, *args, **kwargs)
+        from apps.core.models import IdempotencyRecord
         prop = getattr(request, "property", None)
         body_hash = hashlib.sha256(request.body or b"").hexdigest()
         user = request.user if request.user.is_authenticated else None
         now = timezone.now()
         record, created = IdempotencyRecord.objects.get_or_create(
-            property=prop,
-            user=user,
-            key=key[:128],
+            property=prop, user=user, key=key[:128],
             defaults={
-                "method": request.method,
-                "path": request.path[:256],
+                "method": request.method, "path": request.path[:256],
                 "request_hash": body_hash,
                 "status": IdempotencyRecord.RecordStatus.PROCESSING,
                 "expires_at": now + timedelta(hours=24),
-            },
-        )
+            })
         if not created:
             if record.request_hash != body_hash:
                 return JsonResponse(
-                    {
-                        "error": {
-                            "code": "BUSINESS_CONFLICT",
-                            "message": "幂等键已用于不同请求体。",
-                            "field_errors": {},
-                            "retryable": False,
-                        }
-                    },
-                    status=409,
-                    json_dumps_params={"ensure_ascii": False},
-                )
+                    {"error": {"code": "BUSINESS_CONFLICT",
+                               "message": "幂等键已用于不同请求体。",
+                               "field_errors": {}, "retryable": False}},
+                    status=409, json_dumps_params={"ensure_ascii": False})
             if record.status == IdempotencyRecord.RecordStatus.COMPLETED:
-                return JsonResponse(
-                    record.response_body or {},
-                    status=record.response_status or 200,
-                    json_dumps_params={"ensure_ascii": False},
-                )
+                return JsonResponse(record.response_body or {},
+                                    status=record.response_status or 200,
+                                    json_dumps_params={"ensure_ascii": False})
             # P0-03：同键并发请求在首个请求 PROCESSING 期间返回 425 冲突，
             # 不得同时进入业务写逻辑；超时（5 分钟）后允许重试恢复。
             if record.status == IdempotencyRecord.RecordStatus.PROCESSING:
@@ -267,17 +247,10 @@ def idempotent(view):
                 _proc_age = timezone.now() - (record.updated_at or record.created_at)
                 if _proc_age < _proc_timeout:
                     return JsonResponse(
-                        {
-                            "error": {
-                                "code": "IDEMPOTENCY_PROCESSING",
-                                "message": "相同幂等键的请求正在处理中，请稍后重试。",
-                                "field_errors": {},
-                                "retryable": True,
-                            }
-                        },
-                        status=425,
-                        json_dumps_params={"ensure_ascii": False},
-                    )
+                        {"error": {"code": "IDEMPOTENCY_PROCESSING",
+                                   "message": "相同幂等键的请求正在处理中，请稍后重试。",
+                                   "field_errors": {}, "retryable": True}},
+                        status=425, json_dumps_params={"ensure_ascii": False})
                 # PROCESSING 超时 → 标记 FAILED 允许重试恢复
                 record.status = IdempotencyRecord.RecordStatus.FAILED
                 record.save(update_fields=("status", "updated_at"))
@@ -300,7 +273,8 @@ def idempotent(view):
             # 4xx/5xx 会永久停留 PROCESSING，导致客户端按提示重试时在
             # 5 分钟窗口内全被 425 掩盖真实业务冲突。
             record.status = IdempotencyRecord.RecordStatus.FAILED
-        record.save(update_fields=("response_status", "response_body", "status", "updated_at"))
+        record.save(update_fields=(
+            "response_status", "response_body", "status", "updated_at"))
         return response
 
     return wrapper

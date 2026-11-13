@@ -95,9 +95,9 @@ class MockPaymentFixtureMixin(TestCase):
             "amount": str(payment.amount),
             "status": "SUCCESS",
         }
-        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
-            "utf-8"
-        )
+        raw = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
         signature = sign_mock_callback(raw)
         return self.client.post(
             "/api/v1/payments/callback",
@@ -115,8 +115,7 @@ class MockPaymentTests(MockPaymentFixtureMixin):
 
         self.assertTrue(confirm_inventory_for_reservation(self.reservation))
         Reservation.objects.filter(pk=self.reservation.pk).update(
-            status=Reservation.Status.CONFIRMED
-        )
+            status=Reservation.Status.CONFIRMED)
         self.assertFalse(confirm_inventory_for_reservation(self.reservation))
         self.assertEqual(
             list(RoomTypeInventory.objects.order_by("stay_date").values_list("held", "sold")),
@@ -279,33 +278,28 @@ class MockPaymentTests(MockPaymentFixtureMixin):
         self.assertEqual(response.status_code, 200)
         # 既有审计与响应契约保持不变
         self.assertTrue(response.json()["compensation_required"])
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="billing.payment_late_success_requires_reconciliation",
-                entity_type="Payment",
-                entity_id=str(self.payment.pk),
-            ).exists()
-        )
+        self.assertTrue(AuditEvent.objects.filter(
+            action="billing.payment_late_success_requires_reconciliation",
+            entity_type="Payment",
+            entity_id=str(self.payment.pk),
+        ).exists())
         # 同事务持久化补偿任务：HOLD_COORDINATION，聚合到本笔 Payment
         task = PaymentCompensationTask.objects.get(
-            idempotency_key=f"late-success:payment:{self.payment.pk}"
-        )
-        self.assertEqual(task.task_type, PaymentCompensationTask.TaskType.HOLD_COORDINATION)
+            idempotency_key=f"late-success:payment:{self.payment.pk}")
+        self.assertEqual(
+            task.task_type, PaymentCompensationTask.TaskType.HOLD_COORDINATION)
         self.assertEqual(task.aggregate_type, "Payment")
         self.assertEqual(task.aggregate_id, self.payment.pk)
         self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
-        self.assertEqual(task.last_error_code, "LATE_SUCCESS_REQUIRES_RECONCILIATION")
+        self.assertEqual(
+            task.last_error_code, "LATE_SUCCESS_REQUIRES_RECONCILIATION")
         self.assertIn("迟到成功需库存/预订协调", task.last_error_summary)
         # 渠道重放回调：不得重复建任务
         replay = self._callback()
         self.assertEqual(replay.status_code, 200)
         self.assertTrue(replay.json()["duplicate"])
-        self.assertEqual(
-            PaymentCompensationTask.objects.filter(
-                idempotency_key=f"late-success:payment:{self.payment.pk}"
-            ).count(),
-            1,
-        )
+        self.assertEqual(PaymentCompensationTask.objects.filter(
+            idempotency_key=f"late-success:payment:{self.payment.pk}").count(), 1)
 
     @override_settings(DEFAULT_PROPERTY_CODE="PAY")
     def test_public_intent_endpoint_creates_intent_and_channel_facts(self):
@@ -341,28 +335,29 @@ class MockPaymentTests(MockPaymentFixtureMixin):
         self.assertEqual(intent.status, PaymentIntent.Status.SUCCEEDED)
         self.assertEqual(intent.confirmed_payment_id, payment.pk)
         provider_txn = ProviderTransaction.objects.get(
-            provider_code="mock", provider_transaction_id=payment.provider_ref
-        )
+            provider_code="mock", provider_transaction_id=payment.provider_ref)
         self.assertEqual(provider_txn.channel_status, "SUCCESS")
         self.assertTrue(provider_txn.signature_verified)
         self.assertEqual(provider_txn.intent_id, intent.pk)
-        self.assertEqual(provider_txn.event_id, f"mock-callback:{payment.provider_ref}")
+        self.assertEqual(
+            provider_txn.event_id, f"mock-callback:{payment.provider_ref}")
 
     @override_settings(DEFAULT_PROPERTY_CODE="PAY")
     def test_public_intent_endpoint_replay_is_idempotent(self):
         """WB-088：重复 POST 返回同一笔支付单，不重复创建意图。"""
         payload = json.dumps(
-            {"booking_no": self.reservation.booking_no, "token": self.access_token}
-        )
+            {"booking_no": self.reservation.booking_no,
+             "token": self.access_token})
         first = self.client.post(
-            "/api/v1/payments/intents", data=payload, content_type="application/json"
-        )
+            "/api/v1/payments/intents", data=payload,
+            content_type="application/json")
         second = self.client.post(
-            "/api/v1/payments/intents", data=payload, content_type="application/json"
-        )
+            "/api/v1/payments/intents", data=payload,
+            content_type="application/json")
         self.assertEqual(first.status_code, 201, first.content)
         self.assertEqual(second.status_code, 201, second.content)
-        self.assertEqual(second.json()["provider_ref"], first.json()["provider_ref"])
+        self.assertEqual(
+            second.json()["provider_ref"], first.json()["provider_ref"])
         self.assertEqual(Payment.objects.count(), 1)
         self.assertEqual(PaymentIntent.objects.count(), 1)
 
@@ -372,33 +367,30 @@ class MockPaymentTests(MockPaymentFixtureMixin):
         reservation, token = self._create_public_reservation("wb088-header-resv")
         payload = json.dumps({"booking_no": reservation.booking_no, "token": token})
         first = self.client.post(
-            "/api/v1/payments/intents",
-            data=payload,
-            content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY="wb088-key-1",
-        )
+            "/api/v1/payments/intents", data=payload,
+            content_type="application/json", HTTP_IDEMPOTENCY_KEY="wb088-key-1")
         self.assertEqual(first.status_code, 201, first.content)
         intent = PaymentIntent.objects.get(idempotency_key="wb088-key-1")
         self.assertEqual(intent.reservation_id, reservation.pk)
         self.assertEqual(intent.provider_code, "mock")
         second = self.client.post(
-            "/api/v1/payments/intents",
-            data=payload,
-            content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY="wb088-key-1",
-        )
+            "/api/v1/payments/intents", data=payload,
+            content_type="application/json", HTTP_IDEMPOTENCY_KEY="wb088-key-1")
         self.assertEqual(second.status_code, 201, second.content)
-        self.assertEqual(second.json()["provider_ref"], first.json()["provider_ref"])
-        self.assertEqual(PaymentIntent.objects.filter(idempotency_key="wb088-key-1").count(), 1)
+        self.assertEqual(
+            second.json()["provider_ref"], first.json()["provider_ref"])
+        self.assertEqual(
+            PaymentIntent.objects.filter(idempotency_key="wb088-key-1").count(), 1)
         # 请求幂等键创建的意图同样会在回调时被推进
-        callback = self._callback(Payment.objects.get(provider_ref=first.json()["provider_ref"]))
+        callback = self._callback(
+            Payment.objects.get(provider_ref=first.json()["provider_ref"]))
         self.assertEqual(callback.status_code, 200)
         intent.refresh_from_db()
         self.assertEqual(intent.status, PaymentIntent.Status.SUCCEEDED)
 
     def test_mock_callback_is_not_available_in_production(self):
         with override_settings(DEBUG=False, DJANGO_ENV="prod"):
-            raw = b"{}"
+            raw = b'{}'
             response = self.client.post(
                 "/api/v1/payments/callback",
                 data=raw,
@@ -410,7 +402,6 @@ class MockPaymentTests(MockPaymentFixtureMixin):
 class ApprovalRecordTests(TestCase):
     def setUp(self):
         from apps.billing.services_v2 import ApprovalService
-
         self.ApprovalService = ApprovalService
         self.property = Property.objects.create(code="APR", name="审批测试酒店")
         self.other_property = Property.objects.create(code="APR2", name="其他审批酒店")
@@ -419,32 +410,20 @@ class ApprovalRecordTests(TestCase):
 
     def test_approval_request_is_property_scoped_and_idempotent(self):
         first, created = self.ApprovalService.request_approval(
-            property_obj=self.property,
-            action_code="billing.refund",
-            entity_type="Refund",
-            entity_id=100,
-            requested_by=self.requester,
-            reason="客人重复扣款申请退款",
-            payload={"amount": "100.00"},
-        )
+            property_obj=self.property, action_code="billing.refund",
+            entity_type="Refund", entity_id=100,
+            requested_by=self.requester, reason="客人重复扣款申请退款",
+            payload={"amount": "100.00"})
         replay, replay_created = self.ApprovalService.request_approval(
-            property_obj=self.property,
-            action_code="billing.refund",
-            entity_type="Refund",
-            entity_id=100,
-            requested_by=self.requester,
-            reason="客人重复扣款申请退款",
-            payload={"amount": "100.00"},
-        )
+            property_obj=self.property, action_code="billing.refund",
+            entity_type="Refund", entity_id=100,
+            requested_by=self.requester, reason="客人重复扣款申请退款",
+            payload={"amount": "100.00"})
         other, other_created = self.ApprovalService.request_approval(
-            property_obj=self.other_property,
-            action_code="billing.refund",
-            entity_type="Refund",
-            entity_id=100,
-            requested_by=self.requester,
-            reason="另一物业同号退款申请",
-            payload={"amount": "100.00"},
-        )
+            property_obj=self.other_property, action_code="billing.refund",
+            entity_type="Refund", entity_id=100,
+            requested_by=self.requester, reason="另一物业同号退款申请",
+            payload={"amount": "100.00"})
         self.assertTrue(created)
         self.assertFalse(replay_created)
         self.assertTrue(other_created)
@@ -453,55 +432,37 @@ class ApprovalRecordTests(TestCase):
 
     def test_approval_cannot_be_self_approved_or_approved_cross_property(self):
         record, _ = self.ApprovalService.request_approval(
-            property_obj=self.property,
-            action_code="night_audit.reopen",
-            entity_type="BusinessDate",
-            entity_id=1,
-            requested_by=self.requester,
-            reason="核对营业日错账后申请重开",
-        )
+            property_obj=self.property, action_code="night_audit.reopen",
+            entity_type="BusinessDate", entity_id=1,
+            requested_by=self.requester, reason="核对营业日错账后申请重开")
         with self.assertRaises(ValueError):
             self.ApprovalService.approve(
-                record.pk, approved_by=self.requester, property_obj=self.property
-            )
+                record.pk, approved_by=self.requester, property_obj=self.property)
         with self.assertRaises(ValueError):
             self.ApprovalService.approve(
-                record.pk, approved_by=self.approver, property_obj=self.other_property
-            )
+                record.pk, approved_by=self.approver, property_obj=self.other_property)
         approved = self.ApprovalService.approve(
-            record.pk, approved_by=self.approver, property_obj=self.property
-        )
+            record.pk, approved_by=self.approver, property_obj=self.property)
         self.assertEqual(approved.status, "APPROVED")
         self.assertEqual(approved.approved_by_id, self.approver.pk)
 
     def test_approval_reason_is_required_and_expiry_is_persisted(self):
         with self.assertRaises(ValueError):
             self.ApprovalService.request_approval(
-                property_obj=self.property,
-                action_code="billing.refund",
-                entity_type="Refund",
-                entity_id=1,
-                requested_by=self.requester,
-                reason=" ",
-            )
+                property_obj=self.property, action_code="billing.refund",
+                entity_type="Refund", entity_id=1,
+                requested_by=self.requester, reason=" ")
         record, _ = self.ApprovalService.request_approval(
-            property_obj=self.property,
-            action_code="billing.refund",
-            entity_type="Refund",
-            entity_id=2,
-            requested_by=self.requester,
-            reason="审批超时流程测试",
-        )
+            property_obj=self.property, action_code="billing.refund",
+            entity_type="Refund", entity_id=2,
+            requested_by=self.requester, reason="审批超时流程测试")
         from datetime import timedelta
 
         from django.utils import timezone
-
         type(record)._base_manager.filter(pk=record.pk).update(
-            expires_at=timezone.now() - timedelta(minutes=1)
-        )
+            expires_at=timezone.now() - timedelta(minutes=1))
         expired = self.ApprovalService.approve(
-            record.pk, approved_by=self.approver, property_obj=self.property
-        )
+            record.pk, approved_by=self.approver, property_obj=self.property)
         self.assertEqual(expired.status, "EXPIRED")
 
 
@@ -510,17 +471,13 @@ class NightAuditServiceTests(TestCase):
         self.today = date.today()
         self.property = Property.objects.create(code="NA", name="夜审测试酒店")
         self.room_type = RoomType.objects.create(
-            property=self.property, code="NA-STD", name="夜审标准间"
-        )
+            property=self.property, code="NA-STD", name="夜审标准间")
         self.rate_plan = RatePlan.objects.create(
-            property=self.property, code="NA-BAR", name="夜审门市价", valid_from=self.today
-        )
+            property=self.property, code="NA-BAR", name="夜审门市价",
+            valid_from=self.today)
         self.guest = __import__("apps.guests.models", fromlist=["Guest"]).Guest.objects.create(
-            property=self.property,
-            full_name="夜审客人",
-            phone="13800008881",
-            phone_normalized="13800008881",
-        )
+            property=self.property, full_name="夜审客人",
+            phone="13800008881", phone_normalized="13800008881")
         from decimal import Decimal
 
         from django.contrib.auth.models import User
@@ -531,126 +488,85 @@ class NightAuditServiceTests(TestCase):
 
         self.user = User.objects.create_user(username="night-audit-operator")
         self.reservation = Reservation.objects.create(
-            property=self.property,
-            booking_no="NIGHTAUDIT0001",
-            guest=self.guest,
-            status=Reservation.Status.CHECKED_IN,
-            check_in=self.today,
-            check_out=self.today + timedelta(days=2),
-            room_count=1,
-            adult_count=1,
-            total_amount=Decimal("800.00"),
-        )
+            property=self.property, booking_no="NIGHTAUDIT0001",
+            guest=self.guest, status=Reservation.Status.CHECKED_IN,
+            check_in=self.today, check_out=self.today + timedelta(days=2),
+            room_count=1, adult_count=1, total_amount=Decimal("800.00"))
         line = ReservationRoom.objects.create(
-            property=self.property,
-            reservation=self.reservation,
-            room_type=self.room_type,
-            rate_plan=self.rate_plan,
-            check_in=self.today,
-            check_out=self.today + timedelta(days=2),
+            property=self.property, reservation=self.reservation,
+            room_type=self.room_type, rate_plan=self.rate_plan,
+            check_in=self.today, check_out=self.today + timedelta(days=2),
             nightly_rates=[
                 {"date": self.today.isoformat(), "price": "400.00", "currency": "CNY"},
-                {
-                    "date": (self.today + timedelta(days=1)).isoformat(),
-                    "price": "400.00",
-                    "currency": "CNY",
-                },
-            ],
-            amount=Decimal("800.00"),
-        )
+                {"date": (self.today + timedelta(days=1)).isoformat(), "price": "400.00", "currency": "CNY"},
+            ], amount=Decimal("800.00"))
         room = Room.objects.create(
-            property=self.property,
-            room_type=self.room_type,
-            number="NA101",
-            occupancy_status=Room.OccupancyStatus.OCCUPIED,
-        )
+            property=self.property, room_type=self.room_type, number="NA101",
+            occupancy_status=Room.OccupancyStatus.OCCUPIED)
         self.stay = Stay.objects.create(
-            property=self.property, reservation_room=line, room=room, status=Stay.Status.IN_HOUSE
-        )
+            property=self.property, reservation_room=line, room=room,
+            status=Stay.Status.IN_HOUSE)
         from apps.billing.models import Folio
-
         Folio.objects.create(
-            property=self.property, reservation=self.reservation, guest=self.guest, currency="CNY"
-        )
+            property=self.property, reservation=self.reservation,
+            guest=self.guest, currency="CNY")
         self.NightAuditService = NightAuditService
 
     def test_night_audit_posts_daily_room_charge_once_and_closes_business_date(self):
         from apps.billing.models import LedgerEntry
         from apps.core.models import BusinessDate
-
         run, created = self.NightAuditService.run(
-            property_obj=self.property, executed_by=self.user, business_date=self.today
-        )
+            property_obj=self.property, executed_by=self.user,
+            business_date=self.today)
         self.assertTrue(created)
         self.assertEqual(run.status, "SUCCESS")
         self.assertEqual(run.summary["charge_count"], 1)
-        self.assertEqual(
-            LedgerEntry.objects.filter(
-                property=self.property,
-                business_date=self.today,
-                entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-            ).count(),
-            1,
-        )
-        self.assertEqual(
-            BusinessDate.objects.get(property=self.property, business_date=self.today).status,
-            BusinessDate.Status.CLOSED,
-        )
+        self.assertEqual(LedgerEntry.objects.filter(
+            property=self.property, business_date=self.today,
+            entry_type=LedgerEntry.EntryType.ROOM_CHARGE).count(), 1)
+        self.assertEqual(BusinessDate.objects.get(
+            property=self.property, business_date=self.today).status,
+            BusinessDate.Status.CLOSED)
         replay, replay_created = self.NightAuditService.run(
-            property_obj=self.property, executed_by=self.user, business_date=self.today
-        )
+            property_obj=self.property, executed_by=self.user,
+            business_date=self.today)
         self.assertFalse(replay_created)
         self.assertEqual(replay.pk, run.pk)
-        self.assertEqual(
-            LedgerEntry.objects.filter(property=self.property, business_date=self.today).count(), 1
-        )
+        self.assertEqual(LedgerEntry.objects.filter(
+            property=self.property, business_date=self.today).count(), 1)
 
     def test_night_audit_requires_second_manager_to_reopen(self):
         from django.contrib.auth.models import User
 
         from apps.billing.models import LedgerEntry
         from apps.core.models import BusinessDate
-
         run, _ = self.NightAuditService.run(
-            property_obj=self.property, executed_by=self.user, business_date=self.today
-        )
-        bd = BusinessDate.objects.get(property=self.property, business_date=self.today)
+            property_obj=self.property, executed_by=self.user,
+            business_date=self.today)
+        bd = BusinessDate.objects.get(
+            property=self.property, business_date=self.today)
         requester = User.objects.create_user(username="night-audit-requester")
         approver = User.objects.create_user(username="night-audit-approver")
         approval, created = self.NightAuditService.request_reopen(
-            property_obj=self.property,
-            business_date_id=bd.pk,
-            requested_by=requester,
-            reason="营业日账务复核后需要重开",
-        )
+            property_obj=self.property, business_date_id=bd.pk,
+            requested_by=requester, reason="营业日账务复核后需要重开")
         self.assertTrue(created)
         with self.assertRaises(Exception):
             self.NightAuditService.approve_reopen(
-                property_obj=self.property,
-                business_date_id=bd.pk,
-                approval_id=approval.pk,
-                approved_by=requester,
-            )
+                property_obj=self.property, business_date_id=bd.pk,
+                approval_id=approval.pk, approved_by=requester)
         reopened = self.NightAuditService.approve_reopen(
-            property_obj=self.property,
-            business_date_id=bd.pk,
-            approval_id=approval.pk,
-            approved_by=approver,
-        )
+            property_obj=self.property, business_date_id=bd.pk,
+            approval_id=approval.pk, approved_by=approver)
         self.assertEqual(reopened.status, BusinessDate.Status.REOPENED)
         rerun, rerun_created = self.NightAuditService.run(
-            property_obj=self.property, executed_by=approver, business_date=self.today
-        )
+            property_obj=self.property, executed_by=approver,
+            business_date=self.today)
         self.assertTrue(rerun_created)
         self.assertEqual(rerun.status, "SUCCESS")
-        self.assertEqual(
-            LedgerEntry.objects.filter(
-                property=self.property,
-                business_date=self.today,
-                entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-            ).count(),
-            1,
-        )
+        self.assertEqual(LedgerEntry.objects.filter(
+            property=self.property, business_date=self.today,
+            entry_type=LedgerEntry.EntryType.ROOM_CHARGE).count(), 1)
 
 
 class BillingServiceManualCollectionTests(TestCase):
@@ -658,83 +574,53 @@ class BillingServiceManualCollectionTests(TestCase):
         today = date.today()
         self.property = Property.objects.create(code="BILL", name="统一账务测试酒店")
         self.room_type = RoomType.objects.create(
-            property=self.property, code="BILL-STD", name="统一账务标准间"
-        )
+            property=self.property, code="BILL-STD", name="统一账务标准间")
         self.rate_plan = RatePlan.objects.create(
-            property=self.property, code="BILL-BAR", name="统一账务门市价", valid_from=today
-        )
+            property=self.property, code="BILL-BAR", name="统一账务门市价",
+            valid_from=today)
         from apps.billing.models import Folio
         from apps.guests.models import Guest
         from apps.reservations.models import Reservation, ReservationRoom
-
         self.guest = Guest.objects.create(
-            property=self.property,
-            full_name="统一账务客人",
-            phone="13800008882",
-            phone_normalized="13800008882",
-        )
+            property=self.property, full_name="统一账务客人",
+            phone="13800008882", phone_normalized="13800008882")
         self.reservation = Reservation.objects.create(
-            property=self.property,
-            booking_no="BILLINGCOLLECT0001",
-            guest=self.guest,
-            status=Reservation.Status.CONFIRMED,
-            check_in=today,
-            check_out=today + timedelta(days=1),
-            room_count=1,
-            adult_count=1,
-            total_amount=Decimal("300.00"),
-        )
+            property=self.property, booking_no="BILLINGCOLLECT0001",
+            guest=self.guest, status=Reservation.Status.CONFIRMED,
+            check_in=today, check_out=today + timedelta(days=1),
+            room_count=1, adult_count=1, total_amount=Decimal("300.00"))
         ReservationRoom.objects.create(
-            property=self.property,
-            reservation=self.reservation,
-            room_type=self.room_type,
-            rate_plan=self.rate_plan,
-            check_in=today,
-            check_out=today + timedelta(days=1),
+            property=self.property, reservation=self.reservation,
+            room_type=self.room_type, rate_plan=self.rate_plan,
+            check_in=today, check_out=today + timedelta(days=1),
             nightly_rates=[{"date": today.isoformat(), "price": "300.00", "currency": "CNY"}],
-            amount=Decimal("300.00"),
-        )
+            amount=Decimal("300.00"))
         self.folio = Folio.objects.create(
-            property=self.property, reservation=self.reservation, guest=self.guest, currency="CNY"
-        )
+            property=self.property, reservation=self.reservation,
+            guest=self.guest, currency="CNY")
         self.operator = User.objects.create_user(username="bill-operator")
         from apps.billing.services_v2 import BillingService
-
         BillingService.open_shift(
-            property_obj=self.property, cashier=self.operator, opening_cash=Decimal("0.00")
-        )
+            property_obj=self.property, cashier=self.operator,
+            opening_cash=Decimal("0.00"))
 
     def test_manual_collection_posts_successful_payment_and_is_idempotent(self):
         from apps.billing.services_v2 import BillingService
-
         first = BillingService.collect_payment(
-            property_obj=self.property,
-            reservation=self.reservation,
-            amount="300.00",
-            method="CASH",
-            collected_by=self.operator,
-            reference="POS-CASH-REF-001",
-        )
+            property_obj=self.property, reservation=self.reservation,
+            amount="300.00", method="CASH", collected_by=self.operator,
+            reference="POS-CASH-REF-001")
         replay = BillingService.collect_payment(
-            property_obj=self.property,
-            reservation=self.reservation,
-            amount="300.00",
-            method="CASH",
-            collected_by=self.operator,
-            reference="POS-CASH-REF-001",
-        )
+            property_obj=self.property, reservation=self.reservation,
+            amount="300.00", method="CASH", collected_by=self.operator,
+            reference="POS-CASH-REF-001")
         self.assertEqual(first.pk, replay.pk)
         self.assertEqual(first.status, Payment.Status.SUCCEEDED)
-        self.assertEqual(
-            LedgerEntry.objects.filter(
-                property=self.property, folio=self.folio, entry_type=LedgerEntry.EntryType.PAYMENT
-            ).count(),
-            1,
-        )
-        self.assertEqual(
-            LedgerEntry.objects.get(property=self.property, folio=self.folio).amount,
-            Decimal("-300.00"),
-        )
+        self.assertEqual(LedgerEntry.objects.filter(
+            property=self.property, folio=self.folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT).count(), 1)
+        self.assertEqual(LedgerEntry.objects.get(
+            property=self.property, folio=self.folio).amount, Decimal("-300.00"))
 
 
 class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
@@ -780,13 +666,13 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         response = self._callback()
         self.assertTrue(response.json()["compensation_required"])
         task = PaymentCompensationTask.objects.get(
-            idempotency_key=f"late-success:payment:{self.payment.pk}"
-        )
+            idempotency_key=f"late-success:payment:{self.payment.pk}")
         self._run_worker()
         task.refresh_from_db()
         self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
         self.assertEqual(task.attempt_count, 1)
-        self.assertEqual(task.last_error_code, "INVENTORY_CONFIRM_UNAVAILABLE")
+        self.assertEqual(
+            task.last_error_code, "INVENTORY_CONFIRM_UNAVAILABLE")
         self.assertIsNotNone(task.next_attempt_at)
         self.assertGreater(task.next_attempt_at, timezone.now())
         # 退避期内不得被再次抢占执行
@@ -798,13 +684,11 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         """WB-110a：终态预订的 Hold 协调任务不得无限重试——首轮即转死信。"""
         # 渠道迟到成功但订单已取消（终态）→ 补偿任务创建
         Reservation.objects.filter(pk=self.reservation.pk).update(
-            status=Reservation.Status.CANCELLED
-        )
+            status=Reservation.Status.CANCELLED)
         response = self._callback()
         self.assertTrue(response.json()["compensation_required"])
         task = PaymentCompensationTask.objects.get(
-            idempotency_key=f"late-success:payment:{self.payment.pk}"
-        )
+            idempotency_key=f"late-success:payment:{self.payment.pk}")
         self._run_worker()
         task.refresh_from_db()
         self.assertEqual(task.status, PaymentCompensationTask.Status.DEAD_LETTER)
@@ -814,12 +698,14 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         self.assertIsNotNone(task.completed_at)
         self.assertEqual(task.attempt_count, 1)
         # 意图侧 Hold 协调任务（WB-073 路径）同样不得无限重试
-        intent = PaymentIntent.objects.filter(reservation=self.reservation).order_by("pk").first()
+        intent = PaymentIntent.objects.filter(
+            reservation=self.reservation).order_by("pk").first()
         intent_task = PaymentCompensationTask.objects.get(
-            idempotency_key=f"intent-inventory-confirm:{intent.pk}"
-        )
-        self.assertEqual(intent_task.status, PaymentCompensationTask.Status.DEAD_LETTER)
-        self.assertEqual(intent_task.last_error_code, "REQUIRES_MANUAL_COORDINATION")
+            idempotency_key=f"intent-inventory-confirm:{intent.pk}")
+        self.assertEqual(intent_task.status,
+                         PaymentCompensationTask.Status.DEAD_LETTER)
+        self.assertEqual(intent_task.last_error_code,
+                         "REQUIRES_MANUAL_COORDINATION")
         # 支付资金事实保留：不得篡改成功支付
         self.payment.refresh_from_db()
         self.assertEqual(self.payment.status, Payment.Status.SUCCEEDED)
@@ -829,11 +715,9 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
     def test_worker_hold_coordination_confirmed_reservation_is_idempotent(self):
         """WB-110a：已确认预订的 Hold 协调任务幂等成功，不重复消耗库存。"""
         Reservation.objects.filter(pk=self.reservation.pk).update(
-            status=Reservation.Status.CONFIRMED
-        )
-        held_before = list(
-            RoomTypeInventory.objects.order_by("stay_date").values_list("held", "sold")
-        )
+            status=Reservation.Status.CONFIRMED)
+        held_before = list(RoomTypeInventory.objects.order_by(
+            "stay_date").values_list("held", "sold"))
         task, _ = create_compensation_task(
             task_type=PaymentCompensationTask.TaskType.HOLD_COORDINATION,
             aggregate_type="Payment",
@@ -843,24 +727,17 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         self._run_worker()
         task.refresh_from_db()
         self.assertEqual(task.status, PaymentCompensationTask.Status.SUCCEEDED)
-        self.assertEqual(
-            list(RoomTypeInventory.objects.order_by("stay_date").values_list("held", "sold")),
-            held_before,
-        )
+        self.assertEqual(list(RoomTypeInventory.objects.order_by(
+            "stay_date").values_list("held", "sold")), held_before)
 
     def test_worker_channel_query_reports_persisted_success(self):
         """WB-110b：mock 渠道查询读到 SUCCESS 渠道事实 → 任务成功且不改状态。"""
-        intent = PaymentIntent.objects.filter(reservation=self.reservation).order_by("pk").first()
+        intent = PaymentIntent.objects.filter(
+            reservation=self.reservation).order_by("pk").first()
         ProviderTransaction.objects.create(
-            property=self.property,
-            intent=intent,
-            provider_code="mock",
-            provider_transaction_id="CQ-TXN-001",
-            amount=intent.amount,
-            currency="CNY",
-            channel_status="SUCCESS",
-            signature_verified=True,
-        )
+            property=self.property, intent=intent, provider_code="mock",
+            provider_transaction_id="CQ-TXN-001", amount=intent.amount,
+            currency="CNY", channel_status="SUCCESS", signature_verified=True)
         task, _ = create_compensation_task(
             task_type=PaymentCompensationTask.TaskType.CHANNEL_QUERY,
             aggregate_type="PaymentIntent",
@@ -878,17 +755,13 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
 
     def test_worker_channel_query_fails_without_success_fact(self):
         """WB-110b：无渠道交易或非 SUCCESS → 失败退避，不得伪造渠道成功。"""
-        intent = PaymentIntent.objects.filter(reservation=self.reservation).order_by("pk").first()
+        intent = PaymentIntent.objects.filter(
+            reservation=self.reservation).order_by("pk").first()
         # 最新渠道事实为 PENDING（非 SUCCESS）
         ProviderTransaction.objects.create(
-            property=self.property,
-            intent=intent,
-            provider_code="mock",
-            provider_transaction_id="CQ-TXN-002",
-            amount=intent.amount,
-            currency="CNY",
-            channel_status="PENDING",
-        )
+            property=self.property, intent=intent, provider_code="mock",
+            provider_transaction_id="CQ-TXN-002", amount=intent.amount,
+            currency="CNY", channel_status="PENDING")
         task, _ = create_compensation_task(
             task_type=PaymentCompensationTask.TaskType.CHANNEL_QUERY,
             aggregate_type="PaymentIntent",
@@ -898,7 +771,8 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         self._run_worker()
         task.refresh_from_db()
         self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
-        self.assertEqual(task.last_error_code, "CHANNEL_QUERY_NO_SUCCESS_FACT")
+        self.assertEqual(
+            task.last_error_code, "CHANNEL_QUERY_NO_SUCCESS_FACT")
         intent.refresh_from_db()
         self.assertEqual(intent.status, PaymentIntent.Status.PENDING)
         # 无任何渠道交易 → 同样失败退避
@@ -913,26 +787,23 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         self._run_worker()
         task2.refresh_from_db()
         self.assertEqual(task2.status, PaymentCompensationTask.Status.PENDING)
-        self.assertEqual(task2.last_error_code, "CHANNEL_QUERY_NO_SUCCESS_FACT")
+        self.assertEqual(
+            task2.last_error_code, "CHANNEL_QUERY_NO_SUCCESS_FACT")
 
     def test_worker_callback_confirm_retry_advances_intent(self):
         """WB-110c：存在已验签 SUCCESS 渠道交易 + 成功 Payment → 推进意图。"""
         self.payment.status = Payment.Status.SUCCEEDED
         self.payment.paid_at = timezone.now()
         self.payment.save(update_fields=("status", "paid_at"))
-        intent = PaymentIntent.objects.filter(reservation=self.reservation).order_by("pk").first()
+        intent = PaymentIntent.objects.filter(
+            reservation=self.reservation).order_by("pk").first()
         intent.status = PaymentIntent.Status.PROCESSING
         intent.save(update_fields=("status",))
         ProviderTransaction.objects.create(
-            property=self.property,
-            intent=intent,
-            provider_code="mock",
+            property=self.property, intent=intent, provider_code="mock",
             provider_transaction_id=self.payment.provider_ref,
-            amount=self.payment.amount,
-            currency=self.payment.currency,
-            channel_status="SUCCESS",
-            signature_verified=True,
-        )
+            amount=self.payment.amount, currency=self.payment.currency,
+            channel_status="SUCCESS", signature_verified=True)
         task, _ = create_compensation_task(
             task_type=PaymentCompensationTask.TaskType.CALLBACK_CONFIRM_RETRY,
             aggregate_type="PaymentIntent",
@@ -955,21 +826,18 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         self._run_worker()
         task2.refresh_from_db()
         self.assertEqual(task2.status, PaymentCompensationTask.Status.SUCCEEDED)
-        self.assertEqual(PaymentIntent.objects.filter(pk=intent.pk).count(), 1)
+        self.assertEqual(
+            PaymentIntent.objects.filter(pk=intent.pk).count(), 1)
 
     def test_worker_callback_confirm_retry_fails_without_payment_fact(self):
         """WB-110c：找不到对应成功 Payment → 失败重试，不得凭空造成功。"""
-        intent = PaymentIntent.objects.filter(reservation=self.reservation).order_by("pk").first()
+        intent = PaymentIntent.objects.filter(
+            reservation=self.reservation).order_by("pk").first()
         ProviderTransaction.objects.create(
-            property=self.property,
-            intent=intent,
-            provider_code="mock",
+            property=self.property, intent=intent, provider_code="mock",
             provider_transaction_id="CQ-NO-PAYMENT-TXN",
-            amount=intent.amount,
-            currency="CNY",
-            channel_status="SUCCESS",
-            signature_verified=True,
-        )
+            amount=intent.amount, currency="CNY",
+            channel_status="SUCCESS", signature_verified=True)
         task, _ = create_compensation_task(
             task_type=PaymentCompensationTask.TaskType.CALLBACK_CONFIRM_RETRY,
             aggregate_type="PaymentIntent",
@@ -979,7 +847,8 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         self._run_worker()
         task.refresh_from_db()
         self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
-        self.assertEqual(task.last_error_code, "CALLBACK_CONFIRM_NO_PAYMENT_FACT")
+        self.assertEqual(
+            task.last_error_code, "CALLBACK_CONFIRM_NO_PAYMENT_FACT")
         intent.refresh_from_db()
         self.assertEqual(intent.status, PaymentIntent.Status.PENDING)
 
@@ -996,22 +865,16 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         task.refresh_from_db()
         self.assertEqual(task.status, PaymentCompensationTask.Status.SUCCEEDED)
         self.assertEqual(
-            LedgerEntry.objects.filter(reference=f"payment:{self.payment.provider_ref}").count(), 1
-        )
+            LedgerEntry.objects.filter(
+                reference=f"payment:{self.payment.provider_ref}").count(), 1)
 
         # 缺凭证场景：同账单上另一笔已成功但从未入账的支付
         payment2 = Payment.objects.create(
-            property=self.property,
-            reservation=self.reservation,
+            property=self.property, reservation=self.reservation,
             folio=self.reservation.get_master_folio(),
-            provider="mock",
-            provider_ref="REPAIR-REF-001",
-            method="MOCK",
-            amount=Decimal("100.00"),
-            currency="CNY",
-            status=Payment.Status.SUCCEEDED,
-            paid_at=timezone.now(),
-        )
+            provider="mock", provider_ref="REPAIR-REF-001", method="MOCK",
+            amount=Decimal("100.00"), currency="CNY",
+            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
         task2, _ = create_compensation_task(
             task_type=PaymentCompensationTask.TaskType.PAYMENT_LEDGER_REPAIR,
             aggregate_type="Payment",
@@ -1035,7 +898,9 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         self._run_worker()
         task3.refresh_from_db()
         self.assertEqual(task3.status, PaymentCompensationTask.Status.SUCCEEDED)
-        self.assertEqual(LedgerEntry.objects.filter(reference="payment:REPAIR-REF-001").count(), 1)
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                reference="payment:REPAIR-REF-001").count(), 1)
 
     def test_worker_ledger_repair_dead_letters_unsafe_payment(self):
         """WB-110d：Payment 非 SUCCEEDED → 直接死信，注明需人工/对账。"""
@@ -1050,9 +915,8 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         self.assertEqual(task.status, PaymentCompensationTask.Status.DEAD_LETTER)
         self.assertEqual(task.last_error_code, "REQUIRES_MANUAL_COORDINATION")
         self.assertIn("人工", task.last_error_summary)
-        self.assertFalse(
-            LedgerEntry.objects.filter(reference=f"payment:{self.payment.provider_ref}").exists()
-        )
+        self.assertFalse(LedgerEntry.objects.filter(
+            reference=f"payment:{self.payment.provider_ref}").exists())
 
     def test_worker_reconciliation_diff_runs_read_only_scan(self):
         """WB-110e：对账差异任务调用既有扫描 → 成功且不自动改账。"""
@@ -1068,7 +932,8 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         self.assertEqual(task.status, PaymentCompensationTask.Status.SUCCEEDED)
         self.assertIn("不自动改账", task.last_error_summary)
         # 扫描生成对账运行批次；账本不被改动（只读核对）
-        self.assertTrue(FolioReconciliationRun.objects.filter(property=self.property).exists())
+        self.assertTrue(FolioReconciliationRun.objects.filter(
+            property=self.property).exists())
         self.assertEqual(LedgerEntry.objects.count(), entries_before)
 
     def test_worker_reconciliation_diff_failure_retries(self):
@@ -1080,9 +945,8 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
             idempotency_key="worker-reconciliation-diff-fail",
         )
         with mock.patch(
-            "apps.billing.reconciliation.scan_folio_reconciliation",
-            side_effect=RuntimeError("db unavailable"),
-        ):
+                "apps.billing.reconciliation.scan_folio_reconciliation",
+                side_effect=RuntimeError("db unavailable")):
             self._run_worker()
         task.refresh_from_db()
         self.assertEqual(task.status, PaymentCompensationTask.Status.PENDING)
@@ -1111,7 +975,8 @@ class PaymentCompensationWorkerTests(MockPaymentFixtureMixin):
         self.assertEqual(task.status, PaymentCompensationTask.Status.DEAD_LETTER)
         self.assertIsNotNone(task.completed_at)
         # 人工重放：回到 PENDING、清零尝试，可再次被 worker 租约消费
-        replayed = replay_dead_letter_task(task.pk, operator=None, reason="人工核查渠道后重放")
+        replayed = replay_dead_letter_task(
+            task.pk, operator=None, reason="人工核查渠道后重放")
         self.assertEqual(replayed.status, PaymentCompensationTask.Status.PENDING)
         self.assertEqual(replayed.attempt_count, 0)
         self._run_worker()

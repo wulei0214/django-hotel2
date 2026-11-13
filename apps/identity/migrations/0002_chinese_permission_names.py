@@ -7,15 +7,9 @@ from django.db import migrations
 
 ACTION_LABELS = {"view": "查看", "add": "新增", "change": "修改", "delete": "删除"}
 MODEL_LABELS = {
-    "staff": "员工信息",
-    "client": "顾客管理",
-    "food": "菜品信息",
-    "vip": "会员信息",
-    "park": "车位信息",
-    "room": "客房信息",
-    "order": "餐饮订单",
-    "accommodation": "客房订单",
-    "auditlog": "审计日志",
+    "staff": "员工信息", "client": "顾客管理", "food": "菜品信息", "vip": "会员信息",
+    "park": "车位信息", "room": "客房信息", "order": "餐饮订单",
+    "accommodation": "客房订单", "auditlog": "审计日志",
 }
 
 

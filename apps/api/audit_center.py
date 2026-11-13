@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """审计与合规中心 API（基线 2.0 §4.4）。
 
 只读端点，全部以 ``core.audit_view`` 为唯一读取门禁（P0-04 定版；
@@ -19,18 +20,17 @@ PII 防泄露口径：
   * 保留期限为待法务/业务负责人确认项——响应 meta 统一携带
     RETENTION_NOTE 常量说明，不虚构年限；归档/备份策略见该 SQL 附注。
 """
-
 from datetime import timedelta
-from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
 from django.utils import timezone
+from zoneinfo import ZoneInfo
+
 from django.views.decorators.http import require_GET
 
-from apps.core.api_contract import ApiError, api_response, api_view, paginate
+from apps.core.api_contract import ApiError, api_view, api_response, paginate
 from apps.core.models import AuditEvent
 from apps.identity.authorization import AuthorizationService
-
 from .report_center import _parse_day, _property_tz_bounds  # 时间口径唯一权威（§6）
 
 # ---------------------------------------------------------------------------
@@ -58,32 +58,20 @@ RETENTION_NOTE = (
 #   manage_rates → inventory.daily_rate_adjust
 #   staff_manage → permissions.matrix_saved、identity.role_assign/role_end/
 #     password_reset/account_provision
-SENSITIVE_ACTIONS = frozenset(
-    {
-        "guest.pii_reveal",
-        "guest.pii_reveal.document",
-        "guest.pii_reveal.phone",
-        "guest.document_reveal",
-        "guest.phone_reveal",
-        "billing.refund_request",
-        "billing.refund_completed",
-        "billing.reverse_entry",
-        "frontdesk.no_show_processed",
-        "night_audit.run",
-        "night_audit.reopen",
-        "night_audit.break_glass_requested",
-        "night_audit.break_glass_executed",
-        "night_audit.break_glass_reviewed",
-        "night_audit.break_glass_expired",
-        "privacy.export_staff",
-        "inventory.daily_rate_adjust",
-        "permissions.matrix_saved",
-        "identity.role_assign",
-        "identity.role_end",
-        "identity.password_reset",
-        "identity.account_provision",
-    }
-)
+SENSITIVE_ACTIONS = frozenset({
+    "guest.pii_reveal", "guest.pii_reveal.document", "guest.pii_reveal.phone",
+    "guest.document_reveal", "guest.phone_reveal",
+    "billing.refund_request", "billing.refund_completed", "billing.reverse_entry",
+    "frontdesk.no_show_processed",
+    "night_audit.run", "night_audit.reopen",
+    "night_audit.break_glass_requested", "night_audit.break_glass_executed",
+    "night_audit.break_glass_reviewed", "night_audit.break_glass_expired",
+    "privacy.export_staff",
+    "inventory.daily_rate_adjust",
+    "permissions.matrix_saved",
+    "identity.role_assign", "identity.role_end",
+    "identity.password_reset", "identity.account_provision",
+})
 
 # summary Top 操作者条数（§4.4 高危事件视图的运营口径，固定小窗口）
 TOP_ACTORS_LIMIT = 5
@@ -187,34 +175,23 @@ ACTION_LABELS = {
 
 
 ENTITY_TYPE_LABELS = {
-    "Guest": "客人档案",
-    "GuestDocument": "客人证件",
-    "GuestPhone": "客人联系方式",
-    "Reservation": "预订订单",
+    "Guest": "客人档案", "GuestDocument": "客人证件",
+    "GuestPhone": "客人联系方式", "Reservation": "预订订单",
     "ReservationRoom": "预订房间明细",
     "Stay": "入住记录",
-    "StayRoomSegment": "房间住宿段",
-    "Folio": "账单",
-    "LedgerEntry": "账务凭证",
-    "Payment": "收款记录",
+    "StayRoomSegment": "房间住宿段", "Folio": "账单",
+    "LedgerEntry": "账务凭证", "Payment": "收款记录",
     "CashierShift": "收银班次",
-    "Refund": "退款记录",
-    "Room": "客房",
-    "RoomType": "房型",
-    "DailyRate": "每日房价",
-    "RoomTypeInventory": "房型库存",
-    "Property": "物业",
+    "Refund": "退款记录", "Room": "客房",
+    "RoomType": "房型", "DailyRate": "每日房价",
+    "RoomTypeInventory": "房型库存", "Property": "物业",
     "StaffProfile": "员工档案",
     "PropertyStaffMembership": "员工物业任职",
     "StaffRoleAssignment": "员工岗位授权",
-    "BusinessDate": "营业日",
-    "NightAuditRun": "夜审运行记录",
-    "BreakGlassRecord": "紧急重开记录",
-    "HousekeepingTask": "清洁任务",
-    "MaintenanceTicket": "维修工单",
-    "RoomInspection": "客房检查记录",
-    "AuditEvent": "审计事件",
-    "ApprovalRecord": "审批记录",
+    "BusinessDate": "营业日", "NightAuditRun": "夜审运行记录",
+    "BreakGlassRecord": "紧急重开记录", "HousekeepingTask": "清洁任务",
+    "MaintenanceTicket": "维修工单", "RoomInspection": "客房检查记录",
+    "AuditEvent": "审计事件", "ApprovalRecord": "审批记录",
     "Notification": "通知待办",
 }
 
@@ -266,9 +243,7 @@ def audit_events(request):
     -created_at,-id（P0-03 ensure_stable_ordering 校验通过）。
     """
     property_obj = _context(request)
-    qs = AuditEvent.objects.filter(property=property_obj).select_related(
-        "actor", "actor__staff_profile"
-    )
+    qs = AuditEvent.objects.filter(property=property_obj).select_related("actor", "actor__staff_profile")
 
     action = (request.GET.get("action") or "").strip()
     if action:
@@ -284,18 +259,17 @@ def audit_events(request):
         qs = qs.filter(actor__username=actor)
 
     raw_from, raw_to = request.GET.get("date_from"), request.GET.get("date_to")
-    if raw_from and raw_to and _parse_day(raw_from, "date_from") > _parse_day(raw_to, "date_to"):
+    if raw_from and raw_to and _parse_day(raw_from, "date_from") > _parse_day(
+            raw_to, "date_to"):
         raise ApiError("VALIDATION_ERROR", "date_from 不能晚于 date_to。")
     # P0 验收缺陷修复：日期边界按物业时区换算（跨日时段不再漏数据）
     if raw_from or raw_to:
-        _today = timezone.localdate(
-            timezone.now(), ZoneInfo(getattr(property_obj, "timezone", None) or "Asia/Shanghai")
-        )
+        _today = timezone.localdate(timezone.now(), ZoneInfo(
+            getattr(property_obj, "timezone", None) or "Asia/Shanghai"))
         _tz_start, _tz_end = _property_tz_bounds(
             property_obj,
             _parse_day(raw_from, "date_from") if raw_from else _today,
-            _parse_day(raw_to, "date_to") if raw_to else _today,
-        )
+            _parse_day(raw_to, "date_to") if raw_to else _today)
         if raw_from:
             qs = qs.filter(created_at__gte=_tz_start)
         if raw_to:
@@ -304,25 +278,21 @@ def audit_events(request):
     items, pagination = paginate(qs, request)
     # 列表摘要：action/entity/actor/时间/reason + 敏感标记；
     # before/after 一律不下发（§4.4 PII 最小化，详情端点才展示）。
-    data = [
-        {
-            "id": event.pk,
-            "action": event.action,
-            "action_label": _action_label(event.action),
-            "entity_type": event.entity_type,
-            "entity_type_label": _entity_type_label(event.entity_type),
-            "entity_id": event.entity_id,
-            "actor": event.actor.username if event.actor else None,
-            "actor_label": _actor_label(event.actor),
-            "reason": event.reason or None,
-            "is_sensitive": _sensitive_flag(event.action),
-            "created_at": event.created_at.isoformat(),
-        }
-        for event in items
-    ]
-    return api_response(
-        request, data, pagination=pagination, extra_meta={"retention_note": RETENTION_NOTE}
-    )
+    data = [{
+        "id": event.pk,
+        "action": event.action,
+        "action_label": _action_label(event.action),
+        "entity_type": event.entity_type,
+        "entity_type_label": _entity_type_label(event.entity_type),
+        "entity_id": event.entity_id,
+        "actor": event.actor.username if event.actor else None,
+        "actor_label": _actor_label(event.actor),
+        "reason": event.reason or None,
+        "is_sensitive": _sensitive_flag(event.action),
+        "created_at": event.created_at.isoformat(),
+    } for event in items]
+    return api_response(request, data, pagination=pagination,
+                        extra_meta={"retention_note": RETENTION_NOTE})
 
 
 # ---------------------------------------------------------------------------
@@ -338,11 +308,8 @@ def audit_event_detail(request, event_id):
     （揭示类事件只存 masked），回归测试锁定。
     """
     property_obj = _context(request)
-    event = (
-        AuditEvent.objects.filter(pk=event_id)
-        .select_related("actor", "actor__staff_profile", "property")
-        .first()
-    )
+    event = (AuditEvent.objects.filter(pk=event_id)
+             .select_related("actor", "actor__staff_profile", "property").first())
     if event is None or event.property_id != property_obj.pk:
         raise ApiError("RESOURCE_NOT_FOUND", "审计事件不存在。")
     data = {
@@ -362,11 +329,11 @@ def audit_event_detail(request, event_id):
         "user_agent": event.user_agent or None,
         "is_sensitive": _sensitive_flag(event.action),
         "created_at": event.created_at.isoformat(),
-        "property": (
-            {"code": event.property.code, "name": event.property.name} if event.property else None
-        ),
+        "property": {"code": event.property.code, "name": event.property.name}
+        if event.property else None,
     }
-    return api_response(request, data, extra_meta={"retention_note": RETENTION_NOTE})
+    return api_response(request, data,
+                        extra_meta={"retention_note": RETENTION_NOTE})
 
 
 # ---------------------------------------------------------------------------
@@ -387,52 +354,35 @@ def audit_summary(request):
     start_30d = now - timedelta(days=30)
     recent_7d = Q(created_at__gte=start_7d)
 
-    base = AuditEvent.objects.filter(property=property_obj, created_at__gte=start_30d)
-    by_action = [
-        {
-            "action": row["action"],
-            "count_7d": row["recent"],
-            "count_30d": row["total"],
-        }
-        for row in base.values("action")
-        .annotate(
-            total=Count("id"),
-            recent=Count("id", filter=recent_7d),
-        )
-        .order_by("-total", "action")
-    ]
-    top_actors = [
-        {
-            # actor 为空（系统操作）统一标 system（同 audit_timeline 口径）
-            "actor": row["actor__username"] or "系统",
-            "count_7d": row["recent"],
-            "count_30d": row["total"],
-        }
-        for row in base.values("actor__username")
-        .annotate(
-            total=Count("id"),
-            recent=Count("id", filter=recent_7d),
-        )
-        .order_by("-total", "actor__username")[:TOP_ACTORS_LIMIT]
-    ]
+    base = AuditEvent.objects.filter(
+        property=property_obj, created_at__gte=start_30d)
+    by_action = [{
+        "action": row["action"],
+        "count_7d": row["recent"],
+        "count_30d": row["total"],
+    } for row in base.values("action").annotate(
+        total=Count("id"), recent=Count("id", filter=recent_7d),
+    ).order_by("-total", "action")]
+    top_actors = [{
+        # actor 为空（系统操作）统一标 system（同 audit_timeline 口径）
+        "actor": row["actor__username"] or "系统",
+        "count_7d": row["recent"],
+        "count_30d": row["total"],
+    } for row in base.values("actor__username").annotate(
+        total=Count("id"), recent=Count("id", filter=recent_7d),
+    ).order_by("-total", "actor__username")[:TOP_ACTORS_LIMIT]]
 
     sensitive_rows = base.filter(action__in=SENSITIVE_ACTIONS)
     sensitive = {
         "count_7d": sensitive_rows.filter(recent_7d).count(),
         "count_30d": sensitive_rows.count(),
-        "by_action": [
-            {
-                "action": row["action"],
-                "count_7d": row["recent"],
-                "count_30d": row["total"],
-            }
-            for row in sensitive_rows.values("action")
-            .annotate(
-                total=Count("id"),
-                recent=Count("id", filter=recent_7d),
-            )
-            .order_by("-total", "action")
-        ],
+        "by_action": [{
+            "action": row["action"],
+            "count_7d": row["recent"],
+            "count_30d": row["total"],
+        } for row in sensitive_rows.values("action").annotate(
+            total=Count("id"), recent=Count("id", filter=recent_7d),
+        ).order_by("-total", "action")],
     }
     data = {
         "window": {
@@ -448,7 +398,8 @@ def audit_summary(request):
         "sensitive_actions_catalog": sorted(SENSITIVE_ACTIONS),
         "property": {"code": property_obj.code, "name": property_obj.name},
     }
-    return api_response(request, data, extra_meta={"retention_note": RETENTION_NOTE})
+    return api_response(request, data,
+                        extra_meta={"retention_note": RETENTION_NOTE})
 
 
 # ---------------------------------------------------------------------------
@@ -459,19 +410,14 @@ def audit_summary(request):
 def audit_actions(request):
     """当前物业出现过的 action 去重清单 + 事件计数（供筛选下拉）。"""
     property_obj = _context(request)
-    rows = (
-        AuditEvent.objects.filter(property=property_obj)
-        .values("action")
-        .annotate(total=Count("id"))
-        .order_by("-total", "action")
-    )
-    data = [
-        {
-            "action": row["action"],
-            "action_label": _action_label(row["action"]),
-            "count": row["total"],
-            "is_sensitive": _sensitive_flag(row["action"]),
-        }
-        for row in rows
-    ]
-    return api_response(request, data, extra_meta={"retention_note": RETENTION_NOTE})
+    rows = (AuditEvent.objects.filter(property=property_obj)
+            .values("action").annotate(total=Count("id"))
+            .order_by("-total", "action"))
+    data = [{
+        "action": row["action"],
+        "action_label": _action_label(row["action"]),
+        "count": row["total"],
+        "is_sensitive": _sensitive_flag(row["action"]),
+    } for row in rows]
+    return api_response(request, data,
+                        extra_meta={"retention_note": RETENTION_NOTE})

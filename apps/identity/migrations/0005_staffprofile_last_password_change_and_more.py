@@ -6,22 +6,18 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("identity", "0004_staff_manage_and_d04"),
+        ('identity', '0004_staff_manage_and_d04'),
     ]
 
     operations = [
         migrations.AddField(
-            model_name="staffprofile",
-            name="last_password_change",
-            field=models.DateTimeField(blank=True, null=True, verbose_name="最近密码变更时间"),
+            model_name='staffprofile',
+            name='last_password_change',
+            field=models.DateTimeField(blank=True, null=True, verbose_name='最近密码变更时间'),
         ),
         migrations.AddField(
-            model_name="staffprofile",
-            name="must_change_password",
-            field=models.BooleanField(
-                default=False,
-                help_text="开通账号/重置密码后置位；首次登录强制修改（D-07）",
-                verbose_name="须强制改密",
-            ),
+            model_name='staffprofile',
+            name='must_change_password',
+            field=models.BooleanField(default=False, help_text='开通账号/重置密码后置位；首次登录强制修改（D-07）', verbose_name='须强制改密'),
         ),
     ]

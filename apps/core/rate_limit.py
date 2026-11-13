@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """AUTH-02（P0-01~04）：公共面限流服务。
 
 规则依据《身份账户体系改造开发方案 2.0》§6.2/§6.3：
@@ -8,7 +9,6 @@
 - 高风险动作（登录/取消/支付意图/预订创建）默认 fail-closed：
   计数存储异常时拒绝请求；429 返回 Retry-After。
 """
-
 import hashlib
 import hmac
 from datetime import timedelta
@@ -37,14 +37,16 @@ DEFAULT_LIMITS = {
 
 
 def _secret():
-    return (getattr(settings, "RATE_LIMIT_HMAC_KEY", None) or settings.SECRET_KEY).encode("utf-8")
+    return (getattr(settings, "RATE_LIMIT_HMAC_KEY", None)
+            or settings.SECRET_KEY).encode("utf-8")
 
 
 def fingerprint(value):
     """服务端密钥 HMAC 指纹；不可逆，不存明文手机号/用户名。"""
     if not value:
         return ""
-    return hmac.new(_secret(), str(value).encode("utf-8"), hashlib.sha256).hexdigest()[:32]
+    return hmac.new(_secret(), str(value).encode("utf-8"),
+                    hashlib.sha256).hexdigest()[:32]
 
 
 def _client_ip(request):
@@ -63,17 +65,8 @@ def cleanup_expired(now=None):
     return deleted
 
 
-def check(
-    request,
-    action,
-    *,
-    phone="",
-    username="",
-    booking_no="",
-    token="",
-    fail_closed=True,
-    consume=True,
-):
+def check(request, action, *, phone="", username="", booking_no="", token="",
+          fail_closed=True, consume=True):
     """多维度限流检查：任一维度超限返回 False（调用方回 429 + Retry-After）。
 
     - 每个维度原子自增（F 表达式），超限后计数继续累加便于观测但不放行。
@@ -101,29 +94,27 @@ def check(
             # 全部维度缺失（如无手机号且拿不到 IP）→ 用纯 IP 兜底；
             # IP 也缺失时按错误请求独立桶，绝不用空串共享桶
             parts = [ip or "malformed"]
-        key_hash = hashlib.sha256((action + "|" + "|".join(parts)).encode("utf-8")).hexdigest()[:48]
+        key_hash = hashlib.sha256(
+            (action + "|" + "|".join(parts)).encode("utf-8")).hexdigest()[:48]
         window_start = now.replace(microsecond=0) - timedelta(
-            seconds=int(now.timestamp()) % window_seconds
-        )
+            seconds=int(now.timestamp()) % window_seconds)
         expires_at = window_start + timedelta(seconds=window_seconds)
         try:
             with transaction.atomic():
                 if consume:
                     counter, created = RateLimitCounter.objects.get_or_create(
-                        key_hash=key_hash,
-                        action=action,
-                        window_start=window_start,
-                        defaults={"count": 1, "expires_at": expires_at},
-                    )
+                        key_hash=key_hash, action=action, window_start=window_start,
+                        defaults={"count": 1, "expires_at": expires_at})
                     if not created:
-                        RateLimitCounter.objects.filter(pk=counter.pk).update(count=F("count") + 1)
+                        RateLimitCounter.objects.filter(pk=counter.pk).update(
+                            count=F("count") + 1)
                         counter.refresh_from_db(fields=("count",))
                     current_count = counter.count
                     exceeded = current_count > limit
                 else:
                     counter = RateLimitCounter.objects.filter(
-                        key_hash=key_hash, action=action, window_start=window_start
-                    ).first()
+                        key_hash=key_hash, action=action,
+                        window_start=window_start).first()
                     current_count = counter.count if counter else 0
                     # peek 不占用本次配额：计数已用满即拒绝下一次请求。
                     exceeded = current_count >= limit
@@ -140,3 +131,5 @@ def retry_after_seconds(action):
     """429 Retry-After：取该动作最短窗口（秒）。"""
     rules = _limits_for(action)
     return min((w for _d, _n, w in rules), default=60)
+
+

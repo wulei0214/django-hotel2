@@ -44,12 +44,10 @@ class Command(BaseCommand):
             total=Count("id"),
             unavailable=Count(
                 "id",
-                filter=Q(
-                    maintenance_status__in=[
-                        Room.MaintenanceStatus.OUT_OF_ORDER,
-                        Room.MaintenanceStatus.OUT_OF_SERVICE,
-                    ]
-                ),
+                filter=Q(maintenance_status__in=[
+                    Room.MaintenanceStatus.OUT_OF_ORDER,
+                    Room.MaintenanceStatus.OUT_OF_SERVICE,
+                ]),
             ),
         )
         total = room_counts["total"] or 0

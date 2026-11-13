@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """P0-02 审批动作注册表（ApprovalActionRegistry）与服务层白名单校验测试。
 
 覆盖：未知 action_code、entity_type 错配、payload 白名单/长度/敏感值、
@@ -34,12 +35,15 @@ class ApprovalRegistryCatalogTests(TestCase):
         self.assertIn("BillingService.reverse_entry", reversal.executor)
         self.assertNotIn("billing.reversal", ApprovalActionRegistry.PENDING_ACTIONS)
         # 通用审批面的 PII 批量导出审批仍未实现：继续登记为待实现项
-        self.assertIn("privacy.pii_export_unified", ApprovalActionRegistry.PENDING_ACTIONS)
+        self.assertIn(
+            "privacy.pii_export_unified", ApprovalActionRegistry.PENDING_ACTIONS)
 
     def test_sensitive_export_is_internal_only(self):
         spec = ApprovalActionRegistry.get("privacy.export_staff")
         self.assertFalse(spec.api_requestable)
-        self.assertNotIn("privacy.export_staff", ApprovalActionRegistry.api_requestable_codes())
+        self.assertNotIn(
+            "privacy.export_staff",
+            ApprovalActionRegistry.api_requestable_codes())
 
     def test_specs_bind_permission_executor_and_entity_type(self):
         refund = ApprovalActionRegistry.get("billing.refund")
@@ -50,11 +54,12 @@ class ApprovalRegistryCatalogTests(TestCase):
         self.assertTrue(refund.sod_rule)
         reopen = ApprovalActionRegistry.get("night_audit.reopen")
         self.assertEqual(reopen.entity_type, "BusinessDate")
-        self.assertEqual(reopen.request_permission, "hotelapp.business_date_reopen")
-        self.assertEqual(reopen.approve_permission, "hotelapp.business_date_reopen")
         self.assertEqual(
-            set(refund.payload_fields), {"payment_id", "amount", "currency", "refund_liability_id"}
-        )
+            reopen.request_permission, "hotelapp.business_date_reopen")
+        self.assertEqual(
+            reopen.approve_permission, "hotelapp.business_date_reopen")
+        self.assertEqual(
+            set(refund.payload_fields), {"payment_id", "amount", "currency", "refund_liability_id"})
 
     def test_sensitive_key_and_value_detectors(self):
         for key in ("password", "api_key", "id_card", "支付密钥", "idCard"):
@@ -72,19 +77,14 @@ class ApprovalServiceWhitelistTests(TestCase):
     def setUp(self):
         self.property = Property.objects.create(code="REG01", name="注册表白名单酒店")
         from django.contrib.auth.models import User
-
         self.requester = User.objects.create_user(username="registry-requester")
 
     def _request(self, **overrides):
         kwargs = dict(
-            property_obj=self.property,
-            action_code="billing.refund",
-            entity_type="Refund",
-            entity_id="9001",
-            requested_by=self.requester,
-            reason="注册表白名单校验",
-            payload={"payment_id": 1, "amount": "100.00", "currency": "CNY"},
-        )
+            property_obj=self.property, action_code="billing.refund",
+            entity_type="Refund", entity_id="9001",
+            requested_by=self.requester, reason="注册表白名单校验",
+            payload={"payment_id": 1, "amount": "100.00", "currency": "CNY"})
         kwargs.update(overrides)
         return ApprovalService.request_approval(**kwargs)
 

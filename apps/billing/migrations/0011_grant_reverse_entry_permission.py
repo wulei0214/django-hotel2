@@ -20,12 +20,11 @@ def grant(apps, schema_editor):
     Group = apps.get_model("auth", "Group")
     Permission = apps.get_model("auth", "Permission")
     ContentType = apps.get_model("contenttypes", "ContentType")
-    ct, _ = ContentType.objects.get_or_create(app_label="billing", model="ledgerentry")
+    ct, _ = ContentType.objects.get_or_create(
+        app_label="billing", model="ledgerentry")
     perm, _ = Permission.objects.get_or_create(
-        content_type=ct,
-        codename="reverse_entry",
-        defaults={"name": "可以红字冲销账本凭证（LedgerEntry）"},
-    )
+        content_type=ct, codename="reverse_entry",
+        defaults={"name": "可以红字冲销账本凭证（LedgerEntry）"})
     for name in ("财务", "值班经理", "店长"):
         group = Group.objects.filter(name=name).first()
         if group:
@@ -40,8 +39,7 @@ def revoke(apps, schema_editor):
         perm = Permission.objects.get(
             content_type__app_label="billing",
             content_type__model="ledgerentry",
-            codename="reverse_entry",
-        )
+            codename="reverse_entry")
     except Permission.DoesNotExist:
         return
     for group in Group.objects.all():
