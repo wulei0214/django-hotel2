@@ -71,14 +71,14 @@ PMS 3.0 必须保持以下方向：
 
 ### 1.1 PMS 2.0 到 PMS 3.0 的启动门禁
 
-PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必须完成（**状态按 2026-11-09 最新 main 证据校准，见 `docs/acceptance/95-gate-closure-evidence-20261107.md` §7**；与本文件头部门禁说明保持一致）：
+PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必须完成（**状态按 2026-11-09 最新 main 证据校准，见 `docs/PMS2.0_当前版本/06_验收与发布/95-gate-closure-evidence_2026-11-07.md` §7**；与本文件头部门禁说明保持一致）：
 
 - A04：MySQL 8 空库全量迁移和已有库升级验证 —— ✅ **已完成**（空库 97 迁移全过/70 表/138 FK/无漂移；升级库=mysqldump 备份还原后 migrate 无待应用 + 74 表行数对账零差异 + Folio 余额重算零差异。原"DBA 授权"阻塞经 test_hotel 库级权限绕过，无需 root）；
 - A09：MySQL 约束、索引、事务、并发和数据核对证据 —— ✅ **已完成**（最新 main@8e310b5 的 GitHub Actions：**MySQL 8.0.46 887 项 OK + SQLite 887 项 OK**；运行链接见 95 号报告 §7。c402a37 的原始日志保留为历史证据）；
 - G09：Redis 部署、多 worker 共享、TTL、故障降级和恢复验证 —— ✅ **已完成**（双 waitress worker 跨进程缓存共享陈旧读证明 + 60s TTL 过期 + 故障降级：缓存层 fail-closed、核心页面 200；含 max_connections=20 容量观察）；
 - G10：负责人冻结容量目标并完成性能压测 —— ✅ 已完成（A11：6 场景 PASS）；
 - 阶段四：用户本地实际业务验收、九角色登录、备份恢复和必要数据治理 —— 🔶 **机器可执行项已完成**（备份恢复演练即 A04 还原对账；账号/任职/授权完整性抽查通过）；剩**用户亲自项**：九角色真实口令登录、业务操作走查、数据治理确认；
-- G14：独立验收负责人复核并签署“通过” —— ⬜ **待指派**（签署页已备好：`docs/acceptance/96-g14-signoff.md`，含 R1~R8 复核清单与证据索引；开发侧不代签）；
+- G14：独立验收负责人复核并签署“通过” —— ⬜ **待指派**（签署页已备好：`docs/PMS2.0_当前版本/06_验收与发布/96-g14-signoff_2026-11-10.md`，含 R1~R8 复核清单与证据索引；开发侧不代签）；
 - PMS2 最终验收报告结论为“通过” —— ⬜ 待 G14（A16 §19 门禁行已按 95 号报告更新）。
 
 在门禁未通过时只允许：
@@ -126,7 +126,7 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 
 本次 V2 代码现状复核采用的业务代码基线为：
 
-`7a2c9b8c896adf8fcb5220d6c768586fc9ad3bbe`（2026-11-07，公开预订生命周期整改）。此前架构审查基线 `635d9dd` 仍是 §3.4、AR-01~AR-11 等架构实证的历史依据，不得误认为它是本次最新代码基线。最新公共预订整改另见 `docs/audit/phase0/90-public-booking-order-lifecycle-review.md`。本次 V2 仅修改方案文档，业务代码复核基线仍为上述 7a2c9b8；开发启动时 BASE-01 必须重新 fetch main，以当时真正的分支 HEAD 生成新基线清单。**文档修订时点的 main HEAD 为 `9542b8b`（前台抽屉 CSS 对齐修复，纯前端样式，不影响业务代码复核结论）；若启动时 HEAD 已继续前移，以 BASE-01 重新盘点为准。**
+`7a2c9b8c896adf8fcb5220d6c768586fc9ad3bbe`（2026-11-07，公开预订生命周期整改）。此前架构审查基线 `635d9dd` 仍是 §3.4、AR-01~AR-11 等架构实证的历史依据，不得误认为它是本次最新代码基线。最新公共预订整改另见 `docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/90-public-booking-order-lifecycle-review_2026-11-10.md`。本次 V2 仅修改方案文档，业务代码复核基线仍为上述 7a2c9b8；开发启动时 BASE-01 必须重新 fetch main，以当时真正的分支 HEAD 生成新基线清单。**文档修订时点的 main HEAD 为 `9542b8b`（前台抽屉 CSS 对齐修复，纯前端样式，不影响业务代码复核结论）；若启动时 HEAD 已继续前移，以 BASE-01 重新盘点为准。**
 
 该 SHA 仅是本方案编制时的参考点；实际开发启动时必须重新 fetch main，生成新的基线清单。仓库当前已存在下列主要领域目录（实际文件和调用关系需在启动时再次核对）：
 
@@ -152,10 +152,10 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 |---|---|---|---|---|
 | V2.3 初版评审基线 | `2e8d130feb50ba3fb2d4b42c52278ff62e29f444` | 2026-11-07 初版评审时点；只代表当时 main HEAD | 2026-11-07 / `2e8d130` | 历史基线，不能作为当前施工 SHA |
 | **最新业务代码复核基线** | `8e310b5a8491f31dd91b5461160fd6dfc1f22e06` | 最新 main 业务代码：前台 PENDING 押金/人工收款自动确认、夜审房费过账、退房按 Stay 补差额、退款三方分离；全链路脚本白盒问题另行登记 | 2026-11-09 / `8e310b5` | 代码事实基线；不代表 36 项串测或用户本地验收通过 |
-| PMS2 最终验收结论 | **有条件整改，未通过最终验收** | `docs/acceptance/A16-final-acceptance-report.md` §“进入 PMS 3.0 的门禁状态” | 2026-11-07 / A16 当前 main | 阻断 PMS3 正式业务代码开发 |
-| MySQL 8 全量测试 | **887 项全过，0 fail/0 error，264.9s** | `docs/acceptance/evidence/test-mysql-c402a37.log` | 2026-11-07 / `c402a37` | A09 机器证据完成，仍须 G14 独立复核 |
-| SQLite 全量测试 | **887 项全过，0 fail/0 error，242.9s** | `docs/acceptance/evidence/test-sqlite-c402a37.log` | 2026-11-07 / `c402a37` | A09 机器证据完成；本批已取得双引擎证据 |
-| 测试引擎历史标注更正 | 此前误称 SQLite 的一次运行实际使用 MySQL；本批首次取得独立 SQLite 887 项结果，历史 729/887 数字按 95 号报告解释 | `docs/acceptance/95-gate-closure-evidence-20261107.md` §1 | 2026-11-07 / `c402a37` | 禁止沿用旧运行标签或把历史记录当作独立双引擎证据 |
+| PMS2 最终验收结论 | **有条件整改，未通过最终验收** | `docs/PMS2.0_当前版本/06_验收与发布/A16-final-acceptance-report_2026-11-10.md` §“进入 PMS 3.0 的门禁状态” | 2026-11-07 / A16 当前 main | 阻断 PMS3 正式业务代码开发 |
+| MySQL 8 全量测试 | **887 项全过，0 fail/0 error，264.9s** | `docs/PMS2.0_当前版本/06_验收与发布/evidence/test-mysql-c402a37.log` | 2026-11-07 / `c402a37` | A09 机器证据完成，仍须 G14 独立复核 |
+| SQLite 全量测试 | **887 项全过，0 fail/0 error，242.9s** | `docs/PMS2.0_当前版本/06_验收与发布/evidence/test-sqlite-c402a37.log` | 2026-11-07 / `c402a37` | A09 机器证据完成；本批已取得双引擎证据 |
+| 测试引擎历史标注更正 | 此前误称 SQLite 的一次运行实际使用 MySQL；本批首次取得独立 SQLite 887 项结果，历史 729/887 数字按 95 号报告解释 | `docs/PMS2.0_当前版本/06_验收与发布/95-gate-closure-evidence_2026-11-07.md` §1 | 2026-11-07 / `c402a37` | 禁止沿用旧运行标签或把历史记录当作独立双引擎证据 |
 | A04 空库全量迁移 | **97 条迁移全部 OK；70 表、138 FK、53 唯一约束、320 索引条目；makemigrations 无漂移** | `a04-empty-migrate-log.txt`、`a04-empty-migrate-result.json`，见 95 号报告 §2.1 | 2026-11-07 / `c402a37` | 机器可执行迁移证据完成，仍待 G14 复核 |
 | A04 升级库验证 | 备份还原后 74 表；行数逐表核对零差异；20 本 Folio 抽样余额重算差异 0；营业日单开违例 0 | `a04-upgrade-db-result.json`、`a04-rowcount-reconcile.json`，见 95 号报告 §2.2 | 2026-11-07 / `c402a37` | 机器可执行恢复/数据核对证据完成，仍待 G14 复核 |
 | Redis 部署 | Redis 5.0.14 已部署；双 waitress worker 使用同一 Redis 实例 | 95 号报告 §3、`g09-evidence.json` | 2026-11-07 / `c402a37` | 部署证据完成 |
@@ -164,7 +164,7 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 | G10 性能容量 | A11 六场景 PASS；waitress 16 线程，MySQL 4000 预订/4002 账本行数据集，P50/P95/P99 与错误率满足冻结目标 | `A16-final-acceptance-report.md` A11 | 2026-11-07 / A11 证据 | 开发侧性能证据完成，纳入 G14 复核 |
 | 阶段四机器可执行项 | 空库迁移、备份恢复、员工账号/任职/授权完整性抽查、业务闭环数据抽查均已完成 | 95 号报告 §4 | 2026-11-07 / `c402a37` | 仅用户亲自操作项未完成 |
 | 阶段四用户亲自操作项 | **未完成**：九角色真实口令登录、核心业务操作走查、演示/测试数据治理确认 | 95 号报告 §4 | 2026-11-07 | 用户完成并记录结果后，方可进入 G14 完整复核 |
-| G14 独立验收签署 | **待指派、未签署**；96 号签署页已准备，含 R1~R8 复核项 | `docs/acceptance/96-g14-signoff.md` | 2026-11-07 / 当前 main | 阻断 PMS2 最终“通过”结论 |
+| G14 独立验收签署 | **待指派、未签署**；96 号签署页已准备，含 R1~R8 复核项 | `docs/PMS2.0_当前版本/06_验收与发布/96-g14-signoff_2026-11-10.md` | 2026-11-07 / 当前 main | 阻断 PMS2 最终“通过”结论 |
 | A16 历史状态校准 | A16 表头 Redis 与 OpenAPI 数量已于 2026-11-09 校准；更早的测试日志和运行环境仍保留其历史日期 | A16 与 95 号报告 §7 | 2026-11-09 | 不得把历史 SHA 的本地证据冒充最新 main 的 CI 结果 |
 | OpenAPI 契约文件 | 102 paths / 104 operations；契约文件存在不代表所有接口已运行验收 | `docs/接口文档/openapi.json` | 2026-11-07 / blob `2849c20` | 接口仍须按 §27.6.2 对 partial/未验证项逐项闭环 |
 | 真实支付服务商 | **未接入**；现有支付回调为受控 mock，不构成生产支付验收 | `apps/billing/services.py`、§24.1/§24.2；专项证据基线 `7a2c9b8` | 2026-11-07 / `7a2c9b8` | 真实支付、退款、渠道对账和争议处理仍按 PMS3 任务及 DEC 冻结执行 |
@@ -191,7 +191,7 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 
 禁止根据旧文档中的代码路径直接开发；必须先确认文件、类、函数和调用关系仍然存在。
 
-> 修订：2026-11-07 架构审查 —— BASE-01 至 BASE-10 的架构维度首轮盘点以 `635d9dd` 为基线，结果见 `docs/audit/phase0/80-architecture-review.md`；V2 在最新 `7a2c9b8` 上追加公共预订专项核验，见 `docs/audit/phase0/90-public-booking-order-lifecycle-review.md`。两份报告的基线不同，引用时必须注明 SHA。BASE-05（写入口调用图）与 BASE-08（退役依赖矩阵）已有关键实证：35 条旧写路由 410 封死，但 `/no_show_one/` 为活跃旧写入口例外，已并入 MIG-06 范围与 DEC-24 决策。
+> 修订：2026-11-07 架构审查 —— BASE-01 至 BASE-10 的架构维度首轮盘点以 `635d9dd` 为基线，结果见 `docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/80-architecture-review_2026-11-10.md`；V2 在最新 `7a2c9b8` 上追加公共预订专项核验，见 `docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/90-public-booking-order-lifecycle-review_2026-11-10.md`。两份报告的基线不同，引用时必须注明 SHA。BASE-05（写入口调用图）与 BASE-08（退役依赖矩阵）已有关键实证：35 条旧写路由 410 封死，但 `/no_show_one/` 为活跃旧写入口例外，已并入 MIG-06 范围与 DEC-24 决策。
 
 ---
 
@@ -231,7 +231,7 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 
 ### 3.4 已确认的架构现状与约束继承（2026-11-07 架构审查）
 
-> 修订：2026-11-07 架构审查 —— 本节为 PMS 3.0 必须继承的架构原则，全部经 `docs/audit/phase0/80-architecture-review.md` 实证确认（基线 `635d9dd`）。后续任务包设计与验收以本节为门槛，不得在 3.0 开发中回退。
+> 修订：2026-11-07 架构审查 —— 本节为 PMS 3.0 必须继承的架构原则，全部经 `docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/80-architecture-review_2026-11-10.md` 实证确认（基线 `635d9dd`）。后续任务包设计与验收以本节为门槛，不得在 3.0 开发中回退。
 
 1. **依赖方向单向**（已守住，必须保持）：UI/API → 应用服务/领域服务 → 模型。实证：全部服务层零 `import apps.api`；`apps/identity` 非测试代码仅依赖 `apps/core`。3.0 新增代码沿用此方向；PM-05 的 CI 依赖规则检查以本矩阵为基线，新增违例即失败。
 2. **单一写入口**（4/6 权威实体已收口，2 处登记待收口）：Payment/LedgerEntry/Refund/ApprovalRecord 的创建已完全收口于 BillingService（`.create()` 仅存在于 `billing/services.py`/`services_v2.py`）；Reservation 创建收口于 `apps/reservations/services.py`。登记待收口项：Guest 主档双路径（AR-03，公共预订内联直写）、Folio 开关单跨域写权威（AR-04/AR-05）、Room 状态直写（AR-06）。收口归属（V2.1 修订，消除任务归属歧义）：**AR-03 → SVC-02；AR-04/AR-05 → SVC-05；AR-06 → SVC-07**（Room 状态直写收口由房态/清洁/维修统一状态迁移服务承担，SVC-04 只负责 Reservation/Stay 生命周期本身，不承担 Room 状态收口）。3.0 验收时按"每个权威实体一个写服务"复检。
@@ -1289,7 +1289,7 @@ SQLite 不能作为 MySQL 的替代验证。
 
 ### 14.0 任务包前置依赖与验收门槛（2026-11-07 架构审查修订）
 
-> 修订：2026-11-07 架构审查 —— 按审查报告（`docs/audit/phase0/80-architecture-review.md`）补充各 Phase 的前置依赖与验收门槛，门槛风格对齐 PMS 2.0 验收标准 §18 总闸门（G 项）；"待负责人确认"事项单列，不混入开发任务。
+> 修订：2026-11-07 架构审查 —— 按审查报告（`docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/80-architecture-review_2026-11-10.md`）补充各 Phase 的前置依赖与验收门槛，门槛风格对齐 PMS 2.0 验收标准 §18 总闸门（G 项）；"待负责人确认"事项单列，不混入开发任务。
 
 | Phase | 前置依赖 | 退出/验收门槛（对齐 2.0 验收标准风格） | 待负责人确认 |
 |---|---|---|---|
@@ -1672,9 +1672,9 @@ SQLite 不能作为 MySQL 的替代验证。
 
 ### 17.1 必须维护的文档
 
-- 本方案：`docs/PMS3.0全项目开发最终方案V2.3.md`（V2）；
-- 架构审查报告：`docs/audit/phase0/80-architecture-review.md`；
-- 公共预订生命周期审查报告：`docs/audit/phase0/90-public-booking-order-lifecycle-review.md`；
+- 本方案：`docs/PMS3.0_后续规划/00_总体规划基线/PMS3.0全项目开发最终方案V2.3_2026-11-10.md`（V2）；
+- 架构审查报告：`docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/80-architecture-review_2026-11-10.md`；
+- 公共预订生命周期审查报告：`docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/90-public-booking-order-lifecycle-review_2026-11-10.md`；
 - PMS3 开发任务台账；
 - 数据字典；
 - API 契约；
@@ -1995,7 +1995,7 @@ SQLite 不能作为 MySQL 的替代验证。
 - 现有支付回调为受控 mock 路径，自动化测试覆盖 11 个生命周期场景；
 - 订单 Token 不创建顾客登录账户。
 
-证据：docs/audit/phase0/90-public-booking-order-lifecycle-review.md；apps/api/test_public_booking_lifecycle.py；提交 7a2c9b8。
+证据：docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/90-public-booking-order-lifecycle-review_2026-11-10.md；apps/api/test_public_booking_lifecycle.py；提交 7a2c9b8。
 
 ### 24.2 未完成能力与禁止误报
 
@@ -2293,7 +2293,7 @@ DEC-28 冻结目标后，执行全量/增量/binlog 备份和恢复演练。恢�
 建议的机械检查命令（PowerShell，输出仅用于人工复核）：
 
 ```powershell
-$f = "docs/PMS3.0全项目开发最终方案V2.3.md"
+$f = "docs/PMS3.0_后续规划/00_总体规划基线/PMS3.0全项目开发最终方案V2.3_2026-11-10.md"
 $text = Get-Content $f -Raw
 foreach ($p in 'REQ','BIZ','DB','SVC','API','UI','QA','INF','GATE','REL','MIG','DEC','INV') {
   $ids = [regex]::Matches($text, "$p-[A-Z0-9]+(?:-[0-9]{2})?") | ForEach-Object { $_.Value } | Sort-Object -Unique

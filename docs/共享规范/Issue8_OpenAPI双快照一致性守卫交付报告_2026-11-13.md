@@ -203,7 +203,7 @@ Issue #8 要求"触碰该文件时一并清偿存量债务，且不得扩大格�
 4. **pre-commit 钩子仍未交叉验证**：本机 GitHub HTTPS 内容层被代理阻断（TCP 443 可达但经代理 502、直连 reset），
    钩子仓库无法初始化。本次提交以 `--no-verify` 提交，**四类钩子已用同版本本地二进制逐项等价执行并全绿**
    （ruff 0.6.9 / black 24.8.0 / ruff format / `mypy_baseline.py check-files`）。
-5. **本次仅覆盖契约快照**：`docs/接口文档/apifox-env-template.json` 等其他接口文档附属文件不在守卫范围。
+5. **本次仅覆盖契约快照**：`docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/apifox-env-template.json` 等其他接口文档附属文件不在守卫范围。
 
 ---
 
