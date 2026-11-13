@@ -1,0 +1,18 @@
+# A7 E2E 复跑 + 双库回归 证据留档
+# 代码基线 SHA: 26f68faeaccdd7235b20ed5a4903608fbc69ee13
+# 证据来源: 本机实跑（2026-11-13），完整报告见 docs/共享规范/A7_E2E复跑与双库回归验证报告_2026-11-13.md
+# 本文件为裁剪版（保留头尾关键段），完整原始输出未入库。
+# -----------------------------------------------------------
+# 注：日志中出现的 "python.exe : ..." 与 NativeCommandError 为 PowerShell 管道
+#     的 stderr 回显噪声，不代表测试失败；结论一律以 Ran/OK/FAILED 行判定。
+命令: DJANGO_ENV=test DJANGO_DB_ENGINE=sqlite DJANGO_DB_NAME=db_test.sqlite3 python manage.py test --noinput
+
+﻿Found 1255 test(s).
+python.exe : Creating test database for alias 'default'...
+所在位置 行:508 字符: 276
+...
+Ran 1255 tests in 281.308s
+
+OK (skipped=21)
+Destroying test database for alias 'default'...
+
