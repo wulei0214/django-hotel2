@@ -1067,6 +1067,34 @@ fd_write = [
      "仅驳回待审批申请，不执行退款、不追加 REFUND 凭证；必须提供 Idempotency-Key。",
      "有效员工任职（DEFAULT 物业）+ billing.refund_approve",
      (("200", "退款申请已驳回"),)),
+    ("/front-desk/walk-in", "散客直入", "verified",
+     [],
+     s_obj({
+         "full_name": s_str("住客姓名（必填）。", maxLength=80),
+         "phone": s_nullable(s_str("手机号；可留空表示无手机号散客（系统生成确定性占位号）。", maxLength=24)),
+         "room_type_id": s_int("房型 ID（须属 DEFAULT 物业且当天可售）。"),
+         "rate_plan_id": s_nullable(s_int("价格计划 ID；不传由服务按有价计划自动选择。")),
+         "nights": s_int("住宿晚数，默认 1。", minimum=1, maximum=10, default=1),
+         "adults": s_int("成人数，默认 1。", minimum=1, maximum=10, default=1),
+         "children": s_int("儿童数，默认 0。", minimum=0, maximum=10, default=0),
+         "deposit_amount": s_nullable(s_str("到店押金金额（大于零）；不传则不收押金。")),
+     }, required=["full_name", "room_type_id"]),
+     s_obj({
+         "booking_no": s_str("预订号。"),
+         "reservation_id": s_int("预订主单 ID。"),
+         "stay_id": s_int("入住 Stay ID。"),
+         "room_id": s_int("分配房间 ID。"),
+         "room_number": s_str("房间号。"),
+         "source": s_str("固定 WALK_IN。"),
+         "guest_name": s_str("住客姓名。"),
+         "phone_provided": s_bool("本次是否提供了手机号。"),
+     }),
+     "复用 apps.reservations.walkin.create_walk_in：同一事务完成 Guest→Reservation"
+     "(source=WALK_IN)→ReservationRoom→Folio→Hold→确认→排房→入住→Stay；"
+     "无手机号时由服务层生成确定性占位号；住客档案不按手机号自动合并"
+     "（共享号码仅标记人工核验）。Idempotency-Key 必填（1-128 字符）。",
+     FD_WRITE_PERM,
+     (("201", "散客已创建并入住房间；同 Idempotency-Key 重放返回同一结果。"),)),
 ]
 for path, summary, status, pp, body, data, note, perm, ok in fd_write:
     op(path, "post", "前台接待", summary, status=status, path_params=pp, body=body,
@@ -1084,6 +1112,14 @@ for _path in ("/front-desk/reservations/{booking_no}/payments",
         "semantics": "服务强校验必填；同 key 同 body 重放首次响应（服务侧幂等）。",
         "source": "apps.reservations.front_desk_services / lifecycle_services / BillingService",
     }
+
+# Walk-in 强校验 Idempotency-Key（1-128 字符必填）；业务层幂等重放返回首次已建 Stay。
+_walkin_entry = next(e for e in CONTRACTS if e["path"] == "/front-desk/walk-in")
+_walkin_entry["extras"]["x-idempotency"] = {
+    "header": "Idempotency-Key", "required": True, "max_length": 128,
+    "semantics": "服务强校验必填；同 key 重放返回首次已建 Stay（业务层幂等，无重复写入）。",
+    "source": "apps.reservations.walkin.create_walk_in",
+}
 
 # ========== 夜审与紧急访问（Session + 专项权限） ==========
 op("/night-audit/preview", "get", "夜审与紧急访问", "预览夜审",

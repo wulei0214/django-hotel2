@@ -42,6 +42,7 @@ urlpatterns = [
     path("front-desk/reservation-rooms/<int:reservation_room_id>/check-in", front_desk.check_in, name="front_desk_check_in"),
     path("front-desk/reservations/<str:booking_no>/payments", front_desk.collect_payment, name="front_desk_collect_payment"),
     path("front-desk/stays/<int:stay_id>/check-out", front_desk.check_out, name="front_desk_check_out"),
+    path("front-desk/walk-in", front_desk.walk_in_create, name="front_desk_walk_in"),
     path("availability", views.availability, name="availability"),
     path("reservations", views.reservations_create, name="reservations_create"),
     path("reservations/<str:booking_no>", views.reservation_detail, name="reservation_detail"),

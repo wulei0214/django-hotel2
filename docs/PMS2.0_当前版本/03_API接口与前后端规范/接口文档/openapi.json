@@ -5093,6 +5093,262 @@
         ]
       }
     },
+    "/api/v1/front-desk/walk-in": {
+      "post": {
+        "tags": [
+          "前台接待"
+        ],
+        "summary": "散客直入",
+        "description": "复用 apps.reservations.walkin.create_walk_in：同一事务完成 Guest→Reservation(source=WALK_IN)→ReservationRoom→Folio→Hold→确认→排房→入住→Stay；无手机号时由服务层生成确定性占位号；住客档案不按手机号自动合并（共享号码仅标记人工核验）。Idempotency-Key 必填（1-128 字符）。\n\n权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "post_front_desk_walk_in",
+        "responses": {
+          "201": {
+            "description": "散客已创建并入住房间；同 Idempotency-Key 重放返回同一结果。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, ...} 前台封套；列表附 meta 分页，写操作附 created/changed 标志。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "booking_no": {
+                          "type": "string",
+                          "description": "预订号。"
+                        },
+                        "reservation_id": {
+                          "type": "integer",
+                          "description": "预订主单 ID。"
+                        },
+                        "stay_id": {
+                          "type": "integer",
+                          "description": "入住 Stay ID。"
+                        },
+                        "room_id": {
+                          "type": "integer",
+                          "description": "分配房间 ID。"
+                        },
+                        "room_number": {
+                          "type": "string",
+                          "description": "房间号。"
+                        },
+                        "source": {
+                          "type": "string",
+                          "description": "固定 WALK_IN。"
+                        },
+                        "guest_name": {
+                          "type": "string",
+                          "description": "住客姓名。"
+                        },
+                        "phone_provided": {
+                          "type": "boolean",
+                          "description": "本次是否提供了手机号。"
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation",
+        "x-idempotency": {
+          "header": "Idempotency-Key",
+          "required": true,
+          "max_length": 128,
+          "semantics": "服务强校验必填；同 key 重放返回首次已建 Stay（业务层幂等，无重复写入）。",
+          "source": "apps.reservations.walkin.create_walk_in"
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "幂等键（必填，1-128 字符）。",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRFToken",
+            "in": "header",
+            "required": true,
+            "description": "Django CSRF 令牌（CSRF_USE_SESSIONS=True）；所有 Session/公开写操作必须携带。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "",
+                "properties": {
+                  "full_name": {
+                    "type": "string",
+                    "description": "住客姓名（必填）。",
+                    "maxLength": 80
+                  },
+                  "phone": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "description": "手机号；可留空表示无手机号散客（系统生成确定性占位号）。",
+                        "maxLength": 24
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "room_type_id": {
+                    "type": "integer",
+                    "description": "房型 ID（须属 DEFAULT 物业且当天可售）。"
+                  },
+                  "rate_plan_id": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "description": "价格计划 ID；不传由服务按有价计划自动选择。"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "nights": {
+                    "type": "integer",
+                    "description": "住宿晚数，默认 1。",
+                    "minimum": 1,
+                    "maximum": 10,
+                    "default": 1
+                  },
+                  "adults": {
+                    "type": "integer",
+                    "description": "成人数，默认 1。",
+                    "minimum": 1,
+                    "maximum": 10,
+                    "default": 1
+                  },
+                  "children": {
+                    "type": "integer",
+                    "description": "儿童数，默认 0。",
+                    "minimum": 0,
+                    "maximum": 10,
+                    "default": 0
+                  },
+                  "deposit_amount": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "description": "到店押金金额（大于零）；不传则不收押金。"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "full_name",
+                  "room_type_id"
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
     "/api/v1/night-audit/preview": {
       "get": {
         "tags": [

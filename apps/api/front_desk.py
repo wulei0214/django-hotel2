@@ -4,7 +4,7 @@
 具体事务和状态迁移由 apps.reservations.front_desk_services 负责。
 """
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from functools import wraps
 
 from django.conf import settings
@@ -41,6 +41,7 @@ from apps.reservations.lifecycle_services import (
     receive_manual_deposit,
     request_refund as request_refund_service,
 )
+from apps.reservations.walkin import create_walk_in
 from hotelapp.models import Accommodation as LegacyAccommodation, Folio as LegacyFolio
 
 from .views import _body, api_guard
@@ -1212,3 +1213,65 @@ def exception_release_request(request, booking_no):
         "reason_code": release.reason_code,
         "amount": str(release.amount),
     }, "created": created}, 201 if created else 200)
+
+
+@api_guard
+@require_POST
+@idempotent
+@_front_desk_write_required
+def walk_in_create(request):
+    """POST /api/v1/front-desk/walk-in — 散客直入（DEC-WALKIN-01）。
+
+    复用 apps.reservations.walkin.create_walk_in：同一事务内完成
+    Guest→Reservation(source=WALK_IN)→ReservationRoom→Folio→Hold→确认→排房→入住→Stay。
+    无手机号时由服务层生成确定性占位号；住客档案不按手机号自动合并
+    （共享号码仅标记人工核验）。Idempotency-Key 必填，业务层幂等重放
+    返回同一 Stay，无重复写入。
+    """
+    key = (request.headers.get("Idempotency-Key") or "").strip()
+    if not key:
+        return _response({"error": {"code": "VALIDATION_ERROR",
+                                    "message": "Walk-in 必须提供 Idempotency-Key 请求头。"}}, 400)
+    try:
+        body = _body(request)
+        full_name = str(body.get("full_name") or "").strip()
+        if not full_name:
+            raise ValueError("住客姓名必填。")
+        # 允许空：无手机号散客（服务层生成确定性占位号）。
+        phone = str(body.get("phone") or "").strip()
+        room_type_id = int(body.get("room_type_id"))
+        rate_plan_id = body.get("rate_plan_id")
+        if rate_plan_id is not None:
+            rate_plan_id = int(rate_plan_id)
+        nights = int(body.get("nights") or 1)
+        adults = int(body.get("adults") or 1)
+        children = int(body.get("children") or 0)
+        deposit_raw = body.get("deposit_amount")
+        deposit_amount = None if deposit_raw in (None, "") else Decimal(str(deposit_raw))
+    except (ValueError, TypeError, InvalidOperation):
+        return _response({"error": {"code": "VALIDATION_ERROR",
+                                    "message": "请求参数格式不正确（姓名/房型/晚数/押金等）。"}}, 400)
+    try:
+        result = create_walk_in(
+            property_obj=request.front_desk_property,
+            full_name=full_name, phone=phone,
+            room_type_id=room_type_id, rate_plan_id=rate_plan_id,
+            nights=nights, adults=adults, children=children,
+            deposit_amount=deposit_amount, created_by=request.user,
+            idempotency_key=key,
+        )
+    except ValueError as exc:
+        # create_walk_in 对入参校验、库存不足、无净房等统一抛 ValueError；
+        # 该链路原子回滚、无部分写入，按 400 可重试/可改参处理。
+        return _response({"error": {"code": "VALIDATION_ERROR",
+                                    "message": str(exc)}}, 400)
+    return _response({"data": {
+        "booking_no": result["booking_no"],
+        "reservation_id": result["reservation"].pk,
+        "stay_id": result["stay"].pk,
+        "room_id": result["room"].pk,
+        "room_number": result["room"].number,
+        "source": result["reservation"].source,
+        "guest_name": full_name,
+        "phone_provided": bool(phone),
+    }}, 201)
