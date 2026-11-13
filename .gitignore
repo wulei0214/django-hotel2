@@ -57,3 +57,9 @@ understand-out/
 # ===== 测试运行产物（不入库）=====
 reports/
 .pytest_cache/
+
+# ===== AI 助手本地工作产物（不入库）=====
+# 脚本/补丁/中间日志/临时冒烟库等，仅供本机排查，正式证据一律归档到
+# docs/acceptance/evidence/ 后再入库。
+_wbi_*
+_pytest_smoke*.sqlite3
