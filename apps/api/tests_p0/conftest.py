@@ -26,6 +26,7 @@
 import re
 import uuid
 from os import environ
+from urllib.parse import urlsplit
 
 import pytest
 import requests
@@ -38,6 +39,9 @@ def _env(name, default):
 
 _CSRF_INPUT_RE = re.compile(r'name="csrfmiddlewaretoken"[^>]*value="([^"]+)"')
 
+# 回环地址集合：对这些目标显式禁用环境代理（见 HttpApi.__init__ 注释）
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
+
 
 class HttpApi:
     """requests.Session 薄封装：统一相对路径、超时、CSRF 头与 JSON 解析。"""
@@ -48,6 +52,22 @@ class HttpApi:
         self.session.headers.update({"Accept": "application/json"})
         self.timeout = 15
         self.csrf_token = ""
+        # 环境代理隔离：部分环境会注入 http_proxy/HTTP_PROXY（实测本机为
+        # 127.0.0.1:59190 的本地拦截代理）。requests 默认继承该代理，并把
+        # 请求目标改写为 absolute-form（"GET http://host/path HTTP/1.1"）转发
+        # 给 Django 开发服务器；而 Django 的路径解析只接受 origin-form
+        # （"GET /path HTTP/1.1"），于是被测实例全线 404。
+        # 被测实例恒为直连目标，对回环地址显式置空代理项即可（requests 的
+        # proxies 字典中 None 表示"该协议不走代理"）；非回环地址保持
+        # requests 默认的"继承环境代理"行为不变。
+        self.proxy_overrides = self._compute_proxy_overrides(base_url)
+
+    @staticmethod
+    def _compute_proxy_overrides(base_url):
+        host = (urlsplit(base_url).hostname or "").lower()
+        if host in _LOOPBACK_HOSTS:
+            return {"http": None, "https": None}
+        return {}
 
     def url(self, path):
         if path.startswith("http://") or path.startswith("https://"):
@@ -56,10 +76,12 @@ class HttpApi:
 
     def get(self, path, **kwargs):
         kwargs.setdefault("timeout", self.timeout)
+        kwargs.setdefault("proxies", dict(self.proxy_overrides))
         return self.session.get(self.url(path), **kwargs)
 
     def post(self, path, **kwargs):
         kwargs.setdefault("timeout", self.timeout)
+        kwargs.setdefault("proxies", dict(self.proxy_overrides))
         # CSRF_USE_SESSIONS=True：写请求统一携带 X-CSRFToken（服务端按会话校验）
         if self.csrf_token:
             headers = kwargs.setdefault("headers", {})
@@ -90,6 +112,29 @@ class HttpApi:
 def base_url():
     """被测实例地址：PMS_BASE_URL，默认 http://127.0.0.1:8000。"""
     return _env("PMS_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def p0_instance_reachable(base_url):
+    """会话级前置探针：被测实例不可用时立即给出可操作提示。
+
+    历史上实例不可达时，全部用例会以各自的 404 断言失败/报错，定位成本高。
+    这里把"实例不可达"提前到会话入口，并给出定位线索。
+    """
+    probe = HttpApi(base_url)
+    response = probe.get("/api/v1/openapi.json")
+    if response.status_code == 404:
+        pytest.fail(
+            "被测实例不可用：GET /api/v1/openapi.json 返回 404。常见原因——"
+            "环境注入了 http_proxy/HTTP_PROXY，代理把请求目标改写为 "
+            "absolute-form，Django 开发服务器无法解析（本套件已对回环地址"
+            "禁用环境代理）。请确认 PMS_BASE_URL 指向的实例已启动、已完成迁移"
+            "与演示数据种子，且未被代理劫持。"
+        )
+    assert (
+        response.status_code == 200
+    ), f"被测实例探针异常：GET /api/v1/openapi.json 返回 {response.status_code}"
+    return base_url
 
 
 @pytest.fixture(scope="session")

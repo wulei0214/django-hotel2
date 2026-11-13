@@ -101,6 +101,30 @@ $env:PMS_STAFF_USER="demo_owner"; $env:PMS_STAFF_PASSWORD="你的口令"
 | `PMS_STAFF_USER` | `demo_owner` | 员工登录测试账号（需有 DEFAULT 有效任职 + 角色授权） |
 | `PMS_STAFF_PASSWORD` | `Demo@Owner2026` | 上述账号口令（缺省为本机演示凭据，正式环境必须覆盖） |
 
+## 环境代理隔离（务必知悉）
+
+部分环境注入了 `http_proxy` / `HTTP_PROXY`（实测本机为 `127.0.0.1:59190`
+的本地拦截代理）。`requests` 默认继承该代理，并把请求目标改写为
+**absolute-form**（`GET http://host/path HTTP/1.1`）转发给 Django 开发服务器；
+而 Django 的路径解析只接受 **origin-form**（`GET /path HTTP/1.1`），
+于是被测实例全线 404。
+
+本套件对**回环地址**（`127.0.0.1` / `localhost` / `::1` / `0.0.0.0`）显式
+置空代理项（`requests` 的 `proxies` 字典中 `None` 表示该协议不走代理），
+非回环地址保持 `requests` 默认的"继承环境代理"行为不变。
+
+若被测实例不可达，会话入口的前置探针（`p0_instance_reachable`）会立即以
+一条可操作提示失败，而不会让 9 条用例各自以各自的 404 失败。
+
+## 常见故障
+
+| 现象 | 原因 | 处置 |
+|------|------|------|
+| 9 条用例几乎全部 404 | 环境代理劫持（见上）；或实例未启动 | 看提示信息；确认 `PMS_BASE_URL` 可达且实例已 migrate + 种子 |
+| 预订创建返回 429 | 公开面限流（IP 10 次/10 分钟、同手机号 3 次/10 分钟） | 重启实例（重建文件库）或等待窗口滚动 |
+| 员工登录返回 200 而非 302 | 账号口令不匹配 / 触发登录限流（IP+用户名 5 次/5 分钟） | 用 `PMS_STAFF_USER` / `PMS_STAFF_PASSWORD` 注入正确凭据 |
+| "实例无可用房型库存" | 未完成演示数据种子 | 按上面"方式 A"执行种子步骤 |
+
 ## 测试报告（JUnit XML）
 
 每次运行可生成 `reports/junit-p0.xml`（`reports/` 已加入 .gitignore）：
