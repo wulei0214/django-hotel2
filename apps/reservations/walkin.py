@@ -164,10 +164,11 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
     WB-003 修复：不再单独创建 Guest；create_reservation 内部统一创建，
     避免重复住客档案。无手机号时使用确定性占位号。
 
-    RSV-05/deprecated：当前生产代码零调用（旧 walk-in 入口已 410 退役，
-    PMS2 API 面尚未提供散客直入端点）；保留本服务并已对齐物业时区口径
-    （入住/离店日期用 _property_today 而非部署时区），供后续 API 接线
-    时直接复用——接线前不得在别处零散重写同链路逻辑。
+    RSV-05 更新（2026-11-14）：已由 PMS2 前台 API 承接——
+    POST /api/v1/front-desk/walk-in 与 /walk-ins 两端点并存（收敛决策待
+    负责人裁定），均复用本服务为唯一事实源；物业时区口径已对齐
+    （入住/离店日期用 _property_today 而非部署时区）。禁止在端点外
+    零散重写同链路逻辑。
     """
     from apps.billing.services_v2 import BillingService
     from apps.inventory.services import (

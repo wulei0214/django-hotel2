@@ -5349,6 +5349,304 @@
         ]
       }
     },
+    "/api/v1/front-desk/walk-ins": {
+      "post": {
+        "tags": [
+          "前台接待"
+        ],
+        "summary": "散客直入（A1 契约口径）",
+        "description": "复用 apps.reservations.walkin.create_walk_in 原子链路（RSV-05）；响应为 {data, meta} 封套。业务冲突（无净房/库存不足/房价计划缺失/幂等指纹冲突）一律 409 BUSINESS_CONFLICT 消息透传；入参结构错误 400 VALIDATION_ERROR（FrontDeskValidationError 子类优先捕获，RSV-10）。入住成功后房间房态置 DIRTY（已入住房间待清洁）。\n\n权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "post_front_desk_walk_ins",
+        "responses": {
+          "201": {
+            "description": "散客已创建并完成排房入住；响应含服务端计得押金。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, ...} 前台封套；列表附 meta 分页，写操作附 created/changed 标志。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "booking_no": {
+                          "type": "string",
+                          "description": "预订号。"
+                        },
+                        "reservation_id": {
+                          "type": "integer",
+                          "description": "预订主单 ID。"
+                        },
+                        "stay_id": {
+                          "type": "integer",
+                          "description": "入住 Stay ID。"
+                        },
+                        "room_number": {
+                          "type": "string",
+                          "description": "房间号。"
+                        },
+                        "deposit_amount": {
+                          "type": "string",
+                          "description": "服务端按总额 30% 强制计得的押金（未收押金为 0.00）。"
+                        },
+                        "source": {
+                          "type": "string",
+                          "description": "固定 WALK_IN。"
+                        },
+                        "created": {
+                          "type": "boolean",
+                          "description": "首次创建 true；同幂等键重放 false。"
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "同 Idempotency-Key 幂等重放（created=false，数据一致）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, ...} 前台封套；列表附 meta 分页，写操作附 created/changed 标志。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "booking_no": {
+                          "type": "string",
+                          "description": "预订号。"
+                        },
+                        "reservation_id": {
+                          "type": "integer",
+                          "description": "预订主单 ID。"
+                        },
+                        "stay_id": {
+                          "type": "integer",
+                          "description": "入住 Stay ID。"
+                        },
+                        "room_number": {
+                          "type": "string",
+                          "description": "房间号。"
+                        },
+                        "deposit_amount": {
+                          "type": "string",
+                          "description": "服务端按总额 30% 强制计得的押金（未收押金为 0.00）。"
+                        },
+                        "source": {
+                          "type": "string",
+                          "description": "固定 WALK_IN。"
+                        },
+                        "created": {
+                          "type": "boolean",
+                          "description": "首次创建 true；同幂等键重放 false。"
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation",
+        "x-idempotency": {
+          "header": "Idempotency-Key",
+          "required": true,
+          "max_length": 128,
+          "semantics": "服务强校验必填；同 key 同内容重放返回 200 created=false（数据一致），同 key 不同内容 → 409 BUSINESS_CONFLICT。",
+          "source": "apps.reservations.walkin.create_walk_in"
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "幂等键（必填，1-128 字符）。",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRFToken",
+            "in": "header",
+            "required": true,
+            "description": "Django CSRF 令牌（CSRF_USE_SESSIONS=True）；所有 Session/公开写操作必须携带。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "",
+                "properties": {
+                  "full_name": {
+                    "type": "string",
+                    "description": "住客姓名（必填）。",
+                    "maxLength": 80
+                  },
+                  "phone": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "description": "手机号；可留空表示无手机号散客（系统生成确定性占位号）。",
+                        "maxLength": 24
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "room_type_id": {
+                    "type": "integer",
+                    "description": "房型 ID（必填；须属 DEFAULT 物业且当天可售）。"
+                  },
+                  "rate_plan_id": {
+                    "type": "integer",
+                    "description": "价格计划 ID（必填）。"
+                  },
+                  "nights": {
+                    "type": "integer",
+                    "description": "住宿晚数，默认 1，取值 1-30。",
+                    "minimum": 1,
+                    "maximum": 30,
+                    "default": 1
+                  },
+                  "adults": {
+                    "type": "integer",
+                    "description": "成人数，默认 1，取值 1-10。",
+                    "minimum": 1,
+                    "maximum": 10,
+                    "default": 1
+                  },
+                  "children": {
+                    "type": "integer",
+                    "description": "儿童数，默认 0，取值 0-10。",
+                    "minimum": 0,
+                    "maximum": 10,
+                    "default": 0
+                  },
+                  "deposit_amount": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "description": "到店押金金额（仅展示核对；服务端按预订总额 30% 强制计收，DEC-DEP-01）。"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "full_name",
+                  "room_type_id",
+                  "rate_plan_id"
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
     "/api/v1/night-audit/preview": {
       "get": {
         "tags": [
@@ -14914,6 +15212,209 @@
             }
           }
         },
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/payment-intents/{intent_id}/window-extension": {
+      "post": {
+        "tags": [
+          "财务"
+        ],
+        "summary": "延长支付意图窗口",
+        "description": "复用 extend_intent_window（D2 服务端策略）：仅 PENDING/PROCESSING 可延长；意图不存在/跨物业 → 404 RESOURCE_NOT_FOUND；终态意图不可延长、已达最大延长次数（mock 渠道 max_extensions=1）或已达最大累计等待时长 → 409 BUSINESS_CONFLICT（ValueError 消息透传）。\n\n权限要求：有效财务员工 + hotelapp.finance_access（值班经理/财务按角色授权；与 POST /billing/payments 等财务中心写端点同门禁）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "post_billing_payment_intents_intent_id_window_extension",
+        "responses": {
+          "200": {
+            "description": "窗口延长成功；extension_count/expires_at 为延长后的值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "intent_id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": "延长后的意图状态（PENDING/PROCESSING）。"
+                        },
+                        "extension_count": {
+                          "type": "integer",
+                          "description": "已延长次数（本次成功后 ≥1）。"
+                        },
+                        "expires_at": {
+                          "type": "string",
+                          "description": "延长后的窗口截止时间 ISO-8601。",
+                          "format": "date-time"
+                        },
+                        "max_extensions": {
+                          "type": "integer",
+                          "description": "渠道窗口策略允许的最大延长次数。"
+                        },
+                        "channel_window": {
+                          "type": "object",
+                          "description": "服务端渠道窗口策略（CHANNEL_WINDOW_CONFIG，客户端不得提交/修改，D2）。",
+                          "properties": {
+                            "provider_code": {
+                              "type": "string",
+                              "description": ""
+                            },
+                            "initial_wait_seconds": {
+                              "type": "integer",
+                              "description": "初始等待秒数（与预订 expires_at 同源，RSV-07）。"
+                            },
+                            "max_total_wait_seconds": {
+                              "type": "integer",
+                              "description": "最大累计等待秒数。"
+                            },
+                            "max_extensions": {
+                              "type": "integer",
+                              "description": "最大延长次数。"
+                            },
+                            "extension_seconds": {
+                              "type": "integer",
+                              "description": "每次延长秒数。"
+                            }
+                          },
+                          "additionalProperties": true
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效财务员工 + hotelapp.finance_access（值班经理/财务按角色授权；与 POST /billing/payments 等财务中心写端点同门禁）",
+        "x-idempotency": {
+          "header": "Idempotency-Key",
+          "required": false,
+          "max_length": 128,
+          "semantics": "api_contract.idempotent；同 key 同请求体重放首次响应；窗口延长次数由服务端策略约束（max_extensions=1），重复延长按 409 拒绝。"
+        },
+        "parameters": [
+          {
+            "name": "intent_id",
+            "in": "path",
+            "required": true,
+            "description": "支付意图 ID。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "幂等键（可选，1-128 字符）。",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRFToken",
+            "in": "header",
+            "required": true,
+            "description": "Django CSRF 令牌（CSRF_USE_SESSIONS=True）；所有 Session/公开写操作必须携带。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-no-request-body": true,
         "security": [
           {
             "PMS2Session": []

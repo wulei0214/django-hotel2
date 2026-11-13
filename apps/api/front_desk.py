@@ -3,6 +3,7 @@
 查询接口组装预订、Stay、客房和 Folio DTO；写接口只负责认证/权限/参数边界，
 具体事务和状态迁移由 apps.reservations.front_desk_services 负责。
 """
+import uuid
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from functools import wraps
@@ -14,13 +15,14 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.billing.models import Folio, Payment, Refund
+from apps.billing.models import Folio, Payment, PaymentIntent, Refund
+from apps.billing.payment_intents import extend_intent_window, get_channel_window
 from apps.core import labels as L
-from apps.core.api_contract import ApiError, idempotent, parse_page_args
+from apps.core.api_contract import ApiError, api_response, api_view, idempotent, parse_page_args
 from apps.guests.services import guest_phone_plain, phone_hash
 from apps.identity.authorization import AuthorizationService
-from apps.inventory.models import Room
-from apps.inventory.services import _property_today
+from apps.inventory.models import Room, RoomType
+from apps.inventory.services import InventoryUnavailable, _property_today
 from apps.reservations.models import (
     NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment,
 )
@@ -41,9 +43,11 @@ from apps.reservations.lifecycle_services import (
     receive_manual_deposit,
     request_refund as request_refund_service,
 )
+from apps.reservations.services import ReservationConflict
 from apps.reservations.walkin import create_walk_in
 from hotelapp.models import Accommodation as LegacyAccommodation, Folio as LegacyFolio
 
+from .billing_center import _require_finance_access
 from .views import _body, api_guard
 
 
@@ -1222,6 +1226,12 @@ def exception_release_request(request, booking_no):
 def walk_in_create(request):
     """POST /api/v1/front-desk/walk-in — 散客直入（DEC-WALKIN-01）。
 
+    .. deprecated:: 2026-11-14
+        与 POST /api/v1/front-desk/walk-ins（A1 契约口径：重放 200 created=false、
+        响应含服务端 30% 押金、入参校验更严）构成同一业务动作的双端点并存。
+        收敛决策待负责人裁定后二选一退役；两者复用同一服务层事实源
+        create_walk_in，不存在双写分叉。
+
     复用 apps.reservations.walkin.create_walk_in：同一事务内完成
     Guest→Reservation(source=WALK_IN)→ReservationRoom→Folio→Hold→确认→排房→入住→Stay。
     无手机号时由服务层生成确定性占位号；住客档案不按手机号自动合并
@@ -1275,3 +1285,189 @@ def walk_in_create(request):
         "guest_name": full_name,
         "phone_provided": bool(phone),
     }}, 201)
+
+
+# ---------------------------------------------------------------------------
+# A1/A2 新端点（PMS2.0 接口规范口径；与既有端点并存，契约差异见各 docstring）
+# ---------------------------------------------------------------------------
+WALK_IN_MAX_NIGHTS = 30    # 与公开预订 MAX_NIGHTS（apps.api.views）同口径
+WALK_IN_MAX_GUESTS = 10    # 与公开预订 MAX_GUESTS 同口径
+
+
+def _request_meta(request):
+    """{data, meta} 封套的 meta 节点（apps.core.api_contract._meta 同构）。"""
+    return {
+        "request_id": getattr(request, "request_id", "") or uuid.uuid4().hex[:16],
+        "source_system": "PMS2",
+        "generated_at": timezone.now().isoformat(),
+    }
+
+
+@api_guard
+@require_POST
+@_front_desk_write_required
+def walk_ins_create(request):
+    """POST /api/v1/front-desk/walk-ins — 散客直入（A1 契约口径）。
+
+    复用 apps.reservations.walkin.create_walk_in 原子链路（RSV-05：禁止零散
+    重写）：Guest→Reservation(source=WALK_IN)→ReservationRoom→Folio→Hold→确认
+    →排房→入住→Stay；押金由服务端按 Reservation.total_amount×30% 强制计得
+    （DEC-DEP-01/WB-030），请求体 deposit_amount 仅用于展示核对。
+
+    与既有 POST /front-desk/walk-in（DEC-WALKIN-01）的差异（A1 规范口径）：
+    * 业务冲突（无净房/库存不足/房价计划缺失/幂等指纹冲突）→ 409
+      BUSINESS_CONFLICT（消息透传）；入参结构错误 → 400 VALIDATION_ERROR
+      （FrontDeskValidationError 子类优先捕获，RSV-10）；
+    * 幂等重放 → 200 + created=false：幂等由服务层 (property, idempotency_key)
+      唯一约束 + 请求指纹仲裁（与公开 POST /reservations 同口径），不经
+      @idempotent 装饰器短路——装饰器会缓存并重放首次 201 响应，无法表达
+      created=false 语义；
+    * 响应 {data, meta} 含服务端计得的 deposit_amount 与 created 标志。
+    """
+    property_obj = request.front_desk_property
+    key = (request.headers.get("Idempotency-Key") or "").strip()
+    if not key or len(key) > 128:
+        return _response({"error": {
+            "code": "VALIDATION_ERROR",
+            "message": "Walk-in 必须提供 1 至 128 字符的 Idempotency-Key 请求头。"}}, 400)
+    try:
+        body = _body(request)
+        full_name = str(body.get("full_name") or "").strip()
+        # 允许空：无手机号散客（服务层生成确定性占位号）。
+        phone = str(body.get("phone") or "").strip()
+        room_type_id = int(body.get("room_type_id"))
+        rate_plan_id = int(body.get("rate_plan_id"))
+        nights = _int_or_default(body.get("nights"), 1)
+        adults = _int_or_default(body.get("adults"), 1)
+        children = _int_or_default(body.get("children"), 0)
+        deposit_raw = body.get("deposit_amount")
+        deposit_amount = None if deposit_raw in (None, "") else Decimal(str(deposit_raw))
+        if not full_name:
+            raise ValueError("住客姓名必填。")
+        if not 1 <= nights <= WALK_IN_MAX_NIGHTS:
+            raise ValueError(f"住宿晚数必须在 1 至 {WALK_IN_MAX_NIGHTS} 晚之间。")
+        if not 1 <= adults <= WALK_IN_MAX_GUESTS:
+            raise ValueError(f"成人数必须在 1 至 {WALK_IN_MAX_GUESTS} 人之间。")
+        if not 0 <= children <= WALK_IN_MAX_GUESTS:
+            raise ValueError(f"儿童数必须在 0 至 {WALK_IN_MAX_GUESTS} 人之间。")
+        if deposit_amount is not None and deposit_amount <= 0:
+            raise ValueError("押金金额必须大于零。")
+    except (ValueError, TypeError, InvalidOperation):
+        return _response({"error": {
+            "code": "VALIDATION_ERROR",
+            "message": "请求参数格式或取值范围不正确"
+                       "（姓名/房型/价格计划/晚数 1-30/人数/押金）。"}}, 400)
+
+    # 幂等重放判定（A1：重放 200 + created=false）。预订表以
+    # (property, idempotency_key) 定位首次订单；是否真正命中重放（同键同内容）
+    # 与冲突（同键不同内容 → ReservationConflict）由 create_reservation
+    # 请求指纹仲裁，本层不做旁路判断。并发首建窗口内两个请求都可能按
+    # created=true 应答，但唯一约束保证只有一个写入者，无重复事实。
+    is_replay = Reservation.objects.filter(
+        property=property_obj, idempotency_key=key).exists()
+    try:
+        result = create_walk_in(
+            property_obj=property_obj,
+            full_name=full_name, phone=phone,
+            room_type_id=room_type_id, rate_plan_id=rate_plan_id,
+            nights=nights, adults=adults, children=children,
+            deposit_amount=deposit_amount, created_by=request.user,
+            idempotency_key=key,
+        )
+    except FrontDeskValidationError as exc:
+        # RSV-10：入参校验失败（金额格式等）必须与业务状态冲突区分，
+        # 子类在前单独捕获返回 400。
+        return _response({"error": {"code": "VALIDATION_ERROR",
+                                    "message": str(exc)}}, 400)
+    except RoomType.DoesNotExist:
+        return _response({"error": {"code": "VALIDATION_ERROR",
+                                    "message": "房型不存在或未启用。"}}, 400)
+    except InventoryUnavailable as exc:
+        # 库存不可售（Hold 创建失败/售罄）：409，消息透传。
+        return _response({"error": {"code": "BUSINESS_CONFLICT",
+                                    "message": str(exc)}}, 409)
+    except ReservationConflict as exc:
+        # 同 Idempotency-Key 不同预订内容（create_reservation 指纹校验）。
+        return _response({"error": {"code": "BUSINESS_CONFLICT",
+                                    "message": str(exc)}}, 409)
+    except FrontDeskOperationError as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT",
+                                    "message": str(exc)}}, 409)
+    except ValueError as exc:
+        # create_walk_in 对无净房/库存确认失败/押金约束等业务冲突统一抛
+        # ValueError（RSV-05）；链路原子回滚无部分写入，409 消息透传。
+        return _response({"error": {"code": "BUSINESS_CONFLICT",
+                                    "message": str(exc)}}, 409)
+
+    reservation = result["reservation"]
+    # record_deposit 在行锁下重取预订行并回写 deposit_amount（30% 服务端
+    # 强制计得），create_walk_in 持有的实例不含该写入，需刷新后对外输出。
+    reservation.refresh_from_db(fields=["deposit_amount"])
+    return _response({
+        "data": {
+            "booking_no": result["booking_no"],
+            "reservation_id": reservation.pk,
+            "stay_id": result["stay"].pk,
+            "room_number": result["room"].number,
+            "deposit_amount": str(
+                reservation.deposit_amount.quantize(Decimal("0.01"))),
+            "source": "WALK_IN",
+            "created": not is_replay,
+        },
+        "meta": _request_meta(request),
+    }, 200 if is_replay else 201)
+
+
+@require_POST
+@api_view
+@idempotent
+def payment_intent_window_extension(request, intent_id):
+    """POST /api/v1/billing/payment-intents/{intent_id}/window-extension
+    — D2 支付窗口有限延长（A2，财务域写端点口径）。
+
+    复用 apps.billing.payment_intents.extend_intent_window（服务端策略：
+    max_extensions/extension_seconds 由 CHANNEL_WINDOW_CONFIG 决定，客户端
+    不得提交或修改窗口参数）。权限与财务中心既有写端点同门禁：
+    hotelapp.finance_access（值班经理/财务按角色授权；POST /billing/payments
+    同码）。
+
+    错误映射：意图不存在/跨物业 → 404 RESOURCE_NOT_FOUND（前置定位，
+    区分于业务冲突）；终态意图/超延长上限/超累计等待时长 → 409
+    BUSINESS_CONFLICT（extend_intent_window 的 ValueError 消息透传）。
+    """
+    property_obj = _require_finance_access(request)
+    intent = PaymentIntent.objects.filter(
+        pk=intent_id, property=property_obj).first()
+    if intent is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "支付意图不存在或不属于当前物业。")
+    try:
+        intent = extend_intent_window(
+            intent_id=intent.pk, property_obj=property_obj,
+            extended_by=request.user)
+    except ValueError as exc:
+        # 终态不可延长 / 已达最大延长次数 / 已达最大累计等待时长：
+        # 服务端策略冲突，消息透传（D2）。
+        raise ApiError("BUSINESS_CONFLICT", str(exc)) from exc
+    window = get_channel_window(intent.provider_code)
+    return api_response(request, {
+        "intent_id": intent.pk,
+        "status": intent.status,
+        "extension_count": intent.extension_count,
+        "expires_at": (intent.expires_at.isoformat()
+                       if intent.expires_at else None),
+        "max_extensions": window["max_extensions"],
+        "channel_window": {
+            "provider_code": intent.provider_code,
+            "initial_wait_seconds": window["initial_wait_seconds"],
+            "max_total_wait_seconds": window["max_total_wait_seconds"],
+            "max_extensions": window["max_extensions"],
+            "extension_seconds": window["extension_seconds"],
+        },
+    })
+
+
+def _int_or_default(value, default):
+    """A1 入参整数解析：缺省/空串回退默认值；其余必须可转 int。"""
+    if value in (None, ""):
+        return default
+    return int(value)

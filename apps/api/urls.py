@@ -43,6 +43,8 @@ urlpatterns = [
     path("front-desk/reservations/<str:booking_no>/payments", front_desk.collect_payment, name="front_desk_collect_payment"),
     path("front-desk/stays/<int:stay_id>/check-out", front_desk.check_out, name="front_desk_check_out"),
     path("front-desk/walk-in", front_desk.walk_in_create, name="front_desk_walk_in"),
+    # A1 散客直入（契约口径：业务冲突 409、幂等重放 200+created=false、含服务端计押金）
+    path("front-desk/walk-ins", front_desk.walk_ins_create, name="front_desk_walk_ins_create"),
     path("availability", views.availability, name="availability"),
     path("reservations", views.reservations_create, name="reservations_create"),
     path("reservations/<str:booking_no>", views.reservation_detail, name="reservation_detail"),
@@ -121,6 +123,10 @@ urlpatterns = [
     path("billing/shifts/<int:shift_id>/close", billing_center.close_shift_api, name="billing_shift_close"),
     path("billing/shifts/<int:shift_id>/movements", billing_center.shift_cash_movement_api, name="billing_shift_cash_movement"),
     path("billing/summary", billing_center.billing_summary, name="billing_summary"),
+    # A2 支付窗口延长（D2 服务端策略：max_extensions=1；财务域 finance_access 门禁）
+    path("billing/payment-intents/<int:intent_id>/window-extension",
+         front_desk.payment_intent_window_extension,
+         name="billing_payment_intent_window_extension"),
     # --- 清洁与维修工作台（读/清洁/维修使用独立权限；净房放行叠加高危专项权限） ---
     path("housekeeping/rooms", housekeeping_center.housekeeping_rooms, name="housekeeping_rooms"),
     path("housekeeping/summary", housekeeping_center.housekeeping_summary_api, name="housekeeping_summary"),

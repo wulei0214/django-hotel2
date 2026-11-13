@@ -1095,6 +1095,34 @@ fd_write = [
      "（共享号码仅标记人工核验）。Idempotency-Key 必填（1-128 字符）。",
      FD_WRITE_PERM,
      (("201", "散客已创建并入住房间；同 Idempotency-Key 重放返回同一结果。"),)),
+    ("/front-desk/walk-ins", "散客直入（A1 契约口径）", "verified",
+     [],
+     s_obj({
+         "full_name": s_str("住客姓名（必填）。", maxLength=80),
+         "phone": s_nullable(s_str("手机号；可留空表示无手机号散客（系统生成确定性占位号）。", maxLength=24)),
+         "room_type_id": s_int("房型 ID（必填；须属 DEFAULT 物业且当天可售）。"),
+         "rate_plan_id": s_int("价格计划 ID（必填）。"),
+         "nights": s_int("住宿晚数，默认 1，取值 1-30。", minimum=1, maximum=30, default=1),
+         "adults": s_int("成人数，默认 1，取值 1-10。", minimum=1, maximum=10, default=1),
+         "children": s_int("儿童数，默认 0，取值 0-10。", minimum=0, maximum=10, default=0),
+         "deposit_amount": s_nullable(s_str("到店押金金额（仅展示核对；服务端按预订总额 30% 强制计收，DEC-DEP-01）。")),
+     }, required=["full_name", "room_type_id", "rate_plan_id"]),
+     s_obj({
+         "booking_no": s_str("预订号。"),
+         "reservation_id": s_int("预订主单 ID。"),
+         "stay_id": s_int("入住 Stay ID。"),
+         "room_number": s_str("房间号。"),
+         "deposit_amount": s_str("服务端按总额 30% 强制计得的押金（未收押金为 0.00）。"),
+         "source": s_str("固定 WALK_IN。"),
+         "created": s_bool("首次创建 true；同幂等键重放 false。"),
+     }),
+     "复用 apps.reservations.walkin.create_walk_in 原子链路（RSV-05）；响应为 {data, meta} 封套。"
+     "业务冲突（无净房/库存不足/房价计划缺失/幂等指纹冲突）一律 409 BUSINESS_CONFLICT 消息透传；"
+     "入参结构错误 400 VALIDATION_ERROR（FrontDeskValidationError 子类优先捕获，RSV-10）。"
+     "入住成功后房间房态置 DIRTY（已入住房间待清洁）。",
+     FD_WRITE_PERM,
+     (("201", "散客已创建并完成排房入住；响应含服务端计得押金。"),
+      ("200", "同 Idempotency-Key 幂等重放（created=false，数据一致）"))),
 ]
 for path, summary, status, pp, body, data, note, perm, ok in fd_write:
     op(path, "post", "前台接待", summary, status=status, path_params=pp, body=body,
@@ -1118,6 +1146,16 @@ _walkin_entry = next(e for e in CONTRACTS if e["path"] == "/front-desk/walk-in")
 _walkin_entry["extras"]["x-idempotency"] = {
     "header": "Idempotency-Key", "required": True, "max_length": 128,
     "semantics": "服务强校验必填；同 key 重放返回首次已建 Stay（业务层幂等，无重复写入）。",
+    "source": "apps.reservations.walkin.create_walk_in",
+}
+
+# A1 /front-desk/walk-ins：幂等由服务层 (property, idempotency_key) 唯一约束 +
+# 请求指纹仲裁（不经 @idempotent 装饰器短路——装饰器会缓存并重放首次 201 响应）。
+_walkins_entry = next(e for e in CONTRACTS if e["path"] == "/front-desk/walk-ins")
+_walkins_entry["extras"]["x-idempotency"] = {
+    "header": "Idempotency-Key", "required": True, "max_length": 128,
+    "semantics": "服务强校验必填；同 key 同内容重放返回 200 created=false（数据一致），"
+                 "同 key 不同内容 → 409 BUSINESS_CONFLICT。",
     "source": "apps.reservations.walkin.create_walk_in",
 }
 
@@ -1783,6 +1821,36 @@ op("/billing/reversals", "post", "财务", "执行已获管理者批准的红字
    extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
                              "semantics": "api_contract.idempotent + approval_id + 服务层 reference 幂等；"
                                           "同一原凭证只允许一个红字凭证。"}})
+
+op("/billing/payment-intents/{intent_id}/window-extension", "post", "财务", "延长支付意图窗口",
+   status="verified",
+   path_params=[("intent_id", "支付意图 ID。")],
+   permission="有效财务员工 + hotelapp.finance_access（值班经理/财务按角色授权；"
+              "与 POST /billing/payments 等财务中心写端点同门禁）",
+   ok=(("200", "窗口延长成功；extension_count/expires_at 为延长后的值"),),
+   data=s_obj({
+       "intent_id": s_int(),
+       "status": s_str("延长后的意图状态（PENDING/PROCESSING）。"),
+       "extension_count": s_int("已延长次数（本次成功后 ≥1）。"),
+       "expires_at": s_str("延长后的窗口截止时间 ISO-8601。", format="date-time"),
+       "max_extensions": s_int("渠道窗口策略允许的最大延长次数。"),
+       "channel_window": s_obj({
+           "provider_code": s_str(),
+           "initial_wait_seconds": s_int("初始等待秒数（与预订 expires_at 同源，RSV-07）。"),
+           "max_total_wait_seconds": s_int("最大累计等待秒数。"),
+           "max_extensions": s_int("最大延长次数。"),
+           "extension_seconds": s_int("每次延长秒数。"),
+       }, desc="服务端渠道窗口策略（CHANNEL_WINDOW_CONFIG，客户端不得提交/修改，D2）。"),
+   }), errors=E_STAFF_CONFLICT,
+   no_body=True,
+   notes="复用 extend_intent_window（D2 服务端策略）：仅 PENDING/PROCESSING 可延长；"
+         "意图不存在/跨物业 → 404 RESOURCE_NOT_FOUND；终态意图不可延长、"
+         "已达最大延长次数（mock 渠道 max_extensions=1）或已达最大累计等待时长"
+         " → 409 BUSINESS_CONFLICT（ValueError 消息透传）。",
+   extras={"x-idempotency": {"header": "Idempotency-Key", "required": False, "max_length": 128,
+                             "semantics": "api_contract.idempotent；同 key 同请求体重放首次响应；"
+                                          "窗口延长次数由服务端策略约束（max_extensions=1），"
+                                          "重复延长按 409 拒绝。"}})
 
 op("/billing/shifts", "get", "财务", "收银班次列表",
    status="verified",
