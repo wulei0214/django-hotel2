@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """白盒服务层单元测试（子智能体 1：billing/services_v2.py）。
 
 覆盖 45-whitebox-services.md 登记缺陷的针对性回归：
@@ -14,22 +13,31 @@
 
 并发竞态以“预检查询首查扑空 + 数据库唯一约束兜底”的方式确定性模拟。
 """
+
 import hashlib
-from datetime import date, datetime, timedelta, timezone as dt_timezone
+from datetime import date, datetime, timedelta
+from datetime import timezone as dt_timezone
 from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-import unittest
-
-from django.db import IntegrityError, transaction, connection
-from django.db.models import QuerySet
+from django.db import IntegrityError, transaction
 from django.db.models import Model as DjangoModel
+from django.db.models import QuerySet
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.billing.models import (ApprovalRecord, CashierShift, CashierShiftMovement, Folio, LedgerEntry, Payment, Refund, RefundLiability)
+from apps.billing.models import (
+    ApprovalRecord,
+    CashierShift,
+    CashierShiftMovement,
+    Folio,
+    LedgerEntry,
+    Payment,
+    Refund,
+    RefundLiability,
+)
 from apps.billing.services_v2 import ApprovalService, BillingService
 from apps.core.models import Property
 from apps.guests.models import Guest
@@ -57,32 +65,46 @@ class WhiteboxBillingBase(TestCase):
         self.today = timezone.localdate()
         self.property = Property.objects.create(code="WBB", name="白盒账务酒店")
         from apps.inventory.models import RatePlan, RoomType
+
         self.room_type = RoomType.objects.create(
-            property=self.property, code="WBB-STD", name="白盒标准间")
+            property=self.property, code="WBB-STD", name="白盒标准间"
+        )
         self.rate_plan = RatePlan.objects.create(
-            property=self.property, code="WBB-BAR", name="白盒门市价",
-            valid_from=self.today)
+            property=self.property, code="WBB-BAR", name="白盒门市价", valid_from=self.today
+        )
         self.guest = Guest.objects.create(
-            property=self.property, full_name="白盒客人",
-            phone="13800007701", phone_normalized="13800007701")
+            property=self.property,
+            full_name="白盒客人",
+            phone="13800007701",
+            phone_normalized="13800007701",
+        )
         self.operator = User.objects.create_user(username="wbb-operator")
 
     def _make_reservation(self, booking_no, total="300.00", nights=1):
         reservation = Reservation.objects.create(
-            property=self.property, booking_no=booking_no,
-            guest=self.guest, status=Reservation.Status.CONFIRMED,
-            check_in=self.today, check_out=self.today + timedelta(days=nights),
-            room_count=1, adult_count=1, total_amount=Decimal(total))
+            property=self.property,
+            booking_no=booking_no,
+            guest=self.guest,
+            status=Reservation.Status.CONFIRMED,
+            check_in=self.today,
+            check_out=self.today + timedelta(days=nights),
+            room_count=1,
+            adult_count=1,
+            total_amount=Decimal(total),
+        )
         ReservationRoom.objects.create(
-            property=self.property, reservation=reservation,
-            room_type=self.room_type, rate_plan=self.rate_plan,
-            check_in=self.today, check_out=self.today + timedelta(days=nights),
-            nightly_rates=[{"date": self.today.isoformat(), "price": total,
-                            "currency": "CNY"}],
-            amount=Decimal(total))
+            property=self.property,
+            reservation=reservation,
+            room_type=self.room_type,
+            rate_plan=self.rate_plan,
+            check_in=self.today,
+            check_out=self.today + timedelta(days=nights),
+            nightly_rates=[{"date": self.today.isoformat(), "price": total, "currency": "CNY"}],
+            amount=Decimal(total),
+        )
         self.folio = Folio.objects.create(
-            property=self.property, reservation=reservation, guest=self.guest,
-            currency="CNY")
+            property=self.property, reservation=reservation, guest=self.guest, currency="CNY"
+        )
         return reservation
 
 
@@ -97,40 +119,47 @@ class PostEntryMoneyGuardTests(WhiteboxBillingBase):
         """WB-01：超大有限金额必须得到干净的 ValueError，而不是 InvalidOperation 500。"""
         with self.assertRaises(ValueError):
             BillingService.post_entry(
-                property_obj=self.property, folio=self.folio,
+                property_obj=self.property,
+                folio=self.folio,
                 entry_type=LedgerEntry.EntryType.ADJUSTMENT,
-                amount="1e30", reference="WBB-HUGE-001",
-                posted_by=self.operator)
+                amount="1e30",
+                reference="WBB-HUGE-001",
+                posted_by=self.operator,
+            )
 
     def test_post_entry_duplicate_reference_race_is_idempotent(self):
         """WB-04：预检扑空 + 唯一约束仲裁时，同事实应幂等返回既有凭证。"""
         kwargs = dict(
-            property_obj=self.property, folio=self.folio,
+            property_obj=self.property,
+            folio=self.folio,
             entry_type=LedgerEntry.EntryType.ADJUSTMENT,
-            amount=Decimal("10.00"), reference="WBB-RACE-001",
-            posted_by=self.operator)
+            amount=Decimal("10.00"),
+            reference="WBB-RACE-001",
+            posted_by=self.operator,
+        )
         entry, created = BillingService.post_entry(**kwargs)
         self.assertTrue(created)
 
-        flaky = _flaky_first_filter(
-            LedgerEntry.objects, LedgerEntry.objects.none)
+        flaky = _flaky_first_filter(LedgerEntry.objects, LedgerEntry.objects.none)
         with mock.patch.object(LedgerEntry.objects, "filter", side_effect=flaky):
             raced, raced_created = BillingService.post_entry(**kwargs)
         self.assertFalse(raced_created)
         self.assertEqual(raced.pk, entry.pk)
-        self.assertEqual(
-            LedgerEntry.objects.filter(reference="WBB-RACE-001").count(), 1)
+        self.assertEqual(LedgerEntry.objects.filter(reference="WBB-RACE-001").count(), 1)
 
     def test_post_entry_rejects_foreign_currency(self):
         """WB-08：账本凭证币种必须与账单币种一致，禁止混币入账。"""
         with self.assertRaises(ValueError):
             BillingService.post_entry(
-                property_obj=self.property, folio=self.folio,
+                property_obj=self.property,
+                folio=self.folio,
                 entry_type=LedgerEntry.EntryType.ADJUSTMENT,
-                amount=Decimal("10.00"), currency="USD",
-                reference="WBB-USD-001", posted_by=self.operator)
-        self.assertFalse(
-            LedgerEntry.objects.filter(reference="WBB-USD-001").exists())
+                amount=Decimal("10.00"),
+                currency="USD",
+                reference="WBB-USD-001",
+                posted_by=self.operator,
+            )
+        self.assertFalse(LedgerEntry.objects.filter(reference="WBB-USD-001").exists())
 
 
 class ReverseEntryBusinessDateTests(WhiteboxBillingBase):
@@ -141,65 +170,93 @@ class ReverseEntryBusinessDateTests(WhiteboxBillingBase):
         self.property.save(update_fields=("timezone",))
         reservation = self._make_reservation("WBBREV0001")
         original, _ = BillingService.post_entry(
-            property_obj=self.property, folio=self.folio,
+            property_obj=self.property,
+            folio=self.folio,
             entry_type=LedgerEntry.EntryType.ADJUSTMENT,
-            amount=Decimal("10.00"), reference="WBB-REV-SRC-001",
-            business_date=date(2026, 1, 10), posted_by=self.operator)
+            amount=Decimal("10.00"),
+            reference="WBB-REV-SRC-001",
+            business_date=date(2026, 1, 10),
+            posted_by=self.operator,
+        )
 
         from django.contrib.auth.models import Group, Permission
+
         from apps.identity.models import (
-            PropertyStaffMembership, StaffProfile, StaffRoleAssignment,
+            PropertyStaffMembership,
+            StaffProfile,
+            StaffRoleAssignment,
         )
 
         def assign_permission(user, group_name, codename):
             group = Group.objects.create(name=group_name)
             permission = Permission.objects.get(
-                content_type__app_label="billing", codename=codename)
+                content_type__app_label="billing", codename=codename
+            )
             group.permissions.add(permission)
             profile = StaffProfile.objects.create(
-                user=user, full_name=user.username,
-                employment_status=StaffProfile.EmploymentStatus.ACTIVE)
+                user=user,
+                full_name=user.username,
+                employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+            )
             membership = PropertyStaffMembership.objects.create(
-                staff_profile=profile, property=self.property,
+                staff_profile=profile,
+                property=self.property,
                 employee_no=f"WBB-{user.username}",
-                status=PropertyStaffMembership.Status.ACTIVE)
+                status=PropertyStaffMembership.Status.ACTIVE,
+            )
             StaffRoleAssignment.objects.create(
-                membership=membership, group=group,
-                starts_at=timezone.now() - timedelta(days=400))
+                membership=membership, group=group, starts_at=timezone.now() - timedelta(days=400)
+            )
 
         assign_permission(self.operator, "WBB-REV-FIN", "reverse_entry")
         reason = "错账冲销白盒测试"
         approver = User.objects.create_user(username="wbb-reversal-approver")
         assign_permission(approver, "WBB-REV-MGR", "reversal_approve")
         approval, approval_created = ApprovalService.request_approval(
-            property_obj=self.property, action_code="billing.reversal",
-            entity_type="LedgerEntry", entity_id=str(original.pk),
-            requested_by=self.operator, reason=reason, payload={})
+            property_obj=self.property,
+            action_code="billing.reversal",
+            entity_type="LedgerEntry",
+            entity_id=str(original.pk),
+            requested_by=self.operator,
+            reason=reason,
+            payload={},
+        )
         self.assertTrue(approval_created)
         approval = ApprovalService.approve(
-            approval.pk, approved_by=approver, property_obj=self.property)
+            approval.pk, approved_by=approver, property_obj=self.property
+        )
         unprivileged = User.objects.create_user(username="wbb-reversal-no-permission")
         with self.assertRaises(ValueError):
             BillingService.reverse_entry(
-                property_obj=self.property, entry_id=original.pk,
-                approval_id=approval.pk, reason=reason,
-                reversed_by=unprivileged)
+                property_obj=self.property,
+                entry_id=original.pk,
+                approval_id=approval.pk,
+                reason=reason,
+                reversed_by=unprivileged,
+            )
 
         # 固定“现在”：物业当地已是 2026-01-16，而默认时区（Asia/Shanghai）仍是 01-15
         fixed_now = datetime(2026, 1, 15, 15, 59, 0, tzinfo=dt_timezone.utc)
         with mock.patch.object(timezone, "now", return_value=fixed_now):
             reversal, created = BillingService.reverse_entry(
-                property_obj=self.property, entry_id=original.pk,
-                approval_id=approval.pk, reason=reason,
-                reversed_by=self.operator)
+                property_obj=self.property,
+                entry_id=original.pk,
+                approval_id=approval.pk,
+                reason=reason,
+                reversed_by=self.operator,
+            )
         self.assertTrue(created)
         self.assertEqual(reversal.business_date, date(2026, 1, 16))
         other_property = Property.objects.create(code="WBBREVOTHER", name="冲销跨物业测试")
         # 服务层先执行物业权限门禁，不向无权物业账号泄露原凭证是否存在。
         with self.assertRaises(ValueError):
             BillingService.reverse_entry(
-                property_obj=other_property, entry_id=original.pk,
-                approval_id=approval.pk, reason=reason, reversed_by=self.operator)
+                property_obj=other_property,
+                entry_id=original.pk,
+                approval_id=approval.pk,
+                reason=reason,
+                reversed_by=self.operator,
+            )
 
 
 class LedgerReversalApprovalConstraintTests(WhiteboxBillingBase):
@@ -208,30 +265,44 @@ class LedgerReversalApprovalConstraintTests(WhiteboxBillingBase):
     def test_new_reversal_requires_approval_record_but_legacy_marker_is_allowed(self):
         self._make_reservation("WBBREVDB0001")
         original = LedgerEntry.objects.create(
-            property=self.property, folio=self.folio,
+            property=self.property,
+            folio=self.folio,
             entry_type=LedgerEntry.EntryType.ADJUSTMENT,
-            amount=Decimal("10.00"), currency="CNY",
+            amount=Decimal("10.00"),
+            currency="CNY",
             reference="WBB-REV-DB-SOURCE",
-            business_date=self.today, posted_by=self.operator)
+            business_date=self.today,
+            posted_by=self.operator,
+        )
 
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 LedgerEntry.objects.create(
-                    property=self.property, folio=self.folio,
+                    property=self.property,
+                    folio=self.folio,
                     entry_type=LedgerEntry.EntryType.REVERSAL,
-                    amount=Decimal("-10.00"), currency="CNY",
+                    amount=Decimal("-10.00"),
+                    currency="CNY",
                     reference="WBB-REV-DB-NEW",
-                    business_date=self.today, void_of=original,
-                    void_reason="数据库约束回归", posted_by=self.operator)
+                    business_date=self.today,
+                    void_of=original,
+                    void_reason="数据库约束回归",
+                    posted_by=self.operator,
+                )
 
         legacy = LedgerEntry.objects.create(
-            property=self.property, folio=self.folio,
+            property=self.property,
+            folio=self.folio,
             entry_type=LedgerEntry.EntryType.REVERSAL,
-            amount=Decimal("-10.00"), currency="CNY",
+            amount=Decimal("-10.00"),
+            currency="CNY",
             reference="WBB-REV-DB-LEGACY",
-            business_date=self.today, void_of=original,
-            void_reason="历史旧流程记录", legacy_workflow=True,
-            posted_by=self.operator)
+            business_date=self.today,
+            void_of=original,
+            void_reason="历史旧流程记录",
+            legacy_workflow=True,
+            posted_by=self.operator,
+        )
         self.assertTrue(legacy.legacy_workflow)
         self.assertIsNone(legacy.approval_record_id)
 
@@ -241,18 +312,25 @@ class ApprovalRaceTests(WhiteboxBillingBase):
 
     def test_request_approval_race_falls_back_to_existing_record(self):
         first, created = ApprovalService.request_approval(
-            property_obj=self.property, action_code="billing.refund",
-            entity_type="Refund", entity_id="41001",
-            requested_by=self.operator, reason="白盒审批竞态测试")
+            property_obj=self.property,
+            action_code="billing.refund",
+            entity_type="Refund",
+            entity_id="41001",
+            requested_by=self.operator,
+            reason="白盒审批竞态测试",
+        )
         self.assertTrue(created)
 
-        flaky = _flaky_first_filter(
-            ApprovalRecord.objects, ApprovalRecord.objects.none)
+        flaky = _flaky_first_filter(ApprovalRecord.objects, ApprovalRecord.objects.none)
         with mock.patch.object(ApprovalRecord.objects, "filter", side_effect=flaky):
             raced, raced_created = ApprovalService.request_approval(
-                property_obj=self.property, action_code="billing.refund",
-                entity_type="Refund", entity_id="41001",
-                requested_by=self.operator, reason="白盒审批竞态测试")
+                property_obj=self.property,
+                action_code="billing.refund",
+                entity_type="Refund",
+                entity_id="41001",
+                requested_by=self.operator,
+                reason="白盒审批竞态测试",
+            )
         self.assertFalse(raced_created)
         self.assertEqual(raced.pk, first.pk)
         self.assertEqual(ApprovalRecord.objects.count(), 1)
@@ -261,16 +339,24 @@ class ApprovalRaceTests(WhiteboxBillingBase):
         """补充：同参数不同物业不得共享幂等键（授权边界回归）。"""
         other_property = Property.objects.create(code="WBB2", name="白盒第二物业")
         first, _ = ApprovalService.request_approval(
-            property_obj=self.property, action_code="billing.refund",
-            entity_type="Refund", entity_id="41002",
-            requested_by=self.operator, reason="白盒审批物业隔离")
+            property_obj=self.property,
+            action_code="billing.refund",
+            entity_type="Refund",
+            entity_id="41002",
+            requested_by=self.operator,
+            reason="白盒审批物业隔离",
+        )
         second, _ = ApprovalService.request_approval(
-            property_obj=other_property, action_code="billing.refund",
-            entity_type="Refund", entity_id="41002",
-            requested_by=self.operator, reason="白盒审批物业隔离")
+            property_obj=other_property,
+            action_code="billing.refund",
+            entity_type="Refund",
+            entity_id="41002",
+            requested_by=self.operator,
+            reason="白盒审批物业隔离",
+        )
         self.assertNotEqual(first.idempotency_key, second.idempotency_key)
         expected = hashlib.sha256(
-            f"{self.property.pk}:billing.refund:Refund:41002:{self.operator.pk}".encode("utf-8")
+            f"{self.property.pk}:billing.refund:Refund:41002:{self.operator.pk}".encode()
         ).hexdigest()
         self.assertEqual(first.idempotency_key, expected)
 
@@ -285,34 +371,44 @@ class DepositGuardTests(WhiteboxBillingBase):
     def test_record_deposit_rechecks_cap_on_fresh_lock(self):
         """WB-05a：押金上限校验必须读取数据库最新值，不能信任传入实例的脏快照。"""
         # 模拟并发窗口：数据库里其他会话已登记 60.00 押金，传入实例仍是旧值 0
-        Reservation.objects.filter(pk=self.reservation.pk).update(
-            deposit_amount=Decimal("60.00"))
+        Reservation.objects.filter(pk=self.reservation.pk).update(deposit_amount=Decimal("60.00"))
         with self.assertRaises(ValueError):
             BillingService.record_deposit(
-                property_obj=self.property, reservation=self.reservation,
-                amount="50.00", method="CASH", idempotency_key="wbb-dep-001",
-                received_by=self.operator)
-        self.assertFalse(Payment.objects.filter(
-            provider="frontdesk_deposit").exists())
+                property_obj=self.property,
+                reservation=self.reservation,
+                amount="50.00",
+                method="CASH",
+                idempotency_key="wbb-dep-001",
+                received_by=self.operator,
+            )
+        self.assertFalse(Payment.objects.filter(provider="frontdesk_deposit").exists())
         self.reservation.refresh_from_db()
         self.assertEqual(self.reservation.deposit_amount, Decimal("60.00"))
 
     def test_record_deposit_targets_master_folio(self):
         """WB-05b：押金必须落在主账单上，即使存在更新的非主账单。"""
         guest_folio = Folio.objects.create(
-            property=self.property, reservation=self.reservation,
-            guest=self.guest, currency="CNY",
-            folio_type=Folio.FolioType.GUEST)
+            property=self.property,
+            reservation=self.reservation,
+            guest=self.guest,
+            currency="CNY",
+            folio_type=Folio.FolioType.GUEST,
+        )
         # 保证分账单 opened_at 严格晚于主账单（排除同刻并列导致排序不稳定）
         Folio.objects.filter(pk=guest_folio.pk).update(
-            opened_at=timezone.now() + timedelta(seconds=10))
+            opened_at=timezone.now() + timedelta(seconds=10)
+        )
         BillingService.open_shift(
-            property_obj=self.property, cashier=self.operator,
-            opening_cash=Decimal("0.00"))
+            property_obj=self.property, cashier=self.operator, opening_cash=Decimal("0.00")
+        )
         payment, created = BillingService.record_deposit(
-            property_obj=self.property, reservation=self.reservation,
-            amount="50.00", method="CASH", idempotency_key="wbb-dep-002",
-            received_by=self.operator)
+            property_obj=self.property,
+            reservation=self.reservation,
+            amount="50.00",
+            method="CASH",
+            idempotency_key="wbb-dep-002",
+            received_by=self.operator,
+        )
         self.assertTrue(created)
         self.assertEqual(payment.folio_id, self.folio.pk)
         self.assertNotEqual(payment.folio_id, guest_folio.pk)
@@ -321,10 +417,13 @@ class DepositGuardTests(WhiteboxBillingBase):
 
     def test_deposit_replay_survives_checkout_and_folio_close(self):
         payment, created = BillingService.record_deposit(
-            property_obj=self.property, reservation=self.reservation,
-            amount="30.00", method="CARD",
+            property_obj=self.property,
+            reservation=self.reservation,
+            amount="30.00",
+            method="CARD",
             idempotency_key="wbb-deposit-replay-001",
-            received_by=self.operator)
+            received_by=self.operator,
+        )
         self.assertTrue(created)
         self.reservation.status = "CHECKED_OUT"
         self.reservation.save(update_fields=("status", "updated_at"))
@@ -332,17 +431,20 @@ class DepositGuardTests(WhiteboxBillingBase):
         self.folio.save(update_fields=("status",))
 
         replay, replay_created = BillingService.record_deposit(
-            property_obj=self.property, reservation=self.reservation,
-            amount="30.00", method="CARD",
+            property_obj=self.property,
+            reservation=self.reservation,
+            amount="30.00",
+            method="CARD",
             idempotency_key="wbb-deposit-replay-001",
-            received_by=self.operator)
+            received_by=self.operator,
+        )
         self.assertFalse(replay_created)
         self.assertEqual(replay.pk, payment.pk)
         self.reservation.refresh_from_db()
         self.assertEqual(self.reservation.deposit_amount, Decimal("30.00"))
         self.assertEqual(
-            LedgerEntry.objects.filter(
-                reference=f"deposit:{payment.provider_ref}").count(), 1)
+            LedgerEntry.objects.filter(reference=f"deposit:{payment.provider_ref}").count(), 1
+        )
 
 
 class CollectPaymentRaceTests(WhiteboxBillingBase):
@@ -351,27 +453,30 @@ class CollectPaymentRaceTests(WhiteboxBillingBase):
     def test_collect_payment_race_returns_existing_payment(self):
         reservation = self._make_reservation("WBBPAY0001", total="600.00", nights=2)
         BillingService.open_shift(
-            property_obj=self.property, cashier=self.operator,
-            opening_cash=Decimal("0.00"))
+            property_obj=self.property, cashier=self.operator, opening_cash=Decimal("0.00")
+        )
         first = BillingService.collect_payment(
-            property_obj=self.property, reservation=reservation,
-            amount="100.00", method="CASH", collected_by=self.operator,
-            reference="FDWBB-RACE-001")
+            property_obj=self.property,
+            reservation=reservation,
+            amount="100.00",
+            method="CASH",
+            collected_by=self.operator,
+            reference="FDWBB-RACE-001",
+        )
 
         flaky = _flaky_first_filter(Payment.objects, Payment.objects.none)
         with mock.patch.object(Payment.objects, "filter", side_effect=flaky):
             raced = BillingService.collect_payment(
-                property_obj=self.property, reservation=reservation,
-                amount="100.00", method="CASH", collected_by=self.operator,
-                reference="FDWBB-RACE-001")
+                property_obj=self.property,
+                reservation=reservation,
+                amount="100.00",
+                method="CASH",
+                collected_by=self.operator,
+                reference="FDWBB-RACE-001",
+            )
         self.assertEqual(raced.pk, first.pk)
-        self.assertEqual(
-            Payment.objects.filter(provider_ref="FDWBB-RACE-001").count(), 1)
-        self.assertEqual(
-            LedgerEntry.objects.filter(
-                reference="payment:FDWBB-RACE-001").count(), 1)
-
-
+        self.assertEqual(Payment.objects.filter(provider_ref="FDWBB-RACE-001").count(), 1)
+        self.assertEqual(LedgerEntry.objects.filter(reference="payment:FDWBB-RACE-001").count(), 1)
 
 
 class CollectPaymentClosedFolioReplayTests(WhiteboxBillingBase):
@@ -380,47 +485,71 @@ class CollectPaymentClosedFolioReplayTests(WhiteboxBillingBase):
     def test_successful_payment_replay_survives_folio_close(self):
         reservation = self._make_reservation("WBBPAYCLOSED001")
         payment = BillingService.collect_payment(
-            property_obj=self.property, reservation=reservation,
-            amount="80.00", method="CARD", collected_by=self.operator,
-            reference="WBB-PAY-CLOSED-001")
+            property_obj=self.property,
+            reservation=reservation,
+            amount="80.00",
+            method="CARD",
+            collected_by=self.operator,
+            reference="WBB-PAY-CLOSED-001",
+        )
         folio = payment.folio
         folio.status = Folio.Status.CLOSED
         folio.save(update_fields=("status",))
 
         replay = BillingService.collect_payment(
-            property_obj=self.property, reservation=reservation,
-            amount="80.00", method="CARD", collected_by=self.operator,
-            reference="WBB-PAY-CLOSED-001")
+            property_obj=self.property,
+            reservation=reservation,
+            amount="80.00",
+            method="CARD",
+            collected_by=self.operator,
+            reference="WBB-PAY-CLOSED-001",
+        )
         self.assertEqual(replay.pk, payment.pk)
         self.assertEqual(
-            LedgerEntry.objects.filter(
-                reference="payment:WBB-PAY-CLOSED-001").count(), 1)
+            LedgerEntry.objects.filter(reference="payment:WBB-PAY-CLOSED-001").count(), 1
+        )
+
 
 class RefundRaceTests(WhiteboxBillingBase):
     """WB-13：request_refund 并发同幂等键必须幂等返回既有申请。"""
 
     def _make_successful_payment(self, reservation, amount="300.00"):
         return Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="frontdesk_manual", provider_ref="FDWBB-PAY-SRC-001",
-            method="CASH", amount=Decimal(amount), currency="CNY",
-            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="frontdesk_manual",
+            provider_ref="FDWBB-PAY-SRC-001",
+            method="CASH",
+            amount=Decimal(amount),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
 
     def test_request_refund_race_returns_existing_refund(self):
         reservation = self._make_reservation("WBBRFD0001")
         payment = self._make_successful_payment(reservation)
         first, created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="100.00", reason="白盒退款竞态测试",
-            requested_by=self.operator, idempotency_key="wbb-rfd-001")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="100.00",
+            reason="白盒退款竞态测试",
+            requested_by=self.operator,
+            idempotency_key="wbb-rfd-001",
+        )
         self.assertTrue(created)
 
         flaky = _flaky_first_filter(Refund.objects, Refund.objects.none)
         with mock.patch.object(Refund.objects, "filter", side_effect=flaky):
             raced, raced_created = BillingService.request_refund(
-                property_obj=self.property, payment_id=payment.pk,
-                amount="100.00", reason="白盒退款竞态测试",
-                requested_by=self.operator, idempotency_key="wbb-rfd-001")
+                property_obj=self.property,
+                payment_id=payment.pk,
+                amount="100.00",
+                reason="白盒退款竞态测试",
+                requested_by=self.operator,
+                idempotency_key="wbb-rfd-001",
+            )
         self.assertFalse(raced_created)
         self.assertEqual(raced.pk, first.pk)
         self.assertEqual(Refund.objects.count(), 1)
@@ -431,21 +560,20 @@ class OpenShiftRaceTests(WhiteboxBillingBase):
 
     def test_open_shift_race_returns_existing_shift(self):
         shift, created = BillingService.open_shift(
-            property_obj=self.property, cashier=self.operator,
-            opening_cash=Decimal("100.00"))
+            property_obj=self.property, cashier=self.operator, opening_cash=Decimal("100.00")
+        )
         self.assertTrue(created)
 
-        flaky = _flaky_first_filter(
-            CashierShift.objects, CashierShift.objects.none)
+        flaky = _flaky_first_filter(CashierShift.objects, CashierShift.objects.none)
         with mock.patch.object(CashierShift.objects, "filter", side_effect=flaky):
             raced, raced_created = BillingService.open_shift(
-                property_obj=self.property, cashier=self.operator,
-                opening_cash=Decimal("100.00"))
+                property_obj=self.property, cashier=self.operator, opening_cash=Decimal("100.00")
+            )
         self.assertFalse(raced_created)
         self.assertEqual(raced.pk, shift.pk)
         self.assertEqual(
-            CashierShift.objects.filter(
-                property=self.property, cashier=self.operator).count(), 1)
+            CashierShift.objects.filter(property=self.property, cashier=self.operator).count(), 1
+        )
 
 
 class MoneyBoundaryTests(WhiteboxBillingBase):
@@ -459,16 +587,23 @@ class MoneyBoundaryTests(WhiteboxBillingBase):
             BillingService._money("12.345")  # 超过两位小数
         self.assertEqual(BillingService._money("12.34"), Decimal("12.34"))
 
+
 class PaymentRefundModelSaveRegressionTests(WhiteboxBillingBase):
     """回归：支付状态可正常更新；退款不可变字段守卫必须挂在 Refund 而非 Payment。"""
 
     def test_payment_status_update_does_not_query_refund_only_fields(self):
         reservation = self._make_reservation("WBBMODEL001")
         payment = Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="mock", provider_ref="WBB-MODEL-PAY-001",
-            method="CARD", amount=Decimal("100.00"), currency="CNY",
-            status=Payment.Status.PENDING)
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="mock",
+            provider_ref="WBB-MODEL-PAY-001",
+            method="CARD",
+            amount=Decimal("100.00"),
+            currency="CNY",
+            status=Payment.Status.PENDING,
+        )
         payment.status = Payment.Status.SUCCEEDED
         payment.paid_at = timezone.now()
         payment.save(update_fields=("status", "paid_at", "updated_at"))
@@ -491,18 +626,30 @@ class PaymentRefundModelSaveRegressionTests(WhiteboxBillingBase):
     def test_refund_save_allows_status_progression_but_protects_request_facts(self):
         reservation = self._make_reservation("WBBMODEL002")
         payment = Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="frontdesk_manual", provider_ref="WBB-MODEL-PAY-002",
-            method="CARD", amount=Decimal("100.00"), currency="CNY",
-            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="frontdesk_manual",
+            provider_ref="WBB-MODEL-PAY-002",
+            method="CARD",
+            amount=Decimal("100.00"),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
         refund, created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="20.00", reason="模型保存回归",
-            idempotency_key="wbb-model-refund", requested_by=self.operator)
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="20.00",
+            reason="模型保存回归",
+            idempotency_key="wbb-model-refund",
+            requested_by=self.operator,
+        )
         self.assertTrue(created)
         approver = User.objects.create_user(username="wbb-model-approver")
         refund, changed = BillingService.approve_refund(
-            property_obj=self.property, refund_id=refund.pk, approved_by=approver)
+            property_obj=self.property, refund_id=refund.pk, approved_by=approver
+        )
         self.assertTrue(changed)
         refund.refresh_from_db()
         self.assertEqual(refund.status, Refund.Status.APPROVED)
@@ -519,49 +666,72 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
     def test_refund_three_party_flow_posts_once_and_is_idempotent(self):
         reservation = self._make_reservation("WBBRFD3P001")
         payment = Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="frontdesk_manual", provider_ref="WBB-3P-PAY-001",
-            method="CARD", amount=Decimal("120.00"), currency="CNY",
-            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="frontdesk_manual",
+            provider_ref="WBB-3P-PAY-001",
+            method="CARD",
+            amount=Decimal("120.00"),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
         approver = User.objects.create_user(username="wbb-refund-approver")
         executor = User.objects.create_user(username="wbb-refund-executor")
 
         refund, created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="45.00", reason="三方退款闭环测试",
-            requested_by=self.operator, idempotency_key="wbb-refund-3p-001")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="45.00",
+            reason="三方退款闭环测试",
+            requested_by=self.operator,
+            idempotency_key="wbb-refund-3p-001",
+        )
         self.assertTrue(created)
         self.assertEqual(refund.status, Refund.Status.PENDING)
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference=f"refund:{refund.provider_ref}").exists())
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference=f"refund:{refund.provider_ref}").exists()
+        )
 
         approved, changed = BillingService.approve_refund(
-            property_obj=self.property, refund_id=refund.pk, approved_by=approver)
+            property_obj=self.property, refund_id=refund.pk, approved_by=approver
+        )
         self.assertTrue(changed)
         self.assertEqual(approved.status, Refund.Status.APPROVED)
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference=f"refund:{refund.provider_ref}").exists())
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference=f"refund:{refund.provider_ref}").exists()
+        )
 
         with self.assertRaises(ValueError):
             BillingService.execute_refund(
-                property_obj=self.property, refund_id=refund.pk,
-                executed_by=self.operator, confirm_refund_paid=True,
-                idempotency_key="wbb-refund-exec-bad-1")
+                property_obj=self.property,
+                refund_id=refund.pk,
+                executed_by=self.operator,
+                confirm_refund_paid=True,
+                idempotency_key="wbb-refund-exec-bad-1",
+            )
         with self.assertRaises(ValueError):
             BillingService.execute_refund(
-                property_obj=self.property, refund_id=refund.pk,
-                executed_by=approver, confirm_refund_paid=True,
-                idempotency_key="wbb-refund-exec-bad-2")
+                property_obj=self.property,
+                refund_id=refund.pk,
+                executed_by=approver,
+                confirm_refund_paid=True,
+                idempotency_key="wbb-refund-exec-bad-2",
+            )
 
         executed, created = BillingService.execute_refund(
-            property_obj=self.property, refund_id=refund.pk,
-            executed_by=executor, confirm_refund_paid=True,
+            property_obj=self.property,
+            refund_id=refund.pk,
+            executed_by=executor,
+            confirm_refund_paid=True,
             execution_reference="BANK-REF-3P-001",
-            idempotency_key="wbb-refund-exec-3p-001")
+            idempotency_key="wbb-refund-exec-3p-001",
+        )
         self.assertTrue(created)
         self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
         self.assertEqual(executed.requested_by_id, self.operator.pk)
@@ -571,70 +741,99 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.PARTIALLY_REFUNDED)
         self.assertEqual(
-            LedgerEntry.objects.filter(
-                reference=f"refund:{refund.provider_ref}").count(), 1)
+            LedgerEntry.objects.filter(reference=f"refund:{refund.provider_ref}").count(), 1
+        )
 
         replay, replay_created = BillingService.execute_refund(
-            property_obj=self.property, refund_id=refund.pk,
-            executed_by=executor, confirm_refund_paid=True,
+            property_obj=self.property,
+            refund_id=refund.pk,
+            executed_by=executor,
+            confirm_refund_paid=True,
             execution_reference="BANK-REF-3P-001",
-            idempotency_key="wbb-refund-exec-3p-001")
+            idempotency_key="wbb-refund-exec-3p-001",
+        )
         self.assertFalse(replay_created)
         self.assertEqual(replay.pk, executed.pk)
         self.assertEqual(
-            LedgerEntry.objects.filter(
-                reference=f"refund:{refund.provider_ref}").count(), 1)
+            LedgerEntry.objects.filter(reference=f"refund:{refund.provider_ref}").count(), 1
+        )
 
         # 同一执行幂等键不得被第二笔退款占用；冲突必须是业务错误而非 500。
         second_refund, second_created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="20.00", reason="执行幂等键冲突回归",
-            requested_by=self.operator, idempotency_key="wbb-refund-3p-002")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="20.00",
+            reason="执行幂等键冲突回归",
+            requested_by=self.operator,
+            idempotency_key="wbb-refund-3p-002",
+        )
         self.assertTrue(second_created)
         second_approver = User.objects.create_user(username="wbb-refund-approver-2")
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=second_refund.pk,
-            approved_by=second_approver)
+            property_obj=self.property, refund_id=second_refund.pk, approved_by=second_approver
+        )
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
         with self.assertRaises(ValueError):
             BillingService.execute_refund(
-                property_obj=self.property, refund_id=second_refund.pk,
-                executed_by=executor, confirm_refund_paid=True,
+                property_obj=self.property,
+                refund_id=second_refund.pk,
+                executed_by=executor,
+                confirm_refund_paid=True,
                 execution_reference="BANK-REF-3P-002",
-                idempotency_key="wbb-refund-exec-3p-001")
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference=f"refund:{second_refund.provider_ref}").exists())
+                idempotency_key="wbb-refund-exec-3p-001",
+            )
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference=f"refund:{second_refund.provider_ref}").exists()
+        )
         second_executed, second_executed_created = BillingService.execute_refund(
-            property_obj=self.property, refund_id=second_refund.pk,
-            executed_by=executor, confirm_refund_paid=True,
+            property_obj=self.property,
+            refund_id=second_refund.pk,
+            executed_by=executor,
+            confirm_refund_paid=True,
             execution_reference="BANK-REF-3P-002",
-            idempotency_key="wbb-refund-exec-3p-002")
+            idempotency_key="wbb-refund-exec-3p-002",
+        )
         self.assertTrue(second_executed_created)
         self.assertEqual(second_executed.status, Refund.Status.SUCCEEDED)
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.PARTIALLY_REFUNDED)
 
-
     def test_refund_liability_is_reduced_only_after_successful_refund_execution(self):
         reservation = self._make_reservation("WBBRFDLIABILITY01", total="100.00")
         payment = Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="frontdesk_manual", provider_ref="WBB-LIABILITY-PAY-001",
-            method="CARD", amount=Decimal("100.00"), currency="CNY",
-            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="frontdesk_manual",
+            provider_ref="WBB-LIABILITY-PAY-001",
+            method="CARD",
+            amount=Decimal("100.00"),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
         liability = RefundLiability.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            amount=Decimal("80.00"), remaining_amount=Decimal("80.00"),
-            currency="CNY", status=RefundLiability.Status.OPEN,
-            idempotency_key="wbb-liability-80")
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            amount=Decimal("80.00"),
+            remaining_amount=Decimal("80.00"),
+            currency="CNY",
+            status=RefundLiability.Status.OPEN,
+            idempotency_key="wbb-liability-80",
+        )
         liability.source_payments.add(payment)
 
         first, created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="30.00", reason="待退款负债部分退款",
-            requested_by=self.operator, idempotency_key="wbb-liability-refund-1",
-            refund_liability_id=liability.pk)
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="30.00",
+            reason="待退款负债部分退款",
+            requested_by=self.operator,
+            idempotency_key="wbb-liability-refund-1",
+            refund_liability_id=liability.pk,
+        )
         self.assertTrue(created)
         self.assertEqual(first.refund_liability_id, liability.pk)
         liability.refresh_from_db()
@@ -643,32 +842,43 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
         approver = User.objects.create_user(username="wbb-liability-approver")
         executor = User.objects.create_user(username="wbb-liability-executor")
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=first.pk, approved_by=approver)
+            property_obj=self.property, refund_id=first.pk, approved_by=approver
+        )
         BillingService.execute_refund(
-            property_obj=self.property, refund_id=first.pk,
-            executed_by=executor, confirm_refund_paid=True,
+            property_obj=self.property,
+            refund_id=first.pk,
+            executed_by=executor,
+            confirm_refund_paid=True,
             execution_reference="BANK-LIABILITY-REF-1",
-            idempotency_key="wbb-liability-exec-1")
+            idempotency_key="wbb-liability-exec-1",
+        )
         liability.refresh_from_db()
         self.assertEqual(liability.remaining_amount, Decimal("50.00"))
         self.assertEqual(liability.status, RefundLiability.Status.PARTIALLY_SETTLED)
 
         second, created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="50.00", reason="待退款负债结清",
-            requested_by=self.operator, idempotency_key="wbb-liability-refund-2",
-            refund_liability_id=liability.pk)
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="50.00",
+            reason="待退款负债结清",
+            requested_by=self.operator,
+            idempotency_key="wbb-liability-refund-2",
+            refund_liability_id=liability.pk,
+        )
         self.assertTrue(created)
         second_approver = User.objects.create_user(username="wbb-liability-approver-2")
         second_executor = User.objects.create_user(username="wbb-liability-executor-2")
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=second.pk,
-            approved_by=second_approver)
+            property_obj=self.property, refund_id=second.pk, approved_by=second_approver
+        )
         executed, changed = BillingService.execute_refund(
-            property_obj=self.property, refund_id=second.pk,
-            executed_by=second_executor, confirm_refund_paid=True,
+            property_obj=self.property,
+            refund_id=second.pk,
+            executed_by=second_executor,
+            confirm_refund_paid=True,
             execution_reference="BANK-LIABILITY-REF-2",
-            idempotency_key="wbb-liability-exec-2")
+            idempotency_key="wbb-liability-exec-2",
+        )
         self.assertTrue(changed)
         liability.refresh_from_db()
         self.assertEqual(liability.remaining_amount, Decimal("0.00"))
@@ -676,10 +886,13 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
         self.assertIsNotNone(liability.settled_at)
 
         replay, replay_created = BillingService.execute_refund(
-            property_obj=self.property, refund_id=second.pk,
-            executed_by=second_executor, confirm_refund_paid=True,
+            property_obj=self.property,
+            refund_id=second.pk,
+            executed_by=second_executor,
+            confirm_refund_paid=True,
             execution_reference="BANK-LIABILITY-REF-2",
-            idempotency_key="wbb-liability-exec-2")
+            idempotency_key="wbb-liability-exec-2",
+        )
         self.assertFalse(replay_created)
         liability.refresh_from_db()
         self.assertEqual(liability.remaining_amount, Decimal("0.00"))
@@ -687,22 +900,37 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
     def test_multiple_partial_refunds_keep_payment_pending_until_all_resolved(self):
         reservation = self._make_reservation("WBBRFDMULTI001")
         payment = Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="frontdesk_manual", provider_ref="WBB-MULTI-PAY-001",
-            method="CARD", amount=Decimal("100.00"), currency="CNY",
-            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="frontdesk_manual",
+            provider_ref="WBB-MULTI-PAY-001",
+            method="CARD",
+            amount=Decimal("100.00"),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
         first, first_created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="30.00", reason="第一笔部分退款",
-            requested_by=self.operator, idempotency_key="wbb-multi-refund-1")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="30.00",
+            reason="第一笔部分退款",
+            requested_by=self.operator,
+            idempotency_key="wbb-multi-refund-1",
+        )
         self.assertTrue(first_created)
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
 
         second, second_created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="20.00", reason="第二笔部分退款",
-            requested_by=self.operator, idempotency_key="wbb-multi-refund-2")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="20.00",
+            reason="第二笔部分退款",
+            requested_by=self.operator,
+            idempotency_key="wbb-multi-refund-2",
+        )
         self.assertTrue(second_created)
         self.assertEqual(second.status, Refund.Status.PENDING)
 
@@ -710,28 +938,36 @@ class RefundThreePartyExecutionTests(WhiteboxBillingBase):
         approver2 = User.objects.create_user(username="wbb-multi-approver-2")
         executor = User.objects.create_user(username="wbb-multi-executor")
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=first.pk, approved_by=approver1)
+            property_obj=self.property, refund_id=first.pk, approved_by=approver1
+        )
         # 第二笔保持 PENDING，第一笔执行后支付仍须保持 REFUND_PENDING。
         executed, created = BillingService.execute_refund(
-            property_obj=self.property, refund_id=first.pk,
-            executed_by=executor, confirm_refund_paid=True,
+            property_obj=self.property,
+            refund_id=first.pk,
+            executed_by=executor,
+            confirm_refund_paid=True,
             execution_reference="BANK-MULTI-REF-1",
-            idempotency_key="wbb-multi-exec-1")
+            idempotency_key="wbb-multi-exec-1",
+        )
         self.assertTrue(created)
         self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
 
         BillingService.reject_refund(
-            property_obj=self.property, refund_id=second.pk,
-            rejected_by=approver2, reason="第二笔申请取消")
+            property_obj=self.property,
+            refund_id=second.pk,
+            rejected_by=approver2,
+            reason="第二笔申请取消",
+        )
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.PARTIALLY_REFUNDED)
         self.assertEqual(
-            LedgerEntry.objects.filter(
-                reference=f"refund:{first.provider_ref}").count(), 1)
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference=f"refund:{second.provider_ref}").exists())
+            LedgerEntry.objects.filter(reference=f"refund:{first.provider_ref}").count(), 1
+        )
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference=f"refund:{second.provider_ref}").exists()
+        )
 
 
 class RefundExecutionReferenceUniquenessTests(WhiteboxBillingBase):
@@ -744,10 +980,17 @@ class RefundExecutionReferenceUniquenessTests(WhiteboxBillingBase):
     def _make_card_payment(self, booking_no, amount="100.00"):
         reservation = self._make_reservation(booking_no, total="300.00")
         return Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="frontdesk_manual", provider_ref=booking_no + "-PAY",
-            method="CARD", amount=Decimal(amount), currency="CNY",
-            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="frontdesk_manual",
+            provider_ref=booking_no + "-PAY",
+            method="CARD",
+            amount=Decimal(amount),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
 
     def _approve_first_refund(self, payment):
         """审批人账号在两笔退款间复用（审批人只需 ≠ 申请人/执行人）。"""
@@ -760,47 +1003,66 @@ class RefundExecutionReferenceUniquenessTests(WhiteboxBillingBase):
         executor = User.objects.create_user(username="wbb-rfref-executor")
 
         first, created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="40.00", reason="第一笔退款",
-            requested_by=self.operator, idempotency_key="wbb-rfref-r1")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="40.00",
+            reason="第一笔退款",
+            requested_by=self.operator,
+            idempotency_key="wbb-rfref-r1",
+        )
         self.assertTrue(created)
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=first.pk,
-            approved_by=approver)
+            property_obj=self.property, refund_id=first.pk, approved_by=approver
+        )
         executed, _ = BillingService.execute_refund(
-            property_obj=self.property, refund_id=first.pk,
-            executed_by=executor, confirm_refund_paid=True,
+            property_obj=self.property,
+            refund_id=first.pk,
+            executed_by=executor,
+            confirm_refund_paid=True,
             execution_reference="BANK-123",
-            idempotency_key="wbb-rfref-exec-1")
+            idempotency_key="wbb-rfref-exec-1",
+        )
         self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
 
         second, created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="30.00", reason="第二笔退款",
-            requested_by=self.operator, idempotency_key="wbb-rfref-r2")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="30.00",
+            reason="第二笔退款",
+            requested_by=self.operator,
+            idempotency_key="wbb-rfref-r2",
+        )
         self.assertTrue(created)
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=second.pk,
-            approved_by=approver)
+            property_obj=self.property, refund_id=second.pk, approved_by=approver
+        )
         with self.assertRaises(ValueError) as ctx:
             BillingService.execute_refund(
-                property_obj=self.property, refund_id=second.pk,
-                executed_by=executor, confirm_refund_paid=True,
+                property_obj=self.property,
+                refund_id=second.pk,
+                executed_by=executor,
+                confirm_refund_paid=True,
                 execution_reference="BANK-123",
-                idempotency_key="wbb-rfref-exec-2")
+                idempotency_key="wbb-rfref-exec-2",
+            )
         self.assertIn("参考号", str(ctx.exception))
         second.refresh_from_db()
-        self.assertEqual(second.status, Refund.Status.APPROVED,
-                         "被拒后退款停留在已批准状态，无部分执行")
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference=f"refund:{second.provider_ref}").exists())
+        self.assertEqual(
+            second.status, Refund.Status.APPROVED, "被拒后退款停留在已批准状态，无部分执行"
+        )
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference=f"refund:{second.provider_ref}").exists()
+        )
 
         # 换用未占用的参考号即可正常执行
         executed2, created2 = BillingService.execute_refund(
-            property_obj=self.property, refund_id=second.pk,
-            executed_by=executor, confirm_refund_paid=True,
+            property_obj=self.property,
+            refund_id=second.pk,
+            executed_by=executor,
+            confirm_refund_paid=True,
             execution_reference="BANK-124",
-            idempotency_key="wbb-rfref-exec-2")
+            idempotency_key="wbb-rfref-exec-2",
+        )
         self.assertTrue(created2)
         self.assertEqual(executed2.execution_reference, "BANK-124")
 
@@ -816,27 +1078,36 @@ class RefundExecutionReferenceUniquenessTests(WhiteboxBillingBase):
         approver = self._approve_first_refund(payment)
         executor = User.objects.create_user(username="wbb-rfref-executor-2")
         first, _ = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="40.00", reason="第一笔退款（DB 约束）",
-            requested_by=self.operator, idempotency_key="wbb-rfref-db-r1")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="40.00",
+            reason="第一笔退款（DB 约束）",
+            requested_by=self.operator,
+            idempotency_key="wbb-rfref-db-r1",
+        )
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=first.pk,
-            approved_by=approver)
+            property_obj=self.property, refund_id=first.pk, approved_by=approver
+        )
         executed_first, _ = BillingService.execute_refund(
-            property_obj=self.property, refund_id=first.pk,
-            executed_by=executor, confirm_refund_paid=True,
+            property_obj=self.property,
+            refund_id=first.pk,
+            executed_by=executor,
+            confirm_refund_paid=True,
             execution_reference="BANK-DB-001",
-            idempotency_key="wbb-rfref-db-exec-1")
-        self.assertEqual(
-            executed_first.execution_reference_key,
-            f"{self.property.pk}:BANK-DB-001")
+            idempotency_key="wbb-rfref-db-exec-1",
+        )
+        self.assertEqual(executed_first.execution_reference_key, f"{self.property.pk}:BANK-DB-001")
         second, _ = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="30.00", reason="第二笔退款（DB 约束）",
-            requested_by=self.operator, idempotency_key="wbb-rfref-db-r2")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="30.00",
+            reason="第二笔退款（DB 约束）",
+            requested_by=self.operator,
+            idempotency_key="wbb-rfref-db-r2",
+        )
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=second.pk,
-            approved_by=approver)
+            property_obj=self.property, refund_id=second.pk, approved_by=approver
+        )
         # 审批在服务层另一事务完成，本地实例须刷新，否则模型 save() 会把
         # 陈旧实例误判为「改写已审批事实」。
         second.refresh_from_db()
@@ -856,30 +1127,43 @@ class RefundExecutionReferenceUniquenessTests(WhiteboxBillingBase):
         """现金退款 execution_reference 为空，多笔并存不受唯一约束影响。"""
         reservation = self._make_reservation("WBBRFRREF03", total="300.00")
         payment = Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="frontdesk_manual", provider_ref="WBBRFRREF03-PAY",
-            method="CASH", amount=Decimal("100.00"), currency="CNY",
-            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="frontdesk_manual",
+            provider_ref="WBBRFRREF03-PAY",
+            method="CASH",
+            amount=Decimal("100.00"),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
         approver = User.objects.create_user(username="wbb-rfref-approver-3")
         executor = User.objects.create_user(username="wbb-rfref-executor-3")
         # 现金退款必须由执行人本人 OPEN 班次执行；备用金覆盖两笔退款合计。
         BillingService.open_shift(
-            property_obj=self.property, cashier=executor,
-            opening_cash=Decimal("100.00"))
+            property_obj=self.property, cashier=executor, opening_cash=Decimal("100.00")
+        )
         for index, amount in enumerate(("20.00", "30.00"), start=1):
             refund, created = BillingService.request_refund(
-                property_obj=self.property, payment_id=payment.pk,
-                amount=amount, reason=f"现金退款第 {index} 笔",
+                property_obj=self.property,
+                payment_id=payment.pk,
+                amount=amount,
+                reason=f"现金退款第 {index} 笔",
                 requested_by=self.operator,
-                idempotency_key=f"wbb-rfref-cash-r{index}")
+                idempotency_key=f"wbb-rfref-cash-r{index}",
+            )
             self.assertTrue(created)
             BillingService.approve_refund(
-                property_obj=self.property, refund_id=refund.pk,
-                approved_by=approver)
+                property_obj=self.property, refund_id=refund.pk, approved_by=approver
+            )
             executed, executed_created = BillingService.execute_refund(
-                property_obj=self.property, refund_id=refund.pk,
-                executed_by=executor, confirm_refund_paid=True,
-                idempotency_key=f"wbb-rfref-cash-exec-{index}")
+                property_obj=self.property,
+                refund_id=refund.pk,
+                executed_by=executor,
+                confirm_refund_paid=True,
+                idempotency_key=f"wbb-rfref-cash-exec-{index}",
+            )
             self.assertTrue(executed_created)
             self.assertEqual(executed.execution_reference, "")
 
@@ -890,133 +1174,190 @@ class CashShiftReconciliationTests(WhiteboxBillingBase):
     def test_cash_shift_expected_balance_includes_income_refunds_and_movements(self):
         reservation = self._make_reservation("WBBCASHSHIFT001")
         cashier_shift, created = BillingService.open_shift(
-            property_obj=self.property, cashier=self.operator,
-            opening_cash="50.00")
+            property_obj=self.property, cashier=self.operator, opening_cash="50.00"
+        )
         self.assertTrue(created)
 
         payment = BillingService.collect_payment(
-            property_obj=self.property, reservation=reservation,
-            amount="100.00", method="CASH", collected_by=self.operator,
-            reference="WBB-CASH-PAY-001")
+            property_obj=self.property,
+            reservation=reservation,
+            amount="100.00",
+            method="CASH",
+            collected_by=self.operator,
+            reference="WBB-CASH-PAY-001",
+        )
         self.assertEqual(payment.cashier_shift_id, cashier_shift.pk)
 
         approver = User.objects.create_user(username="wbb-cash-approver")
         executor = User.objects.create_user(username="wbb-cash-executor")
         execution_shift, created = BillingService.open_shift(
-            property_obj=self.property, cashier=executor,
-            opening_cash="50.00")
+            property_obj=self.property, cashier=executor, opening_cash="50.00"
+        )
         self.assertTrue(created)
 
         refund, created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="20.00", reason="现金退款班次对账",
-            requested_by=self.operator, idempotency_key="wbb-cash-refund-001")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="20.00",
+            reason="现金退款班次对账",
+            requested_by=self.operator,
+            idempotency_key="wbb-cash-refund-001",
+        )
         self.assertTrue(created)
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=refund.pk,
-            approved_by=approver)
+            property_obj=self.property, refund_id=refund.pk, approved_by=approver
+        )
         executed, created = BillingService.execute_refund(
-            property_obj=self.property, refund_id=refund.pk,
-            executed_by=executor, confirm_refund_paid=True,
+            property_obj=self.property,
+            refund_id=refund.pk,
+            executed_by=executor,
+            confirm_refund_paid=True,
             execution_reference="CASH-VOUCHER-001",
-            idempotency_key="wbb-cash-refund-exec-001")
+            idempotency_key="wbb-cash-refund-exec-001",
+        )
         self.assertTrue(created)
         self.assertEqual(executed.execution_shift_id, execution_shift.pk)
 
         BillingService.record_shift_movement(
-            shift_id=execution_shift.pk, direction="IN", amount="10.00",
-            reason="补充备用金", created_by=executor,
-            idempotency_key="wbb-cash-in-001")
+            shift_id=execution_shift.pk,
+            direction="IN",
+            amount="10.00",
+            reason="补充备用金",
+            created_by=executor,
+            idempotency_key="wbb-cash-in-001",
+        )
         out_movement, out_created = BillingService.record_shift_movement(
-            shift_id=execution_shift.pk, direction="OUT", amount="35.00",
-            reason="经批准现金支出", created_by=executor,
-            idempotency_key="wbb-cash-out-001")
+            shift_id=execution_shift.pk,
+            direction="OUT",
+            amount="35.00",
+            reason="经批准现金支出",
+            created_by=executor,
+            idempotency_key="wbb-cash-out-001",
+        )
         self.assertTrue(out_created)
         replay, replay_created = BillingService.record_shift_movement(
-            shift_id=execution_shift.pk, direction="OUT", amount="35.00",
-            reason="经批准现金支出", created_by=executor,
-            idempotency_key="wbb-cash-out-001")
+            shift_id=execution_shift.pk,
+            direction="OUT",
+            amount="35.00",
+            reason="经批准现金支出",
+            created_by=executor,
+            idempotency_key="wbb-cash-out-001",
+        )
         self.assertFalse(replay_created)
         self.assertEqual(replay.pk, out_movement.pk)
 
         closed = BillingService.close_shift(
-            property_obj=self.property, shift_id=execution_shift.pk,
-            actual_cash="5.00", closed_by=executor)
+            property_obj=self.property,
+            shift_id=execution_shift.pk,
+            actual_cash="5.00",
+            closed_by=executor,
+        )
         self.assertEqual(closed.expected_cash, Decimal("5.00"))
         self.assertEqual(closed.variance, Decimal("0.00"))
         self.assertEqual(closed.status, CashierShift.ShiftStatus.CLOSED)
         replay_after_close, replay_created = BillingService.record_shift_movement(
-            shift_id=execution_shift.pk, direction="OUT", amount="35.00",
-            reason="经批准现金支出", created_by=executor,
-            idempotency_key="wbb-cash-out-001")
+            shift_id=execution_shift.pk,
+            direction="OUT",
+            amount="35.00",
+            reason="经批准现金支出",
+            created_by=executor,
+            idempotency_key="wbb-cash-out-001",
+        )
         self.assertFalse(replay_created)
         self.assertEqual(replay_after_close.pk, out_movement.pk)
 
     def test_cash_movement_duplicate_race_returns_existing_fact(self):
         shift, _ = BillingService.open_shift(
-            property_obj=self.property, cashier=self.operator,
-            opening_cash="10.00")
+            property_obj=self.property, cashier=self.operator, opening_cash="10.00"
+        )
         existing = CashierShiftMovement.objects.create(
-            shift=shift, direction=CashierShiftMovement.Direction.IN,
-            amount=Decimal("5.00"), reason="并发补入",
-            idempotency_key="wbb-cash-race-001", created_by=self.operator)
-        flaky = _flaky_first_filter(
-            CashierShiftMovement.objects, CashierShiftMovement.objects.none)
-        with mock.patch.object(
-                CashierShiftMovement.objects, "filter", side_effect=flaky):
+            shift=shift,
+            direction=CashierShiftMovement.Direction.IN,
+            amount=Decimal("5.00"),
+            reason="并发补入",
+            idempotency_key="wbb-cash-race-001",
+            created_by=self.operator,
+        )
+        flaky = _flaky_first_filter(CashierShiftMovement.objects, CashierShiftMovement.objects.none)
+        with mock.patch.object(CashierShiftMovement.objects, "filter", side_effect=flaky):
             replay, created = BillingService.record_shift_movement(
-                shift_id=shift.pk, direction="IN", amount="5.00",
-                reason="并发补入", created_by=self.operator,
-                idempotency_key="wbb-cash-race-001")
+                shift_id=shift.pk,
+                direction="IN",
+                amount="5.00",
+                reason="并发补入",
+                created_by=self.operator,
+                idempotency_key="wbb-cash-race-001",
+            )
         self.assertFalse(created)
         self.assertEqual(replay.pk, existing.pk)
         self.assertEqual(CashierShiftMovement.objects.filter(shift=shift).count(), 1)
 
     def test_close_shift_accepts_null_reason_when_cash_balances(self):
         shift, _ = BillingService.open_shift(
-            property_obj=self.property, cashier=self.operator,
-            opening_cash="20.00")
+            property_obj=self.property, cashier=self.operator, opening_cash="20.00"
+        )
         closed = BillingService.close_shift(
-            property_obj=self.property, shift_id=shift.pk,
-            actual_cash="20.00", closed_by=self.operator,
-            variance_reason=None)
+            property_obj=self.property,
+            shift_id=shift.pk,
+            actual_cash="20.00",
+            closed_by=self.operator,
+            variance_reason=None,
+        )
         self.assertEqual(closed.variance, Decimal("0.00"))
         self.assertEqual(closed.variance_reason, "")
 
     def test_non_cash_payment_is_not_counted_in_cash_shift(self):
         reservation = self._make_reservation("WBBCASHSHIFT002")
         shift, _ = BillingService.open_shift(
-            property_obj=self.property, cashier=self.operator,
-            opening_cash="25.00")
+            property_obj=self.property, cashier=self.operator, opening_cash="25.00"
+        )
         payment = BillingService.collect_payment(
-            property_obj=self.property, reservation=reservation,
-            amount="80.00", method="CARD", collected_by=self.operator,
-            reference="WBB-CARD-PAY-001")
+            property_obj=self.property,
+            reservation=reservation,
+            amount="80.00",
+            method="CARD",
+            collected_by=self.operator,
+            reference="WBB-CARD-PAY-001",
+        )
         self.assertIsNone(payment.cashier_shift_id)
 
         closed = BillingService.close_shift(
-            property_obj=self.property, shift_id=shift.pk,
-            actual_cash="25.00", closed_by=self.operator)
+            property_obj=self.property,
+            shift_id=shift.pk,
+            actual_cash="25.00",
+            closed_by=self.operator,
+        )
         self.assertEqual(closed.expected_cash, Decimal("25.00"))
 
     def test_closed_shift_rejects_new_cash_movement(self):
         shift, _ = BillingService.open_shift(
-            property_obj=self.property, cashier=self.operator,
-            opening_cash="10.00")
+            property_obj=self.property, cashier=self.operator, opening_cash="10.00"
+        )
         BillingService.close_shift(
-            property_obj=self.property, shift_id=shift.pk,
-            actual_cash="10.00", closed_by=self.operator)
+            property_obj=self.property,
+            shift_id=shift.pk,
+            actual_cash="10.00",
+            closed_by=self.operator,
+        )
         with self.assertRaises(ValueError):
             BillingService.record_shift_movement(
-                shift_id=shift.pk, direction="OUT", amount="1.00",
-                reason="关班后不得补录", created_by=self.operator,
-                idempotency_key="wbb-cash-closed-001")
+                shift_id=shift.pk,
+                direction="OUT",
+                amount="1.00",
+                reason="关班后不得补录",
+                created_by=self.operator,
+                idempotency_key="wbb-cash-closed-001",
+            )
         with self.assertRaises(ValidationError):
             CashierShiftMovement.objects.create(
-                shift=shift, direction=CashierShiftMovement.Direction.OUT,
-                amount=Decimal("1.00"), reason="ORM 直写也不得关班后补录",
+                shift=shift,
+                direction=CashierShiftMovement.Direction.OUT,
+                amount=Decimal("1.00"),
+                reason="ORM 直写也不得关班后补录",
                 idempotency_key="wbb-cash-closed-direct-001",
-                created_by=self.operator)
+                created_by=self.operator,
+            )
+
 
 class RefundDatabaseInvariantTests(WhiteboxBillingBase):
     """退款 SoD 与执行状态不只依赖 service；数据库约束必须阻止 QuerySet.update 绕过。"""
@@ -1024,14 +1365,25 @@ class RefundDatabaseInvariantTests(WhiteboxBillingBase):
     def _pending_refund(self):
         reservation = self._make_reservation("WBBDBREFUND01")
         payment = Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="frontdesk_manual", provider_ref="WBB-DB-PAY-001",
-            method="CARD", amount=Decimal("100.00"), currency="CNY",
-            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="frontdesk_manual",
+            provider_ref="WBB-DB-PAY-001",
+            method="CARD",
+            amount=Decimal("100.00"),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
         refund, created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="25.00", reason="数据库 SoD 约束测试",
-            requested_by=self.operator, idempotency_key="wbb-db-refund-001")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="25.00",
+            reason="数据库 SoD 约束测试",
+            requested_by=self.operator,
+            idempotency_key="wbb-db-refund-001",
+        )
         self.assertTrue(created)
         self.assertFalse(refund.legacy_workflow)
         return refund
@@ -1043,14 +1395,15 @@ class RefundDatabaseInvariantTests(WhiteboxBillingBase):
                 QuerySet.update(
                     Refund.objects.filter(pk=refund.pk),
                     status=Refund.Status.APPROVED,
-                    approved_by_id=self.operator.pk)
+                    approved_by_id=self.operator.pk,
+                )
 
     def test_database_rejects_approver_as_executor_even_when_model_save_is_bypassed(self):
         refund = self._pending_refund()
         approver = User.objects.create_user(username="wbb-db-approver")
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=refund.pk,
-            approved_by=approver)
+            property_obj=self.property, refund_id=refund.pk, approved_by=approver
+        )
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 QuerySet.update(
@@ -1058,7 +1411,8 @@ class RefundDatabaseInvariantTests(WhiteboxBillingBase):
                     status=Refund.Status.SUCCEEDED,
                     executed_by_id=approver.pk,
                     executed_at=timezone.now(),
-                    execution_idempotency_key="wbb-db-bypass-exec-001")
+                    execution_idempotency_key="wbb-db-bypass-exec-001",
+                )
 
     def test_model_rejects_skipping_approval_and_execution_steps(self):
         refund = self._pending_refund()
@@ -1069,55 +1423,70 @@ class RefundDatabaseInvariantTests(WhiteboxBillingBase):
         with self.assertRaises(ValidationError):
             refund.save()
 
-
-
-
     def test_cash_refund_cannot_overdraw_execution_shift(self):
         reservation = self._make_reservation("WBBCASHSHIFT003")
         applicant_shift, _ = BillingService.open_shift(
-            property_obj=self.property, cashier=self.operator,
-            opening_cash="0.00")
+            property_obj=self.property, cashier=self.operator, opening_cash="0.00"
+        )
         payment = BillingService.collect_payment(
-            property_obj=self.property, reservation=reservation,
-            amount="100.00", method="CASH", collected_by=self.operator,
-            reference="WBB-CASH-PAY-002")
+            property_obj=self.property,
+            reservation=reservation,
+            amount="100.00",
+            method="CASH",
+            collected_by=self.operator,
+            reference="WBB-CASH-PAY-002",
+        )
         self.assertEqual(payment.cashier_shift_id, applicant_shift.pk)
 
         approver = User.objects.create_user(username="wbb-cash-approver-2")
         executor = User.objects.create_user(username="wbb-cash-executor-2")
         execution_shift, _ = BillingService.open_shift(
-            property_obj=self.property, cashier=executor,
-            opening_cash="0.00")
+            property_obj=self.property, cashier=executor, opening_cash="0.00"
+        )
         refund, _ = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="20.00", reason="现金退款余额不足测试",
-            requested_by=self.operator, idempotency_key="wbb-cash-refund-002")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="20.00",
+            reason="现金退款余额不足测试",
+            requested_by=self.operator,
+            idempotency_key="wbb-cash-refund-002",
+        )
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=refund.pk,
-            approved_by=approver)
+            property_obj=self.property, refund_id=refund.pk, approved_by=approver
+        )
 
         with self.assertRaises(ValueError):
             BillingService.execute_refund(
-                property_obj=self.property, refund_id=refund.pk,
-                executed_by=executor, confirm_refund_paid=True,
-                idempotency_key="wbb-cash-refund-exec-002")
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference=f"refund:{refund.provider_ref}").exists())
+                property_obj=self.property,
+                refund_id=refund.pk,
+                executed_by=executor,
+                confirm_refund_paid=True,
+                idempotency_key="wbb-cash-refund-exec-002",
+            )
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference=f"refund:{refund.provider_ref}").exists()
+        )
 
         BillingService.record_shift_movement(
-            shift_id=execution_shift.pk, direction="IN", amount="20.00",
-            reason="实际领取现金备用金", created_by=executor,
-            idempotency_key="wbb-cash-fund-002")
+            shift_id=execution_shift.pk,
+            direction="IN",
+            amount="20.00",
+            reason="实际领取现金备用金",
+            created_by=executor,
+            idempotency_key="wbb-cash-fund-002",
+        )
         executed, created = BillingService.execute_refund(
-            property_obj=self.property, refund_id=refund.pk,
-            executed_by=executor, confirm_refund_paid=True,
-            idempotency_key="wbb-cash-refund-exec-002")
+            property_obj=self.property,
+            refund_id=refund.pk,
+            executed_by=executor,
+            confirm_refund_paid=True,
+            idempotency_key="wbb-cash-refund-exec-002",
+        )
         self.assertTrue(created)
         self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
         self.assertEqual(executed.execution_shift_id, execution_shift.pk)
-        self.assertEqual(
-            BillingService.cash_shift_expected_cash(execution_shift),
-            Decimal("0.00"))
+        self.assertEqual(BillingService.cash_shift_expected_cash(execution_shift), Decimal("0.00"))
+
 
 class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
     """防止 ORM bulk update/delete 绕过财务模型的实例级不可变保护。"""
@@ -1125,10 +1494,17 @@ class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
     def test_payment_refund_and_cash_movement_reject_bulk_mutation(self):
         reservation = self._make_reservation("WBBIMMUTABLE001")
         payment = Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="frontdesk_manual", provider_ref="WBB-IMM-PAY-001",
-            method="CARD", amount=Decimal("100.00"), currency="CNY",
-            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="frontdesk_manual",
+            provider_ref="WBB-IMM-PAY-001",
+            method="CARD",
+            amount=Decimal("100.00"),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
         with self.assertRaises(ValidationError):
             Payment.objects.filter(pk=payment.pk).update(amount=Decimal("99.00"))
         with self.assertRaises(ValidationError):
@@ -1136,16 +1512,31 @@ class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
         with self.assertRaises(ValidationError):
             Payment.objects.bulk_update([payment], ["status"])
         with self.assertRaises(ValidationError):
-            Payment.objects.bulk_create([Payment(
-                property=self.property, reservation=reservation, folio=self.folio,
-                provider="frontdesk_manual", provider_ref="WBB-IMM-PAY-002",
-                method="CARD", amount=Decimal("10.00"), currency="CNY")])
+            Payment.objects.bulk_create(
+                [
+                    Payment(
+                        property=self.property,
+                        reservation=reservation,
+                        folio=self.folio,
+                        provider="frontdesk_manual",
+                        provider_ref="WBB-IMM-PAY-002",
+                        method="CARD",
+                        amount=Decimal("10.00"),
+                        currency="CNY",
+                    )
+                ]
+            )
 
         refund = Refund.objects.create(
-            property=self.property, payment=payment, amount=Decimal("20.00"),
-            currency="CNY", reason="不可变事实测试",
+            property=self.property,
+            payment=payment,
+            amount=Decimal("20.00"),
+            currency="CNY",
+            reason="不可变事实测试",
             idempotency_key="wbb-immutable-refund-001",
-            provider_ref="WBB-IMM-RFD-001", requested_by=self.operator)
+            provider_ref="WBB-IMM-RFD-001",
+            requested_by=self.operator,
+        )
         with self.assertRaises(ValidationError):
             Refund.objects.filter(pk=refund.pk).update(amount=Decimal("19.00"))
         with self.assertRaises(ValidationError):
@@ -1156,22 +1547,30 @@ class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
             refund.save()
         with self.assertRaises(ValidationError):
             Refund.objects.create(
-                property=self.property, payment=payment,
-                amount=Decimal("10.00"), currency="CNY",
-                reason="不得伪造历史", idempotency_key="wbb-legacy-forgery",
-                provider_ref="WBB-IMM-RFD-002", requested_by=self.operator,
-                legacy_workflow=True)
+                property=self.property,
+                payment=payment,
+                amount=Decimal("10.00"),
+                currency="CNY",
+                reason="不得伪造历史",
+                idempotency_key="wbb-legacy-forgery",
+                provider_ref="WBB-IMM-RFD-002",
+                requested_by=self.operator,
+                legacy_workflow=True,
+            )
 
         shift, _ = BillingService.open_shift(
-            property_obj=self.property, cashier=self.operator,
-            opening_cash="10.00")
+            property_obj=self.property, cashier=self.operator, opening_cash="10.00"
+        )
         movement, _ = BillingService.record_shift_movement(
-            shift_id=shift.pk, direction="IN", amount="1.00",
-            reason="不可变现金变动测试", created_by=self.operator,
-            idempotency_key="wbb-immutable-movement-001")
+            shift_id=shift.pk,
+            direction="IN",
+            amount="1.00",
+            reason="不可变现金变动测试",
+            created_by=self.operator,
+            idempotency_key="wbb-immutable-movement-001",
+        )
         with self.assertRaises(ValidationError):
-            CashierShiftMovement.objects.filter(pk=movement.pk).update(
-                amount=Decimal("2.00"))
+            CashierShiftMovement.objects.filter(pk=movement.pk).update(amount=Decimal("2.00"))
         with self.assertRaises(ValidationError):
             CashierShiftMovement.objects.filter(pk=movement.pk).delete()
         with self.assertRaises(ValidationError):
@@ -1182,21 +1581,31 @@ class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
     def test_legacy_refund_rows_cannot_be_completed_by_application_code(self):
         reservation = self._make_reservation("WBBLEGACYRFD001")
         payment = Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="frontdesk_manual", provider_ref="WBB-LEGACY-PAY-001",
-            method="CARD", amount=Decimal("100.00"), currency="CNY",
-            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="frontdesk_manual",
+            provider_ref="WBB-LEGACY-PAY-001",
+            method="CARD",
+            amount=Decimal("100.00"),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
         refund = Refund.objects.create(
-            property=self.property, payment=payment, amount=Decimal("20.00"),
-            currency="CNY", reason="历史退款只读测试",
+            property=self.property,
+            payment=payment,
+            amount=Decimal("20.00"),
+            currency="CNY",
+            reason="历史退款只读测试",
             idempotency_key="wbb-legacy-readonly-001",
-            provider_ref="WBB-LEGACY-RFD-001", requested_by=self.operator)
+            provider_ref="WBB-LEGACY-RFD-001",
+            requested_by=self.operator,
+        )
         # 模拟 0016 数据迁移标记；绕过应用 manager 仅用于构造历史数据库状态。
-        QuerySet.update(
-            Refund.objects.filter(pk=refund.pk), legacy_workflow=True)
+        QuerySet.update(Refund.objects.filter(pk=refund.pk), legacy_workflow=True)
         refund.refresh_from_db()
-        refund.approved_by = User.objects.create_user(
-            username="wbb-legacy-approver")
+        refund.approved_by = User.objects.create_user(username="wbb-legacy-approver")
         refund.status = Refund.Status.APPROVED
         with self.assertRaises(ValidationError):
             refund.save()
@@ -1204,15 +1613,27 @@ class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
     def test_nonpending_refund_requires_approval_record_in_model_and_database(self):
         reservation = self._make_reservation("WBBNOAPPROVAL001")
         payment = Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="frontdesk_manual", provider_ref="WBB-NOAPP-PAY-001",
-            method="CARD", amount=Decimal("100.00"), currency="CNY",
-            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="frontdesk_manual",
+            provider_ref="WBB-NOAPP-PAY-001",
+            method="CARD",
+            amount=Decimal("100.00"),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
         refund = Refund.objects.create(
-            property=self.property, payment=payment, amount=Decimal("20.00"),
-            currency="CNY", reason="审批关联约束测试",
+            property=self.property,
+            payment=payment,
+            amount=Decimal("20.00"),
+            currency="CNY",
+            reason="审批关联约束测试",
             idempotency_key="wbb-noapproval-001",
-            provider_ref="WBB-NOAPP-RFD-001", requested_by=self.operator)
+            provider_ref="WBB-NOAPP-RFD-001",
+            requested_by=self.operator,
+        )
         approver = User.objects.create_user(username="wbb-noapproval-approver")
         refund.approved_by = approver
         refund.status = Refund.Status.APPROVED
@@ -1223,46 +1644,54 @@ class ImmutableFinancialFactManagerTests(WhiteboxBillingBase):
                 QuerySet.update(
                     Refund.objects.filter(pk=refund.pk),
                     status=Refund.Status.APPROVED,
-                    approved_by_id=approver.pk)
+                    approved_by_id=approver.pk,
+                )
 
     def test_cash_movement_direction_is_database_constrained(self):
         shift, _ = BillingService.open_shift(
-            property_obj=self.property, cashier=self.operator,
-            opening_cash="10.00")
+            property_obj=self.property, cashier=self.operator, opening_cash="10.00"
+        )
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 CashierShiftMovement.objects.create(
-                    shift=shift, direction="XX", amount=Decimal("1.00"),
-                    reason="非法方向", idempotency_key="wbb-invalid-direction",
-                    created_by=self.operator)
+                    shift=shift,
+                    direction="XX",
+                    amount=Decimal("1.00"),
+                    reason="非法方向",
+                    idempotency_key="wbb-invalid-direction",
+                    created_by=self.operator,
+                )
 
     def test_cashier_shift_nonnegative_cash_is_database_constrained(self):
         invalid = CashierShift(
-            property=self.property, cashier=self.operator,
-            opening_cash=Decimal("-1.00"))
+            property=self.property, cashier=self.operator, opening_cash=Decimal("-1.00")
+        )
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 DjangoModel.save(invalid)
+
 
 class ApprovalRecordImmutabilityTests(WhiteboxBillingBase):
     """审批申请参数固定；审批状态只能经 ApprovalService 单向推进。"""
 
     def test_approval_request_facts_cannot_be_changed_through_save_or_queryset(self):
         record, created = ApprovalService.request_approval(
-            property_obj=self.property, action_code="billing.refund",
-            entity_type="Refund", entity_id="approval-immutable-001",
-            requested_by=self.operator, reason="不可变审批申请测试")
+            property_obj=self.property,
+            action_code="billing.refund",
+            entity_type="Refund",
+            entity_id="approval-immutable-001",
+            requested_by=self.operator,
+            reason="不可变审批申请测试",
+        )
         self.assertTrue(created)
         record.reason = "篡改申请原因"
         with self.assertRaises(ValidationError):
             record.save()
         with self.assertRaises(ValidationError):
-            ApprovalRecord.objects.filter(pk=record.pk).update(
-                reason="QuerySet 绕过尝试")
+            ApprovalRecord.objects.filter(pk=record.pk).update(reason="QuerySet 绕过尝试")
         record.refresh_from_db()
         self.assertEqual(record.reason, "不可变审批申请测试")
         self.assertEqual(record.status, ApprovalRecord.Status.PENDING)
-
 
 
 class CashRefundShiftOwnershipTests(WhiteboxBillingBase):
@@ -1275,52 +1704,70 @@ class CashRefundShiftOwnershipTests(WhiteboxBillingBase):
     def test_cash_refund_cannot_execute_on_another_persons_shift(self):
         reservation = self._make_reservation("WBSHIFT001")
         payment = Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="frontdesk_manual", provider_ref="WBSHIFT-PAY-001",
-            method="CASH", amount=Decimal("100.00"), currency="CNY",
-            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="frontdesk_manual",
+            provider_ref="WBSHIFT-PAY-001",
+            method="CASH",
+            amount=Decimal("100.00"),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
         approver = User.objects.create_user(username="wbb-shift-approver")
         executor = User.objects.create_user(username="wbb-shift-executor")
         other_cashier = User.objects.create_user(username="wbb-shift-other")
 
         refund, created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="30.00", reason="班次归属负向测试",
-            requested_by=self.operator, idempotency_key="wbb-shift-001")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="30.00",
+            reason="班次归属负向测试",
+            requested_by=self.operator,
+            idempotency_key="wbb-shift-001",
+        )
         self.assertTrue(created)
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=refund.pk,
-            approved_by=approver)
+            property_obj=self.property, refund_id=refund.pk, approved_by=approver
+        )
 
         # 他人（非执行人）开立 OPEN 班次并存入现金
         other_shift, _other_created = BillingService.open_shift(
-            property_obj=self.property, cashier=other_cashier,
-            opening_cash=Decimal("500.00"))
+            property_obj=self.property, cashier=other_cashier, opening_cash=Decimal("500.00")
+        )
         self.assertEqual(other_shift.cashier_id, other_cashier.pk)
 
         ledger_before = LedgerEntry.objects.filter(
-            reference=f"refund:{refund.provider_ref}").count()
+            reference=f"refund:{refund.provider_ref}"
+        ).count()
         with self.assertRaises(ValueError):
             BillingService.execute_refund(
-                property_obj=self.property, refund_id=refund.pk,
-                executed_by=executor, confirm_refund_paid=True,
-                idempotency_key="wbb-shift-exec-1")
+                property_obj=self.property,
+                refund_id=refund.pk,
+                executed_by=executor,
+                confirm_refund_paid=True,
+                idempotency_key="wbb-shift-exec-1",
+            )
         refund.refresh_from_db()
-        self.assertEqual(refund.status, Refund.Status.APPROVED,
-                         "借班失败后退款停留 APPROVED，不得部分执行")
+        self.assertEqual(
+            refund.status, Refund.Status.APPROVED, "借班失败后退款停留 APPROVED，不得部分执行"
+        )
         self.assertIsNone(refund.execution_shift_id)
-        ledger_after = LedgerEntry.objects.filter(
-            reference=f"refund:{refund.provider_ref}").count()
+        ledger_after = LedgerEntry.objects.filter(reference=f"refund:{refund.provider_ref}").count()
         self.assertEqual(ledger_before, ledger_after, "零账本副作用")
 
         # 执行人开立本人班次后即可正常执行（归属语义正向验证）
         BillingService.open_shift(
-            property_obj=self.property, cashier=executor,
-            opening_cash=Decimal("500.00"))
+            property_obj=self.property, cashier=executor, opening_cash=Decimal("500.00")
+        )
         executed, created = BillingService.execute_refund(
-            property_obj=self.property, refund_id=refund.pk,
-            executed_by=executor, confirm_refund_paid=True,
-            idempotency_key="wbb-shift-exec-2")
+            property_obj=self.property,
+            refund_id=refund.pk,
+            executed_by=executor,
+            confirm_refund_paid=True,
+            idempotency_key="wbb-shift-exec-2",
+        )
         self.assertTrue(created)
         self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
         self.assertEqual(executed.execution_shift.cashier_id, executor.pk)
@@ -1344,10 +1791,17 @@ class ConcurrencyCurrentReadTests(WhiteboxBillingBase):
     def _make_card_payment(self, booking_no, amount):
         reservation = self._make_reservation(booking_no, total="300.00")
         return Payment.objects.create(
-            property=self.property, reservation=reservation, folio=self.folio,
-            provider="frontdesk_manual", provider_ref=booking_no + "-PAY",
-            method="CARD", amount=Decimal(amount), currency="CNY",
-            status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
+            property=self.property,
+            reservation=reservation,
+            folio=self.folio,
+            provider="frontdesk_manual",
+            provider_ref=booking_no + "-PAY",
+            method="CARD",
+            amount=Decimal(amount),
+            currency="CNY",
+            status=Payment.Status.SUCCEEDED,
+            paid_at=timezone.now(),
+        )
 
     def test_execute_refund_totals_see_concurrent_refunds(self):
         """CR-01/CR-02：退款执行后的支付状态汇总必须基于退款事实当前读。"""
@@ -1356,22 +1810,35 @@ class ConcurrencyCurrentReadTests(WhiteboxBillingBase):
         approver2 = User.objects.create_user(username="wbcurr-approver-2")
         executor = User.objects.create_user(username="wbcurr-executor")
         r1, _created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="70.00", reason="当前读回归-本笔",
-            requested_by=self.operator, idempotency_key="wbcurr-r1")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="70.00",
+            reason="当前读回归-本笔",
+            requested_by=self.operator,
+            idempotency_key="wbcurr-r1",
+        )
         r2, _created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="30.00", reason="当前读回归-并发笔",
-            requested_by=self.operator, idempotency_key="wbcurr-r2")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="30.00",
+            reason="当前读回归-并发笔",
+            requested_by=self.operator,
+            idempotency_key="wbcurr-r2",
+        )
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=r1.pk, approved_by=approver1)
+            property_obj=self.property, refund_id=r1.pk, approved_by=approver1
+        )
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=r2.pk, approved_by=approver2)
+            property_obj=self.property, refund_id=r2.pk, approved_by=approver2
+        )
         BillingService.execute_refund(
-            property_obj=self.property, refund_id=r2.pk,
-            executed_by=executor, confirm_refund_paid=True,
+            property_obj=self.property,
+            refund_id=r2.pk,
+            executed_by=executor,
+            confirm_refund_paid=True,
             execution_reference="BANK-CURR-2",
-            idempotency_key="wbcurr-exec-2")
+            idempotency_key="wbcurr-exec-2",
+        )
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
 
@@ -1382,107 +1849,130 @@ class ConcurrencyCurrentReadTests(WhiteboxBillingBase):
             # 但本事务的普通读看不到 r2。
             return real_filter(*args, **kwargs).exclude(pk=r2.pk)
 
-        with mock.patch.object(Refund.objects, "filter",
-                               side_effect=stale_snapshot_filter):
+        with mock.patch.object(Refund.objects, "filter", side_effect=stale_snapshot_filter):
             executed, created = BillingService.execute_refund(
-                property_obj=self.property, refund_id=r1.pk,
-                executed_by=executor, confirm_refund_paid=True,
+                property_obj=self.property,
+                refund_id=r1.pk,
+                executed_by=executor,
+                confirm_refund_paid=True,
                 execution_reference="BANK-CURR-1",
-                idempotency_key="wbcurr-exec-1")
+                idempotency_key="wbcurr-exec-1",
+            )
         self.assertTrue(created)
         self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
         payment.refresh_from_db()
         # 70 + 30 = 100：当前读必须看到并发已执行的 r2，支付应为“已退款”。
         self.assertEqual(payment.status, Payment.Status.REFUNDED)
         self.assertEqual(
-            LedgerEntry.objects.filter(
-                reference=f"refund:{r1.provider_ref}").count(), 1)
+            LedgerEntry.objects.filter(reference=f"refund:{r1.provider_ref}").count(), 1
+        )
 
     def test_collect_payment_balance_uses_current_reads_after_folio_lock(self):
         """CR-03：收款应收余额汇总在锁定账单后必须用当前读，防止超额收款。"""
         reservation = self._make_reservation("WBCURR002", total="300.00")
         BillingService.collect_payment(
-            property_obj=self.property, reservation=reservation,
-            amount=Decimal("100.00"), method="CARD",
-            collected_by=self.operator, reference="WBCURR-PAY-A")
-        concurrent_entry = LedgerEntry.objects.get(
-            reference="payment:WBCURR-PAY-A")
+            property_obj=self.property,
+            reservation=reservation,
+            amount=Decimal("100.00"),
+            method="CARD",
+            collected_by=self.operator,
+            reference="WBCURR-PAY-A",
+        )
+        concurrent_entry = LedgerEntry.objects.get(reference="payment:WBCURR-PAY-A")
         # 并发收款已提交 100：真实应收 = 300 - 100 = 200；旧快照看不到该凭证。
         entries_manager = type(self.folio.entries)
         real_values_list = entries_manager.values_list
         real_filter = entries_manager.filter
 
         def stale_values_list(mgr, *args, **kwargs):
-            return real_values_list(mgr, *args, **kwargs).exclude(
-                pk=concurrent_entry.pk)
+            return real_values_list(mgr, *args, **kwargs).exclude(pk=concurrent_entry.pk)
 
         def stale_filter(mgr, *args, **kwargs):
-            return real_filter(mgr, *args, **kwargs).exclude(
-                pk=concurrent_entry.pk)
+            return real_filter(mgr, *args, **kwargs).exclude(pk=concurrent_entry.pk)
 
-        with mock.patch.object(entries_manager, "values_list",
-                               stale_values_list), \
-                mock.patch.object(entries_manager, "filter", stale_filter):
+        with (
+            mock.patch.object(entries_manager, "values_list", stale_values_list),
+            mock.patch.object(entries_manager, "filter", stale_filter),
+        ):
             with self.assertRaises(ValueError):
                 BillingService.collect_payment(
-                    property_obj=self.property, reservation=reservation,
-                    amount=Decimal("250.00"), method="CARD",
-                    collected_by=self.operator, reference="WBCURR-PAY-B")
-        self.assertFalse(
-            Payment.objects.filter(provider_ref="WBCURR-PAY-B").exists())
-        self.assertFalse(
-            LedgerEntry.objects.filter(reference="payment:WBCURR-PAY-B").exists())
+                    property_obj=self.property,
+                    reservation=reservation,
+                    amount=Decimal("250.00"),
+                    method="CARD",
+                    collected_by=self.operator,
+                    reference="WBCURR-PAY-B",
+                )
+        self.assertFalse(Payment.objects.filter(provider_ref="WBCURR-PAY-B").exists())
+        self.assertFalse(LedgerEntry.objects.filter(reference="payment:WBCURR-PAY-B").exists())
 
     def test_collect_payment_replay_survives_refund_pending_state(self):
         """CR-05：收款参考号重放在支付进入退款处理中后仍必须幂等返回原支付。"""
         reservation = self._make_reservation("WBCURR003", total="300.00")
         kwargs = dict(
-            property_obj=self.property, reservation=reservation,
-            amount=Decimal("100.00"), method="CARD",
-            collected_by=self.operator, reference="WBCURR-PAY-C")
+            property_obj=self.property,
+            reservation=reservation,
+            amount=Decimal("100.00"),
+            method="CARD",
+            collected_by=self.operator,
+            reference="WBCURR-PAY-C",
+        )
         payment = BillingService.collect_payment(**kwargs)
         refund, created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment.pk,
-            amount="30.00", reason="重放状态回归",
-            requested_by=self.operator, idempotency_key="wbcurr-refund-c")
+            property_obj=self.property,
+            payment_id=payment.pk,
+            amount="30.00",
+            reason="重放状态回归",
+            requested_by=self.operator,
+            idempotency_key="wbcurr-refund-c",
+        )
         self.assertTrue(created)
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.REFUND_PENDING)
         replayed = BillingService.collect_payment(**kwargs)
         self.assertEqual(replayed.pk, payment.pk)
-        self.assertEqual(Payment.objects.filter(
-            provider_ref="WBCURR-PAY-C").count(), 1)
-        self.assertEqual(
-            LedgerEntry.objects.filter(
-                reference="payment:WBCURR-PAY-C").count(), 1)
+        self.assertEqual(Payment.objects.filter(provider_ref="WBCURR-PAY-C").count(), 1)
+        self.assertEqual(LedgerEntry.objects.filter(reference="payment:WBCURR-PAY-C").count(), 1)
 
     def test_deposit_refund_locks_reservation_before_balance_update(self):
         """CR-04：押金退款回减预订押金累计前必须锁定预订行（防并发丢失更新）。"""
         reservation = self._make_reservation("WBCURR004", total="300.00")
         payment1, created1 = BillingService.record_deposit(
-            property_obj=self.property, reservation=reservation,
-            amount=Decimal("100.00"), method="CARD",
-            idempotency_key="wbcurr-dep-1", received_by=self.operator)
+            property_obj=self.property,
+            reservation=reservation,
+            amount=Decimal("100.00"),
+            method="CARD",
+            idempotency_key="wbcurr-dep-1",
+            received_by=self.operator,
+        )
         self.assertTrue(created1)
         payment2, created2 = BillingService.record_deposit(
-            property_obj=self.property, reservation=reservation,
-            amount=Decimal("30.00"), method="CARD",
-            idempotency_key="wbcurr-dep-2", received_by=self.operator)
+            property_obj=self.property,
+            reservation=reservation,
+            amount=Decimal("30.00"),
+            method="CARD",
+            idempotency_key="wbcurr-dep-2",
+            received_by=self.operator,
+        )
         self.assertTrue(created2)
         # 模拟并发事实：另一笔押金登记在本事务快照之后提交，累计押金 160。
-        Reservation.objects.filter(pk=reservation.pk).update(
-            deposit_amount=Decimal("160.00"))
+        Reservation.objects.filter(pk=reservation.pk).update(deposit_amount=Decimal("160.00"))
         approver = User.objects.create_user(username="wbcurr-dep-approver")
         executor = User.objects.create_user(username="wbcurr-dep-executor")
         refund, created = BillingService.request_refund(
-            property_obj=self.property, payment_id=payment1.pk,
+            property_obj=self.property,
+            payment_id=payment1.pk,
             # WB-030/DEC-DEP-01：押金按房费 30% 服务端强制计算（300×30%=90），
             # 调用方传入 100 不生效；全退 payment1 即退 90。
-            amount="90.00", reason="押金全退当前读回归",
-            requested_by=self.operator, idempotency_key="wbcurr-dep-ref-1")
+            amount="90.00",
+            reason="押金全退当前读回归",
+            requested_by=self.operator,
+            idempotency_key="wbcurr-dep-ref-1",
+        )
         self.assertTrue(created)
         BillingService.approve_refund(
-            property_obj=self.property, refund_id=refund.pk, approved_by=approver)
+            property_obj=self.property, refund_id=refund.pk, approved_by=approver
+        )
 
         real_select_for_update = QuerySet.select_for_update
         locked_models = []
@@ -1491,14 +1981,17 @@ class ConcurrencyCurrentReadTests(WhiteboxBillingBase):
             locked_models.append(qs.model)
             return real_select_for_update(qs, *args, **kwargs)
 
-        with mock.patch.object(QuerySet, "select_for_update",
-                               autospec=True,
-                               side_effect=spy_select_for_update):
+        with mock.patch.object(
+            QuerySet, "select_for_update", autospec=True, side_effect=spy_select_for_update
+        ):
             executed, created = BillingService.execute_refund(
-                property_obj=self.property, refund_id=refund.pk,
-                executed_by=executor, confirm_refund_paid=True,
+                property_obj=self.property,
+                refund_id=refund.pk,
+                executed_by=executor,
+                confirm_refund_paid=True,
                 execution_reference="BANK-DEP-1",
-                idempotency_key="wbcurr-dep-exec-1")
+                idempotency_key="wbcurr-dep-exec-1",
+            )
         self.assertTrue(created)
         self.assertEqual(executed.status, Refund.Status.SUCCEEDED)
         # 回减押金前必须以当前读锁定预订行，否则会覆盖并发押金登记。

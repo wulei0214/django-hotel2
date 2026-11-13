@@ -6,24 +6,23 @@ import django.db.models.deletion
 
 def mark_legacy_reversals(apps, schema_editor):
     LedgerEntry = apps.get_model("billing", "LedgerEntry")
-    LedgerEntry._base_manager.filter(
-        entry_type="REVERSAL", approval_record__isnull=True
-    ).update(legacy_workflow=True)
+    LedgerEntry._base_manager.filter(entry_type="REVERSAL", approval_record__isnull=True).update(
+        legacy_workflow=True
+    )
 
 
 def unmark_legacy_reversals(apps, schema_editor):
     LedgerEntry = apps.get_model("billing", "LedgerEntry")
-    LedgerEntry._base_manager.filter(
-        entry_type="REVERSAL", legacy_workflow=True
-    ).update(legacy_workflow=False)
+    LedgerEntry._base_manager.filter(entry_type="REVERSAL", legacy_workflow=True).update(
+        legacy_workflow=False
+    )
 
 
 def grant_reversal_sod_permissions(apps, schema_editor):
     Group = apps.get_model("auth", "Group")
     Permission = apps.get_model("auth", "Permission")
     ContentType = apps.get_model("contenttypes", "ContentType")
-    content_type, _ = ContentType.objects.get_or_create(
-        app_label="billing", model="ledgerentry")
+    content_type, _ = ContentType.objects.get_or_create(app_label="billing", model="ledgerentry")
     execute_permission, _ = Permission.objects.get_or_create(
         content_type=content_type,
         codename="reverse_entry",
@@ -55,14 +54,15 @@ def reverse_reversal_sod_permissions(apps, schema_editor):
     Group = apps.get_model("auth", "Group")
     Permission = apps.get_model("auth", "Permission")
     ContentType = apps.get_model("contenttypes", "ContentType")
-    content_type = ContentType.objects.filter(
-        app_label="billing", model="ledgerentry").first()
+    content_type = ContentType.objects.filter(app_label="billing", model="ledgerentry").first()
     if content_type is None:
         return
     execute_permission = Permission.objects.filter(
-        content_type=content_type, codename="reverse_entry").first()
+        content_type=content_type, codename="reverse_entry"
+    ).first()
     approve_permission = Permission.objects.filter(
-        content_type=content_type, codename="reversal_approve").first()
+        content_type=content_type, codename="reversal_approve"
+    ).first()
     if execute_permission:
         execute_permission.name = "可以红字冲销账本凭证（LedgerEntry）"
         execute_permission.save(update_fields=["name"])
@@ -124,14 +124,24 @@ class Migration(migrations.Migration):
             model_name="ledgerentry",
             constraint=models.CheckConstraint(
                 check=(
-                    models.Q(entry_type="REVERSAL", legacy_workflow=True,
-                             approval_record__isnull=True)
-                    | models.Q(entry_type="REVERSAL", legacy_workflow=False,
-                               approval_record__isnull=False,
-                               void_of__isnull=False, void_reason__gt="")
-                    | (~models.Q(entry_type="REVERSAL") & models.Q(
-                        legacy_workflow=False, approval_record__isnull=True,
-                        void_of__isnull=True))
+                    models.Q(
+                        entry_type="REVERSAL", legacy_workflow=True, approval_record__isnull=True
+                    )
+                    | models.Q(
+                        entry_type="REVERSAL",
+                        legacy_workflow=False,
+                        approval_record__isnull=False,
+                        void_of__isnull=False,
+                        void_reason__gt="",
+                    )
+                    | (
+                        ~models.Q(entry_type="REVERSAL")
+                        & models.Q(
+                            legacy_workflow=False,
+                            approval_record__isnull=True,
+                            void_of__isnull=True,
+                        )
+                    )
                 ),
                 name="ck_ledger_reversal_approval_link",
             ),

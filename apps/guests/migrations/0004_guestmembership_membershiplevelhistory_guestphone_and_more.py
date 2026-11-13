@@ -8,110 +8,307 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0004_businessdate_nightauditrun_and_more'),
+        ("core", "0004_businessdate_nightauditrun_and_more"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('guests', '0003_guestdocument_reveal_permission'),
+        ("guests", "0003_guestdocument_reveal_permission"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='GuestMembership',
+            name="GuestMembership",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('member_no', models.CharField(help_text='按物业唯一；旧编号冲突进入人工复核', max_length=32, verbose_name='会员编号')),
-                ('level_code', models.CharField(default='STANDARD', max_length=32, verbose_name='当前等级代码')),
-                ('status', models.CharField(choices=[('PENDING', '待生效'), ('ACTIVE', '有效'), ('SUSPENDED', '暂停'), ('EXPIRED', '已过期'), ('TERMINATED', '已终止')], default='ACTIVE', max_length=12, verbose_name='会员状态')),
-                ('joined_at', models.DateField(blank=True, null=True, verbose_name='加入日期')),
-                ('expires_at', models.DateField(blank=True, null=True, verbose_name='有效期至')),
-                ('source', models.CharField(blank=True, help_text='新建 / 历史导入 / 人工核验', max_length=32, verbose_name='来源')),
-                ('legacy_vip_id', models.CharField(blank=True, help_text='旧 hotelapp.Vip 主键；未核验记录不得计入新会员总数', max_length=32, verbose_name='旧 Vip 来源映射')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='更新时间')),
-                ('guest', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='memberships', to='guests.guest', verbose_name='客人')),
-                ('property', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='guest_memberships', to='core.property', verbose_name='所属酒店')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "member_no",
+                    models.CharField(
+                        help_text="按物业唯一；旧编号冲突进入人工复核",
+                        max_length=32,
+                        verbose_name="会员编号",
+                    ),
+                ),
+                (
+                    "level_code",
+                    models.CharField(
+                        default="STANDARD", max_length=32, verbose_name="当前等级代码"
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("PENDING", "待生效"),
+                            ("ACTIVE", "有效"),
+                            ("SUSPENDED", "暂停"),
+                            ("EXPIRED", "已过期"),
+                            ("TERMINATED", "已终止"),
+                        ],
+                        default="ACTIVE",
+                        max_length=12,
+                        verbose_name="会员状态",
+                    ),
+                ),
+                ("joined_at", models.DateField(blank=True, null=True, verbose_name="加入日期")),
+                ("expires_at", models.DateField(blank=True, null=True, verbose_name="有效期至")),
+                (
+                    "source",
+                    models.CharField(
+                        blank=True,
+                        help_text="新建 / 历史导入 / 人工核验",
+                        max_length=32,
+                        verbose_name="来源",
+                    ),
+                ),
+                (
+                    "legacy_vip_id",
+                    models.CharField(
+                        blank=True,
+                        help_text="旧 hotelapp.Vip 主键；未核验记录不得计入新会员总数",
+                        max_length=32,
+                        verbose_name="旧 Vip 来源映射",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="更新时间")),
+                (
+                    "guest",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="memberships",
+                        to="guests.guest",
+                        verbose_name="客人",
+                    ),
+                ),
+                (
+                    "property",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="guest_memberships",
+                        to="core.property",
+                        verbose_name="所属酒店",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '会员关系',
-                'verbose_name_plural': '会员关系',
+                "verbose_name": "会员关系",
+                "verbose_name_plural": "会员关系",
             },
         ),
         migrations.CreateModel(
-            name='MembershipLevelHistory',
+            name="MembershipLevelHistory",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('from_level', models.CharField(blank=True, max_length=32, verbose_name='原等级')),
-                ('to_level', models.CharField(max_length=32, verbose_name='新等级')),
-                ('reason', models.CharField(blank=True, max_length=240, verbose_name='原因')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='生效时间')),
-                ('changed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='membership_level_changes', to=settings.AUTH_USER_MODEL, verbose_name='操作者')),
-                ('membership', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='level_history', to='guests.guestmembership', verbose_name='会员关系')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("from_level", models.CharField(blank=True, max_length=32, verbose_name="原等级")),
+                ("to_level", models.CharField(max_length=32, verbose_name="新等级")),
+                ("reason", models.CharField(blank=True, max_length=240, verbose_name="原因")),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="生效时间")),
+                (
+                    "changed_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="membership_level_changes",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="操作者",
+                    ),
+                ),
+                (
+                    "membership",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="level_history",
+                        to="guests.guestmembership",
+                        verbose_name="会员关系",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '会员等级历史',
-                'verbose_name_plural': '会员等级历史',
-                'ordering': ('-created_at',),
+                "verbose_name": "会员等级历史",
+                "verbose_name_plural": "会员等级历史",
+                "ordering": ("-created_at",),
             },
         ),
         migrations.CreateModel(
-            name='GuestPhone',
+            name="GuestPhone",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('phone', models.CharField(max_length=24, verbose_name='原始号码')),
-                ('phone_normalized', models.CharField(max_length=24, verbose_name='标准化号码')),
-                ('phone_type', models.CharField(choices=[('MOBILE', '手机'), ('HOME', '家庭电话'), ('WORK', '工作电话'), ('OTHER', '其他')], default='MOBILE', max_length=8, verbose_name='号码类型')),
-                ('is_primary', models.BooleanField(default=False, verbose_name='主号码')),
-                ('shared_review_required', models.BooleanField(default=False, help_text='同一标准化号码关联多个客人时置位（V1.1 M-03 规则 2）', verbose_name='共享号码待人工核验')),
-                ('source', models.CharField(blank=True, help_text='预订 / 前台登记 / 会员 / 历史迁移', max_length=32, verbose_name='来源')),
-                ('verified_at', models.DateTimeField(blank=True, null=True, verbose_name='验证时间')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='更新时间')),
-                ('guest', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='phones', to='guests.guest', verbose_name='所属客人')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("phone", models.CharField(max_length=24, verbose_name="原始号码")),
+                ("phone_normalized", models.CharField(max_length=24, verbose_name="标准化号码")),
+                (
+                    "phone_type",
+                    models.CharField(
+                        choices=[
+                            ("MOBILE", "手机"),
+                            ("HOME", "家庭电话"),
+                            ("WORK", "工作电话"),
+                            ("OTHER", "其他"),
+                        ],
+                        default="MOBILE",
+                        max_length=8,
+                        verbose_name="号码类型",
+                    ),
+                ),
+                ("is_primary", models.BooleanField(default=False, verbose_name="主号码")),
+                (
+                    "shared_review_required",
+                    models.BooleanField(
+                        default=False,
+                        help_text="同一标准化号码关联多个客人时置位（V1.1 M-03 规则 2）",
+                        verbose_name="共享号码待人工核验",
+                    ),
+                ),
+                (
+                    "source",
+                    models.CharField(
+                        blank=True,
+                        help_text="预订 / 前台登记 / 会员 / 历史迁移",
+                        max_length=32,
+                        verbose_name="来源",
+                    ),
+                ),
+                (
+                    "verified_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="验证时间"),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="更新时间")),
+                (
+                    "guest",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="phones",
+                        to="guests.guest",
+                        verbose_name="所属客人",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '客人电话',
-                'verbose_name_plural': '客人电话',
+                "verbose_name": "客人电话",
+                "verbose_name_plural": "客人电话",
             },
         ),
         migrations.CreateModel(
-            name='GuestDocument',
+            name="GuestDocument",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('doc_type', models.CharField(choices=[('ID_CARD', '身份证'), ('PASSPORT', '护照'), ('HK_MACAO', '港澳通行证'), ('TAIWAN', '台湾通行证'), ('OTHER', '其他')], default='ID_CARD', max_length=12, verbose_name='证件类型')),
-                ('doc_no_ciphertext', models.TextField(verbose_name='证件号密文')),
-                ('doc_no_hash', models.CharField(help_text='HMAC-SHA256，用于查重，不存明文', max_length=64, verbose_name='证件号哈希')),
-                ('issuing_country', models.CharField(blank=True, default='CN', max_length=8, verbose_name='签发国家/地区')),
-                ('expiry_date', models.DateField(blank=True, null=True, verbose_name='有效期至')),
-                ('verified_at', models.DateTimeField(blank=True, null=True, verbose_name='核验时间')),
-                ('retention_until', models.DateField(blank=True, null=True, verbose_name='保留截止日')),
-                ('is_primary', models.BooleanField(default=True, verbose_name='主证件')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='更新时间')),
-                ('guest', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='documents', to='guests.guest', verbose_name='所属客人')),
-                ('verified_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='guest_documents_verified', to=settings.AUTH_USER_MODEL, verbose_name='核验人')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "doc_type",
+                    models.CharField(
+                        choices=[
+                            ("ID_CARD", "身份证"),
+                            ("PASSPORT", "护照"),
+                            ("HK_MACAO", "港澳通行证"),
+                            ("TAIWAN", "台湾通行证"),
+                            ("OTHER", "其他"),
+                        ],
+                        default="ID_CARD",
+                        max_length=12,
+                        verbose_name="证件类型",
+                    ),
+                ),
+                ("doc_no_ciphertext", models.TextField(verbose_name="证件号密文")),
+                (
+                    "doc_no_hash",
+                    models.CharField(
+                        help_text="HMAC-SHA256，用于查重，不存明文",
+                        max_length=64,
+                        verbose_name="证件号哈希",
+                    ),
+                ),
+                (
+                    "issuing_country",
+                    models.CharField(
+                        blank=True, default="CN", max_length=8, verbose_name="签发国家/地区"
+                    ),
+                ),
+                ("expiry_date", models.DateField(blank=True, null=True, verbose_name="有效期至")),
+                (
+                    "verified_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="核验时间"),
+                ),
+                (
+                    "retention_until",
+                    models.DateField(blank=True, null=True, verbose_name="保留截止日"),
+                ),
+                ("is_primary", models.BooleanField(default=True, verbose_name="主证件")),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="更新时间")),
+                (
+                    "guest",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="documents",
+                        to="guests.guest",
+                        verbose_name="所属客人",
+                    ),
+                ),
+                (
+                    "verified_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="guest_documents_verified",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="核验人",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '客人证件',
-                'verbose_name_plural': '客人证件',
+                "verbose_name": "客人证件",
+                "verbose_name_plural": "客人证件",
             },
         ),
         migrations.AddIndex(
-            model_name='guestphone',
-            index=models.Index(fields=['phone_normalized'], name='idx_guestphone_norm'),
+            model_name="guestphone",
+            index=models.Index(fields=["phone_normalized"], name="idx_guestphone_norm"),
         ),
         migrations.AddConstraint(
-            model_name='guestphone',
-            constraint=models.UniqueConstraint(condition=models.Q(('is_primary', True)), fields=('guest',), name='uq_guest_phone_primary'),
+            model_name="guestphone",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("is_primary", True)),
+                fields=("guest",),
+                name="uq_guest_phone_primary",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='guestmembership',
-            constraint=models.UniqueConstraint(fields=('property', 'member_no'), name='uq_membership_property_no'),
+            model_name="guestmembership",
+            constraint=models.UniqueConstraint(
+                fields=("property", "member_no"), name="uq_membership_property_no"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='guestmembership',
-            constraint=models.UniqueConstraint(condition=models.Q(('status', 'ACTIVE')), fields=('property', 'guest'), name='uq_membership_property_guest_active'),
+            model_name="guestmembership",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("status", "ACTIVE")),
+                fields=("property", "guest"),
+                name="uq_membership_property_guest_active",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='guestdocument',
-            constraint=models.UniqueConstraint(fields=('guest', 'doc_type', 'doc_no_hash'), name='uq_guest_doc_hash'),
+            model_name="guestdocument",
+            constraint=models.UniqueConstraint(
+                fields=("guest", "doc_type", "doc_no_hash"), name="uq_guest_doc_hash"
+            ),
         ),
     ]

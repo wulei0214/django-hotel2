@@ -35,9 +35,7 @@ def _assert_no_duplicates(apps, schema_editor):
         .filter(total__gt=1)[:5]
     )
     if duplicates:
-        raise RuntimeError(
-            "存在重复渠道退款凭据，启用数据库唯一键前必须人工核对："
-            f"{duplicates}")
+        raise RuntimeError("存在重复渠道退款凭据，启用数据库唯一键前必须人工核对：" f"{duplicates}")
 
     ProviderTransaction = apps.get_model("billing", "ProviderTransaction")
     duplicates = list(
@@ -47,26 +45,28 @@ def _assert_no_duplicates(apps, schema_editor):
         .filter(total__gt=1)[:5]
     )
     if duplicates:
-        raise RuntimeError(
-            "存在重复渠道事件，启用数据库唯一键前必须人工核对："
-            f"{duplicates}")
+        raise RuntimeError("存在重复渠道事件，启用数据库唯一键前必须人工核对：" f"{duplicates}")
 
 
 def backfill_keys(apps, schema_editor):
     _assert_no_duplicates(apps, schema_editor)
     Refund = apps.get_model("billing", "Refund")
-    for row in list(Refund.objects.exclude(execution_reference="").values(
-            "id", "property_id", "execution_reference")):
+    for row in list(
+        Refund.objects.exclude(execution_reference="").values(
+            "id", "property_id", "execution_reference"
+        )
+    ):
         Refund.objects.filter(pk=row["id"]).update(
-            execution_reference_key=(
-                f"{row['property_id']}:{row['execution_reference']}"))
+            execution_reference_key=(f"{row['property_id']}:{row['execution_reference']}")
+        )
 
     ProviderTransaction = apps.get_model("billing", "ProviderTransaction")
-    for row in list(ProviderTransaction.objects.exclude(event_id="").values(
-            "id", "provider_code", "event_id")):
+    for row in list(
+        ProviderTransaction.objects.exclude(event_id="").values("id", "provider_code", "event_id")
+    ):
         ProviderTransaction.objects.filter(pk=row["id"]).update(
-            provider_event_key=(
-                f"{row['provider_code']}:{row['event_id']}"))
+            provider_event_key=(f"{row['provider_code']}:{row['event_id']}")
+        )
 
 
 def drop_partial_indexes(apps, schema_editor):
@@ -74,15 +74,13 @@ def drop_partial_indexes(apps, schema_editor):
         model = apps.get_model("billing", model_name)
         table = model._meta.db_table
         with schema_editor.connection.cursor() as cursor:
-            constraints = schema_editor.connection.introspection.get_constraints(
-                cursor, table)
+            constraints = schema_editor.connection.introspection.get_constraints(cursor, table)
         if name not in constraints:
             # MySQL 上部分索引从未创建（W036），无需处理。
             continue
         q = schema_editor.quote_name
         if schema_editor.connection.vendor == "mysql":
-            schema_editor.execute(
-                f"ALTER TABLE {q(table)} DROP INDEX {q(name)}")
+            schema_editor.execute(f"ALTER TABLE {q(table)} DROP INDEX {q(name)}")
         else:
             schema_editor.execute(f"DROP INDEX IF EXISTS {q(name)}")
 
@@ -98,21 +96,30 @@ class Migration(migrations.Migration):
             model_name="refund",
             name="execution_reference_key",
             field=models.CharField(
-                blank=True, editable=False, max_length=128, null=True,
-                unique=True, verbose_name="退款渠道凭据唯一键"),
+                blank=True,
+                editable=False,
+                max_length=128,
+                null=True,
+                unique=True,
+                verbose_name="退款渠道凭据唯一键",
+            ),
         ),
         migrations.AddField(
             model_name="providertransaction",
             name="provider_event_key",
             field=models.CharField(
-                blank=True, editable=False, max_length=192, null=True,
-                unique=True, verbose_name="渠道事件唯一键"),
+                blank=True,
+                editable=False,
+                max_length=192,
+                null=True,
+                unique=True,
+                verbose_name="渠道事件唯一键",
+            ),
         ),
         migrations.RunPython(backfill_keys, migrations.RunPython.noop),
         migrations.SeparateDatabaseAndState(
             database_operations=[
-                migrations.RunPython(drop_partial_indexes,
-                                     migrations.RunPython.noop),
+                migrations.RunPython(drop_partial_indexes, migrations.RunPython.noop),
             ],
             state_operations=[
                 migrations.RemoveConstraint(

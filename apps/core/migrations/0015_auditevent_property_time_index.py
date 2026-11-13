@@ -10,13 +10,12 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0014_idempotency_updated_at'),
+        ("core", "0014_idempotency_updated_at"),
     ]
 
     operations = [
         migrations.AddIndex(
-            model_name='auditevent',
-            index=models.Index(fields=['property', '-created_at'],
-                               name='idx_audit_property_time'),
+            model_name="auditevent",
+            index=models.Index(fields=["property", "-created_at"], name="idx_audit_property_time"),
         ),
     ]

@@ -13,8 +13,7 @@ def align_maintenance_grants(apps, schema_editor):
     Permission = apps.get_model("auth", "Permission")
     ContentType = apps.get_model("contenttypes", "ContentType")
 
-    content_type, _ = ContentType.objects.get_or_create(
-        app_label="inventory", model="room")
+    content_type, _ = ContentType.objects.get_or_create(app_label="inventory", model="room")
     permission, _ = Permission.objects.get_or_create(
         content_type=content_type,
         codename="maintenance_manage",
@@ -28,7 +27,8 @@ def align_maintenance_grants(apps, schema_editor):
         group = Group.objects.filter(name=role_name).first()
         if group is not None:
             Group.permissions.through.objects.get_or_create(
-                group_id=group.pk, permission_id=permission.pk)
+                group_id=group.pk, permission_id=permission.pk
+            )
 
 
 def keep_approved_grants_on_reverse(apps, schema_editor):
@@ -43,6 +43,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(
-            align_maintenance_grants, keep_approved_grants_on_reverse),
+        migrations.RunPython(align_maintenance_grants, keep_approved_grants_on_reverse),
     ]

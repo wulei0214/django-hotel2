@@ -6,13 +6,26 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('billing', '0030_providerevent_history'),
+        ("billing", "0030_providerevent_history"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='folioreconciliationdiff',
-            name='diff_type',
-            field=models.CharField(choices=[('PAYMENT_NO_ENTRY', '收款 Payment 缺对应 PAYMENT 凭证'), ('ENTRY_NO_PAYMENT', 'PAYMENT 凭证缺对应 Payment'), ('DEPOSIT_NO_ENTRY', '押金 Payment 缺对应 DEPOSIT 凭证'), ('REFUND_NO_ENTRY', '退款 Refund 缺对应 REFUND 凭证'), ('ADJUSTMENT_NO_ENTRY', '已执行调整缺对应 ADJUSTMENT 凭证'), ('CHARGE_LINES_MISMATCH', '凭证科目行合计与凭证金额不一致'), ('BALANCE_MISMATCH', 'Folio 余额与账本合计不一致'), ('LIABILITY_NET_MISMATCH', '负债剩余额与重建净额不一致')], max_length=32, verbose_name='差异类型'),
+            model_name="folioreconciliationdiff",
+            name="diff_type",
+            field=models.CharField(
+                choices=[
+                    ("PAYMENT_NO_ENTRY", "收款 Payment 缺对应 PAYMENT 凭证"),
+                    ("ENTRY_NO_PAYMENT", "PAYMENT 凭证缺对应 Payment"),
+                    ("DEPOSIT_NO_ENTRY", "押金 Payment 缺对应 DEPOSIT 凭证"),
+                    ("REFUND_NO_ENTRY", "退款 Refund 缺对应 REFUND 凭证"),
+                    ("ADJUSTMENT_NO_ENTRY", "已执行调整缺对应 ADJUSTMENT 凭证"),
+                    ("CHARGE_LINES_MISMATCH", "凭证科目行合计与凭证金额不一致"),
+                    ("BALANCE_MISMATCH", "Folio 余额与账本合计不一致"),
+                    ("LIABILITY_NET_MISMATCH", "负债剩余额与重建净额不一致"),
+                ],
+                max_length=32,
+                verbose_name="差异类型",
+            ),
         ),
     ]

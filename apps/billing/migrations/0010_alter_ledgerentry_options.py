@@ -6,12 +6,17 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('billing', '0009_approval_view_permission'),
+        ("billing", "0009_approval_view_permission"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='ledgerentry',
-            options={'ordering': ('created_at', 'id'), 'permissions': (('reverse_entry', '可以红字冲销账本凭证（LedgerEntry）'),), 'verbose_name': '不可变账本凭证', 'verbose_name_plural': '不可变账本凭证'},
+            name="ledgerentry",
+            options={
+                "ordering": ("created_at", "id"),
+                "permissions": (("reverse_entry", "可以红字冲销账本凭证（LedgerEntry）"),),
+                "verbose_name": "不可变账本凭证",
+                "verbose_name_plural": "不可变账本凭证",
+            },
         ),
     ]

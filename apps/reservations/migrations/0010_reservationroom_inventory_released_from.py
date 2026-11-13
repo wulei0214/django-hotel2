@@ -10,15 +10,13 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('reservations', '0009_pending_booking_gate'),
+        ("reservations", "0009_pending_booking_gate"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='reservationroom',
-            name='inventory_released_from',
-            field=models.DateField(
-                blank=True, null=True,
-                verbose_name='提前离店库存释放起始日'),
+            model_name="reservationroom",
+            name="inventory_released_from",
+            field=models.DateField(blank=True, null=True, verbose_name="提前离店库存释放起始日"),
         ),
     ]

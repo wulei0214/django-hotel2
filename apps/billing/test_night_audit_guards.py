@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """白盒修复回归：夜审/账本守卫（WB-079/080/081/082/083/109）。
 
 覆盖：
@@ -18,6 +17,7 @@
 
 自建物业/房型/预订/Stay/Folio，不依赖 DEFAULT 物业已有数据。
 """
+
 import threading
 import time as time_module
 import unittest
@@ -34,7 +34,9 @@ from django.utils import timezone
 
 from apps.billing.models import Folio, LedgerEntry, Payment
 from apps.billing.night_audit import (
-    NightAuditError, NightAuditService, property_date,
+    NightAuditError,
+    NightAuditService,
+    property_date,
 )
 from apps.billing.services_v2 import BillingService
 from apps.core.models import BusinessDate, NightAuditRun, Property
@@ -48,69 +50,95 @@ class NightAuditGuardBase(TestCase):
     """每用例自建物业与全链路在住数据，避免依赖 DEFAULT 物业。"""
 
     def setUp(self):
-        self.property = Property.objects.create(
-            code="NGD", name="夜审守卫测试酒店")
+        self.property = Property.objects.create(code="NGD", name="夜审守卫测试酒店")
         self.today = property_date(self.property)
         self.operator = User.objects.create_user(username="ngd-operator")
         self.guest = Guest.objects.create(
-            property=self.property, full_name="守卫测试客人",
-            phone="13800009901", phone_normalized="13800009901")
+            property=self.property,
+            full_name="守卫测试客人",
+            phone="13800009901",
+            phone_normalized="13800009901",
+        )
 
-    def _make_inhouse_stay(self, booking_no, price="400.00", check_in=None,
-                           nights=2, room_number=None):
+    def _make_inhouse_stay(
+        self, booking_no, price="400.00", check_in=None, nights=2, room_number=None
+    ):
         """创建 CHECKED_IN 预订 + 在住 Stay + 未结主账单，返回 (stay, folio, line)。"""
         check_in = check_in if check_in is not None else self.today
         check_out = check_in + timedelta(days=nights)
         suffix = booking_no[-4:]
         room_type = RoomType.objects.create(
-            property=self.property, code=f"NGD-{suffix}", name="守卫测试房型")
+            property=self.property, code=f"NGD-{suffix}", name="守卫测试房型"
+        )
         rate_plan = RatePlan.objects.create(
-            property=self.property, code=f"NGD-BAR-{suffix}",
-            name="守卫测试门市价", valid_from=check_in)
+            property=self.property,
+            code=f"NGD-BAR-{suffix}",
+            name="守卫测试门市价",
+            valid_from=check_in,
+        )
         nightly = [
-            {"date": (check_in + timedelta(days=i)).isoformat(),
-             "price": price, "currency": "CNY"}
+            {"date": (check_in + timedelta(days=i)).isoformat(), "price": price, "currency": "CNY"}
             for i in range(nights)
         ]
         reservation = Reservation.objects.create(
-            property=self.property, booking_no=booking_no, guest=self.guest,
+            property=self.property,
+            booking_no=booking_no,
+            guest=self.guest,
             status=Reservation.Status.CHECKED_IN,
-            check_in=check_in, check_out=check_out,
-            room_count=1, adult_count=1,
-            total_amount=Decimal(price) * nights)
+            check_in=check_in,
+            check_out=check_out,
+            room_count=1,
+            adult_count=1,
+            total_amount=Decimal(price) * nights,
+        )
         line = ReservationRoom.objects.create(
-            property=self.property, reservation=reservation,
-            room_type=room_type, rate_plan=rate_plan,
-            check_in=check_in, check_out=check_out,
-            nightly_rates=nightly, amount=Decimal(price) * nights)
+            property=self.property,
+            reservation=reservation,
+            room_type=room_type,
+            rate_plan=rate_plan,
+            check_in=check_in,
+            check_out=check_out,
+            nightly_rates=nightly,
+            amount=Decimal(price) * nights,
+        )
         room = Room.objects.create(
-            property=self.property, room_type=room_type,
+            property=self.property,
+            room_type=room_type,
             number=room_number or f"NGD-{suffix}",
-            occupancy_status=Room.OccupancyStatus.OCCUPIED)
+            occupancy_status=Room.OccupancyStatus.OCCUPIED,
+        )
         stay = Stay.objects.create(
-            property=self.property, reservation_room=line, room=room,
-            status=Stay.Status.IN_HOUSE)
+            property=self.property, reservation_room=line, room=room, status=Stay.Status.IN_HOUSE
+        )
         folio = Folio.objects.create(
-            property=self.property, reservation=reservation,
-            guest=self.guest, currency="CNY")
+            property=self.property, reservation=reservation, guest=self.guest, currency="CNY"
+        )
         return stay, folio, line
 
     def _night_reference(self, stay):
-        return (
-            f"night-audit:{self.property.pk}:{self.today.isoformat()}"
-            f":stay:{stay.pk}")
+        return f"night-audit:{self.property.pk}:{self.today.isoformat()}" f":stay:{stay.pk}"
 
-    def _post_night_charge(self, stay, folio, amount, reference=None,
-                           entry_type=None, business_date=None,
-                           currency="CNY"):
+    def _post_night_charge(
+        self,
+        stay,
+        folio,
+        amount,
+        reference=None,
+        entry_type=None,
+        business_date=None,
+        currency="CNY",
+    ):
         return BillingService.post_entry(
-            property_obj=self.property, folio=folio, stay=stay,
+            property_obj=self.property,
+            folio=folio,
+            stay=stay,
             entry_type=(entry_type or LedgerEntry.EntryType.ROOM_CHARGE),
-            amount=Decimal(amount), currency=currency,
-            business_date=(business_date if business_date is not None
-                           else self.today),
+            amount=Decimal(amount),
+            currency=currency,
+            business_date=(business_date if business_date is not None else self.today),
             reference=reference or self._night_reference(stay),
-            posted_by=self.operator)
+            posted_by=self.operator,
+        )
 
 
 class PostEntryClosedDayGuardTests(NightAuditGuardBase):
@@ -118,59 +146,66 @@ class PostEntryClosedDayGuardTests(NightAuditGuardBase):
 
     def test_post_entry_rejects_closed_business_date(self):
         BusinessDate.objects.create(
-            property=self.property, business_date=self.today,
-            status=BusinessDate.Status.CLOSED)
+            property=self.property, business_date=self.today, status=BusinessDate.Status.CLOSED
+        )
         stay, folio, _ = self._make_inhouse_stay("NGD079A")
         with self.assertRaises(ValueError) as ctx:
-            self._post_night_charge(stay, folio, "50.00",
-                                    reference="NGD079-REF-1")
+            self._post_night_charge(stay, folio, "50.00", reference="NGD079-REF-1")
         self.assertIn("已关账", str(ctx.exception))
         self.assertIn("补记", str(ctx.exception))
         self.assertIn("授权流程", str(ctx.exception))
-        self.assertFalse(
-            LedgerEntry.objects.filter(reference="NGD079-REF-1").exists())
+        self.assertFalse(LedgerEntry.objects.filter(reference="NGD079-REF-1").exists())
 
     def test_post_entry_allows_open_or_unrecorded_business_date(self):
         stay, folio, _ = self._make_inhouse_stay("NGD079B")
         BusinessDate.objects.create(
-            property=self.property, business_date=self.today,
-            status=BusinessDate.Status.OPEN)
-        entry, created = self._post_night_charge(
-            stay, folio, "50.00", reference="NGD079-REF-2")
+            property=self.property, business_date=self.today, status=BusinessDate.Status.OPEN
+        )
+        entry, created = self._post_night_charge(stay, folio, "50.00", reference="NGD079-REF-2")
         self.assertTrue(created)
         # 营业日无记录（如未来日/首日）不视为 CLOSED，不拦截；也不创建记录
         future_day = self.today + timedelta(days=3)
         entry2, created2 = self._post_night_charge(
-            stay, folio, "60.00", reference="NGD079-REF-3",
-            business_date=future_day)
+            stay, folio, "60.00", reference="NGD079-REF-3", business_date=future_day
+        )
         self.assertTrue(created2)
-        self.assertFalse(BusinessDate.objects.filter(
-            business_date=future_day).exists())
+        self.assertFalse(BusinessDate.objects.filter(business_date=future_day).exists())
 
     def test_same_facts_replay_after_close_stays_idempotent(self):
         stay, folio, _ = self._make_inhouse_stay("NGD079C")
-        entry, created = self._post_night_charge(
-            stay, folio, "50.00", reference="NGD079-REF-4")
+        entry, created = self._post_night_charge(stay, folio, "50.00", reference="NGD079-REF-4")
         self.assertTrue(created)
         BusinessDate.objects.create(
-            property=self.property, business_date=self.today,
-            status=BusinessDate.Status.CLOSED)
+            property=self.property, business_date=self.today, status=BusinessDate.Status.CLOSED
+        )
         replay_entry, replay_created = self._post_night_charge(
-            stay, folio, "50.00", reference="NGD079-REF-4")
+            stay, folio, "50.00", reference="NGD079-REF-4"
+        )
         self.assertFalse(replay_created)
         self.assertEqual(replay_entry.pk, entry.pk)
         self.assertEqual(LedgerEntry.objects.count(), 1)
 
-    def _make_succeeded_payment(self, folio, provider_ref, amount="600.00",
-                                status=Payment.Status.SUCCEEDED,
-                                property_obj=None):
+    def _make_succeeded_payment(
+        self,
+        folio,
+        provider_ref,
+        amount="600.00",
+        status=Payment.Status.SUCCEEDED,
+        property_obj=None,
+    ):
         """构造渠道回调场景的 Payment 资金事实（默认成功、CNY）。"""
         return Payment.objects.create(
             property=property_obj or self.property,
-            reservation=folio.reservation, folio=folio,
-            provider="mock", provider_ref=provider_ref, method="MOCK",
-            amount=Decimal(amount), currency="CNY",
-            status=status, paid_at=timezone.now())
+            reservation=folio.reservation,
+            folio=folio,
+            provider="mock",
+            provider_ref=provider_ref,
+            method="MOCK",
+            amount=Decimal(amount),
+            currency="CNY",
+            status=status,
+            paid_at=timezone.now(),
+        )
 
     def test_channel_payment_callback_after_close_is_exempt(self):
         """合法链路豁免（WB-111）：渠道回调 PAYMENT + 显式 channel_payment
@@ -178,49 +213,61 @@ class PostEntryClosedDayGuardTests(NightAuditGuardBase):
         stay, folio, _ = self._make_inhouse_stay("NGD079E")
         payment = self._make_succeeded_payment(folio, "NGD079-CHANNEL-001")
         BusinessDate.objects.create(
-            property=self.property, business_date=self.today,
-            status=BusinessDate.Status.CLOSED)
+            property=self.property, business_date=self.today, status=BusinessDate.Status.CLOSED
+        )
         entry, created = BillingService.post_entry(
-            property_obj=self.property, folio=folio, stay=stay,
+            property_obj=self.property,
+            folio=folio,
+            stay=stay,
             entry_type=LedgerEntry.EntryType.PAYMENT,
-            amount=Decimal("-600.00"), currency="CNY",
+            amount=Decimal("-600.00"),
+            currency="CNY",
             business_date=self.today,
             reference="payment:NGD079-CHANNEL-001",
-            description="渠道支付成功回调入账", posted_by=None,
-            channel_payment=payment)
+            description="渠道支付成功回调入账",
+            posted_by=None,
+            channel_payment=payment,
+        )
         self.assertTrue(created)
         self.assertEqual(entry.amount, Decimal("-600.00"))
         # 员工发起的收款凭证仍受守卫拦截（posted_by 非空）
         with self.assertRaises(ValueError):
             BillingService.post_entry(
-                property_obj=self.property, folio=folio, stay=stay,
+                property_obj=self.property,
+                folio=folio,
+                stay=stay,
                 entry_type=LedgerEntry.EntryType.PAYMENT,
-                amount=Decimal("-100.00"), currency="CNY",
+                amount=Decimal("-100.00"),
+                currency="CNY",
                 business_date=self.today,
                 reference="payment:NGD079-MANUAL-001",
-                posted_by=self.operator)
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference="payment:NGD079-MANUAL-001").exists())
+                posted_by=self.operator,
+            )
+        self.assertFalse(LedgerEntry.objects.filter(reference="payment:NGD079-MANUAL-001").exists())
 
     # ------------------------------------------------------------------
     # WB-111：关账日渠道支付豁免收紧——拒绝分支
     # ------------------------------------------------------------------
     def _closed_day(self):
         BusinessDate.objects.create(
-            property=self.property, business_date=self.today,
-            status=BusinessDate.Status.CLOSED)
+            property=self.property, business_date=self.today, status=BusinessDate.Status.CLOSED
+        )
 
-    def _post_channel_payment(self, folio, payment, *, amount="-600.00",
-                              reference=None, channel_payment=True):
+    def _post_channel_payment(
+        self, folio, payment, *, amount="-600.00", reference=None, channel_payment=True
+    ):
         return BillingService.post_entry(
-            property_obj=self.property, folio=folio,
+            property_obj=self.property,
+            folio=folio,
             entry_type=LedgerEntry.EntryType.PAYMENT,
-            amount=Decimal(amount), currency="CNY",
+            amount=Decimal(amount),
+            currency="CNY",
             business_date=self.today,
-            reference=(reference if reference is not None
-                       else f"payment:{payment.provider_ref}"),
-            description="渠道支付成功回调入账", posted_by=None,
-            channel_payment=(payment if channel_payment else None))
+            reference=(reference if reference is not None else f"payment:{payment.provider_ref}"),
+            description="渠道支付成功回调入账",
+            posted_by=None,
+            channel_payment=(payment if channel_payment else None),
+        )
 
     def test_closed_day_payment_without_channel_payment_rejected(self):
         """WB-111：CLOSED 日 posted_by=None 的 PAYMENT 未传 channel_payment → 拒绝。"""
@@ -228,39 +275,39 @@ class PostEntryClosedDayGuardTests(NightAuditGuardBase):
         self._closed_day()
         with self.assertRaises(ValueError) as ctx:
             self._post_channel_payment(
-                folio, None, reference="payment:NGD111A-NO-PAYMENT",
-                channel_payment=False)
+                folio, None, reference="payment:NGD111A-NO-PAYMENT", channel_payment=False
+            )
         self.assertIn("已关账", str(ctx.exception))
         self.assertIn("channel_payment", str(ctx.exception))
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference="payment:NGD111A-NO-PAYMENT").exists())
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference="payment:NGD111A-NO-PAYMENT").exists()
+        )
 
     def test_closed_day_channel_payment_cross_property_rejected(self):
         """WB-111：channel_payment 属于其他物业 → 拒绝。"""
         stay, folio, _ = self._make_inhouse_stay("NGD111B")
-        other_property = Property.objects.create(
-            code="NGD111-P", name="WB-111 跨物业测试酒店")
+        other_property = Property.objects.create(code="NGD111-P", name="WB-111 跨物业测试酒店")
         payment = self._make_succeeded_payment(
-            folio, "NGD111-CROSS-PROP", property_obj=other_property)
+            folio, "NGD111-CROSS-PROP", property_obj=other_property
+        )
         self._closed_day()
         with self.assertRaises(ValueError) as ctx:
             self._post_channel_payment(folio, payment)
         self.assertIn("归属不一致", str(ctx.exception))
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference="payment:NGD111-CROSS-PROP").exists())
+        self.assertFalse(LedgerEntry.objects.filter(reference="payment:NGD111-CROSS-PROP").exists())
 
     def test_closed_day_channel_payment_cross_folio_rejected(self):
         """WB-111：channel_payment 挂在其他账单（同物业）→ 拒绝。"""
         _, own_folio, _ = self._make_inhouse_stay("NGD111C1")
         _, other_folio, _ = self._make_inhouse_stay("NGD111C2")
-        payment = self._make_succeeded_payment(
-            other_folio, "NGD111-CROSS-FOLIO")
+        payment = self._make_succeeded_payment(other_folio, "NGD111-CROSS-FOLIO")
         self._closed_day()
         with self.assertRaises(ValueError) as ctx:
             self._post_channel_payment(own_folio, payment)
         self.assertIn("归属不一致", str(ctx.exception))
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference="payment:NGD111-CROSS-FOLIO").exists())
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference="payment:NGD111-CROSS-FOLIO").exists()
+        )
 
     def test_closed_day_channel_payment_amount_mismatch_rejected(self):
         """WB-111：凭证金额与 channel_payment 金额不符 → 拒绝。"""
@@ -270,20 +317,19 @@ class PostEntryClosedDayGuardTests(NightAuditGuardBase):
         with self.assertRaises(ValueError) as ctx:
             self._post_channel_payment(folio, payment, amount="-500.00")
         self.assertIn("金额", str(ctx.exception))
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference="payment:NGD111-AMT").exists())
+        self.assertFalse(LedgerEntry.objects.filter(reference="payment:NGD111-AMT").exists())
 
     def test_closed_day_channel_payment_pending_status_rejected(self):
         """WB-111：channel_payment 非 SUCCEEDED（如 PENDING）→ 拒绝。"""
         stay, folio, _ = self._make_inhouse_stay("NGD111E")
         payment = self._make_succeeded_payment(
-            folio, "NGD111-PENDING", status=Payment.Status.PENDING)
+            folio, "NGD111-PENDING", status=Payment.Status.PENDING
+        )
         self._closed_day()
         with self.assertRaises(ValueError) as ctx:
             self._post_channel_payment(folio, payment)
         self.assertIn("SUCCEEDED", str(ctx.exception))
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference="payment:NGD111-PENDING").exists())
+        self.assertFalse(LedgerEntry.objects.filter(reference="payment:NGD111-PENDING").exists())
 
     def test_closed_day_channel_payment_reference_mismatch_rejected(self):
         """WB-111：凭证引用与 channel_payment 渠道流水号不一致 → 拒绝。"""
@@ -291,25 +337,24 @@ class PostEntryClosedDayGuardTests(NightAuditGuardBase):
         payment = self._make_succeeded_payment(folio, "NGD111-REF")
         self._closed_day()
         with self.assertRaises(ValueError) as ctx:
-            self._post_channel_payment(folio, payment,
-                                       reference="payment:NGD111-OTHER")
+            self._post_channel_payment(folio, payment, reference="payment:NGD111-OTHER")
         self.assertIn("渠道流水号", str(ctx.exception))
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference="payment:NGD111-REF").exists())
+        self.assertFalse(LedgerEntry.objects.filter(reference="payment:NGD111-REF").exists())
 
     def test_night_audit_run_posts_charges_before_closing_passes_guard(self):
         """合法链路回归：run() 在同一事务内先过租后关账，不被 WB-079 阻断。"""
         stay, folio, _ = self._make_inhouse_stay("NGD079D")
         run, created = NightAuditService.run(
-            property_obj=self.property, executed_by=self.operator,
-            business_date=self.today)
+            property_obj=self.property, executed_by=self.operator, business_date=self.today
+        )
         self.assertTrue(created)
         self.assertEqual(run.status, NightAuditRun.RunStatus.SUCCESS)
-        self.assertTrue(LedgerEntry.objects.filter(
-            reference=self._night_reference(stay),
-            entry_type=LedgerEntry.EntryType.ROOM_CHARGE).exists())
-        bd = BusinessDate.objects.get(
-            property=self.property, business_date=self.today)
+        self.assertTrue(
+            LedgerEntry.objects.filter(
+                reference=self._night_reference(stay), entry_type=LedgerEntry.EntryType.ROOM_CHARGE
+            ).exists()
+        )
+        bd = BusinessDate.objects.get(property=self.property, business_date=self.today)
         self.assertEqual(bd.status, BusinessDate.Status.CLOSED)
 
 
@@ -321,13 +366,11 @@ class NightAuditDateScopeTests(NightAuditGuardBase):
         future_day = self.today + timedelta(days=3)
         with self.assertRaises(NightAuditError) as ctx:
             NightAuditService.run(
-                property_obj=self.property, executed_by=self.operator,
-                business_date=future_day)
+                property_obj=self.property, executed_by=self.operator, business_date=future_day
+            )
         self.assertIn("当前营业日", str(ctx.exception))
-        self.assertFalse(BusinessDate.objects.filter(
-            business_date=future_day).exists())
-        self.assertFalse(BusinessDate.objects.filter(
-            property=self.property).exists())
+        self.assertFalse(BusinessDate.objects.filter(business_date=future_day).exists())
+        self.assertFalse(BusinessDate.objects.filter(property=self.property).exists())
         self.assertFalse(LedgerEntry.objects.exists())
         self.assertFalse(NightAuditRun.objects.exists())
 
@@ -336,17 +379,19 @@ class NightAuditDateScopeTests(NightAuditGuardBase):
         closed = BusinessDate.objects.create(
             property=self.property,
             business_date=self.today - timedelta(days=1),
-            status=BusinessDate.Status.CLOSED)
+            status=BusinessDate.Status.CLOSED,
+        )
         with self.assertRaises(NightAuditError) as ctx:
             NightAuditService.run(
-                property_obj=self.property, executed_by=self.operator,
-                business_date=closed.business_date)
+                property_obj=self.property,
+                executed_by=self.operator,
+                business_date=closed.business_date,
+            )
         self.assertIn("当前营业日", str(ctx.exception))
         closed.refresh_from_db()
         self.assertEqual(closed.status, BusinessDate.Status.CLOSED)
         # 不再自动创建当日 BusinessDate / 夜审记录 / 凭证
-        self.assertFalse(BusinessDate.objects.filter(
-            business_date=self.today).exists())
+        self.assertFalse(BusinessDate.objects.filter(business_date=self.today).exists())
         self.assertFalse(NightAuditRun.objects.exists())
         self.assertFalse(LedgerEntry.objects.exists())
 
@@ -355,22 +400,22 @@ class NightAuditDateScopeTests(NightAuditGuardBase):
         stale = BusinessDate.objects.create(
             property=self.property,
             business_date=self.today - timedelta(days=1),
-            status=BusinessDate.Status.OPEN)
+            status=BusinessDate.Status.OPEN,
+        )
         with self.assertRaises(NightAuditError) as ctx:
             NightAuditService.run(
-                property_obj=self.property, executed_by=self.operator,
-                business_date=self.today)
+                property_obj=self.property, executed_by=self.operator, business_date=self.today
+            )
         self.assertIn(stale.business_date.isoformat(), str(ctx.exception))
         self.assertIn("当前营业日", str(ctx.exception))
         # 与 OPEN 营业日不符的日期不再自动创建记录
-        self.assertFalse(BusinessDate.objects.filter(
-            business_date=self.today).exists())
+        self.assertFalse(BusinessDate.objects.filter(business_date=self.today).exists())
         self.assertFalse(NightAuditRun.objects.exists())
         self.assertFalse(LedgerEntry.objects.exists())
         # 合法链路不受阻断：显式审计当前 OPEN 营业日可以关账
         run, created = NightAuditService.run(
-            property_obj=self.property, executed_by=self.operator,
-            business_date=stale.business_date)
+            property_obj=self.property, executed_by=self.operator, business_date=stale.business_date
+        )
         self.assertTrue(created)
         self.assertEqual(run.status, NightAuditRun.RunStatus.SUCCESS)
         stale.refresh_from_db()
@@ -380,16 +425,17 @@ class NightAuditDateScopeTests(NightAuditGuardBase):
         BusinessDate.objects.create(
             property=self.property,
             business_date=self.today - timedelta(days=1),
-            status=BusinessDate.Status.CLOSED)
+            status=BusinessDate.Status.CLOSED,
+        )
         stay, folio, _ = self._make_inhouse_stay("NGD080D")
         with self.assertRaises(NightAuditError):
             NightAuditService.preview(
-                property_obj=self.property,
-                business_date=self.today - timedelta(days=1))
+                property_obj=self.property, business_date=self.today - timedelta(days=1)
+            )
         with self.assertRaises(NightAuditError):
             NightAuditService.preview(
-                property_obj=self.property,
-                business_date=self.today + timedelta(days=1))
+                property_obj=self.property, business_date=self.today + timedelta(days=1)
+            )
         # 当前营业日预览不受影响
         data = NightAuditService.preview(property_obj=self.property)
         self.assertEqual(data["business_date"], self.today.isoformat())
@@ -400,18 +446,16 @@ class PreviewStayCountScopeTests(NightAuditGuardBase):
     """WB-081：stay_count 只统计覆盖目标营业日的在住 Stay。"""
 
     def test_stay_count_counts_only_stays_covering_business_date(self):
-        stay_a, folio_a, _ = self._make_inhouse_stay(
-            "NGD081A", room_number="NGD-101")
+        stay_a, folio_a, _ = self._make_inhouse_stay("NGD081A", room_number="NGD-101")
         # legacy 风格在住：check_in 晚于目标营业日，不在当晚过租窗口内
         stay_b, folio_b, _ = self._make_inhouse_stay(
-            "NGD081B", check_in=self.today + timedelta(days=5), nights=2,
-            room_number="NGD-102")
+            "NGD081B", check_in=self.today + timedelta(days=5), nights=2, room_number="NGD-102"
+        )
         data = NightAuditService.preview(property_obj=self.property)
         self.assertEqual(data["stay_count"], 1)
         self.assertEqual(data["charge_count"], 1)
         self.assertEqual(data["blocker_count"], 0)
-        self.assertEqual(
-            [row["stay_id"] for row in data["stays"]], [stay_a.pk])
+        self.assertEqual([row["stay_id"] for row in data["stays"]], [stay_a.pk])
         self.assertEqual(data["charge_total"], "400.00")
 
 
@@ -446,15 +490,13 @@ class AlreadyPostedFactMatchTests(NightAuditGuardBase):
         entries_before = LedgerEntry.objects.count()
         with self.assertRaises(NightAuditError):
             NightAuditService.run(
-                property_obj=self.property, executed_by=self.operator,
-                business_date=self.today)
+                property_obj=self.property, executed_by=self.operator, business_date=self.today
+            )
         self.assertEqual(LedgerEntry.objects.count(), entries_before)
 
     def test_business_date_mismatch_becomes_blocker(self):
         stay, folio, _ = self._make_inhouse_stay("NGD082C")
-        self._post_night_charge(
-            stay, folio, "400.00",
-            business_date=self.today - timedelta(days=1))
+        self._post_night_charge(stay, folio, "400.00", business_date=self.today - timedelta(days=1))
         data = NightAuditService.preview(property_obj=self.property)
         self.assertEqual(data["blocker_count"], 1)
         self.assertEqual(data["blockers"][0]["code"], "ALREADY_POSTED_CONFLICT")
@@ -462,10 +504,8 @@ class AlreadyPostedFactMatchTests(NightAuditGuardBase):
         self.assertFalse(data["can_run"])
 
     def test_folio_mismatch_becomes_blocker(self):
-        stay, folio, _ = self._make_inhouse_stay("NGD082D1",
-                                                 room_number="NGD-201")
-        _, other_folio, _ = self._make_inhouse_stay("NGD082D2",
-                                                    room_number="NGD-202")
+        stay, folio, _ = self._make_inhouse_stay("NGD082D1", room_number="NGD-201")
+        _, other_folio, _ = self._make_inhouse_stay("NGD082D2", room_number="NGD-202")
         # 同引用凭证挂到了另一预订的主账单上
         self._post_night_charge(stay, other_folio, "400.00")
         data = NightAuditService.preview(property_obj=self.property)
@@ -476,9 +516,7 @@ class AlreadyPostedFactMatchTests(NightAuditGuardBase):
 
     def test_entry_type_mismatch_becomes_blocker(self):
         stay, folio, _ = self._make_inhouse_stay("NGD082E")
-        self._post_night_charge(
-            stay, folio, "400.00",
-            entry_type=LedgerEntry.EntryType.ADJUSTMENT)
+        self._post_night_charge(stay, folio, "400.00", entry_type=LedgerEntry.EntryType.ADJUSTMENT)
         data = NightAuditService.preview(property_obj=self.property)
         self.assertEqual(data["blocker_count"], 1)
         self.assertEqual(data["blockers"][0]["code"], "ALREADY_POSTED_CONFLICT")
@@ -493,8 +531,8 @@ class AlreadyPostedFactMatchTests(NightAuditGuardBase):
             self._post_night_charge(stay, folio, "500.00")
         self.assertIn("已用于不同账务事实", str(ctx.exception))
         self.assertEqual(
-            LedgerEntry.objects.filter(reference=self._night_reference(stay)
-                                       ).count(), 1)
+            LedgerEntry.objects.filter(reference=self._night_reference(stay)).count(), 1
+        )
 
 
 class LedgerEntryImmutabilityTests(NightAuditGuardBase):
@@ -503,11 +541,16 @@ class LedgerEntryImmutabilityTests(NightAuditGuardBase):
     def _make_entry(self, reference="NGD083-1", amount="88.00"):
         stay, folio, _ = self._make_inhouse_stay("NGD083A")
         entry, created = BillingService.post_entry(
-            property_obj=self.property, folio=folio, stay=stay,
+            property_obj=self.property,
+            folio=folio,
+            stay=stay,
             entry_type=LedgerEntry.EntryType.ADJUSTMENT,
-            amount=Decimal(amount), currency="CNY",
-            business_date=self.today, reference=reference,
-            posted_by=self.operator)
+            amount=Decimal(amount),
+            currency="CNY",
+            business_date=self.today,
+            reference=reference,
+            posted_by=self.operator,
+        )
         self.assertTrue(created)
         return entry
 
@@ -525,31 +568,30 @@ class LedgerEntryImmutabilityTests(NightAuditGuardBase):
     def test_save_rejects_new_instance_with_existing_pk(self):
         entry = self._make_entry()
         forged = LedgerEntry(
-            property=self.property, folio_id=entry.folio_id,
+            property=self.property,
+            folio_id=entry.folio_id,
             entry_type=LedgerEntry.EntryType.ADJUSTMENT,
-            amount=Decimal("9.99"), currency="CNY",
-            business_date=self.today, reference="NGD083-FORGED",
-            pk=entry.pk)
+            amount=Decimal("9.99"),
+            currency="CNY",
+            business_date=self.today,
+            reference="NGD083-FORGED",
+            pk=entry.pk,
+        )
         with self.assertRaises(ValueError):
             forged.save()
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference="NGD083-FORGED").exists())
+        self.assertFalse(LedgerEntry.objects.filter(reference="NGD083-FORGED").exists())
 
     def test_create_still_allowed_and_queryset_guards_unchanged(self):
         entry = self._make_entry(reference="NGD083-2")
-        self.assertTrue(
-            LedgerEntry.objects.filter(reference="NGD083-2").exists())
+        self.assertTrue(LedgerEntry.objects.filter(reference="NGD083-2").exists())
         # 业务 QuerySet 层守卫不受模型 save 守卫影响，仍拒绝 update
         with self.assertRaises(ValidationError):
             LedgerEntry.objects.filter(pk=entry.pk).update(description="x")
         # 测试专用原生 QuerySet 旁路（test_dec02 孤儿化 helper 依赖）仍可用
-        QuerySet(LedgerEntry).filter(pk=entry.pk).update(
-            description="orphan-sim")
+        QuerySet(LedgerEntry).filter(pk=entry.pk).update(description="orphan-sim")
         entry.refresh_from_db()
         self.assertEqual(entry.description, "orphan-sim")
         QuerySet(LedgerEntry).filter(pk=entry.pk).update(description="")
-
-
 
 
 class NightAuditArbitrationSequentialTests(NightAuditGuardBase):
@@ -559,70 +601,81 @@ class NightAuditArbitrationSequentialTests(NightAuditGuardBase):
     def test_run_skips_stay_checked_out_before_audit(self):
         """退房先提交 → 夜审跳过已退房 Stay，不产生夜审过租凭证。"""
         stay, folio, _ = self._make_inhouse_stay(
-            "NGD109S", price="300.00",
-            check_in=self.today - timedelta(days=1), nights=2)
+            "NGD109S", price="300.00", check_in=self.today - timedelta(days=1), nights=2
+        )
         BillingService.post_entry(
-            property_obj=self.property, folio=folio, stay=stay,
+            property_obj=self.property,
+            folio=folio,
+            stay=stay,
             entry_type=LedgerEntry.EntryType.PAYMENT,
-            amount=Decimal("-300.00"), currency="CNY",
-            business_date=self.today, reference="NGD109S-PREPAY",
-            posted_by=self.operator)
+            amount=Decimal("-300.00"),
+            currency="CNY",
+            business_date=self.today,
+            reference="NGD109S-PREPAY",
+            posted_by=self.operator,
+        )
         checked_out, changed = check_out_stay(
-            property_obj=self.property, stay_id=stay.pk,
-            checked_out_by=self.operator)
+            property_obj=self.property, stay_id=stay.pk, checked_out_by=self.operator
+        )
         self.assertTrue(changed)
 
         run, created = NightAuditService.run(
-            property_obj=self.property, executed_by=self.operator,
-            business_date=self.today)
+            property_obj=self.property, executed_by=self.operator, business_date=self.today
+        )
         self.assertTrue(created)
         self.assertEqual(run.status, NightAuditRun.RunStatus.SUCCESS)
         charges = LedgerEntry.objects.filter(
-            folio=folio, entry_type=LedgerEntry.EntryType.ROOM_CHARGE)
+            folio=folio, entry_type=LedgerEntry.EntryType.ROOM_CHARGE
+        )
         self.assertEqual(charges.count(), 1)
-        self.assertEqual(
-            charges.get().reference, f"stay-room-charge:{stay.pk}")
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference=self._night_reference(stay)).exists())
-        bd = BusinessDate.objects.get(
-            property=self.property, business_date=self.today)
+        self.assertEqual(charges.get().reference, f"stay-room-charge:{stay.pk}")
+        self.assertFalse(LedgerEntry.objects.filter(reference=self._night_reference(stay)).exists())
+        bd = BusinessDate.objects.get(property=self.property, business_date=self.today)
         self.assertEqual(bd.status, BusinessDate.Status.CLOSED)
 
     def test_checkout_after_night_audit_settles_by_difference(self):
         """夜审先过租 → 退房按“实际晚数快照 − 已过租”差额结算，只收一次。"""
         stay, folio, _ = self._make_inhouse_stay(
-            "NGD109T", price="300.00",
-            check_in=self.today - timedelta(days=1), nights=2)
+            "NGD109T", price="300.00", check_in=self.today - timedelta(days=1), nights=2
+        )
         BillingService.post_entry(
-            property_obj=self.property, folio=folio, stay=stay,
+            property_obj=self.property,
+            folio=folio,
+            stay=stay,
             entry_type=LedgerEntry.EntryType.PAYMENT,
-            amount=Decimal("-300.00"), currency="CNY",
-            business_date=self.today, reference="NGD109T-PREPAY",
-            posted_by=self.operator)
+            amount=Decimal("-300.00"),
+            currency="CNY",
+            business_date=self.today,
+            reference="NGD109T-PREPAY",
+            posted_by=self.operator,
+        )
         run, created = NightAuditService.run(
-            property_obj=self.property, executed_by=self.operator,
-            business_date=self.today)
+            property_obj=self.property, executed_by=self.operator, business_date=self.today
+        )
         self.assertTrue(created)
         self.assertEqual(run.status, NightAuditRun.RunStatus.SUCCESS)
         self.assertEqual(
-            LedgerEntry.objects.filter(
-                reference=self._night_reference(stay)).count(), 1)
+            LedgerEntry.objects.filter(reference=self._night_reference(stay)).count(), 1
+        )
 
         checked_out, changed = check_out_stay(
-            property_obj=self.property, stay_id=stay.pk,
-            checked_out_by=self.operator)
+            property_obj=self.property, stay_id=stay.pk, checked_out_by=self.operator
+        )
         self.assertTrue(changed)
         # 夜审 1 张过租凭证；退房差额为 0，不补记房费也不冲回
         self.assertEqual(
             LedgerEntry.objects.filter(
                 folio=folio, entry_type=LedgerEntry.EntryType.ROOM_CHARGE
-            ).count(), 1)
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference=f"stay-room-charge:{stay.pk}").exists())
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference=f"checkout-adjust:{stay.pk}").exists())
-        balance = sum(
-            (entry.amount for entry in folio.entries.all()), Decimal("0.00"))
+            ).count(),
+            1,
+        )
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference=f"stay-room-charge:{stay.pk}").exists()
+        )
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference=f"checkout-adjust:{stay.pk}").exists()
+        )
+        balance = sum((entry.amount for entry in folio.entries.all()), Decimal("0.00"))
         self.assertEqual(balance, Decimal("0.00"))
 
 
@@ -630,58 +683,79 @@ class NightAuditCheckoutConcurrencyBase(TransactionTestCase):
     """WB-109 并发仲裁基座（仅 MySQL 生效）：TransactionTestCase + 双线程。"""
 
     def setUp(self):
-        self.property = Property.objects.create(
-            code="NGDCC", name="夜审并发仲裁测试酒店")
+        self.property = Property.objects.create(code="NGDCC", name="夜审并发仲裁测试酒店")
         self.today = property_date(self.property)
         self.operator = User.objects.create_user(username="ngdcc-operator")
         self.guest = Guest.objects.create(
-            property=self.property, full_name="并发仲裁测试客人",
-            phone="13800009911", phone_normalized="13800009911")
+            property=self.property,
+            full_name="并发仲裁测试客人",
+            phone="13800009911",
+            phone_normalized="13800009911",
+        )
 
-    def _make_inhouse_stay(self, booking_no, check_in, nights=2,
-                           price="300.00"):
+    def _make_inhouse_stay(self, booking_no, check_in, nights=2, price="300.00"):
         check_out = check_in + timedelta(days=nights)
         suffix = booking_no[-4:]
         room_type = RoomType.objects.create(
-            property=self.property, code=f"NGDCC-{suffix}", name="并发测试房型")
+            property=self.property, code=f"NGDCC-{suffix}", name="并发测试房型"
+        )
         rate_plan = RatePlan.objects.create(
-            property=self.property, code=f"NGDCC-BAR-{suffix}",
-            name="并发测试门市价", valid_from=check_in)
+            property=self.property,
+            code=f"NGDCC-BAR-{suffix}",
+            name="并发测试门市价",
+            valid_from=check_in,
+        )
         nightly = [
-            {"date": (check_in + timedelta(days=i)).isoformat(),
-             "price": price, "currency": "CNY"}
+            {"date": (check_in + timedelta(days=i)).isoformat(), "price": price, "currency": "CNY"}
             for i in range(nights)
         ]
         reservation = Reservation.objects.create(
-            property=self.property, booking_no=booking_no, guest=self.guest,
+            property=self.property,
+            booking_no=booking_no,
+            guest=self.guest,
             status=Reservation.Status.CHECKED_IN,
-            check_in=check_in, check_out=check_out,
-            room_count=1, adult_count=1,
-            total_amount=Decimal(price) * nights)
+            check_in=check_in,
+            check_out=check_out,
+            room_count=1,
+            adult_count=1,
+            total_amount=Decimal(price) * nights,
+        )
         line = ReservationRoom.objects.create(
-            property=self.property, reservation=reservation,
-            room_type=room_type, rate_plan=rate_plan,
-            check_in=check_in, check_out=check_out,
-            nightly_rates=nightly, amount=Decimal(price) * nights)
+            property=self.property,
+            reservation=reservation,
+            room_type=room_type,
+            rate_plan=rate_plan,
+            check_in=check_in,
+            check_out=check_out,
+            nightly_rates=nightly,
+            amount=Decimal(price) * nights,
+        )
         room = Room.objects.create(
-            property=self.property, room_type=room_type,
+            property=self.property,
+            room_type=room_type,
             number=f"NGDCC-{suffix}",
-            occupancy_status=Room.OccupancyStatus.OCCUPIED)
+            occupancy_status=Room.OccupancyStatus.OCCUPIED,
+        )
         stay = Stay.objects.create(
-            property=self.property, reservation_room=line, room=room,
-            status=Stay.Status.IN_HOUSE)
+            property=self.property, reservation_room=line, room=room, status=Stay.Status.IN_HOUSE
+        )
         folio = Folio.objects.create(
-            property=self.property, reservation=reservation,
-            guest=self.guest, currency="CNY")
+            property=self.property, reservation=reservation, guest=self.guest, currency="CNY"
+        )
         return stay, folio, line
 
     def _post_prepay(self, stay, folio, tag, amount="300.00"):
         BillingService.post_entry(
-            property_obj=self.property, folio=folio, stay=stay,
+            property_obj=self.property,
+            folio=folio,
+            stay=stay,
             entry_type=LedgerEntry.EntryType.PAYMENT,
-            amount=Decimal("-" + amount), currency="CNY",
-            business_date=self.today, reference=f"{tag}-PREPAY",
-            posted_by=self.operator)
+            amount=Decimal("-" + amount),
+            currency="CNY",
+            business_date=self.today,
+            reference=f"{tag}-PREPAY",
+            posted_by=self.operator,
+        )
 
     def _join(self, threads, timeout=60):
         for thread in threads:
@@ -689,14 +763,14 @@ class NightAuditCheckoutConcurrencyBase(TransactionTestCase):
             self.assertFalse(thread.is_alive(), "工作线程超时未结束（疑似死锁）")
 
     def _room_charges(self, folio):
-        return LedgerEntry.objects.filter(
-            folio=folio, entry_type=LedgerEntry.EntryType.ROOM_CHARGE)
+        return LedgerEntry.objects.filter(folio=folio, entry_type=LedgerEntry.EntryType.ROOM_CHARGE)
 
 
 @unittest.skipUnless(
     connection.vendor == "mysql",
     "WB-109 并发仲裁依赖 MySQL 行锁（select_for_update 在 SQLite 下为 "
-    "no-op，无法构造真实锁等待），SQLite 测试环境跳过。")
+    "no-op，无法构造真实锁等待），SQLite 测试环境跳过。",
+)
 class NightAuditCheckoutConcurrencyTests(NightAuditCheckoutConcurrencyBase):
     """WB-109：夜审与退房并发仲裁（MySQL 专项）。
 
@@ -708,8 +782,7 @@ class NightAuditCheckoutConcurrencyTests(NightAuditCheckoutConcurrencyBase):
     def test_night_audit_locks_first_checkout_waits_single_charge(self):
         """夜审先锁 → 退房等待 → 只收一次房费。"""
         check_in = self.today - timedelta(days=1)
-        stay, folio, line = self._make_inhouse_stay(
-            "NGD109A", check_in=check_in, nights=2)
+        stay, folio, line = self._make_inhouse_stay("NGD109A", check_in=check_in, nights=2)
         # 预收 300：夜审过账当日夜 300 后，退房差额为 0，无需再入账
         self._post_prepay(stay, folio, f"NGD109A-STAY{stay.pk}")
 
@@ -729,8 +802,8 @@ class NightAuditCheckoutConcurrencyTests(NightAuditCheckoutConcurrencyBase):
         def _audit_worker():
             try:
                 run, created = NightAuditService.run(
-                    property_obj=self.property, executed_by=self.operator,
-                    business_date=self.today)
+                    property_obj=self.property, executed_by=self.operator, business_date=self.today
+                )
                 results["run_status"] = run.status
                 results["run_created"] = created
             except Exception as exc:
@@ -740,20 +813,18 @@ class NightAuditCheckoutConcurrencyTests(NightAuditCheckoutConcurrencyBase):
 
         def _checkout_worker():
             try:
-                self.assertTrue(audit_posted.wait(timeout=30),
-                                "夜审未在超时内进入过租事务")
+                self.assertTrue(audit_posted.wait(timeout=30), "夜审未在超时内进入过租事务")
                 time_module.sleep(0.1)
                 stay_out, changed = check_out_stay(
-                    property_obj=self.property, stay_id=stay.pk,
-                    checked_out_by=self.operator)
+                    property_obj=self.property, stay_id=stay.pk, checked_out_by=self.operator
+                )
                 results["checkout"] = (str(stay_out.status), changed)
             except Exception as exc:
                 errors.append(exc)
             finally:
                 connections["default"].close()
 
-        with mock.patch.object(BillingService, "post_entry",
-                               side_effect=hooked_post_entry):
+        with mock.patch.object(BillingService, "post_entry", side_effect=hooked_post_entry):
             audit_thread = threading.Thread(target=_audit_worker)
             checkout_thread = threading.Thread(target=_checkout_worker)
             audit_thread.start()
@@ -761,8 +832,7 @@ class NightAuditCheckoutConcurrencyTests(NightAuditCheckoutConcurrencyBase):
             self._join([audit_thread, checkout_thread])
 
         self.assertEqual(errors, [], f"并发执行出现异常: {errors}")
-        self.assertEqual(results.get("run_status"),
-                         NightAuditRun.RunStatus.SUCCESS)
+        self.assertEqual(results.get("run_status"), NightAuditRun.RunStatus.SUCCESS)
         self.assertTrue(results.get("run_created"))
         self.assertEqual(results.get("checkout"), ("CHECKED_OUT", True))
         # 只收一次房费：唯一 ROOM_CHARGE=夜审过租 300；退房零差额不补记
@@ -770,25 +840,24 @@ class NightAuditCheckoutConcurrencyTests(NightAuditCheckoutConcurrencyBase):
         self.assertEqual(charges.count(), 1)
         self.assertEqual(
             charges.get().reference,
-            f"night-audit:{self.property.pk}:{self.today.isoformat()}"
-            f":stay:{stay.pk}")
+            f"night-audit:{self.property.pk}:{self.today.isoformat()}" f":stay:{stay.pk}",
+        )
         self.assertEqual(charges.get().amount, Decimal("300.00"))
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference=f"stay-room-charge:{stay.pk}").exists())
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference=f"checkout-adjust:{stay.pk}").exists())
-        balance = sum(
-            (entry.amount for entry in folio.entries.all()), Decimal("0.00"))
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference=f"stay-room-charge:{stay.pk}").exists()
+        )
+        self.assertFalse(
+            LedgerEntry.objects.filter(reference=f"checkout-adjust:{stay.pk}").exists()
+        )
+        balance = sum((entry.amount for entry in folio.entries.all()), Decimal("0.00"))
         self.assertEqual(balance, Decimal("0.00"))
-        bd = BusinessDate.objects.get(
-            property=self.property, business_date=self.today)
+        bd = BusinessDate.objects.get(property=self.property, business_date=self.today)
         self.assertEqual(bd.status, BusinessDate.Status.CLOSED)
 
     def test_checkout_locks_first_night_audit_skips_checked_out_stay(self):
         """退房先锁/先提交 → 夜审跳过已退房 Stay，不重复计费。"""
         check_in = self.today - timedelta(days=1)
-        stay, folio, line = self._make_inhouse_stay(
-            "NGD109B", check_in=check_in, nights=2)
+        stay, folio, line = self._make_inhouse_stay("NGD109B", check_in=check_in, nights=2)
         # 预收 300：退房补记昨夜房费 300 后余额 0 结清
         self._post_prepay(stay, folio, f"NGD109B-STAY{stay.pk}")
 
@@ -808,8 +877,8 @@ class NightAuditCheckoutConcurrencyTests(NightAuditCheckoutConcurrencyBase):
         def _checkout_worker():
             try:
                 stay_out, changed = check_out_stay(
-                    property_obj=self.property, stay_id=stay.pk,
-                    checked_out_by=self.operator)
+                    property_obj=self.property, stay_id=stay.pk, checked_out_by=self.operator
+                )
                 results["checkout"] = (str(stay_out.status), changed)
             except Exception as exc:
                 errors.append(exc)
@@ -818,12 +887,11 @@ class NightAuditCheckoutConcurrencyTests(NightAuditCheckoutConcurrencyBase):
 
         def _audit_worker():
             try:
-                self.assertTrue(checkout_posted.wait(timeout=30),
-                                "退房未在超时内进入过账事务")
+                self.assertTrue(checkout_posted.wait(timeout=30), "退房未在超时内进入过账事务")
                 time_module.sleep(0.1)
                 run, created = NightAuditService.run(
-                    property_obj=self.property, executed_by=self.operator,
-                    business_date=self.today)
+                    property_obj=self.property, executed_by=self.operator, business_date=self.today
+                )
                 results["run_status"] = run.status
                 results["run_created"] = created
             except Exception as exc:
@@ -831,8 +899,7 @@ class NightAuditCheckoutConcurrencyTests(NightAuditCheckoutConcurrencyBase):
             finally:
                 connections["default"].close()
 
-        with mock.patch.object(BillingService, "post_entry",
-                               side_effect=hooked_post_entry):
+        with mock.patch.object(BillingService, "post_entry", side_effect=hooked_post_entry):
             checkout_thread = threading.Thread(target=_checkout_worker)
             audit_thread = threading.Thread(target=_audit_worker)
             checkout_thread.start()
@@ -841,18 +908,18 @@ class NightAuditCheckoutConcurrencyTests(NightAuditCheckoutConcurrencyBase):
 
         self.assertEqual(errors, [], f"并发执行出现异常: {errors}")
         self.assertEqual(results.get("checkout"), ("CHECKED_OUT", True))
-        self.assertEqual(results.get("run_status"),
-                         NightAuditRun.RunStatus.SUCCESS)
+        self.assertEqual(results.get("run_status"), NightAuditRun.RunStatus.SUCCESS)
         self.assertTrue(results.get("run_created"))
         # 只收一次房费：唯一 ROOM_CHARGE=退房补记 300；夜审跳过已退房 Stay
         charges = self._room_charges(folio)
         self.assertEqual(charges.count(), 1)
-        self.assertEqual(charges.get().reference,
-                         f"stay-room-charge:{stay.pk}")
+        self.assertEqual(charges.get().reference, f"stay-room-charge:{stay.pk}")
         self.assertEqual(charges.get().amount, Decimal("300.00"))
-        self.assertFalse(LedgerEntry.objects.filter(
-            reference=f"night-audit:{self.property.pk}:"
-                      f"{self.today.isoformat()}:stay:{stay.pk}").exists())
-        bd = BusinessDate.objects.get(
-            property=self.property, business_date=self.today)
+        self.assertFalse(
+            LedgerEntry.objects.filter(
+                reference=f"night-audit:{self.property.pk}:"
+                f"{self.today.isoformat()}:stay:{stay.pk}"
+            ).exists()
+        )
+        bd = BusinessDate.objects.get(property=self.property, business_date=self.today)
         self.assertEqual(bd.status, BusinessDate.Status.CLOSED)

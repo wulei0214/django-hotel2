@@ -7,23 +7,42 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('reservations', '0005_mysql_nullable_unique_keys'),
+        ("reservations", "0005_mysql_nullable_unique_keys"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='BookingAccessToken',
+            name="BookingAccessToken",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('token_hash', models.CharField(max_length=64, unique=True, verbose_name='令牌哈希')),
-                ('expires_at', models.DateTimeField(verbose_name='过期时间')),
-                ('revoked_at', models.DateTimeField(blank=True, null=True, verbose_name='撤销时间')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('reservation', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='access_token', to='reservations.reservation', verbose_name='预订')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "token_hash",
+                    models.CharField(max_length=64, unique=True, verbose_name="令牌哈希"),
+                ),
+                ("expires_at", models.DateTimeField(verbose_name="过期时间")),
+                (
+                    "revoked_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="撤销时间"),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
+                (
+                    "reservation",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="access_token",
+                        to="reservations.reservation",
+                        verbose_name="预订",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '订单访问令牌',
-                'verbose_name_plural': '订单访问令牌',
+                "verbose_name": "订单访问令牌",
+                "verbose_name_plural": "订单访问令牌",
             },
         ),
     ]

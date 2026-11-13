@@ -4,10 +4,7 @@ from django.db.models import Count
 
 
 def _assert_unique(queryset, fields, label):
-    duplicates = list(
-        queryset.values(*fields).annotate(total=Count("id"))
-        .filter(total__gt=1)[:5]
-    )
+    duplicates = list(queryset.values(*fields).annotate(total=Count("id")).filter(total__gt=1)[:5])
     if duplicates:
         raise RuntimeError(
             f"{label} has duplicate active records; reconcile manually before "
@@ -38,28 +35,22 @@ def drop_partial_index(apps, schema_editor, model_name, constraint_name):
     model = apps.get_model("billing", model_name)
     table = model._meta.db_table
     with schema_editor.connection.cursor() as cursor:
-        constraints = schema_editor.connection.introspection.get_constraints(
-            cursor, table
-        )
+        constraints = schema_editor.connection.introspection.get_constraints(cursor, table)
     if constraint_name not in constraints:
         return
     q = schema_editor.quote_name
     if schema_editor.connection.vendor == "mysql":
-        schema_editor.execute(
-            f"ALTER TABLE {q(table)} DROP INDEX {q(constraint_name)}"
-        )
+        schema_editor.execute(f"ALTER TABLE {q(table)} DROP INDEX {q(constraint_name)}")
     else:
         schema_editor.execute(f"DROP INDEX IF EXISTS {q(constraint_name)}")
 
 
 def drop_folio_partial(apps, schema_editor):
-    drop_partial_index(apps, schema_editor, "Folio",
-                       "uq_folio_master_per_reservation")
+    drop_partial_index(apps, schema_editor, "Folio", "uq_folio_master_per_reservation")
 
 
 def drop_shift_partial(apps, schema_editor):
-    drop_partial_index(apps, schema_editor, "CashierShift",
-                       "uq_cashier_shift_one_open")
+    drop_partial_index(apps, schema_editor, "CashierShift", "uq_cashier_shift_one_open")
 
 
 class Migration(migrations.Migration):
@@ -70,15 +61,25 @@ class Migration(migrations.Migration):
             model_name="folio",
             name="master_reservation_key",
             field=models.CharField(
-                blank=True, editable=False, max_length=32, null=True,
-                unique=True, verbose_name="主账唯一键"),
+                blank=True,
+                editable=False,
+                max_length=32,
+                null=True,
+                unique=True,
+                verbose_name="主账唯一键",
+            ),
         ),
         migrations.AddField(
             model_name="cashiershift",
             name="open_shift_key",
             field=models.CharField(
-                blank=True, editable=False, max_length=96, null=True,
-                unique=True, verbose_name="开放班次唯一键"),
+                blank=True,
+                editable=False,
+                max_length=96,
+                null=True,
+                unique=True,
+                verbose_name="开放班次唯一键",
+            ),
         ),
         migrations.RunPython(backfill_keys, migrations.RunPython.noop),
         migrations.SeparateDatabaseAndState(

@@ -9,53 +9,149 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('core', '0003_legacyrecordlink_auditevent_and_more'),
+        ("core", "0003_legacyrecordlink_auditevent_and_more"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='BusinessDate',
+            name="BusinessDate",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('business_date', models.DateField(verbose_name='营业日期')),
-                ('status', models.CharField(choices=[('OPEN', '营业中'), ('CLOSED', '已关账'), ('REOPENED', '已重开')], default='OPEN', max_length=10, verbose_name='状态')),
-                ('opened_at', models.DateTimeField(auto_now_add=True, verbose_name='开启时间')),
-                ('closed_at', models.DateTimeField(blank=True, null=True, verbose_name='关账时间')),
-                ('reopened_at', models.DateTimeField(blank=True, null=True, verbose_name='重开时间')),
-                ('reopen_reason', models.CharField(blank=True, max_length=240, verbose_name='重开原因')),
-                ('closed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='business_dates_closed', to=settings.AUTH_USER_MODEL, verbose_name='关账人')),
-                ('property', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='business_dates', to='core.property', verbose_name='物业')),
-                ('reopened_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='business_dates_reopened', related_query_name='reopened', to=settings.AUTH_USER_MODEL, verbose_name='重开人')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("business_date", models.DateField(verbose_name="营业日期")),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[("OPEN", "营业中"), ("CLOSED", "已关账"), ("REOPENED", "已重开")],
+                        default="OPEN",
+                        max_length=10,
+                        verbose_name="状态",
+                    ),
+                ),
+                ("opened_at", models.DateTimeField(auto_now_add=True, verbose_name="开启时间")),
+                ("closed_at", models.DateTimeField(blank=True, null=True, verbose_name="关账时间")),
+                (
+                    "reopened_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="重开时间"),
+                ),
+                (
+                    "reopen_reason",
+                    models.CharField(blank=True, max_length=240, verbose_name="重开原因"),
+                ),
+                (
+                    "closed_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="business_dates_closed",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="关账人",
+                    ),
+                ),
+                (
+                    "property",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="business_dates",
+                        to="core.property",
+                        verbose_name="物业",
+                    ),
+                ),
+                (
+                    "reopened_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="business_dates_reopened",
+                        related_query_name="reopened",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="重开人",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '营业日',
-                'verbose_name_plural': '营业日',
+                "verbose_name": "营业日",
+                "verbose_name_plural": "营业日",
             },
         ),
         migrations.CreateModel(
-            name='NightAuditRun',
+            name="NightAuditRun",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('status', models.CharField(choices=[('RUNNING', '执行中'), ('SUCCESS', '成功'), ('FAILED', '失败')], default='RUNNING', max_length=10, verbose_name='运行状态')),
-                ('started_at', models.DateTimeField(auto_now_add=True, verbose_name='开始时间')),
-                ('finished_at', models.DateTimeField(blank=True, null=True, verbose_name='完成时间')),
-                ('summary', models.JSONField(blank=True, help_text='在住、过租、No-Show、异常清单', null=True, verbose_name='结果摘要')),
-                ('error_message', models.TextField(blank=True, verbose_name='失败原因')),
-                ('business_date', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='night_audit_runs', to='core.businessdate', verbose_name='营业日')),
-                ('executed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='night_audit_runs', to=settings.AUTH_USER_MODEL, verbose_name='执行人')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[("RUNNING", "执行中"), ("SUCCESS", "成功"), ("FAILED", "失败")],
+                        default="RUNNING",
+                        max_length=10,
+                        verbose_name="运行状态",
+                    ),
+                ),
+                ("started_at", models.DateTimeField(auto_now_add=True, verbose_name="开始时间")),
+                (
+                    "finished_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="完成时间"),
+                ),
+                (
+                    "summary",
+                    models.JSONField(
+                        blank=True,
+                        help_text="在住、过租、No-Show、异常清单",
+                        null=True,
+                        verbose_name="结果摘要",
+                    ),
+                ),
+                ("error_message", models.TextField(blank=True, verbose_name="失败原因")),
+                (
+                    "business_date",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="night_audit_runs",
+                        to="core.businessdate",
+                        verbose_name="营业日",
+                    ),
+                ),
+                (
+                    "executed_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="night_audit_runs",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="执行人",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '夜审运行',
-                'verbose_name_plural': '夜审运行',
-                'ordering': ('-started_at',),
+                "verbose_name": "夜审运行",
+                "verbose_name_plural": "夜审运行",
+                "ordering": ("-started_at",),
             },
         ),
         migrations.AddConstraint(
-            model_name='businessdate',
-            constraint=models.UniqueConstraint(condition=models.Q(('status', 'OPEN')), fields=('property',), name='uq_business_date_one_open'),
+            model_name="businessdate",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("status", "OPEN")),
+                fields=("property",),
+                name="uq_business_date_one_open",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='businessdate',
-            constraint=models.UniqueConstraint(fields=('property', 'business_date'), name='uq_business_date_per_property'),
+            model_name="businessdate",
+            constraint=models.UniqueConstraint(
+                fields=("property", "business_date"), name="uq_business_date_per_property"
+            ),
         ),
     ]

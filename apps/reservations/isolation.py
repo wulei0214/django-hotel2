@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """并发事务隔离辅助（WB-085，第 32 轮）。
 
 MySQL 默认 REPEATABLE READ 的一致性快照在事务**第一次读**时建立。
@@ -14,6 +13,7 @@ MySQL 默认 REPEATABLE READ 的一致性快照在事务**第一次读**时建�
 ``use_read_committed()``（对下一个事务生效；若调用方已处于事务中，
 此设置对当前事务无效，属尽力而为的降级）。SQLite 无此语义，直接跳过。
 """
+
 from django.db import connection
 
 

@@ -23,8 +23,7 @@ def grant_housekeeping_permissions(apps, schema_editor):
     ContentType = apps.get_model("contenttypes", "ContentType")
     GroupPermission = Group.permissions.through
 
-    room_ct, _ = ContentType.objects.get_or_create(
-        app_label="inventory", model="room")
+    room_ct, _ = ContentType.objects.get_or_create(app_label="inventory", model="room")
 
     for new_codename, label, legacy_codename in PERMISSIONS:
         new_permission, _ = Permission.objects.get_or_create(
@@ -38,12 +37,13 @@ def grant_housekeeping_permissions(apps, schema_editor):
         ).first()
         if old_permission is None:
             continue
-        group_ids = GroupPermission.objects.filter(
-            permission_id=old_permission.pk
-        ).values_list("group_id", flat=True)
+        group_ids = GroupPermission.objects.filter(permission_id=old_permission.pk).values_list(
+            "group_id", flat=True
+        )
         for group_id in group_ids.iterator():
             GroupPermission.objects.get_or_create(
-                group_id=group_id, permission_id=new_permission.pk)
+                group_id=group_id, permission_id=new_permission.pk
+            )
 
 
 def keep_grants_on_reverse(apps, schema_editor):
@@ -72,6 +72,5 @@ class Migration(migrations.Migration):
                 ),
             },
         ),
-        migrations.RunPython(
-            grant_housekeeping_permissions, keep_grants_on_reverse),
+        migrations.RunPython(grant_housekeeping_permissions, keep_grants_on_reverse),
     ]

@@ -7,25 +7,40 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('reservations', '0008_reservationroom_early_departure_snapshot'),
+        ("reservations", "0008_reservationroom_early_departure_snapshot"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='PendingBookingGate',
+            name="PendingBookingGate",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('gate_key', models.CharField(max_length=64, verbose_name='锁键（手机号哈希）')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('property', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='pending_booking_gates', to='core.property', verbose_name='所属酒店')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("gate_key", models.CharField(max_length=64, verbose_name="锁键（手机号哈希）")),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
+                (
+                    "property",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="pending_booking_gates",
+                        to="core.property",
+                        verbose_name="所属酒店",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '预订并发锁行',
-                'verbose_name_plural': '预订并发锁行',
+                "verbose_name": "预订并发锁行",
+                "verbose_name_plural": "预订并发锁行",
             },
         ),
         migrations.AddConstraint(
-            model_name='pendingbookinggate',
-            constraint=models.UniqueConstraint(fields=('property', 'gate_key'), name='uq_pbg_property_gate_key'),
+            model_name="pendingbookinggate",
+            constraint=models.UniqueConstraint(
+                fields=("property", "gate_key"), name="uq_pbg_property_gate_key"
+            ),
         ),
     ]

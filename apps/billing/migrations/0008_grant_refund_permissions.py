@@ -20,14 +20,13 @@ def grant(apps, schema_editor):
     Group = apps.get_model("auth", "Group")
     Permission = apps.get_model("auth", "Permission")
     ContentType = apps.get_model("contenttypes", "ContentType")
-    ct, _ = ContentType.objects.get_or_create(
-        app_label="billing", model="refund")
+    ct, _ = ContentType.objects.get_or_create(app_label="billing", model="refund")
     request_perm, _ = Permission.objects.get_or_create(
-        content_type=ct, codename="refund_request",
-        defaults={"name": "能发起退款申请"})
+        content_type=ct, codename="refund_request", defaults={"name": "能发起退款申请"}
+    )
     approve_perm, _ = Permission.objects.get_or_create(
-        content_type=ct, codename="refund_approve",
-        defaults={"name": "能审批退款"})
+        content_type=ct, codename="refund_approve", defaults={"name": "能审批退款"}
+    )
     for name in ("前台", "财务"):
         group = Group.objects.filter(name=name).first()
         if group:
@@ -42,12 +41,10 @@ def revoke(apps, schema_editor):
     Group = apps.get_model("auth", "Group")
     Permission = apps.get_model("auth", "Permission")
     ContentType = apps.get_model("contenttypes", "ContentType")
-    ct, _ = ContentType.objects.get_or_create(
-        app_label="billing", model="refund")
+    ct, _ = ContentType.objects.get_or_create(app_label="billing", model="refund")
     for codename in ("refund_request", "refund_approve"):
         try:
-            perm = Permission.objects.get(
-                content_type=ct, codename=codename)
+            perm = Permission.objects.get(content_type=ct, codename=codename)
         except Permission.DoesNotExist:
             continue
         for group in Group.objects.all():

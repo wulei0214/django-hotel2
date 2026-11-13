@@ -6,13 +6,13 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0013_notification_per_user_read_receipts'),
+        ("core", "0013_notification_per_user_read_receipts"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='idempotencyrecord',
-            name='updated_at',
-            field=models.DateTimeField(auto_now=True, verbose_name='更新时间'),
+            model_name="idempotencyrecord",
+            name="updated_at",
+            field=models.DateTimeField(auto_now=True, verbose_name="更新时间"),
         ),
     ]

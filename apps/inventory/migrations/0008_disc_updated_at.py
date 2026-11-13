@@ -6,13 +6,13 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('inventory', '0007_dec02_reconciliation_models'),
+        ("inventory", "0007_dec02_reconciliation_models"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='inventorydiscrepancy',
-            name='updated_at',
-            field=models.DateTimeField(auto_now=True, verbose_name='更新时间'),
+            model_name="inventorydiscrepancy",
+            name="updated_at",
+            field=models.DateTimeField(auto_now=True, verbose_name="更新时间"),
         ),
     ]

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """中央中文标签映射：API DTO 层统一输出 *_label 字段的数据源。
 
 原则：模型 TextChoices 已有中文 label 的直接取（单一事实源）；
@@ -15,6 +14,7 @@ def choice_labels(choices_class):
 # ---------- 模型 choices 派生 ----------
 def room_label_maps():
     from apps.inventory.models import Room
+
     return {
         "occupancy": choice_labels(Room.OccupancyStatus),
         "housekeeping": choice_labels(Room.HousekeepingStatus),
@@ -24,21 +24,25 @@ def room_label_maps():
 
 def reservation_status_labels():
     from apps.reservations.models import Reservation
+
     return choice_labels(Reservation.Status)
 
 
 def stay_status_labels():
     from apps.reservations.models import Stay
+
     return choice_labels(Stay.Status)
 
 
 def employment_status_labels():
     from apps.identity.models import StaffProfile
+
     return choice_labels(StaffProfile.EmploymentStatus)
 
 
 def gmembership_status_labels():
     from apps.guests.models import GuestMembership
+
     return choice_labels(GuestMembership.Status)
 
 
@@ -78,11 +82,14 @@ def member_level_label(code):
 def folio_summary_status_label(code):
     return FOLIO_SUMMARY_STATUS_LABELS.get(code, code)
 
+
 def payment_status_labels():
     from apps.billing.models import Payment
+
     return choice_labels(Payment.Status)
 
 
 def refund_status_labels():
     from apps.billing.models import Refund
+
     return choice_labels(Refund.Status)

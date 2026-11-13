@@ -7,50 +7,136 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('auth', '0012_alter_user_first_name_max_length'),
-        ('identity', '0006_invitation_invitation_idx_invitation_profile_status_and_more'),
-        ('core', '0010_audit_view_permission'),
+        ("auth", "0012_alter_user_first_name_max_length"),
+        ("identity", "0006_invitation_invitation_idx_invitation_profile_status_and_more"),
+        ("core", "0010_audit_view_permission"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Notification',
+            name="Notification",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('category', models.CharField(choices=[('reservation', '预订'), ('housekeeping', '客房清洁'), ('approval', '审批'), ('audit', '审计合规'), ('system', '系统')], help_text='reservation/housekeeping/approval/audit/system', max_length=16, verbose_name='类别')),
-                ('title', models.CharField(max_length=120, verbose_name='标题')),
-                ('body', models.CharField(blank=True, max_length=240, verbose_name='内容')),
-                ('link', models.CharField(blank=True, help_text='站内相对路径，如 /manage/reservations/', max_length=200, verbose_name='跳转链接')),
-                ('severity', models.CharField(choices=[('info', '提示'), ('warning', '警示'), ('critical', '紧急')], default='info', max_length=8, verbose_name='级别')),
-                ('is_read', models.BooleanField(default=False, verbose_name='已读')),
-                ('read_at', models.DateTimeField(blank=True, null=True, verbose_name='已读时间')),
-                ('dedupe_key', models.CharField(blank=True, help_text='运营待办业务键（来源代码|业务键|目标组）；空=人工/公告类，不参与自动销项', max_length=128, null=True, verbose_name='待办去重键')),
-                ('expires_at', models.DateTimeField(blank=True, null=True, verbose_name='失效时间')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('property', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='notifications', to='core.property', verbose_name='物业')),
-                ('recipient', models.ForeignKey(blank=True, help_text='定向投递的员工档案；空表示岗位广播（此时 role_group 必填）', null=True, on_delete=django.db.models.deletion.PROTECT, related_name='notifications', to='identity.staffprofile', verbose_name='接收员工')),
-                ('role_group', models.ForeignKey(blank=True, help_text='岗位广播目标组；读取方按当前有效任职动态匹配，不写入 User.groups', null=True, on_delete=django.db.models.deletion.PROTECT, related_name='notifications', to='auth.group', verbose_name='广播岗位组')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "category",
+                    models.CharField(
+                        choices=[
+                            ("reservation", "预订"),
+                            ("housekeeping", "客房清洁"),
+                            ("approval", "审批"),
+                            ("audit", "审计合规"),
+                            ("system", "系统"),
+                        ],
+                        help_text="reservation/housekeeping/approval/audit/system",
+                        max_length=16,
+                        verbose_name="类别",
+                    ),
+                ),
+                ("title", models.CharField(max_length=120, verbose_name="标题")),
+                ("body", models.CharField(blank=True, max_length=240, verbose_name="内容")),
+                (
+                    "link",
+                    models.CharField(
+                        blank=True,
+                        help_text="站内相对路径，如 /manage/reservations/",
+                        max_length=200,
+                        verbose_name="跳转链接",
+                    ),
+                ),
+                (
+                    "severity",
+                    models.CharField(
+                        choices=[("info", "提示"), ("warning", "警示"), ("critical", "紧急")],
+                        default="info",
+                        max_length=8,
+                        verbose_name="级别",
+                    ),
+                ),
+                ("is_read", models.BooleanField(default=False, verbose_name="已读")),
+                ("read_at", models.DateTimeField(blank=True, null=True, verbose_name="已读时间")),
+                (
+                    "dedupe_key",
+                    models.CharField(
+                        blank=True,
+                        help_text="运营待办业务键（来源代码|业务键|目标组）；空=人工/公告类，不参与自动销项",
+                        max_length=128,
+                        null=True,
+                        verbose_name="待办去重键",
+                    ),
+                ),
+                (
+                    "expires_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="失效时间"),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
+                (
+                    "property",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="notifications",
+                        to="core.property",
+                        verbose_name="物业",
+                    ),
+                ),
+                (
+                    "recipient",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="定向投递的员工档案；空表示岗位广播（此时 role_group 必填）",
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="notifications",
+                        to="identity.staffprofile",
+                        verbose_name="接收员工",
+                    ),
+                ),
+                (
+                    "role_group",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="岗位广播目标组；读取方按当前有效任职动态匹配，不写入 User.groups",
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="notifications",
+                        to="auth.group",
+                        verbose_name="广播岗位组",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '站内通知',
-                'verbose_name_plural': '站内通知',
-                'ordering': ('-created_at', '-id'),
+                "verbose_name": "站内通知",
+                "verbose_name_plural": "站内通知",
+                "ordering": ("-created_at", "-id"),
             },
         ),
         migrations.AddIndex(
-            model_name='notification',
-            index=models.Index(fields=['recipient', 'is_read', '-created_at'], name='idx_notif_rcpt_read_time'),
+            model_name="notification",
+            index=models.Index(
+                fields=["recipient", "is_read", "-created_at"], name="idx_notif_rcpt_read_time"
+            ),
         ),
         migrations.AddIndex(
-            model_name='notification',
-            index=models.Index(fields=['role_group', 'is_read'], name='idx_notif_group_read'),
+            model_name="notification",
+            index=models.Index(fields=["role_group", "is_read"], name="idx_notif_group_read"),
         ),
         migrations.AddConstraint(
-            model_name='notification',
-            constraint=models.UniqueConstraint(fields=('property', 'dedupe_key'), name='uq_notification_prop_dedupe'),
+            model_name="notification",
+            constraint=models.UniqueConstraint(
+                fields=("property", "dedupe_key"), name="uq_notification_prop_dedupe"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='notification',
-            constraint=models.CheckConstraint(check=models.Q(('recipient__isnull', False), ('role_group__isnull', False), _connector='OR'), name='ck_notification_has_audience'),
+            model_name="notification",
+            constraint=models.CheckConstraint(
+                check=models.Q(
+                    ("recipient__isnull", False), ("role_group__isnull", False), _connector="OR"
+                ),
+                name="ck_notification_has_audience",
+            ),
         ),
     ]

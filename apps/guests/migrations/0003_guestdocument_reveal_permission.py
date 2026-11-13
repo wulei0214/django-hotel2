@@ -9,11 +9,10 @@ from django.db import migrations
 def create_reveal_permission(apps, schema_editor):
     Permission = apps.get_model("auth", "Permission")
     ContentType = apps.get_model("contenttypes", "ContentType")
-    ct, _ = ContentType.objects.get_or_create(
-        app_label="guests", model="guestdocument")
+    ct, _ = ContentType.objects.get_or_create(app_label="guests", model="guestdocument")
     Permission.objects.get_or_create(
-        content_type=ct, codename="document_reveal",
-        defaults={"name": "能揭示 客人证件完整值"})
+        content_type=ct, codename="document_reveal", defaults={"name": "能揭示 客人证件完整值"}
+    )
 
 
 def remove_reveal_permission(apps, schema_editor):
@@ -21,7 +20,8 @@ def remove_reveal_permission(apps, schema_editor):
     ContentType = apps.get_model("contenttypes", "ContentType")
     Permission.objects.filter(
         content_type=ContentType.objects.get(app_label="guests", model="guestdocument"),
-        codename="document_reveal").delete()
+        codename="document_reveal",
+    ).delete()
 
 
 class Migration(migrations.Migration):

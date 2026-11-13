@@ -32,7 +32,8 @@ def _pii_key_bytes():
         if getattr(settings, "IS_PRODUCTION", False):
             raise RuntimeError(
                 "生产环境必须配置 DJANGO_PII_KEY（WB-123），"
-                "禁止回退 SECRET_KEY 执行 PII 数据迁移。")
+                "禁止回退 SECRET_KEY 执行 PII 数据迁移。"
+            )
         key = settings.SECRET_KEY
     return hashlib.sha256(str(key).encode("utf-8")).digest()
 
@@ -43,8 +44,9 @@ def _normalize_phone(value):
 
 
 def _phone_hash(normalized):
-    return hmac.new(_pii_key_bytes(), (normalized or "").strip().encode("utf-8"),
-                    hashlib.sha256).hexdigest()
+    return hmac.new(
+        _pii_key_bytes(), (normalized or "").strip().encode("utf-8"), hashlib.sha256
+    ).hexdigest()
 
 
 def _encrypt_phone(normalized):
@@ -63,8 +65,8 @@ def _rows_with_phone_plaintext(model):
     """
     return model.objects.filter(
         models.Q(phone__isnull=False) & ~models.Q(phone="")
-        | models.Q(phone_normalized__isnull=False)
-        & ~models.Q(phone_normalized=""))
+        | models.Q(phone_normalized__isnull=False) & ~models.Q(phone_normalized="")
+    )
 
 
 def _iter_guests_with_phone(Guest):
@@ -86,46 +88,46 @@ def backfill_phone_pii(apps, schema_editor):
     failures = []
     for guest in _iter_guests_with_phone(Guest):
         raw_phone = (guest.phone or "").strip()
-        normalized = ((guest.phone_normalized or "").strip()
-                      or _normalize_phone(raw_phone))
+        normalized = (guest.phone_normalized or "").strip() or _normalize_phone(raw_phone)
         if not normalized:
             # 两个字段均为空（仅理论可达）：按无电话记录处理，不伪造号码
             continue
         try:
             Guest.objects.filter(pk=guest.pk).update(
-                phone_ciphertext=_encrypt_phone(normalized),
-                phone_hash=_phone_hash(normalized))
+                phone_ciphertext=_encrypt_phone(normalized), phone_hash=_phone_hash(normalized)
+            )
         except Exception as exc:  # noqa: BLE001 —— 显式失败收集器
             failures.append(f"Guest#{guest.pk}: {exc}")
 
     occupied = {}
     for row in _rows_with_phone_plaintext(GuestPhone).iterator():
         raw_phone = (row.phone or "").strip()
-        normalized = ((row.phone_normalized or "").strip()
-                      or _normalize_phone(raw_phone))
+        normalized = (row.phone_normalized or "").strip() or _normalize_phone(raw_phone)
         if not normalized:
             # 有原始值但无法标准化：数据异常，显式失败（不清明文，不丢数据）
             raise ValueError(
-                f"GuestPhone#{row.pk} 原始值无法标准化为有效号码，"
-                "需人工核对后再执行迁移")
+                f"GuestPhone#{row.pk} 原始值无法标准化为有效号码，" "需人工核对后再执行迁移"
+            )
         try:
             digest = _phone_hash(normalized)
             key = (row.guest_id, digest)
             if key in occupied:
                 raise ValueError(
                     f"同一客人存在重复号码行（与 GuestPhone#{occupied[key]} "
-                    "哈希冲突，违反 (guest, phone_hash) 唯一约束），需人工合并")
+                    "哈希冲突，违反 (guest, phone_hash) 唯一约束），需人工合并"
+                )
             occupied[key] = row.pk
             GuestPhone.objects.filter(pk=row.pk).update(
-                phone_ciphertext=_encrypt_phone(normalized),
-                phone_hash=digest)
+                phone_ciphertext=_encrypt_phone(normalized), phone_hash=digest
+            )
         except Exception as exc:  # noqa: BLE001
             failures.append(f"GuestPhone#{row.pk}: {exc}")
 
     if failures:
         raise RuntimeError(
             "WB-103 手机号 PII 回填失败（该批行保留原值，迁移显式终止）："
-            + "; ".join(failures[:20]))
+            + "; ".join(failures[:20])
+        )
 
 
 def clear_phone_plaintext(apps, schema_editor):
@@ -147,7 +149,8 @@ def clear_phone_plaintext(apps, schema_editor):
     if missing:
         raise RuntimeError(
             "WB-124 清明文前守卫：以下记录明文非空但密文/哈希缺失，"
-            "禁止清空明文（必须先修复回填）：" + "; ".join(missing[:20]))
+            "禁止清空明文（必须先修复回填）：" + "; ".join(missing[:20])
+        )
     Guest.objects.update(phone=None, phone_normalized=None)
     GuestPhone.objects.update(phone=None, phone_normalized=None)
 
@@ -161,27 +164,48 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="guest",
             name="phone_ciphertext",
-            field=models.TextField(blank=True, help_text="Fernet(phone_ciphertext)=标准化号码；揭示需独立权限并写审计", null=True, verbose_name="手机号密文"),
+            field=models.TextField(
+                blank=True,
+                help_text="Fernet(phone_ciphertext)=标准化号码；揭示需独立权限并写审计",
+                null=True,
+                verbose_name="手机号密文",
+            ),
         ),
         migrations.AddField(
             model_name="guest",
             name="phone_hash",
-            field=models.CharField(blank=True, help_text="HMAC-SHA256(PII_KEY, normalized)，仅用于检索与共享判定，不可逆、不代表自然人唯一身份", max_length=64, null=True, verbose_name="手机号查询哈希"),
+            field=models.CharField(
+                blank=True,
+                help_text="HMAC-SHA256(PII_KEY, normalized)，仅用于检索与共享判定，不可逆、不代表自然人唯一身份",
+                max_length=64,
+                null=True,
+                verbose_name="手机号查询哈希",
+            ),
         ),
         migrations.AddField(
             model_name="guestphone",
             name="phone_ciphertext",
-            field=models.TextField(blank=True, help_text="Fernet(标准化号码)；完整值揭示需独立权限并写审计", null=True, verbose_name="号码密文"),
+            field=models.TextField(
+                blank=True,
+                help_text="Fernet(标准化号码)；完整值揭示需独立权限并写审计",
+                null=True,
+                verbose_name="号码密文",
+            ),
         ),
         migrations.AddField(
             model_name="guestphone",
             name="phone_hash",
-            field=models.CharField(blank=True, help_text="HMAC-SHA256(PII_KEY, normalized)，检索与共享号码判定专用", max_length=64, null=True, verbose_name="号码查询哈希"),
+            field=models.CharField(
+                blank=True,
+                help_text="HMAC-SHA256(PII_KEY, normalized)，检索与共享号码判定专用",
+                max_length=64,
+                null=True,
+                verbose_name="号码查询哈希",
+            ),
         ),
         migrations.AddIndex(
             model_name="guest",
-            index=models.Index(fields=["property", "phone_hash"],
-                               name="idx_guest_prop_hash"),
+            index=models.Index(fields=["property", "phone_hash"], name="idx_guest_prop_hash"),
         ),
         migrations.AddIndex(
             model_name="guestphone",
@@ -197,19 +221,48 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="GuestDocumentIndex",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("doc_no_hash", models.CharField(help_text="HMAC-SHA256，与 GuestDocument.doc_no_hash 同源", max_length=64, verbose_name="证件号哈希")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "doc_no_hash",
+                    models.CharField(
+                        help_text="HMAC-SHA256，与 GuestDocument.doc_no_hash 同源",
+                        max_length=64,
+                        verbose_name="证件号哈希",
+                    ),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
                 ("updated_at", models.DateTimeField(auto_now=True, verbose_name="更新时间")),
-                ("guest", models.ForeignKey(on_delete=models.PROTECT, related_name="document_indexes", to="guests.guest", verbose_name="占用客人")),
-                ("property", models.ForeignKey(on_delete=models.PROTECT, related_name="guest_document_indexes", to="core.property", verbose_name="所属酒店")),
+                (
+                    "guest",
+                    models.ForeignKey(
+                        on_delete=models.PROTECT,
+                        related_name="document_indexes",
+                        to="guests.guest",
+                        verbose_name="占用客人",
+                    ),
+                ),
+                (
+                    "property",
+                    models.ForeignKey(
+                        on_delete=models.PROTECT,
+                        related_name="guest_document_indexes",
+                        to="core.property",
+                        verbose_name="所属酒店",
+                    ),
+                ),
             ],
             options={
                 "verbose_name": "证件物业级占用索引",
                 "verbose_name_plural": "证件物业级占用索引",
                 "constraints": [
-                    models.UniqueConstraint(fields=("property", "doc_no_hash"),
-                                            name="uq_guestdocindex_property_hash"),
+                    models.UniqueConstraint(
+                        fields=("property", "doc_no_hash"), name="uq_guestdocindex_property_hash"
+                    ),
                 ],
             },
         ),
@@ -217,22 +270,46 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name="guest",
             name="phone",
-            field=models.CharField(blank=True, help_text="已迁移（WB-103）：留列兼容历史 DDL，新数据不再写入明文；完整号码经 phone_ciphertext 加密存储", max_length=24, null=True, verbose_name="联系电话（历史列）"),
+            field=models.CharField(
+                blank=True,
+                help_text="已迁移（WB-103）：留列兼容历史 DDL，新数据不再写入明文；完整号码经 phone_ciphertext 加密存储",
+                max_length=24,
+                null=True,
+                verbose_name="联系电话（历史列）",
+            ),
         ),
         migrations.AlterField(
             model_name="guest",
             name="phone_normalized",
-            field=models.CharField(blank=True, help_text="已迁移（WB-103）：留列兼容历史 DDL，新数据不再写入明文；检索/去重使用 phone_hash", max_length=24, null=True, verbose_name="标准化手机号（历史列）"),
+            field=models.CharField(
+                blank=True,
+                help_text="已迁移（WB-103）：留列兼容历史 DDL，新数据不再写入明文；检索/去重使用 phone_hash",
+                max_length=24,
+                null=True,
+                verbose_name="标准化手机号（历史列）",
+            ),
         ),
         migrations.AlterField(
             model_name="guestphone",
             name="phone",
-            field=models.CharField(blank=True, help_text="已迁移（WB-103）：留列兼容历史 DDL，新数据不再写入明文", max_length=24, null=True, verbose_name="原始号码（历史列）"),
+            field=models.CharField(
+                blank=True,
+                help_text="已迁移（WB-103）：留列兼容历史 DDL，新数据不再写入明文",
+                max_length=24,
+                null=True,
+                verbose_name="原始号码（历史列）",
+            ),
         ),
         migrations.AlterField(
             model_name="guestphone",
             name="phone_normalized",
-            field=models.CharField(blank=True, help_text="已迁移（WB-103）：留列兼容历史 DDL，新数据不再写入明文；检索使用 phone_hash", max_length=24, null=True, verbose_name="标准化号码（历史列）"),
+            field=models.CharField(
+                blank=True,
+                help_text="已迁移（WB-103）：留列兼容历史 DDL，新数据不再写入明文；检索使用 phone_hash",
+                max_length=24,
+                null=True,
+                verbose_name="标准化号码（历史列）",
+            ),
         ),
         # WB-124：清明文是**不可逆**数据操作——不提供 reverse_code，任何
         # migrate guests 0006 回退尝试都会被 Django 显式拒绝，而不是用

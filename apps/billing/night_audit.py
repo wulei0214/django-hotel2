@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*-
 """PMS2 夜审领域服务：只对 PMS2 Stay/Folio/Ledger 写入，不读写旧 FinanceRecord。"""
+
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
@@ -10,7 +10,11 @@ from django.utils import timezone
 from apps.billing.models import ApprovalRecord, Folio, LedgerEntry
 from apps.billing.services_v2 import BillingService
 from apps.core.models import (
-    AuditEvent, BreakGlassRecord, BusinessDate, NightAuditRun, Property,
+    AuditEvent,
+    BreakGlassRecord,
+    BusinessDate,
+    NightAuditRun,
+    Property,
 )
 from apps.reservations.models import Reservation, ReservationRoom, Stay
 
@@ -25,16 +29,16 @@ class NightAuditError(Exception):
 NIGHT_AUDIT_RUN_TIMEOUT_MINUTES = 15
 
 
-def recover_stale_night_audit_runs(*, property_obj=None, business_date=None,
-                                   timeout_minutes=NIGHT_AUDIT_RUN_TIMEOUT_MINUTES):
+def recover_stale_night_audit_runs(
+    *, property_obj=None, business_date=None, timeout_minutes=NIGHT_AUDIT_RUN_TIMEOUT_MINUTES
+):
     """把超过阈值的 RUNNING 夜审标记为 FAILED，返回恢复条数。
 
     只处理明确超时的记录：正在执行的夜审在阈值内不受影响。调用方应处于
     事务内（run() 的并发仲裁块已满足；管理命令自行包 atomic）。
     """
     cutoff = timezone.now() - timedelta(minutes=timeout_minutes)
-    qs = NightAuditRun.objects.filter(
-        status=NightAuditRun.RunStatus.RUNNING, started_at__lt=cutoff)
+    qs = NightAuditRun.objects.filter(status=NightAuditRun.RunStatus.RUNNING, started_at__lt=cutoff)
     if property_obj is not None:
         qs = qs.filter(business_date__property=property_obj)
     if business_date is not None:
@@ -45,16 +49,21 @@ def recover_stale_night_audit_runs(*, property_obj=None, business_date=None,
     NightAuditRun.objects.filter(pk__in=[pk for pk, _ in stale]).update(
         status=NightAuditRun.RunStatus.FAILED,
         finished_at=timezone.now(),
-        error_message=(f"夜审执行超过 {timeout_minutes} 分钟未结束，进程可能已中断；"
-                       "由超时恢复流程标记为失败，可重新发起夜审。"))
-    props = {p.pk: p for p in Property.objects.filter(
-        pk__in={prop_id for _, prop_id in stale})}
+        error_message=(
+            f"夜审执行超过 {timeout_minutes} 分钟未结束，进程可能已中断；"
+            "由超时恢复流程标记为失败，可重新发起夜审。"
+        ),
+    )
+    props = {p.pk: p for p in Property.objects.filter(pk__in={prop_id for _, prop_id in stale})}
     for pk, prop_id in stale:
         AuditEvent.record(
-            action="night_audit.run_recovered", entity_type="NightAuditRun",
-            entity_id=pk, property_obj=props.get(prop_id),
+            action="night_audit.run_recovered",
+            entity_type="NightAuditRun",
+            entity_id=pk,
+            property_obj=props.get(prop_id),
             after={"status": "FAILED", "timeout_minutes": timeout_minutes},
-            reason="RUNNING 超时恢复（MAINT-02）")
+            reason="RUNNING 超时恢复（MAINT-02）",
+        )
     return len(stale)
 
 
@@ -93,23 +102,29 @@ class NightAuditService:
                 day = business_date
             else:
                 raise NightAuditError("营业日期无效。")
-        current = BusinessDate.objects.filter(
-            property=property_obj,
-            status__in=(BusinessDate.Status.OPEN, BusinessDate.Status.REOPENED),
-        ).order_by("-business_date").first()
+        current = (
+            BusinessDate.objects.filter(
+                property=property_obj,
+                status__in=(BusinessDate.Status.OPEN, BusinessDate.Status.REOPENED),
+            )
+            .order_by("-business_date")
+            .first()
+        )
         if current is not None:
             if day != current.business_date:
                 raise NightAuditError(
                     f"只允许审计当前营业日：物业当前的 {current.status} 营业日是 "
                     f"{current.business_date.isoformat()}，日期 "
                     f"{day.isoformat()} 与其不符，拒绝夜审；"
-                    "补记历史凭证请走营业日重开授权流程。")
+                    "补记历史凭证请走营业日重开授权流程。"
+                )
             return day
         today = property_date(property_obj)
         if day != today:
             raise NightAuditError(
                 f"只允许审计当前营业日 {today.isoformat()}；日期 "
-                f"{day.isoformat()} 无对应的 OPEN/REOPENED 营业日记录，拒绝夜审。")
+                f"{day.isoformat()} 无对应的 OPEN/REOPENED 营业日记录，拒绝夜审。"
+            )
         return day
 
     @classmethod
@@ -117,8 +132,12 @@ class NightAuditService:
         day = cls._resolve_date(property_obj, business_date)
         stays = list(
             Stay.objects.filter(property=property_obj, status=Stay.Status.IN_HOUSE)
-            .select_related("reservation_room", "reservation_room__reservation",
-                            "reservation_room__rate_plan", "room")
+            .select_related(
+                "reservation_room",
+                "reservation_room__reservation",
+                "reservation_room__rate_plan",
+                "room",
+            )
             .order_by("id")
         )
         rows = []
@@ -128,7 +147,8 @@ class NightAuditService:
         # 同预订多张 OPEN 主账单属异常态，setdefault 保留默认排序下的第一条
         # （Folio Meta ordering=-opened_at，即最近开立的账单）。
         window_reservation_ids = {
-            stay.reservation_room.reservation_id for stay in stays
+            stay.reservation_room.reservation_id
+            for stay in stays
             if stay.reservation_room.check_in <= day < stay.reservation_room.check_out
         }
         folios_by_reservation = {}
@@ -139,8 +159,7 @@ class NightAuditService:
                 folio_type=Folio.FolioType.MASTER,
                 status=Folio.Status.OPEN,
             ).only("id", "reservation_id"):
-                folios_by_reservation.setdefault(
-                    folio_row.reservation_id, folio_row)
+                folios_by_reservation.setdefault(folio_row.reservation_id, folio_row)
         window_references = [
             f"night-audit:{property_obj.pk}:{day.isoformat()}:stay:{stay.pk}"
             for stay in stays
@@ -149,9 +168,17 @@ class NightAuditService:
         entries_by_reference = {}
         if window_references:
             for entry_row in LedgerEntry.objects.filter(
-                property=property_obj, reference__in=window_references,
-            ).only("reference", "folio_id", "stay_id", "entry_type",
-                   "amount", "currency", "business_date"):
+                property=property_obj,
+                reference__in=window_references,
+            ).only(
+                "reference",
+                "folio_id",
+                "stay_id",
+                "entry_type",
+                "amount",
+                "currency",
+                "business_date",
+            ):
                 entries_by_reference.setdefault(entry_row.reference, entry_row)
         total = Decimal("0.00")
         # WB-081：stay_count 与过租过滤同口径——只统计房价窗口覆盖目标
@@ -168,58 +195,74 @@ class NightAuditService:
                 continue
             stay_count += 1
             nightly = next(
-                (item for item in (line.nightly_rates or [])
-                 if str(item.get("date")) == day.isoformat()),
+                (
+                    item
+                    for item in (line.nightly_rates or [])
+                    if str(item.get("date")) == day.isoformat()
+                ),
                 None,
             )
             if nightly is None:
-                blockers.append({
-                    "code": "NIGHTLY_RATE_MISSING",
-                    "severity": "critical",
-                    "entity": {"type": "Stay", "id": stay.pk,
-                               "booking_no": booking_no},
-                    "message": (f"预订 {booking_no} 的房间明细 {line.pk} "
-                                f"缺少 {day.isoformat()} 的每晚房价快照。"),
-                    "suggested_action": "核对预订房价快照；不得在缺少价格依据时自动过租。",
-                })
+                blockers.append(
+                    {
+                        "code": "NIGHTLY_RATE_MISSING",
+                        "severity": "critical",
+                        "entity": {"type": "Stay", "id": stay.pk, "booking_no": booking_no},
+                        "message": (
+                            f"预订 {booking_no} 的房间明细 {line.pk} "
+                            f"缺少 {day.isoformat()} 的每晚房价快照。"
+                        ),
+                        "suggested_action": "核对预订房价快照；不得在缺少价格依据时自动过租。",
+                    }
+                )
                 continue
             try:
                 amount = Decimal(str(nightly.get("price")))
             except (InvalidOperation, TypeError, ValueError):
-                blockers.append({
-                    "code": "NIGHTLY_RATE_INVALID",
-                    "severity": "critical",
-                    "entity": {"type": "Stay", "id": stay.pk,
-                               "booking_no": booking_no},
-                    "message": f"预订 {booking_no} 的当日房价快照不是有效金额。",
-                    "suggested_action": "修复并核验原始房价快照后重新预览。",
-                })
+                blockers.append(
+                    {
+                        "code": "NIGHTLY_RATE_INVALID",
+                        "severity": "critical",
+                        "entity": {"type": "Stay", "id": stay.pk, "booking_no": booking_no},
+                        "message": f"预订 {booking_no} 的当日房价快照不是有效金额。",
+                        "suggested_action": "修复并核验原始房价快照后重新预览。",
+                    }
+                )
                 continue
             try:
-                valid_amount = (amount.is_finite() and amount >= 0
-                                and amount == amount.quantize(Decimal("0.01")))
+                valid_amount = (
+                    amount.is_finite()
+                    and amount >= 0
+                    and amount == amount.quantize(Decimal("0.01"))
+                )
             except InvalidOperation:
                 valid_amount = False
             if not valid_amount:
-                blockers.append({
-                    "code": "NIGHTLY_RATE_INVALID",
-                    "severity": "critical",
-                    "entity": {"type": "Stay", "id": stay.pk,
-                               "booking_no": booking_no},
-                    "message": f"预订 {booking_no} 的当日房价金额无效。",
-                    "suggested_action": "修复并核验原始房价快照后重新预览。",
-                })
+                blockers.append(
+                    {
+                        "code": "NIGHTLY_RATE_INVALID",
+                        "severity": "critical",
+                        "entity": {"type": "Stay", "id": stay.pk, "booking_no": booking_no},
+                        "message": f"预订 {booking_no} 的当日房价金额无效。",
+                        "suggested_action": "修复并核验原始房价快照后重新预览。",
+                    }
+                )
                 continue
             folio = folios_by_reservation.get(line.reservation_id)
             if folio is None:
-                blockers.append({
-                    "code": "MASTER_FOLIO_MISSING",
-                    "severity": "critical",
-                    "entity": {"type": "Reservation", "id": line.reservation_id,
-                               "booking_no": booking_no},
-                    "message": f"预订 {booking_no} 缺少有效的未结主账单。",
-                    "suggested_action": "核查账单归属与状态；不得自动创建重复账单。",
-                })
+                blockers.append(
+                    {
+                        "code": "MASTER_FOLIO_MISSING",
+                        "severity": "critical",
+                        "entity": {
+                            "type": "Reservation",
+                            "id": line.reservation_id,
+                            "booking_no": booking_no,
+                        },
+                        "message": f"预订 {booking_no} 缺少有效的未结主账单。",
+                        "suggested_action": "核查账单归属与状态；不得自动创建重复账单。",
+                    }
+                )
                 continue
             reference = f"night-audit:{property_obj.pk}:{day.isoformat()}:stay:{stay.pk}"
             # WB-082：already_posted 从"同物业同 reference 存在"升级为内容一致：
@@ -235,52 +278,59 @@ class NightAuditService:
                 if existing_entry.folio_id != folio.pk:
                     differences.append(
                         f"主账单（账本 folio {existing_entry.folio_id} ≠ "
-                        f"本次 folio {folio.pk}）")
+                        f"本次 folio {folio.pk}）"
+                    )
                 if existing_entry.stay_id != stay.pk:
                     differences.append(
-                        f"关联住客（账本 stay {existing_entry.stay_id} ≠ "
-                        f"本次 stay {stay.pk}）")
+                        f"关联住客（账本 stay {existing_entry.stay_id} ≠ " f"本次 stay {stay.pk}）"
+                    )
                 if existing_entry.entry_type != LedgerEntry.EntryType.ROOM_CHARGE:
                     differences.append(
                         f"凭证类型（账本 {existing_entry.entry_type} ≠ "
-                        f"{LedgerEntry.EntryType.ROOM_CHARGE}）")
+                        f"{LedgerEntry.EntryType.ROOM_CHARGE}）"
+                    )
                 if existing_entry.amount != amount:
-                    differences.append(
-                        f"金额（账本 {existing_entry.amount} ≠ 当晚房价 {amount}）")
+                    differences.append(f"金额（账本 {existing_entry.amount} ≠ 当晚房价 {amount}）")
                 if existing_entry.currency != line.reservation.currency:
                     differences.append(
-                        f"币种（账本 {existing_entry.currency} ≠ "
-                        f"{line.reservation.currency}）")
+                        f"币种（账本 {existing_entry.currency} ≠ " f"{line.reservation.currency}）"
+                    )
                 if existing_entry.business_date != day:
                     differences.append(
                         f"营业日（账本 {existing_entry.business_date.isoformat()} ≠ "
-                        f"目标日 {day.isoformat()}）")
+                        f"目标日 {day.isoformat()}）"
+                    )
                 if differences:
-                    blockers.append({
-                        "code": "ALREADY_POSTED_CONFLICT",
-                        "severity": "critical",
-                        "entity": {"type": "Stay", "id": stay.pk,
-                                   "booking_no": booking_no},
-                        "message": (
-                            f"预订 {booking_no} 已存在同引用凭证 {reference}，"
-                            f"但账务事实不一致（{'；'.join(differences)}），"
-                            "不得跳过过租，须人工核销错账后重审。"),
-                        "suggested_action": (
-                            "核对账本凭证与房价快照；错账必须走红字冲销"
-                            "（需审批），禁止直接修改或删除凭证。"),
-                    })
+                    blockers.append(
+                        {
+                            "code": "ALREADY_POSTED_CONFLICT",
+                            "severity": "critical",
+                            "entity": {"type": "Stay", "id": stay.pk, "booking_no": booking_no},
+                            "message": (
+                                f"预订 {booking_no} 已存在同引用凭证 {reference}，"
+                                f"但账务事实不一致（{'；'.join(differences)}），"
+                                "不得跳过过租，须人工核销错账后重审。"
+                            ),
+                            "suggested_action": (
+                                "核对账本凭证与房价快照；错账必须走红字冲销"
+                                "（需审批），禁止直接修改或删除凭证。"
+                            ),
+                        }
+                    )
                     continue
                 already_posted = True
-            rows.append({
-                "stay_id": stay.pk,
-                "booking_no": booking_no,
-                "room_number": stay.room.number,
-                "amount": str(amount),
-                "currency": line.reservation.currency,
-                "folio_id": folio.pk,
-                "already_posted": already_posted,
-                "reference": reference,
-            })
+            rows.append(
+                {
+                    "stay_id": stay.pk,
+                    "booking_no": booking_no,
+                    "room_number": stay.room.number,
+                    "amount": str(amount),
+                    "currency": line.reservation.currency,
+                    "folio_id": folio.pk,
+                    "already_posted": already_posted,
+                    "reference": reference,
+                }
+            )
             if not already_posted:
                 total += amount
 
@@ -288,14 +338,11 @@ class NightAuditService:
             property=property_obj,
             check_in__lte=day,
             check_out__gt=day,
-            reservation__status__in=(Reservation.Status.CONFIRMED,
-                                     Reservation.Status.CHECKED_IN),
+            reservation__status__in=(Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN),
             stay__isnull=True,
             no_show_record__isnull=True,
         ).count()
-        bd = BusinessDate.objects.filter(
-            property=property_obj, business_date=day
-        ).first()
+        bd = BusinessDate.objects.filter(property=property_obj, business_date=day).first()
         return {
             "business_date": day.isoformat(),
             "business_date_status": bd.status if bd else BusinessDate.Status.OPEN,
@@ -320,38 +367,47 @@ class NightAuditService:
         with transaction.atomic():
             Property.objects.select_for_update().get(pk=property_obj.pk)
             bd, _ = BusinessDate.objects.get_or_create(
-                property=property_obj, business_date=day,
+                property=property_obj,
+                business_date=day,
                 defaults={"status": BusinessDate.Status.OPEN},
             )
             bd = BusinessDate.objects.select_for_update().get(pk=bd.pk)
-            successful = NightAuditRun.objects.filter(
-                business_date=bd, status=NightAuditRun.RunStatus.SUCCESS
-            ).order_by("-started_at").first()
+            successful = (
+                NightAuditRun.objects.filter(
+                    business_date=bd, status=NightAuditRun.RunStatus.SUCCESS
+                )
+                .order_by("-started_at")
+                .first()
+            )
             if bd.status == BusinessDate.Status.CLOSED and successful:
                 return successful, False
             if bd.status == BusinessDate.Status.CLOSED:
                 raise NightAuditError("该营业日已关账但没有成功夜审记录，请联系管理员核查。")
             if bd.status not in (BusinessDate.Status.OPEN, BusinessDate.Status.REOPENED):
                 raise NightAuditError("当前营业日状态不允许执行夜审。")
-            other_open = BusinessDate.objects.filter(
-                property=property_obj,
-                status__in=(BusinessDate.Status.OPEN, BusinessDate.Status.REOPENED),
-            ).exclude(pk=bd.pk).first()
+            other_open = (
+                BusinessDate.objects.filter(
+                    property=property_obj,
+                    status__in=(BusinessDate.Status.OPEN, BusinessDate.Status.REOPENED),
+                )
+                .exclude(pk=bd.pk)
+                .first()
+            )
             if other_open:
                 raise NightAuditError(
                     f"物业已有未关闭营业日 {other_open.business_date.isoformat()}，请先处理。"
                 )
             # MAINT-02：惰性恢复。进程被硬杀时 except 分支不会执行，
             # 残留 RUNNING 会让该营业日永久无法再跑夜审。
-            recover_stale_night_audit_runs(
-                property_obj=property_obj, business_date=bd)
+            recover_stale_night_audit_runs(property_obj=property_obj, business_date=bd)
             running = NightAuditRun.objects.filter(
                 business_date=bd, status=NightAuditRun.RunStatus.RUNNING
             ).first()
             if running:
                 raise NightAuditError("该营业日已有夜审正在执行，请勿重复提交。")
             run = NightAuditRun.objects.create(
-                business_date=bd, status=NightAuditRun.RunStatus.RUNNING,
+                business_date=bd,
+                status=NightAuditRun.RunStatus.RUNNING,
                 executed_by=executed_by,
             )
 
@@ -391,11 +447,13 @@ class NightAuditService:
                 # 的窗口复核兜底。）
                 locked_stays = {
                     row.pk: row
-                    for row in Stay.objects.select_for_update().filter(
+                    for row in Stay.objects.select_for_update()
+                    .filter(
                         pk__in=candidate_stay_pks,
                         property=property_obj,
                         status=Stay.Status.IN_HOUSE,
-                    ).order_by("pk")
+                    )
+                    .order_by("pk")
                 }
                 Property.objects.select_for_update().get(pk=property_obj.pk)
                 bd = BusinessDate.objects.select_for_update().get(pk=bd.pk)
@@ -403,11 +461,11 @@ class NightAuditService:
                     raise NightAuditError("营业日状态已变化，夜审未执行。")
                 preview = cls.preview(property_obj=property_obj, business_date=day)
                 if preview.get("blockers"):
-                    codes = sorted({item.get("code", "UNKNOWN")
-                                     for item in preview["blockers"]})
+                    codes = sorted({item.get("code", "UNKNOWN") for item in preview["blockers"]})
                     raise NightAuditError(
-                        "夜审存在 %s 项未解决阻断，执行已停止：%s" %
-                        (len(preview["blockers"]), "、".join(codes)))
+                        "夜审存在 %s 项未解决阻断，执行已停止：%s"
+                        % (len(preview["blockers"]), "、".join(codes))
+                    )
                 posted = 0
                 already = 0
                 summary_stay_count = 0
@@ -423,17 +481,22 @@ class NightAuditService:
                         already += 1
                         continue
                     line = ReservationRoom.objects.select_for_update().get(
-                        pk=stay.reservation_room_id, property=property_obj)
+                        pk=stay.reservation_room_id, property=property_obj
+                    )
                     if not (line.check_in <= day < line.check_out):
                         # 锁定后住宿区间不再覆盖营业日（如并发续住/缩短）→ 跳过。
                         continue
                     reservation = Reservation.objects.select_for_update().get(
-                        pk=line.reservation_id, property=property_obj)
+                        pk=line.reservation_id, property=property_obj
+                    )
                     # 锁定行上重读当晚房价快照（预览读发生在加锁前，金额以
                     # 锁定事实为准；缺失/非法按既有 blocker 口径整体回滚）。
                     nightly = next(
-                        (item for item in (line.nightly_rates or [])
-                         if str(item.get("date")) == day.isoformat()),
+                        (
+                            item
+                            for item in (line.nightly_rates or [])
+                            if str(item.get("date")) == day.isoformat()
+                        ),
                         None,
                     )
                     if nightly is None:
@@ -446,13 +509,18 @@ class NightAuditService:
                     except (InvalidOperation, TypeError, ValueError) as exc:
                         raise NightAuditError(
                             f"预订 {reservation.booking_no} 的当日房价快照不是"
-                            "有效金额，夜审已整体回滚。") from exc
-                    folio = Folio.objects.select_for_update().filter(
-                        property=property_obj,
-                        reservation__booking_no=reservation.booking_no,
-                        folio_type=Folio.FolioType.MASTER,
-                        status=Folio.Status.OPEN,
-                    ).first()
+                            "有效金额，夜审已整体回滚。"
+                        ) from exc
+                    folio = (
+                        Folio.objects.select_for_update()
+                        .filter(
+                            property=property_obj,
+                            reservation__booking_no=reservation.booking_no,
+                            folio_type=Folio.FolioType.MASTER,
+                            status=Folio.Status.OPEN,
+                        )
+                        .first()
+                    )
                     if folio is None:
                         raise NightAuditError(
                             f"预订 {reservation.booking_no} 没有有效主账单，夜审已整体回滚。"
@@ -462,17 +530,21 @@ class NightAuditService:
                         already += 1
                         continue
                     reference = (
-                        f"night-audit:{property_obj.pk}:{day.isoformat()}"
-                        f":stay:{stay.pk}")
+                        f"night-audit:{property_obj.pk}:{day.isoformat()}" f":stay:{stay.pk}"
+                    )
                     # WB-079 顺序不变量：过租凭证写入必须发生在营业日置
                     # CLOSED 之前（同一事务内，先 post_entry 后关账）——
                     # post_entry 的营业日关账守卫依赖该顺序，否则会阻断
                     # 合法夜审链路。关账后本事务内不再有任何账本写入。
                     BillingService.post_entry(
-                        property_obj=property_obj, folio=folio, stay=stay,
+                        property_obj=property_obj,
+                        folio=folio,
+                        stay=stay,
                         entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-                        amount=amount, currency=reservation.currency,
-                        business_date=day, reference=reference,
+                        amount=amount,
+                        currency=reservation.currency,
+                        business_date=day,
+                        reference=reference,
                         description=f"夜审房费过租 {day.isoformat()}",
                         posted_by=executed_by,
                     )
@@ -490,8 +562,7 @@ class NightAuditService:
                     "stay_count": summary_stay_count,
                     "charge_count": posted,
                     "already_posted_count": already,
-                    "charge_total": str(summary_charge_total.quantize(
-                        Decimal("0.01"))),
+                    "charge_total": str(summary_charge_total.quantize(Decimal("0.01"))),
                     "currency": preview["currency"],
                     "no_show_review_candidates": preview["no_show_review_candidates"],
                 }
@@ -500,15 +571,20 @@ class NightAuditService:
                 run.summary = summary
                 run.save(update_fields=("status", "finished_at", "summary"))
                 AuditEvent.record(
-                    action="night_audit.run", entity_type="BusinessDate",
-                    entity_id=bd.pk, actor=executed_by, property_obj=property_obj,
+                    action="night_audit.run",
+                    entity_type="BusinessDate",
+                    entity_id=bd.pk,
+                    actor=executed_by,
+                    property_obj=property_obj,
                     after={"business_date": day.isoformat(), **summary},
-                    reason="PMS2 营业日夜审")
+                    reason="PMS2 营业日夜审",
+                )
                 return run, True
         except Exception as exc:
             NightAuditRun.objects.filter(pk=run.pk).update(
                 status=NightAuditRun.RunStatus.FAILED,
-                finished_at=timezone.now(), error_message=str(exc)[:4000],
+                finished_at=timezone.now(),
+                error_message=str(exc)[:4000],
             )
             raise
 
@@ -518,17 +594,26 @@ class NightAuditService:
         reason = str(reason or "").strip()
         if not reason or len(reason) > 240:
             raise NightAuditError("重开营业日必须填写 1 至 240 个字符的原因。")
-        bd = BusinessDate.objects.select_for_update().filter(
-            pk=business_date_id, property=property_obj,
-            status=BusinessDate.Status.CLOSED,
-        ).first()
+        bd = (
+            BusinessDate.objects.select_for_update()
+            .filter(
+                pk=business_date_id,
+                property=property_obj,
+                status=BusinessDate.Status.CLOSED,
+            )
+            .first()
+        )
         if bd is None:
             raise NightAuditError("仅已关账营业日可以申请重开。")
         from apps.billing.services_v2 import ApprovalService
+
         approval, created = ApprovalService.request_approval(
-            property_obj=property_obj, action_code="night_audit.reopen",
-            entity_type="BusinessDate", entity_id=bd.pk,
-            requested_by=requested_by, reason=reason,
+            property_obj=property_obj,
+            action_code="night_audit.reopen",
+            entity_type="BusinessDate",
+            entity_id=bd.pk,
+            requested_by=requested_by,
+            reason=reason,
             payload={"business_date": bd.business_date.isoformat()},
         )
         return approval, created
@@ -536,52 +621,84 @@ class NightAuditService:
     @staticmethod
     @transaction.atomic
     def approve_reopen(*, property_obj, business_date_id, approval_id, approved_by):
-        bd = BusinessDate.objects.select_for_update().filter(
-            pk=business_date_id, property=property_obj,
-            status=BusinessDate.Status.CLOSED,
-        ).first()
+        bd = (
+            BusinessDate.objects.select_for_update()
+            .filter(
+                pk=business_date_id,
+                property=property_obj,
+                status=BusinessDate.Status.CLOSED,
+            )
+            .first()
+        )
         if bd is None:
             raise NightAuditError("营业日不存在或当前状态不允许重开。")
-        approval = ApprovalRecord.objects.select_for_update().filter(
-            pk=approval_id, property=property_obj,
-            action_code="night_audit.reopen",
-            entity_type="BusinessDate", entity_id=str(bd.pk),
-        ).first()
+        approval = (
+            ApprovalRecord.objects.select_for_update()
+            .filter(
+                pk=approval_id,
+                property=property_obj,
+                action_code="night_audit.reopen",
+                entity_type="BusinessDate",
+                entity_id=str(bd.pk),
+            )
+            .first()
+        )
         if approval is None:
             raise NightAuditError("找不到对应的营业日重开审批记录。")
         from apps.billing.services_v2 import ApprovalService
+
         # 只允许"待审批 → 本次批准"一条路径：已批准/已驳回/已过期的历史审批
         # 不得在营业日再次关账后被重放驱动第二次重开（重开必须有新申请事实）。
         if approval.status != ApprovalRecord.Status.PENDING:
             raise NightAuditError(
                 f"重开申请已处理（{approval.status}），不能重复执行；"
-                "如需再次重开请重新提交申请。")
+                "如需再次重开请重新提交申请。"
+            )
         approval = ApprovalService.approve(
-            approval.pk, approved_by=approved_by, property_obj=property_obj)
-        if approval.status != ApprovalRecord.Status.APPROVED or approval.approved_by_id != approved_by.pk:
+            approval.pk, approved_by=approved_by, property_obj=property_obj
+        )
+        if (
+            approval.status != ApprovalRecord.Status.APPROVED
+            or approval.approved_by_id != approved_by.pk
+        ):
             raise NightAuditError("必须由当前审批人批准重开申请。")
         reason = approval.reason
         bd.status = BusinessDate.Status.REOPENED
         bd.reopened_at = timezone.now()
         bd.reopened_by = approved_by
         bd.reopen_reason = reason
-        bd.save(update_fields=("status", "reopened_at", "reopened_by",
-                               "reopen_reason", "open_property_key"))
+        bd.save(
+            update_fields=(
+                "status",
+                "reopened_at",
+                "reopened_by",
+                "reopen_reason",
+                "open_property_key",
+            )
+        )
         AuditEvent.record(
-            action="night_audit.reopen", entity_type="BusinessDate",
-            entity_id=bd.pk, actor=approved_by, property_obj=property_obj,
-            after={"business_date": bd.business_date.isoformat(),
-                   "status": bd.status, "approval_id": approval.pk},
-            reason=reason)
+            action="night_audit.reopen",
+            entity_type="BusinessDate",
+            entity_id=bd.pk,
+            actor=approved_by,
+            property_obj=property_obj,
+            after={
+                "business_date": bd.business_date.isoformat(),
+                "status": bd.status,
+                "approval_id": approval.pk,
+            },
+            reason=reason,
+        )
         return bd
-
 
     @staticmethod
     @transaction.atomic
-    def request_break_glass(*, property_obj, business_date_id, requested_by,
-                            password, reason, validity_minutes=10):
+    def request_break_glass(
+        *, property_obj, business_date_id, requested_by, password, reason, validity_minutes=10
+    ):
         """仅单一有效经理账号的紧急场景发放十分钟、单营业日重开授权。"""
         from django.db.models import Q
+
         from apps.identity.models import StaffRoleAssignment
 
         reason = str(reason or "").strip()
@@ -603,11 +720,10 @@ class NightAuditService:
                 starts_at__lte=now,
                 group__permissions__content_type__app_label="hotelapp",
                 group__permissions__codename="business_date_reopen",
-            ).filter(
-                Q(ends_at__isnull=True) | Q(ends_at__gt=now)
-            ).values_list(
-                "membership__staff_profile__user_id", flat=True
-            ).distinct()
+            )
+            .filter(Q(ends_at__isnull=True) | Q(ends_at__gt=now))
+            .values_list("membership__staff_profile__user_id", flat=True)
+            .distinct()
         )
         if eligible_users != {requested_by.pk}:
             raise NightAuditError(
@@ -615,46 +731,66 @@ class NightAuditService:
                 "Break-glass 仅适用于唯一有效经理账号的紧急情况。"
             )
 
-        business_date = BusinessDate.objects.select_for_update().filter(
-            pk=business_date_id, property=property_obj,
-            status=BusinessDate.Status.CLOSED,
-        ).first()
+        business_date = (
+            BusinessDate.objects.select_for_update()
+            .filter(
+                pk=business_date_id,
+                property=property_obj,
+                status=BusinessDate.Status.CLOSED,
+            )
+            .first()
+        )
         if business_date is None:
             raise NightAuditError("仅已关账营业日可以申请紧急重开。")
-        active = BreakGlassRecord.objects.select_for_update().filter(
-            business_date=business_date,
-            status=BreakGlassRecord.Status.GRANTED,
-            expires_at__gt=now,
-        ).first()
+        active = (
+            BreakGlassRecord.objects.select_for_update()
+            .filter(
+                business_date=business_date,
+                status=BreakGlassRecord.Status.GRANTED,
+                expires_at__gt=now,
+            )
+            .first()
+        )
         if active:
             raise NightAuditError("该营业日已有有效的 Break-glass 授权。")
 
         record = BreakGlassRecord.objects.create(
-            property=property_obj, business_date=business_date,
-            requested_by=requested_by, reason=reason,
+            property=property_obj,
+            business_date=business_date,
+            requested_by=requested_by,
+            reason=reason,
             password_verified_at=now,
             expires_at=now + timedelta(minutes=10),
             status=BreakGlassRecord.Status.GRANTED,
         )
         AuditEvent.record(
             action="night_audit.break_glass_requested",
-            entity_type="BreakGlassRecord", entity_id=record.pk,
-            actor=requested_by, property_obj=property_obj,
-            after={"business_date": business_date.business_date.isoformat(),
-                   "expires_at": record.expires_at.isoformat(),
-                   "status": record.status},
-            reason=reason)
+            entity_type="BreakGlassRecord",
+            entity_id=record.pk,
+            actor=requested_by,
+            property_obj=property_obj,
+            after={
+                "business_date": business_date.business_date.isoformat(),
+                "expires_at": record.expires_at.isoformat(),
+                "status": record.status,
+            },
+            reason=reason,
+        )
         return record
 
     @staticmethod
     @transaction.atomic
-    def execute_break_glass(*, property_obj, business_date_id, record_id,
-                            executed_by):
+    def execute_break_glass(*, property_obj, business_date_id, record_id, executed_by):
         """执行单次限时授权；授权绑定申请人、物业和具体营业日。"""
-        record = BreakGlassRecord.objects.select_for_update().filter(
-            pk=record_id, property=property_obj,
-            business_date_id=business_date_id,
-        ).first()
+        record = (
+            BreakGlassRecord.objects.select_for_update()
+            .filter(
+                pk=record_id,
+                property=property_obj,
+                business_date_id=business_date_id,
+            )
+            .first()
+        )
         if record is None:
             raise NightAuditError("紧急授权记录不存在或不属于当前物业/营业日。")
         if record.requested_by_id != executed_by.pk:
@@ -667,41 +803,60 @@ class NightAuditService:
             record.save(update_fields=("status",))
             AuditEvent.record(
                 action="night_audit.break_glass_expired",
-                entity_type="BreakGlassRecord", entity_id=record.pk,
-                actor=executed_by, property_obj=property_obj,
-                after={"status": record.status}, reason=record.reason)
+                entity_type="BreakGlassRecord",
+                entity_id=record.pk,
+                actor=executed_by,
+                property_obj=property_obj,
+                after={"status": record.status},
+                reason=record.reason,
+            )
             return None
 
-        business_date = BusinessDate.objects.select_for_update().filter(
-            pk=business_date_id, property=property_obj,
-            status=BusinessDate.Status.CLOSED,
-        ).first()
+        business_date = (
+            BusinessDate.objects.select_for_update()
+            .filter(
+                pk=business_date_id,
+                property=property_obj,
+                status=BusinessDate.Status.CLOSED,
+            )
+            .first()
+        )
         if business_date is None:
             raise NightAuditError("营业日状态已变化，紧急授权未执行。")
         business_date.status = BusinessDate.Status.REOPENED
         business_date.reopened_at = now
         business_date.reopened_by = executed_by
         business_date.reopen_reason = record.reason
-        business_date.save(update_fields=(
-            "status", "reopened_at", "reopened_by", "reopen_reason",
-            "open_property_key"))
+        business_date.save(
+            update_fields=(
+                "status",
+                "reopened_at",
+                "reopened_by",
+                "reopen_reason",
+                "open_property_key",
+            )
+        )
         record.status = BreakGlassRecord.Status.USED
         record.used_at = now
         record.save(update_fields=("status", "used_at"))
         AuditEvent.record(
             action="night_audit.break_glass_executed",
-            entity_type="BusinessDate", entity_id=business_date.pk,
-            actor=executed_by, property_obj=property_obj,
-            after={"business_date": business_date.business_date.isoformat(),
-                   "status": business_date.status,
-                   "break_glass_record_id": record.pk},
-            reason=record.reason)
+            entity_type="BusinessDate",
+            entity_id=business_date.pk,
+            actor=executed_by,
+            property_obj=property_obj,
+            after={
+                "business_date": business_date.business_date.isoformat(),
+                "status": business_date.status,
+                "break_glass_record_id": record.pk,
+            },
+            reason=record.reason,
+        )
         return business_date
 
     @staticmethod
     @transaction.atomic
-    def review_break_glass(*, property_obj, record_id, reviewed_by,
-                           decision, reason):
+    def review_break_glass(*, property_obj, record_id, reviewed_by, decision, reason):
         """事后独立复核；复核账号必须不同于紧急操作账号。"""
         from apps.identity.authorization import AuthorizationService
 
@@ -714,11 +869,17 @@ class NightAuditService:
         ):
             raise NightAuditError("复核结论只能是 CONFIRMED 或 REJECTED。")
         if not AuthorizationService.has_permission(
-                reviewed_by, property_obj, "core.breakglass_review"):
+            reviewed_by, property_obj, "core.breakglass_review"
+        ):
             raise NightAuditError("当前账号没有紧急操作事后复核权限。")
-        record = BreakGlassRecord.objects.select_for_update().filter(
-            pk=record_id, property=property_obj,
-        ).first()
+        record = (
+            BreakGlassRecord.objects.select_for_update()
+            .filter(
+                pk=record_id,
+                property=property_obj,
+            )
+            .first()
+        )
         if record is None:
             raise NightAuditError("紧急授权记录不存在或不属于当前物业。")
         if record.requested_by_id == reviewed_by.pk:
@@ -730,13 +891,22 @@ class NightAuditService:
         record.reviewed_at = timezone.now()
         record.review_decision = decision
         record.review_reason = reason
-        record.save(update_fields=(
-            "status", "reviewed_by", "reviewed_at",
-            "review_decision", "review_reason"))
+        record.save(
+            update_fields=(
+                "status",
+                "reviewed_by",
+                "reviewed_at",
+                "review_decision",
+                "review_reason",
+            )
+        )
         AuditEvent.record(
             action="night_audit.break_glass_reviewed",
-            entity_type="BreakGlassRecord", entity_id=record.pk,
-            actor=reviewed_by, property_obj=property_obj,
+            entity_type="BreakGlassRecord",
+            entity_id=record.pk,
+            actor=reviewed_by,
+            property_obj=property_obj,
             after={"decision": decision, "status": record.status},
-            reason=reason)
+            reason=reason,
+        )
         return record

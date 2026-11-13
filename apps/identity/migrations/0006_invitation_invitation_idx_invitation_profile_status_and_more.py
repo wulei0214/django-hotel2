@@ -9,55 +9,171 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('identity', '0005_staffprofile_last_password_change_and_more'),
+        ("identity", "0005_staffprofile_last_password_change_and_more"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Invitation',
+            name="Invitation",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('token_hash', models.CharField(help_text='SHA-256(token) 十六进制；明文 token 不落库不落审计', max_length=64, unique=True, verbose_name='token 摘要')),
-                ('status', models.CharField(choices=[('PENDING', '待激活'), ('ACCEPTED', '已接受'), ('EXPIRED', '已过期'), ('REVOKED', '已撤销')], default='PENDING', max_length=16, verbose_name='邀请状态')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('expires_at', models.DateTimeField(verbose_name='失效时间')),
-                ('consumed_at', models.DateTimeField(blank=True, help_text='员工激活成功时间；仅 ACCEPTED 状态允许非空', null=True, verbose_name='消费时间')),
-                ('revoked_at', models.DateTimeField(blank=True, help_text='管理员撤销时间；仅 REVOKED 状态允许非空', null=True, verbose_name='撤销时间')),
-                ('resend_count', models.PositiveIntegerField(default=0, help_text='同一员工邀请链上的重发序号；首次创建为 0，重发 +1', verbose_name='重发次数')),
-                ('last_sent_at', models.DateTimeField(help_text='本次 token 的生成时间；人工复制发送同样记录', verbose_name='最近发出时间')),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_invitations', to=settings.AUTH_USER_MODEL, verbose_name='发起人')),
-                ('membership', models.ForeignKey(help_text='token 绑定的任职关系；必须属于同一员工档案，激活时复核', on_delete=django.db.models.deletion.PROTECT, related_name='invitations', to='identity.propertystaffmembership', verbose_name='任职关系')),
-                ('revoked_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='revoked_invitations', to=settings.AUTH_USER_MODEL, verbose_name='撤销人')),
-                ('staff_profile', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='invitations', to='identity.staffprofile', verbose_name='员工档案')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "token_hash",
+                    models.CharField(
+                        help_text="SHA-256(token) 十六进制；明文 token 不落库不落审计",
+                        max_length=64,
+                        unique=True,
+                        verbose_name="token 摘要",
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("PENDING", "待激活"),
+                            ("ACCEPTED", "已接受"),
+                            ("EXPIRED", "已过期"),
+                            ("REVOKED", "已撤销"),
+                        ],
+                        default="PENDING",
+                        max_length=16,
+                        verbose_name="邀请状态",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
+                ("expires_at", models.DateTimeField(verbose_name="失效时间")),
+                (
+                    "consumed_at",
+                    models.DateTimeField(
+                        blank=True,
+                        help_text="员工激活成功时间；仅 ACCEPTED 状态允许非空",
+                        null=True,
+                        verbose_name="消费时间",
+                    ),
+                ),
+                (
+                    "revoked_at",
+                    models.DateTimeField(
+                        blank=True,
+                        help_text="管理员撤销时间；仅 REVOKED 状态允许非空",
+                        null=True,
+                        verbose_name="撤销时间",
+                    ),
+                ),
+                (
+                    "resend_count",
+                    models.PositiveIntegerField(
+                        default=0,
+                        help_text="同一员工邀请链上的重发序号；首次创建为 0，重发 +1",
+                        verbose_name="重发次数",
+                    ),
+                ),
+                (
+                    "last_sent_at",
+                    models.DateTimeField(
+                        help_text="本次 token 的生成时间；人工复制发送同样记录",
+                        verbose_name="最近发出时间",
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_invitations",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="发起人",
+                    ),
+                ),
+                (
+                    "membership",
+                    models.ForeignKey(
+                        help_text="token 绑定的任职关系；必须属于同一员工档案，激活时复核",
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="invitations",
+                        to="identity.propertystaffmembership",
+                        verbose_name="任职关系",
+                    ),
+                ),
+                (
+                    "revoked_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="revoked_invitations",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="撤销人",
+                    ),
+                ),
+                (
+                    "staff_profile",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="invitations",
+                        to="identity.staffprofile",
+                        verbose_name="员工档案",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '员工邀请激活',
-                'verbose_name_plural': '员工邀请激活',
-                'ordering': ('-id',),
+                "verbose_name": "员工邀请激活",
+                "verbose_name_plural": "员工邀请激活",
+                "ordering": ("-id",),
             },
         ),
         migrations.AddIndex(
-            model_name='invitation',
-            index=models.Index(fields=['staff_profile', 'status'], name='idx_invitation_profile_status'),
+            model_name="invitation",
+            index=models.Index(
+                fields=["staff_profile", "status"], name="idx_invitation_profile_status"
+            ),
         ),
         migrations.AddIndex(
-            model_name='invitation',
-            index=models.Index(fields=['status', 'expires_at'], name='idx_invitation_status_expiry'),
+            model_name="invitation",
+            index=models.Index(
+                fields=["status", "expires_at"], name="idx_invitation_status_expiry"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='invitation',
-            constraint=models.CheckConstraint(check=models.Q(('consumed_at__isnull', True), ('status', 'ACCEPTED'), _connector='OR'), name='ck_invitation_consumed_only_accepted'),
+            model_name="invitation",
+            constraint=models.CheckConstraint(
+                check=models.Q(
+                    ("consumed_at__isnull", True), ("status", "ACCEPTED"), _connector="OR"
+                ),
+                name="ck_invitation_consumed_only_accepted",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='invitation',
-            constraint=models.CheckConstraint(check=models.Q(models.Q(('status', 'ACCEPTED'), _negated=True), ('consumed_at__isnull', False), _connector='OR'), name='ck_invitation_accepted_has_consumed_at'),
+            model_name="invitation",
+            constraint=models.CheckConstraint(
+                check=models.Q(
+                    models.Q(("status", "ACCEPTED"), _negated=True),
+                    ("consumed_at__isnull", False),
+                    _connector="OR",
+                ),
+                name="ck_invitation_accepted_has_consumed_at",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='invitation',
-            constraint=models.CheckConstraint(check=models.Q(('revoked_at__isnull', True), ('status', 'REVOKED'), _connector='OR'), name='ck_invitation_revoked_only_revoked'),
+            model_name="invitation",
+            constraint=models.CheckConstraint(
+                check=models.Q(
+                    ("revoked_at__isnull", True), ("status", "REVOKED"), _connector="OR"
+                ),
+                name="ck_invitation_revoked_only_revoked",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='invitation',
-            constraint=models.CheckConstraint(check=models.Q(('expires_at__gt', models.F('created_at'))), name='ck_invitation_expires_after_created'),
+            model_name="invitation",
+            constraint=models.CheckConstraint(
+                check=models.Q(("expires_at__gt", models.F("created_at"))),
+                name="ck_invitation_expires_after_created",
+            ),
         ),
     ]

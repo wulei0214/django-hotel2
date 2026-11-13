@@ -6,6 +6,7 @@
 - expires_at 为空的记录仅报告、不删除（交人工复核，避免误删仍在使用的幂等键）；
 - dry_run=True（默认）只统计与审计，不落任何删除；仅显式 dry_run=False 才删除。
 """
+
 from datetime import timedelta
 
 from django.db.models import Count
@@ -14,8 +15,9 @@ from django.utils import timezone
 from .models import AuditEvent, IdempotencyRecord
 
 
-def cleanup_idempotency_records(*, older_than_days=1, dry_run=True,
-                                property_obj=None, batch_size=500):
+def cleanup_idempotency_records(
+    *, older_than_days=1, dry_run=True, property_obj=None, batch_size=500
+):
     """扫描并（apply 时）清理过期 IdempotencyRecord。
 
     返回审计摘要 dict：scanned / by_status / null_expiry_count /
@@ -39,9 +41,7 @@ def cleanup_idempotency_records(*, older_than_days=1, dry_run=True,
     # 过期且超过保留缓冲的候选（expires_at 明确、已过期；null expires_at 自然被排除）
     candidates = qs.filter(expires_at__lt=cutoff)
     status_counts = (
-        candidates.values("status")
-        .annotate(cnt=Count("id"))
-        .values_list("status", "cnt")
+        candidates.values("status").annotate(cnt=Count("id")).values_list("status", "cnt")
     )
     by_status = dict(status_counts)
     null_expiry_count = qs.filter(expires_at__isnull=True).count()

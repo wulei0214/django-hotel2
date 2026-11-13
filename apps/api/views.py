@@ -1,4 +1,5 @@
 import functools
+
 # API 安全阅读提示：公共预订与订单查询属于匿名访问面；必须关注限流、审计、字段脱敏、幂等和生产环境 Mock 支付门禁。页面参数和 booking_no + phone 组合不能代替访问频率控制。
 import json
 import logging
@@ -9,9 +10,6 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.core import rate_limit
-from apps.core.api_contract import ApiError, api_error_response
-from apps.core.models import AuditEvent
 from apps.billing.services import (
     PaymentConflict,
     create_mock_payment_intent,
@@ -19,23 +17,28 @@ from apps.billing.services import (
     sign_mock_callback,
     verify_mock_callback,
 )
+from apps.core import rate_limit
+from apps.core.api_contract import ApiError, api_error_response
+from apps.core.models import AuditEvent
 from apps.inventory.models import RoomType
-from apps.inventory.services import (InventoryUnavailable, get_room_type_availability,
-                                     _property_today)
-from apps.reservations.models import Reservation
-from apps.reservations.models import BookingAccessToken
+from apps.inventory.services import (
+    InventoryUnavailable,
+    _property_today,
+    get_room_type_availability,
+)
+from apps.reservations.models import BookingAccessToken, Reservation
 from apps.reservations.services import (
     ReservationConflict,
-    create_reservation,
     cancel_pending_reservation,
-    )
+    create_reservation,
+)
 
 logger = logging.getLogger("hotel.api")
 
 # 与预订服务/前端预订页同口径的业务边界
-MAX_ROOMS = 10          # 单笔预订最多间数
-MAX_GUESTS = 10         # 成人/儿童各自上限
-MAX_NIGHTS = 30         # 单笔预订最长连住晚数
+MAX_ROOMS = 10  # 单笔预订最多间数
+MAX_GUESTS = 10  # 成人/儿童各自上限
+MAX_NIGHTS = 30  # 单笔预订最长连住晚数
 
 
 def api_guard(view):
@@ -50,9 +53,13 @@ def api_guard(view):
         except Exception:
             logger.exception("API 未预期错误：%s %s", request.method, request.path)
             # MAINT-04：统一错误对象封套（与 api_contract 一致），不再外泄扁平字符串
-            return api_error_response(request, ApiError("INTERNAL_ERROR", "服务器内部错误，请稍后重试或联系管理员。"))
+            return api_error_response(
+                request, ApiError("INTERNAL_ERROR", "服务器内部错误，请稍后重试或联系管理员。")
+            )
         if getattr(result, "status_code", None) == 405:
-            return api_error_response(request, ApiError("METHOD_NOT_ALLOWED", "不支持的 HTTP 方法，请检查请求方式。"))
+            return api_error_response(
+                request, ApiError("METHOD_NOT_ALLOWED", "不支持的 HTTP 方法，请检查请求方式。")
+            )
         return result
 
     return wrapper
@@ -65,13 +72,13 @@ def _api_error(request, code, message):
 
 def csrf_failure(request, reason=""):
     """CSRF 失败视图：/api/ 与 /platform/api/ 路径返回 JSON（保持 API 错误契约），其余走默认 HTML 页。"""
-    if (request.path.startswith("/api/")
-            or request.path.startswith("/platform/api/")):
+    if request.path.startswith("/api/") or request.path.startswith("/platform/api/"):
         return JsonResponse(
             {"error": f"CSRF 校验失败：{reason or '缺少 CSRF 令牌，请先获取 csrftoken。'}"},
             status=403,
         )
     from django.views.csrf import csrf_failure as default_csrf_failure
+
     return default_csrf_failure(request, reason)
 
 
@@ -166,8 +173,11 @@ def reservations_create(request):
         raw_phone = str(body.get("phone") or "")
         if not rate_limit.check(request, "public.reservation_create", phone=raw_phone):
             AuditEvent.record(
-                action="public.reservation_blocked", entity_type="PublicEndpoint",
-                entity_id="rate_limited", request=request)
+                action="public.reservation_blocked",
+                entity_type="PublicEndpoint",
+                entity_id="rate_limited",
+                request=request,
+            )
             return _throttle_deny(request, "public.reservation_create")
         payload = {
             "full_name": str(body.get("full_name") or ""),
@@ -204,11 +214,13 @@ def reservations_create(request):
         )
         if created:
             AuditEvent.record(
-                action="public.reservation_created", entity_type="Reservation",
-                entity_id=reservation.booking_no, property_obj=property_obj,
-                after={"rooms": reservation.room_count,
-                       "total": str(reservation.total_amount)},
-                request=request)
+                action="public.reservation_created",
+                entity_type="Reservation",
+                entity_id=reservation.booking_no,
+                property_obj=property_obj,
+                after={"rooms": reservation.room_count, "total": str(reservation.total_amount)},
+                request=request,
+            )
     except ReservationConflict as exc:
         return _api_error(request, "BUSINESS_CONFLICT", str(exc))
     except ValueError as exc:
@@ -248,19 +260,26 @@ def reservation_detail(request, booking_no):
     # 日志、浏览器历史与代理日志（验收红线：Token 不得写入 URL 查询参数）。
     token = request.headers.get("X-Booking-Token", "")
     from apps.core import rate_limit
+
     if not rate_limit.check(request, "public.reservation_query", booking_no=booking_no):
         return _throttle_deny(request, "public.reservation_query")
     reservation = BookingAccessToken.validate(booking_no, token)
     if reservation is None or reservation.property_id != property_obj.pk:
         AuditEvent.record(
-            action="guest.booking_access_denied", entity_type="Reservation",
-            entity_id=booking_no[:32], reason="detail_token_invalid",
-            request=request)
+            action="guest.booking_access_denied",
+            entity_type="Reservation",
+            entity_id=booking_no[:32],
+            reason="detail_token_invalid",
+            request=request,
+        )
         return _api_error(request, "RESOURCE_NOT_FOUND", "预订编号或访问令牌不正确。")
     AuditEvent.record(
-        action="guest.booking_access_viewed", entity_type="Reservation",
-        entity_id=reservation.booking_no, property_obj=property_obj,
-        request=request)
+        action="guest.booking_access_viewed",
+        entity_type="Reservation",
+        entity_id=reservation.booking_no,
+        property_obj=property_obj,
+        request=request,
+    )
     # §6.5 字段白名单：姓名脱敏；不返回完整手机号/证件号/provider_ref/内部流水
     guest_name = reservation.guest.full_name or ""
     masked_name = guest_name[:1] + "*" * max(len(guest_name) - 1, 1)
@@ -295,13 +314,18 @@ def _throttle_deny(request, action):
     """429 统一响应：稳定 JSON + Retry-After；落 public.rate_limited 审计。"""
     from apps.core import rate_limit
     from apps.core.models import AuditEvent
+
     AuditEvent.record(
-        action="public.rate_limited", entity_type="PublicEndpoint",
-        entity_id=action, reason="ip=%s" % request.META.get("REMOTE_ADDR", ""),
-        request=request)
+        action="public.rate_limited",
+        entity_type="PublicEndpoint",
+        entity_id=action,
+        reason="ip=%s" % request.META.get("REMOTE_ADDR", ""),
+        request=request,
+    )
     retry = rate_limit.retry_after_seconds(action)
     response = JsonResponse(
-        {"error": "请求过于频繁，请稍后再试。", "retry_after": retry}, status=429)
+        {"error": "请求过于频繁，请稍后再试。", "retry_after": retry}, status=429
+    )
     response["Retry-After"] = str(retry)
     return response
 
@@ -328,15 +352,19 @@ def payment_intent_create(request):
     # 从未调用 check（计数在 check 内自增），导致无效 token 请求完全绕过
     # public.payment_intent 限流；与 reservation_detail / cancel 的顺序一致。
     from apps.core import rate_limit
+
     if not rate_limit.check(request, "public.payment_intent", booking_no=booking_no):
         return _throttle_deny(request, "public.payment_intent")
     # P0-08：订单访问一律凭 Booking Access Token；phone 不再作为凭据
     reservation = BookingAccessToken.validate(booking_no, token)
     if reservation is None or reservation.property_id != property_obj.pk:
         AuditEvent.record(
-            action="guest.booking_access_denied", entity_type="Reservation",
-            entity_id=booking_no[:32], reason="payment_intent_token_invalid",
-            request=request)
+            action="guest.booking_access_denied",
+            entity_type="Reservation",
+            entity_id=booking_no[:32],
+            reason="payment_intent_token_invalid",
+            request=request,
+        )
         return _api_error(request, "RESOURCE_NOT_FOUND", "预订编号或访问令牌不正确。")
     try:
         # WB-088：旧 Payment 创建保留的同时，同事务创建配套 PaymentIntent；
@@ -382,12 +410,13 @@ def payment_intent_create(request):
 @require_POST
 def payment_callback(request):
     if not settings.DEBUG or getattr(settings, "DJANGO_ENV", "dev") not in {"dev", "test"}:
-        return _api_error(request, "RESOURCE_NOT_FOUND", "模拟支付回调仅允许在本地开发和测试环境使用。")
+        return _api_error(
+            request, "RESOURCE_NOT_FOUND", "模拟支付回调仅允许在本地开发和测试环境使用。"
+        )
 
     # WB-088：HMAC 验签结果即 mock 渠道验签事实，透传给服务层——
     # 渠道 SUCCESS 事实落 ProviderTransaction 必须带验签标记（WB-076）。
-    signature_verified = verify_mock_callback(
-        request.body, request.headers.get("X-Signature", ""))
+    signature_verified = verify_mock_callback(request.body, request.headers.get("X-Signature", ""))
     if not signature_verified:
         return _api_error(request, "AUTHENTICATION_REQUIRED", "模拟支付回调签名验证失败。")
 
@@ -425,8 +454,8 @@ def payment_callback(request):
 def openapi_document(request):
     """兼容入口：返回完整 PMS2 OpenAPI 3.1 契约。"""
     from .openapi_schema import openapi_json
-    return openapi_json(request)
 
+    return openapi_json(request)
 
 
 @api_guard
@@ -443,22 +472,28 @@ def reservation_cancel(request, booking_no):
         return _api_error(request, "VALIDATION_ERROR", "请求体必须是有效 JSON。")
     token = str(body.get("token") or "").strip()
     from apps.core import rate_limit
+
     if not rate_limit.check(request, "public.reservation_cancel", booking_no=booking_no):
         return _throttle_deny(request, "public.reservation_cancel")
     reservation = BookingAccessToken.validate(booking_no, token)
     if reservation is None or reservation.property_id != property_obj.pk:
         AuditEvent.record(
-            action="guest.booking_access_denied", entity_type="Reservation",
-            entity_id=booking_no[:32], reason="cancel_token_invalid",
-            request=request)
+            action="guest.booking_access_denied",
+            entity_type="Reservation",
+            entity_id=booking_no[:32],
+            reason="cancel_token_invalid",
+            request=request,
+        )
         return _api_error(request, "RESOURCE_NOT_FOUND", "预订编号或访问令牌不正确。")
     if reservation.status == Reservation.Status.CANCELLED:
         # 幂等：已取消的订单重复取消直接返回当前状态，不再变更
-        return JsonResponse({
-            "booking_no": reservation.booking_no,
-            "status": reservation.status,
-            "changed": False,
-        })
+        return JsonResponse(
+            {
+                "booking_no": reservation.booking_no,
+                "status": reservation.status,
+                "changed": False,
+            }
+        )
     try:
         reservation, changed = cancel_pending_reservation(
             property_obj=property_obj,
@@ -467,20 +502,29 @@ def reservation_cancel(request, booking_no):
         )
     except ReservationConflict as exc:
         AuditEvent.record(
-            action="guest.booking_cancelled", entity_type="Reservation",
-            entity_id=booking_no[:32], property_obj=property_obj,
-            reason="cancelled_rejected: %s" % str(exc)[:80], request=request)
+            action="guest.booking_cancelled",
+            entity_type="Reservation",
+            entity_id=booking_no[:32],
+            property_obj=property_obj,
+            reason="cancelled_rejected: %s" % str(exc)[:80],
+            request=request,
+        )
         return _api_error(request, "BUSINESS_CONFLICT", str(exc))
     except ValueError as exc:
         return _api_error(request, "VALIDATION_ERROR", str(exc))
 
     AuditEvent.record(
-        action="guest.booking_cancelled", entity_type="Reservation",
-        entity_id=reservation.booking_no, property_obj=property_obj,
+        action="guest.booking_cancelled",
+        entity_type="Reservation",
+        entity_id=reservation.booking_no,
+        property_obj=property_obj,
         after={"status": reservation.status, "changed": changed},
-        request=request)
-    return JsonResponse({
-        "booking_no": reservation.booking_no,
-        "status": reservation.status,
-        "changed": changed,
-    })
+        request=request,
+    )
+    return JsonResponse(
+        {
+            "booking_no": reservation.booking_no,
+            "status": reservation.status,
+            "changed": changed,
+        }
+    )

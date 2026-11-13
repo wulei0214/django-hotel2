@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """DEC-WALKIN-01 Walk-in 散客原子化创建服务 + DEC-ED-01 提前离店政策计算。
 
 Walk-in：Guest→Reservation(source=WALK_IN)→ReservationRoom→Folio→Stay 同事务。
@@ -11,28 +10,25 @@ WB-004/065 修复：calculate_early_departure 按日期顺序取 nightly_rates�
 WB-074 修复：占位号升级为 uuid5（幂等键派生，同键重放恒定）；房间查询限定
            当前物业；同幂等键重放不再重复排房/入住（走幂等返回既有 Stay）。
 """
+
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
-from django.conf import settings
-from datetime import timedelta
-
-from django.db import models, transaction
-from django.db.models import Q
+from django.db import transaction
 from django.utils import timezone
 
-from apps.core.models import AuditEvent, Property
+from apps.core.models import AuditEvent
 from apps.reservations.models import (
     EarlyDeparturePolicy,
     Reservation,
-    ReservationRoom,
     Stay,
 )
-
 
 # ---------------------------------------------------------------------------
 # DEC-ED-01 提前离店政策计算
 # ---------------------------------------------------------------------------
+
 
 def calculate_early_departure(*, line, actual_check_out):
     """按提前离店政策计算实际应收房费和违约金（纯函数，可测试）。
@@ -66,16 +62,17 @@ def calculate_early_departure(*, line, actual_check_out):
     if not nightly:
         # WB-097 正式语义：没有逐晚房价快照就没有结算依据，不得回退
         # 合同全额。退房入口已按 WB-075 先行阻断；此处对直接调用兜底。
-        raise ValueError(
-            "缺少逐晚房价快照，无法按实际入住晚数结算退房房费（DEC-ED-01）。")
+        raise ValueError("缺少逐晚房价快照，无法按实际入住晚数结算退房房费（DEC-ED-01）。")
     total_nights = len(nightly)
     # FIN-02 / DEC-ED-01 §2.3：actual_nights 必须按**物业时区**业务日期计算。
     # 此前用 timezon.localdate()（部署 TIME_ZONE）或 aware datetime 的 .date()
     # （UTC 日期）：Asia/Shanghai 凌晨 00:00–07:59 退房时 UTC 是前一天，
     # 少算一晚房费且该晚库存不释放也不计费。与夜审 property_date /
     # _property_today / 提前离店释放起点统一到同一物业时区口径。
-    from datetime import date as date_cls, datetime as dt_datetime
+    from datetime import date as date_cls
+    from datetime import datetime as dt_datetime
     from zoneinfo import ZoneInfo
+
     try:
         property_tz = ZoneInfo(line.property.timezone or "Asia/Shanghai")
     except Exception:
@@ -94,15 +91,16 @@ def calculate_early_departure(*, line, actual_check_out):
     actual_nights = min(actual_nights, total_nights)
     actual_room_charge = sum(nightly[:actual_nights], Decimal("0.00"))
 
-    none_result = {"actual_room_charge": actual_room_charge,
-                   "penalty": Decimal("0.00"),
-                   "policy_type": EarlyDeparturePolicy.PolicyType.NONE}
+    none_result = {
+        "actual_room_charge": actual_room_charge,
+        "penalty": Decimal("0.00"),
+        "policy_type": EarlyDeparturePolicy.PolicyType.NONE,
+    }
 
     # WB-098：优先使用预订确认时保存的政策版本快照。
     snapshot = line.early_departure_snapshot or None
     if snapshot is not None:
-        pt = str(snapshot.get("policy_type") or "").strip() or \
-            EarlyDeparturePolicy.PolicyType.NONE
+        pt = str(snapshot.get("policy_type") or "").strip() or EarlyDeparturePolicy.PolicyType.NONE
         if pt not in dict(EarlyDeparturePolicy.PolicyType.choices):
             # 快照内容异常（如手工篡改/脏数据）按 NONE 兜底，不得生成罚金。
             return none_result
@@ -114,21 +112,27 @@ def calculate_early_departure(*, line, actual_check_out):
         # 缺失时按 NONE，不得生成非零罚金"），并审计一条 history 说明
         # 回退原因。不回退当前活跃政策——确认后新增/修改的政策不得追溯
         # 施加到从未确认过该政策的订单上。
-        current_policy = EarlyDeparturePolicy.objects.filter(
-            rate_plan_id=line.rate_plan_id, is_active=True).order_by(
-            "-created_at", "-pk").first()
+        current_policy = (
+            EarlyDeparturePolicy.objects.filter(rate_plan_id=line.rate_plan_id, is_active=True)
+            .order_by("-created_at", "-pk")
+            .first()
+        )
         if line.pk and line.property_id:
             AuditEvent.record(
                 action="reservations.early_departure_snapshot_missing",
-                entity_type="ReservationRoom", entity_id=str(line.pk),
+                entity_type="ReservationRoom",
+                entity_id=str(line.pk),
                 property_obj=line.property,
-                after={"rate_plan_id": line.rate_plan_id,
-                       "current_active_policy": (
-                           current_policy.policy_type
-                           if current_policy else None),
-                       "applied_policy_type": "NONE"},
+                after={
+                    "rate_plan_id": line.rate_plan_id,
+                    "current_active_policy": (
+                        current_policy.policy_type if current_policy else None
+                    ),
+                    "applied_policy_type": "NONE",
+                },
                 reason="该明细无预订时提前离店政策快照（legacy 数据），"
-                       "按 NONE 处理、不生成罚金（DEC-ED-01 §2.1/§11.3-A）")
+                "按 NONE 处理、不生成罚金（DEC-ED-01 §2.1/§11.3-A）",
+            )
         return none_result
 
     if pt == EarlyDeparturePolicy.PolicyType.NONE:
@@ -144,18 +148,31 @@ def calculate_early_departure(*, line, actual_check_out):
         penalty = sum(nightly[actual_nights:], Decimal("0.00"))
     else:
         penalty = Decimal("0.00")
-    return {"actual_room_charge": actual_room_charge,
-            "penalty": penalty.quantize(Decimal("0.01")), "policy_type": pt}
+    return {
+        "actual_room_charge": actual_room_charge,
+        "penalty": penalty.quantize(Decimal("0.01")),
+        "policy_type": pt,
+    }
 
 
 # ---------------------------------------------------------------------------
 # DEC-WALKIN-01 Walk-in 原子化创建
 # ---------------------------------------------------------------------------
 @transaction.atomic
-def create_walk_in(*, property_obj, full_name, phone, room_type_id,
-                   rate_plan_id, nights=1, adults=1, children=0,
-                   deposit_amount=None, created_by=None,
-                   idempotency_key=""):
+def create_walk_in(
+    *,
+    property_obj,
+    full_name,
+    phone,
+    room_type_id,
+    rate_plan_id,
+    nights=1,
+    adults=1,
+    children=0,
+    deposit_amount=None,
+    created_by=None,
+    idempotency_key="",
+):
     """Walk-in 散客原子化创建（同一事务内全链路）。
 
     Guest → Reservation(source=WALK_IN) → ReservationRoom → Folio
@@ -191,7 +208,9 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
     # 不使用 hash()/uuid4 等非确定性来源。
     phone_normalized = str(phone or "").strip()
     if not phone_normalized:
-        phone_normalized = f"0000{uuid.uuid5(uuid.NAMESPACE_URL, f'walkin:{property_obj.pk}:{key}').hex[:8]}"
+        phone_normalized = (
+            f"0000{uuid.uuid5(uuid.NAMESPACE_URL, f'walkin:{property_obj.pk}:{key}').hex[:8]}"
+        )
 
     # create_reservation 统一创建 Guest + GuestPhone + Reservation + Folio + Hold
     # RSV-05：入住/离店日期按物业时区业务日计算（与夜审/提前离店同口径），
@@ -200,13 +219,17 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
     payload = {
         "full_name": full_name.strip(),
         "phone": phone_normalized,
-        "room_type_id": room_type_id, "rate_plan_id": rate_plan_id,
+        "room_type_id": room_type_id,
+        "rate_plan_id": rate_plan_id,
         "check_in": walkin_today,
         "check_out": walkin_today + timedelta(days=nights),
-        "rooms": 1, "adults": adults, "children": children,
+        "rooms": 1,
+        "adults": adults,
+        "children": children,
     }
     reservation, created, token = create_reservation(
-        property_obj=property_obj, payload=payload, idempotency_key=key)
+        property_obj=property_obj, payload=payload, idempotency_key=key
+    )
     # Reservation.source 是普通 CharField（无枚举类），WALK_IN 取值见字段 help_text。
     if reservation.source != "WALK_IN":
         reservation.source = "WALK_IN"
@@ -217,13 +240,19 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
         # 不重复创建 Guest/Reservation/Stay，也不重复排房/入住/收款；
         # 直接返回首次请求已落库的入住事实（与预订幂等重放同口径，无新增写入）。
         line = reservation.reservation_rooms.first()
-        stay = Stay.objects.filter(
-            reservation_room=line, property=property_obj).first()
+        stay = Stay.objects.filter(reservation_room=line, property=property_obj).first()
         if stay is None:
-            raise ValueError(
-                "Walk-in 幂等重放异常：首次请求未完成入住，请联系前台核对。")
-        return {"reservation": reservation, "stay": stay, "room": stay.room,
-                "booking_no": reservation.booking_no}
+            raise ValueError("Walk-in 幂等重放异常：首次请求未完成入住，请联系前台核对。")
+        # R1-01：created 必须来自 create_reservation 的最终幂等仲裁，
+        # 供 API 层区分 201 created=true / 200 created=false（并发窗口下
+        # 服务层仲裁是唯一可靠来源，API 层预查询不可作为应答依据）。
+        return {
+            "reservation": reservation,
+            "stay": stay,
+            "room": stay.room,
+            "booking_no": reservation.booking_no,
+            "created": False,
+        }
 
     line = reservation.reservation_rooms.first()
 
@@ -240,38 +269,68 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
     from apps.reservations.front_desk_services import (
         snapshot_early_departure_policy,
     )
+
     snapshot_early_departure_policy(reservation)
 
     # 排房 + 入住（同事务）；WB-002 修复：assign_room/check_in_stay 已导入。
     # WB-074 修复：房间查询限定当前物业（room_type 已由 create_reservation
     # 校验属于本物业），杜绝多物业同房型时跨物业占用他店客房。
     from apps.inventory.models import Room
+
     target_room = Room.objects.filter(
         property=property_obj,
         room_type_id=room_type_id,
         occupancy_status=Room.OccupancyStatus.VACANT,
         housekeeping_status=Room.HousekeepingStatus.CLEAN,
-        maintenance_status=Room.MaintenanceStatus.NORMAL).first()
+        maintenance_status=Room.MaintenanceStatus.NORMAL,
+    ).first()
     if target_room is None:
         raise ValueError("当前无可入住净房，Walk-in 无法完成。")
-    assign_room(property_obj=property_obj, reservation_room_id=line.pk,
-                room_id=target_room.pk, assigned_by=created_by)
-    stay, _ = check_in_stay(property_obj=property_obj,
-                            reservation_room_id=line.pk,
-                            checked_in_by=created_by)
+    assign_room(
+        property_obj=property_obj,
+        reservation_room_id=line.pk,
+        room_id=target_room.pk,
+        assigned_by=created_by,
+    )
+    stay, _ = check_in_stay(
+        property_obj=property_obj, reservation_room_id=line.pk, checked_in_by=created_by
+    )
 
-    # 押金（DEC-DEP-01 政策服务端计算）
-    if deposit_amount:
-        BillingService.record_deposit(
-            property_obj=property_obj, reservation=reservation,
-            amount=deposit_amount, method="CASH",
-            idempotency_key=f"{key}-dep", received_by=created_by)
+    # 押金（R1-02/DEC-DEP-01 强制政策）：与客户端是否传 deposit_amount 无关，
+    # 服务端一律按 Reservation.total_amount×30% 强制收取（WB-030 在
+    # record_deposit 内计算并覆盖金额）；客户端传入值仅作展示核对
+    # （client_display_amount 不一致记 warning 日志），不得控制是否收取。
+    # 免押金如未来成为业务选项，必须走显式授权路径，不得通过省略字段
+    # 隐式免除。amount 传 total_amount 仅用于通过 record_deposit 的
+    # "金额必须大于零"前置校验，实际落库金额以服务端计算为准。
+    BillingService.record_deposit(
+        property_obj=property_obj,
+        reservation=reservation,
+        amount=reservation.total_amount,
+        client_display_amount=deposit_amount,
+        method="CASH",
+        idempotency_key=f"{key}-dep",
+        received_by=created_by,
+    )
 
     AuditEvent.record(
-        action="reservation.walk_in_created", entity_type="Reservation",
-        entity_id=reservation.pk, actor=created_by, property_obj=property_obj,
-        after={"booking_no": reservation.booking_no, "stay_id": stay.pk,
-               "room": target_room.number, "source": "WALK_IN"},
-        reason="Walk-in 散客原子化入住（DEC-WALKIN-01）")
-    return {"reservation": reservation, "stay": stay, "room": target_room,
-            "booking_no": reservation.booking_no}
+        action="reservation.walk_in_created",
+        entity_type="Reservation",
+        entity_id=reservation.pk,
+        actor=created_by,
+        property_obj=property_obj,
+        after={
+            "booking_no": reservation.booking_no,
+            "stay_id": stay.pk,
+            "room": target_room.number,
+            "source": "WALK_IN",
+        },
+        reason="Walk-in 散客原子化入住（DEC-WALKIN-01）",
+    )
+    return {
+        "reservation": reservation,
+        "stay": stay,
+        "room": target_room,
+        "booking_no": reservation.booking_no,
+        "created": True,
+    }

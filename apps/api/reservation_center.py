@@ -1,8 +1,8 @@
-# -*- coding: utf-8 -*-
 """预订管理 + 审计时间线只读 API（V1.1 Phase 1 五模块补齐）。"""
+
 from django.views.decorators.http import require_GET
 
-from apps.core.api_contract import ApiError, api_view, api_response, paginate
+from apps.core.api_contract import ApiError, api_response, api_view, paginate
 from apps.identity.authorization import AuthorizationService
 from apps.reservations.models import Reservation, ReservationRoom
 
@@ -15,30 +15,38 @@ def reservation_list(request):
     property_obj = getattr(request, "property", None)
     if property_obj is None:
         raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
-    if not AuthorizationService.has_permission(
-            user, property_obj, "hotelapp.view_accommodation"):
+    if not AuthorizationService.has_permission(user, property_obj, "hotelapp.view_accommodation"):
         raise ApiError("PERMISSION_DENIED", "缺少预订查看权限。")
-    qs = Reservation.objects.filter(
-        property=property_obj).select_related("guest").order_by("-created_at", "-id")
+    qs = (
+        Reservation.objects.filter(property=property_obj)
+        .select_related("guest")
+        .order_by("-created_at", "-id")
+    )
     status = request.GET.get("status")
     if status:
         qs = qs.filter(status=status)
     q = (request.GET.get("q") or "").strip()
     if q:
         from django.db.models import Q
-        qs = qs.filter(
-            Q(booking_no__icontains=q) |
-            Q(guest__full_name__icontains=q)
-        ).distinct()
+
+        qs = qs.filter(Q(booking_no__icontains=q) | Q(guest__full_name__icontains=q)).distinct()
     items, pagination = paginate(qs, request)
-    data = [{
-        "id": r.pk, "booking_no": r.booking_no,
-        "guest": {"id": r.guest.pk, "full_name": r.guest.full_name},
-        "status": r.status, "source": r.source,
-        "check_in": str(r.check_in), "check_out": str(r.check_out),
-        "room_count": r.room_count, "total_amount": str(r.total_amount),
-        "currency": r.currency, "source_system": "PMS2",
-    } for r in items]
+    data = [
+        {
+            "id": r.pk,
+            "booking_no": r.booking_no,
+            "guest": {"id": r.guest.pk, "full_name": r.guest.full_name},
+            "status": r.status,
+            "source": r.source,
+            "check_in": str(r.check_in),
+            "check_out": str(r.check_out),
+            "room_count": r.room_count,
+            "total_amount": str(r.total_amount),
+            "currency": r.currency,
+            "source_system": "PMS2",
+        }
+        for r in items
+    ]
     return api_response(request, data, pagination=pagination)
 
 
@@ -48,30 +56,41 @@ def reservation_detail_api(request, booking_no):
     """预订详情：主单 + 房间明细 + 住客。"""
     user = request.user
     property_obj = getattr(request, "property", None)
-    if not AuthorizationService.has_permission(
-            user, property_obj, "hotelapp.view_accommodation"):
+    if not AuthorizationService.has_permission(user, property_obj, "hotelapp.view_accommodation"):
         raise ApiError("PERMISSION_DENIED", "缺少预订查看权限。")
     try:
         r = Reservation.objects.select_related("guest").get(
-            property=property_obj, booking_no=booking_no)
+            property=property_obj, booking_no=booking_no
+        )
     except Reservation.DoesNotExist:
         raise ApiError("RESOURCE_NOT_FOUND", "预订不存在。")
-    rooms = ReservationRoom.objects.filter(
-        reservation=r).select_related("room_type", "assigned_room")
+    rooms = ReservationRoom.objects.filter(reservation=r).select_related(
+        "room_type", "assigned_room"
+    )
     data = {
-        "id": r.pk, "booking_no": r.booking_no,
+        "id": r.pk,
+        "booking_no": r.booking_no,
         "guest": {"id": r.guest.pk, "full_name": r.guest.full_name},
-        "status": r.status, "source": r.source,
-        "check_in": str(r.check_in), "check_out": str(r.check_out),
-        "room_count": r.room_count, "adult_count": r.adult_count,
+        "status": r.status,
+        "source": r.source,
+        "check_in": str(r.check_in),
+        "check_out": str(r.check_out),
+        "room_count": r.room_count,
+        "adult_count": r.adult_count,
         "child_count": r.child_count,
-        "total_amount": str(r.total_amount), "currency": r.currency,
-        "rooms": [{
-            "id": rr.pk, "room_type": rr.room_type.name,
-            "assigned_room": rr.assigned_room.number if rr.assigned_room else None,
-            "check_in": str(rr.check_in), "check_out": str(rr.check_out),
-            "amount": str(rr.amount),
-        } for rr in rooms],
+        "total_amount": str(r.total_amount),
+        "currency": r.currency,
+        "rooms": [
+            {
+                "id": rr.pk,
+                "room_type": rr.room_type.name,
+                "assigned_room": rr.assigned_room.number if rr.assigned_room else None,
+                "check_in": str(rr.check_in),
+                "check_out": str(rr.check_out),
+                "amount": str(rr.amount),
+            }
+            for rr in rooms
+        ],
         "source_system": "PMS2",
     }
     return api_response(request, data)
@@ -85,13 +104,16 @@ def audit_timeline(request):
     property_obj = getattr(request, "property", None)
     # P0-04（闭环补齐 2.0）：审计查看用专项权限 core.audit_view，
     # 不再借用 identity.staff_manage（员工管理权 ≠ 审计查看权）
-    if not AuthorizationService.has_permission(
-            user, property_obj, "core.audit_view"):
+    if not AuthorizationService.has_permission(user, property_obj, "core.audit_view"):
         raise ApiError("PERMISSION_DENIED", "缺少审计查看权限。")
     from apps.core.models import AuditEvent
+
     # P0-07：不依赖模型 Meta，显式稳定排序 `-created_at,-id`；actor 预连接防 N+1。
-    qs = AuditEvent.objects.filter(
-        property=property_obj).select_related("actor").order_by("-created_at", "-id")
+    qs = (
+        AuditEvent.objects.filter(property=property_obj)
+        .select_related("actor")
+        .order_by("-created_at", "-id")
+    )
     entity_type = request.GET.get("entity_type")
     if entity_type:
         qs = qs.filter(entity_type=entity_type)
@@ -106,13 +128,19 @@ def audit_timeline(request):
     # 两者同为 core.audit_view 权限，此前本列表却把 before/after 全量
     # JSON 直接下发（可能含证件号/手机号等 PII 快照），权限相同而口径相反。
     # 列表一律不下发载荷；has_payload 仅提示存在载荷，详情请走审计详情端点。
-    data = [{
-        "id": e.pk, "action": e.action,
-        "entity_type": e.entity_type, "entity_id": e.entity_id,
-        "actor": e.actor.username if e.actor else "system",
-        "reason": e.reason or None,
-        "before": None, "after": None,
-        "has_payload": bool(e.before_json or e.after_json),
-        "created_at": e.created_at.isoformat(),
-    } for e in items]
+    data = [
+        {
+            "id": e.pk,
+            "action": e.action,
+            "entity_type": e.entity_type,
+            "entity_id": e.entity_id,
+            "actor": e.actor.username if e.actor else "system",
+            "reason": e.reason or None,
+            "before": None,
+            "after": None,
+            "has_payload": bool(e.before_json or e.after_json),
+            "created_at": e.created_at.isoformat(),
+        }
+        for e in items
+    ]
     return api_response(request, data, pagination=pagination)

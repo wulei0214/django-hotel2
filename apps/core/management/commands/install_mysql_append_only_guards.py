@@ -1,7 +1,7 @@
 """Install append-only MySQL triggers for PMS2 audit, ledger and cash movement facts."""
+
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
-
 
 TRIGGERS = (
     (
@@ -71,10 +71,12 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if connection.vendor != "mysql":
             raise CommandError(
-                "只允许在真实 MySQL 上安装 append-only triggers；SQLite 不支持此验收。")
+                "只允许在真实 MySQL 上安装 append-only triggers；SQLite 不支持此验收。"
+            )
         with connection.cursor() as cursor:
             for name, statement in TRIGGERS:
                 cursor.execute(f"DROP TRIGGER IF EXISTS `{name}`")
                 cursor.execute(statement)
-        self.stdout.write(self.style.SUCCESS(
-            "已安装 6 条只追加触发器及 1 条现金变动 OPEN 班次插入保护触发器。"))
+        self.stdout.write(
+            self.style.SUCCESS("已安装 6 条只追加触发器及 1 条现金变动 OPEN 班次插入保护触发器。")
+        )

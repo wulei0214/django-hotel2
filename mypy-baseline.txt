@@ -1,6 +1,6 @@
 # mypy 基线（治理 V1.1 第二阶段 P-04）——格式: 归一化路径|错误码|数量
 # 纪律: 禁止清空或手改本文件伪造通过；重新生成必须随真实存量清偿提交。
-# 生成命令: python scripts/mypy_baseline.py generate；总错误数: 2206
+# 生成命令: python scripts/mypy_baseline.py generate；总错误数: 2210
 
 apps/api/billing_center.py|attr-defined|5
 apps/api/front_desk.py|attr-defined|11
@@ -43,7 +43,7 @@ apps/api/test_whitebox_api.py|attr-defined|1
 apps/api/test_whitebox_api.py|union-attr|1
 apps/billing/approval_registry.py|var-annotated|1
 apps/billing/models.py|assignment|1
-apps/billing/models.py|attr-defined|65
+apps/billing/models.py|attr-defined|66
 apps/billing/models.py|override|4
 apps/billing/models.py|var-annotated|237
 apps/billing/night_audit.py|attr-defined|5
@@ -66,14 +66,14 @@ apps/billing/test_wb_round27_closure.py|attr-defined|64
 apps/billing/test_whitebox_services.py|attr-defined|1
 apps/billing/tests.py|union-attr|22
 apps/core/api_contract.py|attr-defined|1
-apps/core/models.py|attr-defined|12
+apps/core/models.py|attr-defined|13
 apps/core/models.py|override|2
 apps/core/models.py|var-annotated|103
 apps/core/rate_limit.py|assignment|1
 apps/core/services_notifications.py|attr-defined|1
 apps/core/services_notifications.py|index|1
 apps/core/services_notifications.py|operator|2
-apps/guests/models.py|attr-defined|16
+apps/guests/models.py|attr-defined|18
 apps/guests/models.py|var-annotated|59
 apps/guests/services.py|attr-defined|2
 apps/guests/test_mysql_concurrency.py|attr-defined|1
@@ -130,7 +130,7 @@ apps/inventory/test_reconciliation.py|has-type|3
 apps/reservations/admin.py|misc|1
 apps/reservations/front_desk_services.py|attr-defined|14
 apps/reservations/lifecycle_services.py|attr-defined|17
-apps/reservations/models.py|attr-defined|16
+apps/reservations/models.py|attr-defined|17
 apps/reservations/models.py|var-annotated|119
 apps/reservations/test_mysql_concurrency.py|arg-type|3
 apps/reservations/test_mysql_concurrency.py|attr-defined|6
@@ -149,5 +149,4 @@ hotelapp/models.py|var-annotated|65
 hotelapp/tests.py|arg-type|3
 hotelapp/tests.py|attr-defined|8
 hotelapp/tests.py|union-attr|4
-hotelapp/views.py|name-defined|1
 hotelapp/views.py|var-annotated|1

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """§4.5 报表分析中心回归测试包。
 
 覆盖：
@@ -18,12 +17,17 @@
 
 口径：全部只读聚合，不新增模型/落库表；金额 Decimal → str。
 """
+
 import uuid
 from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.utils import timezone
+
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
 
 from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.billing.models import Folio, LedgerEntry
@@ -32,11 +36,7 @@ from apps.guests.models import Guest
 from apps.inventory.models import RoomTypeInventory
 from apps.reservations.models import Reservation
 
-# --- test-only generated passwords (no literals in source) ---
-# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
-from django.utils.crypto import get_random_string  # noqa: E402
 _TEST_PW_EA5E4F64 = get_random_string(24)
-
 
 
 # 报表 API 端点（§4.5 首期五张只读报表）
@@ -79,62 +79,90 @@ class ReportCenterTestBase(E2EFlowTestBase):
 
     def _make_inventory(self, stay_date, total=5, sold=0, held=0, out_of_service=0):
         return RoomTypeInventory.objects.create(
-            property=self.property, room_type=self.room_type,
-            stay_date=stay_date, total_rooms=total, sold=sold,
-            held=held, out_of_service=out_of_service)
+            property=self.property,
+            room_type=self.room_type,
+            stay_date=stay_date,
+            total_rooms=total,
+            sold=sold,
+            held=held,
+            out_of_service=out_of_service,
+        )
 
     def _make_folio(self):
         self._guest_seq += 1
         guest = Guest.objects.create(
-            property=self.property, full_name=f"报表住客{self._guest_seq}",
-            phone=f"139{self._guest_seq:08d}")
+            property=self.property,
+            full_name=f"报表住客{self._guest_seq}",
+            phone=f"139{self._guest_seq:08d}",
+        )
         day = self.today - timedelta(days=30)
         reservation = Reservation.objects.create(
-            property=self.property, booking_no=f"RPT-{uuid.uuid4().hex[:12].upper()}",
-            guest=guest, check_in=day, check_out=day + timedelta(days=1))
-        return Folio.objects.create(
-            property=self.property, reservation=reservation, guest=guest)
+            property=self.property,
+            booking_no=f"RPT-{uuid.uuid4().hex[:12].upper()}",
+            guest=guest,
+            check_in=day,
+            check_out=day + timedelta(days=1),
+        )
+        return Folio.objects.create(property=self.property, reservation=reservation, guest=guest)
 
-    def _make_entry(self, entry_type, amount, business_date, currency="CNY",
-                    void_of=None, folio=None):
+    def _make_entry(
+        self, entry_type, amount, business_date, currency="CNY", void_of=None, folio=None
+    ):
         entry = LedgerEntry.objects.create(
-            property=self.property, folio=folio or self._make_folio(),
-            entry_type=entry_type, amount=Decimal(str(amount)),
-            currency=currency, business_date=business_date,
-            reference=self._next_ref(), void_of=void_of,
+            property=self.property,
+            folio=folio or self._make_folio(),
+            entry_type=entry_type,
+            amount=Decimal(str(amount)),
+            currency=currency,
+            business_date=business_date,
+            reference=self._next_ref(),
+            void_of=void_of,
             void_reason="口径测试冲销" if void_of else "",
-            legacy_workflow=(entry_type == LedgerEntry.EntryType.REVERSAL))
+            legacy_workflow=(entry_type == LedgerEntry.EntryType.REVERSAL),
+        )
         return entry
 
     def _make_guest(self, created_days_ago=0):
         self._guest_seq += 1
         guest = Guest.objects.create(
-            property=self.property, full_name=f"客源客人{self._guest_seq}",
-            phone=f"137{self._guest_seq:08d}")
+            property=self.property,
+            full_name=f"客源客人{self._guest_seq}",
+            phone=f"137{self._guest_seq:08d}",
+        )
         if created_days_ago:
             Guest.objects.filter(pk=guest.pk).update(
-                created_at=timezone.now() - timedelta(days=created_days_ago))
+                created_at=timezone.now() - timedelta(days=created_days_ago)
+            )
         return guest
 
     def _make_reservation(self, guest, source="WEBSITE", created_days_ago=0):
         reservation = Reservation.objects.create(
-            property=self.property, booking_no=f"RPT-{uuid.uuid4().hex[:12].upper()}",
-            guest=guest, source=source, check_in=self.today,
-            check_out=self.today + timedelta(days=1))
+            property=self.property,
+            booking_no=f"RPT-{uuid.uuid4().hex[:12].upper()}",
+            guest=guest,
+            source=source,
+            check_in=self.today,
+            check_out=self.today + timedelta(days=1),
+        )
         if created_days_ago:
             Reservation.objects.filter(pk=reservation.pk).update(
-                created_at=timezone.now() - timedelta(days=created_days_ago))
+                created_at=timezone.now() - timedelta(days=created_days_ago)
+            )
         return reservation
 
     def _make_hk_event(self, room_entity_id, days_ago=0, property_obj="default"):
         event = AuditEvent.record(
-            action="housekeeping.status_changed", entity_type="Room",
-            entity_id=str(room_entity_id), actor=self.dm,
+            action="housekeeping.status_changed",
+            entity_type="Room",
+            entity_id=str(room_entity_id),
+            actor=self.dm,
             property_obj=self.property if property_obj == "default" else property_obj,
-            after={"housekeeping": "CLEAN"})
+            after={"housekeeping": "CLEAN"},
+        )
         if days_ago:
             AuditEvent._base_manager.filter(pk=event.pk).update(
-                created_at=timezone.now() - timedelta(days=days_ago))
+                created_at=timezone.now() - timedelta(days=days_ago)
+            )
         return event
 
 
@@ -146,19 +174,18 @@ class ReportPermissionTests(ReportCenterTestBase):
         for url in REPORT_ENDPOINTS:
             response = self.client.get(url)
             self.assertEqual(response.status_code, 401, url)
-            self.assertEqual(
-                response.json()["error"]["code"], "AUTHENTICATION_REQUIRED", url)
+            self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED", url)
 
     def test_reports_require_property_membership(self):
         """已登录但无任何物业任职：无物业上下文 → 404（与审计中心同口径）。"""
         outsider = User.objects.create_user(
-            username="report_no_membership", password=_TEST_PW_EA5E4F64)
+            username="report_no_membership", password=_TEST_PW_EA5E4F64
+        )
         self.client.force_login(outsider)
         for url in REPORT_ENDPOINTS:
             response = self.client.get(url)
             self.assertEqual(response.status_code, 404, url)
-            self.assertEqual(
-                response.json()["error"]["code"], "RESOURCE_NOT_FOUND", url)
+            self.assertEqual(response.json()["error"]["code"], "RESOURCE_NOT_FOUND", url)
 
     def test_financial_reports_require_finance_access(self):
         """前台（有 view_accommodation 无 finance_access）→ 收入类 403。
@@ -169,8 +196,7 @@ class ReportPermissionTests(ReportCenterTestBase):
         for url in FINANCIAL_ENDPOINTS:
             response = self.client.get(url)
             self.assertEqual(response.status_code, 403, url)
-            self.assertEqual(
-                response.json()["error"]["code"], "PERMISSION_DENIED", url)
+            self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED", url)
 
     def test_financial_reports_ok_for_finance_access(self):
         for url in REPORT_ENDPOINTS:
@@ -194,8 +220,7 @@ class ReportPermissionTests(ReportCenterTestBase):
         for url in OPERATIONAL_ENDPOINTS:
             response = self.client.get(url)
             self.assertEqual(response.status_code, 403, url)
-            self.assertEqual(
-                response.json()["error"]["code"], "PERMISSION_DENIED", url)
+            self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED", url)
         for url in FINANCIAL_ENDPOINTS:
             self.assertEqual(self.client.get(url).status_code, 403, url)
 
@@ -206,29 +231,30 @@ class ReportRangeValidationTests(ReportCenterTestBase):
     def test_from_after_to_rejected(self):
         response = self.client.get(
             "/api/v1/reports/occupancy",
-            {"from": str(self.today), "to": str(self.today - timedelta(days=1))})
+            {"from": str(self.today), "to": str(self.today - timedelta(days=1))},
+        )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
 
     def test_range_over_92_days_rejected(self):
         """区间上限 92 天：93 天跨度 → 400（防全表扫描，§4.5 技术要求）。"""
         start = self.today - timedelta(days=120)
-        ok = self.client.get("/api/v1/reports/occupancy", {
-            "from": str(start), "to": str(start + timedelta(days=92))})
+        ok = self.client.get(
+            "/api/v1/reports/occupancy", {"from": str(start), "to": str(start + timedelta(days=92))}
+        )
         self.assertEqual(ok.status_code, 200)
         for url in REPORT_ENDPOINTS:
-            response = self.client.get(url, {
-                "from": str(start), "to": str(start + timedelta(days=93))})
+            response = self.client.get(
+                url, {"from": str(start), "to": str(start + timedelta(days=93))}
+            )
             self.assertEqual(response.status_code, 400, url)
-            self.assertEqual(
-                response.json()["error"]["code"], "VALIDATION_ERROR", url)
+            self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR", url)
 
     def test_invalid_date_format_rejected(self):
         for url in REPORT_ENDPOINTS:
             response = self.client.get(url, {"from": "2026/01/01"})
             self.assertEqual(response.status_code, 400, url)
-            self.assertEqual(
-                response.json()["error"]["code"], "VALIDATION_ERROR", url)
+            self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR", url)
 
     def test_invalid_group_by_rejected(self):
         response = self.client.get("/api/v1/reports/revenue", {"group_by": "week"})
@@ -271,8 +297,9 @@ class OccupancyReportTests(ReportCenterTestBase):
         self._make_inventory(day1, total=5, sold=3, out_of_service=1)
         # day2：总 7、已售 5、冻结 2（冻结计入分母不计入分子）→ 5/7 = 71.43%
         self._make_inventory(day2, total=7, sold=5, held=2)
-        body = self.client.get("/api/v1/reports/occupancy", {
-            "from": str(day1), "to": str(day2)}).json()
+        body = self.client.get(
+            "/api/v1/reports/occupancy", {"from": str(day1), "to": str(day2)}
+        ).json()
         series = body["data"]["series"]
         self.assertEqual(len(series), 2)
         self.assertEqual(series[0]["date"], str(day1))
@@ -288,8 +315,9 @@ class OccupancyReportTests(ReportCenterTestBase):
     def test_occupancy_zero_sellable_day_yields_null_pct(self):
         day = self.today - timedelta(days=3)
         self._make_inventory(day, total=2, out_of_service=2)
-        body = self.client.get("/api/v1/reports/occupancy", {
-            "from": str(day), "to": str(day)}).json()
+        body = self.client.get(
+            "/api/v1/reports/occupancy", {"from": str(day), "to": str(day)}
+        ).json()
         row = body["data"]["series"][0]
         self.assertEqual(row["sellable_room_nights"], 0)
         self.assertIsNone(row["occupancy_pct"])
@@ -305,33 +333,28 @@ class AdrReportTests(ReportCenterTestBase):
         self._make_inventory(day1, total=5, sold=2)
         self._make_inventory(day2, total=5, sold=2)
         folio = self._make_folio()
-        self._make_entry(LedgerEntry.EntryType.ROOM_CHARGE, 300,
-                         day1, folio=folio)
-        self._make_entry(LedgerEntry.EntryType.ROOM_CHARGE, 300,
-                         day2, folio=folio)
+        self._make_entry(LedgerEntry.EntryType.ROOM_CHARGE, 300, day1, folio=folio)
+        self._make_entry(LedgerEntry.EntryType.ROOM_CHARGE, 300, day2, folio=folio)
         # day2 红字冲销一笔房费：分子带符号合计 300 + (−300) = 300
         original = LedgerEntry.objects.filter(
-            property=self.property,
-            business_date=day2,
-            entry_type=LedgerEntry.EntryType.ROOM_CHARGE).first()
-        self._make_entry(LedgerEntry.EntryType.REVERSAL, -300, day2,
-                         void_of=original, folio=folio)
+            property=self.property, business_date=day2, entry_type=LedgerEntry.EntryType.ROOM_CHARGE
+        ).first()
+        self._make_entry(LedgerEntry.EntryType.REVERSAL, -300, day2, void_of=original, folio=folio)
         # 押金/收款不计入 ADR 分子
         self._make_entry(LedgerEntry.EntryType.DEPOSIT, -500, day1, folio=folio)
         self._make_entry(LedgerEntry.EntryType.PAYMENT, -200, day2, folio=folio)
 
-        body = self.client.get("/api/v1/reports/adr", {
-            "from": str(day1), "to": str(day2)}).json()
+        body = self.client.get("/api/v1/reports/adr", {"from": str(day1), "to": str(day2)}).json()
         data = body["data"]
         series = {row["date"]: row for row in data["series"]}
         self.assertEqual(series[str(day1)]["room_revenue"], "300.00")
-        self.assertEqual(series[str(day1)]["adr"], "150.00")   # 300 / 2 间夜
+        self.assertEqual(series[str(day1)]["adr"], "150.00")  # 300 / 2 间夜
         self.assertEqual(series[str(day2)]["room_revenue"], "0.00")
-        self.assertEqual(series[str(day2)]["adr"], "0.00")     # 冲销后 0 / 2 间夜
+        self.assertEqual(series[str(day2)]["adr"], "0.00")  # 冲销后 0 / 2 间夜
         summary = data["summary"]
         self.assertEqual(summary["room_revenue"], "300.00")
         self.assertEqual(summary["sold_room_nights"], 4)
-        self.assertEqual(summary["adr"], "75.00")              # 300 / 4 间夜
+        self.assertEqual(summary["adr"], "75.00")  # 300 / 4 间夜
 
 
 class RevenueReportTests(ReportCenterTestBase):
@@ -342,21 +365,17 @@ class RevenueReportTests(ReportCenterTestBase):
         self.day1 = self.today - timedelta(days=3)
         self.day2 = self.today - timedelta(days=2)
         self.folio = self._make_folio()
-        self._make_entry(LedgerEntry.EntryType.ROOM_CHARGE, 300, self.day1,
-                         folio=self.folio)
-        self._make_entry(LedgerEntry.EntryType.ROOM_CHARGE, 200, self.day1,
-                         folio=self.folio)
-        self._make_entry(LedgerEntry.EntryType.PAYMENT, -400, self.day1,
-                         folio=self.folio)
-        self._make_entry(LedgerEntry.EntryType.ROOM_CHARGE, 500, self.day2,
-                         folio=self.folio)
-        self._make_entry(LedgerEntry.EntryType.PAYMENT, -300, self.day2,
-                         folio=self.folio)
+        self._make_entry(LedgerEntry.EntryType.ROOM_CHARGE, 300, self.day1, folio=self.folio)
+        self._make_entry(LedgerEntry.EntryType.ROOM_CHARGE, 200, self.day1, folio=self.folio)
+        self._make_entry(LedgerEntry.EntryType.PAYMENT, -400, self.day1, folio=self.folio)
+        self._make_entry(LedgerEntry.EntryType.ROOM_CHARGE, 500, self.day2, folio=self.folio)
+        self._make_entry(LedgerEntry.EntryType.PAYMENT, -300, self.day2, folio=self.folio)
 
     def test_revenue_group_by_day(self):
-        body = self.client.get("/api/v1/reports/revenue", {
-            "from": str(self.day1), "to": str(self.day2),
-            "group_by": "day"}).json()
+        body = self.client.get(
+            "/api/v1/reports/revenue",
+            {"from": str(self.day1), "to": str(self.day2), "group_by": "day"},
+        ).json()
         series = body["data"]["series"]
         self.assertEqual(len(series), 2)
         row1 = series[0]
@@ -372,9 +391,10 @@ class RevenueReportTests(ReportCenterTestBase):
         self.assertEqual(summary["entries"], 5)
 
     def test_revenue_group_by_type(self):
-        body = self.client.get("/api/v1/reports/revenue", {
-            "from": str(self.day1), "to": str(self.day2),
-            "group_by": "type"}).json()
+        body = self.client.get(
+            "/api/v1/reports/revenue",
+            {"from": str(self.day1), "to": str(self.day2), "group_by": "type"},
+        ).json()
         rows = {row["entry_type"]: row for row in body["data"]["series"]}
         self.assertEqual(rows["ROOM_CHARGE"]["revenue"], "1000.00")
         self.assertEqual(rows["ROOM_CHARGE"]["entries"], 3)
@@ -383,11 +403,13 @@ class RevenueReportTests(ReportCenterTestBase):
 
     def test_revenue_multi_currency_not_summed(self):
         """外币凭证不与本币相加：单列 other_currencies（§4.5 多币种规则）。"""
-        self._make_entry(LedgerEntry.EntryType.ROOM_CHARGE, 100, self.day2,
-                         currency="USD", folio=self.folio)
-        body = self.client.get("/api/v1/reports/revenue", {
-            "from": str(self.day1), "to": str(self.day2),
-            "group_by": "day"}).json()
+        self._make_entry(
+            LedgerEntry.EntryType.ROOM_CHARGE, 100, self.day2, currency="USD", folio=self.folio
+        )
+        body = self.client.get(
+            "/api/v1/reports/revenue",
+            {"from": str(self.day1), "to": str(self.day2), "group_by": "day"},
+        ).json()
         summary = body["data"]["summary"]
         self.assertEqual(summary["currency"], "CNY")
         self.assertEqual(summary["total_revenue"], "1000.00")
@@ -417,18 +439,23 @@ class GuestsReportTests(ReportCenterTestBase):
         # 他物业预订不计入
         other_property = Property.objects.create(code="RPT-OTHER", name="他店")
         other_guest = Guest.objects.create(
-            property=other_property, full_name="他店客人", phone="13600000000")
+            property=other_property, full_name="他店客人", phone="13600000000"
+        )
         Reservation.objects.create(
-            property=other_property, booking_no="RPT-OTHER-1",
-            guest=other_guest, check_in=self.today,
-            check_out=self.today + timedelta(days=1))
+            property=other_property,
+            booking_no="RPT-OTHER-1",
+            guest=other_guest,
+            check_in=self.today,
+            check_out=self.today + timedelta(days=1),
+        )
 
-        body = self.client.get("/api/v1/reports/guests", {
-            "from": str(period_from), "to": str(period_to)}).json()
+        body = self.client.get(
+            "/api/v1/reports/guests", {"from": str(period_from), "to": str(period_to)}
+        ).json()
         summary = body["data"]["summary"]
-        self.assertEqual(summary["new_guests"], 2)          # A、B
-        self.assertEqual(summary["returning_guests"], 1)    # 仅 A（历史 ≥2 单）
-        self.assertEqual(summary["reservations"], 3)        # 期间内下单：A/B/C 各 1
+        self.assertEqual(summary["new_guests"], 2)  # A、B
+        self.assertEqual(summary["returning_guests"], 1)  # 仅 A（历史 ≥2 单）
+        self.assertEqual(summary["reservations"], 3)  # 期间内下单：A/B/C 各 1
         self.assertEqual(summary["unique_guests"], 3)
         by_source = {row["source"]: row for row in body["data"]["by_source"]}
         self.assertEqual(by_source["OTA"]["reservations"], 2)
@@ -448,12 +475,11 @@ class HousekeepingReportTests(ReportCenterTestBase):
         self._make_hk_event(self.room2.pk, days_ago=1)
         # 他物业事件与其他 action 不计入
         other_property = Property.objects.create(code="RPT-OTHER2", name="他店二")
-        self._make_hk_event(self.room1.pk, days_ago=0,
-                            property_obj=other_property)
+        self._make_hk_event(self.room1.pk, days_ago=0, property_obj=other_property)
         self._make_hk_event(self.room3.pk, days_ago=0)  # 覆盖为其他 action
         AuditEvent._base_manager.filter(
-            property=self.property, entity_id=str(self.room3.pk)).update(
-            action="room.maintenance_changed")
+            property=self.property, entity_id=str(self.room3.pk)
+        ).update(action="room.maintenance_changed")
 
         body = self.client.get("/api/v1/reports/housekeeping").json()
         data = body["data"]
@@ -472,8 +498,7 @@ class ReportEmptyDataTests(ReportCenterTestBase):
         empty_from = self.today - timedelta(days=90)
         empty_to = self.today - timedelta(days=80)
         for url in REPORT_ENDPOINTS:
-            response = self.client.get(url, {
-                "from": str(empty_from), "to": str(empty_to)})
+            response = self.client.get(url, {"from": str(empty_from), "to": str(empty_to)})
             self.assertEqual(response.status_code, 200, url)
             data = response.json()["data"]
             # 序列键随报表而异：四张序列报表为 series，客源报表为 by_source
@@ -486,8 +511,10 @@ class ReportEmptyDataTests(ReportCenterTestBase):
 
     def test_revenue_empty_series_zero_summary(self):
         empty_from = self.today - timedelta(days=90)
-        response = self.client.get("/api/v1/reports/revenue", {
-            "from": str(empty_from), "to": str(empty_from), "group_by": "type"})
+        response = self.client.get(
+            "/api/v1/reports/revenue",
+            {"from": str(empty_from), "to": str(empty_from), "group_by": "type"},
+        )
         summary = response.json()["data"]["summary"]
         self.assertEqual(summary["total_revenue"], "0.00")
         self.assertEqual(summary["total_expense"], "0.00")
@@ -520,14 +547,16 @@ class ReportPageTests(ReportCenterTestBase):
         self.assertContains(operational, "visibleReports")
 
         from django.contrib.auth.models import Permission
+
         from apps.identity.models import PropertyStaffMembership
+
         membership = PropertyStaffMembership.objects.get(
-            property=self.property, staff_profile__user=self.finance)
-        finance_group = membership.role_assignments.get(
-            group__name="财务").group
+            property=self.property, staff_profile__user=self.finance
+        )
+        finance_group = membership.role_assignments.get(group__name="财务").group
         operational_permission = Permission.objects.get(
-            content_type__app_label="hotelapp",
-            codename="view_accommodation")
+            content_type__app_label="hotelapp", codename="view_accommodation"
+        )
         finance_group.permissions.remove(operational_permission)
 
         self.client.force_login(self.finance)

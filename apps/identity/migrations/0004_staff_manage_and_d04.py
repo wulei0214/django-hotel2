@@ -16,11 +16,10 @@ def create_staff_manage_perm(apps, schema_editor):
     ContentType = apps.get_model("contenttypes", "ContentType")
     Group = apps.get_model("auth", "Group")
 
-    ct, _ = ContentType.objects.get_or_create(
-        app_label="identity", model="staffprofile")
+    ct, _ = ContentType.objects.get_or_create(app_label="identity", model="staffprofile")
     Permission.objects.get_or_create(
-        content_type=ct, codename="staff_manage",
-        defaults={"name": "能管理 员工与账号"})
+        content_type=ct, codename="staff_manage", defaults={"name": "能管理 员工与账号"}
+    )
     perm = Permission.objects.get(content_type=ct, codename="staff_manage")
     owner = Group.objects.filter(name="店长").first()
     if owner is not None:
@@ -32,7 +31,8 @@ def remove_staff_manage_perm(apps, schema_editor):
     ContentType = apps.get_model("contenttypes", "ContentType")
     Permission.objects.filter(
         content_type=ContentType.objects.get(app_label="identity", model="staffprofile"),
-        codename="staff_manage").delete()
+        codename="staff_manage",
+    ).delete()
 
 
 def revoke_is_staff_from_business_accounts(apps, schema_editor):

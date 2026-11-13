@@ -7,124 +7,359 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('guests', '0004_guestmembership_membershiplevelhistory_guestphone_and_more'),
-        ('core', '0004_businessdate_nightauditrun_and_more'),
-        ('inventory', '0003_housekeepingtask_roominspection_maintenanceticket_and_more'),
-        ('reservations', '0003_stayroomsegment_noshowrecord'),
+        ("guests", "0004_guestmembership_membershiplevelhistory_guestphone_and_more"),
+        ("core", "0004_businessdate_nightauditrun_and_more"),
+        ("inventory", "0003_housekeepingtask_roominspection_maintenanceticket_and_more"),
+        ("reservations", "0003_stayroomsegment_noshowrecord"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='ReservationGuest',
+            name="ReservationGuest",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('role', models.CharField(choices=[('BOOKER', '预订联系人'), ('PRIMARY', '主住客'), ('ACCOMPANYING', '同住人'), ('PAYER', '付款人')], default='PRIMARY', max_length=16, verbose_name='住客角色')),
-                ('full_name', models.CharField(max_length=80, verbose_name='姓名快照')),
-                ('phone', models.CharField(blank=True, max_length=24, verbose_name='电话快照')),
-                ('doc_type', models.CharField(blank=True, max_length=12, verbose_name='证件类型')),
-                ('doc_no_ciphertext', models.TextField(blank=True, verbose_name='证件号密文')),
-                ('doc_no_hash', models.CharField(blank=True, max_length=64, verbose_name='证件号哈希')),
-                ('birth_date', models.DateField(blank=True, null=True, verbose_name='出生日期')),
-                ('nationality', models.CharField(blank=True, max_length=32, verbose_name='国籍/地区')),
-                ('is_primary', models.BooleanField(default=False, verbose_name='主住客标记')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='更新时间')),
-                ('guest', models.ForeignKey(blank=True, help_text='允许先登记后建档', null=True, on_delete=django.db.models.deletion.PROTECT, related_name='reservation_guest_records', to='guests.guest', verbose_name='关联客人档案')),
-                ('reservation', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='reservation_guests', to='reservations.reservation', verbose_name='预订主单')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "role",
+                    models.CharField(
+                        choices=[
+                            ("BOOKER", "预订联系人"),
+                            ("PRIMARY", "主住客"),
+                            ("ACCOMPANYING", "同住人"),
+                            ("PAYER", "付款人"),
+                        ],
+                        default="PRIMARY",
+                        max_length=16,
+                        verbose_name="住客角色",
+                    ),
+                ),
+                ("full_name", models.CharField(max_length=80, verbose_name="姓名快照")),
+                ("phone", models.CharField(blank=True, max_length=24, verbose_name="电话快照")),
+                ("doc_type", models.CharField(blank=True, max_length=12, verbose_name="证件类型")),
+                ("doc_no_ciphertext", models.TextField(blank=True, verbose_name="证件号密文")),
+                (
+                    "doc_no_hash",
+                    models.CharField(blank=True, max_length=64, verbose_name="证件号哈希"),
+                ),
+                ("birth_date", models.DateField(blank=True, null=True, verbose_name="出生日期")),
+                (
+                    "nationality",
+                    models.CharField(blank=True, max_length=32, verbose_name="国籍/地区"),
+                ),
+                ("is_primary", models.BooleanField(default=False, verbose_name="主住客标记")),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="更新时间")),
+                (
+                    "guest",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="允许先登记后建档",
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="reservation_guest_records",
+                        to="guests.guest",
+                        verbose_name="关联客人档案",
+                    ),
+                ),
+                (
+                    "reservation",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="reservation_guests",
+                        to="reservations.reservation",
+                        verbose_name="预订主单",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '预订住客',
-                'verbose_name_plural': '预订住客',
+                "verbose_name": "预订住客",
+                "verbose_name_plural": "预订住客",
             },
         ),
         migrations.CreateModel(
-            name='StayGuest',
+            name="StayGuest",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('full_name', models.CharField(max_length=80, verbose_name='姓名')),
-                ('phone', models.CharField(blank=True, max_length=24, verbose_name='电话')),
-                ('doc_type', models.CharField(blank=True, max_length=12, verbose_name='证件类型')),
-                ('doc_no_ciphertext', models.TextField(blank=True, verbose_name='证件号密文')),
-                ('doc_no_hash', models.CharField(blank=True, max_length=64, verbose_name='证件号哈希')),
-                ('checked_in_at', models.DateTimeField(blank=True, null=True, verbose_name='入住时间')),
-                ('checked_out_at', models.DateTimeField(blank=True, null=True, verbose_name='离店时间')),
-                ('is_primary', models.BooleanField(default=False, verbose_name='主住客')),
-                ('note', models.TextField(blank=True, verbose_name='备注')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('guest', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='stay_guest_records', to='guests.guest', verbose_name='客人档案')),
-                ('reservation_guest', models.ForeignKey(blank=True, help_text='现场加人时可为空', null=True, on_delete=django.db.models.deletion.PROTECT, related_name='stay_guest_records', to='reservations.reservationguest', verbose_name='关联预订住客')),
-                ('stay', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='stay_guests', to='reservations.stay', verbose_name='实际入住')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("full_name", models.CharField(max_length=80, verbose_name="姓名")),
+                ("phone", models.CharField(blank=True, max_length=24, verbose_name="电话")),
+                ("doc_type", models.CharField(blank=True, max_length=12, verbose_name="证件类型")),
+                ("doc_no_ciphertext", models.TextField(blank=True, verbose_name="证件号密文")),
+                (
+                    "doc_no_hash",
+                    models.CharField(blank=True, max_length=64, verbose_name="证件号哈希"),
+                ),
+                (
+                    "checked_in_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="入住时间"),
+                ),
+                (
+                    "checked_out_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="离店时间"),
+                ),
+                ("is_primary", models.BooleanField(default=False, verbose_name="主住客")),
+                ("note", models.TextField(blank=True, verbose_name="备注")),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
+                (
+                    "guest",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="stay_guest_records",
+                        to="guests.guest",
+                        verbose_name="客人档案",
+                    ),
+                ),
+                (
+                    "reservation_guest",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="现场加人时可为空",
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="stay_guest_records",
+                        to="reservations.reservationguest",
+                        verbose_name="关联预订住客",
+                    ),
+                ),
+                (
+                    "stay",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="stay_guests",
+                        to="reservations.stay",
+                        verbose_name="实际入住",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '在住人员',
-                'verbose_name_plural': '在住人员',
+                "verbose_name": "在住人员",
+                "verbose_name_plural": "在住人员",
             },
         ),
         migrations.CreateModel(
-            name='InventoryHold',
+            name="InventoryHold",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('stay_date', models.DateField(verbose_name='住宿日期')),
-                ('quantity', models.PositiveSmallIntegerField(default=1, verbose_name='冻结数量')),
-                ('status', models.CharField(choices=[('HELD', '冻结中'), ('CONFIRMED', '已确认占用'), ('RELEASED', '已释放'), ('EXPIRED', '已过期')], default='HELD', max_length=12, verbose_name='状态')),
-                ('expires_at', models.DateTimeField(blank=True, null=True, verbose_name='过期时间')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('released_at', models.DateTimeField(blank=True, null=True, verbose_name='释放时间')),
-                ('property', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='inventory_holds', to='core.property', verbose_name='所属酒店')),
-                ('reservation_room', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='inventory_holds', to='reservations.reservationroom', verbose_name='预订房间明细')),
-                ('room_type', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='holds', to='inventory.roomtype', verbose_name='房型')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("stay_date", models.DateField(verbose_name="住宿日期")),
+                ("quantity", models.PositiveSmallIntegerField(default=1, verbose_name="冻结数量")),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("HELD", "冻结中"),
+                            ("CONFIRMED", "已确认占用"),
+                            ("RELEASED", "已释放"),
+                            ("EXPIRED", "已过期"),
+                        ],
+                        default="HELD",
+                        max_length=12,
+                        verbose_name="状态",
+                    ),
+                ),
+                (
+                    "expires_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="过期时间"),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
+                (
+                    "released_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="释放时间"),
+                ),
+                (
+                    "property",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="inventory_holds",
+                        to="core.property",
+                        verbose_name="所属酒店",
+                    ),
+                ),
+                (
+                    "reservation_room",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="inventory_holds",
+                        to="reservations.reservationroom",
+                        verbose_name="预订房间明细",
+                    ),
+                ),
+                (
+                    "room_type",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="holds",
+                        to="inventory.roomtype",
+                        verbose_name="房型",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '库存冻结明细',
-                'verbose_name_plural': '库存冻结明细',
+                "verbose_name": "库存冻结明细",
+                "verbose_name_plural": "库存冻结明细",
             },
         ),
         migrations.CreateModel(
-            name='DepositPolicy',
+            name="DepositPolicy",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('deposit_type', models.CharField(choices=[('NONE', '无押金'), ('FIXED', '固定金额'), ('PERCENT', '按比例')], default='NONE', max_length=8, verbose_name='押金类型')),
-                ('deposit_value', models.DecimalField(blank=True, decimal_places=2, help_text='FIXED 为金额；PERCENT 为比例', max_digits=12, null=True, verbose_name='押金值')),
-                ('due_before', models.CharField(blank=True, help_text='如 48h_before_checkin', max_length=32, verbose_name='支付截止')),
-                ('refundable', models.BooleanField(default=True, verbose_name='可退')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('rate_plan', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='deposit_policies', to='inventory.rateplan', verbose_name='房价计划')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "deposit_type",
+                    models.CharField(
+                        choices=[("NONE", "无押金"), ("FIXED", "固定金额"), ("PERCENT", "按比例")],
+                        default="NONE",
+                        max_length=8,
+                        verbose_name="押金类型",
+                    ),
+                ),
+                (
+                    "deposit_value",
+                    models.DecimalField(
+                        blank=True,
+                        decimal_places=2,
+                        help_text="FIXED 为金额；PERCENT 为比例",
+                        max_digits=12,
+                        null=True,
+                        verbose_name="押金值",
+                    ),
+                ),
+                (
+                    "due_before",
+                    models.CharField(
+                        blank=True,
+                        help_text="如 48h_before_checkin",
+                        max_length=32,
+                        verbose_name="支付截止",
+                    ),
+                ),
+                ("refundable", models.BooleanField(default=True, verbose_name="可退")),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
+                (
+                    "rate_plan",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="deposit_policies",
+                        to="inventory.rateplan",
+                        verbose_name="房价计划",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '押金政策',
-                'verbose_name_plural': '押金政策',
-                'ordering': ('rate_plan_id', '-created_at'),
+                "verbose_name": "押金政策",
+                "verbose_name_plural": "押金政策",
+                "ordering": ("rate_plan_id", "-created_at"),
             },
         ),
         migrations.CreateModel(
-            name='CancellationPolicy',
+            name="CancellationPolicy",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('free_cancel_until', models.CharField(help_text='如 24h_before_checkin 或具体时间表达', max_length=32, verbose_name='免费取消截止')),
-                ('penalty_type', models.CharField(choices=[('NONE', '免费取消'), ('FIRST_NIGHT', '收首晚'), ('PERCENT', '按比例'), ('FULL_STAY', '全额')], default='NONE', max_length=12, verbose_name='罚金类型')),
-                ('penalty_value', models.DecimalField(blank=True, decimal_places=2, help_text='PERCENT 时为比例（0-100）', max_digits=8, null=True, verbose_name='罚金值')),
-                ('no_show_penalty', models.DecimalField(blank=True, decimal_places=2, max_digits=12, null=True, verbose_name='未到罚金')),
-                ('currency', models.CharField(default='CNY', max_length=3, verbose_name='币种')),
-                ('version', models.PositiveSmallIntegerField(default=1, verbose_name='版本')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('rate_plan', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='cancellation_policies', to='inventory.rateplan', verbose_name='房价计划')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                (
+                    "free_cancel_until",
+                    models.CharField(
+                        help_text="如 24h_before_checkin 或具体时间表达",
+                        max_length=32,
+                        verbose_name="免费取消截止",
+                    ),
+                ),
+                (
+                    "penalty_type",
+                    models.CharField(
+                        choices=[
+                            ("NONE", "免费取消"),
+                            ("FIRST_NIGHT", "收首晚"),
+                            ("PERCENT", "按比例"),
+                            ("FULL_STAY", "全额"),
+                        ],
+                        default="NONE",
+                        max_length=12,
+                        verbose_name="罚金类型",
+                    ),
+                ),
+                (
+                    "penalty_value",
+                    models.DecimalField(
+                        blank=True,
+                        decimal_places=2,
+                        help_text="PERCENT 时为比例（0-100）",
+                        max_digits=8,
+                        null=True,
+                        verbose_name="罚金值",
+                    ),
+                ),
+                (
+                    "no_show_penalty",
+                    models.DecimalField(
+                        blank=True,
+                        decimal_places=2,
+                        max_digits=12,
+                        null=True,
+                        verbose_name="未到罚金",
+                    ),
+                ),
+                ("currency", models.CharField(default="CNY", max_length=3, verbose_name="币种")),
+                ("version", models.PositiveSmallIntegerField(default=1, verbose_name="版本")),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
+                (
+                    "rate_plan",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="cancellation_policies",
+                        to="inventory.rateplan",
+                        verbose_name="房价计划",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '取消政策',
-                'verbose_name_plural': '取消政策',
-                'ordering': ('rate_plan_id', '-version'),
+                "verbose_name": "取消政策",
+                "verbose_name_plural": "取消政策",
+                "ordering": ("rate_plan_id", "-version"),
             },
         ),
         migrations.AddConstraint(
-            model_name='reservationguest',
-            constraint=models.UniqueConstraint(condition=models.Q(('is_primary', True)), fields=('reservation',), name='uq_reservation_guest_primary'),
+            model_name="reservationguest",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("is_primary", True)),
+                fields=("reservation",),
+                name="uq_reservation_guest_primary",
+            ),
         ),
         migrations.AddIndex(
-            model_name='inventoryhold',
-            index=models.Index(fields=['room_type', 'stay_date', 'status'], name='idx_hold_type_date_status'),
+            model_name="inventoryhold",
+            index=models.Index(
+                fields=["room_type", "stay_date", "status"], name="idx_hold_type_date_status"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='inventoryhold',
-            constraint=models.UniqueConstraint(condition=models.Q(('status__in', ('RELEASED', 'EXPIRED')), _negated=True), fields=('reservation_room', 'stay_date'), name='uq_hold_active_per_roomdate'),
+            model_name="inventoryhold",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("status__in", ("RELEASED", "EXPIRED")), _negated=True),
+                fields=("reservation_room", "stay_date"),
+                name="uq_hold_active_per_roomdate",
+            ),
         ),
     ]

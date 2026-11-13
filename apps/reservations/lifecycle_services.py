@@ -1,4 +1,5 @@
 """PMS 2.0 前台入住生命周期：续住、换房、No-Show、押金和退款审批。"""
+
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -6,15 +7,15 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.billing.models import Folio
+from apps.core.models import AuditEvent
 from apps.inventory.models import DailyRate, Room, RoomTypeInventory
 from apps.inventory.services import (
     InventoryUnavailable,
     _property_today,
     release_sold_inventory_for_room_line,
 )
-from apps.core.models import AuditEvent
-from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
 
+from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
 
 CENT = Decimal("0.01")
 
@@ -25,7 +26,6 @@ class LifecycleOperationError(Exception):
 
 class LifecycleValidationError(LifecycleOperationError):
     """RSV-10：入参校验失败（金额格式等），应与业务状态冲突区分（400 vs 409）。"""
-
 
 
 def _money(value):
@@ -39,8 +39,7 @@ def _money(value):
         exact_to_cent = amount == amount.quantize(CENT)
     except InvalidOperation as exc:
         # WB-01：超出 Decimal 上下文精度的超大值统一拒绝为业务校验错误。
-        raise LifecycleOperationError(
-            "金额必须大于 0 且最多保留两位小数。") from exc
+        raise LifecycleOperationError("金额必须大于 0 且最多保留两位小数。") from exc
     if not exact_to_cent:
         raise LifecycleOperationError("金额必须大于 0 且最多保留两位小数。")
     return amount
@@ -49,10 +48,15 @@ def _money(value):
 def _folio_for_update(property_obj, reservation):
     # WB-07：续住/换房门禁只看主账单；不限定类型时，Meta ordering=-opened_at
     # 会让更晚开立的非主账单掩盖已关闭的主账单。
-    folio = Folio.objects.select_for_update().filter(
-        property=property_obj, reservation=reservation,
-        folio_type=Folio.FolioType.MASTER,
-    ).first()
+    folio = (
+        Folio.objects.select_for_update()
+        .filter(
+            property=property_obj,
+            reservation=reservation,
+            folio_type=Folio.FolioType.MASTER,
+        )
+        .first()
+    )
     if folio is None or folio.status != Folio.Status.OPEN:
         raise LifecycleOperationError("账单不存在或已关闭，不能执行该操作。")
     return folio
@@ -67,23 +71,28 @@ def extend_stay(*, property_obj, stay_id, new_check_out, reason, extended_by=Non
     READ COMMITTED 下执行（见 apps/reservations/isolation.py）。
     """
     from apps.reservations.isolation import use_read_committed
+
     use_read_committed()
     with transaction.atomic():
         return _extend_stay_locked(
-            property_obj=property_obj, stay_id=stay_id,
-            new_check_out=new_check_out, reason=reason,
-            extended_by=extended_by)
+            property_obj=property_obj,
+            stay_id=stay_id,
+            new_check_out=new_check_out,
+            reason=reason,
+            extended_by=extended_by,
+        )
 
 
 @transaction.atomic
-def _extend_stay_locked(*, property_obj, stay_id, new_check_out, reason,
-                        extended_by=None):
+def _extend_stay_locked(*, property_obj, stay_id, new_check_out, reason, extended_by=None):
     reason = str(reason or "").strip()
     if not reason or len(reason) > 240:
         raise LifecycleOperationError("续住必须填写 1 至 240 个字符的原因。")
-    stay = Stay.objects.select_for_update().filter(
-        pk=stay_id, property=property_obj, status=Stay.Status.IN_HOUSE
-    ).first()
+    stay = (
+        Stay.objects.select_for_update()
+        .filter(pk=stay_id, property=property_obj, status=Stay.Status.IN_HOUSE)
+        .first()
+    )
     if stay is None:
         raise LifecycleOperationError("未找到该物业下的在住记录。")
     line = ReservationRoom.objects.select_for_update().get(
@@ -108,22 +117,26 @@ def _extend_stay_locked(*, property_obj, stay_id, new_check_out, reason,
     # front_desk_services.assign_room；check_out_stay 亦为
     # stay→明细→预订→账单→房间同序），防止续住与排房/退房并发时
     # 对同一 Room 行形成 ABBA 死锁窗口。
-    current_room = Room.objects.select_for_update().filter(
-        pk=stay.room_id, property=property_obj
-    ).first()
+    current_room = (
+        Room.objects.select_for_update().filter(pk=stay.room_id, property=property_obj).first()
+    )
     if current_room is None:
         raise LifecycleOperationError("当前入住房间不存在或不属于当前酒店。")
-    room_conflict = ReservationRoom.objects.filter(
-        property=property_obj,
-        assigned_room_id=stay.room_id,
-        check_in__lt=new_check_out,
-        check_out__gt=old_check_out,
-        reservation__status__in=(
-            Reservation.Status.PENDING,
-            Reservation.Status.CONFIRMED,
-            Reservation.Status.CHECKED_IN,
-        ),
-    ).exclude(pk=line.pk).exists()
+    room_conflict = (
+        ReservationRoom.objects.filter(
+            property=property_obj,
+            assigned_room_id=stay.room_id,
+            check_in__lt=new_check_out,
+            check_out__gt=old_check_out,
+            reservation__status__in=(
+                Reservation.Status.PENDING,
+                Reservation.Status.CONFIRMED,
+                Reservation.Status.CHECKED_IN,
+            ),
+        )
+        .exclude(pk=line.pk)
+        .exists()
+    )
     if room_conflict:
         raise LifecycleOperationError("当前实际房间在续住区间已被其他有效预订占用，不能续住。")
 
@@ -156,8 +169,7 @@ def _extend_stay_locked(*, property_obj, stay_id, new_check_out, reason,
         raise LifecycleOperationError("续住日期存在缺失、关房或不可售房价。")
     full_nights = (new_check_out - line.check_in).days
     if any(
-        full_nights < item.min_stay or
-        (item.max_stay is not None and full_nights > item.max_stay)
+        full_nights < item.min_stay or (item.max_stay is not None and full_nights > item.max_stay)
         for item in rates
     ):
         raise LifecycleOperationError("续住后的总连住晚数不符合房价计划限制。")
@@ -179,11 +191,14 @@ def _extend_stay_locked(*, property_obj, stay_id, new_check_out, reason,
     if extension_amount <= 0:
         raise LifecycleOperationError("续住金额必须大于 0。")
     nightly_rates = list(line.nightly_rates or [])
-    nightly_rates.extend({
-        "date": item.stay_date.isoformat(),
-        "price": str(item.price),
-        "currency": item.currency,
-    } for item in rates)
+    nightly_rates.extend(
+        {
+            "date": item.stay_date.isoformat(),
+            "price": str(item.price),
+            "currency": item.currency,
+        }
+        for item in rates
+    )
 
     for row in stocks:
         row.sold += 1
@@ -196,8 +211,9 @@ def _extend_stay_locked(*, property_obj, stay_id, new_check_out, reason,
     line.save(update_fields=("check_out", "amount", "nightly_rates"))
 
     line_summaries = list(
-        ReservationRoom.objects.filter(property=property_obj, reservation=reservation)
-        .values_list("check_out", "amount")
+        ReservationRoom.objects.filter(property=property_obj, reservation=reservation).values_list(
+            "check_out", "amount"
+        )
     )
     reservation.check_out = max(item[0] for item in line_summaries)
     reservation.total_amount = sum((item[1] for item in line_summaries), Decimal("0.00"))
@@ -210,29 +226,40 @@ def _extend_stay_locked(*, property_obj, stay_id, new_check_out, reason,
     # check_out_stay 归集 stay-extension:* 凭证，避免重复计费。
     from apps.billing.models import LedgerEntry
     from apps.billing.services_v2 import BillingService
+
     for item in rates:
         if Decimal(str(item.price)) <= 0:
             # 0 元晚不产生应收（post_entry 拒绝零金额凭证）
             continue
         try:
             BillingService.post_entry(
-                property_obj=property_obj, folio=folio, stay=stay,
+                property_obj=property_obj,
+                folio=folio,
+                stay=stay,
                 entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-                amount=item.price, currency=folio.currency,
+                amount=item.price,
+                currency=folio.currency,
                 business_date=_property_today(property_obj),
                 reference=f"stay-extension:{stay.pk}:{item.stay_date.isoformat()}",
                 description=f"续住房费（{item.stay_date.isoformat()}）",
-                posted_by=extended_by)
+                posted_by=extended_by,
+            )
         except ValueError as exc:
             # 营业日关账守卫等账务校验失败统一转为生命周期业务冲突
             raise LifecycleOperationError(str(exc)) from exc
 
     AuditEvent.record(
-        action="frontdesk.stay_extended", entity_type="Stay",
-        entity_id=str(stay.pk), actor=extended_by, property_obj=property_obj,
-        after={"new_check_out": str(stay.reservation_room.check_out),
-               "extension_amount": str(extension_amount)},
-        reason=reason[:240])
+        action="frontdesk.stay_extended",
+        entity_type="Stay",
+        entity_id=str(stay.pk),
+        actor=extended_by,
+        property_obj=property_obj,
+        after={
+            "new_check_out": str(stay.reservation_room.check_out),
+            "extension_amount": str(extension_amount),
+        },
+        reason=reason[:240],
+    )
     return stay, line, extension_amount
 
 
@@ -242,9 +269,11 @@ def change_stay_room(*, property_obj, stay_id, new_room_id, reason, moved_by=Non
     reason = str(reason or "").strip()
     if not reason or len(reason) > 240:
         raise LifecycleOperationError("换房必须填写 1 至 240 个字符的原因。")
-    stay = Stay.objects.select_for_update().filter(
-        pk=stay_id, property=property_obj, status=Stay.Status.IN_HOUSE
-    ).first()
+    stay = (
+        Stay.objects.select_for_update()
+        .filter(pk=stay_id, property=property_obj, status=Stay.Status.IN_HOUSE)
+        .first()
+    )
     if stay is None:
         raise LifecycleOperationError("未找到该物业下的在住记录。")
     line = ReservationRoom.objects.select_for_update().get(
@@ -259,9 +288,9 @@ def change_stay_room(*, property_obj, stay_id, new_room_id, reason, moved_by=Non
     # FD-61-03：源房间与目标房间必须按主键升序一次性行锁；
     # 分两次加锁时，双向换房并发（A→B 与 B→A）会形成 ABBA 死锁窗口。
     room_ids = sorted({int(new_room_id), stay.room_id})
-    locked_rooms = Room.objects.select_for_update().filter(
-        pk__in=room_ids, property=property_obj
-    ).in_bulk()
+    locked_rooms = (
+        Room.objects.select_for_update().filter(pk__in=room_ids, property=property_obj).in_bulk()
+    )
     new_room = locked_rooms.get(int(new_room_id))
     if new_room is None or not new_room.is_active:
         raise LifecycleOperationError("目标房间不存在或不属于当前酒店。")
@@ -272,29 +301,36 @@ def change_stay_room(*, property_obj, stay_id, new_room_id, reason, moved_by=Non
         raise LifecycleOperationError("暂只支持同房型换房；跨房型差价需要独立价格审批规则。")
     if not new_room.is_sellable_now:
         raise LifecycleOperationError("目标房间不是空闲净房或处于维修停用状态。")
-    if Stay.objects.filter(
-        property=property_obj, room=new_room, status=Stay.Status.IN_HOUSE
-    ).exclude(pk=stay.pk).exists():
+    if (
+        Stay.objects.filter(property=property_obj, room=new_room, status=Stay.Status.IN_HOUSE)
+        .exclude(pk=stay.pk)
+        .exists()
+    ):
         raise LifecycleOperationError("目标房间已有其他客人在住。")
 
-    conflict = ReservationRoom.objects.filter(
-        property=property_obj,
-        assigned_room=new_room,
-        check_in__lt=line.check_out,
-        check_out__gt=_property_today(property_obj),
-        reservation__status__in=(
-            Reservation.Status.PENDING, Reservation.Status.CONFIRMED,
-            Reservation.Status.CHECKED_IN,
-        ),
-    ).exclude(pk=line.pk).exists()
+    conflict = (
+        ReservationRoom.objects.filter(
+            property=property_obj,
+            assigned_room=new_room,
+            check_in__lt=line.check_out,
+            check_out__gt=_property_today(property_obj),
+            reservation__status__in=(
+                Reservation.Status.PENDING,
+                Reservation.Status.CONFIRMED,
+                Reservation.Status.CHECKED_IN,
+            ),
+        )
+        .exclude(pk=line.pk)
+        .exists()
+    )
     if conflict:
         raise LifecycleOperationError("目标房间在剩余住宿日期已有其他有效预订。")
 
     old_room = locked_rooms[stay.room_id]
     now = timezone.now()
-    current_segment = StayRoomSegment.objects.select_for_update().filter(
-        stay=stay, ended_at__isnull=True
-    ).first()
+    current_segment = (
+        StayRoomSegment.objects.select_for_update().filter(stay=stay, ended_at__isnull=True).first()
+    )
     if current_segment is None:
         current_segment = StayRoomSegment.objects.create(
             property=property_obj,
@@ -309,8 +345,12 @@ def change_stay_room(*, property_obj, stay_id, new_room_id, reason, moved_by=Non
     current_segment.save(update_fields=("ended_at", "move_reason", "moved_by"))
 
     StayRoomSegment.objects.create(
-        property=property_obj, stay=stay, room=new_room,
-        started_at=now, moved_by=moved_by, move_reason=reason,
+        property=property_obj,
+        stay=stay,
+        room=new_room,
+        started_at=now,
+        moved_by=moved_by,
+        move_reason=reason,
     )
     old_room.occupancy_status = Room.OccupancyStatus.VACANT
     old_room.housekeeping_status = Room.HousekeepingStatus.DIRTY
@@ -322,10 +362,14 @@ def change_stay_room(*, property_obj, stay_id, new_room_id, reason, moved_by=Non
     line.assigned_room = new_room
     line.save(update_fields=("assigned_room",))
     AuditEvent.record(
-        action="frontdesk.stay_room_changed", entity_type="Stay",
-        entity_id=str(stay.pk), actor=moved_by, property_obj=property_obj,
+        action="frontdesk.stay_room_changed",
+        entity_type="Stay",
+        entity_id=str(stay.pk),
+        actor=moved_by,
+        property_obj=property_obj,
         after={"new_room": new_room.number, "reason": reason[:240]},
-        reason="在住换房")
+        reason="在住换房",
+    )
     return stay, True
 
 
@@ -335,9 +379,11 @@ def mark_reservation_room_no_show(*, property_obj, reservation_room_id, reason, 
     reason = str(reason or "").strip()
     if not reason or len(reason) > 240:
         raise LifecycleOperationError("No-Show 必须填写 1 至 240 个字符的原因。")
-    line = ReservationRoom.objects.select_for_update().filter(
-        pk=reservation_room_id, property=property_obj
-    ).first()
+    line = (
+        ReservationRoom.objects.select_for_update()
+        .filter(pk=reservation_room_id, property=property_obj)
+        .first()
+    )
     if line is None:
         raise LifecycleOperationError("未找到该物业下的预订房间明细。")
     reservation = Reservation.objects.select_for_update().get(
@@ -374,8 +420,9 @@ def mark_reservation_room_no_show(*, property_obj, reservation_room_id, reason, 
         line.save(update_fields=("assigned_room",))
 
     lines = list(
-        ReservationRoom.objects.filter(property=property_obj, reservation=reservation)
-        .values_list("id", flat=True)
+        ReservationRoom.objects.filter(property=property_obj, reservation=reservation).values_list(
+            "id", flat=True
+        )
     )
     no_show_count = NoShowRecord.objects.filter(reservation_room_id__in=lines).count()
     has_any_stay = Stay.objects.filter(
@@ -383,26 +430,31 @@ def mark_reservation_room_no_show(*, property_obj, reservation_room_id, reason, 
     ).exists()
     if lines:
         completed_stays = Stay.objects.filter(
-            property=property_obj, reservation_room_id__in=lines,
+            property=property_obj,
+            reservation_room_id__in=lines,
             status=Stay.Status.CHECKED_OUT,
         ).count()
         active_stays = Stay.objects.filter(
-            property=property_obj, reservation_room_id__in=lines,
+            property=property_obj,
+            reservation_room_id__in=lines,
             status=Stay.Status.IN_HOUSE,
         ).exists()
         if not active_stays and no_show_count + completed_stays == len(lines):
             reservation.status = (
-                Reservation.Status.NO_SHOW if no_show_count == len(lines)
+                Reservation.Status.NO_SHOW
+                if no_show_count == len(lines)
                 else Reservation.Status.CHECKED_OUT
             )
             reservation.save(update_fields=("status", "updated_at"))
     AuditEvent.record(
-        action="frontdesk.no_show_processed", entity_type="ReservationRoom",
-        entity_id=str(record.reservation_room_id), actor=processed_by,
+        action="frontdesk.no_show_processed",
+        entity_type="ReservationRoom",
+        entity_id=str(record.reservation_room_id),
+        actor=processed_by,
         property_obj=property_obj,
-        after={"released_nights": record.released_nights,
-               "reason": reason[:240]},
-        reason="No-Show 处理")
+        after={"released_nights": record.released_nights, "reason": reason[:240]},
+        reason="No-Show 处理",
+    )
     return record, True
 
 
@@ -413,18 +465,32 @@ def receive_manual_deposit(
     """押金登记统一委托 BillingService，避免绕开账务唯一写入口。"""
     # PENDING 一并允许：押金即确认（与收款/在线支付回调同口径，业务闭环缺口修复），
     # BillingService.record_deposit 内部会在押金登记成功后完成库存确认与状态迁移。
-    reservation = Reservation.objects.select_for_update().filter(
-        property=property_obj, booking_no=booking_no,
-        status__in=(Reservation.Status.PENDING, Reservation.Status.CONFIRMED,
-                    Reservation.Status.CHECKED_IN),
-    ).first()
+    reservation = (
+        Reservation.objects.select_for_update()
+        .filter(
+            property=property_obj,
+            booking_no=booking_no,
+            status__in=(
+                Reservation.Status.PENDING,
+                Reservation.Status.CONFIRMED,
+                Reservation.Status.CHECKED_IN,
+            ),
+        )
+        .first()
+    )
     if reservation is None:
         raise LifecycleOperationError("未找到可收取押金的待支付/已确认/在住预订。")
     from apps.billing.services_v2 import BillingInputError, BillingService
+
     try:
         return BillingService.record_deposit(
-            property_obj=property_obj, reservation=reservation, amount=amount,
-            method=method, idempotency_key=idempotency_key, received_by=received_by)
+            property_obj=property_obj,
+            reservation=reservation,
+            amount=amount,
+            method=method,
+            idempotency_key=idempotency_key,
+            received_by=received_by,
+        )
     except BillingInputError as exc:
         # RSV-10：只有金额格式/精度、方式、幂等键格式等入参错误 → 400。
         raise LifecycleValidationError(str(exc)) from exc
@@ -439,11 +505,16 @@ def receive_manual_deposit(
 def request_refund(*, property_obj, payment_id, amount, reason, idempotency_key, requested_by):
     """退款申请统一委托 BillingService；审批事实和业务申请同事务生成。"""
     from apps.billing.services_v2 import BillingService
+
     try:
         return BillingService.request_refund(
-            property_obj=property_obj, payment_id=payment_id,
-            amount=amount, reason=reason, idempotency_key=idempotency_key,
-            requested_by=requested_by)
+            property_obj=property_obj,
+            payment_id=payment_id,
+            amount=amount,
+            reason=reason,
+            idempotency_key=idempotency_key,
+            requested_by=requested_by,
+        )
     except ValueError as exc:
         raise LifecycleOperationError(str(exc)) from exc
 
@@ -452,10 +523,11 @@ def request_refund(*, property_obj, payment_id, amount, reason, idempotency_key,
 def approve_refund(*, property_obj, refund_id, approved_by):
     """仅审批退款；不确认实际付款、不执行退款、不写 REFUND 账本凭证。"""
     from apps.billing.services_v2 import BillingService
+
     try:
         return BillingService.approve_refund(
-            property_obj=property_obj, refund_id=refund_id,
-            approved_by=approved_by)
+            property_obj=property_obj, refund_id=refund_id, approved_by=approved_by
+        )
     except ValueError as exc:
         raise LifecycleOperationError(str(exc)) from exc
 
@@ -464,9 +536,10 @@ def approve_refund(*, property_obj, refund_id, approved_by):
 def reject_refund(*, property_obj, refund_id, rejected_by, reason):
     """退款驳回统一委托 BillingService，保持支付状态、审批与审计同事务。"""
     from apps.billing.services_v2 import BillingService
+
     try:
         return BillingService.reject_refund(
-            property_obj=property_obj, refund_id=refund_id,
-            rejected_by=rejected_by, reason=reason)
+            property_obj=property_obj, refund_id=refund_id, rejected_by=rejected_by, reason=reason
+        )
     except ValueError as exc:
         raise LifecycleOperationError(str(exc)) from exc

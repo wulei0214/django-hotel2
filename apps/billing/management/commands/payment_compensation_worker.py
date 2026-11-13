@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """D3 P0 / WB-070/078 + WB-110：支付补偿任务 Worker。
 
 循环扫描到期的 PaymentCompensationTask（PENDING，或租约已过期的 LEASED），
@@ -31,6 +30,7 @@
 
 空转（无到期任务）时保持安静，不产生输出。
 """
+
 import logging
 import os
 import socket
@@ -127,9 +127,12 @@ def execute_hold_coordination(task):
     reservation = resolve_hold_coordination_reservation(task)
     status = reservation.status
     if status in HOLD_TERMINAL_RESERVATION_STATUSES:
-        return (False, ERROR_REQUIRES_MANUAL_COORDINATION,
-                f"预订 {reservation.pk} 已是终态 {status}，库存 Hold 无法再确认，"
-                f"不得无限重试；支付资金事实保留，需人工协调（退款/对账）。")
+        return (
+            False,
+            ERROR_REQUIRES_MANUAL_COORDINATION,
+            f"预订 {reservation.pk} 已是终态 {status}，库存 Hold 无法再确认，"
+            f"不得无限重试；支付资金事实保留，需人工协调（退款/对账）。",
+        )
     if status in HOLD_SETTLED_RESERVATION_STATUSES:
         # 幂等成功：库存确认已达成或无需再做（不重复消耗 Hold）
         return (True, "", "")
@@ -143,32 +146,34 @@ def execute_hold_coordination(task):
     if reservation.status == Reservation.Status.PENDING:
         reservation.status = Reservation.Status.CONFIRMED
         reservation.save(update_fields=("status", "updated_at"))
-        from apps.reservations.front_desk_services import (
-            snapshot_early_departure_policy)
+        from apps.reservations.front_desk_services import snapshot_early_departure_policy
+
         snapshot_early_departure_policy(reservation)
     return (True, "", "")
 
 
 def _find_intent_for_payment(payment):
     """为 Payment 定位关联 PaymentIntent（优先已确认绑定，其次同事实匹配）。"""
-    intent = PaymentIntent.objects.filter(
-        confirmed_payment=payment).order_by("pk").first()
+    intent = PaymentIntent.objects.filter(confirmed_payment=payment).order_by("pk").first()
     if intent is not None:
         return intent
-    return PaymentIntent.objects.filter(
-        reservation_id=payment.reservation_id,
-        folio_id=payment.folio_id,
-        amount=payment.amount,
-        currency=payment.currency,
-        provider_code=payment.provider or "mock",
-    ).order_by("-pk").first()
+    return (
+        PaymentIntent.objects.filter(
+            reservation_id=payment.reservation_id,
+            folio_id=payment.folio_id,
+            amount=payment.amount,
+            currency=payment.currency,
+            provider_code=payment.provider or "mock",
+        )
+        .order_by("-pk")
+        .first()
+    )
 
 
 def _latest_provider_transaction(intent):
     if intent is None:
         return None
-    return ProviderTransaction.objects.filter(
-        intent=intent).order_by("-received_at", "-pk").first()
+    return ProviderTransaction.objects.filter(intent=intent).order_by("-received_at", "-pk").first()
 
 
 def execute_channel_query(task):
@@ -183,8 +188,7 @@ def execute_channel_query(task):
     if task.aggregate_type == "PaymentIntent":
         intent = PaymentIntent.objects.filter(pk=task.aggregate_id).first()
         if intent is None:
-            raise LookupError(
-                f"聚合实体不存在：PaymentIntent {task.aggregate_id}。")
+            raise LookupError(f"聚合实体不存在：PaymentIntent {task.aggregate_id}。")
     elif task.aggregate_type == "Payment":
         payment = Payment.objects.filter(pk=task.aggregate_id).first()
         if payment is None:
@@ -194,19 +198,28 @@ def execute_channel_query(task):
         raise LookupError(f"不支持的聚合类型：{task.aggregate_type}。")
     pt = _latest_provider_transaction(intent)
     if pt is None:
-        return (False, ERROR_CHANNEL_QUERY_NO_SUCCESS_FACT,
-                "mock 渠道查询：意图/支付名下无任何已持久化的渠道交易事实，"
-                "不伪造渠道成功；按失败退避重试。")
+        return (
+            False,
+            ERROR_CHANNEL_QUERY_NO_SUCCESS_FACT,
+            "mock 渠道查询：意图/支付名下无任何已持久化的渠道交易事实，"
+            "不伪造渠道成功；按失败退避重试。",
+        )
     if pt.channel_status != "SUCCESS":
-        return (False, ERROR_CHANNEL_QUERY_NO_SUCCESS_FACT,
-                f"mock 渠道查询：最新渠道交易 {pt.provider_transaction_id} "
-                f"状态为 {pt.channel_status}（非 SUCCESS），不伪造渠道成功；"
-                "按失败退避重试。")
+        return (
+            False,
+            ERROR_CHANNEL_QUERY_NO_SUCCESS_FACT,
+            f"mock 渠道查询：最新渠道交易 {pt.provider_transaction_id} "
+            f"状态为 {pt.channel_status}（非 SUCCESS），不伪造渠道成功；"
+            "按失败退避重试。",
+        )
     # SUCCESS：任务成功。仅汇报渠道事实，不修改意图/支付任何状态。
-    return (True, "",
-            f"mock 渠道查询：渠道交易 {pt.provider_transaction_id} "
-            f"channel_status=SUCCESS（验签={pt.signature_verified}）；"
-            "仅汇报渠道事实，不修改任何状态。")
+    return (
+        True,
+        "",
+        f"mock 渠道查询：渠道交易 {pt.provider_transaction_id} "
+        f"channel_status=SUCCESS（验签={pt.signature_verified}）；"
+        "仅汇报渠道事实，不修改任何状态。",
+    )
 
 
 def execute_callback_confirm_retry(task):
@@ -220,28 +233,37 @@ def execute_callback_confirm_retry(task):
         raise LookupError(f"不支持的聚合类型：{task.aggregate_type}。")
     intent = PaymentIntent.objects.filter(pk=task.aggregate_id).first()
     if intent is None:
-        raise LookupError(
-            f"聚合实体不存在：PaymentIntent {task.aggregate_id}。")
-    pt = ProviderTransaction.objects.filter(
-        intent=intent, channel_status="SUCCESS",
-        signature_verified=True,
-    ).order_by("-received_at", "-pk").first()
+        raise LookupError(f"聚合实体不存在：PaymentIntent {task.aggregate_id}。")
+    pt = (
+        ProviderTransaction.objects.filter(
+            intent=intent,
+            channel_status="SUCCESS",
+            signature_verified=True,
+        )
+        .order_by("-received_at", "-pk")
+        .first()
+    )
     if pt is None:
-        return (False, ERROR_CALLBACK_CONFIRM_NO_PAYMENT_FACT,
-                "意图名下没有已验签的 SUCCESS 渠道交易，不能确认成功；"
-                "按失败退避重试。")
-    payment = Payment.objects.filter(
-        provider_ref=pt.provider_transaction_id).first()
+        return (
+            False,
+            ERROR_CALLBACK_CONFIRM_NO_PAYMENT_FACT,
+            "意图名下没有已验签的 SUCCESS 渠道交易，不能确认成功；" "按失败退避重试。",
+        )
+    payment = Payment.objects.filter(provider_ref=pt.provider_transaction_id).first()
     if payment is None or payment.status != Payment.Status.SUCCEEDED:
-        return (False, ERROR_CALLBACK_CONFIRM_NO_PAYMENT_FACT,
-                f"渠道交易 {pt.provider_transaction_id} 没有对应的 SUCCEEDED "
-                "收款事实（Payment），不能凭空造成功；按失败退避重试。")
+        return (
+            False,
+            ERROR_CALLBACK_CONFIRM_NO_PAYMENT_FACT,
+            f"渠道交易 {pt.provider_transaction_id} 没有对应的 SUCCEEDED "
+            "收款事实（Payment），不能凭空造成功；按失败退避重试。",
+        )
     confirm_intent_success(
         property_obj=intent.property,
         intent_id=intent.pk,
         provider_transaction_id=pt.provider_transaction_id,
         confirmed_payment=payment,
-        actor=None)
+        actor=None,
+    )
     return (True, "", "")
 
 
@@ -259,8 +281,7 @@ def execute_payment_ledger_repair(task):
     """
     if task.aggregate_type != "Payment":
         raise LookupError(f"不支持的聚合类型：{task.aggregate_type}。")
-    payment = Payment.objects.select_related("folio").filter(
-        pk=task.aggregate_id).first()
+    payment = Payment.objects.select_related("folio").filter(pk=task.aggregate_id).first()
     if payment is None:
         raise LookupError(f"聚合实体不存在：Payment {task.aggregate_id}。")
     payment_ref = payment.provider_ref
@@ -269,45 +290,70 @@ def execute_payment_ledger_repair(task):
         # 幂等成功：凭证已存在，不重复入账
         return (True, "", "")
     if payment.status != Payment.Status.SUCCEEDED:
-        return (False, ERROR_REQUIRES_MANUAL_COORDINATION,
-                f"Payment {payment_ref} 状态为 {payment.status}（非 SUCCEEDED），"
-                "无法安全重建账本凭证；需人工/对账差异处理，不得篡改。")
+        return (
+            False,
+            ERROR_REQUIRES_MANUAL_COORDINATION,
+            f"Payment {payment_ref} 状态为 {payment.status}（非 SUCCEEDED），"
+            "无法安全重建账本凭证；需人工/对账差异处理，不得篡改。",
+        )
     folio = payment.folio
     if folio is None or folio.property_id != payment.property_id:
-        return (False, ERROR_REQUIRES_MANUAL_COORDINATION,
-                f"Payment {payment_ref} 对应账单缺失或归属不一致，"
-                "无法安全重建账本凭证；需人工/对账差异处理，不得篡改。")
+        return (
+            False,
+            ERROR_REQUIRES_MANUAL_COORDINATION,
+            f"Payment {payment_ref} 对应账单缺失或归属不一致，"
+            "无法安全重建账本凭证；需人工/对账差异处理，不得篡改。",
+        )
     if folio.status != Folio.Status.OPEN:
-        return (False, ERROR_REQUIRES_MANUAL_COORDINATION,
-                f"Payment {payment_ref} 对应账单 {folio.pk} 状态为 "
-                f"{folio.status}（非未结），补凭证会影响已结账余额；"
-                "需人工/对账差异处理，不得篡改。")
+        return (
+            False,
+            ERROR_REQUIRES_MANUAL_COORDINATION,
+            f"Payment {payment_ref} 对应账单 {folio.pk} 状态为 "
+            f"{folio.status}（非未结），补凭证会影响已结账余额；"
+            "需人工/对账差异处理，不得篡改。",
+        )
     # 押金登记走 DEPOSIT deposit:{ref}，其余收款走 PAYMENT payment:{ref}
-    entry_type = (LedgerEntry.EntryType.DEPOSIT
-                  if payment.provider == "frontdesk_deposit"
-                  else LedgerEntry.EntryType.PAYMENT)
+    entry_type = (
+        LedgerEntry.EntryType.DEPOSIT
+        if payment.provider == "frontdesk_deposit"
+        else LedgerEntry.EntryType.PAYMENT
+    )
     reference = f"{entry_type.lower()}:{payment_ref}"
     from apps.billing.services_v2 import BillingService
-    open_bd = BusinessDate.objects.filter(
-        property=payment.property,
-        status=BusinessDate.Status.OPEN,
-    ).order_by("-business_date").first()
-    business_date = (open_bd.business_date if open_bd is not None
-                     else BillingService._business_date(payment.property))
+
+    open_bd = (
+        BusinessDate.objects.filter(
+            property=payment.property,
+            status=BusinessDate.Status.OPEN,
+        )
+        .order_by("-business_date")
+        .first()
+    )
+    business_date = (
+        open_bd.business_date
+        if open_bd is not None
+        else BillingService._business_date(payment.property)
+    )
     try:
         BillingService.post_entry(
-            property_obj=payment.property, folio=folio,
-            entry_type=entry_type, amount=-payment.amount,
-            currency=payment.currency, business_date=business_date,
+            property_obj=payment.property,
+            folio=folio,
+            entry_type=entry_type,
+            amount=-payment.amount,
+            currency=payment.currency,
+            business_date=business_date,
             reference=reference,
             description=f"补偿修复：支付 {payment_ref} 补入账本凭证",
             posted_by=None,
             # WB-111 新口径：显式绑定渠道支付事实（关账日豁免必需）
-            channel_payment=payment)
+            channel_payment=payment,
+        )
     except Exception as exc:  # 补写被拒（关账守卫/归属校验等）→ 人工处理
-        return (False, ERROR_REQUIRES_MANUAL_COORDINATION,
-                f"补凭证失败（{reference}）：{exc}；需人工/对账差异处理，"
-                "不得篡改。")
+        return (
+            False,
+            ERROR_REQUIRES_MANUAL_COORDINATION,
+            f"补凭证失败（{reference}）：{exc}；需人工/对账差异处理，" "不得篡改。",
+        )
     return (True, "", "")
 
 
@@ -319,11 +365,9 @@ def resolve_reconciliation_property(task):
     保持一致，避免任务因聚合类型不被解析而退避进死信。
     """
     if task.aggregate_type == "FolioReconciliationRun":
-        run = FolioReconciliationRun.objects.filter(
-            pk=task.aggregate_id).first()
+        run = FolioReconciliationRun.objects.filter(pk=task.aggregate_id).first()
         if run is None:
-            raise LookupError(
-                f"聚合实体不存在：FolioReconciliationRun {task.aggregate_id}。")
+            raise LookupError(f"聚合实体不存在：FolioReconciliationRun {task.aggregate_id}。")
         return run.property
     if task.aggregate_type == "Property":
         prop = Property.objects.filter(pk=task.aggregate_id).first()
@@ -338,8 +382,7 @@ def resolve_reconciliation_property(task):
     if task.aggregate_type == "PaymentIntent":
         intent = PaymentIntent.objects.filter(pk=task.aggregate_id).first()
         if intent is None:
-            raise LookupError(
-                f"聚合实体不存在：PaymentIntent {task.aggregate_id}。")
+            raise LookupError(f"聚合实体不存在：PaymentIntent {task.aggregate_id}。")
         return intent.property
     if task.aggregate_type == "Folio":
         folio = Folio.objects.filter(pk=task.aggregate_id).first()
@@ -356,12 +399,16 @@ def execute_reconciliation_diff(task):
     按失败退避重试。
     """
     from apps.billing.reconciliation import scan_folio_reconciliation
+
     property_obj = resolve_reconciliation_property(task)
     run = scan_folio_reconciliation(property_obj=property_obj)
-    return (True, "",
-            f"对账扫描完成：run={run.pk}，扫描账单 {run.scanned_folios}，"
-            f"差异 {run.diff_count} 项；差异已生成报告与审计，"
-            "等待授权财务处理，绝不自动改账。")
+    return (
+        True,
+        "",
+        f"对账扫描完成：run={run.pk}，扫描账单 {run.scanned_folios}，"
+        f"差异 {run.diff_count} 项；差异已生成报告与审计，"
+        "等待授权财务处理，绝不自动改账。",
+    )
 
 
 def execute_compensation_task(task):
@@ -375,21 +422,20 @@ def execute_compensation_task(task):
             return execute_hold_coordination(task)
         if task.task_type == PaymentCompensationTask.TaskType.CHANNEL_QUERY:
             return execute_channel_query(task)
-        if (task.task_type ==
-                PaymentCompensationTask.TaskType.CALLBACK_CONFIRM_RETRY):
+        if task.task_type == PaymentCompensationTask.TaskType.CALLBACK_CONFIRM_RETRY:
             return execute_callback_confirm_retry(task)
-        if (task.task_type ==
-                PaymentCompensationTask.TaskType.PAYMENT_LEDGER_REPAIR):
+        if task.task_type == PaymentCompensationTask.TaskType.PAYMENT_LEDGER_REPAIR:
             return execute_payment_ledger_repair(task)
         if task.task_type == PaymentCompensationTask.TaskType.RECONCILIATION_DIFF:
             return execute_reconciliation_diff(task)
         # 未知任务类型：先记日志，再按失败处理进入退避，超过 max_attempts
         # 转死信，等待人工排查后 replay_dead_letter_task 重放。
-        logger.warning(
-            "补偿任务 %s 类型 %s 暂无自动执行器，按失败退避。",
-            task.pk, task.task_type)
-        return (False, ERROR_UNSUPPORTED_TASK_TYPE,
-                f"任务类型 {task.task_type} 暂无自动执行器，需人工处理。")
+        logger.warning("补偿任务 %s 类型 %s 暂无自动执行器，按失败退避。", task.pk, task.task_type)
+        return (
+            False,
+            ERROR_UNSUPPORTED_TASK_TYPE,
+            f"任务类型 {task.task_type} 暂无自动执行器，需人工处理。",
+        )
     except InventoryUnavailable as exc:
         return False, ERROR_INVENTORY_CONFIRM_UNAVAILABLE, str(exc)
     except LookupError as exc:
@@ -405,19 +451,21 @@ def run_worker_cycle(*, lease_owner, lease_seconds=60, limit=50):
     返回摘要 dict；空转（无到期任务）返回全 0，调用方据此保持安静。
     """
     now = timezone.now()
-    candidates = PaymentCompensationTask.objects.filter(
-        status__in=(PaymentCompensationTask.Status.PENDING,
-                    PaymentCompensationTask.Status.LEASED),
-    ).filter(
-        models.Q(next_attempt_at__isnull=True)
-        | models.Q(next_attempt_at__lte=now)
-    ).order_by("next_attempt_at", "created_at")[:limit]
+    candidates = (
+        PaymentCompensationTask.objects.filter(
+            status__in=(
+                PaymentCompensationTask.Status.PENDING,
+                PaymentCompensationTask.Status.LEASED,
+            ),
+        )
+        .filter(models.Q(next_attempt_at__isnull=True) | models.Q(next_attempt_at__lte=now))
+        .order_by("next_attempt_at", "created_at")[:limit]
+    )
     summary = {"scanned": 0, "succeeded": 0, "retried": 0, "skipped": 0}
     for candidate in candidates:
         summary["scanned"] += 1
         try:
-            leased = lease_compensation_task(
-                candidate.pk, lease_owner, lease_seconds=lease_seconds)
+            leased = lease_compensation_task(candidate.pk, lease_owner, lease_seconds=lease_seconds)
         except ValueError:
             # 已被其他 worker 抢占（租约未到期）或状态不允许租约：安静跳过
             summary["skipped"] += 1
@@ -425,8 +473,12 @@ def run_worker_cycle(*, lease_owner, lease_seconds=60, limit=50):
         success, error_code, error_summary = execute_compensation_task(leased)
         try:
             complete_compensation_task(
-                leased.pk, success=success, error_code=error_code,
-                error_summary=error_summary, lease_owner=lease_owner)
+                leased.pk,
+                success=success,
+                error_code=error_code,
+                error_summary=error_summary,
+                lease_owner=lease_owner,
+            )
         except ValueError as exc:
             # 租约在执行期间过期等边界：本轮结果丢弃，任务等租约到期后被重新抢占
             logger.warning("补偿任务 %s 回写结果失败：%s", leased.pk, exc)
@@ -440,24 +492,28 @@ def run_worker_cycle(*, lease_owner, lease_seconds=60, limit=50):
 
 
 class Command(BaseCommand):
-    help = ("支付补偿任务 Worker（D3 P0 / WB-070/078 + WB-110）：租约抢占到期"
-            "补偿任务并按类型分派执行（Hold 协调/渠道查询/回调确认重试/账本"
-            "修复/对账差异）；失败走指数退避（不可自动恢复直接死信），超过上限"
-            "转死信等待人工重放。")
+    help = (
+        "支付补偿任务 Worker（D3 P0 / WB-070/078 + WB-110）：租约抢占到期"
+        "补偿任务并按类型分派执行（Hold 协调/渠道查询/回调确认重试/账本"
+        "修复/对账差异）；失败走指数退避（不可自动恢复直接死信），超过上限"
+        "转死信等待人工重放。"
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--once", action="store_true",
-            help="只执行一轮扫描后退出（调试/测试用；默认循环运行）。")
+            "--once",
+            action="store_true",
+            help="只执行一轮扫描后退出（调试/测试用；默认循环运行）。",
+        )
         parser.add_argument(
-            "--interval", type=int, default=30,
-            help="循环轮询间隔秒数（默认 30，最小 1）。")
+            "--interval", type=int, default=30, help="循环轮询间隔秒数（默认 30，最小 1）。"
+        )
         parser.add_argument(
-            "--limit", type=int, default=50,
-            help="单轮最多处理任务数（默认 50，最小 1）。")
+            "--limit", type=int, default=50, help="单轮最多处理任务数（默认 50，最小 1）。"
+        )
         parser.add_argument(
-            "--lease-seconds", type=int, default=60,
-            help="租约时长秒数（默认 60，最小 1）。")
+            "--lease-seconds", type=int, default=60, help="租约时长秒数（默认 60，最小 1）。"
+        )
 
     def handle(self, *args, **options):
         interval = max(1, int(options["interval"]))
@@ -467,12 +523,16 @@ class Command(BaseCommand):
                 summary = run_worker_cycle(
                     lease_owner=lease_owner,
                     lease_seconds=max(1, int(options["lease_seconds"])),
-                    limit=max(1, int(options["limit"])))
+                    limit=max(1, int(options["limit"])),
+                )
                 # 空转安静：仅在有任务被扫描时输出一轮摘要
                 if summary["scanned"]:
-                    self.stdout.write(self.style.SUCCESS(
-                        "补偿任务本轮：扫描 {scanned}，成功 {succeeded}，"
-                        "退避/失败 {retried}，跳过 {skipped}。".format(**summary)))
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            "补偿任务本轮：扫描 {scanned}，成功 {succeeded}，"
+                            "退避/失败 {retried}，跳过 {skipped}。".format(**summary)
+                        )
+                    )
                 if options["once"]:
                     break
                 time.sleep(interval)

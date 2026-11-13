@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """PMS2 工作台模板回归守卫。
 
 这些测试用于捕获 API 单测难以发现的模板/JavaScript 回归：
@@ -7,11 +6,11 @@
 - 财务动态表单必须在表单仍连接 DOM 时读取字段；
 - 夜审 DOM helper 必须支持 Node 子节点，防止表格单元格被转成 [object ...]。
 """
+
 from pathlib import Path
 
 from django.conf import settings
 from django.test import SimpleTestCase
-
 
 TEMPLATE_DIR = Path(settings.BASE_DIR) / "templates" / "pms"
 
@@ -63,7 +62,7 @@ class CenterTemplateRegressionTests(SimpleTestCase):
         self.assertIn('id="fin-shift-open"', source)
         self.assertIn('id="fin-shift-close"', source)
         self.assertIn('id="fin-shift-movement-form"', source)
-        self.assertIn('/api/v1/billing/shifts/open', source)
+        self.assertIn("/api/v1/billing/shifts/open", source)
         self.assertIn('/api/v1/billing/shifts/" + activeShiftId + "/movements', source)
         self.assertIn('/api/v1/billing/refunds/" + refund.id + "/approve', source)
         self.assertIn('/api/v1/billing/refunds/" + refund.id + "/execute', source)
@@ -74,10 +73,12 @@ class CenterTemplateRegressionTests(SimpleTestCase):
         source = self.read_template("billing_center.html")
         self.assertIn('aria-label="待退款负债"', source)
         self.assertIn('id="fin-refund-liability-body"', source)
-        self.assertIn('/api/v1/billing/refund-liabilities?page=1&page_size=100', source)
-        self.assertIn('function refundForm(payment, refundLiabilityId)', source)
-        self.assertIn('requestBody.refund_liability_id = refundLiabilityId', source)
-        self.assertIn('openLiabilityRefund(item, Object.assign({id: selected.payment_id}, selected))', source)
+        self.assertIn("/api/v1/billing/refund-liabilities?page=1&page_size=100", source)
+        self.assertIn("function refundForm(payment, refundLiabilityId)", source)
+        self.assertIn("requestBody.refund_liability_id = refundLiabilityId", source)
+        self.assertIn(
+            "openLiabilityRefund(item, Object.assign({id: selected.payment_id}, selected))", source
+        )
         self.assertIn("候选支付仅供财务核对，不代表自动分配", source)
 
     def test_billing_refund_ui_requires_non_cash_reference_and_marks_legacy(self):

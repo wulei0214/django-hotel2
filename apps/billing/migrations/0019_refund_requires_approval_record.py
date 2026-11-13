@@ -24,13 +24,14 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(
-            mark_legacy_refunds_without_approval, keep_legacy_markers),
+        migrations.RunPython(mark_legacy_refunds_without_approval, keep_legacy_markers),
         migrations.AddConstraint(
             model_name="refund",
             constraint=models.CheckConstraint(
-                check=(Q(legacy_workflow=True) | Q(status="PENDING")
-                       | Q(approval_record__isnull=False)),
-                name="ck_refund_nonpending_approval_record"),
+                check=(
+                    Q(legacy_workflow=True) | Q(status="PENDING") | Q(approval_record__isnull=False)
+                ),
+                name="ck_refund_nonpending_approval_record",
+            ),
         ),
     ]

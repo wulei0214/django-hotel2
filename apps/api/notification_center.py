@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """通知与待办中心 API（基线 2.0 §4.6）。
 
 门禁口径（§4.6 规则："角色待办必须按当前有效任职和角色动态授权"——
@@ -17,6 +16,7 @@
 响应封套：统一 {data, meta}（apps.core.api_contract），列表端点统一分页契约。
 站内通知不发第三方渠道（短信/邮件暂缓）；单条已读属于低风险个人状态，不写业务审计；物业级待办重算写入 AuditEvent。
 """
+
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q, Subquery
 from django.utils import timezone
@@ -56,23 +56,30 @@ def _context(request):
     group_ids = list(
         membership.role_assignments.filter(starts_at__lte=now)
         .filter(Q(ends_at__isnull=True) | Q(ends_at__gt=now))
-        .values_list("group_id", flat=True))
+        .values_list("group_id", flat=True)
+    )
     return property_obj, membership.staff_profile, group_ids
 
 
 def _visible_notifications(property_obj, profile, group_ids):
     """我的通知范围：当前物业 +（定向本人 或 岗位广播组∈我的有效组）。"""
-    return Notification.objects.filter(
-        property=property_obj, resolved_at__isnull=True,
-    ).filter(
-        Q(recipient=profile) | Q(role_group_id__in=group_ids),
-    ).select_related("role_group", "recipient")
+    return (
+        Notification.objects.filter(
+            property=property_obj,
+            resolved_at__isnull=True,
+        )
+        .filter(
+            Q(recipient=profile) | Q(role_group_id__in=group_ids),
+        )
+        .select_related("role_group", "recipient")
+    )
 
 
 def _with_personal_read_state(queryset, profile):
     """把当前员工个人回执注入列表查询；不读取 Notification 的旧全局已读字段。"""
     receipts = NotificationRead.objects.filter(
-        notification_id=OuterRef("pk"), staff_profile=profile)
+        notification_id=OuterRef("pk"), staff_profile=profile
+    )
     return queryset.annotate(
         user_is_read=Exists(receipts),
         user_read_at=Subquery(receipts.values("read_at")[:1]),
@@ -116,20 +123,21 @@ def notification_list(request):
     """
     property_obj, profile, group_ids = _context(request)
     queryset = _with_personal_read_state(
-        _visible_notifications(property_obj, profile, group_ids), profile)
+        _visible_notifications(property_obj, profile, group_ids), profile
+    )
 
     category = (request.GET.get("category") or "").strip()
     if category:
         if category not in FILTERABLE_CATEGORIES:
             raise ApiError(
                 "VALIDATION_ERROR",
-                "category 只支持 reservation/housekeeping/approval/audit/system。")
+                "category 只支持 reservation/housekeeping/approval/audit/system。",
+            )
         queryset = queryset.filter(category=category)
     severity = (request.GET.get("severity") or "").strip()
     if severity:
         if severity not in FILTERABLE_SEVERITIES:
-            raise ApiError(
-                "VALIDATION_ERROR", "severity 只支持 info/warning/critical。")
+            raise ApiError("VALIDATION_ERROR", "severity 只支持 info/warning/critical。")
         queryset = queryset.filter(severity=severity)
     raw_read = (request.GET.get("is_read") or "").strip().lower()
     if raw_read:
@@ -138,8 +146,12 @@ def notification_list(request):
         queryset = queryset.filter(user_is_read=(raw_read == "true"))
 
     items, pagination = paginate(queryset, request)
-    return api_response(request, [_dto(n) for n in items], pagination=pagination,
-                        extra_meta={"refresh_note": REFRESH_NOTE})
+    return api_response(
+        request,
+        [_dto(n) for n in items],
+        pagination=pagination,
+        extra_meta={"refresh_note": REFRESH_NOTE},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -154,10 +166,13 @@ def unread_count(request):
         _visible_notifications(property_obj, profile, group_ids), profile
     ).filter(user_is_read=False)
     by_category = dict(base.values_list("category").annotate(count=Count("id")))
-    return api_response(request, {
-        "unread_count": sum(by_category.values()),
-        "by_category": by_category,
-    })
+    return api_response(
+        request,
+        {
+            "unread_count": sum(by_category.values()),
+            "by_category": by_category,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -171,12 +186,14 @@ def mark_read(request, notification_id):
     幂等：已读通知重复调用返回 200 且不覆盖首次 read_at。
     """
     property_obj, profile, group_ids = _context(request)
-    notification = (_visible_notifications(property_obj, profile, group_ids)
-                    .filter(pk=notification_id).first())
+    notification = (
+        _visible_notifications(property_obj, profile, group_ids).filter(pk=notification_id).first()
+    )
     if notification is None:
         raise ApiError("RESOURCE_NOT_FOUND", "通知不存在或不在你的接收范围内。")
     receipt, _created = NotificationRead.objects.get_or_create(
-        notification=notification, staff_profile=profile,
+        notification=notification,
+        staff_profile=profile,
         defaults={"read_at": timezone.now()},
     )
     notification.user_is_read = True
@@ -199,11 +216,14 @@ def read_all(request):
     now = timezone.now()
     with transaction.atomic():
         NotificationRead.objects.bulk_create(
-            [NotificationRead(
-                notification_id=notification_id,
-                staff_profile=profile,
-                read_at=now,
-            ) for notification_id in notification_ids],
+            [
+                NotificationRead(
+                    notification_id=notification_id,
+                    staff_profile=profile,
+                    read_at=now,
+                )
+                for notification_id in notification_ids
+            ],
             ignore_conflicts=True,
         )
     return api_response(request, {"marked_read": len(notification_ids)})
@@ -222,17 +242,22 @@ def refresh(request):
     """
     property_obj, _profile, _group_ids = _context(request)
     from apps.core.rate_limit import check, retry_after_seconds
-    if not check(request, "pms.notification_refresh",
-                 username=request.user.get_username()):
+
+    if not check(request, "pms.notification_refresh", username=request.user.get_username()):
         raise ApiError(
             "RATE_LIMITED",
-            "待办刷新过于频繁，请稍后再试（建议等待 %s 秒）。" %
-            retry_after_seconds("pms.notification_refresh"),
-            retryable=True)
+            "待办刷新过于频繁，请稍后再试（建议等待 %s 秒）。"
+            % retry_after_seconds("pms.notification_refresh"),
+            retryable=True,
+        )
     summary = refresh_operational_todos(property_obj)
     AuditEvent.record(
-        action="notification.refresh", entity_type="Property",
-        entity_id=property_obj.pk, actor=request.user,
+        action="notification.refresh",
+        entity_type="Property",
+        entity_id=property_obj.pk,
+        actor=request.user,
         property_obj=property_obj,
-        after=summary, reason="员工手动触发物业待办刷新")
+        after=summary,
+        reason="员工手动触发物业待办刷新",
+    )
     return api_response(request, summary, extra_meta={"refresh_note": REFRESH_NOTE})

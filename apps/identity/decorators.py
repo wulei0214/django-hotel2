@@ -34,9 +34,7 @@ def pms_permission_required(permission_code):
             if not user.is_active:
                 raise PermissionDenied("账号已停用")
             property_obj = getattr(request, "property", None)
-            if not AuthorizationService.has_permission(
-                user, property_obj, permission_code
-            ):
+            if not AuthorizationService.has_permission(user, property_obj, permission_code):
                 raise PermissionDenied("当前岗位没有执行此操作的权限")
             return view_func(request, *args, **kwargs)
 

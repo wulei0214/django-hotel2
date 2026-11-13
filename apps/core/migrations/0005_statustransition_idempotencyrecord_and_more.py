@@ -9,56 +9,124 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('core', '0004_businessdate_nightauditrun_and_more'),
+        ("core", "0004_businessdate_nightauditrun_and_more"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='StatusTransition',
+            name="StatusTransition",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('entity_type', models.CharField(max_length=64, verbose_name='实体类型')),
-                ('entity_id', models.CharField(max_length=64, verbose_name='实体ID')),
-                ('from_status', models.CharField(blank=True, max_length=32, verbose_name='原状态')),
-                ('to_status', models.CharField(max_length=32, verbose_name='新状态')),
-                ('reason', models.CharField(blank=True, max_length=240, verbose_name='原因')),
-                ('request_id', models.CharField(blank=True, max_length=64, verbose_name='请求链路ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='时间')),
-                ('actor', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='status_transitions', to=settings.AUTH_USER_MODEL, verbose_name='操作人')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("entity_type", models.CharField(max_length=64, verbose_name="实体类型")),
+                ("entity_id", models.CharField(max_length=64, verbose_name="实体ID")),
+                ("from_status", models.CharField(blank=True, max_length=32, verbose_name="原状态")),
+                ("to_status", models.CharField(max_length=32, verbose_name="新状态")),
+                ("reason", models.CharField(blank=True, max_length=240, verbose_name="原因")),
+                (
+                    "request_id",
+                    models.CharField(blank=True, max_length=64, verbose_name="请求链路ID"),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="时间")),
+                (
+                    "actor",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="status_transitions",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="操作人",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '状态变更时间线',
-                'verbose_name_plural': '状态变更时间线',
-                'ordering': ('-created_at',),
+                "verbose_name": "状态变更时间线",
+                "verbose_name_plural": "状态变更时间线",
+                "ordering": ("-created_at",),
             },
         ),
         migrations.CreateModel(
-            name='IdempotencyRecord',
+            name="IdempotencyRecord",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('key', models.CharField(max_length=128, verbose_name='幂等键')),
-                ('method', models.CharField(max_length=8, verbose_name='HTTP 方法')),
-                ('path', models.CharField(max_length=256, verbose_name='请求路径')),
-                ('request_hash', models.CharField(max_length=64, verbose_name='请求体哈希')),
-                ('response_status', models.PositiveIntegerField(blank=True, null=True, verbose_name='响应状态码')),
-                ('response_body', models.JSONField(blank=True, null=True, verbose_name='首次响应体')),
-                ('status', models.CharField(choices=[('PROCESSING', '处理中'), ('COMPLETED', '已完成'), ('FAILED', '失败')], default='PROCESSING', max_length=12, verbose_name='记录状态')),
-                ('expires_at', models.DateTimeField(blank=True, null=True, verbose_name='过期时间')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='创建时间')),
-                ('property', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='idempotency_records', to='core.property', verbose_name='物业')),
-                ('user', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='idempotency_records', to=settings.AUTH_USER_MODEL, verbose_name='用户')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("key", models.CharField(max_length=128, verbose_name="幂等键")),
+                ("method", models.CharField(max_length=8, verbose_name="HTTP 方法")),
+                ("path", models.CharField(max_length=256, verbose_name="请求路径")),
+                ("request_hash", models.CharField(max_length=64, verbose_name="请求体哈希")),
+                (
+                    "response_status",
+                    models.PositiveIntegerField(blank=True, null=True, verbose_name="响应状态码"),
+                ),
+                (
+                    "response_body",
+                    models.JSONField(blank=True, null=True, verbose_name="首次响应体"),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("PROCESSING", "处理中"),
+                            ("COMPLETED", "已完成"),
+                            ("FAILED", "失败"),
+                        ],
+                        default="PROCESSING",
+                        max_length=12,
+                        verbose_name="记录状态",
+                    ),
+                ),
+                (
+                    "expires_at",
+                    models.DateTimeField(blank=True, null=True, verbose_name="过期时间"),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
+                (
+                    "property",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="idempotency_records",
+                        to="core.property",
+                        verbose_name="物业",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="idempotency_records",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="用户",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '幂等记录',
-                'verbose_name_plural': '幂等记录',
+                "verbose_name": "幂等记录",
+                "verbose_name_plural": "幂等记录",
             },
         ),
         migrations.AddIndex(
-            model_name='statustransition',
-            index=models.Index(fields=['entity_type', 'entity_id', '-created_at'], name='idx_st_entity_time'),
+            model_name="statustransition",
+            index=models.Index(
+                fields=["entity_type", "entity_id", "-created_at"], name="idx_st_entity_time"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='idempotencyrecord',
-            constraint=models.UniqueConstraint(fields=('property', 'user', 'key'), name='uq_idempotency_prop_user_key'),
+            model_name="idempotencyrecord",
+            constraint=models.UniqueConstraint(
+                fields=("property", "user", "key"), name="uq_idempotency_prop_user_key"
+            ),
         ),
     ]

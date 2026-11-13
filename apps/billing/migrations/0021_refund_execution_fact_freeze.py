@@ -15,12 +15,10 @@ def mark_unverifiable_legacy_refunds(apps, schema_editor):
         | Q(status__in=("REJECTED", "SUCCEEDED"), processed_at__isnull=True)
         | ~Q(status__in=("PENDING", "APPROVED", "REJECTED", "SUCCEEDED"))
     )
-    invalid_execution_reference = (
-        ~Q(status="SUCCEEDED") & ~Q(execution_reference="")
+    invalid_execution_reference = ~Q(status="SUCCEEDED") & ~Q(execution_reference="")
+    Refund.objects.filter(invalid_processed_at | invalid_execution_reference).update(
+        legacy_workflow=True
     )
-    Refund.objects.filter(
-        invalid_processed_at | invalid_execution_reference
-    ).update(legacy_workflow=True)
 
 
 def keep_legacy_markers(apps, schema_editor):
@@ -34,18 +32,15 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(
-            mark_unverifiable_legacy_refunds, keep_legacy_markers),
+        migrations.RunPython(mark_unverifiable_legacy_refunds, keep_legacy_markers),
         migrations.AddConstraint(
             model_name="refund",
             constraint=models.CheckConstraint(
                 check=(
                     Q(legacy_workflow=True)
                     | (
-                        Q(status__in=("PENDING", "APPROVED"),
-                          processed_at__isnull=True)
-                        | Q(status__in=("REJECTED", "SUCCEEDED"),
-                            processed_at__isnull=False)
+                        Q(status__in=("PENDING", "APPROVED"), processed_at__isnull=True)
+                        | Q(status__in=("REJECTED", "SUCCEEDED"), processed_at__isnull=False)
                     )
                 ),
                 name="ck_refund_processed_at_state",
@@ -54,11 +49,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="refund",
             constraint=models.CheckConstraint(
-                check=(
-                    Q(legacy_workflow=True)
-                    | Q(status="SUCCEEDED")
-                    | Q(execution_reference="")
-                ),
+                check=(Q(legacy_workflow=True) | Q(status="SUCCEEDED") | Q(execution_reference="")),
                 name="ck_refund_execution_reference_state",
             ),
         ),
