@@ -155,7 +155,10 @@ class Command(BaseCommand):
         total = Reservation.objects.filter(property=prop).count()
         self.stdout.write("  OK 预订新建 " + str(created) + " (总 " + str(total) + ")")
         # ---------- 今日运营快照（让主界面/前台有活数据；幂等） ----------
-        from apps.reservations.models import ReservationRoom, Stay
+        # 注意：此处只导入 Stay。ReservationRoom 已在本模块顶部导入；
+        # 若在此处重复导入，会使函数作用域内 ReservationRoom 成为局部变量，
+        # 导致上方第 150 行（早于本行的首次使用）抛 UnboundLocalError。
+        from apps.reservations.models import Stay
         from apps.inventory.models import Room as SeedRoom
         today = date.today()
         now = timezone.now()
