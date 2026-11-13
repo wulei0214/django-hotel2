@@ -1,10 +1,10 @@
-# -*- coding: utf-8 -*-
 """DEC-EMP-02 员工工号自动生成服务 + DEC-EMP-01 员工重新入职生命周期。
 
 工号格式：部门代码 + 四位流水号（如 FO-0001、HK-0001）。
 同一物业同部门原子递增（WB-101：EmployeeNumberCounter 行锁，不再 MAX+1）；
 离职工号永久保留不回收（DEC-EMP-01）。
 """
+
 import datetime
 import logging
 
@@ -35,19 +35,17 @@ def _seed_next_seq(property_obj, code):
     """
     prefix = f"{code}-"
     max_seq = 0
-    existing = (
-        PropertyStaffMembership.objects
-        .filter(property=property_obj, employee_no__startswith=prefix)
-        .values_list("employee_no", flat=True)
-    )
+    existing = PropertyStaffMembership.objects.filter(
+        property=property_obj, employee_no__startswith=prefix
+    ).values_list("employee_no", flat=True)
     for employee_no in existing:
-        suffix = employee_no[len(prefix):]
+        suffix = employee_no[len(prefix) :]
         try:
             seq = int(suffix)
         except ValueError as exc:
             raise ValueError(
-                f"已有工号 {employee_no} 不符合 {prefix}XXXX 格式，"
-                "无法初始化编号计数器。") from exc
+                f"已有工号 {employee_no} 不符合 {prefix}XXXX 格式，" "无法初始化编号计数器。"
+            ) from exc
         max_seq = max(max_seq, seq)
     return max_seq + 1
 
@@ -66,8 +64,7 @@ def generate_employee_no(*, property_obj, department_code):
     """
     code = str(department_code or "").strip().upper()
     if code not in DEPARTMENT_CODES:
-        raise ValueError(
-            f"部门代码 {code} 不在受控目录中；允许值：{sorted(DEPARTMENT_CODES)}")
+        raise ValueError(f"部门代码 {code} 不在受控目录中；允许值：{sorted(DEPARTMENT_CODES)}")
     prefix = f"{code}-"
     # WB-101 收尾：空部门首次并发分配时，两个事务可能同时 get_or_create
     # 计数器行，后者撞唯一约束抛 IntegrityError。用 savepoint 隔离后重取
@@ -75,16 +72,13 @@ def generate_employee_no(*, property_obj, department_code):
     try:
         with transaction.atomic():
             counter, created = EmployeeNumberCounter.objects.get_or_create(
-                property=property_obj, department_code=code,
-                defaults={"next_seq": 1})
+                property=property_obj, department_code=code, defaults={"next_seq": 1}
+            )
     except IntegrityError:
-        counter = EmployeeNumberCounter.objects.get(
-            property=property_obj, department_code=code)
+        counter = EmployeeNumberCounter.objects.get(property=property_obj, department_code=code)
         created = False
     # 锁必须落在读取 next_seq 之前：重取加锁后才开始读-增-写
-    counter = (
-        EmployeeNumberCounter.objects.select_for_update().get(pk=counter.pk)
-    )
+    counter = EmployeeNumberCounter.objects.select_for_update().get(pk=counter.pk)
     if created:
         # 一次性种子：计数器行首建时从存量工号最大流水号接续
         seed = _seed_next_seq(property_obj, code)
@@ -99,8 +93,9 @@ def generate_employee_no(*, property_obj, department_code):
 
 
 @transaction.atomic
-def rehire_employee(*, property_obj, staff_profile, department_code,
-                    position_code, started_at=None, granted_by=None):
+def rehire_employee(
+    *, property_obj, staff_profile, department_code, position_code, started_at=None, granted_by=None
+):
     """DEC-EMP-01/WB-099 员工重新入职：同一 StaffProfile 在同一物业创建新任职。
 
     完整生命周期在同一事务内完成：
@@ -121,7 +116,8 @@ def rehire_employee(*, property_obj, staff_profile, department_code,
         raise ValueError(
             "只有离职（TERMINATED）员工才能重新入职；当前档案状态为 "
             f"{staff_profile.employment_status}，如需暂停/恢复请使用 "
-            "EmployeeLifecycleService.set_employment_status。")
+            "EmployeeLifecycleService.set_employment_status。"
+        )
     old_membership = (
         PropertyStaffMembership.objects.select_for_update()
         .filter(property=property_obj, staff_profile=staff_profile)
@@ -132,32 +128,36 @@ def rehire_employee(*, property_obj, staff_profile, department_code,
         raise ValueError("该员工在本物业没有历史任职记录，请使用 create_employee 创建。")
     if old_membership.status != PropertyStaffMembership.Status.TERMINATED:
         raise ValueError(
-            f"旧任职状态为 {old_membership.status}，"
-            "只有已离职（TERMINATED）的任职才能重新入职。")
+            f"旧任职状态为 {old_membership.status}，" "只有已离职（TERMINATED）的任职才能重新入职。"
+        )
     # ③ 旧授权统一结束（服务层：ends_at 落定 + identity.role_end 审计 + 历史保留）
     old_assignments = EmployeeLifecycleService.active_assignments(old_membership)
     all_old_assignment_ids = list(
-        StaffRoleAssignment.objects.filter(membership=old_membership)
-        .values_list("pk", flat=True))
+        StaffRoleAssignment.objects.filter(membership=old_membership).values_list("pk", flat=True)
+    )
     for assignment in old_assignments:
         EmployeeLifecycleService.end_assignment(
-            assignment, ended_by=granted_by,
-            reason="员工重新入职：旧任职授权终止（DEC-EMP-01）")
+            assignment, ended_by=granted_by, reason="员工重新入职：旧任职授权终止（DEC-EMP-01）"
+        )
     # ⑤ 新工号由编号服务分配（旧工号保留给历史记录，不复用）
-    new_no = generate_employee_no(
-        property_obj=property_obj, department_code=department_code)
+    new_no = generate_employee_no(property_obj=property_obj, department_code=department_code)
     # ④ started_at 是 DateField：缺省今天；显式传入 datetime 时归一化为日期
     if started_at is None:
         started_at = timezone.localdate()
     elif isinstance(started_at, datetime.datetime):
         started_at = (
             timezone.localtime(started_at).date()
-            if timezone.is_aware(started_at) else started_at.date())
+            if timezone.is_aware(started_at)
+            else started_at.date()
+        )
     new_membership = PropertyStaffMembership.objects.create(
-        property=property_obj, staff_profile=staff_profile,
-        employee_no=new_no, position_code=position_code,
+        property=property_obj,
+        staff_profile=staff_profile,
+        employee_no=new_no,
+        position_code=position_code,
         status=PropertyStaffMembership.Status.ACTIVE,
-        started_at=started_at)
+        started_at=started_at,
+    )
     # ② 恢复档案与账号可用状态（无账号时允许只建档）
     staff_profile.employment_status = StaffProfile.EmploymentStatus.ACTIVE
     staff_profile.save(update_fields=("employment_status", "updated_at"))
@@ -170,11 +170,15 @@ def rehire_employee(*, property_obj, staff_profile, department_code,
             user.save(update_fields=("is_active",))
     # ⑥ 完整审计：档案/账号/新旧任职/授权变更一次记录
     AuditEvent.record(
-        action="identity.employee_rehire", entity_type="StaffProfile",
-        entity_id=staff_profile.pk, actor=granted_by, property_obj=property_obj,
+        action="identity.employee_rehire",
+        entity_type="StaffProfile",
+        entity_id=staff_profile.pk,
+        actor=granted_by,
+        property_obj=property_obj,
         before={
             "profile_status": StaffProfile.EmploymentStatus.TERMINATED,
-            "account": account_username, "account_active": False,
+            "account": account_username,
+            "account_active": False,
             "old_membership": {
                 "id": old_membership.pk,
                 "employee_no": old_membership.employee_no,
@@ -188,7 +192,8 @@ def rehire_employee(*, property_obj, staff_profile, department_code,
         },
         after={
             "profile_status": StaffProfile.EmploymentStatus.ACTIVE,
-            "account": account_username, "account_active": True,
+            "account": account_username,
+            "account_active": True,
             "new_membership": {
                 "id": new_membership.pk,
                 "employee_no": new_membership.employee_no,
@@ -198,10 +203,16 @@ def rehire_employee(*, property_obj, staff_profile, department_code,
             },
         },
         reason="员工重新入职（DEC-EMP-01/WB-099）：旧任职与旧工号保留，"
-               "新工号自动生成，旧授权统一终止")
-    audit.info("员工重新入职 user=%s 员工=%s(profile %s) 旧工号=%s 新工号=%s 账号=%s 终止授权=%d",
-               getattr(granted_by, "username", "system"),
-               staff_profile.full_name, staff_profile.pk,
-               old_membership.employee_no, new_membership.employee_no,
-               account_username or "未开通", len(old_assignments))
+        "新工号自动生成，旧授权统一终止",
+    )
+    audit.info(
+        "员工重新入职 user=%s 员工=%s(profile %s) 旧工号=%s 新工号=%s 账号=%s 终止授权=%d",
+        getattr(granted_by, "username", "system"),
+        staff_profile.full_name,
+        staff_profile.pk,
+        old_membership.employee_no,
+        new_membership.employee_no,
+        account_username or "未开通",
+        len(old_assignments),
+    )
     return new_membership

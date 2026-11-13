@@ -12,10 +12,11 @@
     /platform/permissions/save/（与 /permissions/save/ 兼容跳转）不 404：
     一律 302 回矩阵页，不再执行任何授权变更。
 """
+
 from django.shortcuts import redirect, render
 
-from .platform import platform_superadmin_required
 from .permission_center import page_bootstrap
+from .platform import platform_superadmin_required
 
 
 @platform_superadmin_required
@@ -25,10 +26,14 @@ def permission_admin_page(request):
     页面骨架 + 注册表 bootstrap（json_script 嵌入），角色数据由前端 JS
     经 GET /platform/api/permissions/<group_id>/ 拉取。
     """
-    return render(request, "platform/permissions.html", {
-        "nav_active": "permissions",
-        "bootstrap_json": page_bootstrap(),
-    })
+    return render(
+        request,
+        "platform/permissions.html",
+        {
+            "nav_active": "permissions",
+            "bootstrap_json": page_bootstrap(),
+        },
+    )
 
 
 @platform_superadmin_required

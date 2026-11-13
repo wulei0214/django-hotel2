@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """AUTH-15：员工邀请激活状态机与 token 安全服务（方案 §5.2/§5.3）。
 
 职责边界（方案 §4.2 / services.py 头注）：
@@ -14,6 +13,7 @@
   * 审计事件名固定（§16.1）：identity.invitation_created / invitation_resent /
     invitation_revoked / invitation_accepted；事件内容不含明文 token 与摘要。
 """
+
 import hashlib
 import logging
 import secrets
@@ -23,8 +23,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from apps.core.models import AuditEvent
-from apps.core.models import Property
+from apps.core.models import AuditEvent, Property
 
 from .models import Invitation, PropertyStaffMembership, StaffProfile
 from .services import EmployeeLifecycleError, EmployeeLifecycleService
@@ -46,8 +45,7 @@ def token_digest(raw_token):
 
 def invitation_ttl():
     """邀请有效期（§5.3 默认 24 小时；settings.IDENTITY_INVITATION_TTL_HOURS 可配）。"""
-    return timedelta(
-        hours=int(getattr(settings, "IDENTITY_INVITATION_TTL_HOURS", 24)))
+    return timedelta(hours=int(getattr(settings, "IDENTITY_INVITATION_TTL_HOURS", 24)))
 
 
 def invite_accept_url(request, raw_token):
@@ -58,8 +56,7 @@ def invite_accept_url(request, raw_token):
     邀请链接；部署配置 IDENTITY_INVITATION_CANONICAL_HOST 时优先使用规范 Host。
     token 为 urlsafe base64 字符集（[A-Za-z0-9_-]），可安全拼入查询串。
     """
-    canonical = (getattr(settings, "IDENTITY_INVITATION_CANONICAL_HOST", "")
-                 or "").strip()
+    canonical = (getattr(settings, "IDENTITY_INVITATION_CANONICAL_HOST", "") or "").strip()
     host = canonical or request.get_host()
     scheme = "https" if request.is_secure() else "http"
     # 末尾斜杠与 URLconf 一致，避免 APPEND_SLASH 301 跳转
@@ -81,8 +78,10 @@ class EmployeeInvitationService:
         """状态机转换 1 前置：员工在职、任职有效、物业有效。"""
         if profile.employment_status != StaffProfile.EmploymentStatus.ACTIVE:
             raise InvitationError("员工档案未处于在职状态，不能发起邀请")
-        if (membership.status != PropertyStaffMembership.Status.ACTIVE
-                or membership.property.status != Property.Status.ACTIVE):
+        if (
+            membership.status != PropertyStaffMembership.Status.ACTIVE
+            or membership.property.status != Property.Status.ACTIVE
+        ):
             raise InvitationError("当前任职或物业未处于有效状态，不能发起邀请")
 
     @staticmethod
@@ -99,9 +98,9 @@ class EmployeeInvitationService:
         """
         now = timezone.now()
         revoked_ids = []
-        for invitation in (Invitation.objects.select_for_update()
-                           .filter(staff_profile=profile,
-                                   status=Invitation.Status.PENDING)):
+        for invitation in Invitation.objects.select_for_update().filter(
+            staff_profile=profile, status=Invitation.Status.PENDING
+        ):
             if invitation.expires_at <= now:
                 invitation.status = Invitation.Status.EXPIRED
             else:
@@ -115,8 +114,7 @@ class EmployeeInvitationService:
     # ---------- 创建（转换 1：未开通/待激活 → 新 PENDING） ----------
     @classmethod
     @transaction.atomic
-    def create_invitation(cls, profile, membership, created_by, *, username,
-                          request=None):
+    def create_invitation(cls, profile, membership, created_by, *, username, request=None):
         """发起邀请：撤销旧 PENDING → 预开通待激活账号 → 新建 PENDING 邀请。
 
         返回 (invitation, raw_token)；raw_token 明文仅本次返回，由调用方用
@@ -129,31 +127,46 @@ class EmployeeInvitationService:
         cls._close_stale_pending(profile, revoked_by=created_by)
         try:
             EmployeeLifecycleService.provision_invitation_account(
-                profile, username=username, granted_by=created_by,
-                property_obj=membership.property)
+                profile, username=username, granted_by=created_by, property_obj=membership.property
+            )
         except EmployeeLifecycleError as exc:
             # 账号开通失败（账号名占用等）→ 统一邀请业务错误；事务回滚
             raise InvitationError(str(exc)) from exc
         raw_token = secrets.token_urlsafe(32)  # 32 字节 = 256 bit 熵（§5.3）
         now = timezone.now()
         invitation = Invitation.objects.create(
-            staff_profile=profile, membership=membership,
+            staff_profile=profile,
+            membership=membership,
             token_hash=token_digest(raw_token),
             status=Invitation.Status.PENDING,
             expires_at=now + invitation_ttl(),
-            created_by=created_by, last_sent_at=now)
+            created_by=created_by,
+            last_sent_at=now,
+        )
         AuditEvent.record(
-            action="identity.invitation_created", entity_type="Invitation",
-            entity_id=invitation.pk, actor=created_by,
+            action="identity.invitation_created",
+            entity_type="Invitation",
+            entity_id=invitation.pk,
+            actor=created_by,
             property_obj=membership.property,
-            after={"profile_id": profile.pk, "membership_id": membership.pk,
-                   "account": profile.user.username,
-                   "resend_count": 0,
-                   "expires_at": invitation.expires_at.isoformat()},
-            reason="创建邀请；明文 token 与摘要不落审计", request=request)
-        audit.info("邀请创建 user=%s 员工=%s(profile %s) 邀请=%s 账号=%s",
-                   getattr(created_by, "username", "system"), profile.full_name,
-                   profile.pk, invitation.pk, profile.user.username)
+            after={
+                "profile_id": profile.pk,
+                "membership_id": membership.pk,
+                "account": profile.user.username,
+                "resend_count": 0,
+                "expires_at": invitation.expires_at.isoformat(),
+            },
+            reason="创建邀请；明文 token 与摘要不落审计",
+            request=request,
+        )
+        audit.info(
+            "邀请创建 user=%s 员工=%s(profile %s) 邀请=%s 账号=%s",
+            getattr(created_by, "username", "system"),
+            profile.full_name,
+            profile.pk,
+            invitation.pk,
+            profile.user.username,
+        )
         return invitation, raw_token
 
     # ---------- 重发（撤销旧 token + 新 token；resend_count 链上 +1） ----------
@@ -165,9 +178,11 @@ class EmployeeInvitationService:
         允许对 PENDING / EXPIRED / REVOKED 邀请重发；ACCEPTED（已激活）拒绝。
         返回 (new_invitation, raw_token)。
         """
-        invitation = (Invitation.objects.select_for_update()
-                      .select_related("staff_profile", "membership__property")
-                      .get(pk=invitation.pk))
+        invitation = (
+            Invitation.objects.select_for_update()
+            .select_related("staff_profile", "membership__property")
+            .get(pk=invitation.pk)
+        )
         profile = invitation.staff_profile
         membership = invitation.membership
         if invitation.status == Invitation.Status.ACCEPTED:
@@ -179,26 +194,38 @@ class EmployeeInvitationService:
         raw_token = secrets.token_urlsafe(32)
         now = timezone.now()
         new_invitation = Invitation.objects.create(
-            staff_profile=profile, membership=membership,
+            staff_profile=profile,
+            membership=membership,
             token_hash=token_digest(raw_token),
             status=Invitation.Status.PENDING,
             expires_at=now + invitation_ttl(),
             created_by=resent_by,
             resend_count=invitation.resend_count + 1,
-            last_sent_at=now)
+            last_sent_at=now,
+        )
         AuditEvent.record(
-            action="identity.invitation_resent", entity_type="Invitation",
-            entity_id=new_invitation.pk, actor=resent_by,
+            action="identity.invitation_resent",
+            entity_type="Invitation",
+            entity_id=new_invitation.pk,
+            actor=resent_by,
             property_obj=membership.property,
-            after={"profile_id": profile.pk,
-                   "resend_count": new_invitation.resend_count,
-                   "revoked_invitation_id": invitation.pk,
-                   "expires_at": new_invitation.expires_at.isoformat()},
+            after={
+                "profile_id": profile.pk,
+                "resend_count": new_invitation.resend_count,
+                "revoked_invitation_id": invitation.pk,
+                "expires_at": new_invitation.expires_at.isoformat(),
+            },
             reason="重发邀请：旧 token 全部失效；明文 token 不落审计",
-            request=request)
-        audit.info("邀请重发 user=%s 员工=%s(profile %s) 旧邀请=%s 新邀请=%s",
-                   getattr(resent_by, "username", "system"), profile.full_name,
-                   profile.pk, invitation.pk, new_invitation.pk)
+            request=request,
+        )
+        audit.info(
+            "邀请重发 user=%s 员工=%s(profile %s) 旧邀请=%s 新邀请=%s",
+            getattr(resent_by, "username", "system"),
+            profile.full_name,
+            profile.pk,
+            invitation.pk,
+            new_invitation.pk,
+        )
         return new_invitation, raw_token
 
     # ---------- 撤销（转换 4：PENDING → REVOKED） ----------
@@ -206,9 +233,11 @@ class EmployeeInvitationService:
     @transaction.atomic
     def revoke(cls, invitation, *, revoked_by, request=None, reason=""):
         """管理员撤销：仅未超时的 PENDING 可撤销（超时的直接重发新邀请）。"""
-        invitation = (Invitation.objects.select_for_update()
-                      .select_related("staff_profile", "membership__property")
-                      .get(pk=invitation.pk))
+        invitation = (
+            Invitation.objects.select_for_update()
+            .select_related("staff_profile", "membership__property")
+            .get(pk=invitation.pk)
+        )
         if invitation.status != Invitation.Status.PENDING:
             raise InvitationError("该邀请已失效或已使用，无需撤销")
         if invitation.expires_at <= timezone.now():
@@ -219,16 +248,22 @@ class EmployeeInvitationService:
         invitation.revoked_by = revoked_by
         invitation.save(update_fields=("status", "revoked_at", "revoked_by"))
         AuditEvent.record(
-            action="identity.invitation_revoked", entity_type="Invitation",
-            entity_id=invitation.pk, actor=revoked_by,
+            action="identity.invitation_revoked",
+            entity_type="Invitation",
+            entity_id=invitation.pk,
+            actor=revoked_by,
             property_obj=invitation.membership.property,
-            after={"profile_id": invitation.staff_profile_id,
-                   "status": Invitation.Status.REVOKED},
-            reason=reason or "管理员撤销邀请；原链接立即失效", request=request)
-        audit.info("邀请撤销 user=%s 员工=%s(profile %s) 邀请=%s",
-                   getattr(revoked_by, "username", "system"),
-                   invitation.staff_profile.full_name,
-                   invitation.staff_profile.pk, invitation.pk)
+            after={"profile_id": invitation.staff_profile_id, "status": Invitation.Status.REVOKED},
+            reason=reason or "管理员撤销邀请；原链接立即失效",
+            request=request,
+        )
+        audit.info(
+            "邀请撤销 user=%s 员工=%s(profile %s) 邀请=%s",
+            getattr(revoked_by, "username", "system"),
+            invitation.staff_profile.full_name,
+            invitation.staff_profile.pk,
+            invitation.pk,
+        )
         return invitation
 
     # ---------- 消费（转换 2：PENDING → ACCEPTED，一次性） ----------
@@ -265,10 +300,11 @@ class EmployeeInvitationService:
         cls._archive_if_stale(raw_token)
         with transaction.atomic():
             try:
-                invitation = (Invitation.objects.select_for_update()
-                              .select_related("staff_profile",
-                                              "membership__property")
-                              .get(token_hash=token_digest(raw_token)))
+                invitation = (
+                    Invitation.objects.select_for_update()
+                    .select_related("staff_profile", "membership__property")
+                    .get(token_hash=token_digest(raw_token))
+                )
             except Invitation.DoesNotExist:
                 raise InvitationError(UNIFIED_INVALID_MESSAGE) from None
             now = timezone.now()
@@ -282,40 +318,50 @@ class EmployeeInvitationService:
             if membership.staff_profile_id != profile.pk:
                 raise InvitationError(UNIFIED_INVALID_MESSAGE)
             # 状态机转换 2 前置：员工在职、任职有效、物业有效（§5.1 授权口径）
-            if (profile.employment_status != StaffProfile.EmploymentStatus.ACTIVE
-                    or membership.status
-                    != PropertyStaffMembership.Status.ACTIVE
-                    or membership.property.status != Property.Status.ACTIVE):
+            if (
+                profile.employment_status != StaffProfile.EmploymentStatus.ACTIVE
+                or membership.status != PropertyStaffMembership.Status.ACTIVE
+                or membership.property.status != Property.Status.ACTIVE
+            ):
                 raise InvitationError(UNIFIED_INVALID_MESSAGE)
             if not password or not password.strip():
                 raise InvitationError("请设置登录密码")
             try:
                 user = EmployeeLifecycleService.activate_invitation_account(
-                    profile, password=password)
+                    profile, password=password
+                )
             except EmployeeLifecycleError as exc:
                 # 密码策略/账号状态中文消息；不涉及其他员工存在性
                 raise InvitationError(str(exc)) from exc
             # 状态条件更新：只允许 PENDING → ACCEPTED 一次（一次性消费兜底）
             updated = Invitation.objects.filter(
-                pk=invitation.pk,
-                status=Invitation.Status.PENDING).update(
-                status=Invitation.Status.ACCEPTED, consumed_at=now)
+                pk=invitation.pk, status=Invitation.Status.PENDING
+            ).update(status=Invitation.Status.ACCEPTED, consumed_at=now)
             if not updated:  # pragma: no cover — select_for_update 已串行化
                 raise InvitationError(UNIFIED_INVALID_MESSAGE)
             invitation.status = Invitation.Status.ACCEPTED
             invitation.consumed_at = now
             AuditEvent.record(
-                action="identity.invitation_accepted", entity_type="StaffProfile",
-                entity_id=profile.pk, actor=user,
+                action="identity.invitation_accepted",
+                entity_type="StaffProfile",
+                entity_id=profile.pk,
+                actor=user,
                 property_obj=membership.property,
-                after={"invitation_id": invitation.pk,
-                       "resend_count": invitation.resend_count,
-                       "account": user.username},
+                after={
+                    "invitation_id": invitation.pk,
+                    "resend_count": invitation.resend_count,
+                    "account": user.username,
+                },
                 reason="员工经邀请链接激活并自行设置密码；不记录密码与 token",
-                request=request)
-            audit.info("邀请激活 员工=%s(profile %s) 账号=%s 邀请=%s",
-                       profile.full_name, profile.pk, user.username,
-                       invitation.pk)
+                request=request,
+            )
+            audit.info(
+                "邀请激活 员工=%s(profile %s) 账号=%s 邀请=%s",
+                profile.full_name,
+                profile.pk,
+                user.username,
+                invitation.pk,
+            )
         return invitation
 
     # ---------- 展示（激活页 GET 只读校验；不写库） ----------
@@ -330,21 +376,22 @@ class EmployeeInvitationService:
         if not raw_token:
             return None
         try:
-            invitation = (Invitation.objects.select_related(
-                "staff_profile", "membership__property")
-                .get(token_hash=token_digest(raw_token)))
+            invitation = Invitation.objects.select_related(
+                "staff_profile", "membership__property"
+            ).get(token_hash=token_digest(raw_token))
         except Invitation.DoesNotExist:
             return None
         profile = invitation.staff_profile
         membership = invitation.membership
-        if (invitation.status != Invitation.Status.PENDING
-                or invitation.expires_at <= timezone.now()
-                or membership.staff_profile_id != profile.pk
-                or profile.employment_status
-                != StaffProfile.EmploymentStatus.ACTIVE
-                or membership.status != PropertyStaffMembership.Status.ACTIVE
-                or membership.property.status != Property.Status.ACTIVE
-                or profile.user is None):
+        if (
+            invitation.status != Invitation.Status.PENDING
+            or invitation.expires_at <= timezone.now()
+            or membership.staff_profile_id != profile.pk
+            or profile.employment_status != StaffProfile.EmploymentStatus.ACTIVE
+            or membership.status != PropertyStaffMembership.Status.ACTIVE
+            or membership.property.status != Property.Status.ACTIVE
+            or profile.user is None
+        ):
             return None
         return {
             "invitation": invitation,
@@ -364,8 +411,8 @@ class EmployeeInvitationService:
         """
         now = now or timezone.now()
         updated = Invitation.objects.filter(
-            status=Invitation.Status.PENDING,
-            expires_at__lte=now).update(status=Invitation.Status.EXPIRED)
+            status=Invitation.Status.PENDING, expires_at__lte=now
+        ).update(status=Invitation.Status.EXPIRED)
         if updated:
             audit.info("邀请过期扫描 过期=%d", updated)
         return updated

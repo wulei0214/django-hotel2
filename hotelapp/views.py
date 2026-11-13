@@ -32,7 +32,6 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
-from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.core.paginator import Paginator
@@ -41,8 +40,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 logger = logging.getLogger(__name__)
 
 from .models import (Staff, Room, Client, Food, Vip, Park, Order, Accommodation,
-                     FinanceRecord, NightAudit, Folio, ROOM_STATUS)
-from . import events
+                     FinanceRecord, Folio)
 
 
 # ---------- 模块启停注册表（RBAC 决策：餐饮/停车对接第三方，本阶段隐藏入口） ----------
@@ -70,8 +68,9 @@ def module_gate(key):
 from apps.identity.authorization import AuthorizationService
 from apps.identity.decorators import pms_permission_required
 
+from . import events  # noqa: F401  事件总线初始化（副作用导入，勿删）
 from . import handlers  # noqa: F401  订阅器注册（事件 -> 后台联动）
-from . import state_machine
+from . import state_machine  # noqa: F401  状态机注册（副作用导入，勿删）
 
 
 def _must_change_password(user):
@@ -273,16 +272,6 @@ def index(request):
 def staff_toggle(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    """启用/停用员工（图5 是否启用列的开关）"""
-    if request.method != "POST":
-        return HttpResponse("非法请求", status=400)
-    sid = request.POST.get("id")
-    staff = Staff.objects.filter(员工id=sid).first()
-    if staff is None:
-        return HttpResponse("员工不存在", status=400)
-    staff.启用 = not staff.启用
-    staff.save()
-    return JsonResponse({"ok": True, "enabled": staff.启用})
 
 
 @staff_required
@@ -383,50 +372,6 @@ def approve_staff_export(request, approval_id):
 def insert(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    error, efield = None, None
-    if request.method == "POST":
-        if not _has_role(request.user, "店长"):
-            return HttpResponse("员工薪酬初始录入仅允许店长操作。", status=403)
-        salary_reason = (request.POST.get("salary_reason") or "").strip()
-        if len(salary_reason) < 8 or len(salary_reason) > 240:
-            return HttpResponse("录入薪酬必须填写 8 至 240 个字符的业务原因。", status=400)
-        sid = request.POST.get("id")
-        name = request.POST.get("name")
-        job = request.POST.get("job")
-        salary = request.POST.get("salary")
-        work_time = request.POST.get("time_work")
-        error, efield = _first_error([
-            (sid, "id10", "工号", "id", False),
-            (name, "name", "姓名", "name"),
-            (job, "job", "职务", "job"),
-            (salary, "money", "月薪", "salary"),
-            (work_time, "digits4", "工龄", "time_work"),
-        ])
-        if error is None:
-            kwargs = {"姓名": name.strip(), "职务": job, "月薪": salary, "工龄": work_time}
-            try:
-                if sid:
-                    kwargs["员工id"] = sid
-                created_staff = Staff.objects.create(**kwargs)
-                from apps.core.models import AuditEvent
-                AuditEvent.record(
-                    action="staff.salary_initial_set", entity_type="LegacyStaff",
-                    entity_id=created_staff.员工id, actor=request.user,
-                    property_obj=getattr(request, "property", None),
-                    after={"salary_set": True},
-                    reason=salary_reason, request=request)
-            except (ValueError, IntegrityError):
-                error, efield = "保存失败：工号必须是数字且不能重复", "id"
-            else:
-                messages.success(request, "员工信息添加成功")
-                return redirect("/index/")
-    ctx = _error_context(request, efield)
-    ctx.update({
-        "people_list": Staff.objects.order_by("员工id"), "error": error,
-        "can_view_salary": _has_role(request.user, "财务", "店长"),
-        "can_manage_salary": _has_role(request.user, "店长"),
-    })
-    return render(request, "index.html", ctx)
 
 
 @staff_required
@@ -434,14 +379,6 @@ def insert(request):
 def delete_staff(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    if request.method != "POST":
-        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
-    if request.method == "GET":
-        try:
-            Staff.objects.filter(员工id=request.GET.get("id")).delete()
-        except (ValueError, IntegrityError):
-            return HttpResponse("删除失败：该员工已被菜品、客房或订单信息引用", status=400)
-    return render(request, "index.html", {"people_list": Staff.objects.order_by("员工id")})
 
 
 @staff_required
@@ -466,52 +403,6 @@ def search_staff(request):
 def update_staff(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    if request.method != "POST":
-        return HttpResponse("员工薪酬修改必须使用 POST。", status=405)
-    if not _has_role(request.user, "店长"):
-        return HttpResponse("员工薪酬及人事字段修改仅允许店长操作；财务岗位只读。", status=403)
-    sid = request.POST.get("id")
-    job = request.POST.get("job")
-    salary = request.POST.get("salary")
-    work_time = request.POST.get("time")
-    reason = (request.POST.get("reason") or "").strip()
-    if len(reason) < 8 or len(reason) > 240:
-        return HttpResponse("修改员工薪酬必须填写 8 至 240 个字符的业务原因。", status=400)
-    error, _ = _first_error([
-        (sid, "id10", "工号", "id"),
-        (job, "job", "职务", "job"),
-        (salary, "money", "月薪", "salary"),
-        (work_time, "digits4", "工龄", "time"),
-    ])
-    if error:
-        return HttpResponse(error, status=400)
-    try:
-        with transaction.atomic():
-            staff = Staff.objects.select_for_update().filter(员工id=sid).first()
-            if staff is None:
-                return HttpResponse("修改失败：员工不存在", status=404)
-            before = {
-                "job": staff.职务,
-                "work_years": staff.工龄,
-                "salary_set": bool(staff.月薪),
-            }
-            salary_changed = str(staff.月薪 or "") != str(salary or "")
-            staff.职务 = job
-            staff.月薪 = salary
-            staff.工龄 = work_time
-            staff.save(update_fields=("职务", "月薪", "工龄"))
-            from apps.core.models import AuditEvent
-            AuditEvent.record(
-                action="staff.profile_update", entity_type="LegacyStaff",
-                entity_id=staff.员工id, actor=request.user,
-                property_obj=getattr(request, "property", None),
-                before=before,
-                after={"job": staff.职务, "work_years": staff.工龄,
-                       "salary_changed": salary_changed},
-                reason=reason, request=request)
-    except ValueError as exc:
-        return HttpResponse(f"修改失败：{exc}", status=400)
-    return JsonResponse({"ok": True, "salary_changed": salary_changed})
 
 
 # ---------- 顾客信息管理 ----------
@@ -529,32 +420,6 @@ def show_client(request):
 def insert_client(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    error, efield = None, None
-    if request.method == "POST":
-        cid = request.POST.get("id")
-        name = request.POST.get("name")
-        identify = request.POST.get("identify")
-        error, efield = _first_error([
-            (cid, "id10", "顾客编号", "id", False),
-            (name, "name", "姓名", "name"),
-            (identify, "idcard", "身份证号", "identify"),
-        ])
-        if error is None and Client.objects.filter(身份证号=identify.strip()).exists():
-            error, efield = "保存失败：该身份证号已登记，证件号不能重复", "identify"
-        if error is None:
-            kwargs = {"姓名": name.strip(), "身份证号": identify.strip()}
-            try:
-                if cid:
-                    kwargs["顾客id"] = cid
-                Client.objects.create(**kwargs)
-            except (ValueError, IntegrityError):
-                error, efield = "保存失败：顾客编号必须是数字且不能重复", "id"
-            else:
-                messages.success(request, "顾客信息添加成功")
-                return redirect("/show_client/")
-    ctx = _error_context(request, efield)
-    ctx.update({"people_list": Client.objects.order_by("顾客id"), "error": error})
-    return render(request, "html1.html", ctx)
 
 
 @staff_required
@@ -562,14 +427,6 @@ def insert_client(request):
 def delete_client(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    if request.method != "POST":
-        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
-    if request.method == "GET":
-        try:
-            Client.objects.filter(顾客id=request.GET.get("id")).delete()
-        except (ValueError, IntegrityError):
-            return HttpResponse("删除失败：该顾客已被餐饮订单或客房订单引用", status=400)
-    return render(request, "html1.html", {"people_list": Client.objects.order_by("顾客id")})
 
 
 @staff_required
@@ -577,26 +434,6 @@ def delete_client(request):
 def update_client(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    if request.method == "POST":
-        cid = request.POST.get("id")
-        name = request.POST.get("name")
-        identify = request.POST.get("identify")
-        error, _ = _first_error([
-            (cid, "id10", "顾客编号", "id"),
-            (name, "name", "姓名", "name"),
-            (identify, "idcard", "身份证号", "identify"),
-        ])
-        if error:
-            return HttpResponse(error, status=400)
-        if Client.objects.filter(身份证号=identify).exclude(顾客id=cid).exists():
-            return HttpResponse("修改失败：该身份证号已登记，证件号不能重复", status=400)
-        try:
-            updated = Client.objects.filter(顾客id=cid).update(姓名=name, 身份证号=identify)
-        except ValueError:
-            return HttpResponse("修改失败：顾客编号非法", status=400)
-        if not updated:
-            return HttpResponse("修改失败：顾客不存在", status=400)
-    return render(request, "html1.html", {"people_list": Client.objects.order_by("顾客id")})
 
 
 @staff_required
@@ -628,34 +465,6 @@ def show_food(request):
 def insert_food(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    error, efield = None, None
-    if request.method == "POST":
-        fid = request.POST.get("id")
-        name = request.POST.get("name")
-        price = request.POST.get("price")
-        cooker = request.POST.get("cooker")
-        error, efield = _first_error([
-            (fid, "id10", "菜品编号", "id"),
-            (name, "name20", "菜名", "name"),
-            (price, "money", "价格", "price"),
-        ])
-        if error is None and Food.objects.filter(菜名=name.strip()).exists():
-            error, efield = "保存失败：该菜名已存在，菜名不能重复", "name"
-        if error is None:
-            cook = _get_staff(cooker, "厨师")
-            if cook is None:
-                error, efield = "保存失败：厨师编号必须存在（职务为厨师）", "cooker"
-            else:
-                try:
-                    Food.objects.create(菜品编号=fid, 菜名=name.strip(), 价格=price, 厨师id=cook)
-                except (ValueError, IntegrityError):
-                    error, efield = "保存失败：菜品编号必须是数字且不能重复", "id"
-                else:
-                    messages.success(request, "菜品信息添加成功")
-                    return redirect("/show_food/")
-    ctx = _error_context(request, efield)
-    ctx.update({"people_list": Food.objects.order_by("菜品编号"), "error": error})
-    return render(request, "html4.html", ctx)
 
 
 @staff_required
@@ -664,14 +473,6 @@ def insert_food(request):
 def delete_food(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    if request.method != "POST":
-        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
-    if request.method == "GET":
-        try:
-            Food.objects.filter(菜品编号=request.GET.get("id")).delete()
-        except (ValueError, IntegrityError):
-            return HttpResponse("删除失败：该菜品已被餐饮订单引用", status=400)
-    return render(request, "html4.html", {"people_list": Food.objects.order_by("菜品编号")})
 
 
 @staff_required
@@ -680,26 +481,6 @@ def delete_food(request):
 def update_food(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    if request.method == "POST":
-        fid = request.POST.get("id")
-        price = request.POST.get("price")
-        cooker = request.POST.get("cooker")
-        error, _ = _first_error([
-            (fid, "id10", "菜品编号", "id"),
-            (price, "money", "价格", "price"),
-        ])
-        if error:
-            return HttpResponse(error, status=400)
-        cook = _get_staff(cooker, "厨师")
-        if cook is None:
-            return HttpResponse("修改失败：厨师编号必须存在（职务为厨师）", status=400)
-        try:
-            updated = Food.objects.filter(菜品编号=fid).update(价格=price, 厨师id=cook)
-        except ValueError:
-            return HttpResponse("修改失败：菜品编号非法", status=400)
-        if not updated:
-            return HttpResponse("修改失败：菜品不存在", status=400)
-    return render(request, "html4.html", {"people_list": Food.objects.order_by("菜品编号")})
 
 
 @staff_required
@@ -730,34 +511,6 @@ def show_vip(request):
 def insert_vip(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    error, efield = None, None
-    if request.method == "POST":
-        vid = request.POST.get("id")
-        name = request.POST.get("name")
-        rank = request.POST.get("rank")
-        tel = request.POST.get("tel")
-        error, efield = _first_error([
-            (vid, "id10", "会员编号", "id", False),
-            (name, "name", "姓名", "name"),
-            (rank, "viprank", "会员等级", "rank"),
-            (tel, "tel", "联系方式", "tel"),
-        ])
-        if error is None and tel and Vip.objects.filter(联系方式=tel.strip()).exists():
-            error, efield = "保存失败：该联系方式已被其他会员使用，手机号不能重复", "tel"
-        if error is None:
-            kwargs = {"姓名": name.strip(), "会员等级": rank, "联系方式": tel}
-            try:
-                if vid:
-                    kwargs["会员编号"] = vid
-                Vip.objects.create(**kwargs)
-            except (ValueError, IntegrityError):
-                error, efield = "保存失败：会员编号必须是数字且不能重复", "id"
-            else:
-                messages.success(request, "会员信息添加成功")
-                return redirect("/show_vip/")
-    ctx = _error_context(request, efield)
-    ctx.update({"people_list": Vip.objects.order_by("会员编号"), "error": error})
-    return render(request, "vip.html", ctx)
 
 
 @staff_required
@@ -765,14 +518,6 @@ def insert_vip(request):
 def delete_vip(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    if request.method != "POST":
-        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
-    if request.method == "GET":
-        try:
-            Vip.objects.filter(会员编号=request.GET.get("id")).delete()
-        except ValueError:
-            return HttpResponse("删除失败：会员编号非法", status=400)
-    return render(request, "vip.html", {"people_list": Vip.objects.order_by("会员编号")})
 
 
 @staff_required
@@ -780,26 +525,6 @@ def delete_vip(request):
 def update_vip(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    if request.method == "POST":
-        vid = request.POST.get("id")
-        rank = request.POST.get("rank")
-        tel = request.POST.get("tel")
-        error, _ = _first_error([
-            (vid, "id10", "会员编号", "id"),
-            (rank, "viprank", "会员等级", "rank"),
-            (tel, "tel", "联系方式", "tel"),
-        ])
-        if error:
-            return HttpResponse(error, status=400)
-        if tel and Vip.objects.filter(联系方式=tel).exclude(会员编号=vid).exists():
-            return HttpResponse("修改失败：该联系方式已被其他会员使用，手机号不能重复", status=400)
-        try:
-            updated = Vip.objects.filter(会员编号=vid).update(会员等级=rank, 联系方式=tel)
-        except ValueError:
-            return HttpResponse("修改失败：会员编号非法", status=400)
-        if not updated:
-            return HttpResponse("修改失败：会员不存在", status=400)
-    return render(request, "vip.html", {"people_list": Vip.objects.order_by("会员编号")})
 
 
 @staff_required
@@ -831,31 +556,6 @@ def show_park(request):
 def insert_park(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    error, efield = None, None
-    if request.method == "POST":
-        pid = request.POST.get("id")
-        status = request.POST.get("status")
-        num = request.POST.get("num")
-        error, efield = _first_error([
-            (pid, "id10", "车位编号", "id"),
-            (num, "plate", "车辆牌号", "num", False),
-        ])
-        if error is None:
-            if status not in ("空闲", "有车"):
-                error, efield = "当前状态必须是空闲或有车", "status"
-            elif num and Park.objects.filter(车辆牌号=num.strip()).exists():
-                error, efield = "保存失败：该车牌已停入其他车位，车牌不能重复", "num"
-            else:
-                try:
-                    Park.objects.create(车位编号=pid, 当前状态=status, 车辆牌号=(num.strip() or None))
-                except (ValueError, IntegrityError):
-                    error, efield = "保存失败：车位编号必须是数字且不能重复", "id"
-                else:
-                    messages.success(request, "车位信息添加成功")
-                    return redirect("/show_park/")
-    ctx = _error_context(request, efield)
-    ctx.update({"people_list": Park.objects.order_by("车位编号"), "error": error})
-    return render(request, "park.html", ctx)
 
 
 @staff_required
@@ -864,14 +564,6 @@ def insert_park(request):
 def delete_park(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    if request.method != "POST":
-        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
-    if request.method == "GET":
-        try:
-            Park.objects.filter(车位编号=request.GET.get("id")).delete()
-        except ValueError:
-            return HttpResponse("删除失败：车位编号非法", status=400)
-    return render(request, "park.html", {"people_list": Park.objects.order_by("车位编号")})
 
 
 @staff_required
@@ -880,27 +572,6 @@ def delete_park(request):
 def update_park(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    if request.method == "POST":
-        pid = request.POST.get("id")
-        status = request.POST.get("status")
-        num = request.POST.get("num")
-        error, _ = _first_error([
-            (pid, "id10", "车位编号", "id"),
-            (num, "plate", "车辆牌号", "num", False),
-        ])
-        if error:
-            return HttpResponse(error, status=400)
-        if status not in ("空闲", "有车"):
-            return HttpResponse("修改失败：当前状态必须是空闲或有车", status=400)
-        if num and Park.objects.filter(车辆牌号=num.strip()).exclude(车位编号=pid).exists():
-            return HttpResponse("修改失败：该车牌已停入其他车位，车牌不能重复", status=400)
-        try:
-            updated = Park.objects.filter(车位编号=pid).update(当前状态=status, 车辆牌号=(num.strip() or None))
-        except ValueError:
-            return HttpResponse("修改失败：车位编号非法", status=400)
-        if not updated:
-            return HttpResponse("修改失败：车位不存在", status=400)
-    return render(request, "park.html", {"people_list": Park.objects.order_by("车位编号")})
 
 
 @staff_required
@@ -929,32 +600,6 @@ def show_room(request):
 def insert_room(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    error, efield = None, None
-    if request.method == "POST":
-        rid = request.POST.get("id")
-        room_type = request.POST.get("type")
-        price = request.POST.get("price")
-        waiter = request.POST.get("waiter")
-        error, efield = _first_error([
-            (rid, "id10", "房间号", "id"),
-            (room_type, "type10", "客房类型", "type"),
-            (price, "price5", "价格", "price"),
-        ])
-        if error is None:
-            staff = _get_staff(waiter, "服务员")
-            if staff is None:
-                error, efield = "保存失败：服务员编号必须存在（职务为服务员）", "waiter"
-            else:
-                try:
-                    Room.objects.create(房间号=rid, 客房类型=room_type.strip(), 价格=price, 负责人编号=staff)
-                except (ValueError, IntegrityError):
-                    error, efield = "保存失败：房间号必须是数字且不能重复", "id"
-                else:
-                    messages.success(request, "客房信息添加成功")
-                    return redirect("/show_room/")
-    ctx = _error_context(request, efield)
-    ctx.update({"people_list": Room.objects.order_by("房间号"), "error": error})
-    return render(request, "room.html", ctx)
 
 
 @staff_required
@@ -962,14 +607,6 @@ def insert_room(request):
 def delete_room(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    if request.method != "POST":
-        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
-    if request.method == "GET":
-        try:
-            Room.objects.filter(房间号=request.GET.get("id")).delete()
-        except (ValueError, IntegrityError):
-            return HttpResponse("删除失败：该客房已被客房订单引用", status=400)
-    return render(request, "room.html", {"people_list": Room.objects.order_by("房间号")})
 
 
 @staff_required
@@ -977,31 +614,6 @@ def delete_room(request):
 def update_room(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    if request.method == "POST":
-        rid = request.POST.get("id")
-        room_type = request.POST.get("type")
-        price = request.POST.get("price")
-        error, _ = _first_error([
-            (rid, "id10", "房间号", "id"),
-            (room_type, "type10", "客房类型", "type"),
-            (price, "price5", "价格", "price"),
-        ])
-        if error:
-            return HttpResponse(error, status=400)
-        update_kwargs = {"客房类型": room_type, "价格": price}
-        waiter = request.POST.get("waiter")
-        if waiter:
-            staff = _get_staff(waiter, "服务员")
-            if staff is None:
-                return HttpResponse("修改失败：服务员编号必须存在（职务为服务员）", status=400)
-            update_kwargs["负责人编号"] = staff
-        try:
-            updated = Room.objects.filter(房间号=rid).update(**update_kwargs)
-        except ValueError:
-            return HttpResponse("修改失败：房间号和价格必须是数字", status=400)
-        if not updated:
-            return HttpResponse("修改失败：客房不存在", status=400)
-    return render(request, "room.html", {"people_list": Room.objects.order_by("房间号")})
 
 
 @staff_required
@@ -1033,44 +645,6 @@ def show_order(request):
 def insert_order(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    error, efield = None, None
-    if request.method == "POST":
-        oid = request.POST.get("id")
-        client = request.POST.get("client")
-        food = request.POST.get("food")
-        waiter = request.POST.get("waiter")
-        table = request.POST.get("table")
-        error, efield = _first_error([
-            (oid, "id10", "订单编号", "id"),
-            (client, "id10", "顾客编号", "client"),
-            (food, "id10", "菜品编号", "food"),
-            (waiter, "id10", "服务员编号", "waiter"),
-            (table, "digits4", "桌号", "table"),
-        ])
-        if error is None:
-            try:
-                cli = Client.objects.get(顾客id=client)
-                foodid = Food.objects.get(菜品编号=food)
-            except (Client.DoesNotExist, Food.DoesNotExist, ValueError, TypeError):
-                cli, foodid = None, None
-            staff = _get_staff(waiter, "服务员")
-            if cli is None:
-                error, efield = "保存失败：顾客编号必须存在", "client"
-            elif foodid is None:
-                error, efield = "保存失败：菜品编号必须存在", "food"
-            elif staff is None:
-                error, efield = "保存失败：服务员编号必须存在（职务为服务员）", "waiter"
-            else:
-                try:
-                    Order.objects.create(id=oid, 顾客编号=cli, 菜品编号=foodid, 服务员编号=staff, 桌号=table)
-                except (ValueError, IntegrityError):
-                    error, efield = "保存失败：订单编号必须是数字且不能重复", "id"
-                else:
-                    messages.success(request, "餐饮订单添加成功")
-                    return redirect("/show_order/")
-    ctx = _error_context(request, efield)
-    ctx.update({"people_list": Order.objects.order_by("id"), "error": error})
-    return render(request, "order.html", ctx)
 
 
 @staff_required
@@ -1079,25 +653,6 @@ def insert_order(request):
 def delete_order(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    """餐饮订单「冲账」：打已冲账标记并记录冲账人/时间，不再物理删除（值班经理权限）"""
-    if request.method != "POST":
-        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
-    if request.method == "GET":
-        try:
-            item = Order.objects.get(id=request.GET.get("id"))
-        except (Order.DoesNotExist, ValueError):
-            return HttpResponse("订单不存在", status=400)
-        if item.状态 == "已冲账":
-            return HttpResponse("该订单已冲账", status=400)
-        reason = (request.GET.get("reason") or "").strip()
-        item.状态 = "已冲账"
-        item.冲账人 = request.user.username
-        item.冲账时间 = _today()
-        item.save()
-        import logging
-        logging.getLogger("hotel.audit").info("冲账：餐饮订单%s 原因[%s]，操作人 %s",
-                                              item.id, reason or "未填写", request.user.username)
-    return render(request, "order.html", {"people_list": Order.objects.order_by("id")})
 
 
 @staff_required
@@ -1133,47 +688,6 @@ def show_accomodation(request):
 def insert_accomodation(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    error, efield = None, None
-    if request.method == "POST":
-        aid = request.POST.get("id")
-        client = request.POST.get("client")
-        room = request.POST.get("room")
-        time = request.POST.get("time")
-        error, efield = _first_error([
-            (aid, "id10", "订单编号", "id"),
-            (client, "id10", "顾客编号", "client"),
-            (room, "id10", "客房编号", "room"),
-            (time, "date", "入住时间", "time"),
-        ])
-        if error is None:
-            try:
-                datetime.datetime.strptime(time, "%Y-%m-%d")
-            except ValueError:
-                error, efield = "入住时间不是有效日期", "time"
-        if error is None:
-            try:
-                cli = Client.objects.get(顾客id=client)
-                roomid = Room.objects.get(房间号=room)
-            except (Client.DoesNotExist, Room.DoesNotExist, ValueError, TypeError):
-                cli, roomid = None, None
-            if cli is None:
-                error, efield = "保存失败：顾客编号必须存在", "client"
-            elif roomid is None:
-                error, efield = "保存失败：客房编号必须存在", "room"
-            else:
-                try:
-                    Accommodation.objects.create(id=aid, 顾客id=cli, 客房编号=roomid, 入住时间=time,
-                                                 状态="已入住", 联系电话=(request.POST.get("tel") or "").strip())
-                except (ValueError, IntegrityError):
-                    error, efield = "保存失败：订单编号必须是数字且不能重复", "id"
-                else:
-                    roomid.房间状态 = "已入住"
-                    roomid.save()
-                    messages.success(request, "客房订单添加成功（已入住）")
-                    return redirect("/show_accomodation/")
-    ctx = _error_context(request, efield)
-    ctx.update({"people_list": Accommodation.objects.order_by("id"), "error": error})
-    return render(request, "accomodation.html", ctx)
 
 
 @staff_required
@@ -1181,56 +695,6 @@ def insert_accomodation(request):
 def delete_accomodation(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    """客房订单「冲账」：打已冲账标记、释放房间、记录冲账人/时间，不再物理删除"""
-    if request.method != "POST":
-        return HttpResponse("写操作必须使用 POST（P0 安全护栏）", status=405)
-    if True:  # 业务逻辑统一 POST 处理
-        reason = (request.POST.get("reason") or "").strip()
-        if not reason:
-            return HttpResponse("冲账必须填写原因（高危操作需留痕）", status=400)
-        try:
-            with transaction.atomic():
-                item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"))
-                if item.状态 == "已冲账":
-                    return HttpResponse("该订单已冲账", status=400)
-                room = item.客房编号
-                # 房态校验：房间已被新客人入住时禁止冲账
-                if Accommodation.objects.filter(客房编号=room, 状态="已入住").exclude(id=item.id).exists():
-                    return HttpResponse("该房间已被新客人入住，禁止冲账，请联系财务走历史账务调整", status=400)
-                # 夜审校验：退房后已经历夜审结转则禁止前台反悔
-                if item.退房时间 and NightAudit.objects.filter(营业日期__gte=item.退房时间).exists():
-                    return HttpResponse("该订单已经过夜审结转，请走财务历史账务调整流程", status=400)
-                prev = item.状态 or "待确认"
-                if prev != "已退房":
-                    state_machine.require_order_transition(item, "已冲账")
-                else:
-                    item.状态 = "已冲账"
-                item.冲账人 = request.user.username
-                item.冲账时间 = _today()
-                item.save()
-                # 红字凭证平账：反向生成负数收款流水，不修改原账
-                collected = 0.0
-                for f in Folio.objects.filter(order=item, 类型="收款"):
-                    try:
-                        collected += float(f.金额)
-                    except (TypeError, ValueError):
-                        pass
-                if collected:
-                    Folio.objects.create(order=item, 类型="冲账", 金额=f"-{collected:.2f}",
-                                         事由=f"冲账红字平账：{reason}", 日期=_today(),
-                                         经手人=request.user.username)
-                if prev == "已入住":
-                    room.房间状态 = "待清洁"
-                elif prev in ("待确认", "已确认") and room.房间状态 == "已预订":
-                    room.房间状态 = "空闲"
-                room.save()
-                import logging
-                logging.getLogger("hotel.audit").info(
-                    "冲账：订单%s 原因[%s] 红字 %.2f 元，操作人 %s",
-                    item.id, reason, collected, request.user.username)
-        except ValueError as e:
-            return HttpResponse(str(e), status=400)
-    return render(request, "accomodation.html", {"people_list": Accommodation.objects.order_by("id")})
 
 
 @staff_required
@@ -1262,18 +726,6 @@ def search_accomodation(request):
 def extend_stay(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    """续住：为在住订单加收一晚房费（Folio 房费凭证）"""
-    if request.method == "POST":
-        try:
-            with transaction.atomic():
-                item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"), 状态="已入住")
-                price = str(item.客房编号.价格)
-                Folio.objects.create(order=item, 类型="房费", 金额=price,
-                                     事由="续住加收一晚房费", 日期=_today(), 经手人=request.user.username)
-        except Accommodation.DoesNotExist:
-            return HttpResponse("订单不存在", status=400)
-        return JsonResponse({"ok": True, "amount": price})
-    return HttpResponse("非法请求", status=400)
 
 
 @staff_required
@@ -1281,38 +733,6 @@ def extend_stay(request):
 def change_room(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    """换房：在住/已确认订单更换房间，旧房转入清洁链"""
-    if request.method == "POST":
-        new_no = request.POST.get("new_room")
-        try:
-            with transaction.atomic():
-                item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"))
-                if item.状态 not in ("已确认", "已入住"):
-                    return HttpResponse("只有已确认/在住订单可以换房", status=400)
-                new_room = Room.objects.select_for_update().get(房间号=new_no)
-                if new_room.房间状态 != "空闲":
-                    return HttpResponse(f"目标房间不可用（{new_room.房间状态}）", status=400)
-                old_room = item.客房编号
-                # E-11/MGR-05：跨房型或价差的换房需值班经理/店长处理（价格政策例外）
-                if (new_room.客房类型 != old_room.客房类型
-                        or float(new_room.价格 or 0) != float(old_room.价格 or 0)):
-                    if not _has_role(request.user, "值班经理", "店长"):
-                        return HttpResponse(
-                            "跨房型/价差换房需要值班经理或店长处理", status=403)
-                if item.状态 == "已入住":
-                    old_room.房间状态 = "待清洁"
-                    new_room.房间状态 = "已入住"
-                else:
-                    old_room.房间状态 = "空闲"
-                    new_room.房间状态 = "已预订"
-                old_room.save()
-                new_room.save()
-                item.客房编号 = new_room
-                item.save()
-        except (Room.DoesNotExist, ValueError, TypeError):
-            return HttpResponse("目标房间不存在", status=400)
-        return JsonResponse({"ok": True})
-    return HttpResponse("非法请求", status=400)
 
 
 @staff_required
@@ -1320,55 +740,12 @@ def change_room(request):
 def express_checkout(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    """旧版快捷离店已退役，避免在无 PMS2 账本/支付状态核验下自动写账。"""
-    if request.method != "POST":
-        return HttpResponse("旧版快捷离店已退役，请使用 PMS2 前台工作台。", status=410)
-    return HttpResponse(
-        "快捷离店不再允许自动补记收款或绕过未结余额。请使用 PMS2 前台工作台核对账单后办理退房。",
-        status=410,
-    )
 
 @staff_required
 @pms_permission_required('hotelapp.add_accommodation')
 def walkin_create(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    """散客直入（Walk-in）：无预订直接排房入住，收取押金"""
-    if request.method == "POST":
-        name = (request.POST.get("name") or "").strip()
-        tel = (request.POST.get("tel") or "").strip()
-        idcard = (request.POST.get("idcard") or "").strip()
-        room_no = request.POST.get("room")
-        deposit = (request.POST.get("deposit") or "").strip()
-        err, _ = _first_error([
-            (name, "name", "姓名", "name"),
-            (tel, "tel", "联系方式", "tel", False),
-            (idcard, "idcard", "身份证号", "idcard", False),
-            (deposit, "money", "押金", "deposit", False),
-        ])
-        try:
-            with transaction.atomic():
-                room = Room.objects.select_for_update().get(房间号=room_no)
-                if room.房间状态 != "空闲":
-                    return HttpResponse(f"该房间当前不可入住（{room.房间状态}）", status=400)
-                if idcard and Client.objects.filter(身份证号=idcard).exists():
-                    return HttpResponse("该身份证号已登记，请直接为已有顾客办理", status=400)
-                client = Client.objects.create(姓名=name, 身份证号=(idcard or None))
-                last = Accommodation.objects.order_by("-id").first()
-                new_id = (last.id + 1) if last else 1
-                item = Accommodation.objects.create(
-                    id=new_id, 顾客id=client, 客房编号=room, 入住时间=_today(),
-                    状态="已入住", 联系电话=tel, 押金=deposit or None,
-                )
-                state_machine.require_room_transition(room, "已入住")
-                room.save()
-                if deposit:
-                    Folio.objects.create(order=item, 类型="押金", 金额=deposit,
-                                         事由="散客直入押金", 日期=_today(), 经手人=request.user.username)
-        except ValueError as e:
-            return HttpResponse(str(e), status=400)
-        return JsonResponse({"ok": True, "id": item.id})
-    return HttpResponse("非法请求", status=400)
 
 
 @staff_required
@@ -1427,28 +804,6 @@ def folio_api(request):
 def room_status_change(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    """房间状态流转：前台可做 空闲↔清洁中；维修/修复及跨状态流转仅值班经理及以上"""
-    if request.method == "POST":
-        room_no = request.POST.get("room")
-        target = (request.POST.get("status") or "").strip()
-        if target not in ROOM_STATUS:
-            return HttpResponse("未知状态", status=400)
-        try:
-            room = Room.objects.get(房间号=room_no)
-        except (Room.DoesNotExist, ValueError, TypeError):
-            return HttpResponse("房间不存在", status=400)
-        is_manager = _has_role(request.user, "值班经理", "店长")
-        simple = {("待清洁", "清洁中"), ("清洁中", "待检查")}
-        # 净房放行（待检查→空闲）独立授权：由当天管理者确认（决策 6：客房不拆检查岗）
-        if (room.房间状态, target) == ("待检查", "空闲"):
-            if not _has_permission(request, "hotelapp.room_release_ready"):
-                return HttpResponse("净房放行需要值班经理/店长确认", status=403)
-        elif (room.房间状态, target) not in simple and not is_manager:
-            return HttpResponse("该状态流转需要值班经理操作", status=403)
-        room.房间状态 = target
-        room.save()
-        return JsonResponse({"ok": True, "status": target})
-    return HttpResponse("非法请求", status=400)
 
 
 
@@ -1922,37 +1277,6 @@ def cancel_booking(request):
 def checkin_confirm(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    """排房确认（待确认 → 已确认）：分配房间并锁房，补录顾客身份证"""
-    if request.method == "POST":
-        oid = request.POST.get("id")
-        room_no = request.POST.get("room")
-        idcard = (request.POST.get("idcard") or "").strip()
-        warn = None
-        try:
-            with transaction.atomic():
-                item = Accommodation.objects.select_for_update().get(id=oid, 状态="待确认")
-                room = Room.objects.select_for_update().get(房间号=room_no)
-                if room.房间状态 != "空闲" and room.房间号 != item.客房编号.房间号:
-                    return HttpResponse(f"该房间当前不可排房（{room.房间状态}）", status=400)
-                if idcard:
-                    if Client.objects.filter(身份证号=idcard).exclude(顾客id=item.顾客id.顾客id).exists():
-                        return HttpResponse("该身份证号已登记，证件号不能重复", status=400)
-                    cli = item.顾客id
-                    cli.身份证号 = idcard
-                    cli.save()
-                state_machine.require_order_transition(item, "已确认")
-                item.客房编号 = room
-                item.save()
-                state_machine.require_room_transition(room, "已预订")
-                room.save()
-                events.publish("booking_confirmed", order_id=item.id,
-                               room_no=room.房间号, operator=request.user.username)
-                if (item.入住时间 or "") > _today():
-                    warn = f"该订单入住日期为 {item.入住时间}，属提前到店，请按酒店规则处理房费"
-        except ValueError as e:
-            return HttpResponse(str(e), status=400)
-        return JsonResponse({"ok": True, "warn": warn})
-    return HttpResponse("非法请求", status=400)
 
 
 @staff_required
@@ -1960,30 +1284,6 @@ def checkin_confirm(request):
 def checkin_in(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    """办理入住（已确认 → 已入住）：收押金，房态转在住"""
-    if request.method == "POST":
-        oid = request.POST.get("id")
-        deposit = (request.POST.get("deposit") or "").strip()
-        err = _bad(deposit, "money", "押金", required=False)
-        if err:
-            return HttpResponse(err, status=400)
-        try:
-            with transaction.atomic():
-                item = Accommodation.objects.select_for_update().get(id=oid, 状态="已确认")
-                room = item.客房编号
-                state_machine.require_order_transition(item, "已入住")
-                item.入住时间 = _today()
-                item.押金 = deposit or None
-                item.save()
-                state_machine.require_room_transition(room, "已入住")
-                room.save()
-                if deposit:
-                    Folio.objects.create(order=item, 类型="押金", 金额=deposit,
-                                         事由="入住押金", 日期=_today(), 经手人=request.user.username)
-        except ValueError as e:
-            return HttpResponse(str(e), status=400)
-        return JsonResponse({"ok": True})
-    return HttpResponse("非法请求", status=400)
 
 
 @staff_required
@@ -1991,60 +1291,12 @@ def checkin_in(request):
 def checkout(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    """已入住 → 已退房：结算收款并写入财务流水，房间转清洁中"""
-    if request.method == "POST":
-        oid = request.POST.get("id")
-        amount = (request.POST.get("amount") or "").strip()
-        try:
-            item = Accommodation.objects.get(id=oid, 状态="已入住")
-        except (Accommodation.DoesNotExist, ValueError):
-            return HttpResponse("订单不存在或状态已变更", status=400)
-        if not re.match(r"^\d{1,7}(\.\d{1,2})?$", amount):
-            return HttpResponse("收款金额必须是数字", status=400)
-        room = item.客房编号
-        state_machine.require_order_transition(item, "已退房")
-        item.退房时间 = _today()
-        item.save()
-        events.publish("checked_out", order_id=item.id, room_no=room.房间号,
-                       amount=amount, operator=request.user.username, date=_today())
-        Folio.objects.create(order=item, 类型="收款", 金额=amount,
-                             事由="退房结算收款", 日期=_today(), 经手人=request.user.username)
-        item.收款金额 = amount
-        return JsonResponse({"ok": True})
-    return HttpResponse("非法请求", status=400)
 
 
 @staff_required
 def uncheckout(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-    """反结账：已退房 → 已入住，删除对应收入流水（需「反结账」权限：值班经理/店长）"""
-    if request.method == "POST":
-        if not _has_permission(request, "hotelapp.reverse_checkout"):
-            return HttpResponse("反结账需要值班经理/店长授权", status=403)
-        try:
-            with transaction.atomic():
-                item = Accommodation.objects.select_for_update().get(id=request.POST.get("id"), 状态="已退房")
-                room = item.客房编号
-                # 房态校验：房间已被新客人入住时绝对禁止反结账
-                if room.房间状态 == "已入住":
-                    return HttpResponse("该房间已被新客人入住，禁止反结账", status=400)
-                # 夜审校验：退房后已经历夜审结转 → 走财务历史账务调整
-                if item.退房时间 and NightAudit.objects.filter(营业日期__gte=item.退房时间).exists():
-                    return HttpResponse("该订单已过夜审结转，请走财务历史账务调整流程", status=400)
-                state_machine.require_order_transition(item, "已入住")
-                item.状态 = "已入住"
-                item.收款金额 = None
-                item.退房时间 = None
-                item.save()
-                state_machine.require_room_transition(room, "已入住")
-                room.save()
-                FinanceRecord.objects.filter(关联订单=str(item.id), 类型="收入").delete()
-                Folio.objects.filter(order=item, 类型="收款").delete()
-        except (ValueError, Accommodation.DoesNotExist) as e:
-            return HttpResponse(str(e) or "订单不存在或状态已变更", status=400)
-        return JsonResponse({"ok": True})
-    return HttpResponse("非法请求", status=400)
 
 
 # ---------- 财务管理 ----------

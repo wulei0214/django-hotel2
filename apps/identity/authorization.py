@@ -1,4 +1,5 @@
 from django.core.exceptions import FieldDoesNotExist
+
 # 安全边界提示：业务权限必须结合认证用户、当前物业、有效员工档案、有效任职和岗位分配计算。菜单隐藏不是授权；页面与 API 都必须服务端复核。平台 superuser 不自动等同于门店岗位。
 from django.db.models import Q
 from django.utils import timezone
@@ -44,9 +45,8 @@ class AuthorizationService:
         if membership is None:
             return False
 
-        if obj is not None and hasattr(obj, "property_id"):
-            if obj.property_id != property_obj.pk:
-                return False
+        if obj is not None and hasattr(obj, "property_id") and obj.property_id != property_obj.pk:
+            return False
 
         try:
             app_label, codename = permission_code.split(".", 1)
@@ -56,15 +56,18 @@ class AuthorizationService:
             return False
 
         now = timezone.now()
-        return StaffRoleAssignment.objects.filter(
-            membership=membership,
-            starts_at__lte=now,
-        ).filter(
-            Q(ends_at__isnull=True) | Q(ends_at__gt=now)
-        ).filter(
-            group__permissions__content_type__app_label=app_label,
-            group__permissions__codename=codename,
-        ).exists()
+        return (
+            StaffRoleAssignment.objects.filter(
+                membership=membership,
+                starts_at__lte=now,
+            )
+            .filter(Q(ends_at__isnull=True) | Q(ends_at__gt=now))
+            .filter(
+                group__permissions__content_type__app_label=app_label,
+                group__permissions__codename=codename,
+            )
+            .exists()
+        )
 
     @classmethod
     def filter_queryset_for_property(cls, queryset, user, property_obj):
@@ -75,7 +78,5 @@ class AuthorizationService:
         try:
             queryset.model._meta.get_field("property")
         except FieldDoesNotExist as exc:
-            raise ValueError(
-                f"{queryset.model.__name__} is not a property-scoped model"
-            ) from exc
+            raise ValueError(f"{queryset.model.__name__} is not a property-scoped model") from exc
         return queryset.filter(property_id=property_obj.pk)

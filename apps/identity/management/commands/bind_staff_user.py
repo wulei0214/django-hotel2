@@ -7,7 +7,6 @@ from apps.core.models import Property
 from apps.identity.models import PropertyStaffMembership
 from apps.identity.services import EmployeeLifecycleError, EmployeeLifecycleService
 
-
 ROLE_CHOICES = (
     "FRONT_DESK",
     "HOUSEKEEPING",
@@ -38,8 +37,10 @@ class Command(BaseCommand):
         parser.add_argument("--property-code", default="DEFAULT")
         parser.add_argument("--role", required=True, choices=ROLE_CHOICES)
         parser.add_argument(
-            "--password", default="",
-            help="可选：为该账号设置/重置登录密码（不传则要求账号已具备密码）")
+            "--password",
+            default="",
+            help="可选：为该账号设置/重置登录密码（不传则要求账号已具备密码）",
+        )
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -57,13 +58,21 @@ class Command(BaseCommand):
                 )
             )
             group = Group.objects.get(name=ROLE_CODE_TO_GROUP[options["role"]])
-        except (User.DoesNotExist, Property.DoesNotExist, PropertyStaffMembership.DoesNotExist, Group.DoesNotExist) as exc:
+        except (
+            User.DoesNotExist,
+            Property.DoesNotExist,
+            PropertyStaffMembership.DoesNotExist,
+            Group.DoesNotExist,
+        ) as exc:
             raise CommandError(f"无法完成绑定：{exc}") from exc
 
         try:
             EmployeeLifecycleService.bind_existing_user(
-                membership=membership, user=user, group=group,
-                password=options.get("password") or "", granted_by=None,
+                membership=membership,
+                user=user,
+                group=group,
+                password=options.get("password") or "",
+                granted_by=None,
             )
         except EmployeeLifecycleError as exc:
             raise CommandError(str(exc)) from exc

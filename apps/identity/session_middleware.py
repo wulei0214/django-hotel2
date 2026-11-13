@@ -15,7 +15,9 @@
 并发语义采用评审决议 H.2 的务实一致：不承诺旧响应绝不写回旧 Key，
 但已失效的旧 Key 不能重新获得认证（Session 引擎按无效处理）。
 """
+
 import time
+from http.cookies import Morsel
 
 from django.conf import settings
 from django.contrib.sessions.backends.base import UpdateError
@@ -23,8 +25,6 @@ from django.contrib.sessions.exceptions import SessionInterrupted
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.utils.cache import patch_vary_headers
 from django.utils.http import http_date
-from http.cookies import Morsel
-
 
 # ---- 身份域（identity）：Cookie 归属的认证体系 ----
 COOKIE_DOMAIN_PMS = "pms"
@@ -52,12 +52,34 @@ class SessionCookieSpec:
     cleanup_only：True 表示仅发送过期删除指令，绝不作为认证读取。
     """
 
-    __slots__ = ("category", "identity", "name", "path", "paths", "domain",
-                 "secure", "httponly", "samesite", "writable", "cleanup_only")
+    __slots__ = (
+        "category",
+        "identity",
+        "name",
+        "path",
+        "paths",
+        "domain",
+        "secure",
+        "httponly",
+        "samesite",
+        "writable",
+        "cleanup_only",
+    )
 
-    def __init__(self, category, identity, name, path=None, paths=None,
-                 domain=None, secure=False, httponly=True, samesite=None,
-                 writable=True, cleanup_only=False):
+    def __init__(
+        self,
+        category,
+        identity,
+        name,
+        path=None,
+        paths=None,
+        domain=None,
+        secure=False,
+        httponly=True,
+        samesite=None,
+        writable=True,
+        cleanup_only=False,
+    ):
         self.category = category
         self.identity = identity
         self.name = name
@@ -71,8 +93,7 @@ class SessionCookieSpec:
         self.cleanup_only = bool(cleanup_only)
 
     def __repr__(self):
-        return "<SessionCookieSpec %s name=%r path=%r>" % (
-            self.category, self.name, self.path)
+        return f"<SessionCookieSpec {self.category} name={self.name!r} path={self.path!r}>"
 
 
 def _global_cookie_flags():
@@ -104,11 +125,10 @@ def platform_portal_cookie_spec():
     return SessionCookieSpec(
         category=CATEGORY_PLATFORM_PORTAL,
         identity=COOKIE_DOMAIN_PLATFORM,
-        name=getattr(settings, "PLATFORM_PORTAL_COOKIE_NAME",
-                     "platform_sessionid"),
+        name=getattr(settings, "PLATFORM_PORTAL_COOKIE_NAME", "platform_sessionid"),
         path="/platform/",
         domain=None,
-        **_global_cookie_flags()
+        **_global_cookie_flags(),
     )
 
 
@@ -117,11 +137,10 @@ def platform_admin_cookie_spec():
     return SessionCookieSpec(
         category=CATEGORY_PLATFORM_ADMIN,
         identity=COOKIE_DOMAIN_PLATFORM,
-        name=getattr(settings, "ADMIN_SESSION_COOKIE_NAME",
-                     "django_admin_sessionid"),
+        name=getattr(settings, "ADMIN_SESSION_COOKIE_NAME", "django_admin_sessionid"),
         path="/admin/",
         domain=None,
-        **_global_cookie_flags()
+        **_global_cookie_flags(),
     )
 
 
@@ -130,11 +149,14 @@ def legacy_platform_cookie_spec():
     return SessionCookieSpec(
         category=CATEGORY_LEGACY_REDIRECT,
         identity=COOKIE_DOMAIN_LEGACY,
-        name=getattr(settings, "LEGACY_PLATFORM_COOKIE_NAME",
-                     "admin_sessionid"),
-        paths=tuple(getattr(settings, "LEGACY_PLATFORM_COOKIE_PATHS",
-                            ("/", "/admin/", "/platform/",
-                             "/permissions/", "/permissions/save/"))),
+        name=getattr(settings, "LEGACY_PLATFORM_COOKIE_NAME", "admin_sessionid"),
+        paths=tuple(
+            getattr(
+                settings,
+                "LEGACY_PLATFORM_COOKIE_PATHS",
+                ("/", "/admin/", "/platform/", "/permissions/", "/permissions/save/"),
+            )
+        ),
         # Domain 必须与历史设置一致：历史 Cookie 由旧中间件按
         # SESSION_COOKIE_DOMAIN 写出（默认 host-only），不猜测父域（§D.2）。
         domain=settings.SESSION_COOKIE_DOMAIN,
@@ -172,9 +194,14 @@ def is_admin_request(request):
     PropertyContextMiddleware (F-10) to skip PMS property-context parsing.
     """
     path = request.path_info or request.path
-    return (path == "/admin" or path.startswith("/admin/")
-            or path == "/permissions" or path.startswith("/permissions/")
-            or path == "/platform" or path.startswith("/platform/"))
+    return (
+        path == "/admin"
+        or path.startswith("/admin/")
+        or path == "/permissions"
+        or path.startswith("/permissions/")
+        or path == "/platform"
+        or path.startswith("/platform/")
+    )
 
 
 class SplitSessionMiddleware(SessionMiddleware):
@@ -219,16 +246,13 @@ class SplitSessionMiddleware(SessionMiddleware):
             return response
 
         if spec.identity == COOKIE_DOMAIN_PLATFORM:
-            self._handle_platform_response(
-                request, response, spec, accessed, modified, empty)
+            self._handle_platform_response(request, response, spec, accessed, modified, empty)
             return response
-        return self._handle_pms_response(
-            request, response, spec, accessed, modified, empty)
+        return self._handle_pms_response(request, response, spec, accessed, modified, empty)
 
     # ---- PMS 域：保持 Django SessionMiddleware 原语义 ----
 
-    def _handle_pms_response(self, request, response, spec,
-                             accessed, modified, empty):
+    def _handle_pms_response(self, request, response, spec, accessed, modified, empty):
         if spec.name in request.COOKIES and empty:
             response.delete_cookie(
                 spec.name,
@@ -258,15 +282,12 @@ class SplitSessionMiddleware(SessionMiddleware):
                         "request completed. The user may have logged out "
                         "in a concurrent request, for example."
                     ) from exc
-                self._set_cookie(
-                    response, spec, request.session.session_key,
-                    max_age, expires)
+                self._set_cookie(response, spec, request.session.session_key, max_age, expires)
         return response
 
     # ---- 平台域：双 Cookie 同一 Session Key（§5、§B.2 步骤 5-7）----
 
-    def _handle_platform_response(self, request, response, spec,
-                                  accessed, modified, empty):
+    def _handle_platform_response(self, request, response, spec, accessed, modified, empty):
         if spec.name in request.COOKIES and empty:
             # 登出 flush / 无效或过期 Cookie（S3/S5）：清理两份平台 Cookie。
             # 触发条件是浏览器持有当前路径平台 Cookie——不凭空推断另一份
@@ -295,16 +316,15 @@ class SplitSessionMiddleware(SessionMiddleware):
                             "in a concurrent request, for example."
                         ) from exc
                     self.set_platform_session_cookies(
-                        response, request.session.session_key,
-                        max_age, expires)
+                        response, request.session.session_key, max_age, expires
+                    )
         # 迁移清理（§D）：平台域每个响应附加历史组合过期删除指令，幂等。
         self.delete_legacy_platform_cookies(response)
         return response
 
     # ---- 多 Cookie 写入/删除契约函数（§B.3）----
 
-    def set_platform_session_cookies(self, response, session_key,
-                                     max_age=None, expires=None):
+    def set_platform_session_cookies(self, response, session_key, max_age=None, expires=None):
         """两条平台规格写入相同 session_key 与一致属性（不变量 A.3.5）。"""
         for spec in self._platform_specs():
             self._set_cookie(response, spec, session_key, max_age, expires)
@@ -319,8 +339,7 @@ class SplitSessionMiddleware(SessionMiddleware):
         """对历史平台 Cookie 的每个 Name×Path 组合发送过期删除指令。"""
         spec = legacy_platform_cookie_spec()
         for path in spec.paths:
-            self._delete_cookie(response, spec, path=path,
-                                jar_key="%s@%s" % (spec.name, path))
+            self._delete_cookie(response, spec, path=path, jar_key=f"{spec.name}@{path}")
 
     def _platform_specs(self):
         return (platform_portal_cookie_spec(), platform_admin_cookie_spec())

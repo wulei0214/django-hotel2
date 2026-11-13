@@ -11,9 +11,9 @@
   * /platform/ 会话域 Cookie 见 session_middleware.resolve_session_cookie_spec
     （Cookie 网络隔离专项 §B.1：两份 Path Cookie 同一平台 Session）
 """
-from functools import wraps
 
 import logging
+from functools import wraps
 
 from django.conf import settings
 from django.contrib.auth import logout as auth_logout
@@ -59,18 +59,21 @@ def platform_superadmin_required(view_func):
         if violations:
             # 半状态超管（如 is_staff=False 的 superuser）：拒绝并落安全审计
             from apps.core.models import AuditEvent
+
             audit.warning(
-                "平台拒绝：用户 %s 违反平台身份不变量(%s)",
-                user.username, ",".join(violations))
+                "平台拒绝：用户 %s 违反平台身份不变量(%s)", user.username, ",".join(violations)
+            )
             AuditEvent.record(
                 action="security.platform_denied",
                 entity_type="User",
                 entity_id=str(user.pk),
                 reason="invariant_violation:" + ",".join(violations),
-                request=request)
+                request=request,
+            )
             raise PermissionDenied(
-                "平台账号状态不完整（%s），请先在 Django Admin 修复后再访问平台管理面"
-                % "、".join(violations))
+                f"平台账号状态不完整（{'、'.join(violations)}），"
+                "请先在 Django Admin 修复后再访问平台管理面"
+            )
         return view_func(request, *args, **kwargs)
 
     return wrapped
@@ -79,9 +82,13 @@ def platform_superadmin_required(view_func):
 @platform_superadmin_required
 def platform_home(request):
     """/platform/ 首页：平台管理入口卡片。"""
-    return render(request, "platform/home.html", {
-        "nav_active": "home",
-    })
+    return render(
+        request,
+        "platform/home.html",
+        {
+            "nav_active": "home",
+        },
+    )
 
 
 @platform_superadmin_required
@@ -99,8 +106,7 @@ def platform_system_info(request):
         "tz": settings.TIME_ZONE,
         "sys_lang": settings.LANGUAGE_CODE,
         "session_age_hours": session_age // 3600,
-        "session_expire_at_browser_close": bool(
-            settings.SESSION_EXPIRE_AT_BROWSER_CLOSE),
+        "session_expire_at_browser_close": bool(settings.SESSION_EXPIRE_AT_BROWSER_CLOSE),
         # 以下是配置状态展示，不代表对反向代理或外部网络的主动探测。
         "https_redirect": bool(settings.SECURE_SSL_REDIRECT),
         "session_cookie_secure": bool(settings.SESSION_COOKIE_SECURE),

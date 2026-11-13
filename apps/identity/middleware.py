@@ -1,11 +1,12 @@
 import logging
+
 # 请求上下文提示：当前实现按 DEFAULT_PROPERTY_CODE 单店上下文工作（P1-06 边界）。
 # Property 模型可关联多物业不代表登录/切换链路已支持多物业；
 # 不得把无效物业选择静默解释为另一个物业。
-
 from django.conf import settings
 
 from apps.core.models import Property
+
 from .models import PropertyStaffMembership
 from .session_middleware import is_admin_request
 
@@ -40,16 +41,13 @@ class PropertyContextMiddleware:
 
         if request.user.is_authenticated and request.user.is_active:
             membership = (
-                PropertyStaffMembership.objects.select_related(
-                    "staff_profile", "property"
-                )
+                PropertyStaffMembership.objects.select_related("staff_profile", "property")
                 .filter(
                     staff_profile__user=request.user,
                     staff_profile__employment_status="ACTIVE",
                     status=PropertyStaffMembership.Status.ACTIVE,
                     property__status=Property.Status.ACTIVE,
-                    property__code=getattr(
-                        settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"),
+                    property__code=getattr(settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"),
                 )
                 .order_by("id")
                 .first()
@@ -57,15 +55,18 @@ class PropertyContextMiddleware:
             if membership is None:
                 # 员工没有 DEFAULT 有效任职（含任职在别店）：明确拒绝并审计
                 from apps.core.models import AuditEvent
+
                 logger.warning(
                     "SCOPE 拒绝：用户 %s 无 DEFAULT 有效任职，本次请求不提供物业上下文",
-                    request.user.username)
+                    request.user.username,
+                )
                 AuditEvent.record(
                     action="security.property_context_denied",
                     entity_type="User",
                     entity_id=str(request.user.pk),
                     reason="no_default_membership",
-                    request=request)
+                    request=request,
+                )
 
         if membership is not None:
             property_obj = membership.property
@@ -79,7 +80,5 @@ class PropertyContextMiddleware:
 
         request.property = property_obj
         request.staff_membership = membership
-        request.staff_profile = (
-            membership.staff_profile if membership is not None else None
-        )
+        request.staff_profile = membership.staff_profile if membership is not None else None
         return self.get_response(request)
