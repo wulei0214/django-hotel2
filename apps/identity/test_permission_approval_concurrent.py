@@ -183,14 +183,12 @@ class ConcurrentDoubleApproveTests(PermissionApprovalConcurrencyTestBase):
         self.assertIn(self.special_code, held_after)
         self.assertNotEqual(held_after, held_before, "矩阵必须恰好发生一次变更")
 
-        # 2) 审计唯一性：matrix_saved 恰一次（本测试专用 diff_hash 隔离）
+        # 2) 审计唯一性：matrix_saved 恰一次（以 after 含本次专项码计数）
         saved_events = AuditEvent.objects.filter(
             action="permissions.matrix_saved",
             entity_type="Group",
             entity_id=str(self.group.pk),
-            before__isnull=False,
         )
-        # 审计 before 含基线态：以 after 含专项码且 actor 非申请人计数
         executed = [
             event for event in saved_events if self.special_code in (event.after_json or [])
         ]
