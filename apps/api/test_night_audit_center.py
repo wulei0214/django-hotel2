@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """§4.2 营业日与夜审中心回归测试包。
 
 覆盖：
@@ -19,11 +18,16 @@ from datetime import timedelta
 from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.billing.models import LedgerEntry
 from apps.core.models import (
-    BreakGlassRecord, BusinessDate, NightAuditRun, Property,
+    BreakGlassRecord,
+    BusinessDate,
+    NightAuditRun,
+    Property,
 )
 from apps.identity.authorization import AuthorizationService
 from apps.reservations.front_desk_services import (
-    FrontDeskOperationError, assign_room, check_in_stay,
+    FrontDeskOperationError,
+    assign_room,
+    check_in_stay,
 )
 from apps.reservations.models import Reservation, Stay
 

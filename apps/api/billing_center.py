@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """财务与账单中心 API（基线 2.0 §4.1）。
 
 读取面（hotelapp.finance_access + 当前物业有效任职）：
@@ -30,14 +29,25 @@ from django.db.models import Prefetch, Q, Sum
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.billing import dec02
-from apps.billing.models import (ApprovalRecord, BillingAdjustment,
-                                 CashierShift, CheckoutExceptionRelease,
-                                 Folio, LedgerEntry, Payment, Refund,
-                                 RefundLiability)
+from apps.billing.models import (
+    ApprovalRecord,
+    BillingAdjustment,
+    CashierShift,
+    CheckoutExceptionRelease,
+    Folio,
+    LedgerEntry,
+    Payment,
+    Refund,
+    RefundLiability,
+)
 from apps.billing.services_v2 import BillingService
 from apps.core import labels as L
 from apps.core.api_contract import (
-    ApiError, api_view, api_response, idempotent, paginate,
+    ApiError,
+    api_response,
+    api_view,
+    idempotent,
+    paginate,
 )
 from apps.identity.authorization import AuthorizationService
 from apps.reservations.models import Reservation
@@ -134,8 +144,9 @@ def _invalidate_billing_summary(property_obj):
     账本写入已经提交后，缓存失效失败不得把成功的财务操作伪装成 500；
     记录异常并依赖 60 秒 TTL 兜底。
     """
-    from django.core.cache import cache
     import logging
+
+    from django.core.cache import cache
 
     try:
         cache.delete("billing:open-summary:%s" % property_obj.pk)
@@ -203,8 +214,9 @@ def folio_list(request):
     # 账单写操作（collect/refund/reverse）后由调用方场景自然过期。
     # DEC-18 缓存韧性（用户报告：Redis 未运行时本端点 500）——
     # 缓存不是权威（INV-A09），故障时降级直查数据库，只损失性能不损失可用性。
-    from django.core.cache import cache
     import logging
+
+    from django.core.cache import cache
     _summary_key = "billing:open-summary:%s" % property_obj.pk
     summary_cached = None
     try:

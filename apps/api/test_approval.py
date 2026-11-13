@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """P0-01 审批列表匿名读取 + P0-02 审批动作白名单 API 测试。
 
 P0-01：匿名 401；已登录无任职/停用/他店员工 403；无 approval_view 403；
@@ -17,13 +16,18 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.billing.models import (
-    ApprovalRecord, Folio, Payment, Refund,
+    ApprovalRecord,
+    Folio,
+    Payment,
+    Refund,
 )
 from apps.billing.services_v2 import ApprovalService
 from apps.core.models import AuditEvent, BusinessDate, Property
 from apps.guests.models import Guest
 from apps.identity.models import (
-    PropertyStaffMembership, StaffProfile, StaffRoleAssignment,
+    PropertyStaffMembership,
+    StaffProfile,
+    StaffRoleAssignment,
 )
 from apps.reservations.models import Reservation
 

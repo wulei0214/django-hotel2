@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import json
 from datetime import timedelta
 
@@ -6,14 +5,15 @@ from django.contrib.auth.models import Group, Permission, User
 from django.test import TestCase
 from django.utils import timezone
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.core.models import AuditEvent, Property
 from apps.guests.models import Guest, GuestDocument, GuestPhone
 from apps.guests.services import encrypt_doc_no
 from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 
-# --- test-only generated passwords (no literals in source) ---
-# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
-from django.utils.crypto import get_random_string  # noqa: E402
 _TEST_PW_510C52C1 = get_random_string(24)
 
 

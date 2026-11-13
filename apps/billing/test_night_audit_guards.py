@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """白盒修复回归：夜审/账本守卫（WB-079/080/081/082/083/109）。
 
 覆盖：
@@ -34,7 +33,9 @@ from django.utils import timezone
 
 from apps.billing.models import Folio, LedgerEntry, Payment
 from apps.billing.night_audit import (
-    NightAuditError, NightAuditService, property_date,
+    NightAuditError,
+    NightAuditService,
+    property_date,
 )
 from apps.billing.services_v2 import BillingService
 from apps.core.models import BusinessDate, NightAuditRun, Property

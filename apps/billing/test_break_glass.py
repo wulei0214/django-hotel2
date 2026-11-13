@@ -1,20 +1,21 @@
-# -*- coding: utf-8 -*-
 from datetime import timedelta
 
 from django.contrib.auth.models import Group, Permission, User
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.billing.night_audit import NightAuditError, NightAuditService
-from apps.core.models import AuditEvent, BreakGlassRecord, BusinessDate, Property
-from apps.identity.models import (
-    PropertyStaffMembership, StaffProfile, StaffRoleAssignment,
-)
-
-
 # --- test-only generated passwords (no literals in source) ---
 # 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
 from django.utils.crypto import get_random_string  # noqa: E402
+
+from apps.billing.night_audit import NightAuditError, NightAuditService
+from apps.core.models import AuditEvent, BreakGlassRecord, BusinessDate, Property
+from apps.identity.models import (
+    PropertyStaffMembership,
+    StaffProfile,
+    StaffRoleAssignment,
+)
+
 _TEST_PW_5F396C89 = get_random_string(24)
 _TEST_PW_E8392925 = get_random_string(24)
 _TEST_PW_E910C033 = get_random_string(24)

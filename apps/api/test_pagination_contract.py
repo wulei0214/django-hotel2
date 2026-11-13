@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """P0-03 统一分页契约 + P0-07 排序与列表一致性 回归测试包。
 
 =====================================================================
@@ -81,11 +80,15 @@ from django.contrib.auth.models import Group, Permission, User
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.billing.models import ApprovalRecord
 from apps.core.api_contract import (
-    ApiError,
     PAGE_NUMBER_MAX,
     PAGE_SIZE_MAX,
+    ApiError,
     ensure_stable_ordering,
     paginate,
     parse_page_args,
@@ -95,9 +98,6 @@ from apps.guests.models import Guest
 from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from apps.reservations.models import Reservation
 
-# --- test-only generated passwords (no literals in source) ---
-# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
-from django.utils.crypto import get_random_string  # noqa: E402
 _TEST_PW_510C52C1 = get_random_string(24)
 
 

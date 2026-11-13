@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """PMS2 权威数据仪表盘服务（P1-11：/home/ 统计切权威新域）。
 
 所有指标从 PMS2 模型聚合（Reservation/Stay/Room/Folio/Guest/GuestMembership）；
@@ -8,7 +7,6 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.db.models import Count, Q, Sum
-from django.utils import timezone
 
 from apps.billing.models import LedgerEntry, Payment, Refund
 from apps.guests.models import Guest, GuestMembership
@@ -109,10 +107,9 @@ def dashboard_charts(property_obj, today=None):
     修复 P1-11 遗留：/home/ 视图切了 dashboard_data 但模板仍在消费
     旧扁平键与旧图表数据，导致统计卡与全部图表为空。
     """
-    from apps.core.labels import (
-        member_level_label, choice_labels)
+    from apps.core.labels import choice_labels, member_level_label
     from apps.guests.models import Guest, GuestMembership
-    from apps.inventory.models import Room, RoomType
+    from apps.inventory.models import Room
 
     if today is None:
         today = _property_today(property_obj)
@@ -191,7 +188,7 @@ def dashboard_warnings(property_obj, today=None):
         property=property_obj,
         status__in=(Reservation.Status.PENDING, Reservation.Status.CONFIRMED),
         check_in__lt=today).select_related("guest").order_by("-check_in", "-id")[:10]
-    from apps.guests.services import guest_phone_plain, _mask
+    from apps.guests.services import _mask, guest_phone_plain
     return [{
         "level": "过期未入住",
         "guest": r.guest.full_name,

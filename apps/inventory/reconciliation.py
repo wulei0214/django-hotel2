@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """D4 库存差异自动扫描与人工审批修复（INV-P0）。
 
 依据 docs/PMS2房态库存中心P0P1专项整改需求_2026-11-09.md：
@@ -8,11 +7,9 @@
 - 执行前重新计算并检查版本；数据已变化则拒绝旧方案。
 - 修复使用唯一服务+事务+行锁+审计；修复后再次对账。
 """
-from decimal import Decimal
 
-from django.conf import settings
-from django.db import transaction, models
-from django.db.models import Count, Q, Sum
+from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 
 from apps.core.models import AuditEvent
@@ -27,9 +24,7 @@ from apps.reservations.models import (
     InventoryHold,
     Reservation,
     ReservationRoom,
-    Stay,
 )
-
 
 SOLD_RECOMPUTE_STATUSES = (
     Reservation.Status.CONFIRMED,

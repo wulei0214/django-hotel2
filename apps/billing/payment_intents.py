@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """支付意图领域服务：创建、状态迁移、渠道窗口策略（D2/D6）。
 
 依据 docs/PMS2支付中心P0P1专项整改需求_2026-11-09.md PAY-P0-01~05：
@@ -16,13 +15,13 @@ from django.utils import timezone
 
 from apps.billing.models import (
     Payment,
+    PaymentCompensationTask,
     PaymentIntent,
     ProviderTransaction,
     ProviderTransactionEvent,
-    PaymentCompensationTask,
 )
-from apps.core.models import AuditEvent
 from apps.core.booking_constants import PENDING_RESERVATION_TTL_MINUTES
+from apps.core.models import AuditEvent
 
 # D2：渠道支付窗口策略（服务端配置；客户端不得提交或修改）
 # RSV-07：初始窗口必须与预订 expires_at 同源，否则会出现「库存已释放但
@@ -470,8 +469,7 @@ def confirm_intent_success(*, property_obj, intent_id, provider_transaction_id,
     竞态仲裁：本方法与 Hold 过期释放共用数据库行锁，保证渠道成功后
     Hold 不被过期任务释放（PAY-P0-04）。
     """
-    from apps.inventory.services import confirm_inventory_for_reservation
-    from apps.inventory.services import InventoryUnavailable
+    from apps.inventory.services import InventoryUnavailable, confirm_inventory_for_reservation
     intent = PaymentIntent.objects.select_for_update().filter(
         pk=intent_id, property=property_obj).first()
     if intent is None:
@@ -743,10 +741,7 @@ def complete_compensation_task(task_id, success=True, error_code="",
     # 无法安全重建）重试没有意义——跳过指数退避直接进入死信，等待人工
     # 协调/对账；原因写入 last_error_summary（payload），支付等资金事实
     # 一律保留、不得篡改。人工排查后仍可 replay_dead_letter_task 重放。
-    if error_code == "REQUIRES_MANUAL_COORDINATION":
-        task.status = PaymentCompensationTask.Status.DEAD_LETTER
-        task.completed_at = timezone.now()
-    elif task.attempt_count >= task.max_attempts:
+    if error_code == "REQUIRES_MANUAL_COORDINATION" or task.attempt_count >= task.max_attempts:
         task.status = PaymentCompensationTask.Status.DEAD_LETTER
         task.completed_at = timezone.now()
     else:

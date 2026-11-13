@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """审批动作注册表（P0-02）：action_code 唯一白名单（代码级单一事实源）。
 
 ApprovalRecord 的 action_code / entity_type / payload 必须来自本注册表：
@@ -13,7 +12,6 @@ ApprovalRecord 的 action_code / entity_type / payload 必须来自本注册表�
 import re
 
 from apps.core.api_contract import ApiError
-
 
 # ---------------------------------------------------------------------------
 # 敏感值识别：payload 不得携带身份证、密码、支付密钥类数据（P0-02 §5）

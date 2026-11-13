@@ -1,5 +1,6 @@
 from django.contrib import admin
 
+
 class ReadOnlyAdminMixin:
     """P0 安全护栏：Admin 对 PMS2 预订/入住模型默认只读（V1.1 §12.2）。
 

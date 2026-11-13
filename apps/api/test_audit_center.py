@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """§4.4 审计与合规中心回归测试包。
 
 覆盖：
@@ -24,13 +23,14 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.utils import timezone
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.api import audit_center
 from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.core.models import AuditEvent, Property
 
-# --- test-only generated passwords (no literals in source) ---
-# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
-from django.utils.crypto import get_random_string  # noqa: E402
 _TEST_PW_EA5E4F64 = get_random_string(24)
 
 

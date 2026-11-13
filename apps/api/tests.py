@@ -2,21 +2,21 @@ import json
 from datetime import timedelta
 from decimal import Decimal
 
+from django.contrib.auth.models import Group, Permission, User
 from django.test import TestCase, override_settings
 from django.utils import timezone
-
-from apps.core.models import Property
-from django.contrib.auth.models import Group, Permission, User
-from apps.billing.models import Folio, LedgerEntry
-from apps.guests.models import Guest
-from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
-from apps.inventory.models import Room
-from apps.reservations.models import Reservation, ReservationRoom
-from apps.inventory.models import DailyRate, RatePlan, RoomType, RoomTypeInventory
 
 # --- test-only generated passwords (no literals in source) ---
 # 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
 from django.utils.crypto import get_random_string  # noqa: E402
+
+from apps.billing.models import Folio, LedgerEntry
+from apps.core.models import Property
+from apps.guests.models import Guest
+from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
+from apps.inventory.models import DailyRate, RatePlan, Room, RoomType, RoomTypeInventory
+from apps.reservations.models import Reservation, ReservationRoom
+
 _TEST_PW_510C52C1 = get_random_string(24)
 _TEST_PW_29AF8666 = get_random_string(24)
 _TEST_PW_C9A8E88B = get_random_string(24)

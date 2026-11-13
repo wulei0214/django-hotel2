@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """客人证件服务（V1.1 M-02 P0）：密文落库、HMAC 查重、独立权限揭示 + 审计。
 
 加密：Fernet（cryptography 库），密钥来自 DJANGO_PII_KEY；
@@ -10,12 +9,11 @@ import base64
 import hashlib
 import hmac
 
-from django.db import IntegrityError, transaction
-from django.conf import settings
-from django.core.exceptions import PermissionDenied, ImproperlyConfigured
-from django.core.exceptions import ValidationError
-from django.utils import timezone
 from cryptography.fernet import Fernet, InvalidToken
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured, PermissionDenied, ValidationError
+from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from apps.core.models import AuditEvent
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """统一 API 响应封套与幂等装饰器（V1.1 §5 契约标准）。
 
 所有新模块 API 采用同一响应结构（{data, meta}）、同一错误结构（{error, meta}）、
@@ -216,7 +215,6 @@ def idempotent(view):
         key = request.headers.get("Idempotency-Key", "").strip()
         if not key:
             return view(request, *args, **kwargs)
-        from apps.core.models import IdempotencyRecord
         prop = getattr(request, "property", None)
         body_hash = hashlib.sha256(request.body or b"").hexdigest()
         user = request.user if request.user.is_authenticated else None

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """跨模块共享的预订/支付时限常量（RSV-07）。
 
 此前「15 分钟支付期限」分别硬编码在 reservations.services 与

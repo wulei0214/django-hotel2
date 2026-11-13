@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """§4.3 清洁与维修工作台回归测试包。
 
 覆盖：
@@ -20,13 +19,17 @@ from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.core.models import AuditEvent, Property
 from apps.identity.authorization import AuthorizationService
 from apps.identity.registry import (
-    MODULE_REGISTRY_V2, SPECIAL_PERMISSIONS, get_special, registry_errors,
+    MODULE_REGISTRY_V2,
+    SPECIAL_PERMISSIONS,
+    get_special,
+    registry_errors,
     validate_registry,
 )
 from apps.inventory.models import HousekeepingTask, Room
 from apps.inventory.services import (
-    HousekeepingOperationError, change_housekeeping_status,
-    )
+    HousekeepingOperationError,
+    change_housekeeping_status,
+)
 
 
 class HousekeepingCenterTestBase(E2EFlowTestBase):
@@ -545,6 +548,7 @@ class HousekeepingMaintenanceTests(HousekeepingCenterTestBase):
     def test_maintenance_grants_are_role_aligned_and_not_copied_from_no_show(self):
         """维修权限按维修职责授予，不再从未到处理权限复制授权。"""
         from django.contrib.auth.models import Group
+
         from apps.identity.authorization import AuthorizationService
 
         front_desk = self._make_staff("hk_center_frontdesk", "前台")

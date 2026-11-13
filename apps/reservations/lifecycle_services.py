@@ -6,15 +6,15 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.billing.models import Folio
+from apps.core.models import AuditEvent
 from apps.inventory.models import DailyRate, Room, RoomTypeInventory
 from apps.inventory.services import (
     InventoryUnavailable,
     _property_today,
     release_sold_inventory_for_room_line,
 )
-from apps.core.models import AuditEvent
-from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
 
+from .models import NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment
 
 CENT = Decimal("0.01")
 

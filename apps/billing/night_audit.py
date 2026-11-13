@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """PMS2 夜审领域服务：只对 PMS2 Stay/Folio/Ledger 写入，不读写旧 FinanceRecord。"""
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -10,7 +9,11 @@ from django.utils import timezone
 from apps.billing.models import ApprovalRecord, Folio, LedgerEntry
 from apps.billing.services_v2 import BillingService
 from apps.core.models import (
-    AuditEvent, BreakGlassRecord, BusinessDate, NightAuditRun, Property,
+    AuditEvent,
+    BreakGlassRecord,
+    BusinessDate,
+    NightAuditRun,
+    Property,
 )
 from apps.reservations.models import Reservation, ReservationRoom, Stay
 
@@ -582,6 +585,7 @@ class NightAuditService:
                             password, reason, validity_minutes=10):
         """仅单一有效经理账号的紧急场景发放十分钟、单营业日重开授权。"""
         from django.db.models import Q
+
         from apps.identity.models import StaffRoleAssignment
 
         reason = str(reason or "").strip()

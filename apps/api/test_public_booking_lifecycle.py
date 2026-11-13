@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """公开预订订单生命周期验收测试（SEC-01~06 + 十场景验收矩阵）。
 
 依据 docs/audit/phase0/90-public-booking-order-lifecycle-review.md 验收矩阵，

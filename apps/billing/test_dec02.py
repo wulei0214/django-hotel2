@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """DEC-02-A1/B2 验收测试（依据 docs/PMS2_DEC-02业务决策基线_2026-11-09.md）。
 
 A1：原负债冻结 + 账务调整独立记录（财务发起/值班经理审批/执行生凭证/
@@ -8,13 +7,17 @@ B2：异常放行（前台申请/值班经理审批/放行后不建正式负债/
 """
 import threading
 import unittest
-from decimal import Decimal
 from datetime import timedelta
+from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.db import connection
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
+
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
 
 from apps.billing.dec02 import (
     approve_adjustment,
@@ -22,33 +25,26 @@ from apps.billing.dec02 import (
     consume_approved_exception_release,
     execute_adjustment,
     liability_net_snapshot,
-    reject_adjustment,
     reject_exception_release,
     request_adjustment,
     request_exception_release,
     settle_exception_release,
 )
-from apps.billing.liabilities import register_refund_liability
 from apps.billing.models import (
     BillingAdjustment,
     CheckoutExceptionRelease,
     Folio,
     LedgerEntry,
     Payment,
-    Refund,
     RefundLiability,
 )
 from apps.core.models import AuditEvent, Property
 from apps.reservations.front_desk_services import (
-    check_in_stay,
-    check_out_stay,
     FrontDeskOperationError,
+    check_out_stay,
 )
 from apps.reservations.models import Reservation
 
-# --- test-only generated passwords (no literals in source) ---
-# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
-from django.utils.crypto import get_random_string  # noqa: E402
 _TEST_PW_4756BB53 = get_random_string(24)
 
 
@@ -188,7 +184,7 @@ class Dec02A1AdjustmentTests(Dec02TestBase):
                                       executed_by=self.finance)
         self.assertEqual(executed.status, BillingAdjustment.Status.EXECUTED)
         # 独立抵扣凭证（ADJUSTMENT 类型，正数），挂在已关闭账单上
-        entry = LedgerEntry.objects.get(reference=f"adjustment:dec02-adj-002")
+        entry = LedgerEntry.objects.get(reference="adjustment:dec02-adj-002")
         self.assertEqual(entry.entry_type, LedgerEntry.EntryType.ADJUSTMENT)
         self.assertEqual(entry.amount, Decimal("100.00"))
         liability.refresh_from_db()

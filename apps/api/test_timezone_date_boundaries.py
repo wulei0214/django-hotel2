@@ -1,12 +1,12 @@
-# -*- coding: utf-8 -*-
 """财务摘要与房价日历物业本地日期回归测试。"""
-from datetime import datetime, timezone as dt_timezone
-
-from django.test import TestCase
+from datetime import datetime
+from datetime import timezone as dt_timezone
 from unittest import mock
 
-from apps.core.models import Property
+from django.test import TestCase
+
 from apps.api.guest_center import _property_today
+from apps.core.models import Property
 
 
 class GuestCenterPropertyDateTests(TestCase):

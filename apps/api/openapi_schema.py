@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """PMS2 OpenAPI 3.1 契约（方案 §9.8：API 契约与 Swagger/OpenAPI 交付）。
 
 契约描述表 ``CONTRACTS`` 以视图源码为准逐条核实（apps/api/views.py、
@@ -98,7 +97,7 @@ def Q(name, desc, typ="string", required=False, example=None, fmt=None):
 def PQ(page_default=20, size_max=100):
     """统一分页参数（front_desk._page_args / api_contract.paginate 同口径）。"""
     return [
-        Q("page", f"页码，从 1 开始，默认 1。", "integer", False, 1),
+        Q("page", "页码，从 1 开始，默认 1。", "integer", False, 1),
         Q("page_size", f"每页数量，默认 {page_default}，最大 {size_max}。", "integer", False, page_default),
     ]
 

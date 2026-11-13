@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """支付/账务维护调度入口（生产可达性收尾）。
 
 此前以下能力虽已实现，但没有任何生产调用方：
@@ -31,7 +30,6 @@ from apps.billing.payment_intents import (
 )
 from apps.billing.reconciliation import scan_folio_reconciliation
 from apps.core.models import Property
-
 
 # WB-120：只有「Payment 缺凭证」类差异可交给 PAYMENT_LEDGER_REPAIR 执行器
 # （其契约是 aggregate_type="Payment"；Deposit 也是 Payment 事实）。其余差异

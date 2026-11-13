@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """定时关闭审批超时的退款申请，释放原支付可退额度。"""
 from django.core.management.base import BaseCommand, CommandError
 

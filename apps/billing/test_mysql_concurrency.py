@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """收尾专项：真实 MySQL 并发测试（billing 侧，收尾任务一 场景 1/5/6/7/8）。
 
 全部用例 TransactionTestCase + 双（多）线程各自独立数据库连接，
@@ -27,7 +26,7 @@ from decimal import Decimal
 from threading import Barrier
 
 from django.contrib.auth.models import User
-from django.db import close_old_connections, connection, connections
+from django.db import close_old_connections, connection
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
@@ -402,7 +401,7 @@ class NightAuditMultiRoomCheckoutConcurrencyTests(BillingConcurrencyBase):
                     executed_by=self.operator,
                     business_date=self.today)
                 results["run"] = (str(run.status), created)
-            except Exception as exc:
+            except Exception:
                 results["errors"].append(
                     f"audit-worker: {traceback.format_exc()}")
             finally:
@@ -416,7 +415,7 @@ class NightAuditMultiRoomCheckoutConcurrencyTests(BillingConcurrencyBase):
                     property_obj=self.property, stay_id=stay_out.pk,
                     checked_out_by=self.operator)
                 results["checkout"] = (str(checked_out.status), changed)
-            except Exception as exc:
+            except Exception:
                 results["errors"].append(
                     f"checkout-worker: {traceback.format_exc()}")
             finally:

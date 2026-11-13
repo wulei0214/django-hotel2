@@ -1,4 +1,5 @@
 import functools
+
 # API 安全阅读提示：公共预订与订单查询属于匿名访问面；必须关注限流、审计、字段脱敏、幂等和生产环境 Mock 支付门禁。页面参数和 booking_no + phone 组合不能代替访问频率控制。
 import json
 import logging
@@ -9,9 +10,6 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.core import rate_limit
-from apps.core.api_contract import ApiError, api_error_response
-from apps.core.models import AuditEvent
 from apps.billing.services import (
     PaymentConflict,
     create_mock_payment_intent,
@@ -19,16 +17,21 @@ from apps.billing.services import (
     sign_mock_callback,
     verify_mock_callback,
 )
+from apps.core import rate_limit
+from apps.core.api_contract import ApiError, api_error_response
+from apps.core.models import AuditEvent
 from apps.inventory.models import RoomType
-from apps.inventory.services import (InventoryUnavailable, get_room_type_availability,
-                                     _property_today)
-from apps.reservations.models import Reservation
-from apps.reservations.models import BookingAccessToken
+from apps.inventory.services import (
+    InventoryUnavailable,
+    _property_today,
+    get_room_type_availability,
+)
+from apps.reservations.models import BookingAccessToken, Reservation
 from apps.reservations.services import (
     ReservationConflict,
-    create_reservation,
     cancel_pending_reservation,
-    )
+    create_reservation,
+)
 
 logger = logging.getLogger("hotel.api")
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """中央中文标签映射：API DTO 层统一输出 *_label 字段的数据源。
 
 原则：模型 TextChoices 已有中文 label 的直接取（单一事实源）；

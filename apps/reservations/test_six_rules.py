@@ -1,21 +1,17 @@
-# -*- coding: utf-8 -*-
 """六项业务规则验收测试。"""
 import datetime
 from datetime import timedelta
-import unittest
-
 from decimal import Decimal
 
 from django.contrib.auth.models import User
-from django.db import connection
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from apps.core.models import Property, AuditEvent
-from apps.guests.models import Guest
-from apps.inventory.models import DailyRate, RatePlan, Room, RoomType, RoomTypeInventory
-from apps.identity.models import PropertyStaffMembership, StaffProfile
 from apps.billing.models import Folio
+from apps.core.models import Property
+from apps.guests.models import Guest
+from apps.identity.models import PropertyStaffMembership, StaffProfile
+from apps.inventory.models import RatePlan, RoomType
 from apps.reservations.models import (
     EarlyDeparturePolicy,
     Reservation,

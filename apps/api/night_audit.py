@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """夜审与营业日中心 API（§4.2）。
 
 写操作（preview/run/reopen/break-glass）沿用 NightAuditService 既有入口；
@@ -19,9 +18,11 @@ from django.views.decorators.http import require_GET, require_POST
 
 from apps.billing.models import ApprovalRecord, LedgerEntry
 from apps.billing.night_audit import (
-    NightAuditError, NightAuditService, property_date,
+    NightAuditError,
+    NightAuditService,
+    property_date,
 )
-from apps.core.api_contract import ApiError, api_view, api_response, paginate
+from apps.core.api_contract import ApiError, api_response, api_view, paginate
 from apps.core.models import BreakGlassRecord, BusinessDate, NightAuditRun
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import Room

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """§4.5 报表分析中心回归测试包。
 
 覆盖：
@@ -25,6 +24,10 @@ from decimal import Decimal
 from django.contrib.auth.models import User
 from django.utils import timezone
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.billing.models import Folio, LedgerEntry
 from apps.core.models import AuditEvent, Property
@@ -32,9 +35,6 @@ from apps.guests.models import Guest
 from apps.inventory.models import RoomTypeInventory
 from apps.reservations.models import Reservation
 
-# --- test-only generated passwords (no literals in source) ---
-# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
-from django.utils.crypto import get_random_string  # noqa: E402
 _TEST_PW_EA5E4F64 = get_random_string(24)
 
 
@@ -520,6 +520,7 @@ class ReportPageTests(ReportCenterTestBase):
         self.assertContains(operational, "visibleReports")
 
         from django.contrib.auth.models import Permission
+
         from apps.identity.models import PropertyStaffMembership
         membership = PropertyStaffMembership.objects.get(
             property=self.property, staff_profile__user=self.finance)

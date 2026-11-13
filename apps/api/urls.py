@@ -1,6 +1,19 @@
 from django.urls import path
 
-from . import approval, audit_center, billing_center, front_desk, guest_center, housekeeping_center, night_audit, notification_center, report_center, reservation_center, staff_center, views
+from . import (
+    approval,
+    audit_center,
+    billing_center,
+    front_desk,
+    guest_center,
+    housekeeping_center,
+    night_audit,
+    notification_center,
+    report_center,
+    reservation_center,
+    staff_center,
+    views,
+)
 
 app_name = "api"
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """清洁与维修工作台 API（基线 2.0 §4.3）。
 
 围绕 Room 三维状态（占用/清洁/维修互相独立）提供工作清单、统计与两个写入口；
@@ -18,7 +17,6 @@ from django.views.decorators.http import require_GET, require_POST
 
 from apps.core.api_contract import ApiError, api_response, api_view, paginate
 from apps.identity.authorization import AuthorizationService
-from .night_audit import _body  # 与夜审中心同口径的 JSON 请求体解析
 from apps.inventory.models import Room
 from apps.inventory.services import (
     HousekeepingOperationError,
@@ -26,6 +24,8 @@ from apps.inventory.services import (
     change_maintenance_status,
     housekeeping_summary,
 )
+
+from .night_audit import _body  # 与夜审中心同口径的 JSON 请求体解析
 
 
 def _context(request, permission):

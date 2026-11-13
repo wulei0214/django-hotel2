@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """DEC-WALKIN-01 Walk-in 散客原子化创建服务 + DEC-ED-01 提前离店政策计算。
 
 Walk-in：Guest→Reservation(source=WALK_IN)→ReservationRoom→Folio→Stay 同事务。
@@ -12,23 +11,18 @@ WB-074 修复：占位号升级为 uuid5（幂等键派生，同键重放恒定�
            当前物业；同幂等键重放不再重复排房/入住（走幂等返回既有 Stay）。
 """
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
-from django.conf import settings
-from datetime import timedelta
-
-from django.db import models, transaction
-from django.db.models import Q
+from django.db import transaction
 from django.utils import timezone
 
-from apps.core.models import AuditEvent, Property
+from apps.core.models import AuditEvent
 from apps.reservations.models import (
     EarlyDeparturePolicy,
     Reservation,
-    ReservationRoom,
     Stay,
 )
-
 
 # ---------------------------------------------------------------------------
 # DEC-ED-01 提前离店政策计算
@@ -74,7 +68,8 @@ def calculate_early_departure(*, line, actual_check_out):
     # （UTC 日期）：Asia/Shanghai 凌晨 00:00–07:59 退房时 UTC 是前一天，
     # 少算一晚房费且该晚库存不释放也不计费。与夜审 property_date /
     # _property_today / 提前离店释放起点统一到同一物业时区口径。
-    from datetime import date as date_cls, datetime as dt_datetime
+    from datetime import date as date_cls
+    from datetime import datetime as dt_datetime
     from zoneinfo import ZoneInfo
     try:
         property_tz = ZoneInfo(line.property.timezone or "Asia/Shanghai")
@@ -222,8 +217,10 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
         if stay is None:
             raise ValueError(
                 "Walk-in 幂等重放异常：首次请求未完成入住，请联系前台核对。")
+        # R1-01：created 必须来自 create_reservation 的最终幂等仲裁，
+        # 供 API 层区分 201 created=true / 200 created=false。
         return {"reservation": reservation, "stay": stay, "room": stay.room,
-                "booking_no": reservation.booking_no}
+                "booking_no": reservation.booking_no, "created": False}
 
     line = reservation.reservation_rooms.first()
 
@@ -260,12 +257,18 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
                             reservation_room_id=line.pk,
                             checked_in_by=created_by)
 
-    # 押金（DEC-DEP-01 政策服务端计算）
-    if deposit_amount:
-        BillingService.record_deposit(
-            property_obj=property_obj, reservation=reservation,
-            amount=deposit_amount, method="CASH",
-            idempotency_key=f"{key}-dep", received_by=created_by)
+    # 押金（R1-02/DEC-DEP-01 强制政策）：与客户端是否传 deposit_amount 无关，
+    # 服务端一律按 Reservation.total_amount×30% 强制收取（WB-030 在
+    # record_deposit 内计算并覆盖金额）；客户端传入值仅作展示核对
+    # （client_display_amount 不一致记 warning 日志），不得控制是否收取。
+    # 免押金如未来成为业务选项，必须走显式授权路径，不得通过省略字段
+    # 隐式免除。amount 传 total_amount 仅用于通过 record_deposit 的
+    # "金额必须大于零"前置校验，实际落库金额以服务端计算为准。
+    BillingService.record_deposit(
+        property_obj=property_obj, reservation=reservation,
+        amount=reservation.total_amount,
+        client_display_amount=deposit_amount, method="CASH",
+        idempotency_key=f"{key}-dep", received_by=created_by)
 
     AuditEvent.record(
         action="reservation.walk_in_created", entity_type="Reservation",
@@ -274,4 +277,4 @@ def create_walk_in(*, property_obj, full_name, phone, room_type_id,
                "room": target_room.number, "source": "WALK_IN"},
         reason="Walk-in 散客原子化入住（DEC-WALKIN-01）")
     return {"reservation": reservation, "stay": stay, "room": target_room,
-            "booking_no": reservation.booking_no}
+            "booking_no": reservation.booking_no, "created": True}

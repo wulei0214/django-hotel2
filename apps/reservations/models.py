@@ -549,6 +549,7 @@ class BookingAccessToken(models.Model):
     def issue_for(cls, reservation):
         """为预订签发新令牌（轮换语义：旧令牌被替换即失效）。返回明文一次。"""
         import secrets
+
         from django.utils import timezone as tz
         plain = secrets.token_urlsafe(32)  # 256 bit 熵
         token_hash = hashlib.sha256(plain.encode("utf-8")).hexdigest()

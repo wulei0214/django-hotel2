@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """白盒服务层单元测试（子智能体 1：guests/services.py）。
 
 覆盖 45-whitebox-services.md 登记缺陷的针对性回归：

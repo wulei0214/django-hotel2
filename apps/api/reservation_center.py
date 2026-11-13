@@ -1,8 +1,7 @@
-# -*- coding: utf-8 -*-
 """预订管理 + 审计时间线只读 API（V1.1 Phase 1 五模块补齐）。"""
 from django.views.decorators.http import require_GET
 
-from apps.core.api_contract import ApiError, api_view, api_response, paginate
+from apps.core.api_contract import ApiError, api_response, api_view, paginate
 from apps.identity.authorization import AuthorizationService
 from apps.reservations.models import Reservation, ReservationRoom
 

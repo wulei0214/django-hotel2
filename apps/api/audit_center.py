@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """审计与合规中心 API（基线 2.0 §4.4）。
 
 只读端点，全部以 ``core.audit_view`` 为唯一读取门禁（P0-04 定版；
@@ -21,16 +20,16 @@ PII 防泄露口径：
     RETENTION_NOTE 常量说明，不虚构年限；归档/备份策略见该 SQL 附注。
 """
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
 from django.utils import timezone
-from zoneinfo import ZoneInfo
-
 from django.views.decorators.http import require_GET
 
-from apps.core.api_contract import ApiError, api_view, api_response, paginate
+from apps.core.api_contract import ApiError, api_response, api_view, paginate
 from apps.core.models import AuditEvent
 from apps.identity.authorization import AuthorizationService
+
 from .report_center import _parse_day, _property_tz_bounds  # 时间口径唯一权威（§6）
 
 # ---------------------------------------------------------------------------

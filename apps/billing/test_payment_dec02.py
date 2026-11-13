@@ -1,7 +1,6 @@
-# -*- coding: utf-8 -*-
 """支付意图/渠道交易/补偿任务测试（PAY-P0-01~05 + D2/D3/D6）。"""
-from decimal import Decimal
 from datetime import timedelta
+from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
@@ -11,8 +10,8 @@ from apps.billing.models import (
     Folio,
     LedgerEntry,
     Payment,
-    PaymentIntent,
     PaymentCompensationTask,
+    PaymentIntent,
     ProviderTransaction,
 )
 from apps.billing.payment_intents import (
@@ -42,8 +41,8 @@ class PaymentIntentTests(TestCase):
         cls.owner = User.objects.create_user(username="pi_owner", password="x")
         from apps.guests.models import Guest
         cls.guest = Guest.objects.create(property=cls.prop, full_name="意图测试客")
+        from apps.inventory.models import RatePlan, RoomType
         from apps.reservations.models import ReservationRoom
-        from apps.inventory.models import Room, RoomType, RatePlan
         cls.rt = RoomType.objects.create(
             property=cls.prop, code="PI-STD", name="意图测试房型", capacity=2)
         cls.rate = RatePlan.objects.create(
@@ -670,8 +669,8 @@ class ProviderEventReplayFactTests(TestCase):
         cls.owner = User.objects.create_user(username="pi_wb115", password="x")
         from apps.guests.models import Guest
         cls.guest = Guest.objects.create(property=cls.prop, full_name="WB115 客")
+        from apps.inventory.models import RatePlan, RoomType
         from apps.reservations.models import ReservationRoom
-        from apps.inventory.models import RoomType, RatePlan
         cls.rt = RoomType.objects.create(
             property=cls.prop, code="PI-WB115", name="WB115 房型", capacity=2)
         cls.rate = RatePlan.objects.create(
@@ -822,8 +821,8 @@ class ProviderEventProgressionTests(TestCase):
         cls.owner = User.objects.create_user(username="pi_wb119", password="x")
         from apps.guests.models import Guest
         cls.guest = Guest.objects.create(property=cls.prop, full_name="WB119 客")
+        from apps.inventory.models import RatePlan, RoomType
         from apps.reservations.models import ReservationRoom
-        from apps.inventory.models import RoomType, RatePlan
         cls.rt = RoomType.objects.create(
             property=cls.prop, code="PI-WB119", name="WB119 房型", capacity=2)
         cls.rate = RatePlan.objects.create(
@@ -992,6 +991,7 @@ class ProviderEventProgressionTests(TestCase):
         """WB-119（第 31 轮）：事件历史只追加——实例 save 修改与 delete
         删除都必须被拒绝，QuerySet 批量旁路同样被拦截。"""
         from django.core.exceptions import ValidationError
+
         from apps.billing.models import ProviderTransactionEvent
         intent = self._intent("pi-wb119-evt-immutable")
         record_provider_event(
@@ -1059,8 +1059,8 @@ class ProviderEventProgressionTests(TestCase):
         """WB-125（第 32 轮）：受控上下文不是无限通行证——即使直接调用
         领域服务的授权上下文，非法状态与非法跳转仍被模型层二次校验拒绝；
         models 不再公开 authorized_provider_transition，公开入口已收口。"""
-        from apps.billing.payment_intents import _provider_transition_authorization
         import apps.billing.models as billing_models
+        from apps.billing.payment_intents import _provider_transition_authorization
         # models 不再提供公开的受控上下文（审查要求的收口）
         self.assertFalse(hasattr(billing_models, "authorized_provider_transition"))
         intent = self._intent("pi-wb125-matrix")
@@ -1125,8 +1125,8 @@ class UnsignedCallbackFaultInjectionTests(TestCase):
         cls.owner = User.objects.create_user(username="pi_wb76u", password="x")
         from apps.guests.models import Guest
         cls.guest = Guest.objects.create(property=cls.prop, full_name="WB76 客")
+        from apps.inventory.models import RatePlan, RoomType
         from apps.reservations.models import ReservationRoom
-        from apps.inventory.models import RoomType, RatePlan
         cls.rt = RoomType.objects.create(
             property=cls.prop, code="PI-WB76", name="WB76 房型", capacity=2)
         cls.rate = RatePlan.objects.create(
@@ -1185,6 +1185,7 @@ class UnsignedCallbackFaultInjectionTests(TestCase):
     def test_signed_success_still_processes_normally(self):
         """已验签 SUCCESS：正常链路不受新前置校验影响。"""
         from unittest import mock
+
         from apps.billing.services import process_mock_payment_callback
         payment = self._pending_payment("WB76-SIGNED-1")
         with mock.patch(
@@ -1213,8 +1214,8 @@ class LateSuccessCompensationE2ETests(TestCase):
         cls.prop = Property.objects.get(code="DEFAULT")
         cls.owner = User.objects.create_user(username="pi_wb87", password="x")
         from apps.guests.models import Guest
+        from apps.inventory.models import RatePlan, RoomType, RoomTypeInventory
         from apps.reservations.models import ReservationRoom
-        from apps.inventory.models import RoomType, RatePlan, RoomTypeInventory
         cls.guest = Guest.objects.create(property=cls.prop, full_name="WB87 客")
         # 订单 A 专属房型：无任何 RoomTypeInventory 行 → Hold 失效
         cls.rt = RoomType.objects.create(
@@ -1287,9 +1288,11 @@ class LateSuccessCompensationE2ETests(TestCase):
     def test_late_success_full_chain(self):
         """① 迟到成功 → 事实/凭证/唯一任务 → ② 重放幂等 →
         ③ Worker 执行到人工协调终态且不动其他订单库存。"""
-        from apps.billing.services import process_mock_payment_callback
         from apps.billing.management.commands.payment_compensation_worker import (
-            run_worker_cycle, ERROR_REQUIRES_MANUAL_COORDINATION)
+            ERROR_REQUIRES_MANUAL_COORDINATION,
+            run_worker_cycle,
+        )
+        from apps.billing.services import process_mock_payment_callback
         payment = self._payment("WB87-LATE-1")
         hold_before = self._hold_snapshot()
 
@@ -1354,9 +1357,9 @@ class LateSuccessCompensationE2ETests(TestCase):
     def test_late_success_worker_confirms_pending_reservation_with_valid_hold(self):
         """对照路径：迟到成功但预订仍 PENDING 且 Hold 有效 →
         Worker 协调库存确认成功，订单转 CONFIRMED（终态=成功）。"""
+        from apps.billing.management.commands.payment_compensation_worker import run_worker_cycle
         from apps.billing.services import process_mock_payment_callback
-        from apps.billing.management.commands.payment_compensation_worker import (
-            run_worker_cycle)
+
         # 直接对健康订单 B 构造 Payment 并触发迟到语义（其库存有效，
         # 回调会正常确认；这里改走过期分支：先清空库存行制造 InventoryUnavailable，
         # 再由 Worker 重试时库存已被补回的场景）。
@@ -1397,6 +1400,7 @@ class LateSuccessCompensationE2ETests(TestCase):
 import threading
 import unittest
 from threading import Barrier
+
 from django.db import close_old_connections, connection
 from django.test import TransactionTestCase
 

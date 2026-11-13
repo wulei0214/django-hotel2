@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """员工中心 + 会员管理只读 API（V1.1 Phase 1）。
 
 Staff API：列表/详情（角色/任职/账号状态/审计时间线）。
@@ -11,16 +10,17 @@ from django.db.models import Prefetch
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.core import labels as L
-from apps.core.api_contract import ApiError, api_view, api_response, paginate
-from apps.identity.authorization import AuthorizationService
-from apps.identity.models import (
-    Invitation, PropertyStaffMembership, StaffProfile, StaffRoleAssignment,
-)
+from apps.core.api_contract import ApiError, api_response, api_view, idempotent, paginate
 from apps.guests.models import Guest, GuestMembership, MembershipLevelHistory
 from apps.guests.services import GuestMembershipService, GuestServiceError
-from apps.core.api_contract import idempotent
+from apps.identity.authorization import AuthorizationService
+from apps.identity.models import (
+    Invitation,
+    PropertyStaffMembership,
+    StaffProfile,
+    StaffRoleAssignment,
+)
 
-from apps.core.api_contract import ApiError
 
 def _api_error(code, message):
     return ApiError(code, message)

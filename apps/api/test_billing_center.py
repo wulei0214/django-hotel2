@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """财务与账单中心 API 测试包（基线 2.0 §4.1）。
 
 覆盖口径：
@@ -16,18 +15,22 @@
 """
 import json
 import re
-import uuid
 import unittest
-from unittest.mock import patch
+import uuid
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
 from datetime import timedelta
 from decimal import Decimal
+from threading import Barrier
+from unittest.mock import patch
 
 from django.contrib.auth.models import Group, Permission, User
 from django.db import close_old_connections, connection
 from django.test import Client, TestCase, TransactionTestCase
 from django.utils import timezone
+
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
 
 from apps.billing.models import (
     ApprovalRecord,
@@ -43,9 +46,6 @@ from apps.guests.models import Guest
 from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from apps.reservations.models import Reservation, ReservationRoom
 
-# --- test-only generated passwords (no literals in source) ---
-# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
-from django.utils.crypto import get_random_string  # noqa: E402
 _TEST_PW_2D836F41 = get_random_string(24)
 
 
@@ -1460,6 +1460,7 @@ class RefundLiabilityIntegrityRegressionTests(BillingCenterTestBase):
             method="CARD", amount=Decimal("20.00"), currency="CNY",
             status=Payment.Status.SUCCEEDED, paid_at=timezone.now())
         from django.core.exceptions import ValidationError
+
         # M2M manager uses atomic(savepoint=False); isolate the expected signal
         # exception in an outer savepoint so TestCase's transaction remains usable.
         from django.db import transaction

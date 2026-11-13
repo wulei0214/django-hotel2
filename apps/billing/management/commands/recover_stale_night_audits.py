@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """MAINT-02：恢复超时残留的夜审 RUNNING 记录。
 
 夜审在独立事务中先落 RUNNING 再进主过账事务；进程被 OOM/断电硬杀时

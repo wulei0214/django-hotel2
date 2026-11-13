@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """V1.2 §15.3 ApprovalRecord（Q-05/Q-06/Q-14 P0）+ §15.4 前台操作规则服务。
 
 ApprovalRecord 是审批事实的持久化载体；同一审批只能执行一次。
@@ -11,10 +10,8 @@ from decimal import Decimal, InvalidOperation
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
-from apps.core.models import AuditEvent
-
-
 from apps.billing.models import ApprovalRecord
+from apps.core.models import AuditEvent
 
 
 class BillingInputError(ValueError):
@@ -42,6 +39,7 @@ class ApprovalService:
         不写 ApprovalRecord、不写 AuditEvent。
         """
         import hashlib
+
         from apps.billing.approval_registry import ApprovalActionRegistry
         reason = str(reason or "").strip()
         if not reason or len(reason) > 240:
@@ -87,7 +85,7 @@ class ApprovalService:
                 candidate_key = idem_key
             else:
                 candidate_key = hashlib.sha256(
-                    f"{raw_key}:retry:{prior_count + attempt}".encode("utf-8")
+                    f"{raw_key}:retry:{prior_count + attempt}".encode()
                 ).hexdigest()
             try:
                 with transaction.atomic():
@@ -180,8 +178,9 @@ class ApprovalService:
 
 def _invalidate_open_summary_cache(property_id):
     """账本/账单状态提交后失效物业未结余额摘要，避免 60 秒旧余额窗口。"""
-    from django.core.cache import cache
     import logging
+
+    from django.core.cache import cache
 
     key = "billing:open-summary:%s" % property_id
 
@@ -197,7 +196,6 @@ def _invalidate_open_summary_cache(property_id):
 
 
 def now_plus(**kwargs):
-    from datetime import timedelta
     return timezone.now() + timedelta(**kwargs)
 
 
@@ -564,8 +562,8 @@ class BillingService:
         或 deposit_type=NONE，押金金额退回调用方传入值（兼容 Walk-in
         和未配置政策的 RatePlan）。
         """
-        from apps.billing.models import Folio, Payment, LedgerEntry
-        from apps.reservations.models import Reservation, DepositPolicy
+        from apps.billing.models import Folio, LedgerEntry, Payment
+        from apps.reservations.models import Reservation
         method = str(method or "").strip().upper()
         if method == "BANK_TRANSFER":
             method = "TRANSFER"
@@ -657,7 +655,9 @@ class BillingService:
         # 收押金即确认——先确认库存占用，再迁移状态，与在线支付回调同口径。
         if reservation.status == "PENDING":
             from apps.inventory.services import (
-                InventoryUnavailable, confirm_inventory_for_reservation)
+                InventoryUnavailable,
+                confirm_inventory_for_reservation,
+            )
             try:
                 confirm_inventory_for_reservation(reservation)
             except InventoryUnavailable as exc:
@@ -665,8 +665,7 @@ class BillingService:
             reservation.status = "CONFIRMED"
             reservation.save(update_fields=("status", "updated_at"))
             # WB-098：前台收押金确认同样是正式确认路径，必须写政策快照。
-            from apps.reservations.front_desk_services import (
-                snapshot_early_departure_policy)
+            from apps.reservations.front_desk_services import snapshot_early_departure_policy
             snapshot_early_departure_policy(reservation)
             from apps.billing.services import cancel_open_payment_intents_for_reservation
             cancel_open_payment_intents_for_reservation(reservation)
@@ -1012,7 +1011,7 @@ class BillingService:
                        confirm_refund_paid=False, execution_reference="",
                        idempotency_key=""):
         """执行已批准退款；申请、审批、执行必须由三个不同账号完成。"""
-        from apps.billing.models import CashierShift, Payment, Refund, LedgerEntry
+        from apps.billing.models import CashierShift, LedgerEntry, Payment, Refund
         if confirm_refund_paid is not True:
             raise ValueError("必须确认退款已经实际支付给客人。")
         key = str(idempotency_key or "").strip()
@@ -1321,7 +1320,7 @@ class BillingService:
     @staticmethod
     def cash_shift_breakdown(shift, lock_facts=False):
         """返回班次现金核算明细；写路径先锁班次，再用当前读锁定现金事实。"""
-        from apps.billing.models import Payment, Refund, CashierShiftMovement
+        from apps.billing.models import CashierShiftMovement, Payment, Refund
         payment_qs = Payment.objects.filter(
             cashier_shift=shift, method="CASH",
             status__in=(Payment.Status.SUCCEEDED,
@@ -1488,8 +1487,10 @@ class BillingService:
             business_date__lte=end_date)
         # created_at 是带时区时间戳；必须先按物业时区换算自然日边界，
         # 再用半开区间过滤，避免 UTC/数据库会话时区造成跨日错位。
-        from datetime import datetime, time as datetime_time, timedelta
+        from datetime import datetime
+        from datetime import time as datetime_time
         from zoneinfo import ZoneInfo
+
         from django.utils import timezone
         try:
             property_tz = ZoneInfo(property_obj.timezone or "Asia/Shanghai")

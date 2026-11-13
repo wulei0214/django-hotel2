@@ -14,6 +14,8 @@ from django.db.models import Prefetch, Q
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
+from hotelapp.models import Accommodation as LegacyAccommodation
+from hotelapp.models import Folio as LegacyFolio
 
 from apps.billing.models import Folio, Payment, PaymentIntent, Refund
 from apps.billing.payment_intents import extend_intent_window, get_channel_window
@@ -23,33 +25,45 @@ from apps.guests.services import guest_phone_plain, phone_hash
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import Room, RoomType
 from apps.inventory.services import InventoryUnavailable, _property_today
-from apps.reservations.models import (
-    NoShowRecord, Reservation, ReservationRoom, Stay, StayRoomSegment,
+from apps.reservations.front_desk_services import (
+    FrontDeskOperationError,
+    FrontDeskValidationError,
+    check_in_stay,
+    check_out_stay,
+    collect_manual_payment,
 )
 from apps.reservations.front_desk_services import (
-    FrontDeskOperationError, FrontDeskValidationError,
     assign_room as assign_room_service,
-    check_in_stay,
-    collect_manual_payment,
-    check_out_stay,
 )
 from apps.reservations.lifecycle_services import (
-    LifecycleOperationError, LifecycleValidationError,
-    approve_refund as approve_refund_service,
-    reject_refund as reject_refund_service,
+    LifecycleOperationError,
+    LifecycleValidationError,
     change_stay_room,
     extend_stay,
     mark_reservation_room_no_show,
     receive_manual_deposit,
+)
+from apps.reservations.lifecycle_services import (
+    approve_refund as approve_refund_service,
+)
+from apps.reservations.lifecycle_services import (
+    reject_refund as reject_refund_service,
+)
+from apps.reservations.lifecycle_services import (
     request_refund as request_refund_service,
+)
+from apps.reservations.models import (
+    NoShowRecord,
+    Reservation,
+    ReservationRoom,
+    Stay,
+    StayRoomSegment,
 )
 from apps.reservations.services import ReservationConflict
 from apps.reservations.walkin import create_walk_in
-from hotelapp.models import Accommodation as LegacyAccommodation, Folio as LegacyFolio
 
 from .billing_center import _require_finance_access
 from .views import _body, api_guard
-
 
 PAGE_DEFAULT = 20
 PAGE_MAX = 100
@@ -1037,7 +1051,7 @@ def change_stay_room_api(request, stay_id):
             property_obj=request.front_desk_property, stay_id=stay_id,
             new_room_id=room_id, reason=body.get("reason"), moved_by=request.user,
         )
-    except (ValueError, TypeError) as exc:
+    except (ValueError, TypeError):
         return _response({"error": {"code": "VALIDATION_ERROR", "message": "room_id 必须是整数。"}}, 400)
     except LifecycleOperationError as exc:
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
@@ -1350,21 +1364,17 @@ def walk_ins_create(request):
             raise ValueError(f"成人数必须在 1 至 {WALK_IN_MAX_GUESTS} 人之间。")
         if not 0 <= children <= WALK_IN_MAX_GUESTS:
             raise ValueError(f"儿童数必须在 0 至 {WALK_IN_MAX_GUESTS} 人之间。")
-        if deposit_amount is not None and deposit_amount <= 0:
-            raise ValueError("押金金额必须大于零。")
     except (ValueError, TypeError, InvalidOperation):
         return _response({"error": {
             "code": "VALIDATION_ERROR",
             "message": "请求参数格式或取值范围不正确"
-                       "（姓名/房型/价格计划/晚数 1-30/人数/押金）。"}}, 400)
+                       "（姓名/房型/价格计划/晚数 1-30/人数/押金格式）。"}}, 400)
 
-    # 幂等重放判定（A1：重放 200 + created=false）。预订表以
-    # (property, idempotency_key) 定位首次订单；是否真正命中重放（同键同内容）
-    # 与冲突（同键不同内容 → ReservationConflict）由 create_reservation
-    # 请求指纹仲裁，本层不做旁路判断。并发首建窗口内两个请求都可能按
-    # created=true 应答，但唯一约束保证只有一个写入者，无重复事实。
-    is_replay = Reservation.objects.filter(
-        property=property_obj, idempotency_key=key).exists()
+    # 幂等语义（A1：重放 200 + created=false）。R1-01：是否首次创建由
+    # 服务层 create_reservation 的最终幂等仲裁给出（result["created"]），
+    # 本层不做事务外预查询推断——并发首建窗口内预查询会把真实重放误判
+    # 为首次创建。同键不同内容的冲突（→ ReservationConflict 409）仍由
+    # create_reservation 请求指纹仲裁。
     try:
         result = create_walk_in(
             property_obj=property_obj,
@@ -1400,6 +1410,10 @@ def walk_ins_create(request):
                                     "message": str(exc)}}, 409)
 
     reservation = result["reservation"]
+    # R1-01：created 标志来自服务层 create_reservation 的最终幂等仲裁
+    # （并发首建窗口内，服务层唯一约束保证只有一个写入者，输者经仲裁
+    # 返回 created=False）；API 层不做事务外预查询推断。
+    walk_in_created = bool(result["created"])
     # record_deposit 在行锁下重取预订行并回写 deposit_amount（30% 服务端
     # 强制计得），create_walk_in 持有的实例不含该写入，需刷新后对外输出。
     reservation.refresh_from_db(fields=["deposit_amount"])
@@ -1412,10 +1426,10 @@ def walk_ins_create(request):
             "deposit_amount": str(
                 reservation.deposit_amount.quantize(Decimal("0.01"))),
             "source": "WALK_IN",
-            "created": not is_replay,
+            "created": walk_in_created,
         },
         "meta": _request_meta(request),
-    }, 200 if is_replay else 201)
+    }, 200 if not walk_in_created else 201)
 
 
 @require_POST

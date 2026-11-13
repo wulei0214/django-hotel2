@@ -4,6 +4,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
+
 from apps.api.openapi_schema import build_openapi
 
 

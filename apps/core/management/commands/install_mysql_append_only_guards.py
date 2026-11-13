@@ -2,7 +2,6 @@
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
-
 TRIGGERS = (
     (
         "trg_core_auditevent_no_update",

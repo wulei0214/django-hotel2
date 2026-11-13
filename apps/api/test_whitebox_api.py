@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """白盒 API/视图/中间件层审查针对性回归（WB-46，docs/audit/phase0/46-whitebox-api.md）。
 
 每个测试对应报告中的一个编号缺陷（API-BUG-01~12）或四态/越权抽查口径：
@@ -19,6 +18,10 @@ from django.contrib.auth.models import Group, Permission, User
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.billing.models import Folio
 from apps.core.models import Notification, Property
 from apps.guests.models import Guest, GuestDocument, GuestMembership, GuestPhone
@@ -27,9 +30,6 @@ from apps.reservations.models import Reservation
 
 from . import views as public_views
 
-# --- test-only generated passwords (no literals in source) ---
-# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
-from django.utils.crypto import get_random_string  # noqa: E402
 _TEST_PW_A73B46BB = get_random_string(24)
 _TEST_PW_057CC5EF = get_random_string(24)
 

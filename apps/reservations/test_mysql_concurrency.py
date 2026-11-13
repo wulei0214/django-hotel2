@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """WB-085（第 32 轮）：续住与排房/退房的真实 MySQL 并发验收。
 
 TransactionTestCase + 双线程各自独立数据库连接 + Barrier 同步起跑，

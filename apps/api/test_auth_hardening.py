@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """身份认证与账户体系 Phase 0 止血验收测试（AUTH-01/02/04/05/07/08/09）。
 
 依据 docs/PMS2身份认证与员工住客账户体系改造开发方案.md §验收：
@@ -15,17 +14,17 @@ from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from apps.core.models import AuditEvent, Property
-from apps.guests.services import phone_hash
-from apps.reservations.models import BookingAccessToken, Reservation
-from apps.identity.services import EmployeeLifecycleError, EmployeeLifecycleService
-from apps.identity.models import StaffProfile
-
-from hotelapp.tests import _make_user  # 复用员工夹具（Membership+RoleAssignment）
-
 # --- test-only generated passwords (no literals in source) ---
 # 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
 from django.utils.crypto import get_random_string  # noqa: E402
+from hotelapp.tests import _make_user  # 复用员工夹具（Membership+RoleAssignment）
+
+from apps.core.models import AuditEvent, Property
+from apps.guests.services import phone_hash
+from apps.identity.models import StaffProfile
+from apps.identity.services import EmployeeLifecycleError, EmployeeLifecycleService
+from apps.reservations.models import BookingAccessToken, Reservation
+
 _TEST_PW_D7704497 = get_random_string(24)
 _TEST_PW_184F95E9 = get_random_string(24)
 
@@ -111,7 +110,6 @@ class PasswordPolicyTests(TestCase):
         self.profile = self.target.membership.staff_profile \
             if hasattr(self.target, "membership") else None
         if self.profile is None:
-            from apps.identity.models import PropertyStaffMembership
             self.profile = StaffProfile.objects.get(user=self.target)
 
     def _membership(self):
@@ -277,8 +275,8 @@ class PublicBookingAntiAbuseTests(TestCase):
         self.assertIn("Retry-After", response)
 
     def test_token_revocation_and_expiry_validation(self):
-        from apps.reservations.models import BookingAccessToken, Reservation
         from apps.guests.models import Guest
+        from apps.reservations.models import BookingAccessToken, Reservation
         guest = Guest.objects.create(
             property=self.prop, full_name="令牌测试",
             phone="13833330000", phone_normalized="13833330000")
@@ -298,8 +296,9 @@ class PublicBookingAntiAbuseTests(TestCase):
 
     def test_rate_limit_counter_atomic_and_cleanable(self):
         from django.test import RequestFactory
-        from apps.core.models import RateLimitCounter
+
         from apps.core import rate_limit
+        from apps.core.models import RateLimitCounter
         factory = RequestFactory()
         probe = factory.post("/api/v1/reservations/x", REMOTE_ADDR="10.1.1.9")
         for _ in range(5):

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """WB-102/103/104/105：Guest PII 与证件治理回归测试。
 
 覆盖：
@@ -13,26 +12,35 @@
 """
 import importlib
 import json
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth.models import Group, Permission, User
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
 
 from apps.core.models import AuditEvent, Property
 from apps.guests.models import (
-    Guest, GuestDocument, GuestDocumentIndex, GuestPhone,
+    Guest,
+    GuestDocument,
+    GuestDocumentIndex,
+    GuestPhone,
 )
 from apps.guests.services import (
-    GuestService, GuestServiceError, _mask, decrypt_phone, encrypt_phone,
-    normalize_phone, phone_hash, phone_plain, reveal_phone,
+    GuestService,
+    GuestServiceError,
+    _mask,
+    decrypt_phone,
+    normalize_phone,
+    phone_hash,
+    reveal_phone,
 )
 from apps.identity.models import (
-    PropertyStaffMembership, StaffProfile, StaffRoleAssignment,
+    PropertyStaffMembership,
+    StaffProfile,
+    StaffRoleAssignment,
 )
 from apps.inventory.models import DailyRate, RatePlan, RoomType, RoomTypeInventory
 
@@ -316,7 +324,7 @@ class DocumentIndexGovernanceTests(_GuestGuardBase):
             guest=self.guest_a).count(), 2)
 
     def test_cross_guest_same_property_rejected(self):
-        from apps.guests.services import register_document, doc_no_hash
+        from apps.guests.services import doc_no_hash, register_document
         register_document(
             guest=self.guest_a, doc_type="ID_CARD",
             doc_no="110101199001011234")
@@ -347,7 +355,7 @@ class DocumentIndexGovernanceTests(_GuestGuardBase):
 
     def test_integrity_error_race_converted_to_friendly_error(self):
         """竞态败者路径：索引已被他人占用且文档预检不命中（对方无文档行）。"""
-        from apps.guests.services import register_document, doc_no_hash
+        from apps.guests.services import doc_no_hash, register_document
         digest = doc_no_hash("110101199001011234")
         GuestDocumentIndex.objects.create(
             property=self.property, guest=self.guest_a, doc_no_hash=digest)
@@ -447,8 +455,7 @@ class WebsiteBookingFunnelTests(TestCase):
             decrypt_phone(phone_row.phone_ciphertext), "13800001234")
 
     def test_pending_reservation_cap_matches_by_hash(self):
-        from apps.reservations.services import (
-            ReservationConflict, create_reservation)
+        from apps.reservations.services import ReservationConflict, create_reservation
         self.room_type, self.rate_plan = self._setup_inventory()
         for seq in range(2):
             create_reservation(
@@ -464,8 +471,9 @@ class WebsiteBookingFunnelTests(TestCase):
     def test_walkin_placeholder_goes_through_unified_service(self):
         """无手机号 walk-in 占位号同样密文+哈希落库，不写明文。"""
         import uuid as _uuid
-        from apps.reservations.walkin import create_walk_in
+
         from apps.reservations.models import Stay
+        from apps.reservations.walkin import create_walk_in
         self.room_type, self.rate_plan = self._setup_inventory()
         result = create_walk_in(
             property_obj=self.property, full_name="占位散客", phone="",

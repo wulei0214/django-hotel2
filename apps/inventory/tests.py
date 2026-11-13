@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.test import TestCase
 
 from apps.core.models import Property
+
 from .models import DailyRate, RatePlan, RoomType, RoomTypeInventory
 from .services import get_room_type_availability, stay_dates
 
@@ -87,8 +88,8 @@ class DailyRateAdjustmentTests(TestCase):
         self.user = User.objects.create_user(username="rate-manager")
 
     def test_adjustment_updates_price_and_records_audit(self):
-        from apps.inventory.services import adjust_daily_rate
         from apps.core.models import AuditEvent
+        from apps.inventory.services import adjust_daily_rate
         rate, changed = adjust_daily_rate(
             property_obj=self.property, rate_id=self.rate.pk,
             price="368.00", reason="根据节假日需求调整未来住宿日价格",

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """ApprovalRecord REST API（V1.2 Q-05/Q-06/Q-14 P0；P0-01/P0-02 加固）。
 
 高危动作的双人审批 SoD 流程：申请人≠审批人；同一审批只能执行一次。
@@ -26,7 +25,11 @@ from apps.billing.approval_registry import ApprovalActionRegistry
 from apps.billing.models import ApprovalRecord
 from apps.billing.services_v2 import ApprovalService
 from apps.core.api_contract import (
-    ApiError, api_view, api_response, idempotent, paginate,
+    ApiError,
+    api_response,
+    api_view,
+    idempotent,
+    paginate,
 )
 from apps.identity.authorization import AuthorizationService
 

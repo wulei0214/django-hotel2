@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """白盒服务层单元测试（子智能体 1：inventory/services.py）。
 
 覆盖 45-whitebox-services.md 登记缺陷的针对性回归：
@@ -6,6 +5,7 @@
   * WB-12 housekeeping_summary “今日流转”窗口锚定默认时区而非物业时区。
 """
 from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 from decimal import Decimal
 from unittest import mock
 
@@ -16,13 +16,12 @@ from django.utils import timezone
 from apps.core.models import Property
 from apps.inventory.models import DailyRate, RatePlan, Room, RoomType
 from apps.inventory.services import (
+    HousekeepingOperationError,
     adjust_daily_rate,
     change_housekeeping_status,
     change_maintenance_status,
     housekeeping_summary,
-    HousekeepingOperationError,
 )
-from datetime import timezone as dt_timezone
 
 
 class AdjustDailyRateBoundaryTests(TestCase):
@@ -122,10 +121,13 @@ class MaintenanceInventorySyncTests(TestCase):
     """
 
     def setUp(self):
-        from apps.identity.models import (
-            PropertyStaffMembership, StaffProfile, StaffRoleAssignment,
-        )
         from django.contrib.auth.models import Group, Permission
+
+        from apps.identity.models import (
+            PropertyStaffMembership,
+            StaffProfile,
+            StaffRoleAssignment,
+        )
         from apps.inventory.models import RoomTypeInventory
 
         self.today = timezone.localdate()
@@ -242,10 +244,11 @@ class PropertyDateBoundaryTests(TestCase):
     """财务自然日边界按物业时区计算，不能依赖 UTC/数据库会话时区。"""
 
     def test_financial_summary_uses_property_local_midnight_bounds(self):
-        from datetime import date
+        from datetime import date, datetime, timedelta
+        from datetime import time as datetime_time
         from zoneinfo import ZoneInfo
+
         from django.utils import timezone
-        from datetime import datetime, time as datetime_time, timedelta
 
         prop = Property.objects.create(
             code="TZFIN", name="财务时区测试酒店", timezone="Asia/Singapore")

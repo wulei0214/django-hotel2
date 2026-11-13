@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """P0-02 审批动作注册表（ApprovalActionRegistry）与服务层白名单校验测试。
 
 覆盖：未知 action_code、entity_type 错配、payload 白名单/长度/敏感值、

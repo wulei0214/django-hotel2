@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """第 27 轮收尾专项：对新增/加固修复做可复验的行为断言。
 
 覆盖：
@@ -17,7 +16,6 @@ from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth.models import User
-from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -26,7 +24,6 @@ from apps.billing.models import (
     Payment,
     PaymentCompensationTask,
     PaymentIntent,
-    Refund,
 )
 from apps.billing.payment_intents import (
     confirm_intent_success,

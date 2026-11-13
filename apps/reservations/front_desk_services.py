@@ -7,14 +7,18 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from apps.billing.models import Folio, LedgerEntry, Payment
+from apps.core.models import AuditEvent
 from apps.inventory.models import HousekeepingTask, Room
 from apps.inventory.services import _property_today
-from apps.core.models import AuditEvent
-from .models import (
-    EarlyDeparturePolicy, NoShowRecord, Reservation, ReservationRoom,
-    Stay, StayRoomSegment,
-)
 
+from .models import (
+    EarlyDeparturePolicy,
+    NoShowRecord,
+    Reservation,
+    ReservationRoom,
+    Stay,
+    StayRoomSegment,
+)
 
 audit = logging.getLogger("hotel.audit")
 CENT = Decimal("0.01")
@@ -470,8 +474,7 @@ def collect_manual_payment(
     # 已确认）→ 永远卡在 PENDING。现定：前台收款成功即确认，状态迁移
     # 与在线支付回调同口径（先确认库存占用，再置 CONFIRMED），并落审计。
     if reservation.status == Reservation.Status.PENDING:
-        from apps.inventory.services import confirm_inventory_for_reservation
-        from apps.inventory.services import InventoryUnavailable
+        from apps.inventory.services import InventoryUnavailable, confirm_inventory_for_reservation
         try:
             confirm_inventory_for_reservation(reservation)
         except InventoryUnavailable as exc:

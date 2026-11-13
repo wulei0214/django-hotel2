@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """P0-06（闭环补齐 2.0）：AuditEvent 数据库层不可变性验收。
 
 模型层：save（pk 非空拒绝）与 delete（一律拒绝）已实现；

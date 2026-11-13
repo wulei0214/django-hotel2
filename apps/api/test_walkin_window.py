@@ -76,7 +76,11 @@ class WalkInsCreateApiTests(WalkInApiTestBase):
     # 任务验收点②：同 Idempotency-Key 重放 → 200 + created=false，数据一致
     # ------------------------------------------------------------------
     def test_walk_ins_idempotent_replay_returns_200_created_false(self):
-        self._auth()
+        user = self._auth()
+        # R1-02：押金强制化后，成功创建必须先开立本人 OPEN 收银班次。
+        BillingService.open_shift(
+            property_obj=self.property, cashier=user, opening_cash=Decimal("0.00")
+        )
         kw = {"HTTP_IDEMPOTENCY_KEY": "a1-replay-001"}
         first = _post_json(self.client, self.url, self._payload(), **kw)
         second = _post_json(self.client, self.url, self._payload(), **kw)
@@ -151,7 +155,11 @@ class WalkInsCreateApiTests(WalkInApiTestBase):
     # 补充契约：同键不同内容 → 409；入参边界 → 400；房型不存在 → 400
     # ------------------------------------------------------------------
     def test_walk_ins_same_key_different_body_returns_409(self):
-        self._auth()
+        user = self._auth()
+        # R1-02：首建成功即收押金（强制），需先开立本人 OPEN 收银班次。
+        BillingService.open_shift(
+            property_obj=self.property, cashier=user, opening_cash=Decimal("0.00")
+        )
         kw = {"HTTP_IDEMPOTENCY_KEY": "a1-fingerprint-001"}
         first = _post_json(self.client, self.url, self._payload(nights=1), **kw)
         second = _post_json(self.client, self.url, self._payload(nights=2), **kw)

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """§4.6 通知与待办中心回归测试包。
 
 覆盖：
@@ -31,21 +30,27 @@ from django.core.exceptions import ValidationError
 from django.test import override_settings
 from django.utils import timezone
 
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.api import notification_center
 from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.billing.models import ApprovalRecord
 from apps.core.models import (
-    AuditEvent, BreakGlassRecord, BusinessDate, Notification, NotificationRead, Property,
+    AuditEvent,
+    BreakGlassRecord,
+    BusinessDate,
+    Notification,
+    NotificationRead,
+    Property,
 )
+from apps.core.services_notifications import refresh_operational_todos
 from apps.guests.models import Guest
 from apps.identity.models import PropertyStaffMembership, StaffProfile
 from apps.inventory.models import Room, RoomType
 from apps.reservations.models import Reservation, ReservationRoom
-from apps.core.services_notifications import refresh_operational_todos
 
-# --- test-only generated passwords (no literals in source) ---
-# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
-from django.utils.crypto import get_random_string  # noqa: E402
 _TEST_PW_EA5E4F64 = get_random_string(24)
 _TEST_PW_5A092416 = get_random_string(24)
 

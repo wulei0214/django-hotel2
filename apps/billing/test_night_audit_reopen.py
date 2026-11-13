@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """营业日重开闭环审查回归（61-review-db-closure）。
 
 覆盖：

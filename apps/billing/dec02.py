@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """DEC-02-A1/B2 业务流服务（依据 docs/PMS2_DEC-02业务决策基线_2026-11-09.md）。
 
 A1：原负债冻结；账务调整独立记录，财务发起、值班经理审批、执行生成独立
@@ -10,7 +9,7 @@ B2：无可靠原支付来源或候选余额不足时，经前台申请、值班
 SoD：申请人不得审批自己的调整/放行；重复审批、重复执行、并发执行由
 行锁 + 状态机 + 唯一幂等键约束防护；全部状态迁移落 AuditEvent。
 """
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 from django.db.models import Sum
@@ -71,7 +70,6 @@ def request_adjustment(*, property_obj, folio_id, adjustment_type, amount,
                        reason, requested_by, evidence_note="",
                        idempotency_key=""):
     """财务发起账务调整；仅适用于已关闭账单（退房后调账）。"""
-    from django.db.models import Q
     key = str(idempotency_key or "").strip()
     if not key or len(key) > 96:
         raise ValueError("调整申请必须提供 1 至 96 个字符的幂等键。")

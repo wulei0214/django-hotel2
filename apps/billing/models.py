@@ -1,8 +1,8 @@
-from django.core.exceptions import ValidationError
-from contextlib import contextmanager
 from decimal import Decimal
 from threading import local
+
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import F, Q, Sum
 from django.db.models.signals import m2m_changed

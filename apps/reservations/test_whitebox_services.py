@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """白盒服务层单元测试（子智能体 1：reservations 前台/生命周期服务）。
 
 覆盖 45-whitebox-services.md 登记缺陷的针对性回归：
@@ -11,7 +10,6 @@
 import uuid
 from datetime import timedelta
 from decimal import Decimal
-from datetime import date
 
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -30,8 +28,10 @@ from apps.reservations.front_desk_services import (
 )
 from apps.reservations.lifecycle_services import (
     LifecycleOperationError,
-    _money as lifecycle_money,
     extend_stay,
+)
+from apps.reservations.lifecycle_services import (
+    _money as lifecycle_money,
 )
 from apps.reservations.models import Reservation, ReservationRoom, Stay
 from apps.reservations.walkin import create_walk_in

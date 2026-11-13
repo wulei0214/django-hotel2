@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """白盒服务层单元测试（子智能体 1：billing/services_v2.py）。
 
 覆盖 45-whitebox-services.md 登记缺陷的针对性回归：
@@ -15,21 +14,29 @@
 并发竞态以“预检查询首查扑空 + 数据库唯一约束兜底”的方式确定性模拟。
 """
 import hashlib
-from datetime import date, datetime, timedelta, timezone as dt_timezone
+from datetime import date, datetime, timedelta
+from datetime import timezone as dt_timezone
 from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-import unittest
-
-from django.db import IntegrityError, transaction, connection
-from django.db.models import QuerySet
+from django.db import IntegrityError, transaction
 from django.db.models import Model as DjangoModel
+from django.db.models import QuerySet
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.billing.models import (ApprovalRecord, CashierShift, CashierShiftMovement, Folio, LedgerEntry, Payment, Refund, RefundLiability)
+from apps.billing.models import (
+    ApprovalRecord,
+    CashierShift,
+    CashierShiftMovement,
+    Folio,
+    LedgerEntry,
+    Payment,
+    Refund,
+    RefundLiability,
+)
 from apps.billing.services_v2 import ApprovalService, BillingService
 from apps.core.models import Property
 from apps.guests.models import Guest
@@ -147,8 +154,11 @@ class ReverseEntryBusinessDateTests(WhiteboxBillingBase):
             business_date=date(2026, 1, 10), posted_by=self.operator)
 
         from django.contrib.auth.models import Group, Permission
+
         from apps.identity.models import (
-            PropertyStaffMembership, StaffProfile, StaffRoleAssignment,
+            PropertyStaffMembership,
+            StaffProfile,
+            StaffRoleAssignment,
         )
 
         def assign_permission(user, group_name, codename):
@@ -270,7 +280,7 @@ class ApprovalRaceTests(WhiteboxBillingBase):
             requested_by=self.operator, reason="白盒审批物业隔离")
         self.assertNotEqual(first.idempotency_key, second.idempotency_key)
         expected = hashlib.sha256(
-            f"{self.property.pk}:billing.refund:Refund:41002:{self.operator.pk}".encode("utf-8")
+            f"{self.property.pk}:billing.refund:Refund:41002:{self.operator.pk}".encode()
         ).hexdigest()
         self.assertEqual(first.idempotency_key, expected)
 

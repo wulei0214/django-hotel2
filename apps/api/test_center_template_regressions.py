@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """PMS2 工作台模板回归守卫。
 
 这些测试用于捕获 API 单测难以发现的模板/JavaScript 回归：
@@ -11,7 +10,6 @@ from pathlib import Path
 
 from django.conf import settings
 from django.test import SimpleTestCase
-
 
 TEMPLATE_DIR = Path(settings.BASE_DIR) / "templates" / "pms"
 

@@ -1,29 +1,32 @@
-# -*- coding: utf-8 -*-
 """D4 库存差异扫描/审批修复 + FIN-P0 账务对账测试。"""
-from decimal import Decimal
 from datetime import timedelta
+from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from apps.core.models import AuditEvent, Property
-from apps.billing.models import Folio, LedgerEntry, Payment, RefundLiability
-from apps.billing.models import FolioReconciliationRun, FolioReconciliationDiff
+from apps.billing.models import (
+    Folio,
+    FolioReconciliationDiff,
+    LedgerEntry,
+    Payment,
+    RefundLiability,
+)
 from apps.billing.reconciliation import scan_folio_reconciliation
+from apps.core.models import AuditEvent, Property
 from apps.inventory.models import (
-    InventoryReconciliationRun,
     InventoryDiscrepancy,
     RatePlan,
-    RoomTypeInventory,
     RoomType,
+    RoomTypeInventory,
 )
 from apps.inventory.reconciliation import (
-    scan_inventory_discrepancies,
-    request_inventory_fix,
     approve_inventory_fix,
-    execute_inventory_fix,
     dismiss_discrepancy,
+    execute_inventory_fix,
+    request_inventory_fix,
+    scan_inventory_discrepancies,
 )
 from apps.reservations.models import (
     InventoryHold,
@@ -73,7 +76,6 @@ class InventoryReconciliationTests(TestCase):
             check_in=timezone.localdate(),
             check_out=timezone.localdate() + timedelta(days=1),
             amount=Decimal("200.00"))
-        from apps.reservations.models import InventoryHold
         InventoryHold.objects.create(
             property=self.prop, room_type=self.rt, stay_date=row.stay_date,
             reservation_room=rr, quantity=1,

@@ -24,8 +24,8 @@ def register_refund_liability(*, property_obj, reservation, folio, amount,
         raise ValueError("待退款负债金额必须大于零。")
     # 先锁 Reservation，再锁 Folio，最后锁 Payment；退房登记与财务退款
     # 使用一致的父记录优先顺序，MySQL 下同一账单的重复/并发登记会串行化。
-    from apps.reservations.models import Reservation
     from apps.billing.models import Folio
+    from apps.reservations.models import Reservation
     reservation = Reservation.objects.select_for_update().select_related(
         "property").get(pk=reservation.pk)
     folio = Folio.objects.select_for_update().get(pk=folio.pk)

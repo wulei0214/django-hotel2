@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from apps.inventory.services import InventoryUnavailable, confirm_inventory_for_reservation
 from apps.reservations.models import Reservation
+
 from .models import LedgerEntry, Payment, PaymentCompensationTask, PaymentIntent
 from .payment_intents import (
     confirm_intent_success,
@@ -273,8 +274,7 @@ def process_mock_payment_callback(*, provider_ref, amount, status,
             # WB-098：在线支付回调确认是 PENDING→CONFIRMED 的正式确认路径，
             # 必须在确认事实落库的同一事务内保存提前离店政策快照，否则该
             # 渠道订单恒走 legacy NONE 分支，RatePlan 已配置的政策不生效。
-            from apps.reservations.front_desk_services import (
-                snapshot_early_departure_policy)
+            from apps.reservations.front_desk_services import snapshot_early_departure_policy
             snapshot_early_departure_policy(reservation)
         except InventoryUnavailable:
             if expired:

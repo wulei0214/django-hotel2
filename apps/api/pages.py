@@ -47,6 +47,7 @@ def public_booking_page(request):
 # V1.2 Phase 1: five real-data, read-only management workspaces.
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden
+
 from apps.identity.authorization import AuthorizationService
 
 MANAGEMENT_CENTERS = {

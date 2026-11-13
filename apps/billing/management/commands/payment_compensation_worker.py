@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """D3 P0 / WB-070/078 + WB-110：支付补偿任务 Worker。
 
 循环扫描到期的 PaymentCompensationTask（PENDING，或租约已过期的 LEASED），
@@ -143,8 +142,7 @@ def execute_hold_coordination(task):
     if reservation.status == Reservation.Status.PENDING:
         reservation.status = Reservation.Status.CONFIRMED
         reservation.save(update_fields=("status", "updated_at"))
-        from apps.reservations.front_desk_services import (
-            snapshot_early_departure_policy)
+        from apps.reservations.front_desk_services import snapshot_early_departure_policy
         snapshot_early_departure_policy(reservation)
     return (True, "", "")
 

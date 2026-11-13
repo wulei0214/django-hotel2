@@ -2,7 +2,6 @@
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
-
 EXPECTED = {
     "trg_core_auditevent_no_update": ("core_auditevent", "UPDATE", "BEFORE"),
     "trg_core_auditevent_no_delete": ("core_auditevent", "DELETE", "BEFORE"),

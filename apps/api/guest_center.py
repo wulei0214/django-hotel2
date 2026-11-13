@@ -1,36 +1,44 @@
-# -*- coding: utf-8 -*-
 """Guest 360 + Room 中心只读 API（V1.1 §10 Phase 1：五模块只读原型）。
 
 统一使用 {data, meta} 封套（api_contract）；只读不写；物业范围过滤；
 敏感字段按权限脱敏；列表分页。
 """
+import json as _json
 import logging
+from decimal import Decimal
 
+from django.db.models import Prefetch, Q
 from django.utils import timezone
-from django.db.models import Prefetch
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.billing.models import Folio, LedgerEntry, Payment, Refund
 from apps.core import labels as L
-from apps.core.api_contract import (ApiError, api_view, api_response, paginate, idempotent)
-from apps.core.models import AuditEvent
-from django.db.models import Q
+from apps.core.api_contract import ApiError, api_response, api_view, idempotent, paginate
+from apps.core.models import AuditEvent, LegacyRecordLink
 from apps.guests.models import (
-    Guest, GuestDocument, GuestMembership, GuestPhone, MembershipLevelHistory,
+    Guest,
+    GuestDocument,
+    GuestMembership,
+    GuestPhone,
+    MembershipLevelHistory,
 )
-import json as _json
-
 from apps.guests.services import (
-    decrypt_doc_no, _mask, phone_plain,
-    GuestService, GuestServiceError, phone_hash, )
+    GuestService,
+    GuestServiceError,
+    _mask,
+    decrypt_doc_no,
+    phone_hash,
+    phone_plain,
+)
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import (
-    DailyRate, Room, RoomType, RoomTypeInventory,
+    DailyRate,
+    Room,
+    RoomType,
+    RoomTypeInventory,
 )
 from apps.inventory.services import _property_today
 from apps.reservations.models import Reservation, Stay
-from apps.billing.models import Folio, LedgerEntry, Payment, Refund
-from apps.core.models import LegacyRecordLink
-from decimal import Decimal
 
 logger = logging.getLogger("hotel.api")
 
@@ -506,7 +514,7 @@ def _subcollection_page(queryset, request, prefix, default_size=20):
 
     参数名带前缀（rate_page / inventory_page 等），规则与 parse_page_args
     完全一致：非法/0/负数/超上限一律 400。返回 (页行, pagination meta)。"""
-    from apps.core.api_contract import ApiError, PAGE_NUMBER_MAX, PAGE_SIZE_MAX
+    from apps.core.api_contract import PAGE_NUMBER_MAX, PAGE_SIZE_MAX, ApiError
     try:
         page = int(str(request.GET.get(prefix + "_page", "1")).strip())
         size = int(str(request.GET.get(prefix + "_page_size",
@@ -781,7 +789,8 @@ def financial_summary_api(request):
     if not AuthorizationService.has_permission(
             user, property_obj, "hotelapp.finance_access"):
         raise ApiError("PERMISSION_DENIED", "缺少财务管理权限。")
-    from datetime import date, timedelta
+    from datetime import timedelta
+
     from apps.billing.models import LedgerEntry
     from apps.billing.services_v2 import BillingService
     end = _property_today(property_obj)
