@@ -104,16 +104,19 @@ jobs:
         run: python manage.py test --verbosity 2
 
   docs-lint:
-    # 文档治理阶段三批次 5：docs 链接门禁（C1）。存量断链冻结于
-    # docs/共享规范/docs_gate_baseline.json，仅拦截新增断链；
+    # 文档治理阶段三批次 5：docs 门禁（C1 断链/C2 元数据/C4 重复/C5 SHA 可解析/C6 证据保护；
+    # C7 追加节仅警告）。存量违规冻结于 docs/共享规范/docs_gate_baseline.json，仅拦新增；
     # 基线更新须与修复同一提交（修一条删一条），禁止清空基线伪造通过。
+    # fetch-depth: 0 —— C5 需在完整历史上 cat-file 解析文档引用的提交 SHA。
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.9"
-      - name: Docs link check (new broken links are blocking)
+      - name: Docs gate check (new violations are blocking)
         run: python scripts/docs_link_check.py check
