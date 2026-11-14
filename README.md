@@ -15,7 +15,7 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
 | 财务 | Folio、Payment、Refund、LedgerEntry、CashierShift、审批与冲销服务 | 真实银行/支付渠道不是本地人工登记或 Mock 测试 |
 | 夜审 | BusinessDate、NightAuditRun、NightAuditService | 营业日、夜审失败恢复和生产定时任务仍按部署验收 |
 | 清洁维修 | DIRTY→CLEANING→INSPECTING→CLEAN；维修专项权限 | 客房服务员不得执行净房放行 |
-| API | OpenAPI 3.1 静态快照 116 paths / 118 operations（verified 为主，个别 partial） | partial 接口仍需逐项真实执行验证 |
+| API | OpenAPI 3.1 静态快照 116 paths / 118 operations（93 verified / 25 partial，21% 待逐项验证；现值以 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §2 为准） | partial 接口仍需逐项真实执行验证 |
 | 测试 | 双引擎全量 SQLite 1307 OK（skipped=25）/ MySQL 1307 OK（0 跳过，2026-11-14 本地证据，证据头含 SHA/环境/命令/退出码，见 evidence/test-{sqlite,mysql}-walkin-round.log）；历史 1201=round34 基线 a317ca2 时代，仅对其 SHA 有效 | 不等于真实浏览器 E2E、用户本地库或生产验收 |
 | 全链路串测 | scripts/e2e_full_chain.py 已提交 | 当前脚本存在导入缺失、空断言、凭据硬编码和清库护栏不足；36/36 尚不作为有效验收结论 |
 | DEC-02-A1 账务调整 | `BillingAdjustment` 模型+服务+API+财务页面（财务发起→值班经理审批→执行生凭证；净额重建） | 开发完成，13/13 测试通过 |
@@ -29,8 +29,8 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
 
 ## 2. 最新自动化测试证据
 
-- [Django CI / SQLite（run #900）](https://github.com/wulei0214/django-hotel2/actions/runs/42500994999)：887 tests，OK；System Check 和 migration drift check 成功。
-- [tests CI / MySQL 8（run #874）](https://github.com/wulei0214/django-hotel2/actions/runs/42500995030)：MySQL 8.0.46，887 tests，OK；迁移和 MySQL append-only guards 安装/校验成功。
+- 【历史时点】[Django CI / SQLite（run #900）](https://github.com/wulei0214/django-hotel2/actions/runs/42500994999)：887 tests，OK（对应各自当时 SHA，非当前基线）；System Check 和 migration drift check 成功。
+- 【历史时点】[tests CI / MySQL 8（run #874）](https://github.com/wulei0214/django-hotel2/actions/runs/42500995030)：MySQL 8.0.46，887 tests，OK（对应各自当时 SHA，非当前基线）；迁移和 MySQL append-only guards 安装/校验成功。
 - MySQL 本地记录保留一次 1 error 的首次运行和随后 887 OK 的复跑，不删除失败证据。
 - 【2026-11-14】历史 run（#900/#874，887 项）仅对其当时 SHA 有效；walkin-round 证据轮实测 SQLite 1307 OK（skipped=25）/ MySQL 1307（`docs/acceptance/evidence/test-sqlite-walkin-round.log` 与 `docs/acceptance/evidence/test-mysql-walkin-round.log`，各绑其 SHA）。测试总数随主线持续演进，各历史报告中的数字不得挪用到其他基线；“当前值”唯一入口为 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §3。
 - 【2026-11-11】白盒修复回归（MySQL 8 本地，948 tests）：第一轮 12 failures + 5 errors（证据保留 `docs/acceptance/evidence/test-mysql-wb-fix.log`）；定位三类根因并修复——①`calculate_early_departure` 无政策/NONE 语义改为按合同金额全额结算（同日退房也必须入账房费，与退房/负债基线一致）；②押金 30% 强制策略的 3 个旧测试期望同步（180=600×30%、CR-04 退款额 90、e2e 上限改由第 4 笔触发）；③WB-011 测试补传 `confirmed_payment`。复跑 7 个受影响模块 139 项 OK 后全量复跑 **948 tests OK（expected failures=1）**（`docs/acceptance/evidence/test-mysql-wb-fix3.log`）；中间轮 2 errors 系本机跑套件漏带 `DJANGO_ENV=test`（runner 强制 DEBUG=False 导致 reconcile_test_users 守卫拒绝测试库），非代码缺陷（`test-mysql-wb-fix2.log` 留证）。
