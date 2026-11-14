@@ -1,0 +1,17 @@
+# 证据：OpenAPI 双快照守卫测试实跑（文档治理阶段五）
+SHA: 4a23ce2d1633db927b39ba1416620c4437fc4742
+date: 2026-11-14 13:47:01 +0800
+env: DJANGO_ENV=test DJANGO_DB_ENGINE=sqlite DJANGO_DB_NAME=:memory: (Windows local, .venv)
+command: python manage.py test apps.api.test_openapi_schema --verbosity 1
+---
+Found 43 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+...........................................
+----------------------------------------------------------------------
+Ran 43 tests in 0.510s
+
+OK
+Destroying test database for alias 'default'...
+---
+exit_code: 0

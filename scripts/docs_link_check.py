@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""docs 文档门禁工具（门禁设计 C1/C4/C5/C6）：对照基线 JSON 只拦新增违规，不追存量。
+"""docs 文档门禁工具（门禁设计 C1/C2/C4/C5/C6/C7）：对照基线 JSON 只拦新增违规，不追存量。
 
-用法：check（默认子命令，任一新类违规退出码 1；--baseline <路径> 可覆盖基线路径；--against <ref>
-默认 origin/main，C6 用其与 HEAD 的 merge-base 分叉点对比工作区（含暂存），避免把本地领先的合法
-提交算进受保护目录变更）；baseline（用当前扫描结果生成/覆盖基线 JSON，须与修复同一提交，修一条删
-一条）；report（按目标分组人读输出 C1 全部违规，退出码恒为 0）。
+用法：check（默认子命令，C1/C2/C4/C5/C6 任一新类违规退出码 1，C7 仅打印警告不计退出码；
+--baseline <路径> 可覆盖基线路径；--against <ref> 默认 origin/main，C2/C6 用其与 HEAD 的
+merge-base 分叉点对比工作区（含暂存），避免把本地领先的合法提交算进本轮新增/受保护变更）；
+baseline（用当前扫描结果生成/覆盖基线 JSON，须与修复同一提交，修一条删一条）；report（按
+目标分组人读输出 C1 全部违规，退出码恒为 0）。
 C1 断链：扫描全部跟踪 .md（排除 docs/acceptance/）里的 docs/ 前缀提及与省略 docs/ 的相对提及
 （共享规范/、PMS1.0_历史归档/、公共资源/、接口文档/、acceptance/、PMS2.0_当前版本/00~07_*、
 PMS3.0_后续规划/，按 docs/ 补全尝试解析）；解析成功（命中跟踪文件/目录）、http(s)/mailto/# 开头、
@@ -17,9 +18,14 @@ C5 SHA 可解析性：对 C1 同一批 md 文本用 RE_SHA 提取 40 位十六�
 批量验证，missing 行 → 违规；基线键 c5_known（{源: [sha, ...]}）。
 C6 证据保护：diff 分叉点..工作区（含暂存）的三个受保护目录 PROTECTED_DIRS，状态以 A 开头（新增）
 放行，M/D/R*/其余均拦 → 违规；基线键 c6_known（{路径: 状态}，改名列记 "旧 -> 新"）。
-基线结构 {"known": {源: [目标, ...]}, "c4_known": [[路径, ...], ...], "c5_known": {源: [sha, ...]},
-"c6_known": {路径: 状态}}；RE_SHA（十六进制边界保护，防把文件 SHA256 校验和当提交号）与 ROOT
-（根目录三入口）为门禁家族共用常量，ROOT 预留给后续检查项。
+C2 新增文档元数据：diff 分叉点..工作区（含暂存）--diff-filter=A 新增的 md（pathspec docs/ 与
+*.md），存量文件一律豁免；再豁免 docs/acceptance/ 与 历史审计/ 两类证据目录（C2_EXEMPT）；
+前 6 行内无以 `> 文档编号：` 开头的行 → 违规；基线键 c2_known（[文件, ...]）。
+C7 活文档追加（warn 级）：固定清单 LIVING_DOCS 各活文档统计 `^## ` 标题，同一标题文本出现
+≥2 次 → 警告输出；每次现算，不入基线、不计退出码。
+基线结构 {"known": {源: [目标, ...]}, "c2_known": [文件, ...], "c4_known": [[路径, ...], ...],
+"c5_known": {源: [sha, ...]}, "c6_known": {路径: 状态}}；RE_SHA（十六进制边界保护，防把文件
+SHA256 校验和当提交号）与 ROOT（根目录三入口）为门禁家族共用常量，ROOT 预留给后续检查项。
 """
 import json
 import os
@@ -43,6 +49,15 @@ C4_MIRROR = [
     "docs/接口文档/openapi.json",
 ]
 C4_IMAGE_DIR = "static/images/"
+C2_EXEMPT = (SCAN_EXCLUDE, "docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/")
+METADATA_MARK = "> 文档编号："
+METADATA_HEAD_LINES = 6
+LIVING_DOCS = (
+    "docs/共享规范/PMS当前状态总览.md",
+    "docs/共享规范/文档治理阶段二_文档权威关系矩阵_2026-11-14.md",
+    "docs/共享规范/文档治理阶段二_新开发人员阅读路线_2026-11-14.md",
+    "docs/文档索引.md",
+)
 SUBPREFIX = (
     DOCS_PREFIX, "共享规范/", "PMS1.0_历史归档/", "公共资源/", "接口文档/", "acceptance/",
     "PMS2.0_当前版本/00_项目基线与决策/", "PMS2.0_当前版本/01_产品需求与业务设计/",
@@ -197,6 +212,47 @@ def scan_protected(against):
     return records
 
 
+def _has_doc_id(path):
+    """前 METADATA_HEAD_LINES 行内是否存在以 METADATA_MARK 开头的行。"""
+    try:
+        with open(path, encoding="utf-8-sig", errors="replace") as handle:
+            head = handle.read().splitlines()
+    except OSError:
+        return False
+    return any(line.startswith(METADATA_MARK) for line in head[:METADATA_HEAD_LINES])
+
+
+def scan_metadata(against):
+    """C2：diff 分叉点..工作区（含暂存）--diff-filter=A 新增的 md，返回缺编号元数据块的文件列表。"""
+    fork = git(["merge-base", against, "HEAD"]).strip()
+    out = git(["diff", "--name-only", "--diff-filter=A", fork, "--", "docs/", "*.md"])
+    missing = []
+    for line in out.splitlines():
+        path = line.strip()
+        if not path.endswith(".md") or path.startswith(C2_EXEMPT):
+            continue
+        if not _has_doc_id(path):
+            missing.append(path)
+    return sorted(missing)
+
+
+def scan_living():
+    """C7（warn 级，不入基线不计退出码）：各活文档 `^## ` 同一标题文本出现 ≥2 次的 [(文件, 标题)]。"""
+    repeats = []
+    for path in LIVING_DOCS:
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8-sig", errors="replace") as handle:
+            text = handle.read()
+        counts = {}
+        for line in text.splitlines():
+            if line.startswith("## "):
+                title = line[3:].strip()
+                counts[title] = counts.get(title, 0) + 1
+        repeats.extend((path, title) for title, count in counts.items() if count >= 2)
+    return repeats
+
+
 def cmd_check(args):
     path = _opt(args, "--baseline", BASELINE)
     against = _opt(args, "--against", DEFAULT_AGAINST)
@@ -206,6 +262,7 @@ def cmd_check(args):
     with open(path, encoding="utf-8") as handle:
         payload = json.load(handle)
     known = payload.get("known", {})
+    c2_known = payload.get("c2_known", [])
     c4_known = [sorted(g) for g in payload.get("c4_known", [])]
     c5_known = payload.get("c5_known", {})
     c6_known = payload.get("c6_known", {})
@@ -218,15 +275,21 @@ def cmd_check(args):
     new_shas = {src: [s for s in shas if s not in c5_known.get(src, [])] for src, shas in sha_violations.items()}
     try:
         prot = scan_protected(against)
+        meta_missing = scan_metadata(against)
     except subprocess.CalledProcessError:
-        print("C6无法执行：--against %s 与 HEAD 无 merge-base" % against)
+        print("C2/C6无法执行：--against %s 与 HEAD 无 merge-base" % against)
         return 2
     new_prot = [(shown, status) for shown, status in prot if c6_known.get(shown) != status]
-    new_total = len(new_pairs) + len(new_dups) + sum(len(v) for v in new_shas.values()) + len(new_prot)
-    print("摘要：扫描文件数=%d 断链目标=%d 断链对=%d 重复组=%d 不可解析SHA=%d 受保护目录变更=%d 新增违规数=%d"
-          % (len(files), len(link_violations), len(pairs), len(dup_groups), sha_missing, len(prot), new_total))
+    new_meta = [f for f in meta_missing if f not in c2_known]
+    repeats = scan_living()
+    new_total = (len(new_pairs) + len(new_meta) + len(new_dups)
+                 + sum(len(v) for v in new_shas.values()) + len(new_prot))
+    print("摘要：扫描文件数=%d 断链对=%d 重复组=%d 不可解析SHA=%d 受保护变更=%d 新增缺元数据=%d 重复标题=%d 新增违规数=%d"
+          % (len(files), len(pairs), len(dup_groups), sha_missing, len(prot), len(meta_missing), len(repeats), new_total))
     for src, target in new_pairs[:20]:
         print("新增：%s -> %s" % (src, target))
+    for target in new_meta[:20]:
+        print("C2元数据: %s 缺少编号元数据块" % target)
     for group in new_dups[:20]:
         print("C4重复: " + " == ".join(group))
     for src in sorted(new_shas):
@@ -234,6 +297,8 @@ def cmd_check(args):
             print("C5SHA：%s -> %s" % (src, sha))
     for shown, status in new_prot[:20]:
         print("C6保护：%s %s" % (status, shown))
+    for target, title in repeats[:20]:
+        print("C7追加(警告): %s 重复标题 %s" % (target, title))
     return 1 if new_total else 0
 
 
@@ -257,10 +322,11 @@ def cmd_baseline(args):
     c4_known = [list(g) for g in scan_duplicates()]
     c5_known, sha_missing = scan_shas(texts)
     c6_known = dict(scan_protected(against))
-    payload = json.dumps({"known": known, "c4_known": c4_known, "c5_known": c5_known, "c6_known": c6_known}, ensure_ascii=False, indent=1) + "\n"
+    c2_known = scan_metadata(against)
+    payload = json.dumps({"known": known, "c2_known": c2_known, "c4_known": c4_known, "c5_known": c5_known, "c6_known": c6_known}, ensure_ascii=False, indent=1) + "\n"
     pathlib.Path(safe_baseline_path(BASELINE)).write_text(payload, encoding="utf-8")
-    print("基线已写入：%s（扫描文件数=%d，断链对=%d，重复组=%d，不可解析SHA=%d，受保护目录变更=%d）"
-          % (BASELINE, len(files), len(pairs), len(c4_known), sha_missing, len(c6_known)))
+    print("基线已写入：%s（扫描文件数=%d，断链对=%d，重复组=%d，不可解析SHA=%d，受保护目录变更=%d，新增缺元数据=%d）"
+          % (BASELINE, len(files), len(pairs), len(c4_known), sha_missing, len(c6_known), len(c2_known)))
     return 0
 
 
