@@ -1,7 +1,7 @@
 # 酒店管理系统（PMS）
 
 > 架构：Django 模块化单体；MySQL 8 为目标数据库，SQLite 用于 CI/轻量测试。
-> 当前基线与全部“当前值”（main HEAD / CI / OpenAPI / 测试数 / 遗留门禁）：**《docs/共享规范/PMS当前状态总览》**（唯一当前值载体，整体重写制）。
+> 当前基线与全部“当前值”（main HEAD / CI / OpenAPI / 测试数 / 遗留门禁）：**[PMS当前状态总览](docs/共享规范/PMS当前状态总览.md)**（唯一当前值载体，整体重写制）。
 > 文档权威关系：[权威关系矩阵](docs/共享规范/文档治理阶段二_文档权威关系矩阵_2026-11-14.md)；新人按[阅读路线](docs/共享规范/文档治理阶段二_新开发人员阅读路线_2026-11-14.md)执行。历史白盒审查快照（2026-11-09，仅对其基线有效）：[PMS2 最新代码单元测试与白盒全链路审查报告](docs/PMS2.0_当前版本/05_测试审计与缺陷整改/PMS2最新代码单元测试与白盒全链路审查报告_2026-11-09.md)。
 
 ## 1. 当前状态
@@ -32,7 +32,7 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
 - [Django CI / SQLite（run #900）](https://github.com/wulei0214/django-hotel2/actions/runs/42500994999)：887 tests，OK；System Check 和 migration drift check 成功。
 - [tests CI / MySQL 8（run #874）](https://github.com/wulei0214/django-hotel2/actions/runs/42500995030)：MySQL 8.0.46，887 tests，OK；迁移和 MySQL append-only guards 安装/校验成功。
 - MySQL 本地记录保留一次 1 error 的首次运行和随后 887 OK 的复跑，不删除失败证据。
-- 【2026-11-14】历史 run（#900/#874，887 项）仅对其当时 SHA 有效；walkin-round 证据轮实测 SQLite 1307 OK（skipped=25）/ MySQL 1307（`docs/acceptance/evidence/test-{sqlite,mysql}-walkin-round.log`，各绑其 SHA）。测试总数随主线持续演进，各历史报告中的数字不得挪用到其他基线；“当前值”唯一入口为《docs/共享规范/PMS当前状态总览》§3。
+- 【2026-11-14】历史 run（#900/#874，887 项）仅对其当时 SHA 有效；walkin-round 证据轮实测 SQLite 1307 OK（skipped=25）/ MySQL 1307（`docs/acceptance/evidence/test-sqlite-walkin-round.log` 与 `docs/acceptance/evidence/test-mysql-walkin-round.log`，各绑其 SHA）。测试总数随主线持续演进，各历史报告中的数字不得挪用到其他基线；“当前值”唯一入口为 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §3。
 - 【2026-11-11】白盒修复回归（MySQL 8 本地，948 tests）：第一轮 12 failures + 5 errors（证据保留 `docs/acceptance/evidence/test-mysql-wb-fix.log`）；定位三类根因并修复——①`calculate_early_departure` 无政策/NONE 语义改为按合同金额全额结算（同日退房也必须入账房费，与退房/负债基线一致）；②押金 30% 强制策略的 3 个旧测试期望同步（180=600×30%、CR-04 退款额 90、e2e 上限改由第 4 笔触发）；③WB-011 测试补传 `confirmed_payment`。复跑 7 个受影响模块 139 项 OK 后全量复跑 **948 tests OK（expected failures=1）**（`docs/acceptance/evidence/test-mysql-wb-fix3.log`）；中间轮 2 errors 系本机跑套件漏带 `DJANGO_ENV=test`（runner 强制 DEBUG=False 导致 reconcile_test_users 守卫拒绝测试库），非代码缺陷（`test-mysql-wb-fix2.log` 留证）。
 - 【2026-11-11】白盒整改第二批（6 项功能修复 + 对账口径修正，测试 948→960 项）：
   - **WB-037 工号自动编号接入**：`create_employee` 空工号时按部门代码（FO/HK/FIN/MG/ENG）走 DEC-EMP-02 原子编号；员工中心表单新增部门代码选择；岗位代码恰为受控部门代码时自动映射。
@@ -103,7 +103,7 @@ python manage.py seed_role_test_accounts
 
 ## 7. 验收声明
 
-历史 CI 通过（如 run #900/#874 的 887 项）是各自 SHA 时点的自动化回归证据，不代表 PMS2 最终验收通过；当前自动化证据规模见《docs/共享规范/PMS当前状态总览》§3。九角色真实登录、核心业务操作走查、真实浏览器 E2E、OpenAPI partial 接口关闭和 G14 独立签署仍需完成。PMS3 正式业务代码开发继续受 PMS2 最终验收门禁约束。
+历史 CI 通过（如 run #900/#874 的 887 项）是各自 SHA 时点的自动化回归证据，不代表 PMS2 最终验收通过；当前自动化证据规模见 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §3。九角色真实登录、核心业务操作走查、真实浏览器 E2E、OpenAPI partial 接口关闭和 G14 独立签署仍需完成。PMS3 正式业务代码开发继续受 PMS2 最终验收门禁约束。
 
 ## 8. 文档入口与阅读路线
 
