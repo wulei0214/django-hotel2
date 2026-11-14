@@ -22431,11 +22431,20 @@
       },
       "PublicApiError": {
         "type": "object",
-        "description": "公开预订面错误结构（apps/api/views.py）。",
+        "description": "公开预订面统一错误结构（MAINT-04 起与运行时一致：{error:{code,message},meta}；429 限流例外见 PublicRateLimitError；契约-运行时分歧已于 2026-11-14 依负责人指示收敛）。",
         "properties": {
           "error": {
-            "type": "string",
-            "description": "错误信息（公开预订旧契约：error 为字符串）。"
+            "$ref": "#/components/schemas/ErrorDetail"
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResponseMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": true,

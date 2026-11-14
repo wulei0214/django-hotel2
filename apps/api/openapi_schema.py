@@ -135,8 +135,9 @@ COMPONENTS = {
         "meta": s_nullable(_ref("ResponseMeta")),
     }, required=["error"], desc="员工端统一错误封套；api_contract 模块带 meta，前台接待模块仅 error 节点。"),
     "PublicApiError": s_obj({
-        "error": s_str("错误信息（公开预订旧契约：error 为字符串）。"),
-    }, required=["error"], desc="公开预订面错误结构（apps/api/views.py）。"),
+        "error": _ref("ErrorDetail"),
+        "meta": s_nullable(_ref("ResponseMeta")),
+    }, required=["error"], desc="公开预订面统一错误结构（MAINT-04 起与运行时一致：{error:{code,message},meta}；429 限流例外见 PublicRateLimitError；契约-运行时分歧已于 2026-11-14 依负责人指示收敛）。"),
     "PublicRateLimitError": s_obj({
         "error": s_str("固定文案：请求过于频繁，请稍后再试。"),
         "retry_after": s_int("建议等待秒数；同时写入 Retry-After 响应头。"),

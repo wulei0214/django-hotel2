@@ -1,0 +1,18 @@
+# 证据：公开面错误结构契约-运行时收敛（负责人指示优先处理）
+SHA: 3fd3c0dedf5d42dace2f6ccf94548c82202cb702
+date: 2026-11-14 14:55:17 +0800
+env: DJANGO_ENV=test DJANGO_DB_ENGINE=sqlite DJANGO_DB_NAME=:memory: (Windows local, .venv)
+command: python manage.py export_openapi_schema; 同步镜像快照; python manage.py test apps.api.test_openapi_schema
+change: PublicApiError 组件 error 字符串改为引用 ErrorDetail 对象封套并带 meta；契约测试断言同步
+---
+Found 43 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+...........................................
+----------------------------------------------------------------------
+Ran 43 tests in 0.455s
+
+OK
+Destroying test database for alias 'default'...
+---
+exit_code: 0

@@ -610,9 +610,14 @@ class PMS2ErrorEnvelopeContractTests(TestCase):
         schema = self.spec["components"]["schemas"]["PublicRateLimitError"]
         self.assertIn("retry_after", schema["properties"])
 
-    def test_public_booking_error_is_string_error_structure(self):
+    def test_public_booking_error_is_object_envelope_structure(self):
+        # MAINT-04 后公开面错误与运行时一致为 {error:{code,message},meta}；429 限流例外走 PublicRateLimitError。
         public_error = self.spec["components"]["schemas"]["PublicApiError"]
-        self.assertEqual(public_error["properties"]["error"]["type"], "string")
+        self.assertEqual(
+            public_error["properties"]["error"]["$ref"],
+            "#/components/schemas/ErrorDetail",
+        )
+        self.assertIn("error", public_error.get("required", []))
         cancel = self.spec["paths"][BASE + "/reservations/{booking_no}/cancel"]["post"]
         self.assertEqual(
             cancel["responses"]["409"]["content"]["application/json"]["schema"]["$ref"],
