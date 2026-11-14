@@ -7,7 +7,7 @@
 
 - API 实现为**普通 Django 函数视图 + `api_guard` 装饰器 + 领域异常**；全仓 0 处 DRF import。
 - 响应为**各端点自定义 JSON**，以 OpenAPI 契约和契约测试为准；**禁止**以"统一格式"为名重写现有响应结构（宪法 §8）。
-- 权威契约 = `apps/api/openapi_schema.py`（手工维护，113 paths / 115 operations）+ `apps/api/test_openapi_schema.py` 契约测试；`docs/接口文档/openapi.json` 同步副本。
+- 权威契约 = `docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/openapi.json`（由 export_openapi_schema 命令从 `apps/api/openapi_schema.py` 导出）+ `apps/api/test_openapi_schema.py` 契约测试；`docs/接口文档/openapi.json` 为受控镜像（逐字节一致性守卫）。规模现值以《共享规范/PMS当前状态总览》§2 为准（2026-11-14：116 paths / 118 operations，93 verified / 25 partial；本节原 113/115 为 2026-11-12 时点值）。
 
 ## 2. 新增/变更端点流程
 

@@ -279,7 +279,8 @@ def cmd_check(args):
     except subprocess.CalledProcessError:
         print("C2/C6无法执行：--against %s 与 HEAD 无 merge-base" % against)
         return 2
-    new_prot = [(shown, status) for shown, status in prot if c6_known.get(shown) != status]
+    new_prot = [(shown, status) for shown, status in prot
+                if not status.startswith("A") and c6_known.get(shown) != status]
     new_meta = [f for f in meta_missing if f not in c2_known]
     repeats = scan_living()
     new_total = (len(new_pairs) + len(new_meta) + len(new_dups)
