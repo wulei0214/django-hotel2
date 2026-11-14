@@ -71,9 +71,6 @@
    "docs/audit/phase0/10-routes.md",
    "docs/接口文档/apifox-env-template.json"
   ],
-  "docs/PMS2.0_当前版本/06_验收与发布/96-g14-signoff_2026-11-10.md": [
-   "docs/acceptance/*.md"
-  ],
   "docs/PMS2.0_当前版本/06_验收与发布/A16-final-acceptance-report_2026-11-10.md": [
    "docs/PMS2文档全目录审查与一致性校准报告_2026-11-05.md",
    "docs/PMS2最新代码单元测试与白盒全链路审查报告_2026-11-09.md",
@@ -187,10 +184,7 @@
    "docs/PMS2最新代码单元测试与白盒全链路审查报告_2026-11-09.md",
    "docs/PMS2补充问题复核与整改进度报告_2026-11-06.md",
    "docs/UI_GUIDE.md",
-   "docs/acceptance/*.md",
-   "docs/acceptance/evidence/*.log",
    "docs/acceptance/evidence/pii-rekey-prod-round<N>-<YYYYMMDD>.log",
-   "docs/acceptance/evidence/test-*.log",
    "docs/acceptance/evidence/test-mysql-c402a37.log",
    "docs/acceptance/evidence/test-mysql-e2e-fix.log",
    "docs/acceptance/evidence/test-sqlite-c402a37.log",
@@ -225,13 +219,11 @@
   "docs/共享规范/文档治理阶段二_文档移动合并归档删除计划_2026-11-14.md": [
    "共享规范/性能优化与生产部署升级说明.md"
   ],
-  "docs/共享规范/文档治理阶段二_文档自动化门禁设计_2026-11-14.md": [
-   "docs/**",
-   "docs/共享规范/docs_gate_baseline.json"
-  ],
   "docs/共享规范/第一阶段_仓库现状盘点报告.md": [
-   "docs/acceptance/evidence/*.log",
    "docs/schema_only"
   ]
- }
+ },
+ "c4_known": [],
+ "c5_known": {},
+ "c6_known": {}
 }
