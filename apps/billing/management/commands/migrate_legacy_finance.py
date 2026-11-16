@@ -104,7 +104,7 @@ class Command(BaseCommand):
             reason = "密码认证失败"
         elif not user.is_active:
             reason = "账号已停用"
-        elif not user.is_staff:
+        elif not getattr(user, "is_staff", False):
             reason = "账号非平台身份（is_staff=False）"
         elif user.pk != batch.executed_by_id:
             reason = "认证账号与批次登记的 executed_by 不一致"

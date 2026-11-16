@@ -22,7 +22,7 @@ from threading import Barrier, Thread
 
 from django.contrib.auth.models import User
 from django.db import close_old_connections, connection
-from django.test import TransactionTestCase, override_settings
+from django.test import TransactionTestCase
 from django.utils import timezone
 
 from apps.billing.models import Folio, Payment, PaymentIntent
@@ -50,12 +50,15 @@ class WalkInsCreateApiTests(WalkInApiTestBase):
         user = self._auth()
         # CASH 押金登记要求收款人先开立 OPEN 收银班次（record_deposit 服务端约束）。
         BillingService.open_shift(
-            property_obj=self.property, cashier=user, opening_cash=Decimal("0.00"))
+            property_obj=self.property, cashier=user, opening_cash=Decimal("0.00")
+        )
         response = _post_json(
-            self.client, self.url,
+            self.client,
+            self.url,
             # 客户端传 999.00 仅用于展示核对；服务端必须按 300.00×30%=90.00 强制计收
             self._payload(deposit_amount="999.00"),
-            HTTP_IDEMPOTENCY_KEY="a1-create-001")
+            HTTP_IDEMPOTENCY_KEY="a1-create-001",
+        )
         self.assertEqual(response.status_code, 201, response.content)
         body = response.json()
         self.assertIn("meta", body)
@@ -68,8 +71,7 @@ class WalkInsCreateApiTests(WalkInApiTestBase):
 
         reservation = Reservation.objects.get(booking_no=data["booking_no"])
         self.assertEqual(reservation.source, "WALK_IN")
-        self.assertTrue(
-            Stay.objects.filter(reservation_room__reservation=reservation).exists())
+        self.assertTrue(Stay.objects.filter(reservation_room__reservation=reservation).exists())
         # 入住后房态：占用置 OCCUPIED；housekeeping 保持 CLEAN（本仓库
         # 房态生命周期中 DIRTY 在退房时置入并联动 WB-055 离店清洁任务，
         # 入住不产生待清洁房态——见 front_desk_services.check_in_stay）。
@@ -97,12 +99,17 @@ class WalkInsCreateApiTests(WalkInApiTestBase):
         second_data = second.json()["data"]
         self.assertTrue(first_data["created"])
         self.assertFalse(second_data["created"])
-        for field in ("booking_no", "reservation_id", "stay_id", "room_number",
-                      "deposit_amount", "source"):
+        for field in (
+            "booking_no",
+            "reservation_id",
+            "stay_id",
+            "room_number",
+            "deposit_amount",
+            "source",
+        ):
             self.assertEqual(first_data[field], second_data[field], field)
         # 幂等重放不重复建档
-        self.assertEqual(
-            Reservation.objects.filter(booking_no=first_data["booking_no"]).count(), 1)
+        self.assertEqual(Reservation.objects.filter(booking_no=first_data["booking_no"]).count(), 1)
         self.assertEqual(Guest.objects.filter(full_name="散客张三").count(), 1)
         self.assertEqual(Stay.objects.count(), 1)
 
@@ -118,8 +125,8 @@ class WalkInsCreateApiTests(WalkInApiTestBase):
     def test_walk_ins_overlong_idempotency_key_returns_400(self):
         self._auth()
         response = _post_json(
-            self.client, self.url, self._payload(),
-            HTTP_IDEMPOTENCY_KEY="k" * 129)
+            self.client, self.url, self._payload(), HTTP_IDEMPOTENCY_KEY="k" * 129
+        )
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
 
@@ -129,15 +136,15 @@ class WalkInsCreateApiTests(WalkInApiTestBase):
     def test_walk_ins_without_change_permission_returns_403(self):
         self._auth(codenames=("view_accommodation",))
         response = _post_json(
-            self.client, self.url, self._payload(),
-            HTTP_IDEMPOTENCY_KEY="a1-noperm-001")
+            self.client, self.url, self._payload(), HTTP_IDEMPOTENCY_KEY="a1-noperm-001"
+        )
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
     def test_walk_ins_requires_authentication_returns_401(self):
         response = _post_json(
-            self.client, self.url, self._payload(),
-            HTTP_IDEMPOTENCY_KEY="a1-anon-001")
+            self.client, self.url, self._payload(), HTTP_IDEMPOTENCY_KEY="a1-anon-001"
+        )
         self.assertEqual(response.status_code, 401, response.content)
 
     # ------------------------------------------------------------------
@@ -148,8 +155,8 @@ class WalkInsCreateApiTests(WalkInApiTestBase):
         self.room.save(update_fields=("occupancy_status",))
         self._auth()
         response = _post_json(
-            self.client, self.url, self._payload(),
-            HTTP_IDEMPOTENCY_KEY="a1-novacant-001")
+            self.client, self.url, self._payload(), HTTP_IDEMPOTENCY_KEY="a1-novacant-001"
+        )
         self.assertEqual(response.status_code, 409, response.content)
         error = response.json()["error"]
         self.assertEqual(error["code"], "BUSINESS_CONFLICT")
@@ -178,8 +185,11 @@ class WalkInsCreateApiTests(WalkInApiTestBase):
         self._auth()
         for nights in (0, 31):
             response = _post_json(
-                self.client, self.url, self._payload(nights=nights),
-                HTTP_IDEMPOTENCY_KEY=f"a1-nights-{nights}")
+                self.client,
+                self.url,
+                self._payload(nights=nights),
+                HTTP_IDEMPOTENCY_KEY=f"a1-nights-{nights}",
+            )
             self.assertEqual(response.status_code, 400, response.content)
             self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
 
@@ -188,16 +198,18 @@ class WalkInsCreateApiTests(WalkInApiTestBase):
         payload = self._payload()
         del payload["rate_plan_id"]
         self._auth()
-        response = _post_json(
-            self.client, self.url, payload, HTTP_IDEMPOTENCY_KEY="a1-noplan-001")
+        response = _post_json(self.client, self.url, payload, HTTP_IDEMPOTENCY_KEY="a1-noplan-001")
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
 
     def test_walk_ins_unknown_room_type_returns_400(self):
         self._auth()
         response = _post_json(
-            self.client, self.url, self._payload(room_type_id=999999),
-            HTTP_IDEMPOTENCY_KEY="a1-badtype-001")
+            self.client,
+            self.url,
+            self._payload(room_type_id=999999),
+            HTTP_IDEMPOTENCY_KEY="a1-badtype-001",
+        )
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
 
@@ -212,21 +224,32 @@ class PaymentIntentWindowExtensionApiTests(WhiteboxApiTestBase):
         today = timezone.localdate()
         self.guest = Guest.objects.create(property=self.property, full_name="支付窗口住客")
         self.reservation = Reservation.objects.create(
-            property=self.property, guest=self.guest, booking_no="A2INTENT-001",
+            property=self.property,
+            guest=self.guest,
+            booking_no="A2INTENT-001",
             status=Reservation.Status.PENDING,
-            check_in=today, check_out=today + timedelta(days=1),
-            room_count=1, adult_count=1,
-            total_amount=Decimal("600.00"), currency="CNY")
+            check_in=today,
+            check_out=today + timedelta(days=1),
+            room_count=1,
+            adult_count=1,
+            total_amount=Decimal("600.00"),
+            currency="CNY",
+        )
         self.folio = Folio.objects.create(
-            property=self.property, reservation=self.reservation,
-            guest=self.guest, currency="CNY")
+            property=self.property, reservation=self.reservation, guest=self.guest, currency="CNY"
+        )
         self.intent = PaymentIntent.objects.create(
-            property=self.property, reservation=self.reservation, folio=self.folio,
-            intent_no="A2-INTENT-001", idempotency_key="A2-INTENT-KEY-001",
-            amount=Decimal("600.00"), currency="CNY",
+            property=self.property,
+            reservation=self.reservation,
+            folio=self.folio,
+            intent_no="A2-INTENT-001",
+            idempotency_key="A2-INTENT-KEY-001",
+            amount=Decimal("600.00"),
+            currency="CNY",
             status=PaymentIntent.Status.PENDING,
             expires_at=timezone.now() + timedelta(minutes=15),
-            max_expires_at=timezone.now() + timedelta(minutes=30))
+            max_expires_at=timezone.now() + timedelta(minutes=30),
+        )
 
     def _finance_auth(self):
         user = self._make_staff(codenames={"finance_access"})
@@ -237,7 +260,9 @@ class PaymentIntentWindowExtensionApiTests(WhiteboxApiTestBase):
         intent = intent or self.intent
         return self.client.post(
             self.url_template.format(pk=intent.pk),
-            data=json.dumps({}), content_type="application/json")
+            data=json.dumps({}),
+            content_type="application/json",
+        )
 
     # ------------------------------------------------------------------
     # 任务验收点①：PENDING 意图延长成功 extension_count=1、expires_at 后移
@@ -255,8 +280,8 @@ class PaymentIntentWindowExtensionApiTests(WhiteboxApiTestBase):
         self.assertEqual(data["extension_count"], 1)
         self.assertEqual(data["max_extensions"], 1)
         self.assertEqual(
-            datetime.fromisoformat(data["expires_at"]),
-            before + timedelta(seconds=300))
+            datetime.fromisoformat(data["expires_at"]), before + timedelta(seconds=300)
+        )
         window = data["channel_window"]
         self.assertEqual(window["provider_code"], "mock")
         self.assertEqual(window["max_extensions"], 1)
@@ -311,26 +336,36 @@ class PaymentIntentWindowExtensionApiTests(WhiteboxApiTestBase):
     # 任务验收点⑤：跨物业意图 → 404 RESOURCE_NOT_FOUND
     # ------------------------------------------------------------------
     def test_cross_property_intent_returns_404(self):
-        other_guest = Guest.objects.create(
-            property=self.other_property, full_name="别店支付住客")
+        other_guest = Guest.objects.create(property=self.other_property, full_name="别店支付住客")
         other_reservation = Reservation.objects.create(
-            property=self.other_property, guest=other_guest,
+            property=self.other_property,
+            guest=other_guest,
             booking_no="A2INTENT-OTHER",
             status=Reservation.Status.PENDING,
             check_in=timezone.localdate(),
             check_out=timezone.localdate() + timedelta(days=1),
-            room_count=1, adult_count=1,
-            total_amount=Decimal("500.00"), currency="CNY")
+            room_count=1,
+            adult_count=1,
+            total_amount=Decimal("500.00"),
+            currency="CNY",
+        )
         other_folio = Folio.objects.create(
-            property=self.other_property, reservation=other_reservation,
-            guest=other_guest, currency="CNY")
+            property=self.other_property,
+            reservation=other_reservation,
+            guest=other_guest,
+            currency="CNY",
+        )
         other_intent = PaymentIntent.objects.create(
-            property=self.other_property, reservation=other_reservation,
+            property=self.other_property,
+            reservation=other_reservation,
             folio=other_folio,
-            intent_no="A2-INTENT-OTHER", idempotency_key="A2-INTENT-KEY-OTHER",
-            amount=Decimal("500.00"), currency="CNY",
+            intent_no="A2-INTENT-OTHER",
+            idempotency_key="A2-INTENT-KEY-OTHER",
+            amount=Decimal("500.00"),
+            currency="CNY",
             status=PaymentIntent.Status.PENDING,
-            expires_at=timezone.now() + timedelta(minutes=15))
+            expires_at=timezone.now() + timedelta(minutes=15),
+        )
         self._finance_auth()
         response = self._post(intent=other_intent)
         self.assertEqual(response.status_code, 404, response.content)
@@ -351,9 +386,7 @@ class WalkInsDepositPolicyTests(WalkInApiTestBase):
     url = "/api/v1/front-desk/walk-ins"
 
     def _deposits(self):
-        return Payment.objects.filter(
-            reservation__source="WALK_IN", provider="frontdesk_deposit"
-        )
+        return Payment.objects.filter(reservation__source="WALK_IN", provider="frontdesk_deposit")
 
     def test_deposit_collected_when_client_omits_amount(self):
         """不传 deposit_amount：服务端仍按 300×30%=90 强制收押。"""
@@ -457,9 +490,7 @@ class WalkInsConcurrentIdempotencyTests(TransactionTestCase):
         RoomTypeInventory.objects.create(
             property=self.property, room_type=self.room_type, stay_date=today, total_rooms=3
         )
-        self.cashier = User.objects.create_user(
-            username="r101-cashier", password="r101-pass123"
-        )
+        self.cashier = User.objects.create_user(username="r101-cashier", password="r101-pass123")
         BillingService.open_shift(
             property_obj=self.property, cashier=self.cashier, opening_cash=Decimal("0.00")
         )
@@ -467,7 +498,7 @@ class WalkInsConcurrentIdempotencyTests(TransactionTestCase):
 
     def test_parallel_same_key_exactly_one_creator(self):
         barrier = Barrier(2)
-        outcomes = {"created": [], "replayed": [], "errors": []}
+        outcomes: dict = {"created": [], "replayed": [], "errors": []}
 
         def call_once(index):
             close_old_connections()
@@ -504,16 +535,16 @@ class WalkInsConcurrentIdempotencyTests(TransactionTestCase):
 
         self.assertEqual(outcomes["errors"], [], f"并发 Walk-in 不得出现任何异常：{outcomes}")
         self.assertEqual(
-            len(outcomes["created"]), 1,
+            len(outcomes["created"]),
+            1,
             f"恰有一个 created=True 写入者：created={outcomes['created']} "
             f"replayed={outcomes['replayed']} errors={outcomes['errors']}",
         )
-        self.assertEqual(
-            len(outcomes["replayed"]), 1, "另一个必须得到 created=False 重放仲裁"
-        )
+        self.assertEqual(len(outcomes["replayed"]), 1, "另一个必须得到 created=False 重放仲裁")
         self.assertEqual(Reservation.objects.filter(source="WALK_IN").count(), 1, "Reservation=1")
         self.assertEqual(
-            Guest.objects.filter(full_name__startswith="并发散客").count(), 1,
+            Guest.objects.filter(full_name__startswith="并发散客").count(),
+            1,
             "Guest=1（同键同占位号不得重复建档）",
         )
         self.assertEqual(Stay.objects.filter(property=self.property).count(), 1, "Stay=1")
