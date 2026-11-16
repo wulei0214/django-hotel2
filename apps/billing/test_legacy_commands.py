@@ -13,10 +13,11 @@ from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
 from pathlib import Path
-from unittest import mock
+from unittest import mock, skipIf
 
 from django.contrib.auth.models import User
 from django.core.management import CommandError, call_command
+from django.db import connection
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -397,6 +398,10 @@ class LegacyMigrationCommandTests(TestCase):
                 stdout=StringIO(),
             )
 
+    @skipIf(
+        connection.vendor != "sqlite",
+        "仅在 SQLite（无触发器能力）下验证命令 fail-closed；MySQL 上命令须真实安装/校验",
+    )
     def test_database_guard_commands_refuse_sqlite(self):
         """SQLite 无触发器：安装/校验命令必须明确拒绝，不得伪造验收。"""
         for command in ("install_legacy_batch_guards", "check_legacy_batch_guards"):
