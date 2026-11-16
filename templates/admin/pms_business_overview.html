@@ -1,0 +1,77 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+<style>
+.pms-ov { max-width: 1180px; margin: 18px auto; color: #303133; }
+.pms-ov h2 { font-size: 20px; margin: 0 0 4px; }
+.pms-ov .sub { color: #909399; margin-bottom: 18px; }
+.pms-ov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.pms-ov-card { border: 1px solid #ebeef5; border-radius: 6px; padding: 14px 16px; background: #fff; }
+.pms-ov-card .num { font-size: 26px; font-weight: 600; color: #409eff; }
+.pms-ov-card a { color: #606266; text-decoration: none; }
+.pms-ov-card a:hover { color: #409eff; }
+.pms-ov-section { margin-top: 22px; }
+.pms-ov-section h3 { font-size: 16px; border-left: 3px solid #409eff; padding-left: 8px; }
+.pms-ov table { width: 100%; border-collapse: collapse; background: #fff; }
+.pms-ov th, .pms-ov td { border: 1px solid #ebeef5; padding: 8px 10px; text-align: left; font-size: 13px; }
+.pms-ov th { background: #f5f7fa; }
+.pms-ov-note { margin-top: 18px; padding: 10px 12px; background: #f4f4f5; color: #606266; border-radius: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pms-ov">
+    <h2>PMS2 业务概览</h2>
+    <p class="sub">前台预订 / 入住 / 账务 / 审计事实实时汇总，数据来自 PMS2 真实业务表（只读）。</p>
+
+    <div class="pms-ov-grid">
+        {% for item in counts %}
+            <div class="pms-ov-card">
+                <div class="num">{{ item.total }}</div>
+                <a href="{{ item.url }}">{{ item.label }}</a>
+            </div>
+        {% endfor %}
+    </div>
+
+    <div class="pms-ov-section">
+        <h3>预订状态分布</h3>
+        <table>
+            <thead><tr><th>状态</th><th>数量</th></tr></thead>
+            <tbody>
+                {% for row in statuses %}
+                    <tr><td>{{ row.label }}（{{ row.status }}）</td><td>{{ row.total }}</td></tr>
+                {% empty %}
+                    <tr><td colspan="2">暂无预订</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pms-ov-section">
+        <h3>最近业务动作（审计事件）</h3>
+        <table>
+            <thead><tr><th>时间</th><th>物业</th><th>操作者</th><th>动作</th><th>实体</th><th>原因</th></tr></thead>
+            <tbody>
+                {% for entry in recent_events %}
+                    <tr>
+                        <td>{{ entry.created_at|date:'Y-m-d H:i:s' }}</td>
+                        <td>{{ entry.property.code|default:'—' }}</td>
+                        <td>{{ entry.actor.username|default:'系统' }}</td>
+                        <td>{{ entry.action }}</td>
+                        <td>{{ entry.entity_type }}#{{ entry.entity_id }}</td>
+                        <td>{{ entry.reason|default:'—' }}</td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="6">暂无审计事件</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <p class="pms-ov-note">
+        这里展示的是 PMS 前台业务写入的数据；Django Admin 的「最近动作」只记录后台模型编辑，二者数据源不同。
+        旧 hotelapp 数据为只读历史存档，已从后台菜单隐藏。
+    </p>
+</div>
+{% endblock %}

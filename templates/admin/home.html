@@ -1,0 +1,75 @@
+{% load i18n static simpletags pms_admin %}
+{% pms_business_snapshot as pms_snapshot %}
+<div id="home">
+    <el-row class="info-card">
+        {% if "SIMPLEUI_HOME_QUICK"|get_config != False %}
+            {% if "SIMPLEUI_HOME_INFO"|get_config != False %}
+                <el-col :span="18">
+            {% else %}
+                <el-col :span="24">
+            {% endif %}
+            <el-card class="box-card">
+                <div slot="header" class="clearfix">
+                    <i class="fas fa-link"></i>
+                    <span v-text="getLanuage('Quick navigation')"></span>
+                </div>
+                <div class="clearfix">
+                    <div v-for="(c,j) in models" :key="c.name" class="quick-wrap">
+                        <a href="javascript:;" @click="openTab(c,(j+1)+'')">
+                            <span class="icon" :class="c.icon"></span>
+                            <span class="card-name" v-text="c.name"></span>
+                        </a>
+                    </div>
+                </div>
+            </el-card>
+            </el-col>
+        {% endif %}
+    </el-row>
+
+    <el-card class="box-card" style="margin-top:16px">
+        <div slot="header" class="clearfix">
+            <i class="fas fa-database"></i>
+            <span>PMS2 业务数据快照（前台实时写入）</span>
+            <a style="float:right" href="/admin/pms-overview/">查看完整概览</a>
+        </div>
+        <div class="clearfix">
+            {% for item in pms_snapshot.counts %}
+                <div style="display:inline-block;min-width:130px;margin:6px 18px 6px 0">
+                    <div style="font-size:22px;font-weight:600;color:#409eff">{{ item.total }}</div>
+                    <a href="{{ item.url }}">{{ item.label }}</a>
+                </div>
+            {% endfor %}
+        </div>
+        <div style="margin-top:10px;border-top:1px solid #ebeef5;padding-top:10px">
+            <strong>预订状态：</strong>
+            {% for row in pms_snapshot.statuses %}
+                <span style="margin-right:16px">{{ row.label }} {{ row.total }}</span>
+            {% empty %}
+                <span>暂无预订</span>
+            {% endfor %}
+        </div>
+    </el-card>
+
+    <el-card class="timeline" style="margin-top:16px">
+        <div slot="header" class="clearfix">
+            <i class="fas fa-history"></i>
+            <span>PMS2 最近业务动作（来自审计事件）</span>
+            <a style="float:right" href="/manage/audit/">打开审计中心</a>
+        </div>
+        {% if pms_snapshot.recent_events %}
+            <el-timeline>
+                {% for entry in pms_snapshot.recent_events %}
+                    <el-timeline-item timestamp="{{ entry.created_at|date:'Y-m-d H:i' }}" placement="top">
+                        <el-card>
+                            <p>{{ entry.property.code|default:'—' }} · {{ entry.actor.username|default:'系统' }}</p>
+                            <h4>{{ entry.action }} · {{ entry.entity_type }}#{{ entry.entity_id }}</h4>
+                            {% if entry.reason %}<p>{{ entry.reason }}</p>{% endif %}
+                        </el-card>
+                    </el-timeline-item>
+                {% endfor %}
+            </el-timeline>
+        {% else %}
+            <p style="padding:18px;color:#909399">暂无审计事件。前台产生预订、入住、支付等操作后会在此显示。</p>
+        {% endif %}
+    </el-card>
+</div>

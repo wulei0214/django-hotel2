@@ -272,9 +272,9 @@ SIMPLEUI_HOME_INFO = False  # 隐藏 simpleui 自带的英文信息卡（Gitee/G
 SIMPLEUI_HOME_TITLE = "酒店管理控制台"
 SIMPLEUI_LOGO = "/static/images/t1.jpg"
 
-# 多物业策略（RBAC 决策 8）：单店运行，仅 DEFAULT 物业生效；
-# PMS2 架构（物业/库存/预订/账务等 app）代码保留但菜单隐藏——URL 仍可直达供开发期排查，
-# 后续多物业启用时删除本配置即恢复完整菜单。
+# 多物业策略（RBAC 决策 8）：单店运行，仅 DEFAULT 物业生效。
+# 后台菜单只暴露 PMS2 真实业务模型 + 身份权限模型；旧 hotelapp 为只读历史存档，
+# 已从菜单隐藏（模型与 URL 保留，开发期仍可直达排查，不作为运营入口）。
 SIMPLEUI_CONFIG = {
     "system_name": "酒店管理系统",
     "menus": [
@@ -282,6 +282,11 @@ SIMPLEUI_CONFIG = {
             "name": "PMS2 业务数据（真实）",
             "icon": "fas fa-database",
             "models": [
+                {
+                    "name": "业务概览（前台实时数据）",
+                    "icon": "fas fa-chart-pie",
+                    "url": "/admin/pms-overview/",
+                },
                 {"name": "酒店物业", "icon": "fas fa-building", "url": "/admin/core/property/"},
                 {"name": "住客档案", "icon": "far fa-address-book", "url": "/admin/guests/guest/"},
                 {
@@ -325,40 +330,6 @@ SIMPLEUI_CONFIG = {
                     "url": "/admin/billing/approvalrecord/",
                 },
                 {"name": "审计事件", "icon": "fas fa-history", "url": "/admin/core/auditevent/"},
-            ],
-        },
-        {
-            "name": "酒店业务模块（旧系统存档）",
-            "icon": "fas fa-archive",
-            "models": [
-                {"name": "员工信息管理", "icon": "far fa-user", "url": "/admin/hotelapp/staff/"},
-                {
-                    "name": "顾客管理",
-                    "icon": "far fa-address-book",
-                    "url": "/admin/hotelapp/client/",
-                },
-                {"name": "会员信息管理", "icon": "far fa-star", "url": "/admin/hotelapp/vip/"},
-                {"name": "客房信息管理", "icon": "fas fa-bed", "url": "/admin/hotelapp/room/"},
-                {
-                    "name": "客房订单管理",
-                    "icon": "fas fa-book",
-                    "url": "/admin/hotelapp/accommodation/",
-                },
-                {
-                    "name": "财务流水",
-                    "icon": "fas fa-yen-sign",
-                    "url": "/admin/hotelapp/financerecord/",
-                },
-                {
-                    "name": "夜审记录",
-                    "icon": "far fa-bookmark",
-                    "url": "/admin/hotelapp/nightaudit/",
-                },
-                {
-                    "name": "账单流水",
-                    "icon": "fas fa-shopping-bag",
-                    "url": "/admin/hotelapp/folio/",
-                },
             ],
         },
         {

@@ -30,6 +30,7 @@ from hotelapp import views
 
 from apps.api import openapi_schema
 from apps.api import pages as api_pages
+from apps.core.admin_views import pms_business_overview
 from apps.identity import invitation_views, permission_admin, permission_center, staff_center_views
 from apps.identity import platform as identity_platform
 
@@ -90,6 +91,8 @@ urlpatterns = [
     path("invite/accept/", invitation_views.invite_accept, name="invite_accept"),
     path("manage/<str:center>/", api_pages.management_center_page, name="pms_management_center"),
     path("admin/login/", identity_platform.platform_admin_login, name="platform_admin_login"),
+    # 后台侧边栏的 PMS2 只读业务概览（须在 admin.site.urls 之前匹配）
+    path("admin/pms-overview/", pms_business_overview, name="pms_admin_overview"),
     path("admin/", admin.site.urls),
     path("", views.home),
     path("home/", views.home),
