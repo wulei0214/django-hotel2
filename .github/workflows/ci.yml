@@ -71,3 +71,11 @@ jobs:
 
       - name: Verify legacy migration batch guards
         run: python manage.py check_legacy_batch_guards
+
+      # 迁移方案 §1.5.2 数据库层（阶段 D 批次 4）：旧订单-新预订关系映射
+      # 追加式不可变（UPDATE / DELETE 一律拒绝）。同样只能在真实 MySQL 验收。
+      - name: Install legacy order-reservation map guards
+        run: python manage.py install_legacy_map_guards
+
+      - name: Verify legacy order-reservation map guards
+        run: python manage.py check_legacy_map_guards

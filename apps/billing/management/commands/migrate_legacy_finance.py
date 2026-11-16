@@ -33,7 +33,11 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--batch-uid", required=True)
-        parser.add_argument("--mapping-file", required=True, help="人工确认映射 JSON 路径")
+        parser.add_argument(
+            "--mapping-file",
+            default="",
+            help="人工确认映射 JSON（可选）：订单-预订关系以关系表为准，本文件补充 C2/C3 候选与冲销配对",
+        )
         parser.add_argument("--dry-run", action="store_true", help="只分类不写库")
         parser.add_argument("--plan-out", default="", help="把分类清单写到指定 JSON 路径")
         parser.add_argument("--executor", default="", help="执行人账号（须 == 批次 executed_by）")
@@ -42,10 +46,12 @@ class Command(BaseCommand):
         batch = LegacyMigrationBatch.objects.filter(batch_uid=options["batch_uid"].strip()).first()
         if batch is None:
             raise CommandError(f"批次不存在：{options['batch_uid']}")
-        try:
-            mapping = load_mapping(options["mapping_file"])
-        except LegacyMigrationError as exc:
-            raise CommandError(str(exc)) from exc
+        mapping = {}
+        if options["mapping_file"].strip():
+            try:
+                mapping = load_mapping(options["mapping_file"])
+            except LegacyMigrationError as exc:
+                raise CommandError(str(exc)) from exc
         try:
             plan = build_plan(batch=batch, mapping=mapping)
         except LegacyMigrationError as exc:

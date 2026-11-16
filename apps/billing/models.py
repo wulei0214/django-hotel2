@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import F, Q, Sum
 from django.db.models.signals import m2m_changed
+from django.utils import timezone
 
 
 class ImmutableFinancialFactQuerySet(models.QuerySet):
@@ -2626,6 +2627,10 @@ class LegacyArchiveRecord(models.Model):
         # 「新建 vs 修改」——必须用 _state.adding（Django 的插入态标志）。
         if not self._state.adding:
             raise ValidationError("归档表只读：归档行创建后不可修改。")
+        # 显式主键 + 非 force_insert 时 Django 会先试 UPDATE（0 行）再 INSERT，
+        # 而 auto_now_add 只在插入态填充 → archived_at 会以 NULL 落库触发 NOT NULL。
+        # 归档行语义就是「创建即插入」，显式 force_insert 消除这条歧义路径。
+        kwargs.setdefault("force_insert", True)
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
@@ -2791,3 +2796,137 @@ class LegacyArchiveRun(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("归档元数据只读：批次摘要不可删除。")
+
+
+class ImmutableMapQuerySet(models.QuerySet):
+    """订单-预订关系映射的批量路径守卫（迁移方案 §1.5.2 R5-04-B 模型层）。
+
+    ``save()`` 守卫只能拦单实例修改；``filter(...).update(...)`` 这类批量路径
+    不经过 save()，会静默改写"已确认的关系事实"，故批量入口一律拒绝。
+    关系演进只能"追加新行 + supersedes 版本链"。
+    """
+
+    def update(self, **kwargs: Any) -> int:
+        raise ValidationError(
+            "关系映射只读：确认事实禁止 QuerySet.update；改映射须追加 supersedes 新行。"
+        )
+
+    def delete(self) -> tuple[int, dict[str, int]]:
+        raise ValidationError("关系映射只读：确认事实禁止批量删除；改映射须追加 supersedes 新行。")
+
+    def bulk_create(self, objs: Any, *args: Any, **kwargs: Any) -> list[Any]:
+        raise ValidationError("关系映射只读：须逐条 confirm_pair() 确认并留痕。")
+
+    def bulk_update(self, objs: Any, fields: Any, *args: Any, **kwargs: Any) -> int:
+        raise ValidationError(
+            "关系映射只读：确认事实禁止 bulk_update；改映射须追加 supersedes 新行。"
+        )
+
+
+class LegacyOrderReservationMap(models.Model):
+    """旧订单 ↔ 新预订的人工确认关系（迁移方案 §1.5.2）。
+
+    一行 = 一对（旧订单, 新预订）确认关系；关系基数（1:1 / 1:N / N:1 / N:M）
+    由行数表达，不在行内放"多目标"字段。设计要点：
+
+    * **创建即 CONFIRMED，此后永远不可变**：没有状态字段、没有状态流转，
+      改映射只能追加新行并以 ``supersedes`` 指向被取代的旧行（旧行原样保留）；
+    * **当前有效关系为派生口径**：未被任何行 ``supersedes`` 引用（``superseded_by IS NULL``）；
+    * ``legacy_order`` 外键 ``db_constraint=False``：旧表物理退役时 DB 外键不阻断
+      归档下线（旧模型物理删除后 ORM 关系仍在，设计 R4-05 的明确答案）；
+    * 物业一致性（关系行 property == 新 Reservation.property）由确认时点
+      应用层校验阻断——跨表一致性无法用 CheckConstraint 表达。
+    """
+
+    objects = models.Manager.from_queryset(ImmutableMapQuerySet)()
+
+    class RelationType(models.TextChoices):
+        ONE_TO_ONE = "ONE_TO_ONE", "一对一"
+        SPLIT_SOURCE = "SPLIT_SOURCE", "拆分来源（一旧订单对多新预订）"
+        MERGED_TARGET = "MERGED_TARGET", "并入目标（多旧订单对一新预订）"
+        OTHER = "OTHER", "其他（须在匹配依据中说明）"
+
+    # 外键 attname：运行时由 ForeignKey 提供，显式声明供类型检查识别。
+    legacy_order_id: Any
+    reservation_id: Any
+    property_id: Any
+    confirmed_by_id: Any
+    supersedes_id: Any
+
+    legacy_order: models.ForeignKey = models.ForeignKey(
+        "hotelapp.Accommodation",
+        on_delete=models.PROTECT,
+        db_constraint=False,
+        related_name="reservation_maps",
+        verbose_name="旧订单",
+        help_text="旧表物理退役时 DB 外键不阻断归档下线（db_constraint=False）",
+    )
+    reservation: models.ForeignKey = models.ForeignKey(
+        "reservations.Reservation",
+        on_delete=models.PROTECT,
+        related_name="legacy_order_maps",
+        verbose_name="新预订",
+    )
+    property: models.ForeignKey = models.ForeignKey(
+        "core.Property",
+        on_delete=models.PROTECT,
+        related_name="legacy_order_maps",
+        verbose_name="物业",
+    )
+    relation_type: models.CharField = models.CharField(
+        max_length=16, choices=RelationType.choices, verbose_name="关系角色"
+    )
+    match_basis: models.CharField = models.CharField(
+        max_length=240,
+        verbose_name="匹配依据",
+        help_text="客人/日期/房型等人工核对依据，确认时必填",
+    )
+    confirmed_by: models.ForeignKey = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="legacy_order_maps_confirmed",
+        verbose_name="确认人",
+    )
+    confirmed_at: models.DateTimeField = models.DateTimeField(
+        default=timezone.now, verbose_name="确认时间"
+    )
+    supersedes: models.OneToOneField = models.OneToOneField(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="superseded_by",
+        verbose_name="取代的关系行",
+        help_text="OneToOne 唯一约束保证一行至多被取代一次（可空唯一 = 允许多行不取代任何行）",
+    )
+    created_at: models.DateTimeField = models.DateTimeField(
+        auto_now_add=True, verbose_name="落库时间"
+    )
+
+    class Meta:
+        verbose_name = "旧订单-新预订关系"
+        verbose_name_plural = "旧订单-新预订关系"
+        ordering = ("-created_at", "-id")
+        constraints = [
+            # 并发确认同一配对时由唯一约束拒绝第二行（§1.5.3 并发确认断言）。
+            models.UniqueConstraint(
+                fields=("legacy_order", "reservation"), name="uq_legacy_order_reservation_pair"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("property", "legacy_order"), name="ix_legacy_map_prop_order"),
+        ]
+
+    def __str__(self):
+        return f"旧订单#{self.legacy_order_id} → 预订#{self.reservation_id}"
+
+    def save(self, *args, **kwargs):
+        # 确认事实创建后不可变（含状态字段在内的任何字段）。改映射走 supersedes 追加。
+        if not self._state.adding:
+            raise ValidationError(
+                "关系映射只读：确认事实创建后不可修改；改映射须追加 supersedes 新行。"
+            )
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("关系映射只读：确认事实不可删除；改映射须追加 supersedes 新行。")

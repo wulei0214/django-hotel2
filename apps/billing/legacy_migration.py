@@ -366,9 +366,29 @@ def classify_finance_row(
     )
 
 
-def build_plan(*, batch: LegacyMigrationBatch, mapping: Mapping[str, Any]) -> Plan:
-    """按批次 scope 读取旧表并逐条分类（只读，不写任何表）。"""
+def build_plan(*, batch: LegacyMigrationBatch, mapping: Mapping[str, Any] | None = None) -> Plan:
+    """按批次 scope 读取旧表并逐条分类（只读，不写任何表）。
+
+    订单-预订关系来源以 ``legacy_order_reservation_map`` 的当前有效行为权威；
+    ``--mapping-file`` 的 ``orders`` 是关系表铺满前的兼容输入。两者同时给出且
+    指向不同预订 → 拒绝（不静默选一边，见 :mod:`apps.billing.legacy_order_map`）。
+    """
     from hotelapp import models as legacy_models
+
+    from apps.billing.legacy_order_map import (
+        LegacyOrderMapError,
+        merge_order_mappings,
+        orders_mapping,
+    )
+
+    effective: dict[str, Any] = dict(mapping or {})
+    try:
+        effective["orders"] = merge_order_mappings(
+            table_map=orders_mapping(batch.scope_property),
+            file_map=effective.get("orders") or {},
+        )
+    except LegacyOrderMapError as exc:
+        raise LegacyMigrationError(str(exc)) from exc
 
     plan = Plan()
     scope_models = list(batch.scope_source_models or [])
@@ -393,7 +413,7 @@ def build_plan(*, batch: LegacyMigrationBatch, mapping: Mapping[str, Any]) -> Pl
         for row in rows:
             if not _in_range(int(row["id"])):
                 continue
-            plan.decisions.append(classify_folio_row(row, mapping, batch=batch))
+            plan.decisions.append(classify_folio_row(row, effective, batch=batch))
     if "FinanceRecord" in scope_models:
         finance_rows = (
             legacy_models.FinanceRecord.objects.all()
@@ -403,7 +423,7 @@ def build_plan(*, batch: LegacyMigrationBatch, mapping: Mapping[str, Any]) -> Pl
         for row in finance_rows:
             if not _in_range(int(row["id"])):
                 continue
-            plan.decisions.append(classify_finance_row(row, mapping, batch=batch))
+            plan.decisions.append(classify_finance_row(row, effective, batch=batch))
     return plan
 
 
