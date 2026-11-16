@@ -235,6 +235,13 @@ class LegacyRecordLink(models.Model):
     )
     reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name="核验时间")
     review_note = models.CharField(max_length=240, blank=True, verbose_name="核验备注")
+    migration_batch: models.CharField = models.CharField(
+        max_length=64,
+        blank=True,
+        db_index=True,
+        verbose_name="迁移批次",
+        help_text="阶段 D 迁移批次号；对账按批次分组核验，非迁移期映射为空",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 

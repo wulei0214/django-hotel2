@@ -63,3 +63,11 @@ jobs:
 
       - name: Verify MySQL append-only guards
         run: python manage.py check_mysql_append_only_guards
+
+      # 迁移方案 §5.2 数据库层（阶段 D 批次 3）：ACTIVE 批次 scope 冻结 / CLOSED 终态 /
+      # 状态白名单 / 删除拒绝。SQLite 测试环境无触发器，故只能在此真实 MySQL 步骤验收。
+      - name: Install legacy migration batch guards
+        run: python manage.py install_legacy_batch_guards
+
+      - name: Verify legacy migration batch guards
+        run: python manage.py check_legacy_batch_guards

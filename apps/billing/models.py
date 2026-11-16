@@ -176,6 +176,7 @@ class Folio(models.Model):
     )
     # 外键 attname：运行时由 ForeignKey 提供，无 django-stubs 时显式声明供类型检查识别。
     reservation_id: Any
+    property_id: Any
     folio_type = models.CharField(
         max_length=12, choices=FolioType.choices, default=FolioType.MASTER, verbose_name="账单类型"
     )
@@ -2473,6 +2474,10 @@ class LegacyMigrationBatch(models.Model):
         verbose_name="批次身份",
         help_text="迁移批次唯一标识；受控入口凭证绑定此值",
     )
+    # 外键 attname：运行时由 ForeignKey 提供，显式声明供类型检查识别。
+    approved_by_id: Any
+    executed_by_id: Any
+    scope_property_id: Any
     approved_by: models.ForeignKey = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -2568,3 +2573,221 @@ class LegacyMigrationBatch(models.Model):
                     "批次已 ACTIVE，授权范围与执行人已冻结，禁止修改：" + ", ".join(changed)
                 )
         super().save(*args, **kwargs)
+
+
+class ImmutableArchiveQuerySet(models.QuerySet):
+    """归档表只读守卫（归档门禁 §5：历史只读，无有效期）。
+
+    SQLite 测试环境无 DB 触发器——模型层是本层唯一防线；生产 MySQL 的
+    归档表只读由「表权限 + 归档命令只在 D3 执行」共同保障，不做跨表触发器。
+    """
+
+    def update(self, **kwargs: Any) -> int:
+        raise ValidationError("归档表只读：历史凭证禁止批量修改。")
+
+    def delete(self) -> tuple[int, dict[str, int]]:
+        raise ValidationError("归档表只读：历史凭证禁止删除。")
+
+    def bulk_create(self, objs: Any, *args: Any, **kwargs: Any) -> list[Any]:
+        raise ValidationError("归档表只读：归档须经 archive_legacy_finance 逐条写入。")
+
+    def bulk_update(self, objs: Any, fields: Any, *args: Any, **kwargs: Any) -> int:
+        raise ValidationError("归档表只读：历史凭证禁止批量修改。")
+
+
+class LegacyArchiveRecord(models.Model):
+    """四张 ``legacy_*_archive`` 归档表的公共契约（归档门禁 §5 结构要求）。
+
+    结构 = 源表全列快照（类型保真）+ ``archived_at`` + ``archive_batch`` +
+    ``verified_checksum``（checksum-v2 行摘要）。归档行创建即不可变：
+    主键沿用源表主键，不用自增（否则无法与源表逐行对位）。
+    """
+
+    objects = models.Manager.from_queryset(ImmutableArchiveQuerySet)()
+
+    archive_batch: models.CharField = models.CharField(
+        max_length=64, db_index=True, verbose_name="归档批次"
+    )
+    archived_at: models.DateTimeField = models.DateTimeField(
+        auto_now_add=True, verbose_name="归档时间"
+    )
+    verified_checksum: models.CharField = models.CharField(
+        max_length=64,
+        blank=True,
+        verbose_name="行摘要",
+        help_text="checksum-v2 行摘要（hex）；整表摘要登记在 LegacyArchiveRun",
+    )
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        # 归档行以源表主键显式写入，pk 一开始就非空，不能用 pk is None 判定
+        # 「新建 vs 修改」——必须用 _state.adding（Django 的插入态标志）。
+        if not self._state.adding:
+            raise ValidationError("归档表只读：归档行创建后不可修改。")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("归档表只读：归档行不可删除。")
+
+
+class LegacyFolioArchive(LegacyArchiveRecord):
+    """旧 ``folio`` 全列快照（旧账单流水：押金/房费/消费/收款/冲账）。"""
+
+    id: models.BigIntegerField = models.BigIntegerField(primary_key=True, verbose_name="源主键")
+    order_id: models.BigIntegerField = models.BigIntegerField(
+        null=True, blank=True, verbose_name="旧订单 id"
+    )
+    entry_type: models.CharField = models.CharField(max_length=10, verbose_name="旧类型")
+    amount_text: models.CharField = models.CharField(max_length=45, verbose_name="旧金额(字符串)")
+    subject: models.CharField = models.CharField(max_length=100, verbose_name="旧事由")
+    date_text: models.CharField = models.CharField(max_length=45, verbose_name="旧日期(字符串)")
+    handler: models.CharField = models.CharField(
+        max_length=45, null=True, blank=True, verbose_name="旧经手人"
+    )
+
+    class Meta:
+        verbose_name = "旧账单流水归档"
+        verbose_name_plural = "旧账单流水归档"
+        db_table = "legacy_folio_archive"
+
+
+class LegacyFinanceRecordArchive(LegacyArchiveRecord):
+    """旧 ``finance_record`` 全列快照（旧财务流水：收入/支出）。"""
+
+    id: models.BigIntegerField = models.BigIntegerField(primary_key=True, verbose_name="源主键")
+    record_type: models.CharField = models.CharField(max_length=10, verbose_name="旧类型")
+    amount_text: models.CharField = models.CharField(max_length=45, verbose_name="旧金额(字符串)")
+    subject: models.CharField = models.CharField(max_length=100, verbose_name="旧事由")
+    related_order: models.CharField = models.CharField(
+        max_length=45, null=True, blank=True, verbose_name="旧关联订单(字符串)"
+    )
+    date_text: models.CharField = models.CharField(max_length=45, verbose_name="旧日期(字符串)")
+    handler: models.CharField = models.CharField(
+        max_length=45, null=True, blank=True, verbose_name="旧经手人"
+    )
+
+    class Meta:
+        verbose_name = "旧财务流水归档"
+        verbose_name_plural = "旧财务流水归档"
+        db_table = "legacy_finance_record_archive"
+
+
+class LegacyNightAuditArchive(LegacyArchiveRecord):
+    """旧 ``night_audit`` 全列快照（旧夜审日结）。"""
+
+    id: models.BigIntegerField = models.BigIntegerField(primary_key=True, verbose_name="源主键")
+    business_date_text: models.CharField = models.CharField(
+        max_length=45, verbose_name="旧营业日期(字符串)"
+    )
+    in_house_count: models.IntegerField = models.IntegerField(default=0, verbose_name="旧在住单数")
+    rollover_total_text: models.CharField = models.CharField(
+        max_length=45, null=True, blank=True, verbose_name="旧过租总额(字符串)"
+    )
+    no_show_count: models.IntegerField = models.IntegerField(default=0, verbose_name="旧未到处理数")
+    operator: models.CharField = models.CharField(max_length=45, verbose_name="旧操作人")
+    executed_at_text: models.CharField = models.CharField(
+        max_length=45, verbose_name="旧执行时间(字符串)"
+    )
+
+    class Meta:
+        verbose_name = "旧夜审记录归档"
+        verbose_name_plural = "旧夜审记录归档"
+        db_table = "legacy_night_audit_archive"
+
+
+class LegacyAccommodationArchive(LegacyArchiveRecord):
+    """旧 ``accommodation`` 全列快照（订单主表；归档只做快照，不改旧表）。
+
+    含顾客关联与联系方式——查询通道的权限/脱敏要求见归档门禁 §4.1，
+    归档表本身不提供对外报表出口。
+    """
+
+    id: models.BigIntegerField = models.BigIntegerField(primary_key=True, verbose_name="源主键")
+    client_id: models.IntegerField = models.IntegerField(
+        null=True, blank=True, verbose_name="旧顾客 id"
+    )
+    room_id: models.IntegerField = models.IntegerField(
+        null=True, blank=True, verbose_name="旧客房编号"
+    )
+    check_in_text: models.CharField = models.CharField(
+        max_length=45, null=True, blank=True, verbose_name="旧入住日期(字符串)"
+    )
+    status: models.CharField = models.CharField(
+        max_length=10, null=True, blank=True, verbose_name="旧订单状态"
+    )
+    contact_phone: models.CharField = models.CharField(
+        max_length=45, null=True, blank=True, verbose_name="旧联系电话"
+    )
+    received_amount_text: models.CharField = models.CharField(
+        max_length=45, null=True, blank=True, verbose_name="旧收款金额(字符串)"
+    )
+    deposit_text: models.CharField = models.CharField(
+        max_length=45, null=True, blank=True, verbose_name="旧押金(字符串)"
+    )
+    check_out_text: models.CharField = models.CharField(
+        max_length=45, null=True, blank=True, verbose_name="旧退房日期(字符串)"
+    )
+    reversed_by: models.CharField = models.CharField(
+        max_length=45, null=True, blank=True, verbose_name="旧冲账人"
+    )
+    reversed_at_text: models.CharField = models.CharField(
+        max_length=45, null=True, blank=True, verbose_name="旧冲账日期(字符串)"
+    )
+
+    class Meta:
+        verbose_name = "旧客房订单归档"
+        verbose_name_plural = "旧客房订单归档"
+        db_table = "legacy_accommodation_archive"
+
+
+class LegacyArchiveRun(models.Model):
+    """归档批次元数据（checksum-v2 第 9 条：算法版本/行数/min-max 主键/时间/执行人）。
+
+    一次归档 = 一张表一行；整表摘要落在这里，行摘要落在归档行 ``verified_checksum``。
+    D4 恢复演练与 D3 收口按本表逐表比对，不重新猜算法。
+    """
+
+    objects = models.Manager.from_queryset(ImmutableArchiveQuerySet)()
+
+    batch_uid: models.CharField = models.CharField(
+        max_length=64, db_index=True, verbose_name="归档批次"
+    )
+    source_table: models.CharField = models.CharField(max_length=64, verbose_name="源表")
+    archive_table: models.CharField = models.CharField(max_length=64, verbose_name="归档表")
+    algorithm_version: models.CharField = models.CharField(max_length=32, verbose_name="算法版本")
+    row_count: models.IntegerField = models.IntegerField(verbose_name="源表行数")
+    min_pk: models.BigIntegerField = models.BigIntegerField(
+        null=True, blank=True, verbose_name="最小主键"
+    )
+    max_pk: models.BigIntegerField = models.BigIntegerField(
+        null=True, blank=True, verbose_name="最大主键"
+    )
+    table_digest: models.CharField = models.CharField(max_length=64, verbose_name="整表摘要")
+    computed_at: models.DateTimeField = models.DateTimeField(verbose_name="计算时间")
+    operator: models.CharField = models.CharField(max_length=120, verbose_name="执行人")
+    created_at: models.DateTimeField = models.DateTimeField(
+        auto_now_add=True, verbose_name="落库时间"
+    )
+
+    class Meta:
+        verbose_name = "归档批次元数据"
+        verbose_name_plural = "归档批次元数据"
+        ordering = ("batch_uid", "source_table")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("batch_uid", "source_table"), name="uq_archive_run_per_table"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.batch_uid}/{self.source_table} {self.row_count} 行"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("归档元数据只读：批次摘要登记后不可修改。")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("归档元数据只读：批次摘要不可删除。")
