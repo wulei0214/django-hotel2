@@ -22,6 +22,13 @@
         .pms-table tbody tr:hover{background:var(--color-bg-subtle,#f7f9fc)}
         .pms-state{padding:24px;text-align:center;color:var(--color-text-muted,#8290a3)}
         .pms-pager{display:flex;justify-content:space-between;align-items:center;padding-top:14px;color:var(--color-text-muted,#778397);font-size:13px}
+        .pms-pager-controls{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;white-space:nowrap}
+        .pms-pager-controls label{color:var(--color-text-muted,#778397);font-size:12px;white-space:nowrap}
+        .pms-pager-controls select,.pms-pager-controls input[type=number]{padding:5px 8px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:6px;font-size:12px;background:var(--color-bg-surface,#fff);color:var(--color-text-primary,#243247)}
+        .pms-pager-controls input[type=number]{width:56px;text-align:center;font-variant-numeric:tabular-nums}
+        .pms-pager-controls button{padding:5px 11px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:6px;background:var(--color-bg-surface,#fff);color:var(--color-text-secondary,#637188);cursor:pointer;font-size:12px;line-height:1.4}
+        .pms-pager-controls button:hover:not(:disabled){background:var(--color-accent-bg,#ecf5ff);border-color:var(--color-accent-solid,#2b74c9);color:var(--color-accent-solid,#2b74c9)}
+        .pms-pager-controls button:disabled{opacity:.45;cursor:not-allowed}
         .pms-row-btn{padding:6px 12px;border:1px solid var(--color-accent-solid,#2b74c9);background:transparent;color:var(--color-accent-solid,#2b74c9);border-radius:var(--radius-md,6px);cursor:pointer;font-size:12px}
         .pms-row-btn:hover{background:var(--color-accent-bg,#ecf5ff)}
         .pms-row-btn:focus-visible{outline:2px solid var(--color-accent-solid,#2b74c9);outline-offset:2px}
@@ -186,7 +193,7 @@
       </div>
       <div class="pms-pager">
         <span id="fin-folio-note">点击「查看」打开账单详情抽屉（流水 / 支付 / 退款）。</span>
-        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="pms-pager-controls">
           <label for="fin-page-size">每页</label>
           <select id="fin-page-size" aria-label="账单每页条数">
             <option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option>
@@ -194,7 +201,7 @@
           <button id="fin-prev" type="button" disabled>上一页</button>
           <span id="fin-page"></span>
           <label for="fin-goto-page">跳至</label>
-          <input id="fin-goto-page" type="number" min="1" step="1" value="1" aria-label="账单跳转页码" style="width:72px">
+          <input id="fin-goto-page" type="number" min="1" step="1" value="1" aria-label="账单跳转页码">
           <button id="fin-goto-btn" type="button">跳转</button>
           <button id="fin-next" type="button" disabled>下一页</button>
         </span>

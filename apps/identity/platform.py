@@ -55,6 +55,20 @@ def platform_superadmin_required(view_func):
         if not user.is_superuser:
             # 已登录但非超管：直接 403，绝不跳登录页（避免暴露可升级路径）
             raise PermissionDenied("平台管理面仅限超级管理员访问")
+        allowed_username = getattr(settings, "PLATFORM_ADMIN_USERNAME", "").strip()
+        if allowed_username and user.username != allowed_username:
+            # 后台账号白名单（凭据来自环境配置，源码不写账号字面量）
+            from apps.core.models import AuditEvent
+
+            audit.warning("平台拒绝：账号 %s 不在后台白名单", user.username)
+            AuditEvent.record(
+                action="security.platform_denied",
+                entity_type="User",
+                entity_id=str(user.pk),
+                reason="username_not_allowlisted",
+                request=request,
+            )
+            raise PermissionDenied("平台管理面仅限指定管理员账号访问")
         violations = _invariant_violations(user)
         if violations:
             # 半状态超管（如 is_staff=False 的 superuser）：拒绝并落安全审计
@@ -77,6 +91,35 @@ def platform_superadmin_required(view_func):
         return view_func(request, *args, **kwargs)
 
     return wrapped
+
+
+def platform_admin_login(request):
+    """平台后台登录：仅白名单账号可建立平台会话，挡住 /admin/ 与 /platform/。"""
+    from django.contrib import admin
+    from django.contrib.admin.forms import AdminAuthenticationForm
+    from django.contrib.auth import login as auth_login
+    from django.utils.http import url_has_allowed_host_and_scheme
+
+    allowed_username = getattr(settings, "PLATFORM_ADMIN_USERNAME", "").strip()
+    if request.method == "POST":
+        form = AdminAuthenticationForm(request, data=request.POST)
+        if form.is_valid():
+            user = form.get_user()
+            if allowed_username and user.get_username() != allowed_username:
+                form.add_error(None, "该账号无权访问平台后台")
+            else:
+                auth_login(request, user)
+                next_url = request.POST.get("next") or "/admin/"
+                if not url_has_allowed_host_and_scheme(
+                    next_url, allowed_hosts={request.get_host()}
+                ):
+                    next_url = "/admin/"
+                return redirect(next_url)
+    else:
+        form = AdminAuthenticationForm(request)
+    context = admin.site.each_context(request)
+    context.update({"form": form, "app_path": request.get_full_path()})
+    return render(request, "admin/login.html", context)
 
 
 @platform_superadmin_required

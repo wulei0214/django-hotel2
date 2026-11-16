@@ -1,6 +1,7 @@
 """Django settings for hotel project.
 Environment-driven configuration for the legacy UI and PMS 2.0 foundation.
 """
+
 import os
 from pathlib import Path
 
@@ -78,12 +79,10 @@ MIDDLEWARE = [
 ROOT_URLCONF = "hotel.urls"
 LOGIN_URL = "/login/"
 # AUTH-14/15（方案 §5.3）：员工邀请 token 有效期（小时，默认 24）；变更须经业务负责人批准
-IDENTITY_INVITATION_TTL_HOURS = int(
-    os.environ.get("DJANGO_INVITATION_TTL_HOURS", "24"))
+IDENTITY_INVITATION_TTL_HOURS = int(os.environ.get("DJANGO_INVITATION_TTL_HOURS", "24"))
 # §5.3：生成邀请绝对 URL 的规范 Host（留空则用请求 Host——受 ALLOWED_HOSTS 校验，
 # 且不读取 X-Forwarded-Host）
-IDENTITY_INVITATION_CANONICAL_HOST = os.environ.get(
-    "DJANGO_INVITATION_CANONICAL_HOST", "").strip()
+IDENTITY_INVITATION_CANONICAL_HOST = os.environ.get("DJANGO_INVITATION_CANONICAL_HOST", "").strip()
 # API 路径的 CSRF 失败返回 JSON（保持接口错误契约），页面路径仍走默认 HTML
 CSRF_FAILURE_VIEW = "apps.api.views.csrf_failure"
 DEFAULT_PROPERTY_CODE = os.environ.get("DEFAULT_PROPERTY_CODE", "DEFAULT")
@@ -185,6 +184,8 @@ ADMIN_SESSION_COOKIE_NAME = os.environ.get(
 PLATFORM_PORTAL_COOKIE_NAME = os.environ.get(
     "DJANGO_PLATFORM_PORTAL_COOKIE_NAME", "platform_sessionid"
 )
+# 平台后台账号白名单（凭据不写入源码）：留空表示不启用白名单限制。
+PLATFORM_ADMIN_USERNAME = os.environ.get("DJANGO_PLATFORM_ADMIN_USERNAME", "").strip()
 LEGACY_PLATFORM_COOKIE_NAME = os.environ.get(
     "DJANGO_LEGACY_PLATFORM_COOKIE_NAME", "admin_sessionid"
 )
@@ -225,7 +226,8 @@ if _CACHE_BACKEND == "redis":
 else:
     if DJANGO_ENV == "prod":
         raise ImproperlyConfigured(
-            "生产环境禁止 LocMemCache：请配置 DJANGO_CACHE_BACKEND=redis 与 DJANGO_REDIS_URL。")
+            "生产环境禁止 LocMemCache：请配置 DJANGO_CACHE_BACKEND=redis 与 DJANGO_REDIS_URL。"
+        )
     CACHES = {
         "default": {
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
@@ -266,7 +268,7 @@ LOGGING = {
 }
 
 SIMPLEUI_DEFAULT_THEME = "admin.lte.css"
-SIMPLEUI_HOME_INFO = False   # 隐藏 simpleui 自带的英文信息卡（Gitee/Github 面板）
+SIMPLEUI_HOME_INFO = False  # 隐藏 simpleui 自带的英文信息卡（Gitee/Github 面板）
 SIMPLEUI_HOME_TITLE = "酒店管理控制台"
 SIMPLEUI_LOGO = "/static/images/t1.jpg"
 
@@ -277,26 +279,107 @@ SIMPLEUI_CONFIG = {
     "system_name": "酒店管理系统",
     "menus": [
         {
-            "name": "酒店业务模块",
-            "icon": "fas fa-hotel",
+            "name": "PMS2 业务数据（真实）",
+            "icon": "fas fa-database",
+            "models": [
+                {"name": "酒店物业", "icon": "fas fa-building", "url": "/admin/core/property/"},
+                {"name": "住客档案", "icon": "far fa-address-book", "url": "/admin/guests/guest/"},
+                {
+                    "name": "预订主单",
+                    "icon": "fas fa-calendar-check",
+                    "url": "/admin/reservations/reservation/",
+                },
+                {"name": "实际入住记录", "icon": "fas fa-bed", "url": "/admin/reservations/stay/"},
+                {"name": "房型", "icon": "fas fa-layer-group", "url": "/admin/inventory/roomtype/"},
+                {"name": "物理客房", "icon": "fas fa-door-open", "url": "/admin/inventory/room/"},
+                {"name": "房价计划", "icon": "fas fa-tags", "url": "/admin/inventory/rateplan/"},
+                {
+                    "name": "每日房价",
+                    "icon": "far fa-calendar-alt",
+                    "url": "/admin/inventory/dailyrate/",
+                },
+                {
+                    "name": "房型每日库存",
+                    "icon": "fas fa-boxes",
+                    "url": "/admin/inventory/roomtypeinventory/",
+                },
+                {
+                    "name": "住客账单",
+                    "icon": "fas fa-file-invoice-dollar",
+                    "url": "/admin/billing/folio/",
+                },
+                {
+                    "name": "不可变账本凭证",
+                    "icon": "fas fa-balance-scale",
+                    "url": "/admin/billing/ledgerentry/",
+                },
+                {
+                    "name": "支付流水",
+                    "icon": "fas fa-credit-card",
+                    "url": "/admin/billing/payment/",
+                },
+                {"name": "退款申请", "icon": "fas fa-undo", "url": "/admin/billing/refund/"},
+                {
+                    "name": "高危审批记录",
+                    "icon": "fas fa-user-shield",
+                    "url": "/admin/billing/approvalrecord/",
+                },
+                {"name": "审计事件", "icon": "fas fa-history", "url": "/admin/core/auditevent/"},
+            ],
+        },
+        {
+            "name": "酒店业务模块（旧系统存档）",
+            "icon": "fas fa-archive",
             "models": [
                 {"name": "员工信息管理", "icon": "far fa-user", "url": "/admin/hotelapp/staff/"},
-                {"name": "顾客管理", "icon": "far fa-address-book", "url": "/admin/hotelapp/client/"},
+                {
+                    "name": "顾客管理",
+                    "icon": "far fa-address-book",
+                    "url": "/admin/hotelapp/client/",
+                },
                 {"name": "会员信息管理", "icon": "far fa-star", "url": "/admin/hotelapp/vip/"},
                 {"name": "客房信息管理", "icon": "fas fa-bed", "url": "/admin/hotelapp/room/"},
-                {"name": "客房订单管理", "icon": "fas fa-book", "url": "/admin/hotelapp/accommodation/"},
-                {"name": "财务流水", "icon": "fas fa-yen-sign", "url": "/admin/hotelapp/financerecord/"},
-                {"name": "夜审记录", "icon": "far fa-bookmark", "url": "/admin/hotelapp/nightaudit/"},
-                {"name": "账单流水", "icon": "fas fa-shopping-bag", "url": "/admin/hotelapp/folio/"},
+                {
+                    "name": "客房订单管理",
+                    "icon": "fas fa-book",
+                    "url": "/admin/hotelapp/accommodation/",
+                },
+                {
+                    "name": "财务流水",
+                    "icon": "fas fa-yen-sign",
+                    "url": "/admin/hotelapp/financerecord/",
+                },
+                {
+                    "name": "夜审记录",
+                    "icon": "far fa-bookmark",
+                    "url": "/admin/hotelapp/nightaudit/",
+                },
+                {
+                    "name": "账单流水",
+                    "icon": "fas fa-shopping-bag",
+                    "url": "/admin/hotelapp/folio/",
+                },
             ],
         },
         {
             "name": "PMS 身份与权限",
             "icon": "fas fa-id-badge",
             "models": [
-                {"name": "员工档案", "icon": "far fa-id-card", "url": "/admin/identity/staffprofile/"},
-                {"name": "员工酒店任职关系", "icon": "fas fa-briefcase", "url": "/admin/identity/propertystaffmembership/"},
-                {"name": "员工岗位授权", "icon": "fas fa-key", "url": "/admin/identity/staffroleassignment/"},
+                {
+                    "name": "员工档案",
+                    "icon": "far fa-id-card",
+                    "url": "/admin/identity/staffprofile/",
+                },
+                {
+                    "name": "员工酒店任职关系",
+                    "icon": "fas fa-briefcase",
+                    "url": "/admin/identity/propertystaffmembership/",
+                },
+                {
+                    "name": "员工岗位授权",
+                    "icon": "fas fa-key",
+                    "url": "/admin/identity/staffroleassignment/",
+                },
             ],
         },
         {
@@ -310,32 +393,32 @@ SIMPLEUI_CONFIG = {
     ],
 }
 
+
 # Q7 production startup validation (PMS2 quality baseline 2026-11-10)
 # WB-123（第 31 轮）：校验逻辑收敛为独立函数以便启动测试——全空白、
 # 前后空白、长度不足的 PII 密钥必须在启动阶段 fail-fast，而不是等到
 # 加密调用才暴露（原实现读原始环境变量，32 个空格可绕过长度检查）。
-def _validate_production_settings(*, debug, secret_key, pii_key,
-                                  allowed_hosts_raw):
+def _validate_production_settings(*, debug, secret_key, pii_key, allowed_hosts_raw):
     _prod_errors = []
     if debug:
-        _prod_errors.append('DEBUG must be False')
-    if not secret_key or len(secret_key) < 32 or 'django-insecure' in secret_key:
-        _prod_errors.append('DJANGO_SECRET_KEY must be >=32 chars strong random')
-    _normalized_pii = (pii_key or '').strip()
+        _prod_errors.append("DEBUG must be False")
+    if not secret_key or len(secret_key) < 32 or "django-insecure" in secret_key:
+        _prod_errors.append("DJANGO_SECRET_KEY must be >=32 chars strong random")
+    _normalized_pii = (pii_key or "").strip()
     if not _normalized_pii or len(_normalized_pii) < 32:
-        _prod_errors.append('DJANGO_PII_KEY must be >=32 chars independent PII key')
-    if not allowed_hosts_raw or '*' in allowed_hosts_raw:
-        _prod_errors.append('DJANGO_ALLOWED_HOSTS must not use wildcard')
+        _prod_errors.append("DJANGO_PII_KEY must be >=32 chars independent PII key")
+    if not allowed_hosts_raw or "*" in allowed_hosts_raw:
+        _prod_errors.append("DJANGO_ALLOWED_HOSTS must not use wildcard")
     if _prod_errors:
-        raise ImproperlyConfigured(
-            'Q7 production validation failed: ' + '; '.join(_prod_errors))
+        raise ImproperlyConfigured("Q7 production validation failed: " + "; ".join(_prod_errors))
 
 
-if DJANGO_ENV == 'prod':
+if DJANGO_ENV == "prod":
     _validate_production_settings(
         debug=DEBUG,
-        secret_key=os.environ.get('DJANGO_SECRET_KEY', ''),
+        secret_key=os.environ.get("DJANGO_SECRET_KEY", ""),
         # 直接使用上方已 strip() 规范化的 DJANGO_PII_KEY Setting 校验——
         # 不再读原始环境变量，保证被校验的值与业务加密实际使用的值一致。
         pii_key=DJANGO_PII_KEY,
-        allowed_hosts_raw=os.environ.get('DJANGO_ALLOWED_HOSTS', ''))
+        allowed_hosts_raw=os.environ.get("DJANGO_ALLOWED_HOSTS", ""),
+    )

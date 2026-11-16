@@ -21,7 +21,15 @@
         .pms-table th{background:var(--color-bg-subtle,#f7f9fc);color:var(--color-text-secondary,#637188);font-weight:600}
         .pms-table tbody tr:hover{background:var(--color-bg-subtle,#f7f9fc)}
         .pms-state{padding:24px;text-align:center;color:var(--color-text-muted,#8290a3)}
-        .pms-pager{display:flex;justify-content:space-between;align-items:center;padding-top:14px;color:var(--color-text-muted,#778397);font-size:13px}
+        .pms-pager{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding-top:14px;color:var(--color-text-muted,#778397);font-size:13px}
+        .pms-pager-controls{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;white-space:nowrap}
+        .pms-pager-controls label{color:var(--color-text-muted,#778397);font-size:12px;white-space:nowrap}
+        .pms-pager-controls select,.pms-pager-controls input[type=number]{padding:5px 8px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:6px;font-size:12px;background:var(--color-bg-surface,#fff);color:var(--color-text-primary,#243247)}
+        .pms-pager-controls input[type=number]{width:56px;text-align:center;font-variant-numeric:tabular-nums}
+        .pms-pager-controls button{padding:5px 11px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:6px;background:var(--color-bg-surface,#fff);color:var(--color-text-secondary,#637188);cursor:pointer;font-size:12px;line-height:1.4}
+        .pms-pager-controls button:hover:not(:disabled){background:var(--color-accent-bg,#ecf5ff);border-color:var(--color-accent-solid,#2b74c9);color:var(--color-accent-solid,#2b74c9)}
+        .pms-pager-controls button:disabled{opacity:.45;cursor:not-allowed}
+        .pms-pager-label{color:var(--color-text-secondary,#637188);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
         .pms-row-btn{padding:6px 12px;border:1px solid var(--color-accent-solid,#2b74c9);background:transparent;color:var(--color-accent-solid,#2b74c9);border-radius:var(--radius-md,6px);cursor:pointer;font-size:12px}
         .pms-row-btn:hover{background:var(--color-accent-bg,#ecf5ff)}
         .pms-row-btn:focus-visible{outline:2px solid var(--color-accent-solid,#2b74c9);outline-offset:2px}
@@ -75,7 +83,7 @@
       </div>
       <div class="pms-pager">
         <span id="pms-state-note">数据来自 PMS2 API；列表点击「查看」打开详情抽屉。</span>
-        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="pms-pager-controls">
           <label for="pms-page-size">每页</label>
           <select id="pms-page-size" aria-label="每页显示条数">
             <option value="20" selected>20 条</option>
@@ -83,10 +91,10 @@
             <option value="100">100 条</option>
           </select>
           <button id="pms-prev" type="button" disabled>上一页</button>
-          <span id="pms-page"></span>
+          <span id="pms-page" class="pms-pager-label"></span>
           <label for="pms-goto-page">跳至</label>
           <input id="pms-goto-page" type="number" min="1" step="1" value="1"
-                 aria-label="跳转到页码" style="width:72px">
+                 aria-label="跳转到页码">
           <button id="pms-goto-btn" type="button">跳转</button>
           <button id="pms-next" type="button" disabled>下一页</button>
         </span>
@@ -242,9 +250,9 @@
     const sp = new URLSearchParams();
     sections.forEach(function (section) {
       var st = secondaryState[section.data_key];
-      if (!st) { st = secondaryState[section.data_key] = {page: 1, q: ""}; }
+      if (!st) { st = secondaryState[section.data_key] = {page: 1, size: 20, q: ""}; }
       if (section.page_param) sp.set(section.page_param, String(st.page));
-      if (section.size_param) sp.set(section.size_param, "20");
+      if (section.size_param) sp.set(section.size_param, String(st.size));
       if (section.searchable && st.q) sp.set("q", st.q);
     });
     return sp.toString();
@@ -256,10 +264,11 @@
     /* 查询条件与页码均未变化时跳过（避免无意义刷新） */
     if (!force && lastSecondaryQuery !== null && query === lastSecondaryQuery) return;
     lastSecondaryQuery = query;
-    const holder=document.getElementById("pms-secondary");holder.replaceChildren();
+    const scrollY = window.scrollY;
     const response=await fetch(secondaryEndpoint+"?"+query,{credentials:"same-origin",headers:{"Accept":"application/json"}});
     const payload=await response.json();
     if(!response.ok) throw new Error(payload.error && payload.error.message || "房价/库存日历读取失败");
+    const holder=document.getElementById("pms-secondary");holder.replaceChildren();
     sections.forEach(function(section){
       const st = secondaryState[section.data_key];
       const data=payload.data[section.data_key] || [];
@@ -296,20 +305,46 @@
       });
       table.appendChild(thead);table.appendChild(tbody);wrap.appendChild(table);
       panel.appendChild(wrap);
-      /* 服务端分页 pager（上一页/页码/下一页，跟随 pagination meta） */
+      /* 服务端分页 pager（每页条数 / 跳至页码 / 上下页，各节独立状态） */
       if (pg) {
         const pager=document.createElement("div");pager.className="pms-pager";
+        const controls=document.createElement("span");controls.className="pms-pager-controls";
+        const totalPages=Math.max(1,Math.ceil(pg.total/pg.page_size));
+        const sizeSel=document.createElement("select");
+        sizeSel.setAttribute("aria-label","每页显示条数");
+        [20,50,100].forEach(function(n){
+          const option=document.createElement("option");
+          option.value=String(n);option.textContent=n+" 条";option.selected=n===st.size;
+          sizeSel.appendChild(option);
+        });
+        sizeSel.addEventListener("change",function(){
+          st.size=Number.parseInt(sizeSel.value,10);st.page=1;loadSecondary(true);
+        });
+        const sizeLabel=document.createElement("label");sizeLabel.textContent="每页";
         const prev=document.createElement("button");prev.type="button";prev.textContent="上一页";prev.disabled=!pg.has_previous;
+        prev.addEventListener("click",function(){ if(pg.has_previous){ st.page=pg.page-1; loadSecondary(true); }});
         const label=document.createElement("span");
-        label.textContent="第 "+pg.page+" 页 / 共 "+Math.max(1,Math.ceil(pg.total/pg.page_size))+" 页";
+        label.className="pms-pager-label";
+        label.textContent="第 "+pg.page+" 页 / 共 "+totalPages+" 页";
+        const gotoLabel=document.createElement("label");gotoLabel.textContent="跳至";
+        const gotoInput=document.createElement("input");
+        gotoInput.type="number";gotoInput.min="1";gotoInput.max=String(totalPages);gotoInput.value=String(pg.page);
+        gotoInput.setAttribute("aria-label","跳至页码");
+        const gotoBtn=document.createElement("button");gotoBtn.type="button";gotoBtn.textContent="跳转";
+        gotoBtn.addEventListener("click",function(){
+          const target=Number.parseInt(gotoInput.value,10);
+          if(target>=1&&target<=totalPages){ st.page=target; loadSecondary(true); }
+        });
         const next=document.createElement("button");next.type="button";next.textContent="下一页";next.disabled=!pg.has_next;
-        prev.addEventListener("click",function(){ if(pg.has_previous){ st.page=pg.page-1; loadSecondary(); }});
-        next.addEventListener("click",function(){ if(pg.has_next){ st.page=pg.page+1; loadSecondary(); }});
-        pager.appendChild(prev);pager.appendChild(label);pager.appendChild(next);
+        next.addEventListener("click",function(){ if(pg.has_next){ st.page=pg.page+1; loadSecondary(true); }});
+        controls.appendChild(sizeLabel);controls.appendChild(sizeSel);controls.appendChild(prev);controls.appendChild(label);
+        controls.appendChild(gotoLabel);controls.appendChild(gotoInput);controls.appendChild(gotoBtn);controls.appendChild(next);
+        pager.appendChild(controls);
         panel.appendChild(pager);
       }
       holder.appendChild(panel);
     });
+    window.scrollTo(0, scrollY);
   }
   let lastLoadQuery=null;
   function loadQueryChanged(){

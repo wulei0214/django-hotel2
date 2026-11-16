@@ -26,6 +26,13 @@
         .pms-table tbody tr.is-unread td.nt-title{font-weight:600}
         .pms-state{padding:24px;text-align:center;color:var(--color-text-muted,#8290a3)}
         .pms-pager{display:flex;justify-content:space-between;align-items:center;padding-top:14px;color:var(--color-text-muted,#778397);font-size:13px}
+        .pms-pager-controls{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;white-space:nowrap}
+        .pms-pager-controls label{color:var(--color-text-muted,#778397);font-size:12px;white-space:nowrap}
+        .pms-pager-controls select,.pms-pager-controls input[type=number]{padding:5px 8px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:6px;font-size:12px;background:var(--color-bg-surface,#fff);color:var(--color-text-primary,#243247)}
+        .pms-pager-controls input[type=number]{width:56px;text-align:center;font-variant-numeric:tabular-nums}
+        .pms-pager-controls button{padding:5px 11px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:6px;background:var(--color-bg-surface,#fff);color:var(--color-text-secondary,#637188);cursor:pointer;font-size:12px;line-height:1.4}
+        .pms-pager-controls button:hover:not(:disabled){background:var(--color-accent-bg,#ecf5ff);border-color:var(--color-accent-solid,#2b74c9);color:var(--color-accent-solid,#2b74c9)}
+        .pms-pager-controls button:disabled{opacity:.45;cursor:not-allowed}
         .pms-row-btn{padding:6px 12px;border:1px solid var(--color-accent-solid,#2b74c9);background:transparent;color:var(--color-accent-solid,#2b74c9);border-radius:var(--radius-md,6px);cursor:pointer;font-size:12px}
         .pms-row-btn:hover{background:var(--color-accent-bg,#ecf5ff)}
         .pms-row-btn:focus-visible{outline:2px solid var(--color-accent-solid,#2b74c9);outline-offset:2px}
@@ -89,7 +96,7 @@
         </table>
       </div>
       <div class="pms-pager">
-        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="pms-pager-controls">
           <label for="nt-page-size">每页</label>
           <select id="nt-page-size" aria-label="通知每页条数">
             <option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option>
@@ -97,7 +104,7 @@
           <button id="nt-prev" type="button" class="au-ghost">上一页</button>
           <span id="nt-page-info">—</span>
           <label for="nt-goto-page">跳至</label>
-          <input id="nt-goto-page" type="number" min="1" step="1" value="1" aria-label="通知跳转页码" style="width:72px">
+          <input id="nt-goto-page" type="number" min="1" step="1" value="1" aria-label="通知跳转页码">
           <button id="nt-goto-btn" type="button" class="au-ghost">跳转</button>
           <button id="nt-next" type="button" class="au-ghost">下一页</button>
         </span>
@@ -160,7 +167,7 @@
   function safeNotificationLink(value) {
     var raw = String(value == null ? "" : value).trim();
     if (!raw || /[\\\\\\r\\n]/.test(raw)) return "";
-    if (/^https?:\\/\\//i.test(raw)) return raw;
+    if (/^https?:\/\//i.test(raw)) return raw;
     if (raw.charAt(0) === "/" && raw.charAt(1) !== "/") return raw;
     return "";
   }
@@ -310,8 +317,12 @@
     if (button && !button.disabled) markRead(button.getAttribute("data-notification-id"));
   });
 
-  loadUnread();
-  loadList(1);
+  // 页面加载即重算待办：待办由业务派生且无定时任务，不主动刷新会一直显示旧数据/空列表。
+  // 刷新失败（如无权限/限流）不阻断首屏，仍按现有数据渲染一次。
+  postJSON(api + "/refresh").catch(function () {}).then(function () {
+    loadUnread();
+    loadList(1);
+  });
 })();
 </script>
 </body>

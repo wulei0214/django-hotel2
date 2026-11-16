@@ -89,6 +89,7 @@ urlpatterns = [
     ),
     path("invite/accept/", invitation_views.invite_accept, name="invite_accept"),
     path("manage/<str:center>/", api_pages.management_center_page, name="pms_management_center"),
+    path("admin/login/", identity_platform.platform_admin_login, name="platform_admin_login"),
     path("admin/", admin.site.urls),
     path("", views.home),
     path("home/", views.home),

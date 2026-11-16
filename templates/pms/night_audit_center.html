@@ -24,6 +24,13 @@
         .pms-table tbody tr:hover{background:var(--color-bg-subtle,#f7f9fc)}
         .pms-state{padding:24px;text-align:center;color:var(--color-text-muted,#8290a3)}
         .pms-pager{display:flex;justify-content:space-between;align-items:center;padding-top:14px;color:var(--color-text-muted,#778397);font-size:13px}
+        .pms-pager-controls{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;white-space:nowrap}
+        .pms-pager-controls label{color:var(--color-text-muted,#778397);font-size:12px;white-space:nowrap}
+        .pms-pager-controls select,.pms-pager-controls input[type=number]{padding:5px 8px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:6px;font-size:12px;background:var(--color-bg-surface,#fff);color:var(--color-text-primary,#243247)}
+        .pms-pager-controls input[type=number]{width:56px;text-align:center;font-variant-numeric:tabular-nums}
+        .pms-pager-controls button{padding:5px 11px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:6px;background:var(--color-bg-surface,#fff);color:var(--color-text-secondary,#637188);cursor:pointer;font-size:12px;line-height:1.4}
+        .pms-pager-controls button:hover:not(:disabled){background:var(--color-accent-bg,#ecf5ff);border-color:var(--color-accent-solid,#2b74c9);color:var(--color-accent-solid,#2b74c9)}
+        .pms-pager-controls button:disabled{opacity:.45;cursor:not-allowed}
         .pms-row-btn{padding:6px 12px;border:1px solid var(--color-accent-solid,#2b74c9);background:transparent;color:var(--color-accent-solid,#2b74c9);border-radius:var(--radius-md,6px);cursor:pointer;font-size:12px}
         .pms-row-btn:hover{background:var(--color-accent-bg,#ecf5ff)}
         .pms-row-btn:focus-visible{outline:2px solid var(--color-accent-solid,#2b74c9);outline-offset:2px}
@@ -151,12 +158,12 @@
       </div>
       <div class="pms-pager">
         <span>点击「详情」查看运行历史 / 重开审批 / 过租与异常房态汇总。</span>
-        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="pms-pager-controls">
           <label for="na-bd-page-size">每页</label>
           <select id="na-bd-page-size" aria-label="营业日每页条数"><option value="10" selected>10 条</option><option value="20">20 条</option><option value="50">50 条</option></select>
           <button id="na-bd-prev" type="button" disabled>上一页</button>
           <span id="na-bd-page"></span>
-          <label for="na-bd-goto">跳至</label><input id="na-bd-goto" type="number" min="1" value="1" style="width:72px" aria-label="营业日跳转页码">
+          <label for="na-bd-goto">跳至</label><input id="na-bd-goto" type="number" min="1" value="1" aria-label="营业日跳转页码">
           <button id="na-bd-goto-btn" type="button">跳转</button>
           <button id="na-bd-next" type="button" disabled>下一页</button>
         </span>
@@ -203,12 +210,12 @@
       </div>
       <div class="pms-pager">
         <span>失败告警：FAILED 行以红色标注失败原因；重跑前请先解决阻挡项。</span>
-        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="pms-pager-controls">
           <label for="na-runs-page-size">每页</label>
           <select id="na-runs-page-size" aria-label="夜审历史每页条数"><option value="10" selected>10 条</option><option value="20">20 条</option><option value="50">50 条</option></select>
           <button id="na-runs-prev" type="button" disabled>上一页</button>
           <span id="na-runs-page"></span>
-          <label for="na-runs-goto">跳至</label><input id="na-runs-goto" type="number" min="1" value="1" style="width:72px" aria-label="夜审历史跳转页码">
+          <label for="na-runs-goto">跳至</label><input id="na-runs-goto" type="number" min="1" value="1" aria-label="夜审历史跳转页码">
           <button id="na-runs-goto-btn" type="button">跳转</button>
           <button id="na-runs-next" type="button" disabled>下一页</button>
         </span>
@@ -239,12 +246,12 @@
       </div>
       <div class="pms-pager">
         <span> USED（已执行待复核）行须由另一名授权经理完成事后复核。</span>
-        <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="pms-pager-controls">
           <label for="na-bg-page-size">每页</label>
           <select id="na-bg-page-size" aria-label="紧急授权每页条数"><option value="10" selected>10 条</option><option value="20">20 条</option><option value="50">50 条</option></select>
           <button id="na-bg-prev" type="button" disabled>上一页</button>
           <span id="na-bg-page"></span>
-          <label for="na-bg-goto">跳至</label><input id="na-bg-goto" type="number" min="1" value="1" style="width:72px" aria-label="紧急授权跳转页码">
+          <label for="na-bg-goto">跳至</label><input id="na-bg-goto" type="number" min="1" value="1" aria-label="紧急授权跳转页码">
           <button id="na-bg-goto-btn" type="button">跳转</button>
           <button id="na-bg-next" type="button" disabled>下一页</button>
         </span>
