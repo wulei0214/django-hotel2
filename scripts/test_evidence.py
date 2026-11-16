@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """测试证据生成器（R1-05）：运行测试并在证据文件头写入可审计元数据。
 
 用法（仓库根）：
@@ -8,6 +7,7 @@
 头记录：时间戳 / Git SHA / Python / Django / 数据库类型与版本 / 执行命令 /
 DJANGO_ENV / 测试总数-通过-失败-跳过（从输出解析）/ 退出码。
 """
+
 import argparse
 import os
 import re
@@ -25,13 +25,16 @@ def _git_state():
     证据 SHA 必须能回答"测的是不是这个提交的树"——工作区不干净时如实标注，
     避免"证据 SHA != 被测代码"的审计缺口。"""
     try:
-        sha = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True,
-            timeout=10).stdout.strip() or "unknown"
+        sha = (
+            subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, timeout=10
+            ).stdout.strip()
+            or "unknown"
+        )
         st = subprocess.run(
-            ["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True,
-            timeout=10).stdout
-        dirty = len([l for l in st.splitlines() if l.strip()])
+            ["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True, timeout=10
+        ).stdout
+        dirty = len([line for line in st.splitlines() if line.strip()])
         if dirty:
             return "%s（工作区含未提交变更 %d 项：证据树不等于该提交，需以本行为准）" % (sha, dirty)
         return sha
@@ -48,15 +51,22 @@ def _mysql_conn_kwargs():
     missing = [k for k in keys if not cfg[k]]
     if missing:
         raise RuntimeError(
-            "MySQL 引擎缺少环境变量：" + "、".join(missing)
-            + "；请先 set -a && source .env && set +a（脚本内禁止凭据字面量）")
-    return {"user": cfg["DJANGO_DB_USER"], "password": cfg["DJANGO_DB_PASSWORD"],
-            "host": cfg["DJANGO_DB_HOST"], "database": cfg["DJANGO_DB_NAME"]}
+            "MySQL 引擎缺少环境变量："
+            + "、".join(missing)
+            + "；请先 set -a && source .env && set +a（脚本内禁止凭据字面量）"
+        )
+    return {
+        "user": cfg["DJANGO_DB_USER"],
+        "password": cfg["DJANGO_DB_PASSWORD"],
+        "host": cfg["DJANGO_DB_HOST"],
+        "database": cfg["DJANGO_DB_NAME"],
+    }
 
 
 def _db_version(engine):
     try:
         import pymysql
+
         conn = pymysql.connect(**_mysql_conn_kwargs())
         with conn.cursor() as cur:
             cur.execute("SELECT VERSION()")
@@ -75,7 +85,6 @@ def main():
     args = parser.parse_args()
 
     import django
-    from django.conf import settings
 
     env = dict(**__import__("os").environ)
     if args.engine == "sqlite":
@@ -98,8 +107,14 @@ def main():
     ]
 
     proc = subprocess.run(
-        test_cmd, cwd=REPO, env=env, capture_output=True, text=True,
-        encoding="utf-8", errors="replace")
+        test_cmd,
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     output = (proc.stdout or "") + (proc.stderr or "")
 
     ran = re.findall(r"Ran (\d+) tests?", output)

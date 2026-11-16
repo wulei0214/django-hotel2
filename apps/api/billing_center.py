@@ -222,7 +222,7 @@ def folio_list(request):
     # G10：摘要聚合走 Redis 缓存（60s TTL，P0-05 共享缓存）——
     # 4000+ 账本行 Sum 在高并发下排队是压测 P95 超标主因；
     # 账单写操作（collect/refund/reverse）后由调用方场景自然过期。
-    # DEC-18 缓存韧性（用户报告：Redis 未运行时本端点 500）——
+    # NS-D DEC-D-01 缓存韧性（原代码域 DEC-18，重号已消解；用户报告：Redis 未运行时本端点 500）——
     # 缓存不是权威（INV-A09），故障时降级直查数据库，只损失性能不损失可用性。
     import logging
 
