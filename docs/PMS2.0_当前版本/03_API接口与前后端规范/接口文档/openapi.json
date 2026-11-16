@@ -16323,6 +16323,360 @@
         ]
       }
     },
+    "/api/v1/billing/legacy-archives": {
+      "get": {
+        "tags": [
+          "财务"
+        ],
+        "summary": "历史财务归档批次清单（阶段 D 只读通道）",
+        "description": "归档行本身不含物业列；物业隔离按批次对应的已登记迁移批次判定——未登记来源的归档批次仅平台超管可查（不自动推定物业归属，裁定 3）。\n\n权限要求：平台超管 或 有效员工 + hotelapp.finance_access；非超管仅见所属物业的已登记批次。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "get_billing_legacy_archives",
+        "responses": {
+          "200": {
+            "description": "归档批次元数据数组（整表摘要/行数/min-max 主键/执行人）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "description": "",
+                      "items": {
+                        "type": "object",
+                        "description": "",
+                        "properties": {
+                          "batch_uid": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "source_table": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "archive_table": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "row_count": {
+                            "type": "integer",
+                            "description": ""
+                          },
+                          "min_pk": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "description": ""
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "max_pk": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "description": ""
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "table_digest": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "algorithm_version": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "computed_at": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": "",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "operator": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "property_code": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "description": ""
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "平台超管 或 有效员工 + hotelapp.finance_access；非超管仅见所属物业的已登记批次",
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/legacy-archives/{table_key}": {
+      "get": {
+        "tags": [
+          "财务"
+        ],
+        "summary": "历史财务归档行查询（脱敏 + 访问审计）",
+        "description": "只读通道：不修改归档表；每次访问写 billing.legacy_archive_query 审计（who/when/what）。电话完整值不出现（<8 位返回“已隐藏”），身份证等未归档列不输出。\n\n权限要求：有效员工（DEFAULT 有效任职）+ hotelapp.finance_access；QuerySet 强制当前物业过滤，金额一律 Decimal→str，账本只读展示 或平台超管；跨物业 / 未登记来源一律 404。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "get_billing_legacy_archives_table_key",
+        "responses": {
+          "200": {
+            "description": "归档行数组（按归档列序；联系电话已掩码）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "description": "",
+                      "items": {
+                        "type": "object",
+                        "description": "归档列原样输出；contact_phone 返回掩码值。",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工（DEFAULT 有效任职）+ hotelapp.finance_access；QuerySet 强制当前物业过滤，金额一律 Decimal→str，账本只读展示 或平台超管；跨物业 / 未登记来源一律 404",
+        "parameters": [
+          {
+            "name": "table_key",
+            "in": "path",
+            "required": true,
+            "description": "归档表键：folios / finance-records / night-audits / accommodations。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batch_uid",
+            "in": "query",
+            "required": true,
+            "description": "归档批次号（必填）。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pk_min",
+            "in": "query",
+            "required": false,
+            "description": "源主键下界（含）。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pk_max",
+            "in": "query",
+            "required": false,
+            "description": "源主键上界（含）。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "页码，从 1 开始，默认 1。",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "每页数量，默认 20，最大 100。",
+            "schema": {
+              "type": "integer",
+              "example": 20
+            }
+          }
+        ],
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
     "/api/v1/approvals": {
       "get": {
         "tags": [

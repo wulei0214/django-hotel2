@@ -56,8 +56,7 @@ PERMISSION_MATRIX = {
     ("post", "/front-desk/stays/{stay_id}/check-out"): "hotelapp.change_accommodation",
     ("post", "/front-desk/walk-in"): "hotelapp.change_accommodation",
     ("post", "/front-desk/walk-ins"): "hotelapp.change_accommodation",
-    ("post", "/billing/payment-intents/{intent_id}/window-extension"):
-        "hotelapp.finance_access",
+    ("post", "/billing/payment-intents/{intent_id}/window-extension"): "hotelapp.finance_access",
     (
         "post",
         "/front-desk/reservation-rooms/{reservation_room_id}/no-show",
@@ -395,7 +394,8 @@ class PMS2ContractStatusTests(TestCase):
         # DEC-02-A1/B2 +10（调整列表/发起/审批/驳回/执行 + 异常列表/审批/驳回/结案/前台申请）
         # A1 Walk-in 散客直入端点 +1（DEC-WALKIN-01）
         # A1 /front-desk/walk-ins（A1 契约口径）+ A2 支付窗口延长 +2
-        self.assertEqual(business, 117, "业务 operation 应为 117 个（排除 openapi.json 自身）")
+        # 阶段 D 批次 4 归档只读查询通道 +2（legacy-archives 批次清单 / 归档行查询）
+        self.assertEqual(business, 119, "业务 operation 应为 119 个（排除 openapi.json 自身）")
 
     def test_no_operation_is_marked_planned(self):
         """全部 60 条路由均已实现，不允许出现 planned 端点（虚构计划外接口）。"""
