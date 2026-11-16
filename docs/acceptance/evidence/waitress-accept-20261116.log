@@ -1,0 +1,26 @@
+INFO:waitress:Serving on http://0.0.0.0:8001
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/housekeeping/rooms/24/status
+WARNING:security:login_failed ip=127.0.0.1 username_fp=356f6912a7a6 reason=bad_credentials

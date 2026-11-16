@@ -1,0 +1,10 @@
+=== R6 走查终态复核（2026-11-16，walktree HEAD 37a93fc，:8001）===
+① Walk-in 订单: R791ADA1B048322FAA96B CHECKED_OUT 来源 WALK_IN 总额 288.00 押金累计 86.40
+   Stay: [(7, 'CHECKED_OUT', 'room', '2680')]
+② 押金 Payment: 86.40 REFUND_PENDING (REFUND_PENDING=退款审批通过待执行)
+③ 退款: 5 APPROVED 86.40 执行需下一营业日（11-16 关账守卫拦截，WB-079 生效） REFUND 凭证: 待营业日开启
+④ 离店清洁任务: 2 PENDING 房 2680 当前: DIRTY
+⑤ RBE 浏览器链路: CONFIRMED 押金 86.40 Payment SUCCEEDED 排房 [24]
+⑥ 财务班次: 2 OPEN 备用金 0.00 （现金补入 100 已入账，退款执行待班次可用日）
+⑦ 关键审计事件（最近8）: [('billing.refund_approved', '5'), ('night_audit.run', '2'), ('frontdesk.checked_out', '7'), ('housekeeping.task_created', '2'), ('reservation.walk_in_created', '33'), ('billing.deposit_collect', '18'), ('frontdesk.checked_in', '7'), ('night_audit.run', '2')]
+⑧ 营业日状态: 2026-11-16 CLOSED（夜审 run_id=4 成功后关账；重开授权链已演示 2 次）
