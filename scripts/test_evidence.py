@@ -9,6 +9,7 @@
 DJANGO_ENV / 测试总数-通过-失败-跳过（从输出解析）/ 退出码。
 """
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -18,20 +19,45 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 
-def _git_sha():
+def _git_state():
+    """被测树绑定：HEAD SHA + 未提交变更检测（含暂存）。
+
+    证据 SHA 必须能回答"测的是不是这个提交的树"——工作区不干净时如实标注，
+    避免"证据 SHA != 被测代码"的审计缺口。"""
     try:
-        return subprocess.run(
+        sha = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True,
             timeout=10).stdout.strip() or "unknown"
+        st = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True,
+            timeout=10).stdout
+        dirty = len([l for l in st.splitlines() if l.strip()])
+        if dirty:
+            return "%s（工作区含未提交变更 %d 项：证据树不等于该提交，需以本行为准）" % (sha, dirty)
+        return sha
     except Exception:
         return "unknown"
+
+
+def _mysql_conn_kwargs():
+    """MySQL 连接参数只从环境变量读取（先 set -a && source .env && set +a）。
+
+    不得在脚本内写凭据字面量（AGENTS.md 会话纪律）；缺失即快速失败。"""
+    keys = ("DJANGO_DB_USER", "DJANGO_DB_PASSWORD", "DJANGO_DB_HOST", "DJANGO_DB_NAME")
+    cfg = {k: os.environ.get(k) for k in keys}
+    missing = [k for k in keys if not cfg[k]]
+    if missing:
+        raise RuntimeError(
+            "MySQL 引擎缺少环境变量：" + "、".join(missing)
+            + "；请先 set -a && source .env && set +a（脚本内禁止凭据字面量）")
+    return {"user": cfg["DJANGO_DB_USER"], "password": cfg["DJANGO_DB_PASSWORD"],
+            "host": cfg["DJANGO_DB_HOST"], "database": cfg["DJANGO_DB_NAME"]}
 
 
 def _db_version(engine):
     try:
         import pymysql
-        conn = pymysql.connect(
-            user="hotelhotel", password="hotelhotel", host="localhost", database="hotel")
+        conn = pymysql.connect(**_mysql_conn_kwargs())
         with conn.cursor() as cur:
             cur.execute("SELECT VERSION()")
             version = cur.fetchone()[0]
@@ -56,11 +82,8 @@ def main():
         env.update({"DJANGO_DB_ENGINE": "sqlite", "DJANGO_ENV": "test"})
         db_desc = "SQLite（内存库，CI/轻量口径）"
     else:
-        env.update({
-            "DJANGO_DB_USER": "hotelhotel", "DJANGO_DB_PASSWORD": "hotelhotel",
-            "DJANGO_DB_NAME": "hotel", "DJANGO_DB_HOST": "localhost",
-            "DJANGO_ENV": "test",
-        })
+        _mysql_conn_kwargs()  # 预校验：缺环境变量在跑测试前快速失败
+        env.update({"DJANGO_ENV": "test"})  # DB 连接参数由环境透传，不在脚本内覆写
         db_desc = _db_version("mysql")
         if args.keepdb:
             env["DJANGO_KEEPDB"] = "1"
@@ -68,7 +91,7 @@ def main():
     test_cmd = [sys.executable, "manage.py", "test"]
     header = [
         f"证据生成时间：{datetime.now().isoformat(timespec='seconds')}",
-        f"被测 Git SHA：{_git_sha()}",
+        f"被测树：{_git_state()}",
         f"Python：{sys.version.split()[0]}    Django：{django.get_version()}",
         f"数据库：{db_desc}",
         f"执行命令：{' '.join(test_cmd)}（DJANGO_ENV=test，engine={args.engine}）",
