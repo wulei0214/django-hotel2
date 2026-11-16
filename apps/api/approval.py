@@ -132,6 +132,10 @@ def approval_request(request):
     """POST /api/v1/approvals/request — 发起审批申请（P0-02 白名单）。"""
     property_obj = _require_membership(request)
     body = _json_body(request)
+    # WB-46 口径：非对象 JSON（数组/字符串/数字）此前会带出 body.get 的
+    # AttributeError（500）——显式 400（F8 同源修复，2026-11-16）。
+    if not isinstance(body, dict):
+        raise ApiError("VALIDATION_ERROR", "请求体必须是 JSON 对象。")
     action_code = str(body.get("action_code") or "").strip()
     entity_type = str(body.get("entity_type") or "").strip()
     entity_id = body.get("entity_id")
@@ -234,6 +238,9 @@ def approval_reject(request, record_id):
             "退款驳回必须通过 /api/v1/billing/refunds/{id}/reject，"
             "以便同步 Refund 状态、审批事实和支付状态。")
     body = _json_body(request)
+    # WB-46 口径：非对象 JSON 此前 500（F8 产品缺陷，2026-11-16 修复）。
+    if not isinstance(body, dict):
+        raise ApiError("VALIDATION_ERROR", "请求体必须是 JSON 对象。")
     reason = body.get("reason") or "驳回"
     try:
         record = ApprovalService.reject(

@@ -1,0 +1,17 @@
+# 证据：25 个 partial operation 收敛批次（SYS-06/G14-11）
+SHA: 1591ce2b3023e08072da1856620716d3b1412b95
+date: 2026-11-17 00:19:08 +0800
+env: DJANGO_ENV=test DJANGO_DB_ENGINE=sqlite DJANGO_DB_NAME=:memory: (Windows local, .venv, CI 同款变量)
+command: python manage.py test apps.api.test_partial_contract_verification apps.api.test_openapi_schema apps.api.test_approval --verbosity 1
+---
+Found 167 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+.......................................................................................................................................................................
+----------------------------------------------------------------------
+Ran 167 tests in 103.199s
+
+OK
+Destroying test database for alias 'default'...
+---
+exit_code: 0
