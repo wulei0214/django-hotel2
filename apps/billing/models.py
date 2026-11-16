@@ -2618,6 +2618,20 @@ class LegacyArchiveRecord(models.Model):
         verbose_name="行摘要",
         help_text="checksum-v2 行摘要（hex）；整表摘要登记在 LegacyArchiveRun",
     )
+    property: models.ForeignKey = models.ForeignKey(
+        "core.Property",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+        db_index=True,
+        verbose_name="物业归属（快照）",
+        help_text=(
+            "FIN-02（2026-11-16 负责人裁定）：归档表增补物业快照列；"
+            "裁定 3 逐记录核验后回填，D6 归档读路径切换的物业级过滤依据。"
+            "查询层按 room_id 反推在同号多物业历史数据上有歧义，故以快照列为准"
+        ),
+    )
 
     class Meta:
         abstract = True
@@ -2899,6 +2913,13 @@ class LegacyOrderReservationMap(models.Model):
         verbose_name="取代的关系行",
         help_text="OneToOne 唯一约束保证一行至多被取代一次（可空唯一 = 允许多行不取代任何行）",
     )
+    position_key: models.CharField = models.CharField(
+        max_length=80,
+        editable=False,
+        verbose_name="配对版本位置键",
+        help_text="物化 'order:reservation:root|sup:<被取代行>'；唯一约束的防重载体"
+        "（可空 supersedes 直接进约束会因 NULL 相异失去普通确认防重）",
+    )
     created_at: models.DateTimeField = models.DateTimeField(
         auto_now_add=True, verbose_name="落库时间"
     )
@@ -2907,10 +2928,14 @@ class LegacyOrderReservationMap(models.Model):
         verbose_name = "旧订单-新预订关系"
         verbose_name_plural = "旧订单-新预订关系"
         ordering = ("-created_at", "-id")
+        # FIN-01（2026-11-16 负责人裁定）：并发防护口径 = 同一「配对版本位置」拒绝第二行；
+        # 同配对回退（改映射后又改回原预订，经 supersedes 链回指）自然支持。
+        # 实现采用本仓 MySQL 8 惯用模式（无 partial index，条件唯一以可空唯一键替代——
+        # 三元组约束含可空 supersedes 时 NULL 相异会导致普通确认失去防重）：
+        # position_key 物化 "order:reservation:root|sup:<被取代行>"，单列唯一。
         constraints = [
-            # 并发确认同一配对时由唯一约束拒绝第二行（§1.5.3 并发确认断言）。
             models.UniqueConstraint(
-                fields=("legacy_order", "reservation"), name="uq_legacy_order_reservation_pair"
+                fields=("position_key",), name="uq_legacy_map_position_key"
             ),
         ]
         indexes = [

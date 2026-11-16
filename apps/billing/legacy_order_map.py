@@ -57,6 +57,15 @@ def _require_legacy_order(legacy_order_id: int) -> None:
         raise LegacyOrderMapError(f"旧订单 #{legacy_order_id} 不存在")
 
 
+def pair_position_key(legacy_order_id: int, reservation_id: int, supersedes_id: Any) -> str:
+    """配对版本位置键（FIN-01）：'order:reservation:root' 或 'order:reservation:sup:<id>'。
+
+    唯一约束 uq_legacy_map_position_key 的防重载体；同键 = 同配对同版本位置，
+    并发第二行被拒；回退（经 supersedes 链回指）产生新键，自然放行。"""
+    tail = "root" if supersedes_id is None else f"sup:{int(supersedes_id)}"
+    return f"{int(legacy_order_id)}:{int(reservation_id)}:{tail}"
+
+
 def _validate_basis(match_basis: str) -> str:
     text = str(match_basis or "").strip()
     if not text:
@@ -78,7 +87,8 @@ def confirm_pair(
 
     事务内顺序（§1.5.2 确认事务）：
     锁定新预订行 → 复核物业一致性 → 校验被取代行（同旧订单、同物业、当前有效）
-    → 创建关系行。并发确认同一配对由唯一约束拒绝第二行。
+    → 创建关系行。并发确认同一（配对, 版本位置）由唯一约束拒绝第二行；同配对经
+    版本链回指（FIN-01，2026-11-16 裁定）允许，当前有效关系仍为派生口径。
     """
     order_pk = _normalize_order_id(legacy_order_id)
     if confirmed_by is None:
@@ -121,10 +131,13 @@ def confirm_pair(
                 confirmed_by=confirmed_by,
                 confirmed_at=timezone.now(),
                 supersedes=supersedes,
+                position_key=pair_position_key(order_pk, reservation.pk, supersedes_id=None if supersedes is None else supersedes.pk),
             )
     except IntegrityError as exc:
         raise LegacyOrderMapError(
-            f"旧订单 #{order_pk} 与预订 #{reservation_id} 的关系已确认（唯一约束），禁止重复落库"
+            f"旧订单 #{order_pk} 与预订 #{reservation_id} 的关系在同一版本位置已确认"
+            "（唯一约束 uq_legacy_order_reservation_pair），禁止重复落库；"
+            "改映射/回退请走 supersedes 版本链"
         ) from exc
 
     AuditEvent.record(

@@ -25,9 +25,12 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from apps.billing.legacy_migration import build_plan
+from django.db import transaction
+
 from apps.billing.legacy_order_map import (
     LegacyOrderMapError,
     confirm_pair,
+    pair_position_key,
     current_map_for_order,
     current_rows,
     merge_order_mappings,
@@ -207,6 +210,52 @@ class LegacyOrderMapBaseTests(TestCase):
             )
         self.assertEqual(LegacyOrderReservationMap.objects.count(), 2)
         self.assertEqual(second.supersedes_id, first.pk)
+
+    def test_pair_revert_via_supersede_allowed(self):
+        """FIN-01（2026-11-16 裁定）：改映射后又改回原预订——经版本链回指允许。
+
+        组合唯一含 supersedes 后，同配对在不同版本位置可再次成立；
+        当前有效关系为派生口径（最后落库的未取代行）。"""
+        first = self._confirm()
+        second = self._confirm(reservation_id=self.other_reservation.pk, supersedes=first)
+        reverted = self._confirm(
+            legacy_order_id=self.legacy_order.pk,
+            reservation_id=self.reservation.pk,
+            supersedes=second,
+        )
+        self.assertEqual(reverted.reservation_id, self.reservation.pk)
+        self.assertEqual(reverted.supersedes_id, second.pk)
+        self.assertEqual(LegacyOrderReservationMap.objects.count(), 3)
+        current = current_map_for_order(self.legacy_order.pk)
+        self.assertEqual(current.pk, reverted.pk)
+        self.assertEqual(current.reservation_id, self.reservation.pk)
+        chain = superseded_chain(self.legacy_order.pk)
+        self.assertEqual([row.pk for row in chain], [first.pk, second.pk, reverted.pk])
+
+    def test_same_pair_same_position_integrity_error(self):
+        """并发防护保持：绕过服务层直插同（配对, 版本位置）第二行 → DB 唯一约束拒绝。
+
+        直插必须自给 position_key（可空列 NULL 相异，不设键不会触发约束）——
+        这正是服务层统一经 pair_position_key 物化的原因。"""
+        from django.db import IntegrityError, transaction
+
+        first = self._confirm()
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                LegacyOrderReservationMap.objects.create(
+                legacy_order=self.legacy_order,
+                reservation=self.reservation,
+                property=self.prop,
+                relation_type=LegacyOrderReservationMap.RelationType.ONE_TO_ONE,
+                match_basis="并发第二行（无人工确认通道）",
+                confirmed_by=self.confirmer,
+                supersedes=None,
+                position_key=pair_position_key(
+                    self.legacy_order.pk, self.reservation.pk, None
+                ),
+            )
+        self.assertEqual(LegacyOrderReservationMap.objects.count(), 1)
+        self.assertIsNotNone(first.pk)
 
     def test_supersede_chain_returns_full_history(self):
         first = self._confirm()
