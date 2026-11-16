@@ -352,6 +352,12 @@ PLATFORM_VIEW_MODULES = (
     "apps.identity.permission_admin",
     "apps.identity.permission_center",
 )
+# AdminSite.admin_view 包装的只读视图：Django 的 update_wrapper 会把 __wrapped__
+# 直接指向原始视图，内层 has_permission 门禁不可内省，故按"视图名 + admin/ 前缀"
+# 双重条件登记（不满足任一条件仍判未分类，防止把任意视图塞进清单蒙混）。
+# 依据：apps/core/admin_views.py::pms_business_overview 使用 @admin.site.admin_view
+# （AdminSite.has_permission + 未授权重定向 admin 登录页），且无业务写权限。
+ADMIN_SITE_GATED_VIEWS = {"pms_business_overview"}
 # RETIRED-410 视图名（10-routes.md §E1-E35 + /export/staff/ 旧通道）
 RETIRED_VIEW_NAMES = {
     "checkin_confirm",
@@ -463,6 +469,8 @@ class RouteGateCoverageTests(TestCase):
                 continue
             if view_name in RETIRED_VIEW_NAMES:
                 continue
+            if view_name in ADMIN_SITE_GATED_VIEWS and route.startswith("admin/"):
+                continue
             if _gate_evidence(callback):
                 continue
             unclassified.append(f"{route} -> {callback.__module__}.{view_name}")
@@ -472,6 +480,21 @@ class RouteGateCoverageTests(TestCase):
             [],
             "以下业务路由既不在公开面/退役白名单，也无门禁证据：\n" + "\n".join(unclassified),
         )
+
+    def test_admin_site_gated_views_require_admin_session(self):
+        """ADMIN_SITE_GATED_VIEWS 登记项必须真的被门禁拦住：匿名访问 → 302 登录墙。"""
+        checked = 0
+        for route, callback in _iter_project_patterns(get_resolver()):
+            if callback.__name__ not in ADMIN_SITE_GATED_VIEWS:
+                continue
+            checked += 1
+            response = self.client.get("/" + route)
+            self.assertEqual(
+                response.status_code,
+                302,
+                f"{route} 未登录应被 admin 门禁重定向，实际 {response.status_code}",
+            )
+        self.assertGreater(checked, 0, "ADMIN_SITE_GATED_VIEWS 未命中任何路由（登记过期）")
 
     def test_retired_view_list_matches_urlpatterns(self):
         """RETIRED 清单防漂移：清单中每个视图都必须仍挂在 urlpatterns 上。"""
