@@ -510,7 +510,8 @@ def reservations(request):
         property=property_obj
     ).select_related("guest").order_by("-created_at", "-id").prefetch_related(
         Prefetch("reservation_rooms",
-                 queryset=ReservationRoom.objects.select_related("room_type", "assigned_room")),
+                 queryset=ReservationRoom.objects.select_related(
+                     "room_type", "assigned_room", "stay")),
     )
     value = (request.GET.get("q") or "").strip()
     if value:
@@ -538,10 +539,23 @@ def reservations(request):
     for reservation in rows:
         # N+1 修复：明细经主查询 prefetch_related 一次取回（P0-07）。
         lines = list(reservation.reservation_rooms.all())
+        # 走查发现（2026-11-16）：列表此前缺 assigned_room 顶层字段与
+        # Stay 状态，前端 orderStatusFor 只能全部落到"待排房"——已退房/
+        # 在住订单在订单查询里被误标为待排房，误导前台。此处补齐：
+        # assigned_room=首间已分配房号（None=未排房）、reservation_status
+        # 别名（前端既有读取路径）、stay_status=明细行 Stay 状态。
+        assigned = next(
+            (line.assigned_room for line in lines if line.assigned_room), None)
+        stay_status = next(
+            (line.stay.status for line in lines if getattr(line, "stay", None)),
+            None)
         data.append({
             "booking_no": reservation.booking_no,
             "status": reservation.status,
             "status_label": _status_label(reservation.status),
+            "reservation_status": reservation.status,
+            "assigned_room": assigned.number if assigned else None,
+            "stay_status": stay_status,
             "source": reservation.source,
             "source_label": _source_label(reservation.source),
             "guest": {"id": reservation.guest_id, "full_name": reservation.guest.full_name, "phone_masked": _mask_phone(guest_phone_plain(reservation.guest))},

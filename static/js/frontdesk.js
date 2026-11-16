@@ -232,11 +232,21 @@
             if (balance > 0) return ["余额待结", "red"];
             if (item.stay && item.stay.status === "IN_HOUSE") return ["在住", "green"];
         }
-        if (!item.assigned_room) return ["待排房", "amber"];
+        // 走查发现修复（2026-11-16）：订单状态必须先按预订终态/入住状态判定，
+        // 再看排房——此前"未分配即待排房"把已退房/在住订单全部误标为待排房。
+        // stay_status/assigned_room/reservation_status 由 reservations 列表
+        // 端点顶层提供（此前嵌在 rooms[] 内，前端读取恒为 undefined）。
+        if (item.stay_status === "IN_HOUSE") return ["在住", "green"];
+        if (item.stay_status === "CHECKED_OUT") return ["已退房", "gray"];
+        if (item.reservation_status === "CANCELLED") return ["已取消", "gray"];
+        if (item.reservation_status === "EXPIRED") return ["已过期", "gray"];
+        if (item.reservation_status === "NO_SHOW") return ["未到", "gray"];
         if (item.reservation_status === "PENDING") return ["待支付/确认", "amber"];
-        if (item.reservation_status === "CONFIRMED") return ["待入住", "blue"];
+        if (item.reservation_status === "CONFIRMED") {
+            return item.assigned_room ? ["待入住", "blue"] : ["待排房", "amber"];
+        }
         if (item.status_label) return [item.status_label, "gray"];
-        return ["已分配", "green"];
+        return item.assigned_room ? ["已分配", "green"] : ["待排房", "amber"];
     }
 
     function appendCell(row, primary, secondary) {

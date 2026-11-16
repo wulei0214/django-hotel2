@@ -555,3 +555,50 @@ class WalkInsConcurrentIdempotencyTests(TransactionTestCase):
             1,
             "重复押金记录=0（幂等键 r101-concurrent-walkin-key-dep 恰一笔）",
         )
+
+
+class ReservationListStatusTests(WalkInApiTestBase):
+    """走查发现修复（2026-11-16）：订单查询列表必须反映真实入住/退房状态。
+
+    此前列表缺顶层 assigned_room/stay_status，前端把已退房/在住订单全部
+    误标为"待排房"，误导前台（走查期间实际发生）。"""
+
+    url = "/api/v1/front-desk/walk-ins"
+
+    def _list_rows(self, booking_no):
+        response = self.client.get(
+            "/api/v1/front-desk/reservations",
+            {"q": booking_no},
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        rows = [r for r in response.json()["data"]
+                if r["booking_no"] == booking_no]
+        self.assertEqual(len(rows), 1, f"应恰有一行 {booking_no}")
+        return rows[0]
+
+    def test_list_reflects_in_house_and_checked_out_states(self):
+        user = self._auth()
+        BillingService.open_shift(
+            property_obj=self.property, cashier=user, opening_cash=Decimal("0.00")
+        )
+        create = _post_json(
+            self.client, self.url, self._payload(),
+            HTTP_IDEMPOTENCY_KEY="list-status-001")
+        self.assertEqual(create.status_code, 201, create.content)
+        booking_no = create.json()["data"]["booking_no"]
+        # 在住：列表必须带 stay_status=IN_HOUSE 与已分配房号
+        row = self._list_rows(booking_no)
+        self.assertEqual(row["reservation_status"], "CHECKED_IN")
+        self.assertEqual(row["stay_status"], "IN_HOUSE")
+        self.assertTrue(row["assigned_room"], "在住订单必须带已分配房号")
+        # 退房后：stay_status=CHECKED_OUT（预订状态保持 CHECKED_IN 语义）
+        stay = Stay.objects.get(reservation_room__reservation__booking_no=booking_no)
+        checkout = self.client.post(
+            f"/api/v1/front-desk/stays/{stay.pk}/check-out",
+            data=json.dumps({}), content_type="application/json")
+        self.assertEqual(checkout.status_code, 200, checkout.content)
+        row = self._list_rows(booking_no)
+        self.assertEqual(row["reservation_status"], "CHECKED_OUT",
+                         "单间预订退房后整单迁移为 CHECKED_OUT（列表直接显示已退房）")
+        self.assertEqual(row["stay_status"], "CHECKED_OUT")
+        self.assertTrue(row["assigned_room"])
