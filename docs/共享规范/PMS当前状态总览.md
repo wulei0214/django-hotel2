@@ -15,8 +15,8 @@
 ## 2. OpenAPI 契约
 
 - 权威快照：`docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/openapi.json`；兼容镜像：`docs/接口文档/openapi.json`。
-- 现值（绑定 `98673c9`）：OpenAPI 3.1.0，**116 paths / 118 operations**；操作级 `x-contract-status`：**verified 93 / partial 25**。
-- 双快照逐字节一致：**923911 字节**，SHA256 前 16 位 `a026b02751219eac`。本值为 `98673c9` 时点实测；重导前的旧值按整体重写制移除，历史追溯走 Git 与更新日志，不得挪用到其他基线。
+- 现值（绑定 `b055666`，2026-11-16 SYS-06/G14-11 收敛）：OpenAPI 3.1.0，**118 paths / 120 operations**；操作级 `x-contract-status`：**verified 120 / partial 0**（原 25 个 partial 已逐项验证后翻转，验证模块 89 项 + 契约 43 项回归证据 `docs/acceptance/evidence/docgate-partial-verification-20261116.log`）。
+- 双快照逐字节一致：**973202 字节**，SHA256 前 16 位 `dbd5f9651cd5d2f6`（绑定 `b055666` 实测；fd 封套补可选 meta、RateCalendarData 补双集合分页键、财务汇总补 P0-07 metadata）。历史值按整体重写制移除，追溯走 Git 与更新日志。
 - 守卫：`apps/api/test_openapi_schema.py` 以 `read_bytes()` 逐字节断言两快照一致；`openapi-snapshot.yml` 负责导出与镜像同步。**两路径冻结，禁止第三份快照**。
 - 最近契约实跑：`docs/acceptance/evidence/docgate-publicapierror-convergence.log`（43 tests OK，环境 DJANGO_ENV=test + SQLite，SHA `3fd3c0d`）。公开面错误结构契约-运行时分歧已在该轮收敛，相关契约测试恢复作为有效验收依据。
 
@@ -28,7 +28,7 @@
 | `docs/acceptance/evidence/test-mysql-walkin-round.log` | Ran 1307，OK | 同上 |
 | `docs/acceptance/evidence/docgate-publicapierror-convergence.log` | Ran 43，OK | 契约套件，SHA `3fd3c0d` |
 
-- **证据适用性限制（现取现核结论）**：两份 walkin-round 日志的证据头 SHA 为 `0df34df`（docs-only 提交），不含被测业务变更（R1-03~05 在 `baf686d`）；该数字只能作为轮次记录，**不得充当 `98673c9` 的全量回归结论**。代码事实锚点之后尚未重跑双引擎全量回归。
+- **双引擎全量回归（2026-11-16 重跑，G14-01/02 前置证据）**：SQLite **1558 tests OK（skipped=26）**（`docs/acceptance/evidence/test-sqlite-g14pre-20261116.log`）；MySQL 首轮因陈旧 keepdb 测试库与 .env 泄漏两度中断，已修复证据生成器（`--noinput` 全新建库 + 环境变量凭据 + 被测树绑定）并重跑中，结果回填本行。walkin-round 旧数字仅作轮次记录。
 - 规则：历史报告中的测试数字仅对其各自 SHA 有效；readme 历史段落的 887/948/…/1285 均为绑定值，不得挪用到其他基线。
 
 ## 4. 遗留门禁（截至本轮）
@@ -41,8 +41,8 @@
 | dev 库 hotel 迁移（guests.0007、billing.0030） | 上线前应用 + 核对；本轮未连接该库 |
 | 生产 PII 独立密钥受控切换 | 按 07 目录 PII 手册流程，禁止直换环境变量 |
 | WB-015~045、WB-068、WB-113、WB-46-01~13 原始映射找回 | 待办 |
-| 代码事实锚点之后的双引擎全量回归 | 未重跑；契约套件 43 项已实跑 |
-| `scripts/test_evidence.py` 硬编码凭据与证据 SHA 不等于被测代码 | 按缺陷流程处理，本轮未触碰 |
+| 双引擎全量回归 | SQLite 1558 OK 已重跑；MySQL 重跑中（陈旧 keepdb 库与 .env 泄漏已修复） |
+| `scripts/test_evidence.py` 凭据与证据树绑定 | **已修复（`60481e9`）**：凭据入环境变量（缺失快速失败）、`--noinput` 全新建库、被测树绑定检测 |
 
 ## 5. 待负责人裁定项
 
