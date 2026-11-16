@@ -28,7 +28,7 @@
 | `docs/acceptance/evidence/test-mysql-walkin-round.log` | Ran 1307，OK | 同上 |
 | `docs/acceptance/evidence/docgate-publicapierror-convergence.log` | Ran 43，OK | 契约套件，SHA `3fd3c0d` |
 
-- **双引擎全量回归（2026-11-16 重跑，G14-01/02 前置证据）**：SQLite **1558 tests OK（skipped=26）**（`docs/acceptance/evidence/test-sqlite-g14pre-20261116.log`）；MySQL 首轮因陈旧 keepdb 测试库与 .env 泄漏两度中断，已修复证据生成器（`--noinput` 全新建库 + 环境变量凭据 + 被测树绑定）并重跑中，结果回填本行。walkin-round 旧数字仅作轮次记录。
+- **双引擎全量回归（2026-11-16 重跑，G14-01/02 前置证据）**：SQLite **1558 tests OK（skipped=26）**（`docs/acceptance/evidence/test-sqlite-g14pre-20261116.log`）；MySQL 已用 `--noinput` 全新测试库重跑（66F/21E，见 §4 回归行登记）。walkin-round 旧数字仅作轮次记录。
 - 规则：历史报告中的测试数字仅对其各自 SHA 有效；readme 历史段落的 887/948/…/1285 均为绑定值，不得挪用到其他基线。
 
 ## 4. 遗留门禁（截至本轮）
@@ -41,7 +41,7 @@
 | dev 库 hotel 迁移（guests.0007、billing.0030） | 上线前应用 + 核对；本轮未连接该库 |
 | 生产 PII 独立密钥受控切换 | 按 07 目录 PII 手册流程，禁止直换环境变量 |
 | WB-015~045、WB-068、WB-113、WB-46-01~13 原始映射找回 | 待办 |
-| 双引擎全量回归 | SQLite 1558 OK 已重跑；MySQL 重跑中（陈旧 keepdb 库与 .env 泄漏已修复） |
+| 双引擎全量回归 | SQLite **1558 OK** 已重跑；MySQL **全新测试库 66F/21E——身份测试 setUp 取 Group'客房服务员' 不存在**（角色组未在全新 MySQL 测试库种子化，f13e32f 时代 MySQL 全绿后主线自行变红；与本专项改动无关——本专项仅动 billing legacy/docs/scripts），归主线缺陷流程修复后重取 G14-02 MySQL 证据 |
 | `scripts/test_evidence.py` 凭据与证据树绑定 | **已修复（`60481e9`）**：凭据入环境变量（缺失快速失败）、`--noinput` 全新建库、被测树绑定检测 |
 
 ## 5. 待负责人裁定项
