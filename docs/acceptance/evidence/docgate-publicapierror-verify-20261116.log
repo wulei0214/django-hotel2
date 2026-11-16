@@ -1,0 +1,17 @@
+# 证据：公开面错误结构收敛有效性复核（移交事项专项）
+SHA: 60481e9b4b2bedeff2a2e25beb3c57bcca312dec
+date: 2026-11-16 23:09:51 +0800
+env: DJANGO_ENV=test DJANGO_DB_ENGINE=sqlite DJANGO_DB_NAME=:memory: (Windows local, .venv)
+command: python manage.py test apps.api.test_openapi_schema --verbosity 1
+---
+Found 43 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+...........................................
+----------------------------------------------------------------------
+Ran 43 tests in 0.543s
+
+OK
+Destroying test database for alias 'default'...
+---
+exit_code: 0
