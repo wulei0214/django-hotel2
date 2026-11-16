@@ -11,7 +11,11 @@
   * 构造数据断言计算正确：入住率（含停用房剔除分母）、ADR（ROOM_CHARGE 及
     红字冲销口径，押金/收款不计入）、收入按日/按类型分组、多币种不相加、
     客源（新客/回头客/来源分布）、清洁效率（事件按日计数、他物业隔离）；
-  * 空区间返回空序列不报错；
+  * 第 3 批快照型报表（A4/A5）：会员（等级/状态分布、近 30 天新增趋势含 0 日
+    与 30 天边界、Top 会员按累计入住晚数排序且不输出 PII、他物业隔离）、
+    渠道来源（订单/确认转化/入住转化/GMV、外币 GMV 不相加、NO_SHOW 计入
+    确认转化、趋势窗口边界）；
+  * 空区间返回空序列不报错；快照型报表空库返回 0 值与 30 天零序列；
   * /manage/reports/ 页面门禁（匿名 302 / 前台 403 / 值班经理 200 +
     专属模板 + 侧边栏入口）。
 
@@ -31,9 +35,9 @@ from django.utils.crypto import get_random_string  # noqa: E402
 from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.billing.models import Folio, LedgerEntry
 from apps.core.models import AuditEvent, Property
-from apps.guests.models import Guest
+from apps.guests.models import Guest, GuestMembership
 from apps.inventory.models import RoomTypeInventory
-from apps.reservations.models import Reservation
+from apps.reservations.models import Reservation, ReservationRoom, Stay
 
 _TEST_PW_EA5E4F64 = get_random_string(24)
 
@@ -52,6 +56,12 @@ OPERATIONAL_ENDPOINTS = (
     "/api/v1/reports/occupancy",
     "/api/v1/reports/guests",
     "/api/v1/reports/housekeeping",
+)
+# 第 3 批快照型报表（A4/A5）：无 from/to 区间参数（固定近 30 天趋势窗口），
+# 不进入带区间校验的 REPORT_ENDPOINTS 循环，门禁与空数据单测单列。
+SNAPSHOT_REPORT_ENDPOINTS = (
+    "/api/v1/reports/memberships",
+    "/api/v1/reports/sources",
 )
 
 
@@ -136,6 +146,49 @@ class ReportCenterTestBase(E2EFlowTestBase):
             AuditEvent._base_manager.filter(pk=event.pk).update(
                 created_at=timezone.now() - timedelta(days=days_ago))
         return event
+
+    # ------------------------------------------------------------------
+    # 第 3 批快照型报表（A4/A5）数据工厂
+    # ------------------------------------------------------------------
+    def _make_membership(self, guest, level_code="STANDARD",
+                         status=GuestMembership.Status.ACTIVE, member_no=None,
+                         created_days_ago=0):
+        """会员关系（auto_now_add → 直改 created_at 回溯建档日）。"""
+        self._member_seq = getattr(self, "_member_seq", 0) + 1
+        membership = GuestMembership.objects.create(
+            property=self.property, guest=guest,
+            member_no=member_no or f"RPT-M{self._member_seq:04d}",
+            level_code=level_code, status=status)
+        if created_days_ago:
+            GuestMembership.objects.filter(pk=membership.pk).update(
+                created_at=timezone.now() - timedelta(days=created_days_ago))
+        return membership
+
+    def _make_source_reservation(self, guest, source="WEBSITE",
+                                 status=Reservation.Status.PENDING, total=0,
+                                 nights=1, room_count=1, currency="CNY",
+                                 created_days_ago=0, with_stay=False,
+                                 stay_status=Stay.Status.CHECKED_OUT, stay_room=None):
+        """渠道来源报表事实数据：预订 + 可选 ReservationRoom/Stay 直建（报表只读，不经服务）。"""
+        reservation = Reservation.objects.create(
+            property=self.property, booking_no=f"RPT-{uuid.uuid4().hex[:12].upper()}",
+            guest=guest, source=source, status=status, check_in=self.today,
+            check_out=self.today + timedelta(days=nights), room_count=room_count,
+            total_amount=Decimal(str(total)), currency=currency)
+        if created_days_ago:
+            Reservation.objects.filter(pk=reservation.pk).update(
+                created_at=timezone.now() - timedelta(days=created_days_ago))
+        if with_stay:
+            room = stay_room or self.room1
+            reservation_room = ReservationRoom.objects.create(
+                property=self.property, reservation=reservation,
+                room_type=self.room_type, rate_plan=self.rate_plan,
+                check_in=self.today, check_out=self.today + timedelta(days=nights),
+                amount=Decimal(str(total)))
+            Stay.objects.create(
+                property=self.property, reservation_room=reservation_room,
+                room=room, status=stay_status)
+        return reservation
 
 
 class ReportPermissionTests(ReportCenterTestBase):
@@ -547,3 +600,269 @@ class ReportPageTests(ReportCenterTestBase):
         self.assertContains(response, "报表分析中心")
         self.assertContains(response, '"view_accommodation": true')
         self.assertContains(response, '"finance_access": true')
+
+
+class SnapshotReportPermissionTests(ReportCenterTestBase):
+    """第 3 批快照型报表（A4/A5）权限四态：匿名/无任职/缺权限码/有权限。
+
+    与 occupancy 等运营类报表同门禁：hotelapp.view_accommodation
+    （会员结构/渠道来源是预订与入住模块的运营统计，不含账务凭证金额）。
+    """
+
+    def test_snapshot_reports_require_authentication(self):
+        """未登录 → 401 AUTHENTICATION_REQUIRED（与区间型报表同封套）。"""
+        self.client.logout()
+        for url in SNAPSHOT_REPORT_ENDPOINTS:
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 401, url)
+            self.assertEqual(
+                response.json()["error"]["code"], "AUTHENTICATION_REQUIRED", url)
+
+    def test_snapshot_reports_require_property_membership(self):
+        """已登录但无任何物业任职 → 无物业上下文 404（与审计中心同口径）。"""
+        outsider = User.objects.create_user(
+            username="snapshot_no_membership", password=_TEST_PW_EA5E4F64)
+        self.client.force_login(outsider)
+        for url in SNAPSHOT_REPORT_ENDPOINTS:
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 404, url)
+            self.assertEqual(
+                response.json()["error"]["code"], "RESOURCE_NOT_FOUND", url)
+
+    def test_snapshot_reports_require_view_accommodation(self):
+        """客房服务员（仅 view_room/change_room）→ 403：view_room 不替代
+        view_accommodation；会员报表不含客人 PII，仍挂运营类门禁。
+        """
+        self.client.force_login(self.hk)
+        for url in SNAPSHOT_REPORT_ENDPOINTS:
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 403, url)
+            self.assertEqual(
+                response.json()["error"]["code"], "PERMISSION_DENIED", url)
+
+    def test_snapshot_reports_ok_for_front_desk_and_duty_manager(self):
+        """前台（view_accommodation）与值班经理均可 200，封套含 data/metadata。"""
+        for url in SNAPSHOT_REPORT_ENDPOINTS:
+            self.client.force_login(self.fd)
+            front = self.client.get(url)
+            self.assertEqual(front.status_code, 200, url)
+            self.assertIn("data", front.json(), url)
+            self.assertIn("metadata", front.json()["data"], url)
+            self.client.force_login(self.dm)
+            duty = self.client.get(url)
+            self.assertEqual(duty.status_code, 200, url)
+
+
+class MembershipReportTests(ReportCenterTestBase):
+    """A4 会员报表：分布聚合 / Top 会员口径 / 近 30 天趋势边界 / 空库 0 值。"""
+
+    def test_memberships_report_aggregation_and_top_members(self):
+        # A：STANDARD/ACTIVE，两笔实际入住预订（3 晚×2 间=6 + 1 晚×1=1 → 7 晚 700 元）
+        guest_a = self._make_guest()
+        self._make_membership(guest_a, "STANDARD", GuestMembership.Status.ACTIVE)
+        self._make_source_reservation(
+            guest_a, status=Reservation.Status.CHECKED_OUT, total=600,
+            nights=3, room_count=2)
+        self._make_source_reservation(
+            guest_a, status=Reservation.Status.CHECKED_IN, total=100)
+        # B：ADVANCED/ACTIVE，1 笔已退房（2 晚 500）+ 1 笔待支付（不计入住晚数）
+        guest_b = self._make_guest()
+        self._make_membership(guest_b, "ADVANCED", GuestMembership.Status.ACTIVE)
+        self._make_source_reservation(
+            guest_b, status=Reservation.Status.CHECKED_OUT, total=500, nights=2)
+        self._make_source_reservation(
+            guest_b, status=Reservation.Status.PENDING, total=800)
+        # C：STANDARD/TERMINATED，仅 NO_SHOW 预订（不计入住晚数/消费）
+        guest_c = self._make_guest()
+        self._make_membership(guest_c, "STANDARD", GuestMembership.Status.TERMINATED)
+        self._make_source_reservation(
+            guest_c, status=Reservation.Status.NO_SHOW, total=300)
+        # D：STANDARD/EXPIRED，无预订
+        guest_d = self._make_guest()
+        self._make_membership(guest_d, "STANDARD", GuestMembership.Status.EXPIRED)
+        # 他物业会员不计入
+        other_property = Property.objects.create(code="RPT-OTHER3", name="他店三")
+        other_guest = Guest.objects.create(
+            property=other_property, full_name="他店会员", phone="13500000000")
+        GuestMembership.objects.create(
+            property=other_property, guest=other_guest,
+            member_no="RPT-OTHER-M1", level_code="ELITE",
+            status=GuestMembership.Status.ACTIVE)
+
+        self.client.force_login(self.dm)
+        body = self.client.get("/api/v1/reports/memberships").json()
+        data = body["data"]
+        summary = data["summary"]
+        self.assertEqual(summary["total_members"], 4)          # 他店会员不计入
+        self.assertEqual(summary["active_members"], 2)
+        self.assertEqual(summary["terminated_members"], 1)
+        self.assertEqual(summary["expired_members"], 1)
+        self.assertEqual(summary["trend_window"]["days"], 30)
+        self.assertEqual(summary["top_metric"], "room_nights")
+
+        by_level = {row["level_code"]: row for row in data["by_level"]}
+        self.assertEqual(by_level["STANDARD"]["members"], 3)
+        self.assertEqual(by_level["STANDARD"]["level_label"], "标准会员")
+        self.assertEqual(by_level["ADVANCED"]["members"], 1)
+        self.assertEqual(by_level["ADVANCED"]["level_label"], "高级会员")
+
+        by_status = {row["status"]: row for row in data["by_status"]}
+        self.assertEqual(by_status["ACTIVE"]["members"], 2)
+        self.assertEqual(by_status["ACTIVE"]["status_label"], "有效")
+        self.assertEqual(by_status["TERMINATED"]["status_label"], "已终止")
+        self.assertEqual(by_status["EXPIRED"]["status_label"], "已过期")
+
+        top = data["top_members"]
+        self.assertEqual(len(top), 4)                          # Top 10 上限内全量返回
+        self.assertEqual(top[0]["member_no"], "RPT-M0001")     # 7 晚排第一
+        self.assertEqual(top[0]["room_nights"], 7)             # 6 + 1（NO_SHOW 不计）
+        self.assertEqual(top[0]["total_spend"], "700.00")      # 600 + 100（PENDING 不计）
+        self.assertEqual(top[0]["status"], "ACTIVE")
+        self.assertEqual(top[1]["member_no"], "RPT-M0002")     # 2 晚 500 元
+        self.assertEqual(top[1]["room_nights"], 2)
+        self.assertEqual(top[1]["total_spend"], "500.00")
+        self.assertNotIn("guest", top[0])                      # 不输出客人 PII
+        self.assertNotIn("full_name", top[0])
+        self.assertNotIn("phone", top[0])
+
+    def test_memberships_new_trend_window_boundary_and_zero_fill(self):
+        """趋势边界：30 天窗口=[今天−29, 今天]，窗口外（第 30 天前）不计，含 0 日。"""
+        self._make_membership(self._make_guest(), created_days_ago=29)  # 窗口首日：计入
+        self._make_membership(self._make_guest(), created_days_ago=30)  # 窗口外：不计
+        self._make_membership(self._make_guest())                       # 今天：计入
+        body = self.client.get("/api/v1/reports/memberships").json()
+        trend = body["data"]["new_trend"]
+        self.assertEqual(len(trend), 30)
+        self.assertEqual(trend[0]["date"], str(self.today - timedelta(days=29)))
+        self.assertEqual(trend[0]["new_members"], 1)           # 第 29 天前建档计入
+        self.assertEqual(trend[-1]["date"], str(self.today))
+        self.assertEqual(trend[-1]["new_members"], 1)
+        self.assertEqual(sum(row["new_members"] for row in trend), 2)  # 30 天前建档不计
+        self.assertEqual(
+            next(row["new_members"] for row in trend
+                 if row["date"] == str(self.today - timedelta(days=15))), 0)  # 含 0 日
+
+    def test_memberships_report_empty_database_zero_values(self):
+        """空库 → 总数 0、分布空数组、趋势 30 天全 0、Top 空数组，不报错。"""
+        body = self.client.get("/api/v1/reports/memberships").json()
+        data = body["data"]
+        summary = data["summary"]
+        self.assertEqual(summary["total_members"], 0)
+        self.assertEqual(summary["active_members"], 0)
+        self.assertEqual(summary["terminated_members"], 0)
+        self.assertEqual(data["by_level"], [])
+        self.assertEqual(data["by_status"], [])
+        self.assertEqual(data["top_members"], [])
+        self.assertEqual(len(data["new_trend"]), 30)
+        self.assertTrue(all(row["new_members"] == 0 for row in data["new_trend"]))
+
+
+class SourcesReportTests(ReportCenterTestBase):
+    """A5 渠道来源报表：来源聚合 / 转化口径 / GMV / 趋势边界 / 空库 0 值。"""
+
+    def test_sources_report_aggregation_and_gmv(self):
+        guest = self._make_guest()
+        # WEBSITE：CONFIRMED + CHECKED_OUT(有 Stay) + 外币 PENDING（计订单不计 GMV）
+        self._make_source_reservation(
+            guest, source="WEBSITE", status=Reservation.Status.CONFIRMED, total=300)
+        self._make_source_reservation(
+            guest, source="WEBSITE", status=Reservation.Status.CHECKED_OUT,
+            total=500, with_stay=True)
+        self._make_source_reservation(
+            guest, source="WEBSITE", status=Reservation.Status.PENDING,
+            total=1000, currency="USD")
+        # OTA：PENDING + CANCELLED（GMV 口径含全部状态）
+        self._make_source_reservation(
+            guest, source="OTA", status=Reservation.Status.PENDING, total=200)
+        self._make_source_reservation(
+            guest, source="OTA", status=Reservation.Status.CANCELLED, total=800)
+        # WALK_IN：CHECKED_IN（在住 Stay）→ 入住转化
+        self._make_source_reservation(
+            guest, source="WALK_IN", status=Reservation.Status.CHECKED_IN,
+            total=150, with_stay=True, stay_status=Stay.Status.IN_HOUSE,
+            stay_room=self.room2)
+        # PHONE：NO_SHOW（确认生效口径，计入确认转化）
+        self._make_source_reservation(
+            guest, source="PHONE", status=Reservation.Status.NO_SHOW, total=0)
+        # 他物业预订不计入
+        other_property = Property.objects.create(code="RPT-OTHER4", name="他店四")
+        other_guest = Guest.objects.create(
+            property=other_property, full_name="他店客", phone="13400000000")
+        Reservation.objects.create(
+            property=other_property, booking_no="RPT-OTHER4-1",
+            guest=other_guest, check_in=self.today,
+            check_out=self.today + timedelta(days=1))
+
+        self.client.force_login(self.dm)
+        body = self.client.get("/api/v1/reports/sources").json()
+        data = body["data"]
+        self.assertEqual(data["series"], data["by_source"])    # 兼容别名同一数组
+        summary = data["summary"]
+        self.assertEqual(summary["total_reservations"], 7)     # 他店不计入
+        self.assertEqual(summary["confirmed_reservations"], 4)  # CONFIRMED/CO/CI/NO_SHOW
+        self.assertEqual(summary["with_stay_reservations"], 2)
+        self.assertEqual(summary["gmv"], "1950.00")            # 300+500+200+800+150（外币不相加）
+        self.assertEqual(summary["confirmed_rate"], "57.14")   # 4/7
+        self.assertEqual(summary["stay_rate"], "28.57")        # 2/7
+
+        by_source = {row["source"]: row for row in data["by_source"]}
+        self.assertEqual(by_source["WEBSITE"]["source_label"], "官网预订")
+        self.assertEqual(by_source["WEBSITE"]["reservations"], 3)   # 含外币订单
+        self.assertEqual(by_source["WEBSITE"]["confirmed"], 2)
+        self.assertEqual(by_source["WEBSITE"]["with_stay"], 1)
+        self.assertEqual(by_source["WEBSITE"]["gmv"], "800.00")     # USD 订单不计 GMV
+        self.assertEqual(by_source["WEBSITE"]["confirmed_rate"], "66.67")
+        self.assertEqual(by_source["OTA"]["source_label"], "渠道预订")
+        self.assertEqual(by_source["OTA"]["reservations"], 2)
+        self.assertEqual(by_source["OTA"]["confirmed"], 0)          # PENDING/取消不算转化
+        self.assertEqual(by_source["OTA"]["gmv"], "1000.00")        # 全部状态合计口径
+        self.assertEqual(by_source["WALK_IN"]["source_label"], "散客直入")
+        self.assertEqual(by_source["WALK_IN"]["confirmed"], 1)
+        self.assertEqual(by_source["WALK_IN"]["with_stay"], 1)
+        self.assertEqual(by_source["WALK_IN"]["stay_rate"], "100.00")
+        self.assertEqual(by_source["PHONE"]["source_label"], "电话预订")
+        self.assertEqual(by_source["PHONE"]["confirmed"], 1)        # NO_SHOW 计入确认转化
+        self.assertEqual(by_source["PHONE"]["gmv"], "0.00")
+
+    def test_sources_trend_window_boundary_and_zero_fill(self):
+        """趋势边界：窗口=[今天−29, 今天]，第 30 天前下单不计，含 0 日与 GMV 归日。"""
+        self._make_source_reservation(
+            self._make_guest(), source="WEBSITE",
+            status=Reservation.Status.CHECKED_OUT, total=300,
+            created_days_ago=29)                               # 窗口首日：计入
+        self._make_source_reservation(
+            self._make_guest(), source="OTA",
+            status=Reservation.Status.PENDING, total=700,
+            created_days_ago=30)                               # 窗口外：不计
+        self._make_source_reservation(
+            self._make_guest(), source="WALK_IN", total=200)   # 今天：计入
+        body = self.client.get("/api/v1/reports/sources").json()
+        trend = body["data"]["trend"]
+        self.assertEqual(len(trend), 30)
+        self.assertEqual(trend[0]["date"], str(self.today - timedelta(days=29)))
+        self.assertEqual(trend[0]["reservations"], 1)
+        self.assertEqual(trend[0]["gmv"], "300.00")
+        self.assertEqual(trend[-1]["date"], str(self.today))
+        self.assertEqual(trend[-1]["reservations"], 1)
+        self.assertEqual(trend[-1]["gmv"], "200.00")
+        self.assertEqual(sum(row["reservations"] for row in trend), 2)  # 第 30 天前不计
+        zero_day = next(row for row in trend
+                        if row["date"] == str(self.today - timedelta(days=15)))
+        self.assertEqual(zero_day["reservations"], 0)          # 含 0 日
+        self.assertEqual(zero_day["gmv"], "0.00")
+
+    def test_sources_report_empty_database_zero_values(self):
+        """空库 → 订单 0、GMV "0.00"、转化率 None、来源空数组、趋势 30 天全 0。"""
+        body = self.client.get("/api/v1/reports/sources").json()
+        data = body["data"]
+        summary = data["summary"]
+        self.assertEqual(summary["total_reservations"], 0)
+        self.assertEqual(summary["confirmed_reservations"], 0)
+        self.assertEqual(summary["with_stay_reservations"], 0)
+        self.assertEqual(summary["gmv"], "0.00")
+        self.assertIsNone(summary["confirmed_rate"])           # 分母 0 → None
+        self.assertIsNone(summary["stay_rate"])
+        self.assertEqual(data["by_source"], [])
+        self.assertEqual(len(data["trend"]), 30)
+        self.assertTrue(all(row["reservations"] == 0 and row["gmv"] == "0.00"
+                            for row in data["trend"]))

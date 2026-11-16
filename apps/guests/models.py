@@ -39,6 +39,17 @@ class Guest(models.Model):
         max_length=32, blank=True, verbose_name="隐私协议版本",
         help_text="客人同意隐私条款时的版本号，空表示未采集",
     )
+    # A3 客人合并（排期 V2.0 第二主线，2026-11-17 批准交付）：
+    # 合并是软归档——duplicate 保留行并指向 primary，不物理删除（§8.2-4
+    # 要求保留主档案、源档案与完整关联映射）；账务事实（Folio/Payment）
+    # 归属原预订不动，随预订 guest FK 一起迁移。
+    merged_into = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="merged_sources", verbose_name="合并入主档案",
+        help_text="非空表示本档案已合并入该主档案（软归档，保留行不物理删除）")
+    merged_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="合并时间",
+        help_text="执行合并动作的时间；与 merged_into 成对写入")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
@@ -50,6 +61,7 @@ class Guest(models.Model):
             models.Index(fields=("property", "full_name"), name="idx_guest_prop_name"),
             models.Index(fields=("property", "phone_normalized"), name="idx_guest_prop_phone"),
             models.Index(fields=("property", "phone_hash"), name="idx_guest_prop_hash"),
+            models.Index(fields=("merged_into",), name="idx_guest_merged_into"),
         ]
 
     def __str__(self):

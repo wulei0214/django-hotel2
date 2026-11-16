@@ -180,6 +180,12 @@ urlpatterns = [
     path("guests/<int:guest_id>", guest_center.guest_detail, name="guest_detail"),
     path("guests/create", guest_center.guest_create, name="guest_create"),
     path("guests/<int:guest_id>/update", guest_center.guest_update, name="guest_update"),
+    # A3 客人合并（排期 V2.0 第二主线）：duplicate 软归档入 primary
+    path(
+        "guest-center/guests/<int:guest_id>/merge",
+        guest_center.guest_merge,
+        name="guest_merge",
+    ),
     # 基线 2.0 §3.2：Guest 360 时间线与账单摘要（只读聚合）
     path("guests/<int:guest_id>/timeline", guest_center.guest_timeline, name="guest_timeline"),
     path("guests/<int:guest_id>/folios", guest_center.guest_folios, name="guest_folios"),
@@ -373,6 +379,11 @@ urlpatterns = [
     path("reports/revenue", report_center.revenue_report, name="report_revenue"),
     path("reports/guests", report_center.guests_report, name="report_guests"),
     path("reports/housekeeping", report_center.housekeeping_report, name="report_housekeeping"),
+    # 第 3 批快照型报表（A4/A5：无 from/to 区间，固定近 30 天趋势窗口；
+    # 会员=GuestMembership 口径、渠道来源=Reservation.source 口径，
+    # 均挂运营类门禁 hotelapp.view_accommodation）
+    path("reports/memberships", report_center.memberships_report, name="report_memberships"),
+    path("reports/sources", report_center.sources_report, name="report_sources"),
     # --- 通知与待办中心 (基线 2.0 §4.6；站内通知，门禁=认证+当前物业有效任职，
     #     不设专项权限码——全员工作入口；refresh=实时派生，按物业隔离) ---
     path("notifications", notification_center.notification_list, name="notification_list"),

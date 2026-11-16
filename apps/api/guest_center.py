@@ -143,7 +143,11 @@ def guest_list(request):
             user, property_obj, "hotelapp.view_client"):
         raise ApiError("PERMISSION_DENIED", "缺少客人查看权限。")
 
-    qs = Guest.objects.filter(property=property_obj).order_by(
+    qs = Guest.objects.filter(property=property_obj).exclude(
+        # A3 客人合并：已合并（软归档）档案不再出现在可检索列表中，
+        # 主档案与其迁移后的业务事实照常展示。
+        merged_into__isnull=False,
+    ).order_by(
         "-created_at", "-id").prefetch_related(
         # P0-07 N+1：电话与当前物业会员关系一次取回，避免逐行查询。
         Prefetch("phones", queryset=GuestPhone.objects.order_by("id"),
@@ -682,6 +686,61 @@ def guest_update(request, guest_id):
     except GuestServiceError as exc:
         raise ApiError("BUSINESS_CONFLICT", str(exc))
     return api_response(request, {"id": guest.pk, "changed": list(changed.keys())})
+
+
+@require_POST
+@api_view
+@idempotent
+def guest_merge(request, guest_id):
+    """POST /api/v1/guest-center/guests/<id>/merge — 客人合并（A3 排期 V2.0）。
+
+    把 duplicate_id 档案合并入 URL 中的主档案：证件/电话/会员/预订迁移到
+    主档案，duplicate 软归档（merged_into/merged_at）并从列表隐去；
+    账务事实（Folio/Payment）归属原预订不动。权限沿客人写端点门禁
+    （hotelapp.change_client）；reason 必填；幂等键头 Idempotency-Key 沿
+    api_contract.idempotent（同 key 同 body 重放返回首次响应）。
+    """
+    user = request.user
+    property_obj = getattr(request, "property", None)
+    if not user.is_authenticated or not user.is_active:
+        raise ApiError("AUTHENTICATION_REQUIRED", "请先登录员工账号。")
+    if property_obj is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
+    if not AuthorizationService.has_permission(
+            user, property_obj, "hotelapp.change_client"):
+        raise ApiError("PERMISSION_DENIED", "缺少客人修改权限。")
+    body = _parse_body(request)
+    try:
+        duplicate_id = int(body.get("duplicate_id"))
+    except (TypeError, ValueError):
+        raise ApiError("VALIDATION_ERROR", "duplicate_id 必须是客人档案 ID。")
+    reason = str(body.get("reason") or "").strip()
+    if len(reason) < 1 or len(reason) > 240:
+        raise ApiError("VALIDATION_ERROR", "合并必须填写 1 至 240 个字符的业务理由。")
+    primary = Guest.objects.filter(pk=guest_id, property=property_obj).first()
+    if primary is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "客人不存在。")
+    duplicate = Guest.objects.filter(pk=duplicate_id, property=property_obj).first()
+    if duplicate is None:
+        raise ApiError("RESOURCE_NOT_FOUND", "待合并客人不存在。")
+    try:
+        result = GuestService.merge_guests(
+            primary, duplicate, performed_by=user, reason=reason, request=request)
+    except GuestServiceError as exc:
+        raise ApiError("BUSINESS_CONFLICT", str(exc))
+    merged_at = result.get("merged_at")
+    return api_response(request, {
+        "primary_guest_id": result["primary_guest_id"],
+        "duplicate_guest_id": result["duplicate_guest_id"],
+        "merged_into": result["primary_guest_id"],
+        "merged_at": merged_at.isoformat() if merged_at else None,
+        "reservations_moved": result["reservations_moved"],
+        "reservation_guests_moved": result["reservation_guests_moved"],
+        "stay_guests_moved": result["stay_guests_moved"],
+        "phones_deduped": result["phones_deduped"],
+        "documents_deduped": result["documents_deduped"],
+        "memberships_terminated": result["memberships_terminated"],
+    })
 
 
 

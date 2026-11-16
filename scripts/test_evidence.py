@@ -97,7 +97,11 @@ def main():
         if args.keepdb:
             env["DJANGO_KEEPDB"] = "1"
 
-    test_cmd = [sys.executable, "manage.py", "test"]
+    test_cmd = [sys.executable, "manage.py", "test", "--noinput"]
+    # --noinput：测试库一律全新创建（陈旧 keepdb 库会缺新迁移/种子数据；
+    # 交互确认在无人值守下必撞 EOF）。需要复用库时显式走 manage.py test --keepdb。
+    if args.keepdb:
+        test_cmd.append("--keepdb")  # keepdb 必须进 manage.py 参数（env DJANGO_KEEPDB 非 settings 约定）
     header = [
         f"证据生成时间：{datetime.now().isoformat(timespec='seconds')}",
         f"被测树：{_git_state()}",

@@ -379,6 +379,242 @@ class GuestService:
             request=request)
         return phone_obj
 
+    # ---------- A3 客人合并（排期 V2.0 第二主线；身份方案 §8.2 冻结解除） ----------
+    #
+    # 冻结解除依据：PMS 全局最终开发排期 V2.0（2026-11-16）第二主线 A3
+    # 「客人合并」获批交付——主档案合并为人工确认动作（本服务只做执行，
+    # 匹配/候选仍由 merge_services 只读盘点），满足 §8.2-4 对「主档案、
+    # 源档案、操作者、时间、理由和完整关联映射」的留痕要求。
+    # 边界不变：不改任何账务事实（Folio/Payment/LedgerEntry 归属原预订
+    # 不动，随 Reservation.guest FK 一起迁移）；不物理删除源档案（软归档）。
+
+    MERGE_ACTION = "guest.merged"
+    MERGE_REASON_MAX = 240
+
+    @staticmethod
+    def _merge_counts(guest):
+        """合并前后的引用面摘要（审计 before/after 用，只读）。"""
+        from apps.reservations.models import ReservationGuest, StayGuest
+        from .models import GuestDocument, GuestMembership, GuestPhone
+        return {
+            "reservations": guest.reservations.count(),
+            "reservation_guests": ReservationGuest.objects.filter(guest=guest).count(),
+            "stay_guests": StayGuest.objects.filter(guest=guest).count(),
+            "phones": GuestPhone.objects.filter(guest=guest).count(),
+            "documents": GuestDocument.objects.filter(guest=guest).count(),
+            "memberships": GuestMembership.objects.filter(guest=guest).count(),
+        }
+
+    @classmethod
+    @transaction.atomic
+    def merge_guests(cls, primary, duplicate, *, performed_by=None, reason="",
+                     request=None):
+        """把 duplicate 档案合并入 primary（软归档；同事务原子执行）。
+
+        校验：
+          * 两档案均已落库且不是同一人；
+          * 必须同物业（跨物业拒绝）；
+          * 任意一方不得已是合并产物（merged_into 非空拒绝，防链式/重复合并）；
+          * reason 必填（1-240 字符），完整进入审计。
+
+        迁移（同一事务，任一步失败整体回滚）：
+          * GuestDocument 改挂 primary（primary 已有同 (doc_type, doc_no_hash)
+            的证件时丢弃 duplicate 的重复行，计数入审计）；
+          * GuestDocumentIndex 占用行改指 primary；
+          * GuestPhone 按 phone_hash 合并去重——primary 已有同号则丢弃
+            duplicate 的行，否则改挂 primary；duplicate 的主号码仅在
+            primary 尚无主号码时保留主标记，否则降级保留；
+          * GuestMembership 转移到 primary 并保留等级历史；若 primary 已有
+            有效会员，转移行的 ACTIVE 置为 TERMINATED（终止留史，审计记录）；
+          * Reservation / ReservationGuest / StayGuest 的 guest FK 改指
+            primary（Stay 经预订间接归属，不单独改写）；
+          * Folio / Payment / LedgerEntry 等账务事实一律不动（归属原预订）。
+
+        duplicate 标记 merged_into=primary + merged_at（软归档），guest 列表
+        默认 exclude 已合并档案。全程写 AuditEvent（guest.merged，before/
+        after 摘要）。返回迁移计数摘要。
+        """
+        from apps.reservations.models import Reservation, ReservationGuest, StayGuest
+        from .models import (
+            Guest,
+            GuestDocument,
+            GuestDocumentIndex,
+            GuestMembership,
+            GuestPhone,
+        )
+
+        reason = str(reason or "").strip()
+        if not reason:
+            raise GuestServiceError("客人合并必须填写业务理由。")
+        if len(reason) > cls.MERGE_REASON_MAX:
+            raise GuestServiceError(f"合并理由不得超过 {cls.MERGE_REASON_MAX} 个字符。")
+        if primary is None or duplicate is None or primary.pk is None or duplicate.pk is None:
+            raise GuestServiceError("主档案与待合并档案必须已落库。")
+
+        # 按主键序加锁，避免并发合并两对交叉档案时的锁等待死锁
+        first_id, second_id = sorted((primary.pk, duplicate.pk))
+        locked = {
+            g.pk: g
+            for g in Guest.objects.select_for_update().filter(pk__in=(first_id, second_id))
+        }
+        if primary.pk not in locked or duplicate.pk not in locked:
+            raise GuestServiceError("主档案与待合并档案必须已落库。")
+        primary = locked[primary.pk]
+        duplicate = locked[duplicate.pk]
+
+        if primary.pk == duplicate.pk:
+            raise GuestServiceError("主档案与待合并档案不能是同一人。")
+        if primary.property_id != duplicate.property_id:
+            raise GuestServiceError("只能合并同一物业内的客人档案。")
+        if primary.merged_into_id is not None or duplicate.merged_into_id is not None:
+            raise GuestServiceError("已合并的档案不能再参与合并（请核对主档案选择）。")
+
+        property_obj = primary.property
+        before_summary = {
+            "primary": {"guest_id": primary.pk, "references": cls._merge_counts(primary)},
+            "duplicate": {
+                "guest_id": duplicate.pk,
+                "full_name_masked": _mask(duplicate.full_name),
+                "references": cls._merge_counts(duplicate),
+            },
+        }
+
+        # 1) 证件：改挂 primary；primary 已有同 (doc_type, doc_no_hash) 时丢弃重复行
+        documents_dropped = 0
+        primary_doc_keys = set(
+            GuestDocument.objects.filter(guest=primary).values_list(
+                "doc_type", "doc_no_hash"))
+        for doc in GuestDocument.objects.filter(guest=duplicate).order_by("id"):
+            if (doc.doc_type, doc.doc_no_hash) in primary_doc_keys:
+                doc.delete()
+                documents_dropped += 1
+                continue
+            GuestDocument.objects.filter(pk=doc.pk).update(
+                guest=primary, updated_at=timezone.now())
+            primary_doc_keys.add((doc.doc_type, doc.doc_no_hash))
+        # 证件占用索引（WB-102）：(property, doc_no_hash) 唯一，改指 primary
+        GuestDocumentIndex.objects.filter(guest=duplicate, property=property_obj).update(
+            guest=primary, updated_at=timezone.now())
+
+        # 2) 电话：按 phone_hash 去重合并；主号码只在 primary 缺主号码时保留
+        phones_dropped = 0
+        primary_hashes = set(
+            GuestPhone.objects.filter(guest=primary)
+            .exclude(phone_hash__isnull=True).exclude(phone_hash="")
+            .values_list("phone_hash", flat=True))
+        primary_has_main = GuestPhone.objects.filter(
+            guest=primary, is_primary=True).exists()
+        duplicate_phones = list(
+            GuestPhone.objects.filter(guest=duplicate).order_by("id"))
+        for phone in duplicate_phones:
+            if phone.phone_hash and phone.phone_hash in primary_hashes:
+                phone.delete()
+                phones_dropped += 1
+                continue
+            keep_primary_flag = bool(phone.is_primary) and not primary_has_main
+            if phone.is_primary and not keep_primary_flag:
+                phone.is_primary = False
+            phone.guest = primary
+            phone.save()
+            if phone.phone_hash:
+                primary_hashes.add(phone.phone_hash)
+            if phone.is_primary:
+                primary_has_main = True
+        # primary 顶层电话字段为空时补齐（不覆盖既有值）：优先取 duplicate
+        # 顶层密文/哈希（即 duplicate 的主号码），否则取转移后的主号码行
+        if not primary.phone_hash:
+            backfill_source = None
+            if duplicate.phone_hash:
+                primary.phone_ciphertext = duplicate.phone_ciphertext
+                primary.phone_hash = duplicate.phone_hash
+                primary.save(update_fields=("phone_ciphertext", "phone_hash",
+                                            "updated_at"))
+            else:
+                backfill_source = GuestPhone.objects.filter(
+                    guest=primary).exclude(phone_hash__isnull=True).exclude(
+                    phone_hash="").order_by("-is_primary", "id").first()
+                if backfill_source is not None:
+                    primary.phone_ciphertext = backfill_source.phone_ciphertext
+                    primary.phone_hash = backfill_source.phone_hash
+                    primary.save(update_fields=("phone_ciphertext", "phone_hash",
+                                                "updated_at"))
+
+        # 3) 会员：转移到 primary 并保留等级历史；主档案已有有效会员时终止转移行
+        memberships_terminated = 0
+        memberships_moved = GuestMembership.objects.filter(guest=duplicate).count()
+        primary_active_member = GuestMembership.objects.filter(
+            property=property_obj, guest=primary,
+            status=GuestMembership.Status.ACTIVE).exists()
+        for membership in GuestMembership.objects.filter(guest=duplicate).order_by("id"):
+            was_active = membership.status == GuestMembership.Status.ACTIVE
+            if was_active and primary_active_member:
+                membership.status = GuestMembership.Status.TERMINATED
+                memberships_terminated += 1
+            membership.guest = primary
+            membership.active_guest_key = (
+                f"{property_obj.pk}:{primary.pk}"
+                if membership.status == GuestMembership.Status.ACTIVE else None)
+            GuestMembership.objects.filter(pk=membership.pk).update(
+                guest=primary, status=membership.status,
+                active_guest_key=membership.active_guest_key,
+                updated_at=timezone.now())
+            if membership.status == GuestMembership.Status.ACTIVE:
+                primary_active_member = True
+
+        # 4) 预订与住客快照：guest FK 改指 primary（Stay 经预订间接归属；
+        #    Folio/Payment 账务事实归属原预订，不动）
+        reservations_moved = Reservation.objects.filter(
+            property=property_obj, guest=duplicate).update(guest=primary)
+        reservation_guests_moved = ReservationGuest.objects.filter(
+            guest=duplicate).update(guest=primary)
+        stay_guests_moved = StayGuest.objects.filter(guest=duplicate).update(guest=primary)
+
+        # 5) duplicate 软归档：merged_into + merged_at 成对写入（保留行不删除）
+        duplicate.merged_into = primary
+        duplicate.merged_at = timezone.now()
+        duplicate.save(update_fields=("merged_into", "merged_at", "updated_at"))
+
+        after_summary = {
+            "primary_guest_id": primary.pk,
+            "duplicate_guest_id": duplicate.pk,
+            "merged_into": primary.pk,
+            "merged_at": duplicate.merged_at.isoformat(),
+            "mapping": {
+                "duplicate_guest_id": duplicate.pk,
+                "primary_guest_id": primary.pk,
+                "kind": "guest_merge",
+                "status": "merged",
+            },
+            "moved": {
+                "reservations": reservations_moved,
+                "reservation_guests": reservation_guests_moved,
+                "stay_guests": stay_guests_moved,
+                "memberships": memberships_moved,
+            },
+            "dropped": {
+                "phones_deduped": phones_dropped,
+                "documents_deduped": documents_dropped,
+            },
+            "memberships_terminated": memberships_terminated,
+            "billing_untouched": True,
+        }
+        AuditEvent.record(
+            action=cls.MERGE_ACTION, entity_type="Guest", entity_id=primary.pk,
+            actor=performed_by, property_obj=property_obj, reason=reason,
+            before=before_summary, after=after_summary, request=request)
+
+        return {
+            "primary_guest_id": primary.pk,
+            "duplicate_guest_id": duplicate.pk,
+            "reservations_moved": reservations_moved,
+            "reservation_guests_moved": reservation_guests_moved,
+            "stay_guests_moved": stay_guests_moved,
+            "phones_deduped": phones_dropped,
+            "documents_deduped": documents_dropped,
+            "memberships_terminated": memberships_terminated,
+            "merged_at": duplicate.merged_at,
+        }
+
 
 class GuestMembershipService:
     """会员关系唯一写入口（V1.1 M-16）。"""

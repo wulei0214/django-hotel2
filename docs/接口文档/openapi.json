@@ -914,6 +914,9 @@
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/FrontDeskReservationDetail"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -1030,6 +1033,9 @@
                       "items": {
                         "$ref": "#/components/schemas/ReservationRoomSummary"
                       }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -1166,7 +1172,7 @@
           "前台接待"
         ],
         "summary": "离店列表",
-        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_front_desk_departures",
         "responses": {
           "200": {
@@ -1183,6 +1189,9 @@
                       "items": {
                         "$ref": "#/components/schemas/ReservationRoomSummary"
                       }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -1254,7 +1263,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation",
         "parameters": [
@@ -1310,7 +1319,7 @@
           "前台接待"
         ],
         "summary": "在住列表",
-        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_front_desk_in_house",
         "responses": {
           "200": {
@@ -1327,6 +1336,9 @@
                       "items": {
                         "$ref": "#/components/schemas/ReservationRoomSummary"
                       }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -1398,7 +1410,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation",
         "parameters": [
@@ -1463,7 +1475,7 @@
           "前台接待"
         ],
         "summary": "预订列表",
-        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_front_desk_reservations",
         "responses": {
           "200": {
@@ -1480,6 +1492,9 @@
                       "items": {
                         "$ref": "#/components/schemas/FrontDeskReservationListItem"
                       }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -1551,7 +1566,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation",
         "parameters": [
@@ -1633,6 +1648,9 @@
                       "items": {
                         "$ref": "#/components/schemas/FrontDeskRoomRow"
                       }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -1740,7 +1758,7 @@
           "前台接待"
         ],
         "summary": "可分配房间",
-        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_front_desk_rooms_assignable",
         "responses": {
           "200": {
@@ -1757,6 +1775,9 @@
                       "items": {
                         "$ref": "#/components/schemas/AssignableRoom"
                       }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -1828,7 +1849,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation",
         "parameters": [
@@ -1872,6 +1893,9 @@
                       "items": {
                         "$ref": "#/components/schemas/LegacyReservationDto"
                       }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -1999,7 +2023,7 @@
           "前台接待"
         ],
         "summary": "预订详情",
-        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_front_desk_reservations_booking_no",
         "responses": {
           "200": {
@@ -2012,6 +2036,9 @@
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/FrontDeskReservationDetail"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -2083,7 +2110,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation",
         "parameters": [
@@ -2123,6 +2150,9 @@
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/FolioDetailData"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -2221,7 +2251,7 @@
           "前台接待"
         ],
         "summary": "历史预订详情",
-        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_front_desk_legacy_reservations_legacy_id",
         "responses": {
           "200": {
@@ -2509,6 +2539,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -2580,7 +2613,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation",
         "parameters": [
@@ -2607,7 +2640,7 @@
           "前台接待"
         ],
         "summary": "在住订单可换房列表",
-        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_front_desk_stays_stay_id_available_rooms",
         "responses": {
           "200": {
@@ -2640,6 +2673,9 @@
                         },
                         "additionalProperties": true
                       }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -2711,7 +2747,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation",
         "parameters": [
@@ -2778,6 +2814,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -2825,6 +2864,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -3012,6 +3054,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -3068,6 +3113,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -3234,6 +3282,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -3289,6 +3340,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -3494,6 +3548,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -3646,6 +3703,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -3868,6 +3928,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -4050,6 +4113,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -4090,6 +4156,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -4276,6 +4345,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -4331,6 +4403,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -4535,6 +4610,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -4586,6 +4664,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -4786,6 +4867,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -4944,6 +5028,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -5148,6 +5235,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -5400,6 +5490,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -5452,6 +5545,9 @@
                         }
                       },
                       "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
                     }
                   },
                   "additionalProperties": true,
@@ -7523,7 +7619,7 @@
           "住客中心"
         ],
         "summary": "住客列表",
-        "description": "权限要求：有效员工 + hotelapp.view_client。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工 + hotelapp.view_client。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_guests",
         "responses": {
           "200": {
@@ -7615,7 +7711,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + hotelapp.view_client",
         "parameters": [
@@ -8358,7 +8454,7 @@
           "住客中心"
         ],
         "summary": "创建住客档案",
-        "description": "权限要求：有效员工 + hotelapp.add_client。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工 + hotelapp.add_client。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_guests_create",
         "responses": {
           "201": {
@@ -8468,7 +8564,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + hotelapp.add_client",
         "x-idempotency": {
@@ -8772,6 +8868,227 @@
                   }
                 },
                 "additionalProperties": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/guest-center/guests/{guest_id}/merge": {
+      "post": {
+        "tags": [
+          "住客中心"
+        ],
+        "summary": "合并客人档案（A3）",
+        "description": "A3 客人合并（排期 V2.0 第二主线）：duplicate 标记 merged_into/merged_at 软归档并从住客列表隐去；Folio/Payment 等账务事实归属原预订不动；审计动作 guest.merged（before/after 摘要）。已合并档案不能再次参与合并。\n\n权限要求：有效员工 + hotelapp.change_client（沿住客写端点门禁）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "post_guest_center_guests_guest_id_merge",
+        "responses": {
+          "200": {
+            "description": "合并完成：证件/电话/会员/预订迁移到主档案，duplicate 软归档",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "primary_guest_id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "duplicate_guest_id": {
+                          "type": "integer",
+                          "description": ""
+                        },
+                        "merged_into": {
+                          "type": "integer",
+                          "description": "合并入的主档案 ID（=primary_guest_id）。"
+                        },
+                        "merged_at": {
+                          "type": "string",
+                          "description": "ISO 8601 合并时间。",
+                          "format": "date-time"
+                        },
+                        "reservations_moved": {
+                          "type": "integer",
+                          "description": "迁移的预订数。"
+                        },
+                        "reservation_guests_moved": {
+                          "type": "integer",
+                          "description": "迁移的预订住客快照数。"
+                        },
+                        "stay_guests_moved": {
+                          "type": "integer",
+                          "description": "迁移的在住人员数。"
+                        },
+                        "phones_deduped": {
+                          "type": "integer",
+                          "description": "按 phone_hash 去重丢弃的电话数。"
+                        },
+                        "documents_deduped": {
+                          "type": "integer",
+                          "description": "与主档案重复而丢弃的证件数。"
+                        },
+                        "memberships_terminated": {
+                          "type": "integer",
+                          "description": "主档案已有有效会员时被终止的转移会员数。"
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工 + hotelapp.change_client（沿住客写端点门禁）",
+        "x-idempotency": {
+          "header": "Idempotency-Key",
+          "required": false,
+          "max_length": 128,
+          "semantics": "api_contract.idempotent：同 key 同 body 重放首次响应；不同 body 409；TTL 24h。"
+        },
+        "parameters": [
+          {
+            "name": "guest_id",
+            "in": "path",
+            "required": true,
+            "description": "主档案 ID（合并保留方）。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "幂等键（可选，1-128 字符）。",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRFToken",
+            "in": "header",
+            "required": true,
+            "description": "Django CSRF 令牌（CSRF_USE_SESSIONS=True）；所有 Session/公开写操作必须携带。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "",
+                "properties": {
+                  "duplicate_id": {
+                    "type": "integer",
+                    "description": "待合并（软归档）档案 ID；必须与主档案同物业。"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "业务理由，1-240 字符（强校验），完整进入审计。"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "duplicate_id",
+                  "reason"
+                ]
               }
             }
           }
@@ -9153,7 +9470,7 @@
           "房态库存"
         ],
         "summary": "房态列表",
-        "description": "权限要求：有效员工 + hotelapp.view_room。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工 + hotelapp.view_room。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_rooms_status",
         "responses": {
           "200": {
@@ -9245,7 +9562,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + hotelapp.view_room",
         "parameters": [
@@ -9319,7 +9636,7 @@
           "房态库存"
         ],
         "summary": "房型列表",
-        "description": "权限要求：有效员工 + hotelapp.view_room。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工 + hotelapp.view_room。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_room_types",
         "responses": {
           "200": {
@@ -9411,7 +9728,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + hotelapp.view_room",
         "security": [
@@ -9427,7 +9744,7 @@
           "房价管理"
         ],
         "summary": "房价日历",
-        "description": "权限要求：有效员工 + hotelapp.view_room。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工 + hotelapp.view_room。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_rate_calendar",
         "responses": {
           "200": {
@@ -9515,7 +9832,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + hotelapp.view_room",
         "parameters": [
@@ -9563,7 +9880,7 @@
           "财务"
         ],
         "summary": "财务汇总",
-        "description": "权限要求：有效员工 + hotelapp.finance_access。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工 + hotelapp.finance_access。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_financial_summary",
         "responses": {
           "200": {
@@ -9651,7 +9968,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + hotelapp.finance_access",
         "security": [
@@ -9667,7 +9984,7 @@
           "房价管理"
         ],
         "summary": "调整每日房价",
-        "description": "权限要求：有效员工 + inventory.manage_rates（店长专项权限）。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工 + inventory.manage_rates（店长专项权限）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_daily_rates_rate_id_adjust",
         "responses": {
           "200": {
@@ -9765,7 +10082,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + inventory.manage_rates（店长专项权限）",
         "x-idempotency": {
@@ -16683,7 +17000,7 @@
           "审批"
         ],
         "summary": "审批记录列表",
-        "description": "权限要求：有效员工（DEFAULT 有效任职）+ billing.approval_view；持有任一注册动作审批权者见全部，否则仅见本人发起的记录。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工（DEFAULT 有效任职）+ billing.approval_view；持有任一注册动作审批权者见全部，否则仅见本人发起的记录。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_approvals",
         "responses": {
           "200": {
@@ -16775,7 +17092,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工（DEFAULT 有效任职）+ billing.approval_view；持有任一注册动作审批权者见全部，否则仅见本人发起的记录",
         "parameters": [
@@ -16849,7 +17166,7 @@
           "审批"
         ],
         "summary": "创建审批申请",
-        "description": "权限要求：有效员工（DEFAULT 有效任职）+ 动作申请权限，经 ApprovalActionRegistry 白名单校验（billing.refund→billing.refund_request；未知动作 400 零副作用）。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工（DEFAULT 有效任职）+ 动作申请权限，经 ApprovalActionRegistry 白名单校验（billing.refund→billing.refund_request；未知动作 400 零副作用）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_approvals_request",
         "responses": {
           "201": {
@@ -17003,7 +17320,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工（DEFAULT 有效任职）+ 动作申请权限，经 ApprovalActionRegistry 白名单校验（billing.refund→billing.refund_request；未知动作 400 零副作用）",
         "x-idempotency": {
@@ -17095,7 +17412,7 @@
           "审批"
         ],
         "summary": "批准审批申请",
-        "description": "权限要求：ApprovalActionRegistry.approve_permission（按 action_code 动态校验；申请人≠审批人，SoD）。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：ApprovalActionRegistry.approve_permission（按 action_code 动态校验；申请人≠审批人，SoD）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_approvals_record_id_approve",
         "responses": {
           "200": {
@@ -17205,7 +17522,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "ApprovalActionRegistry.approve_permission（按 action_code 动态校验；申请人≠审批人，SoD）",
         "x-idempotency": {
@@ -17258,7 +17575,7 @@
           "审批"
         ],
         "summary": "驳回审批申请",
-        "description": "权限要求：ApprovalActionRegistry.approve_permission（按 action_code 动态校验；申请人≠审批人，SoD）。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：ApprovalActionRegistry.approve_permission（按 action_code 动态校验；申请人≠审批人，SoD）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_approvals_record_id_reject",
         "responses": {
           "200": {
@@ -17368,7 +17685,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "ApprovalActionRegistry.approve_permission（按 action_code 动态校验；申请人≠审批人，SoD）",
         "x-idempotency": {
@@ -17445,7 +17762,7 @@
           "预订管理"
         ],
         "summary": "PMS 预订列表",
-        "description": "权限要求：有效员工 + hotelapp.view_accommodation。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工 + hotelapp.view_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_reservations_mgmt",
         "responses": {
           "200": {
@@ -17537,7 +17854,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + hotelapp.view_accommodation",
         "parameters": [
@@ -17593,7 +17910,7 @@
           "预订管理"
         ],
         "summary": "PMS 预订详情",
-        "description": "权限要求：有效员工 + hotelapp.view_accommodation。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工 + hotelapp.view_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_reservations_mgmt_booking_no",
         "responses": {
           "200": {
@@ -17681,7 +17998,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + hotelapp.view_accommodation",
         "parameters": [
@@ -17708,7 +18025,7 @@
           "审计"
         ],
         "summary": "审计时间线",
-        "description": "权限要求：有效员工 + core.audit_view（P0-04 定版：审计查看专项权，与 /audit/events 同门禁；superuser 不自动获得业务授权）。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工 + core.audit_view（P0-04 定版：审计查看专项权，与 /audit/events 同门禁；superuser 不自动获得业务授权）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_audit_timeline",
         "responses": {
           "200": {
@@ -17800,7 +18117,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + core.audit_view（P0-04 定版：审计查看专项权，与 /audit/events 同门禁；superuser 不自动获得业务授权）",
         "parameters": [
@@ -18119,7 +18436,7 @@
           "会员中心"
         ],
         "summary": "会员列表",
-        "description": "权限要求：有效员工 + hotelapp.view_vip。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工 + hotelapp.view_vip。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_memberships",
         "responses": {
           "200": {
@@ -18211,7 +18528,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + hotelapp.view_vip",
         "parameters": [
@@ -18267,7 +18584,7 @@
           "会员中心"
         ],
         "summary": "会员详情",
-        "description": "权限要求：有效员工 + hotelapp.view_vip。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "权限要求：有效员工 + hotelapp.view_vip。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_memberships_membership_id",
         "responses": {
           "200": {
@@ -18463,7 +18780,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + hotelapp.view_vip",
         "parameters": [
@@ -18490,7 +18807,7 @@
           "会员中心"
         ],
         "summary": "创建会员关系",
-        "description": "不按手机号自动合并客人档案。\n\n权限要求：有效员工 + hotelapp.add_vip。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "不按手机号自动合并客人档案。\n\n权限要求：有效员工 + hotelapp.add_vip。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_memberships_create",
         "responses": {
           "201": {
@@ -18612,7 +18929,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + hotelapp.add_vip",
         "x-idempotency": {
@@ -18710,7 +19027,7 @@
           "会员中心"
         ],
         "summary": "变更会员等级",
-        "description": "写 MembershipLevelHistory 与审计。\n\n权限要求：有效员工 + hotelapp.change_vip。\n\n契约状态 partial：请求/响应字段已按视图与服务源码核实，端点级 HTTP 测试待补齐。",
+        "description": "写 MembershipLevelHistory 与审计。\n\n权限要求：有效员工 + hotelapp.change_vip。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_memberships_membership_id_level",
         "responses": {
           "200": {
@@ -18824,7 +19141,7 @@
             }
           }
         },
-        "x-contract-status": "partial",
+        "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工 + hotelapp.change_vip",
         "x-idempotency": {
@@ -21842,6 +22159,512 @@
             }
           }
         ],
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/memberships": {
+      "get": {
+        "tags": [
+          "报表分析"
+        ],
+        "summary": "会员报表（等级/状态分布 + 近 30 天新增趋势 + Top 会员）",
+        "description": "会员 = GuestMembership（物业维度，全部状态）；新增 = 建档日（GuestMembership.created_at 自然日，物业时区；joined_at 允许为空不作趋势口径）。Top 会员按累计入住晚数降序 Top 10：间夜=Σ(check_out−check_in)×room_count，仅取 CHECKED_IN/CHECKED_OUT 预订（Reservation.guest=预订联系人口径）；total_spend=同状态预订 total_amount 合计（订单金额口径，非账务实收收入）。快照型报表：无 from/to 区间参数，固定近 30 天趋势窗口（含物业时区今天与 0 计数日）；响应 data.metadata 携带统计口径说明（P0-07 模式）。纯只读数据库聚合，不新增模型/快照落库。\n\n权限要求：有效员工 + hotelapp.view_accommodation（运营类报表；仅输出 member_no 与聚合数值，不输出客人姓名/手机号）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "get_reports_memberships",
+        "responses": {
+          "200": {
+            "description": "会员汇总/等级分布/状态分布/近 30 天新增趋势/Top 会员 + 口径 metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "summary": {
+                          "type": "object",
+                          "description": "",
+                          "properties": {
+                            "total_members": {
+                              "type": "integer",
+                              "description": "会员关系总数（全部状态）。"
+                            },
+                            "pending_members": {
+                              "type": "integer",
+                              "description": "待生效数。"
+                            },
+                            "active_members": {
+                              "type": "integer",
+                              "description": "有效数。"
+                            },
+                            "suspended_members": {
+                              "type": "integer",
+                              "description": "暂停数。"
+                            },
+                            "expired_members": {
+                              "type": "integer",
+                              "description": "已过期数。"
+                            },
+                            "terminated_members": {
+                              "type": "integer",
+                              "description": "已终止数。"
+                            },
+                            "trend_window": {
+                              "type": "object",
+                              "description": "近 30 天趋势窗口{start,end,days}（物业时区自然日）。",
+                              "properties": {},
+                              "additionalProperties": true
+                            },
+                            "top_members_limit": {
+                              "type": "integer",
+                              "description": "Top 会员条数上限。"
+                            },
+                            "top_metric": {
+                              "type": "string",
+                              "description": "Top 会员排序口径：room_nights（累计入住晚数）。"
+                            }
+                          },
+                          "additionalProperties": true
+                        },
+                        "by_level": {
+                          "type": "array",
+                          "description": "等级分布（全部状态会员按 level_code 计数）。",
+                          "items": {
+                            "type": "object",
+                            "description": "",
+                            "properties": {
+                              "level_code": {
+                                "type": "string",
+                                "description": ""
+                              },
+                              "level_label": {
+                                "type": "string",
+                                "description": ""
+                              },
+                              "members": {
+                                "type": "integer",
+                                "description": ""
+                              }
+                            },
+                            "additionalProperties": true
+                          }
+                        },
+                        "by_status": {
+                          "type": "array",
+                          "description": "状态分布（PENDING/ACTIVE/SUSPENDED/EXPIRED/TERMINATED）。",
+                          "items": {
+                            "type": "object",
+                            "description": "",
+                            "properties": {
+                              "status": {
+                                "type": "string",
+                                "description": ""
+                              },
+                              "status_label": {
+                                "type": "string",
+                                "description": ""
+                              },
+                              "members": {
+                                "type": "integer",
+                                "description": ""
+                              }
+                            },
+                            "additionalProperties": true
+                          }
+                        },
+                        "new_trend": {
+                          "type": "array",
+                          "description": "近 30 天按日新增（含 0 计数日）。",
+                          "items": {
+                            "type": "object",
+                            "description": "",
+                            "properties": {
+                              "date": {
+                                "type": "string",
+                                "description": "",
+                                "format": "date"
+                              },
+                              "new_members": {
+                                "type": "integer",
+                                "description": ""
+                              }
+                            },
+                            "additionalProperties": true
+                          }
+                        },
+                        "top_members": {
+                          "type": "array",
+                          "description": "Top 会员（按累计入住晚数降序）。",
+                          "items": {
+                            "type": "object",
+                            "description": "",
+                            "properties": {
+                              "member_no": {
+                                "type": "string",
+                                "description": "会员编号。"
+                              },
+                              "level_code": {
+                                "type": "string",
+                                "description": ""
+                              },
+                              "level_label": {
+                                "type": "string",
+                                "description": ""
+                              },
+                              "status": {
+                                "type": "string",
+                                "description": ""
+                              },
+                              "room_nights": {
+                                "type": "integer",
+                                "description": "累计入住晚数（预订口径）。"
+                              },
+                              "total_spend": {
+                                "type": "string",
+                                "description": "累计消费（订单金额口径，两位小数字符串）。"
+                              }
+                            },
+                            "additionalProperties": true
+                          }
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "description": "统计口径（P0-07 模式）。",
+                          "properties": {},
+                          "additionalProperties": true
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工 + hotelapp.view_accommodation（运营类报表；仅输出 member_no 与聚合数值，不输出客人姓名/手机号）",
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/sources": {
+      "get": {
+        "tags": [
+          "报表分析"
+        ],
+        "summary": "渠道来源报表（各来源订单/确认转化/入住转化/GMV + 近 30 天趋势）",
+        "description": "订单 = 全部状态预订按 Reservation.source 分组；确认转化 = 状态 ∈ CONFIRMED/CHECKED_IN/CHECKED_OUT/NO_SHOW（未到店发生在确认之后，计入转化）；入住转化 = 存在非作废 Stay（IN_HOUSE/CHECKED_OUT）的去重预订数；GMV = 全部状态预订 total_amount 合计（订单金额口径，未扣取消/未入住，非账务实收收入），仅统计物业结算币种（多币种不相加）。快照型报表：无 from/to 区间参数，固定近 30 天趋势窗口（含物业时区今天与 0 计数日）；响应 data.metadata 携带统计口径说明（P0-07 模式）。纯只读数据库聚合，不新增模型/快照落库。\n\n权限要求：有效员工 + hotelapp.view_accommodation（运营类报表，不含账务凭证金额）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "get_reports_sources",
+        "responses": {
+          "200": {
+            "description": "来源汇总/各来源订单与转化/GMV/近 30 天趋势 + 口径 metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "",
+                      "properties": {
+                        "summary": {
+                          "type": "object",
+                          "description": "",
+                          "properties": {
+                            "total_reservations": {
+                              "type": "integer",
+                              "description": "全部来源订单总数。"
+                            },
+                            "confirmed_reservations": {
+                              "type": "integer",
+                              "description": "确认转化订单总数。"
+                            },
+                            "with_stay_reservations": {
+                              "type": "integer",
+                              "description": "入住转化（有 Stay）订单总数。"
+                            },
+                            "gmv": {
+                              "type": "string",
+                              "description": "GMV 合计（订单金额口径，两位小数字符串）。"
+                            },
+                            "confirmed_rate": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "description": "确认转化率%，两位小数；无订单时 null。"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "stay_rate": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "description": "入住转化率%，两位小数；无订单时 null。"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "trend_window": {
+                              "type": "object",
+                              "description": "近 30 天趋势窗口 {start,end,days}。",
+                              "properties": {},
+                              "additionalProperties": true
+                            }
+                          },
+                          "additionalProperties": true
+                        },
+                        "by_source": {
+                          "type": "array",
+                          "description": "按来源分组（订单数降序）；series 为同一数组的兼容别名。",
+                          "items": {
+                            "type": "object",
+                            "description": "",
+                            "properties": {
+                              "source": {
+                                "type": "string",
+                                "description": "来源代码（WEBSITE/WALK_IN/OTA/PHONE 等）。"
+                              },
+                              "source_label": {
+                                "type": "string",
+                                "description": "来源中文名（SOURCE_LABELS 映射）。"
+                              },
+                              "reservations": {
+                                "type": "integer",
+                                "description": "订单数（全部状态）。"
+                              },
+                              "confirmed": {
+                                "type": "integer",
+                                "description": "确认转化数。"
+                              },
+                              "confirmed_rate": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "description": "确认转化率%两位小数。"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "with_stay": {
+                                "type": "integer",
+                                "description": "入住转化数（存在非作废 Stay 的去重预订）。"
+                              },
+                              "stay_rate": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "description": "入住转化率%两位小数。"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "gmv": {
+                                "type": "string",
+                                "description": "GMV（total_amount 合计，两位小数字符串）。"
+                              }
+                            },
+                            "additionalProperties": true
+                          }
+                        },
+                        "trend": {
+                          "type": "array",
+                          "description": "近 30 天按日下单量与 GMV（含 0 计数日）。",
+                          "items": {
+                            "type": "object",
+                            "description": "",
+                            "properties": {
+                              "date": {
+                                "type": "string",
+                                "description": "",
+                                "format": "date"
+                              },
+                              "reservations": {
+                                "type": "integer",
+                                "description": ""
+                              },
+                              "gmv": {
+                                "type": "string",
+                                "description": ""
+                              }
+                            },
+                            "additionalProperties": true
+                          }
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "description": "统计口径（P0-07 模式）。",
+                          "properties": {},
+                          "additionalProperties": true
+                        }
+                      },
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工 + hotelapp.view_accommodation（运营类报表，不含账务凭证金额）",
         "security": [
           {
             "PMS2Session": []
@@ -25706,6 +26529,12 @@
             "items": {
               "$ref": "#/components/schemas/RateRow"
             }
+          },
+          "inventory_pagination": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          },
+          "rates_pagination": {
+            "$ref": "#/components/schemas/PaginationMeta"
           }
         },
         "additionalProperties": true
@@ -25777,6 +26606,12 @@
                 "type": "null"
               }
             ]
+          },
+          "metadata": {
+            "type": "object",
+            "description": "统计口径（P0-07 模式：物业/日期口径/状态范围/币种/生成时间）。",
+            "properties": {},
+            "additionalProperties": true
           }
         },
         "additionalProperties": true

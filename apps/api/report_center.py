@@ -13,12 +13,18 @@ P0-07 模式，对齐 apps/api/guest_center.py::financial_summary_api）。
   * GET /api/v1/reports/guests?from=&to=      客源（新客/回头客/来源分布）
   * GET /api/v1/reports/housekeeping?from=&to= 清洁效率（AuditEvent 事件口径）
 
+第 3 批快照型报表（无 from/to 区间参数，固定近 30 天趋势窗口，A4/A5）：
+  * GET /api/v1/reports/memberships           会员（GuestMembership 口径）
+  * GET /api/v1/reports/sources               渠道来源（Reservation.source 口径）
+
 授权口径（按报表敏感度分两档，均为 hotelapp.* 门店经营权限）：
   * 收入类（revenue / adr）→ hotelapp.finance_access：
     分子是已过账账本凭证金额，与 §4.1 财务中心读取同一门禁，不以
     view_accommodation 等运营权限替代；
-  * 运营类（occupancy / guests / housekeeping）→ hotelapp.view_accommodation：
-    入住率/客源/清洁事件是预订与入住模块的运营统计，不含金额与 PII；
+  * 运营类（occupancy / guests / housekeeping / memberships / sources）
+    → hotelapp.view_accommodation：
+    入住率/客源/清洁事件/会员结构/渠道来源是预订与入住模块的运营统计，
+    不含账务凭证金额与客人 PII（会员报表仅输出 member_no 与聚合数值）；
     不借用 core.audit_view（审计查看是独立合规职责 P0-04，看运营报表
     不应授予审计权），也不借用 view_room（清洁事件计数挂在入住运营口径）。
 
@@ -57,13 +63,14 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from apps.billing.models import LedgerEntry
+from apps.core import labels as L
 from apps.core.api_contract import ApiError, api_response, api_view
 from apps.core.models import AuditEvent
-from apps.guests.models import Guest
+from apps.guests.models import Guest, GuestMembership
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import RoomTypeInventory
 from apps.inventory.services import _property_today
-from apps.reservations.models import Reservation
+from apps.reservations.models import Reservation, Stay
 
 from .billing_center import _money_str  # 金额两位小数字符串，与账务中心同口径
 
@@ -71,6 +78,22 @@ from .billing_center import _money_str  # 金额两位小数字符串，与账�
 MAX_RANGE_DAYS = 92
 # 缺省统计期间：最近 7 天（含物业时区今天）
 DEFAULT_RANGE_DAYS = 7
+
+# 第 3 批快照型报表（A4/A5）：近 30 天趋势窗口（含物业时区今天与 0 计数日）
+TREND_DAYS = 30
+# 会员报表 Top 会员条数
+TOP_MEMBERS_LIMIT = 10
+# 渠道来源"确认转化"状态集：CONFIRMED 及其后的生命周期状态
+#（未到店 NO_SHOW 亦视为确认生效——订单已确认、违约发生在确认之后）；
+# PENDING / CANCELLED / EXPIRED 不计入。
+CONFIRMED_STATES = (Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN,
+                    Reservation.Status.CHECKED_OUT, Reservation.Status.NO_SHOW)
+# 渠道来源"入住转化"：存在非作废 Stay（在住/已退房）；VOIDED 不算入住
+STAY_STATES = (Stay.Status.IN_HOUSE, Stay.Status.CHECKED_OUT)
+# 会员"累计入住晚数/消费"口径：仅实际发生入住的预订（已入住/已退房）；
+# 待支付/已确认未入住/未到店/取消/过期均不计入
+STAYED_RESERVATION_STATES = (Reservation.Status.CHECKED_IN,
+                             Reservation.Status.CHECKED_OUT)
 
 # 入口类型标签（避免逐行 get_Foo_display 查询，聚合行只有代码值）
 ENTRY_TYPE_LABELS = dict(LedgerEntry.EntryType.choices)
@@ -142,6 +165,29 @@ def _metadata(property_obj, date_from, date_to, date_basis, status_scope, extra=
 
 def _entry_type_label(code):
     return ENTRY_TYPE_LABELS.get(code, code)
+
+
+def _trend_window(property_obj):
+    """快照型报表（A4/A5）趋势窗口：近 TREND_DAYS 天（含物业时区今天，含 0 日）。
+
+    返回 (start_day, end_day, tz_start, tz_end)：日期闭区间用于零值补齐，
+    aware datetime 边界用于 created_at 过滤（与 _parse_range 同换算口径）。
+    """
+    end_day = _property_today(property_obj)
+    start_day = end_day - timedelta(days=TREND_DAYS - 1)
+    tz_start, tz_end = _property_tz_bounds(property_obj, start_day, end_day)
+    return start_day, end_day, tz_start, tz_end
+
+
+def _trend_day_keys(start_day):
+    """趋势窗口内的全部自然日升序键（含 0 计数日，dict 保序）。"""
+    return {start_day + timedelta(days=offset): 0 for offset in range(TREND_DAYS)}
+
+
+def _bucket_day(moment, tz, day_keys):
+    """把 aware datetime 归入趋势窗口的自然日；窗口外返回 None。"""
+    day = timezone.localdate(moment, tz)
+    return day if day in day_keys else None
 
 
 # ---------------------------------------------------------------------------
@@ -471,6 +517,234 @@ def housekeeping_report(request):
                 "events": "仅 action=housekeeping.status_changed 的审计事件计数"
                           "（清洁链每次流转记一次，含净房放行与检查退回）",
                 "note": "事件口径为运营趋势参考，非清洁任务完成率",
+            }),
+    }
+    return api_response(request, data)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/reports/memberships —— 会员报表（A4，GuestMembership 口径）
+# ---------------------------------------------------------------------------
+@require_GET
+@api_view
+def memberships_report(request):
+    """会员报表：总数/等级分布/状态分布/近 30 天新增趋势/Top 会员。
+
+    口径：
+      * 会员 = 物业维度 GuestMembership 记录（含待生效/暂停/过期/终止全部状态）；
+      * 等级分布 = level_code 分组计数（level_code 为 CharField 无 choices，
+        中文标签走 apps.core.labels.MEMBER_LEVEL_LABELS）；
+      * 新增 = 会员关系建档日（GuestMembership.created_at 自然日，物业时区）；
+        joined_at 允许为空（历史导入可缺省），故建档时间为可算口径；
+      * Top 会员按累计入住晚数降序：间夜 = Σ(check_out−check_in)×room_count，
+        仅取 CHECKED_IN/CHECKED_OUT 预订（以 Reservation.guest=预订联系人关联
+        会员客人）；total_spend 为同状态预订 total_amount 合计（订单金额口径，
+        非账务实收收入）。仅输出 member_no 与聚合数值，不输出客人姓名/手机号。
+    """
+    property_obj = _context(request, "hotelapp.view_accommodation")
+    qs = GuestMembership.objects.filter(property=property_obj)
+    total_members = qs.count()
+    by_level = [{
+        "level_code": row["level_code"],
+        "level_label": L.member_level_label(row["level_code"]),
+        "members": row["members"],
+    } for row in qs.values("level_code").annotate(
+        members=Count("id")).order_by("-members", "level_code")]
+    status_labels = L.gmembership_status_labels()
+    by_status = [{
+        "status": row["status"],
+        "status_label": status_labels.get(row["status"], row["status"]),
+        "members": row["members"],
+    } for row in qs.values("status").annotate(
+        members=Count("id")).order_by("-members", "status")]
+    status_counts = {row["status"]: row["members"] for row in by_status}
+
+    # 近 30 天新增趋势（含 0 日）：建档时间按物业时区自然日归桶
+    trend_start, trend_end, tz_start, tz_end = _trend_window(property_obj)
+    tz = ZoneInfo(getattr(property_obj, "timezone", None) or "Asia/Shanghai")
+    day_keys = _trend_day_keys(trend_start)
+    for row in GuestMembership.objects.filter(
+            property=property_obj, created_at__gte=tz_start,
+            created_at__lte=tz_end).values("created_at"):
+        day = _bucket_day(row["created_at"], tz, day_keys)
+        if day is not None:
+            day_keys[day] += 1
+    new_trend = [{"date": str(day), "new_members": count}
+                 for day, count in day_keys.items()]
+
+    # Top 会员：全部会员关系的客人入住/消费聚合（1 次预订查询 + Python 归集）
+    member_rows = list(qs.values(
+        "id", "member_no", "guest_id", "level_code", "status"))
+    per_guest = {}
+    guest_ids = {row["guest_id"] for row in member_rows}
+    if guest_ids:
+        for res in Reservation.objects.filter(
+                property=property_obj, guest_id__in=guest_ids,
+                status__in=STAYED_RESERVATION_STATES).values(
+                "guest_id", "check_in", "check_out", "room_count", "total_amount"):
+            agg = per_guest.setdefault(
+                res["guest_id"], {"room_nights": 0, "spend": Decimal("0.00")})
+            agg["room_nights"] += (res["check_out"] - res["check_in"]).days \
+                * res["room_count"]
+            agg["spend"] += res["total_amount"] or Decimal("0.00")
+
+    def _top_key(row):
+        agg = per_guest.get(row["guest_id"],
+                            {"room_nights": 0, "spend": Decimal("0.00")})
+        return (-agg["room_nights"], -agg["spend"], row["member_no"])
+
+    top_members = [{
+        "member_no": row["member_no"],
+        "level_code": row["level_code"],
+        "level_label": L.member_level_label(row["level_code"]),
+        "status": row["status"],
+        "room_nights": per_guest.get(
+            row["guest_id"], {"room_nights": 0})["room_nights"],
+        "total_spend": _money_str(per_guest.get(
+            row["guest_id"], {"spend": Decimal("0.00")})["spend"]),
+    } for row in sorted(member_rows, key=_top_key)[:TOP_MEMBERS_LIMIT]]
+
+    data = {
+        "summary": {
+            "total_members": total_members,
+            "pending_members": status_counts.get(GuestMembership.Status.PENDING, 0),
+            "active_members": status_counts.get(GuestMembership.Status.ACTIVE, 0),
+            "suspended_members": status_counts.get(GuestMembership.Status.SUSPENDED, 0),
+            "expired_members": status_counts.get(GuestMembership.Status.EXPIRED, 0),
+            "terminated_members": status_counts.get(GuestMembership.Status.TERMINATED, 0),
+            "trend_window": {"start": str(trend_start), "end": str(trend_end),
+                             "days": TREND_DAYS},
+            "top_members_limit": TOP_MEMBERS_LIMIT,
+            "top_metric": "room_nights",
+        },
+        "by_level": by_level,
+        "by_status": by_status,
+        "new_trend": new_trend,
+        "top_members": top_members,
+        "metadata": _metadata(
+            property_obj, trend_start, trend_end,
+            date_basis={
+                "memberships": "全量快照（不限统计期间）",
+                "new_trend": "自然日（GuestMembership.created_at 建档时间，"
+                             "物业时区；joined_at 允许为空不作趋势口径）",
+            },
+            status_scope={
+                "members": "全部 GuestMembership 状态（含待生效/暂停）",
+                "new_trend": f"近 {TREND_DAYS} 天按日新增（含 0 计数日），"
+                             "窗口=[物业时区今天−29, 物业时区今天]",
+                "top_members": f"按累计入住晚数降序 Top {TOP_MEMBERS_LIMIT}："
+                               "间夜=Σ(check_out−check_in)×room_count，仅取 "
+                               "CHECKED_IN/CHECKED_OUT 预订（Reservation.guest="
+                               "预订联系人口径）；total_spend=同状态预订 "
+                               "total_amount 合计（订单金额口径，非账务实收）",
+                "pii": "仅输出 member_no 与聚合数值，不输出客人姓名/手机号",
+            }),
+    }
+    return api_response(request, data)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/reports/sources —— 渠道来源报表（A5，Reservation.source 口径）
+# ---------------------------------------------------------------------------
+@require_GET
+@api_view
+def sources_report(request):
+    """渠道来源报表：各来源订单/确认转化/入住转化/GMV + 近 30 天趋势。
+
+    口径：
+      * 订单数 = 全部状态预订按 Reservation.source 分组计数；
+      * 确认转化 = 状态 ∈ {CONFIRMED, CHECKED_IN, CHECKED_OUT, NO_SHOW}
+        （确认生效口径：未到店发生在确认之后，计入转化）；
+      * 入住转化 = 存在非作废 Stay（IN_HOUSE/CHECKED_OUT）的去重预订数；
+      * GMV = 全部状态预订 total_amount 合计（订单金额口径，未扣取消/未入住，
+        非账务实收收入）；仅统计物业结算币种预订（多币种不相加）；
+      * 趋势 = 近 30 天按日下单量与 GMV（含 0 日， Reservation.created_at）。
+    """
+    property_obj = _context(request, "hotelapp.view_accommodation")
+    base_currency = property_obj.currency
+    qs = Reservation.objects.filter(property=property_obj)
+    source_rows = qs.values("source").annotate(
+        reservations=Count("id"),
+        confirmed=Count("id", filter=Q(status__in=CONFIRMED_STATES)),
+    ).order_by("-reservations", "source")
+    # 入住转化单独一查询（join Stay 会复制行，distinct 去重预订计数）
+    stay_by_source = {
+        row["source"]: row["with_stay"]
+        for row in qs.filter(
+            reservation_rooms__stay__status__in=STAY_STATES,
+        ).values("source").annotate(with_stay=Count("id", distinct=True))
+    }
+    gmv_by_source = {
+        row["source"]: row["gmv"] or Decimal("0.00")
+        for row in qs.filter(currency=base_currency).values("source").annotate(
+            gmv=Sum("total_amount"))
+    }
+    by_source = [{
+        "source": row["source"],
+        "source_label": SOURCE_LABELS.get(row["source"], row["source"] or "其他"),
+        "reservations": row["reservations"],
+        "confirmed": row["confirmed"],
+        "confirmed_rate": _pct_str(row["confirmed"], row["reservations"]),
+        "with_stay": stay_by_source.get(row["source"], 0),
+        "stay_rate": _pct_str(stay_by_source.get(row["source"], 0),
+                              row["reservations"]),
+        "gmv": _money_str(gmv_by_source.get(row["source"], Decimal("0.00"))),
+    } for row in source_rows]
+
+    total_reservations = sum(row["reservations"] for row in source_rows)
+    total_confirmed = sum(row["confirmed"] for row in source_rows)
+    total_with_stay = sum(stay_by_source.values())
+    total_gmv = sum(gmv_by_source.values(), Decimal("0.00"))
+
+    # 近 30 天趋势（含 0 日）：下单时间按物业时区自然日归桶
+    trend_start, trend_end, tz_start, tz_end = _trend_window(property_obj)
+    tz = ZoneInfo(getattr(property_obj, "timezone", None) or "Asia/Shanghai")
+    day_keys = _trend_day_keys(trend_start)
+    gmv_by_day = {day: Decimal("0.00") for day in day_keys}
+    for row in Reservation.objects.filter(
+            property=property_obj, created_at__gte=tz_start,
+            created_at__lte=tz_end).values(
+            "created_at", "currency", "total_amount"):
+        day = _bucket_day(row["created_at"], tz, day_keys)
+        if day is None:
+            continue
+        day_keys[day] += 1
+        if row["currency"] == base_currency:
+            gmv_by_day[day] += row["total_amount"] or Decimal("0.00")
+    trend = [{"date": str(day), "reservations": day_keys[day],
+              "gmv": _money_str(gmv_by_day[day])} for day in day_keys]
+
+    data = {
+        "summary": {
+            "total_reservations": total_reservations,
+            "confirmed_reservations": total_confirmed,
+            "with_stay_reservations": total_with_stay,
+            "gmv": _money_str(total_gmv),
+            "confirmed_rate": _pct_str(total_confirmed, total_reservations),
+            "stay_rate": _pct_str(total_with_stay, total_reservations),
+            "trend_window": {"start": str(trend_start), "end": str(trend_end),
+                             "days": TREND_DAYS},
+        },
+        "by_source": by_source,
+        # 报表中心前端统一读 data.series 渲染明细表（同 guests 报表惯例），
+        # by_source 保留为兼容别名，二者指向同一数组。
+        "series": by_source,
+        "trend": trend,
+        "metadata": _metadata(
+            property_obj, trend_start, trend_end,
+            date_basis={
+                "by_source": "全量快照（不限统计期间）",
+                "trend": "自然日（Reservation.created_at 下单时间，物业时区）",
+            },
+            status_scope={
+                "reservations": "全部预订状态",
+                "confirmed": "状态 ∈ CONFIRMED/CHECKED_IN/CHECKED_OUT/NO_SHOW"
+                             "（确认生效口径，未到店计入转化）",
+                "with_stay": "存在非作废 Stay（IN_HOUSE/CHECKED_OUT）的去重预订数",
+                "gmv": "全部状态预订 total_amount 合计（订单金额口径，未扣"
+                       "取消/未入住，非账务实收）；仅物业结算币种（多币种不相加）",
+                "trend": f"近 {TREND_DAYS} 天按日下单量与 GMV（含 0 计数日），"
+                         "窗口=[物业时区今天−29, 物业时区今天]",
             }),
     }
     return api_response(request, data)

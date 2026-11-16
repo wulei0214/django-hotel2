@@ -919,6 +919,9 @@ COMPONENTS = {
         {
             "inventory": s_arr(_ref("InventoryRow")),
             "rates": s_arr(_ref("RateRow")),
+            # F6（2026-11-16）：P0-03 双集合分页键补声明（键结构与 PaginationMeta 一致）。
+            "inventory_pagination": _ref("PaginationMeta"),
+            "rates_pagination": _ref("PaginationMeta"),
         }
     ),
     "FinancialSummaryData": s_obj(
@@ -934,6 +937,7 @@ COMPONENTS = {
             "period": s_obj({"start": s_str("", format="date"), "end": s_str("", format="date")}),
             "detail_available": s_bool("hotelapp.finance_access 决定能否查看明细。"),
             "note": s_nullable(s_str("值班经理无明细权限时的提示。")),
+            "metadata": s_obj(desc="统计口径（P0-07 模式：物业/日期口径/状态范围/币种/生成时间）。"),
         },
         desc="BillingService.financial_summary（近 7 天窗口）。",
     ),
@@ -1477,14 +1481,14 @@ fd_read = [
     (
         "/front-desk/departures",
         "离店列表",
-        "partial",
+        "verified",
         [Q("date", "离店日期；缺省取物业当前营业日。", "string", False), Q("q", "搜索词。"), *PQ()],
         "ReservationRoomSummary 数组（当天在住待离店）",
     ),
     (
         "/front-desk/in-house",
         "在住列表",
-        "partial",
+        "verified",
         [
             Q("q", "搜索词。"),
             Q("room_type_id", "房型 ID。", "integer"),
@@ -1496,7 +1500,7 @@ fd_read = [
     (
         "/front-desk/reservations",
         "预订列表",
-        "partial",
+        "verified",
         [
             Q("q", "搜索词（预订号/姓名/手机号）。"),
             Q(
@@ -1518,7 +1522,7 @@ fd_read = [
     (
         "/front-desk/rooms/assignable",
         "可分配房间",
-        "partial",
+        "verified",
         [Q("reservation_room_id", "预订房间明细 ID（必填）。", "integer", True)],
         "AssignableRoom 数组；同型洁净空闲且不与在途预订重叠",
     ),
@@ -1592,7 +1596,7 @@ op(
     "get",
     "前台接待",
     "预订详情",
-    status="partial",
+    status="verified",
     path_params=[("booking_no", "预订号。")],
     permission=FD_READ_PERM,
     ok=(("200", "预订主单 + 房间明细 + Stay + 账单摘要 + 可执行操作"),),
@@ -1620,7 +1624,7 @@ op(
     "get",
     "前台接待",
     "历史预订详情",
-    status="partial",
+    status="verified",
     path_params=[("legacy_id", "旧 hotelapp 订单 ID。")],
     permission=FD_READ_PERM,
     ok=(("200", "历史订单 + 旧 Folio 凭证原样展示"),),
@@ -1644,7 +1648,7 @@ op(
     "get",
     "前台接待",
     "在住订单可换房列表",
-    status="partial",
+    status="verified",
     path_params=[("stay_id", "在住 Stay ID。")],
     permission=FD_READ_PERM,
     ok=(("200", "同房型洁净空闲且不冲突的房间列表"),),
@@ -2239,7 +2243,7 @@ op(
     "get",
     "住客中心",
     "住客列表",
-    status="partial",
+    status="verified",
     query=[Q("q", "姓名/联系方式搜索。"), *PQ()],
     permission="有效员工 + hotelapp.view_client",
     ok=(("200", "Guest DTO 数组（按权限脱敏）"),),
@@ -2341,7 +2345,7 @@ op(
     "post",
     "住客中心",
     "创建住客档案",
-    status="partial",
+    status="verified",
     body=s_obj(
         {
             "full_name": s_str("客人姓名（服务强校验非空）。"),
@@ -2396,6 +2400,51 @@ op(
 )
 
 op(
+    "/guest-center/guests/{guest_id}/merge",
+    "post",
+    "住客中心",
+    "合并客人档案（A3）",
+    status="verified",
+    path_params=[("guest_id", "主档案 ID（合并保留方）。")],
+    body=s_obj(
+        {
+            "duplicate_id": s_int("待合并（软归档）档案 ID；必须与主档案同物业。"),
+            "reason": s_str("业务理由，1-240 字符（强校验），完整进入审计。"),
+        },
+        required=["duplicate_id", "reason"],
+    ),
+    permission="有效员工 + hotelapp.change_client（沿住客写端点门禁）",
+    ok=(("200", "合并完成：证件/电话/会员/预订迁移到主档案，duplicate 软归档"),),
+    data=s_obj(
+        {
+            "primary_guest_id": s_int(),
+            "duplicate_guest_id": s_int(),
+            "merged_into": s_int("合并入的主档案 ID（=primary_guest_id）。"),
+            "merged_at": s_str("ISO 8601 合并时间。", format="date-time"),
+            "reservations_moved": s_int("迁移的预订数。"),
+            "reservation_guests_moved": s_int("迁移的预订住客快照数。"),
+            "stay_guests_moved": s_int("迁移的在住人员数。"),
+            "phones_deduped": s_int("按 phone_hash 去重丢弃的电话数。"),
+            "documents_deduped": s_int("与主档案重复而丢弃的证件数。"),
+            "memberships_terminated": s_int(
+                "主档案已有有效会员时被终止的转移会员数。"),
+        }
+    ),
+    errors=E_STAFF_CONFLICT,
+    extras={
+        "x-idempotency": {
+            "header": "Idempotency-Key",
+            "required": False,
+            "max_length": 128,
+            "semantics": "api_contract.idempotent：同 key 同 body 重放首次响应；不同 body 409；TTL 24h。",
+        }
+    },
+    notes="A3 客人合并（排期 V2.0 第二主线）：duplicate 标记 merged_into/merged_at "
+    "软归档并从住客列表隐去；Folio/Payment 等账务事实归属原预订不动；"
+    "审计动作 guest.merged（before/after 摘要）。已合并档案不能再次参与合并。",
+)
+
+op(
     "/guests/{guest_id}/documents/{document_id}/reveal",
     "post",
     "敏感数据",
@@ -2439,7 +2488,7 @@ op(
     "get",
     "房态库存",
     "房态列表",
-    status="partial",
+    status="verified",
     query=[
         Q("floor", "楼层。"),
         Q("housekeeping", "清洁状态筛选。"),
@@ -2458,7 +2507,7 @@ op(
     "get",
     "房态库存",
     "房型列表",
-    status="partial",
+    status="verified",
     permission="有效员工 + hotelapp.view_room",
     ok=(("200", "当前物业启用房型数组"),),
     data=s_arr(_ref("RoomTypeRow")),
@@ -2470,7 +2519,7 @@ op(
     "get",
     "房价管理",
     "房价日历",
-    status="partial",
+    status="verified",
     query=[
         Q("start", "开始日期 YYYY-MM-DD；缺省今天。", "string", False, "2026-11-05", fmt="date"),
         Q("days", "查询天数 1-30，默认 14。", "integer", False, 14),
@@ -2487,7 +2536,7 @@ op(
     "get",
     "财务",
     "财务汇总",
-    status="partial",
+    status="verified",
     permission="有效员工 + hotelapp.finance_access",
     ok=(("200", "近 7 天收支汇总；值班经理仅汇总不见明细"),),
     data=_ref("FinancialSummaryData"),
@@ -2499,7 +2548,7 @@ op(
     "post",
     "房价管理",
     "调整每日房价",
-    status="partial",
+    status="verified",
     path_params=[("rate_id", "DailyRate ID。")],
     body=s_obj(
         {
@@ -3633,7 +3682,7 @@ op(
     "get",
     "审批",
     "审批记录列表",
-    status="partial",
+    status="verified",
     query=[
         Q("status", "审批状态筛选。"),
         Q("action_code", "按审批动作代码筛选。"),
@@ -3652,7 +3701,7 @@ op(
     "post",
     "审批",
     "创建审批申请",
-    status="partial",
+    status="verified",
     body=s_obj(
         {
             "action_code": s_str("审批动作码，如 billing.refund。"),
@@ -3682,7 +3731,7 @@ op(
     "post",
     "审批",
     "批准审批申请",
-    status="partial",
+    status="verified",
     path_params=[("record_id", "审批记录 ID。")],
     no_body=True,
     permission="ApprovalActionRegistry.approve_permission（按 action_code 动态校验；申请人≠审批人，SoD）",
@@ -3704,7 +3753,7 @@ op(
     "post",
     "审批",
     "驳回审批申请",
-    status="partial",
+    status="verified",
     path_params=[("record_id", "审批记录 ID。")],
     body=s_obj(
         {"reason": s_nullable(s_str("驳回原因；缺省为“驳回”。"))}, desc="可为空 JSON 对象。"
@@ -3730,7 +3779,7 @@ op(
     "get",
     "预订管理",
     "PMS 预订列表",
-    status="partial",
+    status="verified",
     query=[Q("status", "预订状态筛选。"), Q("q", "预订号/住客姓名搜索。"), *PQ()],
     permission="有效员工 + hotelapp.view_accommodation",
     ok=(("200", "预订主单数组"),),
@@ -3743,7 +3792,7 @@ op(
     "get",
     "预订管理",
     "PMS 预订详情",
-    status="partial",
+    status="verified",
     path_params=[("booking_no", "预订号。")],
     permission="有效员工 + hotelapp.view_accommodation",
     ok=(("200", "预订主单 + 房间明细"),),
@@ -3756,7 +3805,7 @@ op(
     "get",
     "审计",
     "审计时间线",
-    status="partial",
+    status="verified",
     query=[
         Q("entity_type", "实体类型精确筛选。"),
         Q("entity_id", "实体 ID 精确筛选。"),
@@ -3803,7 +3852,7 @@ op(
     "get",
     "会员中心",
     "会员列表",
-    status="partial",
+    status="verified",
     query=[Q("status", "会员状态筛选。"), Q("q", "会员号/姓名/手机号搜索。"), *PQ()],
     permission="有效员工 + hotelapp.view_vip",
     ok=(("200", "GuestMembership 数组"),),
@@ -3816,7 +3865,7 @@ op(
     "get",
     "会员中心",
     "会员详情",
-    status="partial",
+    status="verified",
     path_params=[("membership_id", "会员关系 ID。")],
     permission="有效员工 + hotelapp.view_vip",
     ok=(("200", "会员详情 + 等级历史"),),
@@ -3835,7 +3884,7 @@ op(
     "post",
     "会员中心",
     "创建会员关系",
-    status="partial",
+    status="verified",
     body=s_obj(
         {
             "guest_id": s_int("本物业客人档案 ID（强校验存在）。"),
@@ -3873,7 +3922,7 @@ op(
     "post",
     "会员中心",
     "变更会员等级",
-    status="partial",
+    status="verified",
     path_params=[("membership_id", "会员关系 ID。")],
     body=s_obj(
         {
@@ -4404,6 +4453,127 @@ op(
     "检查退回）按 created_at 自然日分组计数；为运营趋势参考，非清洁任务完成率。" + RPT_RANGE_NOTE,
 )
 
+# 第 3 批快照型报表（A4/A5）：无 from/to 区间参数，固定近 30 天趋势窗口
+RPT_SNAPSHOT_NOTE = (
+    "快照型报表：无 from/to 区间参数，固定近 30 天趋势窗口"
+    "（含物业时区今天与 0 计数日）；响应 data.metadata 携带统计口径说明"
+    "（P0-07 模式）。纯只读数据库聚合，不新增模型/快照落库。"
+)
+
+op(
+    "/reports/memberships",
+    "get",
+    "报表分析",
+    "会员报表（等级/状态分布 + 近 30 天新增趋势 + Top 会员）",
+    status="verified",
+    permission="有效员工 + hotelapp.view_accommodation（运营类报表；"
+               "仅输出 member_no 与聚合数值，不输出客人姓名/手机号）",
+    ok=(("200", "会员汇总/等级分布/状态分布/近 30 天新增趋势/Top 会员 + 口径 metadata"),),
+    data=s_obj(
+        {
+            "summary": s_obj(
+                {
+                    "total_members": s_int("会员关系总数（全部状态）。"),
+                    "pending_members": s_int("待生效数。"),
+                    "active_members": s_int("有效数。"),
+                    "suspended_members": s_int("暂停数。"),
+                    "expired_members": s_int("已过期数。"),
+                    "terminated_members": s_int("已终止数。"),
+                    "trend_window": s_obj(desc="近 30 天趋势窗口"
+                                              "{start,end,days}（物业时区自然日）。"),
+                    "top_members_limit": s_int("Top 会员条数上限。"),
+                    "top_metric": s_str("Top 会员排序口径：room_nights（累计入住晚数）。"),
+                }
+            ),
+            "by_level": s_arr(
+                s_obj({"level_code": s_str(), "level_label": s_str(), "members": s_int()}),
+                desc="等级分布（全部状态会员按 level_code 计数）。",
+            ),
+            "by_status": s_arr(
+                s_obj({"status": s_str(), "status_label": s_str(), "members": s_int()}),
+                desc="状态分布（PENDING/ACTIVE/SUSPENDED/EXPIRED/TERMINATED）。",
+            ),
+            "new_trend": s_arr(
+                s_obj({"date": s_str("", format="date"), "new_members": s_int()}),
+                desc="近 30 天按日新增（含 0 计数日）。",
+            ),
+            "top_members": s_arr(
+                s_obj(
+                    {
+                        "member_no": s_str("会员编号。"),
+                        "level_code": s_str(),
+                        "level_label": s_str(),
+                        "status": s_str(),
+                        "room_nights": s_int("累计入住晚数（预订口径）。"),
+                        "total_spend": s_str("累计消费（订单金额口径，两位小数字符串）。"),
+                    }
+                ),
+                desc="Top 会员（按累计入住晚数降序）。",
+            ),
+            "metadata": s_obj(desc="统计口径（P0-07 模式）。"),
+        }
+    ),
+    errors=E_STAFF,
+    notes="会员 = GuestMembership（物业维度，全部状态）；新增 = 建档日"
+    "（GuestMembership.created_at 自然日，物业时区；joined_at 允许为空不作趋势口径）。"
+    "Top 会员按累计入住晚数降序 Top 10：间夜=Σ(check_out−check_in)×room_count，"
+    "仅取 CHECKED_IN/CHECKED_OUT 预订（Reservation.guest=预订联系人口径）；"
+    "total_spend=同状态预订 total_amount 合计（订单金额口径，非账务实收收入）。"
+    + RPT_SNAPSHOT_NOTE,
+)
+
+op(
+    "/reports/sources",
+    "get",
+    "报表分析",
+    "渠道来源报表（各来源订单/确认转化/入住转化/GMV + 近 30 天趋势）",
+    status="verified",
+    permission="有效员工 + hotelapp.view_accommodation（运营类报表，不含账务凭证金额）",
+    ok=(("200", "来源汇总/各来源订单与转化/GMV/近 30 天趋势 + 口径 metadata"),),
+    data=s_obj(
+        {
+            "summary": s_obj(
+                {
+                    "total_reservations": s_int("全部来源订单总数。"),
+                    "confirmed_reservations": s_int("确认转化订单总数。"),
+                    "with_stay_reservations": s_int("入住转化（有 Stay）订单总数。"),
+                    "gmv": s_str("GMV 合计（订单金额口径，两位小数字符串）。"),
+                    "confirmed_rate": s_nullable(s_str("确认转化率%，两位小数；无订单时 null。")),
+                    "stay_rate": s_nullable(s_str("入住转化率%，两位小数；无订单时 null。")),
+                    "trend_window": s_obj(desc="近 30 天趋势窗口 {start,end,days}。"),
+                }
+            ),
+            "by_source": s_arr(
+                s_obj(
+                    {
+                        "source": s_str("来源代码（WEBSITE/WALK_IN/OTA/PHONE 等）。"),
+                        "source_label": s_str("来源中文名（SOURCE_LABELS 映射）。"),
+                        "reservations": s_int("订单数（全部状态）。"),
+                        "confirmed": s_int("确认转化数。"),
+                        "confirmed_rate": s_nullable(s_str("确认转化率%两位小数。")),
+                        "with_stay": s_int("入住转化数（存在非作废 Stay 的去重预订）。"),
+                        "stay_rate": s_nullable(s_str("入住转化率%两位小数。")),
+                        "gmv": s_str("GMV（total_amount 合计，两位小数字符串）。"),
+                    }
+                ),
+                desc="按来源分组（订单数降序）；series 为同一数组的兼容别名。",
+            ),
+            "trend": s_arr(
+                s_obj({"date": s_str("", format="date"), "reservations": s_int(),
+                       "gmv": s_str()}),
+                desc="近 30 天按日下单量与 GMV（含 0 计数日）。",
+            ),
+            "metadata": s_obj(desc="统计口径（P0-07 模式）。"),
+        }
+    ),
+    errors=E_STAFF,
+    notes="订单 = 全部状态预订按 Reservation.source 分组；确认转化 = 状态 ∈ "
+    "CONFIRMED/CHECKED_IN/CHECKED_OUT/NO_SHOW（未到店发生在确认之后，计入转化）；"
+    "入住转化 = 存在非作废 Stay（IN_HOUSE/CHECKED_OUT）的去重预订数；"
+    "GMV = 全部状态预订 total_amount 合计（订单金额口径，未扣取消/未入住，"
+    "非账务实收收入），仅统计物业结算币种（多币种不相加）。" + RPT_SNAPSHOT_NOTE,
+)
+
 # ========== 通知与待办（基线 2.0 §4.6；站内通知，无第三方渠道） ==========
 NT_PERM = (
     "有效员工 + 当前物业有效任职（无专项权限码，§4.6 全员工作入口；"
@@ -4550,8 +4720,9 @@ def _envelope_data(entry):
             desc="{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
         )
     if entry["envelope"] == "fd":
+        # F1-F5（2026-11-16）：列表实际附 meta 分页——补可选声明（详情端点无 meta）。
         return s_obj(
-            {"data": data},
+            {"data": data, "meta": _ref("ResponseMeta")},
             required=["data"],
             desc="{data, ...} 前台封套；列表附 meta 分页，写操作附 created/changed 标志。",
         )
