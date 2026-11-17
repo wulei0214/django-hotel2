@@ -33,7 +33,8 @@ FILTERABLE_SEVERITIES = frozenset(Notification.Severity.values)
 # refresh 触发上限说明常量：实时派生（无 celery），随 meta 下发
 REFRESH_NOTE = (
     "运营待办为实时派生（无后台队列）：每次刷新按当前物业重算"
-    "待处理集合并 upsert，已解决项自动标记已读；手动刷新动作记录审计事件。"
+    "待处理集合并 upsert；源业务解决后写 resolved_at 自动销项，不修改"
+    "员工个人已读回执；手动刷新动作记录审计事件。"
 )
 
 
@@ -60,9 +61,13 @@ def _context(request):
 
 
 def _visible_notifications(property_obj, profile, group_ids):
-    """我的通知范围：当前物业 +（定向本人 或 岗位广播组∈我的有效组）。"""
+    """我的通知范围：当前物业、未销项、未过期 +（定向本人 或 有效岗位广播）。"""
+    now = timezone.now()
     return Notification.objects.filter(
-        property=property_obj, resolved_at__isnull=True,
+        property=property_obj,
+        resolved_at__isnull=True,
+    ).filter(
+        Q(expires_at__isnull=True) | Q(expires_at__gt=now),
     ).filter(
         Q(recipient=profile) | Q(role_group_id__in=group_ids),
     ).select_related("role_group", "recipient")
