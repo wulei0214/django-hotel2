@@ -604,9 +604,9 @@ def classify_finance_row(
 def build_plan(*, batch: LegacyMigrationBatch, mapping: Mapping[str, Any] | None = None) -> Plan:
     """按批次 scope 读取旧表并逐条分类（只读，不写任何表）。
 
-    订单-预订关系来源以 ``legacy_order_reservation_map`` 的当前有效行为权威；
-    ``--mapping-file`` 的 ``orders`` 是关系表铺满前的兼容输入。两者同时给出且
-    指向不同预订 → 拒绝（不静默选一边，见 :mod:`apps.billing.legacy_order_map`）。
+    订单-预订关系来源以 ``legacy_order_reservation_map`` 的全部当前有效行为权威；
+    ``--mapping-file`` 的 ``orders`` 仅作关系表铺满前的兼容回退，双来源必须表达
+    同一关系集合。1:N/SPLIT_SOURCE 必须用 ``record_reservations`` 逐凭证选边。
     """
     from hotelapp import models as legacy_models
 
@@ -617,10 +617,19 @@ def build_plan(*, batch: LegacyMigrationBatch, mapping: Mapping[str, Any] | None
     )
 
     effective: dict[str, Any] = dict(mapping or {})
+    for section in ("record_reservations", "finance_natures", "candidates", "reversal_pairs"):
+        value = effective.get(section)
+        if value is None:
+            effective[section] = {}
+        elif not isinstance(value, dict):
+            raise LegacyMigrationError(f"映射文件 {section} 必须是 JSON 对象")
+    raw_orders = effective.get("orders") or {}
+    if not isinstance(raw_orders, dict):
+        raise LegacyMigrationError("映射文件 orders 必须是 JSON 对象")
     try:
         effective["orders"] = merge_order_mappings(
             table_map=orders_mapping(batch.scope_property),
-            file_map=effective.get("orders") or {},
+            file_map=raw_orders,
         )
     except LegacyOrderMapError as exc:
         raise LegacyMigrationError(str(exc)) from exc
