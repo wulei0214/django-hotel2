@@ -17,7 +17,7 @@ from unittest import mock, skipIf
 
 from django.contrib.auth.models import User
 from django.core.management import CommandError, call_command
-from django.db import IntegrityError, connection, models as django_models, transaction
+from django.db import connection, IntegrityError, models as django_models, transaction
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -415,9 +415,7 @@ class LegacyMigrationCommandTests(TestCase):
         """R2：旧金额与新凭证金额不一致时生成可归因差异。"""
         self._call()
         entry = LedgerEntry.objects.get(reference="legacy:Folio:9001")
-        django_models.QuerySet(LedgerEntry).filter(pk=entry.pk).update(
-            amount=Decimal("-600.00")
-        )
+        django_models.QuerySet(LedgerEntry).filter(pk=entry.pk).update(amount=Decimal("-600.00"))
         report = reconcile_batch(self.batch)
         self.assertTrue(any("Folio#9001" in diff for diff in report["diffs"]))
         self.assertTrue(any("金额分组不守恒" in diff for diff in report["diffs"]))
@@ -459,9 +457,7 @@ class LegacyMigrationCommandTests(TestCase):
         report = reconcile_batch(self.batch)
 
         self.assertEqual(report["diffs"], [])
-        self.assertEqual(
-            source_before["Folio"], list(LegacyFolio.objects.order_by("id").values())
-        )
+        self.assertEqual(source_before["Folio"], list(LegacyFolio.objects.order_by("id").values()))
         self.assertEqual(
             source_before["FinanceRecord"],
             list(LegacyFinanceRecord.objects.order_by("id").values()),
@@ -484,11 +480,13 @@ class LegacyMigrationCommandTests(TestCase):
                 raise LegacyMigrationDenied("测试注入的一次性失败")
             return original(**kwargs)
 
-        with mock.patch.object(
-            BillingService, "post_legacy_migration_entry", side_effect=fail_once
+        with (
+            mock.patch.object(
+                BillingService, "post_legacy_migration_entry", side_effect=fail_once
+            ),
+            self.assertRaises(CommandError),
         ):
-            with self.assertRaises(CommandError):
-                self._call()
+            self._call()
 
         first_entry_count = LedgerEntry.objects.filter(reference__startswith="legacy:").count()
         first_link_count = LegacyRecordLink.objects.filter(
@@ -509,9 +507,7 @@ class LegacyMigrationCommandTests(TestCase):
         self.assertEqual(first_link_count + 1, second_link_count)
 
         # 已完成批次再次重跑：全部幂等跳过，不新增凭证、映射或成功审计。
-        success_audits_before = AuditEvent.objects.filter(
-            action="billing.legacy_migration"
-        ).count()
+        success_audits_before = AuditEvent.objects.filter(action="billing.legacy_migration").count()
         out = self._call()
         self.assertIn("迁移完成且对账无差异", out)
         self.assertEqual(
@@ -602,9 +598,8 @@ class LegacyMigrationCommandTests(TestCase):
         """R4：reference 唯一约束阻止同一旧来源凭证被重复落账。"""
         self._call()
         entry = LedgerEntry.objects.get(reference="legacy:Folio:9001")
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                LedgerEntry.objects.create(
+        with transaction.atomic(), self.assertRaises(IntegrityError):
+            LedgerEntry.objects.create(
                     property=entry.property,
                     folio=entry.folio,
                     entry_type=entry.entry_type,
