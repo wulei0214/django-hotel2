@@ -43,7 +43,6 @@ from django.contrib.auth.models import Group, User
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from django.utils.crypto import get_random_string
-
 from hotelapp.models import Accommodation as LegacyAccommodation
 from hotelapp.models import Client as LegacyClient
 from hotelapp.models import Folio as LegacyFolio
