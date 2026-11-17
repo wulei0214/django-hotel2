@@ -512,11 +512,7 @@ def _existing_link_matches_decision(
         if decision.category == "C4"
         else LegacyRecordLink.MappingStatus.IGNORED
     )
-    return (
-        link.mapping_status == expected_status
-        and not link.target_model
-        and not link.target_pk
-    )
+    return link.mapping_status == expected_status and not link.target_model and not link.target_pk
 
 
 def execute_plan(
@@ -727,7 +723,11 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
             if link.property_id != batch.scope_property_id:
                 invalid_targets.append(link.source_pk)
             category = next(
-                (name for name, method in METHOD_BY_CATEGORY.items() if method == link.match_method),
+                (
+                    name
+                    for name, method in METHOD_BY_CATEGORY.items()
+                    if method == link.match_method
+                ),
                 None,
             )
             if category is None:
@@ -740,9 +740,11 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
             reference_entry = LedgerEntry.objects.filter(reference=reference).first()
             if category == "C1":
                 c1_target_ids.append(str(link.target_pk))
-                entry = LedgerEntry.objects.filter(pk=link.target_pk).select_related(
-                    "folio", "property"
-                ).first()
+                entry = (
+                    LedgerEntry.objects.filter(pk=link.target_pk)
+                    .select_related("folio", "property")
+                    .first()
+                )
                 if (
                     entry is None
                     or link.target_model != "LedgerEntry"
@@ -814,13 +816,17 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
         if unknown_methods:
             report["diffs"].append(f"{source_model}: {len(unknown_methods)} 条映射使用未知分类")
         if status_mismatches:
-            report["diffs"].append(f"{source_model}: {len(status_mismatches)} 条映射状态与分类不一致")
+            report["diffs"].append(
+                f"{source_model}: {len(status_mismatches)} 条映射状态与分类不一致"
+            )
         if missing_entries:
             report["diffs"].append(
                 f"{source_model}: {len(missing_entries)} 条 C1 映射指向的凭证不存在或 reference 不一致"
             )
         if invalid_targets:
-            report["diffs"].append(f"{source_model}: {len(invalid_targets)} 条映射目标无效或物业不一致")
+            report["diffs"].append(
+                f"{source_model}: {len(invalid_targets)} 条映射目标无效或物业不一致"
+            )
         if leaked_new_entries:
             report["diffs"].append(
                 f"{source_model}: {len(leaked_new_entries)} 条 C2/C3/C4/C5 记录泄漏出新建凭证（阻断级）"
@@ -853,7 +859,9 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
         expected_total = expected_groups.get(key, Decimal("0.00"))
         actual_total = actual_groups.get(key, Decimal("0.00"))
         property_id, currency, entry_type = key
-        property_code = Property.objects.filter(pk=property_id).values_list("code", flat=True).first()
+        property_code = (
+            Property.objects.filter(pk=property_id).values_list("code", flat=True).first()
+        )
         report["amount_groups"].append(
             {
                 "property_id": property_id,
