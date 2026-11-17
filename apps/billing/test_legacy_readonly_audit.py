@@ -1,10 +1,9 @@
 """静态守卫生产财务只读盘点 SQL 的安全边界与关键列完整性。"""
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 from django.test import SimpleTestCase
-
 
 SQL_PATH = Path(__file__).resolve().parents[2] / "scripts" / "legacy_finance_readonly_audit.sql"
 SQL_TEXT = SQL_PATH.read_text(encoding="utf-8")
@@ -73,7 +72,7 @@ class LegacyFinanceReadonlyAuditScriptTests(SimpleTestCase):
         )
         if match is None:
             self.fail("未找到 attribution_verdict CASE")
-        labels = re.findall(r"THEN\s+'([^']+)'", match.group("body"))
+        labels = re.findall(r"(?:THEN|ELSE)\s+'([^']+)'", match.group("body"))
         self.assertEqual(
             set(labels),
             {
