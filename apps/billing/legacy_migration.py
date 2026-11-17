@@ -517,6 +517,7 @@ def _existing_link_matches_decision(
 
 def _assert_batch_executor(batch: LegacyMigrationBatch, executor: Any) -> None:
     """C2-C5 不经过凭证入口，必须在写映射事务内复核同等批次授权。"""
+    from apps.billing.legacy_credentials import LegacyMigrationDenied
     if batch.status != LegacyMigrationBatch.Status.ACTIVE:
         raise LegacyMigrationDenied(
             f"批次状态为 {batch.status}，仅 ACTIVE 批次可执行迁移"
