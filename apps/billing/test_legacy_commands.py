@@ -500,6 +500,8 @@ class LegacyMigrationCommandTests(TestCase):
         """M14：订单映射指向其他物业时整批阻断，冲突来源落 C4/CONFLICT。"""
         from hotelapp.models import Accommodation, Folio as LegacyFolio
 
+        from apps.billing.legacy_order_map import confirm_pair
+
         other_prop = Property.objects.create(code="OTHER-MIG-PROP", name="其他迁移物业")
         other_guest = Guest.objects.create(property=other_prop, full_name="其他物业客人")
         other_reservation = Reservation.objects.create(
@@ -519,6 +521,13 @@ class LegacyMigrationCommandTests(TestCase):
             guest=other_guest,
             currency="CNY",
         )
+        confirm_pair(
+            legacy_order_id=8101,
+            reservation_id=other_reservation.pk,
+            property_obj=other_prop,
+            confirmed_by=self.approver,
+            match_basis="测试发现旧订单映射到其他物业",
+        )
         old_order = Accommodation.objects.get(pk=8101)
         Accommodation.objects.create(
             id=8102,
@@ -536,7 +545,7 @@ class LegacyMigrationCommandTests(TestCase):
             日期="2026-01-02",
         )
         payload = json.loads(self.mapping_path.read_text(encoding="utf-8"))
-        payload["orders"]["8101"]["reservation"] = other_reservation.pk
+        payload["orders"].pop("8101", None)
         payload["orders"]["8102"] = {
             "reservation": self.reservation.pk,
             "basis": "同物业人工确认",
