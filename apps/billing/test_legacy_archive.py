@@ -320,9 +320,7 @@ class ArchiveCommandTests(TestCase):
             )
         rows = LegacyFolioArchive.objects.filter(archive_batch="ARC-PROP-CMD")
         self.assertEqual(rows.count(), 2)
-        self.assertEqual(
-            set(rows.values_list("property_id", flat=True)), {self.prop.pk}
-        )
+        self.assertEqual(set(rows.values_list("property_id", flat=True)), {self.prop.pk})
 
     def test_archive_and_audit_are_atomic(self):
         with patch(

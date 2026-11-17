@@ -170,8 +170,7 @@ def unknown_source_primary_keys(
     for offset in range(0, len(converted_values), chunk_size):
         chunk = converted_values[offset : offset + chunk_size]
         existing.update(
-            str(pk)
-            for pk in source_queryset.filter(pk__in=chunk).values_list("pk", flat=True)
+            str(pk) for pk in source_queryset.filter(pk__in=chunk).values_list("pk", flat=True)
         )
 
     unknown.update(raw_pk for raw_pk, value in converted if str(value) not in existing)
@@ -259,8 +258,7 @@ def archive_table(
     ]
     if missing_property_assignments:
         raise LegacyArchiveError(
-            "物业归属引用了已不存在的 Property："
-            + ", ".join(missing_property_assignments[:20])
+            "物业归属引用了已不存在的 Property：" + ", ".join(missing_property_assignments[:20])
         )
 
     batch = billing_models.LegacyMigrationBatch.objects.filter(batch_uid=batch_uid).first()
