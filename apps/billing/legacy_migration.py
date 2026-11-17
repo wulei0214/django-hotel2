@@ -516,6 +516,13 @@ def classify_finance_row(
             reason=f"未知 FinanceRecord 类型：{legacy_type or '空'}",
         )
     entry_type, sign = mapped
+    if entry_type is None:
+        return Decision(
+            source_model="FinanceRecord",
+            source_pk=source_pk,
+            category="C5",
+            reason=f"旧类型 {legacy_type} 按裁定仅归档，不迁入新账本",
+        )
     related_order = row.get("关联订单")
     if related_order in (None, ""):
         return Decision(
