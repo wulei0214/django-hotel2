@@ -13,13 +13,13 @@ import json
 import uuid
 from datetime import timedelta
 from decimal import Decimal
+from io import StringIO
 
 from django.contrib.auth.models import Group, Permission, User
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from io import StringIO
 
 from apps.billing.models import Folio
 from apps.core.models import AuditEvent, Property
