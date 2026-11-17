@@ -71,6 +71,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
+      - name: Mypy detailed diagnostics (temporary)
+        run: |
+          python -m mypy --show-error-codes \
+            apps/api/report_center.py \
+            apps/api/test_partial_contract_verification.py \
+            apps/guests/management/commands/merge_guests.py \
+            apps/guests/models.py \
+            apps/guests/test_merge_guests.py \
+            apps/reservations/management/commands/backfill_nightly_rates.py || true
       - name: Mypy baseline check (new errors are blocking)
         run: python scripts/mypy_baseline.py check
 
