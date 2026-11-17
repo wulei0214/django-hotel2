@@ -68,9 +68,10 @@ def module_gate(key):
 from apps.identity.authorization import AuthorizationService
 from apps.identity.decorators import pms_permission_required
 
-from . import events  # noqa: F401  事件总线初始化（副作用导入，勿删）
-from . import handlers  # noqa: F401  订阅器注册（事件 -> 后台联动）
-from . import state_machine  # noqa: F401  状态机注册（副作用导入，勿删）
+# M3-1 可复燃写面断链（2026-11-18，架构治理第三模块提案 D3-5）：事件总线/订阅器/
+# 状态机的副作用接线已移除——全仓零事件发布调用者，该链路从未生效；
+# 订阅器直写旧 Room/FinanceRecord 的"潜在写面"就此归零。三份源文件保留至
+# 批次 M3-3 退役码清理（守卫测试 test_event_wiring_severed 持续盯防）。
 
 
 def _must_change_password(user):
