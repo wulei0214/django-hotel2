@@ -855,7 +855,7 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
 
             reference = legacy_reference(source_model, link.source_pk)
             reference_entry = LedgerEntry.objects.filter(reference=reference).first()
-            if category == "C1":
+            if matched_category == "C1":
                 c1_target_ids.append(str(link.target_pk))
                 entry = (
                     LedgerEntry.objects.filter(pk=link.target_pk)
@@ -926,7 +926,7 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
                     expected_type = _expected_entry_type(source_model, link.source_pk)
                     if expected_amount is None or expected_type is None:
                         report["diffs"].append(
-                            f"{source_model}#{link.source_pk}: {category} 来源金额或凭证类型无法核验"
+                            f"{source_model}#{link.source_pk}: {matched_category} 来源金额或凭证类型无法核验"
                         )
                     else:
                         expected_currency = candidate.folio.currency
