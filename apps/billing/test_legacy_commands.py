@@ -309,7 +309,7 @@ class LegacyMigrationCommandTests(TestCase):
     def test_execute_posts_entries_and_links(self):
         out = self._call()
         self.assertIn("迁移完成", out)
-        entry = LedgerEntry.objects.get(reference="legacy:Folio:9001")
+        entry = LedgerEntry.objects.get(reference="legacy:folio:9001")
         self.assertEqual(entry.entry_type, LedgerEntry.EntryType.PAYMENT)
         self.assertEqual(entry.amount, Decimal("-688.00"))
         self.assertEqual(entry.posted_by_id, self.executor.pk)
@@ -414,7 +414,7 @@ class LegacyMigrationCommandTests(TestCase):
     def test_reconcile_detects_amount_mismatch(self):
         """R2：旧金额与新凭证金额不一致时生成可归因差异。"""
         self._call()
-        entry = LedgerEntry.objects.get(reference="legacy:Folio:9001")
+        entry = LedgerEntry.objects.get(reference="legacy:folio:9001")
         django_models.QuerySet(LedgerEntry).filter(pk=entry.pk).update(amount=Decimal("-600.00"))
         report = reconcile_batch(self.batch)
         self.assertTrue(any("Folio#9001" in diff for diff in report["diffs"]))
@@ -571,8 +571,8 @@ class LegacyMigrationCommandTests(TestCase):
         self.mapping_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
         self._call()
-        cny_entry = LedgerEntry.objects.get(reference="legacy:Folio:9001")
-        usd_entry = LedgerEntry.objects.get(reference="legacy:Folio:9004")
+        cny_entry = LedgerEntry.objects.get(reference="legacy:folio:9001")
+        usd_entry = LedgerEntry.objects.get(reference="legacy:folio:9004")
         django_models.QuerySet(LedgerEntry).filter(pk=cny_entry.pk).update(
             amount=Decimal("-600.00")
         )
@@ -596,7 +596,7 @@ class LegacyMigrationCommandTests(TestCase):
     def test_duplicate_legacy_reference_is_rejected_by_database(self):
         """R4：reference 唯一约束阻止同一旧来源凭证被重复落账。"""
         self._call()
-        duplicate = LedgerEntry.objects.get(reference="legacy:Folio:9001")
+        duplicate = LedgerEntry.objects.get(reference="legacy:folio:9001")
         duplicate.pk = None
         duplicate.id = None
         with self.assertRaises(IntegrityError), transaction.atomic():
