@@ -4614,7 +4614,47 @@ op(
     content_type="text/csv; charset=utf-8-sig",
     errors=E_STAFF,
     notes="直接复用 audit_center._filtered_events，筛选口径与 /audit/events 完全一致；"
-    "每次导出写 AuditEvent(action=audit.export)，记录筛选摘要 SHA、行数与用途，不落 PII 载荷。",
+    "每次导出写 AuditEvent(action=audit.export)，记录筛选摘要 SHA、行数与用途，不落 PII 载荷；"
+    "响应头 X-Export-Credential 给出带下载有效期的受控凭证 token，供 /audit/export/{token} 到期前下载。",
+)
+
+op(
+    "/audit/export/{token}",
+    "get",
+    "审计",
+    "凭导出凭证 token 重新下载审计摘要（带有效期）",
+    status="verified",
+    path_params=(("token", "导出凭证 token（/audit/export 响应头下发）。"),),
+    query=[
+        Q("action", "动作精确筛选（须与凭证签发口径一致）。"),
+        Q("entity_type", "实体类型精确筛选。"),
+        Q("entity_id", "实体 ID 精确筛选。"),
+        Q("actor", "操作人用户名精确筛选。"),
+        Q(
+            "date_from",
+            "created_at 起始自然日 YYYY-MM-DD。",
+            "string",
+            False,
+            "2026-11-01",
+            fmt="date",
+        ),
+        Q(
+            "date_to",
+            "created_at 截止自然日 YYYY-MM-DD。",
+            "string",
+            False,
+            "2026-11-17",
+            fmt="date",
+        ),
+    ],
+    permission=AUDIT_READ_PERM,
+    ok=(("200", "与签发口径一致的 CSV 附件"),),
+    data=s_str("CSV 文本（不含 before/after）。"),
+    envelope="raw",
+    content_type="text/csv; charset=utf-8-sig",
+    errors=E_STAFF,
+    notes="凭证过期返回 409 BUSINESS_CONFLICT；token 不存在或跨物业返回 404；"
+    "下载同样逐次复核 core.audit_view 与筛选口径，并写 AuditEvent(action=audit.export_download)。",
 )
 
 op(
@@ -4627,9 +4667,9 @@ op(
     ok=(("200", "留存口径说明、不可变保护实现指针与证据路径"),),
     data=s_obj(
         {
-            "retention_note": s_str("留存口径说明（不虚构法定年限）。"),
-            "retention_years": s_nullable(s_int("固定 null：应用不自行裁定留存年限。")),
-            "retention_decision": s_str("待法务/合规负责人裁定。"),
+            "retention_note": s_str("留存口径说明。"),
+            "retention_years": s_int("已裁定的最低留存年限（10 年）。"),
+            "retention_decision": s_str("负责人裁定口径说明。"),
             "immutability": s_obj(
                 {
                     "model": s_str("AuditEvent.append_only"),
@@ -4643,7 +4683,7 @@ op(
         }
     ),
     errors=E_STAFF,
-    notes="只返回已确认的事实与证据指针；留存期限不由应用自行设定。"
+    notes="留存年限为负责人 2026-11-17 已裁定口径（与财务凭证留存一致）；"
     "数据库账号权限、备份与恢复演练需独立验收。",
 )
 
@@ -5401,7 +5441,31 @@ op(
     errors=E_STAFF_CONFLICT,
     notes="直接调用对应只读报表视图并复用其门禁、日期口径与聚合结果，只序列化 data.series，"
     "不在导出路径重写任何聚合逻辑；每次导出写 AuditEvent(action=report.export)，"
-    "含报表代码、行数、口径 metadata 与用途。memberships/sources 为快照型报表，忽略 from/to。",
+    "含报表代码、行数、口径 metadata 与用途；响应头 X-Export-Credential 给出带下载有效期的"
+    "受控凭证 token，供 /reports/export/{token} 到期前下载。memberships/sources 为快照型报表，忽略 from/to。",
+)
+
+op(
+    "/reports/export/{token}",
+    "get",
+    "报表分析",
+    "凭导出凭证 token 重新下载报表聚合（带有效期）",
+    status="verified",
+    path_params=(("token", "导出凭证 token（/reports/export 响应头下发）。"),),
+    query=[
+        Q("report", "报表代码（须与凭证签发口径一致）。", "string", True, "occupancy"),
+        *RPT_FROM_TO,
+        Q("group_by", "仅 revenue 有效：day 或 type，缺省 day。"),
+    ],
+    permission="有效员工 + 与所选报表相同的门禁（下载逐次复核）",
+    ok=(("200", "与签发口径一致的 CSV 附件"),),
+    data=s_str("CSV 文本；列取自当前报表 data.series 的字段。"),
+    envelope="raw",
+    content_type="text/csv; charset=utf-8-sig",
+    errors=E_STAFF_CONFLICT,
+    notes="下载仍调用对应只读报表视图并逐次复核门禁与参数；口径与签发不一致返回 400；"
+    "凭证过期返回 409 BUSINESS_CONFLICT；token 不存在或跨物业返回 404；"
+    "每次下载写 AuditEvent(action=report.export_download)。",
 )
 
 # ========== 通知与待办（基线 2.0 §4.6；站内通知，无第三方渠道） ==========

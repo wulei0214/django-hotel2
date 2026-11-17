@@ -6,8 +6,10 @@
 
 from datetime import timedelta
 
+from django.utils import timezone
+
 from apps.api.test_report_center import ReportCenterTestBase
-from apps.core.models import AuditEvent
+from apps.core.models import AuditEvent, ExportCredential
 
 
 class ReportExportTests(ReportCenterTestBase):
@@ -53,6 +55,12 @@ class ReportExportTests(ReportCenterTestBase):
         lines = response.content.decode("utf-8-sig").strip().splitlines()
         self.assertEqual(len(lines) - 1, len(expected))
         self.assertIn("occupancy_pct", lines[0])
+        # 每次导出签发带下载有效期的受控凭证。
+        credential = ExportCredential.objects.get(token=response["X-Export-Credential"])
+        self.assertEqual(credential.kind, ExportCredential.Kind.REPORT)
+        self.assertEqual(credential.report_code, "occupancy")
+        self.assertEqual(credential.row_count, len(expected))
+        self.assertGreater(credential.expires_at, timezone.now())
         after = AuditEvent.objects.filter(property=self.property, action="report.export").count()
         self.assertEqual(after, before + 1)
         record = AuditEvent.objects.filter(property=self.property, action="report.export").latest(
@@ -62,6 +70,82 @@ class ReportExportTests(ReportCenterTestBase):
         self.assertEqual(record.after_json["report"], "occupancy")
         self.assertEqual(record.after_json["row_count"], len(expected))
         self.assertEqual(record.after_json["metadata"]["property"]["code"], self.property.code)
+
+    def test_credential_download_reuses_report_scope_and_audits(self):
+        day_from = self.today - timedelta(days=45)
+        self._make_inventory(day_from, total=5, sold=2)
+        params = {
+            "report": "occupancy",
+            "reason": self.REASON,
+            "from": day_from.isoformat(),
+            "to": self.today.isoformat(),
+        }
+        issued = self.client.get(self.URL, params)
+        token = issued["X-Export-Credential"]
+        expected = self.client.get("/api/v1/reports/occupancy", params).json()["data"]["series"]
+        before = AuditEvent.objects.filter(
+            property=self.property, action="report.export_download"
+        ).count()
+        response = self.client.get(
+            f"{self.URL}/{token}",
+            {"report": "occupancy", "from": params["from"], "to": params["to"]},
+        )
+        self.assertEqual(response.status_code, 200)
+        lines = response.content.decode("utf-8-sig").strip().splitlines()
+        self.assertEqual(len(lines) - 1, len(expected))
+        after = AuditEvent.objects.filter(
+            property=self.property, action="report.export_download"
+        ).count()
+        self.assertEqual(after, before + 1)
+
+    def test_download_still_enforces_report_permission(self):
+        # 签发凭证后，无权限账号仍不能凭 token 下载（下载走同一报表视图门禁）。
+        day = self.today - timedelta(days=3)
+        self._make_inventory(day, total=5, sold=2)
+        issued = self.client.get(
+            self.URL,
+            {
+                "report": "occupancy",
+                "reason": self.REASON,
+                "from": day.isoformat(),
+                "to": day.isoformat(),
+            },
+        )
+        self.assertEqual(issued.status_code, 200)
+        token = issued["X-Export-Credential"]
+        self.client.force_login(self.hk)
+        denied = self.client.get(
+            f"{self.URL}/{token}",
+            {"report": "occupancy", "from": day.isoformat(), "to": day.isoformat()},
+        )
+        self.assertEqual(denied.status_code, 403)
+
+    def test_expired_credential_download_is_rejected(self):
+        day = self.today - timedelta(days=4)
+        self._make_inventory(day, total=5, sold=1)
+        issued = self.client.get(
+            self.URL,
+            {
+                "report": "occupancy",
+                "reason": self.REASON,
+                "from": day.isoformat(),
+                "to": day.isoformat(),
+            },
+        )
+        token = issued["X-Export-Credential"]
+        ExportCredential.objects.filter(token=token).update(
+            expires_at=timezone.now() - timedelta(seconds=1)
+        )
+        response = self.client.get(
+            f"{self.URL}/{token}",
+            {"report": "occupancy", "from": day.isoformat(), "to": day.isoformat()},
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"]["code"], "BUSINESS_CONFLICT")
+
+    def test_unknown_credential_token_returns_404(self):
+        response = self.client.get(f"{self.URL}/not-a-real-token", {"report": "occupancy"})
+        self.assertEqual(response.status_code, 404)
 
     def test_memberships_snapshot_export_uses_same_series_as_page(self):
         guest = self._make_guest()

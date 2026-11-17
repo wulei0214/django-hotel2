@@ -185,6 +185,7 @@ class PMS2OpenApiDocumentationTests(TestCase):
             "/api/v1/night-audit/blockers": {"get"},
             "/api/v1/night-audit/run": {"post"},
             "/api/v1/reports/export": {"get"},
+            "/api/v1/reports/export/{token}": {"get"},
             "/api/v1/night-audit/business-dates": {"get"},
             "/api/v1/night-audit/business-dates/current": {"get"},
             "/api/v1/night-audit/business-dates/{business_date_id}": {"get"},
@@ -200,6 +201,7 @@ class PMS2OpenApiDocumentationTests(TestCase):
             "/api/v1/audit/summary": {"get"},
             "/api/v1/audit/actions": {"get"},
             "/api/v1/audit/export": {"get"},
+            "/api/v1/audit/export/{token}": {"get"},
             "/api/v1/audit/retention/status": {"get"},
             "/api/v1/audit/integrity/check": {"post"},
             "/api/v1/staff": {"get"},
@@ -410,7 +412,7 @@ class PMS2ContractStatusTests(TestCase):
         # 阶段 D 批次 4 归档只读查询通道 +2（legacy-archives 批次清单 / 归档行查询）
         # A3 客人合并端点 +1（排期 V2.0 第二主线：/guest-center/guests/{id}/merge）
         # 第 3 批报表端点 +2（A4 /reports/memberships + A5 /reports/sources）
-        self.assertEqual(business, 167, "业务 operation 应为 167 个（排除 openapi.json 自身）")
+        self.assertEqual(business, 169, "业务 operation 应为 169 个（排除 openapi.json 自身）")
 
     def test_no_operation_is_marked_planned(self):
         """全部 60 条路由均已实现，不允许出现 planned 端点（虚构计划外接口）。"""

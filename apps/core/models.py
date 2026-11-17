@@ -891,3 +891,61 @@ class WorkItem(models.Model):
 
     def __str__(self):
         return f"{self.task_code}/{self.source_id} {self.get_status_display()}"
+
+
+class ExportCredential(models.Model):
+    """受控导出凭证（审查报告 MC-008 / MC-009）。
+
+    职责边界（强制）：
+      * 只登记「谁在何时、以何用途、按什么筛选/口径导出过、有效期到何时」，
+        下载内容不落库；凭证只把一次性 token 映射回同一查询口径，
+        绝不缓存或复制业务事实；
+      * token 随机不可枚举，且带 expires_at 下载有效期；过期后下载一律拒绝，
+        避免长期可访问的导出链接泄露面（弥补同步下载无到期控制的缺口）；
+      * 每次创建凭证与每次下载都写 AuditEvent（audit.export / audit.export_download），
+        审计仍是唯一事实来源；
+      * 凭证本身只追加：不提供更新入口，过期即失效，不回收改期。
+    """
+
+    class Kind(models.TextChoices):
+        AUDIT = "AUDIT", "审计摘要导出"
+        REPORT = "REPORT", "报表聚合导出"
+
+    property: models.ForeignKey = models.ForeignKey(
+        Property, on_delete=models.PROTECT, related_name="export_credentials", verbose_name="物业"
+    )
+    kind: models.CharField = models.CharField(
+        max_length=16, choices=Kind.choices, verbose_name="导出类别"
+    )
+    report_code: models.CharField = models.CharField(
+        max_length=64, blank=True, verbose_name="报表代码"
+    )
+    token: models.CharField = models.CharField(max_length=64, unique=True, verbose_name="下载令牌")
+    params: models.JSONField = models.JSONField(default=dict, verbose_name="导出参数")
+    columns: models.JSONField = models.JSONField(default=list, verbose_name="列白名单")
+    row_count: models.IntegerField = models.IntegerField(default=0, verbose_name="导出行数")
+    reason: models.CharField = models.CharField(max_length=240, verbose_name="用途说明")
+    created_by: models.ForeignKey = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="export_credentials",
+        verbose_name="申请人",
+    )
+    expires_at: models.DateTimeField = models.DateTimeField(verbose_name="下载有效期")
+    created_at: models.DateTimeField = models.DateTimeField(
+        auto_now_add=True, verbose_name="创建时间"
+    )
+
+    class Meta:
+        verbose_name = "受控导出凭证"
+        verbose_name_plural = "受控导出凭证"
+        ordering = ("-created_at", "-id")
+        indexes = [
+            models.Index(fields=("property", "created_at"), name="idx_exportcred_prop_created"),
+            models.Index(fields=("expires_at",), name="idx_exportcred_expires"),
+        ]
+
+    def __str__(self):
+        return f"{self.kind}/{self.token[:8]}"

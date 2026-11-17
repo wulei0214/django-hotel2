@@ -182,6 +182,10 @@ ACTION_LABELS = {
     "privacy.export_staff": "导出员工敏感数据",
     "export.module_csv": "导出模块 CSV",
     "legacy.export": "历史数据导出",
+    "audit.export": "导出审计摘要",
+    "audit.export_download": "下载审计导出凭证",
+    "report.export": "导出报表快照",
+    "report.export_download": "下载报表导出凭证",
     "notification.refresh": "刷新待办清单",
 }
 
@@ -216,6 +220,9 @@ ENTITY_TYPE_LABELS = {
     "AuditEvent": "审计事件",
     "ApprovalRecord": "审批记录",
     "Notification": "通知待办",
+    "AuditExport": "审计摘要导出",
+    "ReportExport": "报表快照导出",
+    "ExportCredential": "受控导出凭证",
 }
 
 

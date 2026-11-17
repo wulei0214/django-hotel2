@@ -333,6 +333,11 @@ urlpatterns = [
     # MC-008：受控导出、留存状态与只读完整性摘要
     path("audit/export", audit_governance.audit_export, name="audit_export"),
     path(
+        "audit/export/<str:token>",
+        audit_governance.audit_export_download,
+        name="audit_export_download",
+    ),
+    path(
         "audit/retention/status",
         audit_governance.audit_retention_status,
         name="audit_retention_status",
@@ -580,6 +585,11 @@ urlpatterns = [
     path("reports/memberships", report_center.memberships_report, name="report_memberships"),
     path("reports/sources", report_center.sources_report, name="report_sources"),
     path("reports/export", report_export.report_export, name="report_export"),
+    path(
+        "reports/export/<str:token>",
+        report_export.report_export_download,
+        name="report_export_download",
+    ),
     # --- 通知与待办中心 (基线 2.0 §4.6；站内通知，门禁=认证+当前物业有效任职，
     #     不设专项权限码——全员工作入口；refresh=实时派生，按物业隔离) ---
     path("notifications", notification_center.notification_list, name="notification_list"),

@@ -24645,7 +24645,7 @@
           "审计"
         ],
         "summary": "审计事件受控导出（CSV）",
-        "description": "直接复用 audit_center._filtered_events，筛选口径与 /audit/events 完全一致；每次导出写 AuditEvent(action=audit.export)，记录筛选摘要 SHA、行数与用途，不落 PII 载荷。\n\n权限要求：有效员工（DEFAULT 有效任职）+ core.audit_view（P0-04 专项权，migration core.0010 授予店长/值班经理）；QuerySet 强制当前物业过滤，跨物业事件一律 404；列表不下发 before/after 载荷；导出与列表同门禁，另校验 core.audit_view。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "description": "直接复用 audit_center._filtered_events，筛选口径与 /audit/events 完全一致；每次导出写 AuditEvent(action=audit.export)，记录筛选摘要 SHA、行数与用途，不落 PII 载荷；响应头 X-Export-Credential 给出带下载有效期的受控凭证 token，供 /audit/export/{token} 到期前下载。\n\n权限要求：有效员工（DEFAULT 有效任职）+ core.audit_view（P0-04 专项权，migration core.0010 授予店长/值班经理）；QuerySet 强制当前物业过滤，跨物业事件一律 404；列表不下发 before/after 载荷；导出与列表同门禁，另校验 core.audit_view。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_audit_export",
         "responses": {
           "200": {
@@ -24800,13 +24800,173 @@
         ]
       }
     },
+    "/api/v1/audit/export/{token}": {
+      "get": {
+        "tags": [
+          "审计"
+        ],
+        "summary": "凭导出凭证 token 重新下载审计摘要（带有效期）",
+        "description": "凭证过期返回 409 BUSINESS_CONFLICT；token 不存在或跨物业返回 404；下载同样逐次复核 core.audit_view 与筛选口径，并写 AuditEvent(action=audit.export_download)。\n\n权限要求：有效员工（DEFAULT 有效任职）+ core.audit_view（P0-04 专项权，migration core.0010 授予店长/值班经理）；QuerySet 强制当前物业过滤，跨物业事件一律 404；列表不下发 before/after 载荷。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "get_audit_export_token",
+        "responses": {
+          "200": {
+            "description": "与签发口径一致的 CSV 附件",
+            "content": {
+              "text/csv; charset=utf-8-sig": {
+                "schema": {
+                  "type": "string",
+                  "description": "CSV 文本（不含 before/after）。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工（DEFAULT 有效任职）+ core.audit_view（P0-04 专项权，migration core.0010 授予店长/值班经理）；QuerySet 强制当前物业过滤，跨物业事件一律 404；列表不下发 before/after 载荷",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "description": "导出凭证 token（/audit/export 响应头下发）。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "description": "动作精确筛选（须与凭证签发口径一致）。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entity_type",
+            "in": "query",
+            "required": false,
+            "description": "实体类型精确筛选。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entity_id",
+            "in": "query",
+            "required": false,
+            "description": "实体 ID 精确筛选。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "required": false,
+            "description": "操作人用户名精确筛选。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "description": "created_at 起始自然日 YYYY-MM-DD。",
+            "schema": {
+              "type": "string",
+              "example": "2026-11-01",
+              "format": "date"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "description": "created_at 截止自然日 YYYY-MM-DD。",
+            "schema": {
+              "type": "string",
+              "example": "2026-11-17",
+              "format": "date"
+            }
+          }
+        ],
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
     "/api/v1/audit/retention/status": {
       "get": {
         "tags": [
           "审计"
         ],
         "summary": "审计留存与不可变保护状态（只读）",
-        "description": "只返回已确认的事实与证据指针；留存期限不由应用自行设定。数据库账号权限、备份与恢复演练需独立验收。\n\n权限要求：有效员工（DEFAULT 有效任职）+ core.audit_view（P0-04 专项权，migration core.0010 授予店长/值班经理）；QuerySet 强制当前物业过滤，跨物业事件一律 404；列表不下发 before/after 载荷。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "description": "留存年限为负责人 2026-11-17 已裁定口径（与财务凭证留存一致）；数据库账号权限、备份与恢复演练需独立验收。\n\n权限要求：有效员工（DEFAULT 有效任职）+ core.audit_view（P0-04 专项权，migration core.0010 授予店长/值班经理）；QuerySet 强制当前物业过滤，跨物业事件一律 404；列表不下发 before/after 载荷。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_audit_retention_status",
         "responses": {
           "200": {
@@ -24823,22 +24983,15 @@
                       "properties": {
                         "retention_note": {
                           "type": "string",
-                          "description": "留存口径说明（不虚构法定年限）。"
+                          "description": "留存口径说明。"
                         },
                         "retention_years": {
-                          "anyOf": [
-                            {
-                              "type": "integer",
-                              "description": "固定 null：应用不自行裁定留存年限。"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
+                          "type": "integer",
+                          "description": "已裁定的最低留存年限（10 年）。"
                         },
                         "retention_decision": {
                           "type": "string",
-                          "description": "待法务/合规负责人裁定。"
+                          "description": "负责人裁定口径说明。"
                         },
                         "immutability": {
                           "type": "object",
@@ -31451,7 +31604,7 @@
           "报表分析"
         ],
         "summary": "报表受控导出（CSV）",
-        "description": "直接调用对应只读报表视图并复用其门禁、日期口径与聚合结果，只序列化 data.series，不在导出路径重写任何聚合逻辑；每次导出写 AuditEvent(action=report.export)，含报表代码、行数、口径 metadata 与用途。memberships/sources 为快照型报表，忽略 from/to。\n\n权限要求：有效员工 + 与所选报表相同的门禁（revenue/adr=hotelapp.finance_access；其余=hotelapp.view_accommodation）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "description": "直接调用对应只读报表视图并复用其门禁、日期口径与聚合结果，只序列化 data.series，不在导出路径重写任何聚合逻辑；每次导出写 AuditEvent(action=report.export)，含报表代码、行数、口径 metadata 与用途；响应头 X-Export-Credential 给出带下载有效期的受控凭证 token，供 /reports/export/{token} 到期前下载。memberships/sources 为快照型报表，忽略 from/to。\n\n权限要求：有效员工 + 与所选报表相同的门禁（revenue/adr=hotelapp.finance_access；其余=hotelapp.view_accommodation）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "get_reports_export",
         "responses": {
           "200": {
@@ -31558,6 +31711,159 @@
             "schema": {
               "type": "string",
               "example": "管理层周报数据核对"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "起始日期 YYYY-MM-DD；缺省最近 7 天（含物业时区今天）。",
+            "schema": {
+              "type": "string",
+              "example": "2026-11-01",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "结束日期 YYYY-MM-DD；缺省物业时区今天。",
+            "schema": {
+              "type": "string",
+              "example": "2026-11-06",
+              "format": "date"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "description": "仅 revenue 有效：day 或 type，缺省 day。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/export/{token}": {
+      "get": {
+        "tags": [
+          "报表分析"
+        ],
+        "summary": "凭导出凭证 token 重新下载报表聚合（带有效期）",
+        "description": "下载仍调用对应只读报表视图并逐次复核门禁与参数；口径与签发不一致返回 400；凭证过期返回 409 BUSINESS_CONFLICT；token 不存在或跨物业返回 404；每次下载写 AuditEvent(action=report.export_download)。\n\n权限要求：有效员工 + 与所选报表相同的门禁（下载逐次复核）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "get_reports_export_token",
+        "responses": {
+          "200": {
+            "description": "与签发口径一致的 CSV 附件",
+            "content": {
+              "text/csv; charset=utf-8-sig": {
+                "schema": {
+                  "type": "string",
+                  "description": "CSV 文本；列取自当前报表 data.series 的字段。"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工 + 与所选报表相同的门禁（下载逐次复核）",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "description": "导出凭证 token（/reports/export 响应头下发）。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "report",
+            "in": "query",
+            "required": true,
+            "description": "报表代码（须与凭证签发口径一致）。",
+            "schema": {
+              "type": "string",
+              "example": "occupancy"
             }
           },
           {

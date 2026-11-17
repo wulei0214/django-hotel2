@@ -17,7 +17,7 @@
 - 权威快照：`docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/openapi.json`；兼容镜像：`docs/接口文档/openapi.json`。
 - 现值（绑定 `b055666`，2026-11-16 SYS-06/G14-11 收敛）：OpenAPI 3.1.0，**118 paths / 120 operations**；操作级 `x-contract-status`：**verified 120 / partial 0**（原 25 个 partial 已逐项验证后翻转，验证模块 89 项 + 契约 43 项回归证据 `docs/acceptance/evidence/docgate-partial-verification-20261116.log`）。
 - 双快照逐字节一致：**973202 字节**，SHA256 前 16 位 `dbd5f9651cd5d2f6`（绑定 `b055666` 实测；fd 封套补可选 meta、RateCalendarData 补双集合分页键、财务汇总补 P0-07 metadata）。历史值按整体重写制移除，追溯走 Git 与更新日志。
-- **管理中心整改工作区增量（2026-11-17，尚未提交/合并 main）**：OpenAPI **166 paths / 167 业务 operations**（另有 `/openapi.json` 自身 1 项，共 168）；`x-contract-status` verified 168 / partial 0；双快照逐字节一致 **1329590 字节**，SHA256 前 16 位 `1b0783066a64c5cf`。新增端点来自 MC-008 审计导出/留存/完整性、MC-009 报表导出、MC-010 夜审阻挡清单及前序 MC-003/004/006/007 写接口；合并 main 后应以本行替换上一行历史绑定值。
+- **管理中心整改工作区增量（2026-11-17，含负责人裁定收尾，尚未提交/合并 main）**：OpenAPI **168 paths / 169 业务 operations**（另有 `/openapi.json` 自身 1 项，共 170）；`x-contract-status` verified 169 / partial 0；双快照逐字节一致 **1340727 字节**，SHA256 前 16 位 `待合并 main 后回填`。新增端点来自 MC-008 审计导出+下载凭证/留存/完整性、MC-009 报表导出+下载凭证、MC-010 夜审阻挡清单及前序 MC-003/004/006/007 写接口；MC-008/009 已按负责人裁定实现 15 分钟下载有效期的受控导出凭证与 10 年审计留存口径。合并 main 后应以本行替换上一行历史绑定值。
 - 守卫：`apps/api/test_openapi_schema.py` 以 `read_bytes()` 逐字节断言两快照一致；`openapi-snapshot.yml` 负责导出与镜像同步。**两路径冻结，禁止第三份快照**。
 - 最近契约实跑：`docs/acceptance/evidence/docgate-publicapierror-convergence.log`（43 tests OK，环境 DJANGO_ENV=test + SQLite，SHA `3fd3c0d`）。公开面错误结构契约-运行时分歧已在该轮收敛，相关契约测试恢复作为有效验收依据。
 
