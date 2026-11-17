@@ -600,15 +600,15 @@ class LegacyMigrationCommandTests(TestCase):
         entry = LedgerEntry.objects.get(reference="legacy:Folio:9001")
         with transaction.atomic(), self.assertRaises(IntegrityError):
             LedgerEntry.objects.create(
-                    property=entry.property,
-                    folio=entry.folio,
-                    entry_type=entry.entry_type,
-                    amount=entry.amount,
-                    currency=entry.currency,
-                    business_date=entry.business_date,
-                    reference=entry.reference,
-                    description="重复 reference 测试",
-                )
+                property=entry.property,
+                folio=entry.folio,
+                entry_type=entry.entry_type,
+                amount=entry.amount,
+                currency=entry.currency,
+                business_date=entry.business_date,
+                reference=entry.reference,
+                description="重复 reference 测试",
+            )
 
     @skipIf(
         connection.vendor != "sqlite",
