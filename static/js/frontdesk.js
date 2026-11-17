@@ -380,7 +380,10 @@
 
     function renderPaymentForm(item, content) {
         var summary = item.folio_summary || {};
-        if (summary.status !== "OPEN" || !["CONFIRMED", "CHECKED_IN"].includes(item.status)) return;
+        // 走查发现修复（2026-11-18）：PENDING 订单必须提供收款入口——
+        // 后端 collect_payment 对 PENDING 收款成功即确认（业务闭环①），
+        // 前端门禁排除 PENDING 会造成"待支付→无法确认→无法入住"死锁。
+        if (summary.status !== "OPEN" || !["PENDING", "CONFIRMED", "CHECKED_IN"].includes(item.status)) return;
         var box = element("div", "fd-payment-box");
         box.appendChild(element("h4", "", "登记线下收款"));
         box.appendChild(element("p", "fd-operation-note",
@@ -464,7 +467,8 @@
 
     function renderDepositForm(item, content) {
         var summary = item.folio_summary || {};
-        if (summary.status !== "OPEN" || !["CONFIRMED", "CHECKED_IN"].includes(item.status)) return;
+        // R1-02 同口径：PENDING 押金登记即确认订单（DEC-DEP-01 服务端 30% 强制）。
+        if (summary.status !== "OPEN" || !["PENDING", "CONFIRMED", "CHECKED_IN"].includes(item.status)) return;
         var box = element("div", "fd-payment-box");
         box.appendChild(element("h4", "", "登记入住押金"));
         box.appendChild(element("p", "fd-operation-note",
@@ -666,7 +670,8 @@
             } else if (stay && stay.status === "CHECKED_OUT") {
                 actionRow.appendChild(element("span", "fd-operation-complete", "该房间已退房"));
             } else if (roomLine.reservation_status === "PENDING") {
-                actionRow.appendChild(element("span", "fd-operation-note", "预订尚未确认，暂不能排房或办理入住"));
+                actionRow.appendChild(element("span", "fd-operation-note",
+                    "待支付订单：请先在下方登记收款或押金（收款/押金成功即确认订单），确认后即可排房并办理入住"));
             }
             if (actionRow.children.length) roomNode.appendChild(actionRow);
             content.appendChild(roomNode);
