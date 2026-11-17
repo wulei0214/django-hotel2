@@ -440,7 +440,7 @@ class MembershipCenterContractTests(PartialContractVerificationBase):
         self.assertTrue(payload["data"]["id"])
         membership = GuestMembership.objects.get(pk=payload["data"]["id"])
         self.assertEqual(membership.member_no, "PCV-M-CREATE-001")
-        self.assertEqual(membership.guest_id, guest.pk)
+        self.assertEqual(membership.guest, guest)
         self.assertTopLevelKeysWithinContract(
             "POST", "/api/v1/memberships/create", response)
 
