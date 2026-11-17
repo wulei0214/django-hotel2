@@ -272,11 +272,27 @@ class ArchiveCommandTests(TestCase):
         self.assertEqual(LegacyArchiveRun.objects.count(), 0)
         self.assertEqual(LegacyFolioArchive.objects.count(), 0)
 
-    def test_execute_requires_batch_and_operator(self):
+    def test_execute_requires_batch_operator_and_approval_ref(self):
         with self.assertRaises(CommandError):
-            call_command("archive_legacy_finance", stdout=StringIO())
+            call_command("archive_legacy_finance", "--execute", stdout=StringIO())
         with self.assertRaises(CommandError):
-            call_command("archive_legacy_finance", "--batch-uid", "ARC-CMD", stdout=StringIO())
+            call_command(
+                "archive_legacy_finance",
+                "--execute",
+                "--batch-uid",
+                "ARC-CMD",
+                stdout=StringIO(),
+            )
+        with self.assertRaises(CommandError):
+            call_command(
+                "archive_legacy_finance",
+                "--execute",
+                "--batch-uid",
+                "ARC-CMD",
+                "--operator",
+                "ops-cmd",
+                stdout=StringIO(),
+            )
 
     def test_execute_then_verify(self):
         out = StringIO()
@@ -285,6 +301,8 @@ class ArchiveCommandTests(TestCase):
             "--batch-uid",
             "ARC-CMD",
             "--execute",
+            "--approval-ref",
+            "TEST-GOV-ARCHIVE-01",
             "--operator",
             "ops-cmd",
             "--tables",
@@ -312,6 +330,8 @@ class ArchiveCommandTests(TestCase):
                 "--batch-uid",
                 "ARC-PROP-CMD",
                 "--execute",
+                "--approval-ref",
+                "TEST-GOV-ARCHIVE-02",
                 "--operator",
                 "ops-cmd",
                 "--tables",
@@ -336,6 +356,8 @@ class ArchiveCommandTests(TestCase):
                 "--batch-uid",
                 "ARC-AUDIT-ATOMIC",
                 "--execute",
+                "--approval-ref",
+                "TEST-GOV-ARCHIVE-03",
                 "--operator",
                 "ops-cmd",
                 "--tables",
@@ -363,6 +385,8 @@ class ArchiveCommandTests(TestCase):
             "--batch-uid",
             "ARC-BAD2",
             "--execute",
+            "--approval-ref",
+            "TEST-GOV-ARCHIVE-04",
             "--operator",
             "ops",
             "--tables",
