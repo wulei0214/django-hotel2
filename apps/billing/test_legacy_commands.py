@@ -17,7 +17,7 @@ from unittest import mock, skipIf
 
 from django.contrib.auth.models import User
 from django.core.management import CommandError, call_command
-from django.db import connection
+from django.db import IntegrityError, connection, models as django_models, transaction
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -28,8 +28,9 @@ from apps.billing.legacy_batches import (
     register_batch,
     reject_batch,
 )
+from apps.billing.legacy_credentials import LegacyMigrationDenied
 from apps.billing.legacy_migration import reconcile_batch
-from apps.billing.models import Folio, LedgerEntry, LegacyMigrationBatch
+from apps.billing.models import Folio, LedgerEntry, LegacyArchiveRun, LegacyMigrationBatch
 from apps.core.models import AuditEvent, LegacyRecordLink, Property
 from apps.guests.models import Guest
 from apps.reservations.models import Reservation
@@ -397,6 +398,222 @@ class LegacyMigrationCommandTests(TestCase):
                 "--fail-on-diff",
                 stdout=StringIO(),
             )
+
+    def test_reconcile_detects_missing_source_link(self):
+        """R3：删除一条来源映射后，来源记录数与映射数不守恒。"""
+        self._call()
+        django_models.QuerySet(LegacyRecordLink).filter(
+            migration_batch=self.batch.batch_uid,
+            source_model="Folio",
+            source_pk="9001",
+        ).delete()
+        report = reconcile_batch(self.batch)
+        self.assertTrue(any("分类守恒不成立" in diff for diff in report["diffs"]))
+        self.assertIn("9001", report["categories"]["Folio"]["missing_source_links"])
+
+    def test_reconcile_detects_amount_mismatch(self):
+        """R2：旧金额与新凭证金额不一致时生成可归因差异。"""
+        self._call()
+        entry = LedgerEntry.objects.get(reference="legacy:Folio:9001")
+        django_models.QuerySet(LedgerEntry).filter(pk=entry.pk).update(
+            amount=Decimal("-600.00")
+        )
+        report = reconcile_batch(self.batch)
+        self.assertTrue(any("Folio#9001" in diff for diff in report["diffs"]))
+        self.assertTrue(any("金额分组不守恒" in diff for diff in report["diffs"]))
+
+    def test_reconcile_detects_duplicate_c1_target(self):
+        """R4：两条旧来源映射到同一凭证，必须阻断收口。"""
+        self._call()
+        folio_link = LegacyRecordLink.objects.get(
+            migration_batch=self.batch.batch_uid,
+            source_model="Folio",
+            source_pk="9001",
+        )
+        finance_link = LegacyRecordLink.objects.get(
+            migration_batch=self.batch.batch_uid,
+            source_model="FinanceRecord",
+            source_pk="7001",
+        )
+        django_models.QuerySet(LegacyRecordLink).filter(pk=finance_link.pk).update(
+            target_pk=folio_link.target_pk
+        )
+        report = reconcile_batch(self.batch)
+        self.assertTrue(any("多条旧记录指向同一新凭证" in diff for diff in report["diffs"]))
+
+    def test_reconcile_is_read_only(self):
+        """R5：对账只读；新旧事实、映射、归档元数据和审计数均不得变化。"""
+        self._call()
+        from hotelapp.models import FinanceRecord as LegacyFinanceRecord
+        from hotelapp.models import Folio as LegacyFolio
+
+        source_before = {
+            "Folio": list(LegacyFolio.objects.order_by("id").values()),
+            "FinanceRecord": list(LegacyFinanceRecord.objects.order_by("id").values()),
+        }
+        ledger_before = list(LedgerEntry.objects.order_by("pk").values())
+        links_before = list(LegacyRecordLink.objects.order_by("pk").values())
+        archive_before = list(LegacyArchiveRun.objects.order_by("pk").values())
+        audit_count_before = AuditEvent.objects.count()
+
+        report = reconcile_batch(self.batch)
+
+        self.assertEqual(report["diffs"], [])
+        self.assertEqual(
+            source_before["Folio"], list(LegacyFolio.objects.order_by("id").values())
+        )
+        self.assertEqual(
+            source_before["FinanceRecord"],
+            list(LegacyFinanceRecord.objects.order_by("id").values()),
+        )
+        self.assertEqual(ledger_before, list(LedgerEntry.objects.order_by("pk").values()))
+        self.assertEqual(links_before, list(LegacyRecordLink.objects.order_by("pk").values()))
+        self.assertEqual(archive_before, list(LegacyArchiveRun.objects.order_by("pk").values()))
+        self.assertEqual(audit_count_before, AuditEvent.objects.count())
+
+    def test_execute_is_idempotent_and_can_resume_after_partial_failure(self):
+        """M9/R6：部分失败后整批重执行，已成功记录跳过，失败记录补做，不产生重复事实。"""
+        from apps.billing.services_v2 import BillingService
+
+        original = BillingService.post_legacy_migration_entry
+        state = {"failed": False}
+
+        def fail_once(**kwargs):
+            if not state["failed"]:
+                state["failed"] = True
+                raise LegacyMigrationDenied("测试注入的一次性失败")
+            return original(**kwargs)
+
+        with mock.patch.object(
+            BillingService, "post_legacy_migration_entry", side_effect=fail_once
+        ):
+            with self.assertRaises(CommandError):
+                self._call()
+
+        first_entry_count = LedgerEntry.objects.filter(reference__startswith="legacy:").count()
+        first_link_count = LegacyRecordLink.objects.filter(
+            migration_batch=self.batch.batch_uid
+        ).count()
+        self.assertGreater(first_entry_count, 0)
+        self.assertGreater(first_link_count, 0)
+
+        out = self._call()
+        self.assertIn("迁移完成且对账无差异", out)
+        second_entry_count = LedgerEntry.objects.filter(reference__startswith="legacy:").count()
+        second_link_count = LegacyRecordLink.objects.filter(
+            migration_batch=self.batch.batch_uid
+        ).count()
+        self.assertEqual(second_entry_count, 2)
+        self.assertEqual(second_link_count, 5)
+        self.assertEqual(first_entry_count, second_entry_count)
+        self.assertEqual(first_link_count + 1, second_link_count)
+
+        # 已完成批次再次重跑：全部幂等跳过，不新增凭证、映射或成功审计。
+        success_audits_before = AuditEvent.objects.filter(
+            action="billing.legacy_migration"
+        ).count()
+        out = self._call()
+        self.assertIn("迁移完成且对账无差异", out)
+        self.assertEqual(
+            LedgerEntry.objects.filter(reference__startswith="legacy:").count(),
+            second_entry_count,
+        )
+        self.assertEqual(
+            LegacyRecordLink.objects.filter(migration_batch=self.batch.batch_uid).count(),
+            second_link_count,
+        )
+        self.assertEqual(
+            AuditEvent.objects.filter(action="billing.legacy_migration").count(),
+            success_audits_before,
+        )
+
+    def test_reconcile_amount_groups_do_not_net_different_currencies(self):
+        """R7：不同币种分别守恒；CNY 与 USD 的反向差额不得相互抵消。"""
+        from hotelapp.models import Accommodation
+
+        old_order = Accommodation.objects.get(pk=8101)
+        Accommodation.objects.create(
+            id=8102,
+            顾客id=old_order.顾客id,
+            客房编号=old_order.客房编号,
+            状态=old_order.状态,
+            入住时间=old_order.入住时间,
+        )
+        LegacyFolio = __import__("hotelapp.models", fromlist=["Folio"]).Folio
+        LegacyFolio.objects.create(
+            id=9004,
+            order_id=8102,
+            类型="收款",
+            金额="688.00",
+            事由="USD 旧收款",
+            日期="2026-01-02",
+        )
+
+        guest = Guest.objects.create(property=self.prop, full_name="美元迁移测试客")
+        usd_reservation = Reservation.objects.create(
+            property=self.prop,
+            guest=guest,
+            booking_no="LEGACY-MIG-USD",
+            status=Reservation.Status.CONFIRMED,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            room_count=1,
+            total_amount=Decimal("688.00"),
+            currency="USD",
+        )
+        Folio.objects.create(
+            property=self.prop,
+            reservation=usd_reservation,
+            guest=guest,
+            currency="USD",
+        )
+        payload = json.loads(self.mapping_path.read_text(encoding="utf-8"))
+        payload["orders"]["8102"] = {
+            "reservation": usd_reservation.pk,
+            "basis": "客人+日期+房型人工确认（USD）",
+            "confirmed_by": "finance-lead",
+        }
+        self.mapping_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+        self._call()
+        cny_entry = LedgerEntry.objects.get(reference="legacy:Folio:9001")
+        usd_entry = LedgerEntry.objects.get(reference="legacy:Folio:9004")
+        django_models.QuerySet(LedgerEntry).filter(pk=cny_entry.pk).update(
+            amount=Decimal("-600.00")
+        )
+        django_models.QuerySet(LedgerEntry).filter(pk=usd_entry.pk).update(
+            amount=Decimal("-776.00")
+        )
+
+        report = reconcile_batch(self.batch)
+        groups = {
+            item["currency"]: item
+            for item in report["amount_groups"]
+            if item["entry_type"] == LedgerEntry.EntryType.PAYMENT
+        }
+        self.assertEqual(groups["CNY"]["expected"], "-1376.00")
+        self.assertEqual(groups["CNY"]["actual"], "-1288.00")
+        self.assertEqual(groups["USD"]["expected"], "-688.00")
+        self.assertEqual(groups["USD"]["actual"], "-776.00")
+        self.assertTrue(any("currency=CNY" in diff for diff in report["diffs"]))
+        self.assertTrue(any("currency=USD" in diff for diff in report["diffs"]))
+
+    def test_duplicate_legacy_reference_is_rejected_by_database(self):
+        """R4：reference 唯一约束阻止同一旧来源凭证被重复落账。"""
+        self._call()
+        entry = LedgerEntry.objects.get(reference="legacy:Folio:9001")
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                LedgerEntry.objects.create(
+                    property=entry.property,
+                    folio=entry.folio,
+                    entry_type=entry.entry_type,
+                    amount=entry.amount,
+                    currency=entry.currency,
+                    business_date=entry.business_date,
+                    reference=entry.reference,
+                    description="重复 reference 测试",
+                )
 
     @skipIf(
         connection.vendor != "sqlite",
