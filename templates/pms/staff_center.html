@@ -638,6 +638,35 @@
         "任职状态描述其在本物业的任职关系（在职/暂停/已离职）；雇用状态是员工档案层面的在岗标记，由服务层随任职状态联动。暂停、离职等变更操作见分区⑤。"));
     drawerBody.appendChild(secMembership);
 
+    /* ===== 分区②-B（MC-005）：员工档案资料维护（不改工号/任职/角色） ===== */
+    const secProfileEdit = drawerSection("②·补", "档案资料维护");
+    const profileForm = document.createElement("form");
+    profileForm.className = "sc-form";
+    profileForm.appendChild(csrfHidden());
+    profileForm.appendChild(labeledInput("姓名", {
+      name: "full_name", required: "required", maxlength: "120",
+      value: item.full_name || ""}));
+    profileForm.appendChild(labeledInput("联系电话", {
+      name: "phone", maxlength: "32", value: item.phone || ""}));
+    profileForm.appendChild(labeledInput("岗位编码", {
+      name: "position_code", maxlength: "64", value: item.position_code || ""}));
+    profileForm.appendChild(labeledInput("变更原因（必填，2-240 字）", {
+      name: "reason", required: "required", minlength: "2", maxlength: "240",
+      placeholder: "如：入职信息录入有误，更正姓名"}));
+    const profileBtn = document.createElement("button");
+    profileBtn.type = "submit"; profileBtn.className = "sc-btn";
+    profileBtn.textContent = "保存资料";
+    profileForm.appendChild(profileBtn);
+    const profileResult = resultDiv();
+    profileForm.appendChild(profileResult);
+    bindActionForm(profileForm,
+        "/manage/staff/actions/" + profileId + "/update_profile/",
+        function () { openPanel(profileId); });
+    secProfileEdit.appendChild(profileForm);
+    secProfileEdit.appendChild(noteP(
+        "工号按 DEC-EMP-02 由系统编号，不在此修改；任职状态与角色授权分别见分区④⑤。"));
+    drawerBody.appendChild(secProfileEdit);
+
     /* ========== 分区③：账号与安全（邀请激活 / 开通账号 / 重置密码） ========== */
     const secAccount = drawerSection("③", "账号与安全");
     const invitation = item.invitation || null;

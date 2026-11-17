@@ -6,6 +6,7 @@
 - 财务动态表单必须在表单仍连接 DOM 时读取字段；
 - 夜审 DOM helper 必须支持 Node 子节点，防止表格单元格被转成 [object ...]。
 """
+
 from pathlib import Path
 
 from django.conf import settings
@@ -25,6 +26,7 @@ class CenterTemplateRegressionTests(SimpleTestCase):
             "housekeeping_center.html",
             "night_audit_center.html",
             "notification_center.html",
+            "management_center.html",
         ):
             with self.subTest(template=name):
                 source = self.read_template(name)
@@ -37,7 +39,7 @@ class CenterTemplateRegressionTests(SimpleTestCase):
     def test_billing_forms_read_values_before_any_dom_replacement(self):
         source = self.read_template("billing_center.html")
         for field in ("amount", "method", "reference", "reason"):
-            self.assertIn("form.querySelector('[name=\"%s\"]')" % field, source)
+            self.assertIn(f"form.querySelector('[name=\"{field}\"]')", source)
         self.assertNotIn('document.getElementById("fin-collect-amount")', source)
         self.assertNotIn('document.getElementById("fin-refund-amount")', source)
         self.assertNotIn('document.getElementById("fin-reverse-reason")', source)
@@ -61,7 +63,7 @@ class CenterTemplateRegressionTests(SimpleTestCase):
         self.assertIn('id="fin-shift-open"', source)
         self.assertIn('id="fin-shift-close"', source)
         self.assertIn('id="fin-shift-movement-form"', source)
-        self.assertIn('/api/v1/billing/shifts/open', source)
+        self.assertIn("/api/v1/billing/shifts/open", source)
         self.assertIn('/api/v1/billing/shifts/" + activeShiftId + "/movements', source)
         self.assertIn('/api/v1/billing/refunds/" + refund.id + "/approve', source)
         self.assertIn('/api/v1/billing/refunds/" + refund.id + "/execute', source)
@@ -72,10 +74,12 @@ class CenterTemplateRegressionTests(SimpleTestCase):
         source = self.read_template("billing_center.html")
         self.assertIn('aria-label="待退款负债"', source)
         self.assertIn('id="fin-refund-liability-body"', source)
-        self.assertIn('/api/v1/billing/refund-liabilities?page=1&page_size=100', source)
-        self.assertIn('function refundForm(payment, refundLiabilityId)', source)
-        self.assertIn('requestBody.refund_liability_id = refundLiabilityId', source)
-        self.assertIn('openLiabilityRefund(item, Object.assign({id: selected.payment_id}, selected))', source)
+        self.assertIn("/api/v1/billing/refund-liabilities?page=1&page_size=100", source)
+        self.assertIn("function refundForm(payment, refundLiabilityId)", source)
+        self.assertIn("requestBody.refund_liability_id = refundLiabilityId", source)
+        self.assertIn(
+            "openLiabilityRefund(item, Object.assign({id: selected.payment_id}, selected))", source
+        )
         self.assertIn("候选支付仅供财务核对，不代表自动分配", source)
 
     def test_billing_refund_ui_requires_non_cash_reference_and_marks_legacy(self):

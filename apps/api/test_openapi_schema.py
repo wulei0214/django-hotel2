@@ -139,6 +139,14 @@ def _iter_operations(spec):
             yield path, method, operation
 
 
+def _success_schema(operation, code):
+    """成功响应 schema；CSV 导出等端点的媒体类型不是 application/json。"""
+    content = operation["responses"][code]["content"]
+    if "application/json" in content:
+        return content["application/json"]["schema"]
+    return next(iter(content.values()))["schema"]
+
+
 def _route_paths():
     """把 apps.api.urls 的路由渲染成 OpenAPI path 形式（/api/v1 前缀 + {var}）。"""
     from apps.api import urls as api_urls
@@ -174,7 +182,9 @@ class PMS2OpenApiDocumentationTests(TestCase):
             "/api/v1/front-desk/overview": {"get"},
             "/api/v1/front-desk/reservation-rooms/{reservation_room_id}/check-in": {"post"},
             "/api/v1/night-audit/preview": {"get"},
+            "/api/v1/night-audit/blockers": {"get"},
             "/api/v1/night-audit/run": {"post"},
+            "/api/v1/reports/export": {"get"},
             "/api/v1/night-audit/business-dates": {"get"},
             "/api/v1/night-audit/business-dates/current": {"get"},
             "/api/v1/night-audit/business-dates/{business_date_id}": {"get"},
@@ -189,6 +199,9 @@ class PMS2OpenApiDocumentationTests(TestCase):
             "/api/v1/audit/events/{event_id}": {"get"},
             "/api/v1/audit/summary": {"get"},
             "/api/v1/audit/actions": {"get"},
+            "/api/v1/audit/export": {"get"},
+            "/api/v1/audit/retention/status": {"get"},
+            "/api/v1/audit/integrity/check": {"post"},
             "/api/v1/staff": {"get"},
             "/api/v1/memberships": {"get"},
             "/api/v1/openapi.json": {"get"},
@@ -322,7 +335,7 @@ class PMS2OpenApiStructureValidityTests(TestCase):
             success = [code for code in operation["responses"] if code.startswith("2")]
             self.assertTrue(success, f"{op_id} 缺少 2xx 成功响应")
             for code in success:
-                schema = operation["responses"][code]["content"]["application/json"]["schema"]
+                schema = _success_schema(operation, code)
                 self.assertTrue(schema, f"{op_id} {code} 缺少响应 schema")
 
     def test_every_ref_resolves_to_declared_component(self):
@@ -397,7 +410,7 @@ class PMS2ContractStatusTests(TestCase):
         # 阶段 D 批次 4 归档只读查询通道 +2（legacy-archives 批次清单 / 归档行查询）
         # A3 客人合并端点 +1（排期 V2.0 第二主线：/guest-center/guests/{id}/merge）
         # 第 3 批报表端点 +2（A4 /reports/memberships + A5 /reports/sources）
-        self.assertEqual(business, 122, "业务 operation 应为 122 个（排除 openapi.json 自身）")
+        self.assertEqual(business, 167, "业务 operation 应为 167 个（排除 openapi.json 自身）")
 
     def test_no_operation_is_marked_planned(self):
         """全部 60 条路由均已实现，不允许出现 planned 端点（虚构计划外接口）。"""
@@ -414,7 +427,7 @@ class PMS2ContractStatusTests(TestCase):
                 continue
             success_codes = [c for c in operation["responses"] if c.startswith("2")]
             for code in success_codes:
-                schema = operation["responses"][code]["content"]["application/json"]["schema"]
+                schema = _success_schema(operation, code)
                 self.assertTrue(
                     schema.get("type") or "$ref" in schema or "properties" in schema,
                     f"{operation['operationId']} {code} 响应 schema 为空",

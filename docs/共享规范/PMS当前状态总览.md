@@ -17,6 +17,7 @@
 - 权威快照：`docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/openapi.json`；兼容镜像：`docs/接口文档/openapi.json`。
 - 现值（绑定 `b055666`，2026-11-16 SYS-06/G14-11 收敛）：OpenAPI 3.1.0，**118 paths / 120 operations**；操作级 `x-contract-status`：**verified 120 / partial 0**（原 25 个 partial 已逐项验证后翻转，验证模块 89 项 + 契约 43 项回归证据 `docs/acceptance/evidence/docgate-partial-verification-20261116.log`）。
 - 双快照逐字节一致：**973202 字节**，SHA256 前 16 位 `dbd5f9651cd5d2f6`（绑定 `b055666` 实测；fd 封套补可选 meta、RateCalendarData 补双集合分页键、财务汇总补 P0-07 metadata）。历史值按整体重写制移除，追溯走 Git 与更新日志。
+- **管理中心整改工作区增量（2026-11-17，尚未提交/合并 main）**：OpenAPI **166 paths / 167 业务 operations**（另有 `/openapi.json` 自身 1 项，共 168）；`x-contract-status` verified 168 / partial 0；双快照逐字节一致 **1329590 字节**，SHA256 前 16 位 `1b0783066a64c5cf`。新增端点来自 MC-008 审计导出/留存/完整性、MC-009 报表导出、MC-010 夜审阻挡清单及前序 MC-003/004/006/007 写接口；合并 main 后应以本行替换上一行历史绑定值。
 - 守卫：`apps/api/test_openapi_schema.py` 以 `read_bytes()` 逐字节断言两快照一致；`openapi-snapshot.yml` 负责导出与镜像同步。**两路径冻结，禁止第三份快照**。
 - 最近契约实跑：`docs/acceptance/evidence/docgate-publicapierror-convergence.log`（43 tests OK，环境 DJANGO_ENV=test + SQLite，SHA `3fd3c0d`）。公开面错误结构契约-运行时分歧已在该轮收敛，相关契约测试恢复作为有效验收依据。
 
@@ -38,6 +39,7 @@
 | 25 个 partial operation 逐项真实执行验证 | **已完成**：120 operations 均 verified / partial 0；证据见 §2 `b055666` 及 `docgate-partial-verification-20261116.log`。历史未完成表述已撤销 |
 | 真实浏览器 E2E、九角色真实登录走查、Apifox 手工执行 | 未完成 |
 | G14 独立签署 | `docs/PMS2.0_当前版本/06_验收与发布/96-g14-signoff_2026-11-10.md` 复核清单与结论栏仍为空白，待独立验收负责人填写 |
+| 管理中心闭环审查 MC-001~MC-010 整改 | MC-002~MC-010 代码与自动化证据已补齐（工作量口径详见审查报告 §8）；真实浏览器 E2E、九角色走查与 MySQL 目标环境验收仍未完成，不得据全量绿灯宣布业务闭环 |
 | dev 库 hotel 迁移（guests.0007、billing.0030） | 上线前应用 + 核对；本轮未连接该库 |
 | 生产 PII 独立密钥受控切换 | 按 07 目录 PII 手册流程，禁止直换环境变量 |
 | WB-015~045、WB-068、WB-113、WB-46-01~13 原始映射找回 | 待办 |

@@ -294,6 +294,26 @@ def _action_set_status(request, pk):
     )
 
 
+def _action_update_profile(request, pk):
+    """MC-005：维护姓名/联系电话/岗位编码；不动工号、任职与角色事实。"""
+    property_obj = getattr(request, "property", None)
+    profile = _get_profile_or_error(pk, property_obj)
+    _, _, changed = _call_service(
+        EmployeeLifecycleService.update_profile,
+        profile,
+        property_obj=property_obj,
+        full_name=request.POST.get("full_name") or None,
+        phone=request.POST.get("phone") or None,
+        position_code=request.POST.get("position_code") or None,
+        changed_by=request.user,
+        reason=(request.POST.get("reason") or "").strip(),
+    )
+    return api_response(
+        request,
+        {"message": "员工档案资料已更新" if changed else "员工档案资料无变化", "changed": changed},
+    )
+
+
 def _action_reset_password(request, pk):
     """密码重置（§10.1 步骤 1.f）：must_change_password=True；明文仅本次显示。"""
     property_obj = getattr(request, "property", None)
@@ -449,6 +469,10 @@ staff_action_end_assignment = staff_required(
 
 staff_action_set_status = staff_required(
     pms_permission_required("identity.staff_manage")(api_view(_action_set_status))
+)
+
+staff_action_update_profile = staff_required(
+    pms_permission_required("identity.staff_manage")(api_view(_action_update_profile))
 )
 
 staff_action_reset_password = staff_required(

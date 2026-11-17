@@ -103,6 +103,8 @@
     <div id="pms-secondary"></div>
   </div>
 </div>
+<form id="pms-csrf-form" style="display:none">{% csrf_token %}</form>
+<div id="pms-actions" class="pms-actions"></div>
 
 <div class="pms-drawer-mask" id="pms-drawer-mask"></div>
 <aside class="pms-drawer" id="pms-drawer" role="dialog" aria-modal="true" aria-labelledby="pms-drawer-title">
@@ -116,6 +118,8 @@
 {{ columns|json_script:"pms-columns" }}
 {{ secondary_sections|json_script:"pms-secondary-sections" }}
 {{ detail_config|json_script:"pms-detail" }}
+{{ center_actions|json_script:"pms-center-actions" }}
+{{ workflow_links|json_script:"pms-workflow-links" }}
 <script>
 (function () {
   "use strict";
@@ -125,6 +129,12 @@
   const sections = JSON.parse(document.getElementById("pms-secondary-sections").textContent);
   let detail = {};
   try { detail = JSON.parse(document.getElementById("pms-detail").textContent) || {}; } catch (e) { detail = {}; }
+  let centerActions = [];
+  try { centerActions = JSON.parse(document.getElementById("pms-center-actions").textContent) || []; } catch (e) { centerActions = []; }
+  let workflowLinks = [];
+  try { workflowLinks = JSON.parse(document.getElementById("pms-workflow-links").textContent) || []; } catch (e) { workflowLinks = []; }
+  const csrfInput = document.querySelector('[name="csrfmiddlewaretoken"]');
+  const csrfToken = csrfInput ? csrfInput.value : "";
   const head = document.getElementById("pms-head");
   const body = document.getElementById("pms-body");
   const meta = document.getElementById("pms-meta");
@@ -151,6 +161,91 @@
     if (typeof v === "object") return JSON.stringify(v);
     return String(v);
   }
+  /* MC-002：只渲染服务端已授权的业务动作；写操作统一带 CSRF + 幂等键。 */
+  function newIdemKey() {
+    return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() :
+      ("pms-" + Date.now() + "-" + Math.random().toString(16).slice(2));
+  }
+  function submitAction(action, endpoint, form, resultBox) {
+    const payload = {};
+    (action.fields || []).forEach(function (f) {
+      const el = form.querySelector('[name="' + f.name + '"]');
+      if (!el || el.value === "") return;
+      let v = el.value;
+      if (f.type === "number") v = Number(v);
+      else if (typeof v === "string" && /^(true|false)$/i.test(v)) v = v.toLowerCase() === "true";
+      payload[f.name] = v;
+    });
+    resultBox.textContent = "提交中…";
+    fetch(endpoint, {
+      method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json", "Accept": "application/json",
+                "X-CSRFToken": csrfToken, "Idempotency-Key": newIdemKey()},
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      return r.json().then(function (p) { return {ok: r.ok, payload: p}; });
+    }).then(function (res) {
+      if (!res.ok) {
+        resultBox.textContent = (res.payload && res.payload.error && res.payload.error.message) || "操作失败";
+        return;
+      }
+      resultBox.textContent = "操作成功";
+      form.reset();
+      if (typeof load === "function") load(currentPage);
+    }).catch(function () { resultBox.textContent = "网络错误，请稍后重试。"; });
+  }
+  function renderActionForm(action, endpoint, parent, rowItem) {
+    const box = document.createElement("section");
+    box.className = "pms-action-form";
+    const title = document.createElement("h3");
+    title.textContent = action.label;
+    box.appendChild(title);
+    const form = document.createElement("form");
+    (action.fields || []).forEach(function (f) {
+      const label = document.createElement("label");
+      label.textContent = f.label + (f.required ? " *" : "");
+      const input = document.createElement("input");
+      input.setAttribute("name", f.name);
+      if (f.type === "number") input.setAttribute("type", "number");
+      if (f.required) input.setAttribute("required", "required");
+      if (rowItem && f.name === "id") input.value = rowItem.id || "";
+      label.appendChild(input);
+      form.appendChild(label);
+    });
+    const btn = document.createElement("button");
+    btn.type = "submit"; btn.textContent = "提交";
+    form.appendChild(btn);
+    const result = document.createElement("div");
+    result.setAttribute("role", "status");
+    form.appendChild(result);
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      submitAction(action, endpoint, form, result);
+    });
+    box.appendChild(form);
+    parent.appendChild(box);
+  }
+  function renderPageActions() {
+    const host = document.getElementById("pms-actions");
+    host.replaceChildren();
+    (centerActions || []).filter(function (a) { return a.scope === "page"; }).forEach(function (a) {
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.className = "pms-row-btn"; btn.textContent = a.label;
+      btn.addEventListener("click", function () {
+        drawerTitle.textContent = a.label;
+        drawerBody.replaceChildren();
+        drawer.classList.add("is-open"); drawerMask.classList.add("is-open");
+        renderActionForm(a, a.endpoint, drawerBody, null);
+      });
+      host.appendChild(btn);
+    });
+    (workflowLinks || []).forEach(function (link) {
+      const a = document.createElement("a");
+      a.className = "pms-row-btn"; a.textContent = link.label; a.href = link.url;
+      host.appendChild(a);
+    });
+  }
+  renderPageActions();
   function header(target, cols, extraAction) {
     target.replaceChildren();
     cols.forEach(function(c){const th=document.createElement("th");th.textContent=c.label;target.appendChild(th);});
@@ -234,6 +329,10 @@
           tbody.appendChild(tr);
         });
         table.appendChild(thead);table.appendChild(tbody);wrap.appendChild(table);drawerBody.appendChild(wrap);
+      });
+      (centerActions || []).filter(function (a) { return a.scope === "row"; }).forEach(function (a) {
+        renderActionForm(a, a.endpoint.replace("{id}", encodeURIComponent(String(id))),
+                         drawerBody, item);
       });
     }).catch(function(){
       drawerBody.replaceChildren();

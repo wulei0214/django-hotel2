@@ -937,7 +937,9 @@ COMPONENTS = {
             "period": s_obj({"start": s_str("", format="date"), "end": s_str("", format="date")}),
             "detail_available": s_bool("hotelapp.finance_access 决定能否查看明细。"),
             "note": s_nullable(s_str("值班经理无明细权限时的提示。")),
-            "metadata": s_obj(desc="统计口径（P0-07 模式：物业/日期口径/状态范围/币种/生成时间）。"),
+            "metadata": s_obj(
+                desc="统计口径（P0-07 模式：物业/日期口径/状态范围/币种/生成时间）。"
+            ),
         },
         desc="BillingService.financial_summary（近 7 天窗口）。",
     ),
@@ -1168,6 +1170,7 @@ def op(
     errors=None,
     notes="",
     extras=None,
+    content_type="application/json",
 ):
     entry = {
         "path": path,
@@ -1188,6 +1191,7 @@ def op(
         "errors": errors if errors is not None else (E_STAFF if auth else ()),
         "notes": notes,
         "extras": extras or {},
+        "content_type": content_type,
     }
     CONTRACTS.append(entry)
     return entry
@@ -2049,6 +2053,46 @@ op(
 )
 
 op(
+    "/night-audit/blockers",
+    "get",
+    "夜审与紧急访问",
+    "夜审阻挡清单（只读）",
+    status="verified",
+    query=[
+        Q(
+            "date",
+            "营业日期 YYYY-MM-DD；缺省取当前营业日。",
+            "string",
+            False,
+            "2026-11-17",
+            fmt="date",
+        )
+    ],
+    permission="有效员工 + core.night_audit_view（与 preview 同门禁；查看权不隐含执行权）",
+    ok=(("200", "当前营业日阻挡清单与可执行标志"),),
+    data=s_obj(
+        {
+            "business_date": s_str("", format="date"),
+            "business_date_status": s_str("营业日状态（OPEN/REOPENED/CLOSED 等）。"),
+            "blockers": s_arr(
+                s_obj(desc="阻挡项，由 NightAuditService.preview 原样投影。", additional=True),
+                "与 preview.blockers 同一数组。",
+            ),
+            "blocker_count": s_int(),
+            "can_run": s_bool("无阻挡时为 true；仅表示可发起，不代表已授权执行。"),
+            "note": s_nullable(s_str()),
+            "source": s_str("固定 NightAuditService.preview，不另立阻挡规则。"),
+            "schedule_note": s_str(
+                "自动调度不属于 HTTP 接口；唯一执行入口为 POST /night-audit/run。"
+            ),
+        }
+    ),
+    errors=E_STAFF_CONFLICT,
+    notes="只读投影 NightAuditService.preview 的阻挡判定；不新增 schedule/trigger HTTP 端点。"
+    "cron/schtasks 调度与 recover_stale_night_audits 失败恢复见部署运维文档。",
+)
+
+op(
     "/night-audit/run",
     "post",
     "夜审与紧急访问",
@@ -2426,8 +2470,7 @@ op(
             "stay_guests_moved": s_int("迁移的在住人员数。"),
             "phones_deduped": s_int("按 phone_hash 去重丢弃的电话数。"),
             "documents_deduped": s_int("与主档案重复而丢弃的证件数。"),
-            "memberships_terminated": s_int(
-                "主档案已有有效会员时被终止的转移会员数。"),
+            "memberships_terminated": s_int("主档案已有有效会员时被终止的转移会员数。"),
         }
     ),
     errors=E_STAFF_CONFLICT,
@@ -2481,6 +2524,142 @@ op(
     errors=E_STAFF_CONFLICT,
     notes="独立权限 + 强制原因 + 逐次审计（guest.pii_reveal.phone）。",
 )
+
+# ===== MC-003：Guest 360 电话/证件子资源生命周期（复用 GuestService） =====
+GUEST_WRITE_PERM = "有效员工 + hotelapp.change_client"
+GUEST_SUB_IDEM = {
+    "x-idempotency": {
+        "header": "Idempotency-Key",
+        "required": False,
+        "max_length": 128,
+        "semantics": "api_contract.idempotent；同键同请求体重放首次响应。",
+    }
+}
+PHONE_DTO = s_obj(
+    {
+        "id": s_int(),
+        "phone_type": s_str(),
+        "is_primary": s_bool(),
+        "shared_review_required": s_bool(),
+        "verified": s_bool(),
+        "verified_at": s_nullable(s_str("", format="date-time")),
+        "source": s_str(),
+    }
+)
+DOC_DTO = s_obj(
+    {
+        "id": s_int(),
+        "doc_type": s_str(),
+        "issuing_country": s_str(),
+        "expiry_date": s_nullable(s_str("", format="date")),
+        "verified": s_bool(),
+        "is_primary": s_bool(),
+        "retention_until": s_nullable(s_str("", format="date")),
+    }
+)
+
+for _path, _summary, _params, _body, _data in (
+    (
+        "/guests/{guest_id}/phones",
+        "新增联系方式",
+        [("guest_id", "客人档案 ID。")],
+        s_obj(
+            {
+                "phone": s_str("待新增号码。"),
+                "phone_type": s_str("MOBILE/HOME/WORK/OTHER。"),
+                "is_primary": s_bool("是否直接设为主号码。"),
+                "source": s_str(),
+            },
+            required=("phone",),
+        ),
+        PHONE_DTO,
+    ),
+    (
+        "/guests/{guest_id}/phones/{phone_id}/primary",
+        "存量号码设主",
+        [("guest_id", "客人档案 ID。"), ("phone_id", "GuestPhone ID。")],
+        None,
+        s_obj({"changed": s_bool(), **PHONE_DTO["properties"]}),
+    ),
+    (
+        "/guests/{guest_id}/phones/{phone_id}/verify",
+        "人工核验共享号码",
+        [("guest_id", "客人档案 ID。"), ("phone_id", "GuestPhone ID。")],
+        None,
+        PHONE_DTO,
+    ),
+    (
+        "/guests/{guest_id}/documents",
+        "登记证件",
+        [("guest_id", "客人档案 ID。")],
+        s_obj(
+            {
+                "doc_type": s_str("ID_CARD/PASSPORT/HK_MACAO/TAIWAN/OTHER。"),
+                "doc_no": s_str("证件号（仅密文落库）。"),
+                "issuing_country": s_str(),
+                "expiry_date": s_str("", format="date"),
+                "verified": s_bool("登记时是否同步核验。"),
+            },
+            required=("doc_no",),
+        ),
+        DOC_DTO,
+    ),
+    (
+        "/guests/{guest_id}/documents/{document_id}/update",
+        "更新证件非号码字段",
+        [("guest_id", "客人档案 ID。"), ("document_id", "GuestDocument ID。")],
+        s_obj(
+            {
+                "doc_type": s_str(),
+                "expiry_date": s_str("", format="date"),
+                "issuing_country": s_str(),
+                "is_primary": s_bool(),
+            },
+            desc="换号须走新登记 + 索引仲裁，不在本端点改哈希。",
+        ),
+        s_obj({"changed": s_bool(), **DOC_DTO["properties"]}),
+    ),
+    (
+        "/guests/{guest_id}/documents/{document_id}/verify",
+        "后补证件核验",
+        [("guest_id", "客人档案 ID。"), ("document_id", "GuestDocument ID。")],
+        None,
+        DOC_DTO,
+    ),
+    (
+        "/guests/{guest_id}/documents/{document_id}/invalidate",
+        "失效证件",
+        [("guest_id", "客人档案 ID。"), ("document_id", "GuestDocument ID。")],
+        s_obj({"reason": s_str("失效原因。")}, desc="可为空对象。"),
+        s_obj({"changed": s_bool(), **DOC_DTO["properties"]}),
+    ),
+):
+    op(
+        _path,
+        "post",
+        "住客中心",
+        _summary,
+        status="verified",
+        path_params=_params,
+        body=_body,
+        no_body=_body is None,
+        body_required=_body is not None and "reason" not in (_body.get("required") or ()),
+        permission=GUEST_WRITE_PERM,
+        ok=(
+            (
+                (
+                    "201"
+                    if _path in ("/guests/{guest_id}/phones", "/guests/{guest_id}/documents")
+                    else "200"
+                ),
+                "子资源操作结果",
+            ),
+        ),
+        data=_data,
+        errors=E_STAFF_CONFLICT,
+        notes="PII 明文不进入响应；每次写操作由 GuestService 落 AuditEvent。",
+        extras=GUEST_SUB_IDEM,
+    )
 
 # ========== 房态库存 / 房价管理 / 财务 ==========
 op(
@@ -2542,6 +2721,262 @@ op(
     data=_ref("FinancialSummaryData"),
     errors=E_STAFF,
 )
+
+# ===== MC-004：库存中心受控写工作台（复用既有库存/对账服务） =====
+INV_IDEM = {
+    "x-idempotency": {
+        "header": "Idempotency-Key",
+        "required": False,
+        "max_length": 128,
+        "semantics": "api_contract.idempotent；同键同请求体重放首次响应。",
+    }
+}
+RATE_DTO = s_obj(
+    {
+        "id": s_int(),
+        "room_type_id": s_int(),
+        "rate_plan_id": s_int(),
+        "stay_date": s_str("", format="date"),
+        "price": s_str(),
+        "currency": s_str(),
+        "closed": s_bool(),
+        "changed": s_bool(),
+    }
+)
+STOCK_DTO = s_obj(
+    {
+        "id": s_int(),
+        "room_type_id": s_int(),
+        "stay_date": s_str("", format="date"),
+        "total_rooms": s_int(),
+        "held": s_int(),
+        "sold": s_int(),
+        "out_of_service": s_int(),
+        "stop_sell": s_bool(),
+        "available_count": s_int("派生可售数，不接受直接写入。"),
+        "version": s_int(),
+        "changed": s_bool(),
+    }
+)
+ROOM_TYPE_DTO = s_obj(
+    {
+        "id": s_int(),
+        "code": s_str(),
+        "name": s_str(),
+        "capacity": s_int(),
+        "bed_type": s_str(),
+        "amenities": s_arr(s_str()),
+        "is_active": s_bool(),
+        "changed": s_bool(),
+    }
+)
+ROOM_DTO = s_obj(
+    {
+        "id": s_int(),
+        "room_type_id": s_int(),
+        "number": s_str(),
+        "floor": s_str(),
+        "occupancy_status": s_str(),
+        "housekeeping_status": s_str(),
+        "maintenance_status": s_str(),
+        "is_active": s_bool(),
+        "changed": s_bool(),
+    }
+)
+DISC_DTO = s_obj(
+    {
+        "id": s_int(),
+        "room_type_id": s_int(),
+        "stay_date": s_str("", format="date"),
+        "diff": s_int(),
+        "status": s_str(),
+        "fix_reason": s_str(),
+        "fix_evidence": s_str(),
+        "requested_by": s_nullable(s_int()),
+        "approved_by": s_nullable(s_int()),
+        "executed_by": s_nullable(s_int()),
+    }
+)
+
+op(
+    "/inventory/daily-rates/{rate_id}/close",
+    "post",
+    "房态库存",
+    "每日房价关房/开房",
+    status="verified",
+    path_params=[("rate_id", "DailyRate ID。")],
+    body=s_obj(
+        {"closed": s_bool("true=关房，false=开房。"), "reason": s_str("2-240 字符原因。")},
+        required=("reason",),
+    ),
+    permission="有效员工 + inventory.manage_rates",
+    ok=(("200", "关房状态变更结果"),),
+    data=RATE_DTO,
+    errors=E_STAFF_CONFLICT,
+    notes="只改 closed，不改价格；历史日期拒绝。",
+    extras=INV_IDEM,
+)
+
+op(
+    "/inventory/stock/{inventory_id}/stop-sell",
+    "post",
+    "房态库存",
+    "房型每日停售/开售",
+    status="verified",
+    path_params=[("inventory_id", "RoomTypeInventory ID。")],
+    body=s_obj(
+        {"stop_sell": s_bool(), "reason": s_str("2-240 字符原因。")},
+        required=("reason",),
+    ),
+    permission="有效员工 + inventory.maintenance_manage",
+    ok=(("200", "停售状态变更结果"),),
+    data=STOCK_DTO,
+    errors=E_STAFF_CONFLICT,
+    notes="available_count 仍由 total/held/sold/out_of_service/stop_sell 派生；历史日期拒绝。",
+    extras=INV_IDEM,
+)
+
+for _path, _summary, _body, _data, _ok in (
+    (
+        "/inventory/room-types/create",
+        "新增房型",
+        s_obj(
+            {
+                "code": s_str(),
+                "name": s_str(),
+                "capacity": s_int(),
+                "bed_type": s_str(),
+                "amenities": s_arr(s_str()),
+                "reason": s_str(),
+            },
+            required=("code", "name"),
+        ),
+        ROOM_TYPE_DTO,
+        "201",
+    ),
+    (
+        "/inventory/room-types/{room_type_id}/update",
+        "更新房型资料",
+        s_obj(
+            {
+                "name": s_str(),
+                "capacity": s_int(),
+                "bed_type": s_str(),
+                "amenities": s_arr(s_str()),
+                "is_active": s_bool(),
+                "reason": s_str(),
+            },
+        ),
+        ROOM_TYPE_DTO,
+        "200",
+    ),
+    (
+        "/inventory/rooms/create",
+        "新增物理房间",
+        s_obj(
+            {"room_type_id": s_int(), "number": s_str(), "floor": s_str(), "reason": s_str()},
+            required=("room_type_id", "number"),
+        ),
+        ROOM_DTO,
+        "201",
+    ),
+    (
+        "/inventory/rooms/{room_id}/update",
+        "更新房间资料",
+        s_obj(
+            {"floor": s_str(), "room_type_id": s_int(), "is_active": s_bool(), "reason": s_str()},
+        ),
+        ROOM_DTO,
+        "200",
+    ),
+):
+    op(
+        _path,
+        "post",
+        "房态库存",
+        _summary,
+        status="verified",
+        path_params=(
+            [("room_type_id", "房型 ID。")]
+            if "room-types/{room_type_id}" in _path
+            else ([("room_id", "房间 ID。")] if "rooms/{room_id}" in _path else [])
+        ),
+        body=_body,
+        permission="有效员工 + hotelapp.change_room",
+        ok=((_ok, "主数据写入结果"),),
+        data=_data,
+        errors=E_STAFF_CONFLICT,
+        notes="三维房态、维修状态与库存计数不得由此入口修改。",
+        extras=INV_IDEM,
+    )
+
+op(
+    "/inventory/discrepancies",
+    "get",
+    "房态库存",
+    "库存差异列表",
+    status="verified",
+    query=[Q("status", "差异状态筛选。"), *PQ()],
+    permission="有效员工 + inventory.housekeeping_view",
+    ok=(("200", "差异分页列表"),),
+    data=s_arr(DISC_DTO),
+    errors=E_STAFF,
+)
+
+op(
+    "/inventory/discrepancies/scan",
+    "post",
+    "房态库存",
+    "扫描库存差异",
+    status="verified",
+    body=s_obj({"days_back": s_int("回溯天数，1-180，默认 30。")}, desc="可为空对象。"),
+    body_required=False,
+    permission="有效员工 + inventory.maintenance_manage",
+    ok=(("200", "扫描运行摘要"),),
+    data=s_obj(
+        {
+            "run_id": s_int(),
+            "diff_count": s_int(),
+            "scanned_dates": s_int(),
+            "scanned_types": s_int(),
+        }
+    ),
+    errors=E_STAFF_CONFLICT,
+    notes="复用 reconciliation.scan_inventory_discrepancies；不自动覆盖库存计数。",
+    extras=INV_IDEM,
+)
+
+for _path, _summary, _body in (
+    (
+        "/inventory/discrepancies/{discrepancy_id}/fix-request",
+        "发起库存修复申请",
+        s_obj({"fix_reason": s_str(), "fix_evidence": s_str()}, required=("fix_reason",)),
+    ),
+    ("/inventory/discrepancies/{discrepancy_id}/approve", "审批库存修复", None),
+    ("/inventory/discrepancies/{discrepancy_id}/execute", "执行库存修复", None),
+    (
+        "/inventory/discrepancies/{discrepancy_id}/dismiss",
+        "关闭无差异项",
+        s_obj({"reason": s_str()}, desc="可为空对象。"),
+    ),
+):
+    op(
+        _path,
+        "post",
+        "房态库存",
+        _summary,
+        status="verified",
+        path_params=[("discrepancy_id", "InventoryDiscrepancy ID。")],
+        body=_body,
+        no_body=_body is None,
+        body_required=_body is not None,
+        permission="有效员工 + inventory.maintenance_manage",
+        ok=(("200", "差异状态变更结果"),),
+        data=DISC_DTO,
+        errors=E_STAFF_CONFLICT,
+        notes="复用 reconciliation 服务；申请人与审批人必须分离，执行前按同一口径重算复核。",
+        extras=INV_IDEM,
+    )
 
 op(
     "/daily-rates/{rate_id}/adjust",
@@ -4137,6 +4572,105 @@ op(
     errors=E_STAFF,
 )
 
+op(
+    "/audit/export",
+    "get",
+    "审计",
+    "审计事件受控导出（CSV）",
+    status="verified",
+    query=[
+        Q(
+            "reason",
+            "导出用途说明，8-240 字符，必填并写入审计。",
+            "string",
+            True,
+            "季度合规复查取证",
+        ),
+        Q("action", "动作精确筛选（与 /audit/events 同口径）。"),
+        Q("entity_type", "实体类型精确筛选。"),
+        Q("entity_id", "实体 ID 精确筛选。"),
+        Q("actor", "操作人用户名精确筛选。"),
+        Q(
+            "date_from",
+            "created_at 起始自然日 YYYY-MM-DD。",
+            "string",
+            False,
+            "2026-11-01",
+            fmt="date",
+        ),
+        Q(
+            "date_to",
+            "created_at 截止自然日 YYYY-MM-DD。",
+            "string",
+            False,
+            "2026-11-17",
+            fmt="date",
+        ),
+    ],
+    permission=AUDIT_READ_PERM + "；导出与列表同门禁，另校验 core.audit_view",
+    ok=(("200", "UTF-8 BOM 编码的 CSV 附件（最多 10000 行）"),),
+    data=s_str("CSV 文本；列白名单为时间/动作/实体/操作人/原因/敏感标记，不含 before/after。"),
+    envelope="raw",
+    content_type="text/csv; charset=utf-8-sig",
+    errors=E_STAFF,
+    notes="直接复用 audit_center._filtered_events，筛选口径与 /audit/events 完全一致；"
+    "每次导出写 AuditEvent(action=audit.export)，记录筛选摘要 SHA、行数与用途，不落 PII 载荷。",
+)
+
+op(
+    "/audit/retention/status",
+    "get",
+    "审计",
+    "审计留存与不可变保护状态（只读）",
+    status="verified",
+    permission=AUDIT_READ_PERM,
+    ok=(("200", "留存口径说明、不可变保护实现指针与证据路径"),),
+    data=s_obj(
+        {
+            "retention_note": s_str("留存口径说明（不虚构法定年限）。"),
+            "retention_years": s_nullable(s_int("固定 null：应用不自行裁定留存年限。")),
+            "retention_decision": s_str("待法务/合规负责人裁定。"),
+            "immutability": s_obj(
+                {
+                    "model": s_str("AuditEvent.append_only"),
+                    "save_guard": s_str("模型层保存守卫源码位置。"),
+                    "mysql_guard_check": s_str("MySQL 触发器检查命令。"),
+                    "sql_reference": s_str("SQL 参考文件路径。"),
+                }
+            ),
+            "evidence_paths": s_arr(s_str()),
+            "property": s_str("物业代码。"),
+        }
+    ),
+    errors=E_STAFF,
+    notes="只返回已确认的事实与证据指针；留存期限不由应用自行设定。"
+    "数据库账号权限、备份与恢复演练需独立验收。",
+)
+
+op(
+    "/audit/integrity/check",
+    "post",
+    "审计",
+    "审计只读完整性核对",
+    status="verified",
+    no_body=True,
+    permission=AUDIT_READ_PERM,
+    ok=(("200", "按自然日计数与 SHA-256 摘要"),),
+    data=s_obj(
+        {
+            "checked_days": s_int(),
+            "total_events": s_int(),
+            "daily_counts": s_arr(s_obj({"day": s_str("", format="date"), "count": s_int()})),
+            "digest_sha256": s_str("按 day:count 序列计算的摘要。"),
+            "gaps": s_arr(s_obj(desc="当前恒为空；未实现外部基线比对时不伪造缺口结论。")),
+            "note": s_str("只读计数/摘要核对，不替代备份恢复演练。"),
+        }
+    ),
+    errors=E_STAFF,
+    notes="按当前物业逐自然日统计 AuditEvent 并计算摘要；当前没有哈希链或外部留存基线，"
+    "因此 gaps 恒为空，不对完整性作超出已实现事实的承诺。",
+)
+
 # ========== 清洁与维修工作台（基线 2.0 §4.3） ==========
 HK_ROOM_DTO = s_obj(
     {
@@ -4250,6 +4784,266 @@ op(
     "每次实际变更落 AuditEvent maintenance.status_changed。",
     extras={"x-audit-events": ["maintenance.status_changed"]},
 )
+
+# ===== MC-006：清洁任务与维修工单任务级闭环（复用既有实体与领域服务） =====
+HK_TASK_DTO = s_obj(
+    {
+        "id": s_int(),
+        "room_id": s_int(),
+        "room_number": s_str(),
+        "task_type": s_str(),
+        "status": s_str("PENDING/IN_PROGRESS/DONE/INSPECTED/REJECTED/CANCELLED。"),
+        "priority": s_str("P1/P2/P3。"),
+        "assigned_to": s_nullable(s_int()),
+        "completed_by": s_nullable(s_int()),
+        "inspected_by": s_nullable(s_int()),
+        "due_at": s_nullable(s_str("", format="date-time")),
+        "overdue": s_bool(),
+        "notes": s_str(),
+    },
+    desc="清洁任务过程事实；房态权威仍为 Room。",
+)
+MT_DTO = s_obj(
+    {
+        "id": s_int(),
+        "ticket_no": s_str(),
+        "room_id": s_int(),
+        "category": s_str(),
+        "severity": s_str("LOW/NORMAL/HIGH。"),
+        "status": s_str("OPEN/IN_PROGRESS/PENDING_VERIFY/VERIFIED/CANCELLED。"),
+        "reason": s_str(),
+        "from_date": s_str("", format="date"),
+        "to_date": s_nullable(s_str("", format="date")),
+        "assigned_to": s_nullable(s_int()),
+        "verified_by": s_nullable(s_int()),
+        "verified_at": s_nullable(s_str("", format="date-time")),
+    },
+    desc="维修工单过程事实；房间维修状态与库存权威仍在 Room/RoomTypeInventory。",
+)
+HK_VIEW_PERM = "有效员工 + inventory.housekeeping_view（读取）"
+HK_WRITE_PERM = "有效员工 + inventory.housekeeping_update（写任务）"
+MT_PERM = "有效员工 + inventory.maintenance_manage（净房/维修高危动作）"
+HK_IDEM = {
+    "x-idempotency": {
+        "header": "Idempotency-Key",
+        "required": False,
+        "max_length": 128,
+        "semantics": "api_contract.idempotent；同键同请求体重放首次响应。",
+    }
+}
+
+op(
+    "/housekeeping/tasks",
+    "get",
+    "清洁与维修",
+    "清洁任务池/我的任务",
+    status="verified",
+    query=[
+        Q("status", "任务状态筛选。"),
+        Q("task_type", "任务类型筛选。"),
+        Q("assigned", "all/me/group。"),
+        Q("room_id", "房间 ID。", "integer"),
+        *PQ(),
+    ],
+    permission=HK_VIEW_PERM,
+    ok=(("200", "任务分页列表（含逾期标志）"),),
+    data=s_arr(HK_TASK_DTO),
+    errors=E_STAFF,
+)
+
+op(
+    "/housekeeping/tasks/{task_id}",
+    "get",
+    "清洁与维修",
+    "清洁任务详情",
+    status="verified",
+    path_params=[("task_id", "HousekeepingTask ID。")],
+    permission=HK_VIEW_PERM,
+    ok=(("200", "任务详情"),),
+    data=HK_TASK_DTO,
+    errors=E_STAFF,
+)
+
+for _path, _summary, _perm, _body, _notes in (
+    (
+        "/housekeeping/tasks/{task_id}/claim",
+        "认领清洁任务",
+        HK_WRITE_PERM,
+        None,
+        "只分配责任人，不推进房态；他人已认领 409。",
+    ),
+    (
+        "/housekeeping/tasks/{task_id}/assign",
+        "派工清洁任务",
+        HK_WRITE_PERM,
+        s_obj({"assigned_to": s_int("目标员工档案 ID。")}, required=("assigned_to",)),
+        "只改负责人，任务回到 PENDING；不改房态。",
+    ),
+    (
+        "/housekeeping/tasks/{task_id}/start",
+        "开始清洁",
+        HK_WRITE_PERM,
+        None,
+        "任务 PENDING→IN_PROGRESS 与房间 DIRTY→CLEANING 同事务。",
+    ),
+    (
+        "/housekeeping/tasks/{task_id}/complete",
+        "完成清洁待检查",
+        HK_WRITE_PERM,
+        None,
+        "任务→DONE 与房间 CLEANING→INSPECTING 同事务。",
+    ),
+    (
+        "/housekeeping/tasks/{task_id}/cancel",
+        "取消未开始清洁任务",
+        HK_WRITE_PERM,
+        s_obj({"reason": s_str("取消原因。")}, required=("reason",)),
+        "仅 PENDING 可取消；不动房态。",
+    ),
+):
+    op(
+        _path,
+        "post",
+        "清洁与维修",
+        _summary,
+        status="verified",
+        path_params=[("task_id", "HousekeepingTask ID。")],
+        body=_body,
+        no_body=_body is None,
+        body_required=_body is not None,
+        permission=_perm,
+        ok=(("200", "任务状态变更结果"),),
+        data=s_obj({"changed": s_bool(), **HK_TASK_DTO["properties"]}),
+        errors=E_STAFF_CONFLICT,
+        notes=_notes,
+        extras=HK_IDEM,
+    )
+
+op(
+    "/housekeeping/tasks/{task_id}/inspect",
+    "post",
+    "清洁与维修",
+    "检查/复检清洁任务",
+    status="verified",
+    path_params=[("task_id", "HousekeepingTask ID。")],
+    body=s_obj(
+        {
+            "result": s_str("PASS/FAIL。"),
+            "checklist_result": s_obj(desc="检查项结果。"),
+            "failed_items": s_arr(s_str(), "FAIL 时必填的不合格项。"),
+            "notes": s_str(),
+        },
+        required=("result",),
+    ),
+    permission="PASS 另需 hotelapp.room_release_ready；FAIL 用 inventory.housekeeping_update",
+    ok=(("200", "落 RoomInspection；PASS 净房放行，FAIL 返工并生成新任务"),),
+    data=s_obj(
+        {
+            "task": HK_TASK_DTO,
+            "inspection": s_obj({"id": s_int(), "result": s_str(), "failed_items": s_arr(s_str())}),
+        }
+    ),
+    errors=E_STAFF_CONFLICT,
+    notes="清洁人不得自检放行；FAIL 必须有不合格项。任务/房态/库存同事务。",
+    extras=HK_IDEM,
+)
+
+op(
+    "/maintenance/tickets",
+    "get",
+    "清洁与维修",
+    "维修工单列表",
+    status="verified",
+    query=[Q("status", "工单状态筛选。"), Q("room_id", "房间 ID。", "integer"), *PQ()],
+    permission=HK_VIEW_PERM,
+    ok=(("200", "工单分页列表"),),
+    data=s_arr(MT_DTO),
+    errors=E_STAFF,
+)
+
+op(
+    "/maintenance/tickets/{ticket_id}",
+    "get",
+    "清洁与维修",
+    "维修工单详情",
+    status="verified",
+    path_params=[("ticket_id", "MaintenanceTicket ID。")],
+    permission=HK_VIEW_PERM,
+    ok=(("200", "工单详情"),),
+    data=MT_DTO,
+    errors=E_STAFF,
+)
+
+op(
+    "/maintenance/tickets/create",
+    "post",
+    "清洁与维修",
+    "报修并登记维修停用",
+    status="verified",
+    body=s_obj(
+        {
+            "room_id": s_int(),
+            "reason": s_str("2-240 字符报修原因。"),
+            "category": s_str(),
+            "severity": s_str("LOW/NORMAL/HIGH。"),
+            "from_date": s_str("", format="date"),
+            "to_date": s_nullable(s_str("", format="date")),
+            "deactivate_room": s_bool("是否同步房态与库存停用，默认 true。"),
+        },
+        required=("room_id", "reason"),
+    ),
+    permission=MT_PERM,
+    ok=(("201", "工单创建成功"),),
+    data=MT_DTO,
+    errors=E_STAFF_CONFLICT,
+    notes="默认调用 change_maintenance_status(OUT_OF_ORDER) 同步未来库存，容量冲突整体回滚。",
+    extras=HK_IDEM,
+)
+
+for _path, _summary, _body, _notes in (
+    (
+        "/maintenance/tickets/{ticket_id}/assign",
+        "维修派工",
+        s_obj({"assigned_to": s_int("目标员工档案 ID。")}, required=("assigned_to",)),
+        "OPEN→OPEN 并写负责人。",
+    ),
+    ("/maintenance/tickets/{ticket_id}/start", "开始维修", None, "OPEN→IN_PROGRESS。"),
+    (
+        "/maintenance/tickets/{ticket_id}/resolve",
+        "维修完成提交验收",
+        s_obj({"notes": s_str()}, desc="维修说明。"),
+        "IN_PROGRESS→PENDING_VERIFY；不直接恢复房态/库存。",
+    ),
+    (
+        "/maintenance/tickets/{ticket_id}/verify",
+        "维修验收",
+        s_obj({"result": s_str("PASS/FAIL。"), "notes": s_str()}, required=("result",)),
+        "PASS 调用 change_maintenance_status(NORMAL) 恢复可售；FAIL 退回维修中。报修人不得自验通过。",
+    ),
+    (
+        "/maintenance/tickets/{ticket_id}/cancel",
+        "取消未派工工单",
+        s_obj({"reason": s_str("取消原因。")}, required=("reason",)),
+        "仅 OPEN 可取消。",
+    ),
+):
+    op(
+        _path,
+        "post",
+        "清洁与维修",
+        _summary,
+        status="verified",
+        path_params=[("ticket_id", "MaintenanceTicket ID。")],
+        body=_body,
+        no_body=_body is None,
+        body_required=_body is not None,
+        permission=MT_PERM,
+        ok=(("200", "工单状态变更结果"),),
+        data=s_obj({"changed": s_bool(), **MT_DTO["properties"]}),
+        errors=E_STAFF_CONFLICT,
+        notes=_notes,
+        extras=HK_IDEM,
+    )
 
 # ========== 报表分析（基线 2.0 §4.5；只读聚合，不作为第二账本） ==========
 RPT_FROM_TO = [
@@ -4467,7 +5261,7 @@ op(
     "会员报表（等级/状态分布 + 近 30 天新增趋势 + Top 会员）",
     status="verified",
     permission="有效员工 + hotelapp.view_accommodation（运营类报表；"
-               "仅输出 member_no 与聚合数值，不输出客人姓名/手机号）",
+    "仅输出 member_no 与聚合数值，不输出客人姓名/手机号）",
     ok=(("200", "会员汇总/等级分布/状态分布/近 30 天新增趋势/Top 会员 + 口径 metadata"),),
     data=s_obj(
         {
@@ -4479,8 +5273,9 @@ op(
                     "suspended_members": s_int("暂停数。"),
                     "expired_members": s_int("已过期数。"),
                     "terminated_members": s_int("已终止数。"),
-                    "trend_window": s_obj(desc="近 30 天趋势窗口"
-                                              "{start,end,days}（物业时区自然日）。"),
+                    "trend_window": s_obj(
+                        desc="近 30 天趋势窗口" "{start,end,days}（物业时区自然日）。"
+                    ),
                     "top_members_limit": s_int("Top 会员条数上限。"),
                     "top_metric": s_str("Top 会员排序口径：room_nights（累计入住晚数）。"),
                 }
@@ -4559,8 +5354,7 @@ op(
                 desc="按来源分组（订单数降序）；series 为同一数组的兼容别名。",
             ),
             "trend": s_arr(
-                s_obj({"date": s_str("", format="date"), "reservations": s_int(),
-                       "gmv": s_str()}),
+                s_obj({"date": s_str("", format="date"), "reservations": s_int(), "gmv": s_str()}),
                 desc="近 30 天按日下单量与 GMV（含 0 计数日）。",
             ),
             "metadata": s_obj(desc="统计口径（P0-07 模式）。"),
@@ -4572,6 +5366,42 @@ op(
     "入住转化 = 存在非作废 Stay（IN_HOUSE/CHECKED_OUT）的去重预订数；"
     "GMV = 全部状态预订 total_amount 合计（订单金额口径，未扣取消/未入住，"
     "非账务实收收入），仅统计物业结算币种（多币种不相加）。" + RPT_SNAPSHOT_NOTE,
+)
+
+op(
+    "/reports/export",
+    "get",
+    "报表分析",
+    "报表受控导出（CSV）",
+    status="verified",
+    query=[
+        Q(
+            "report",
+            "已登记报表代码：occupancy/adr/revenue/guests/housekeeping/memberships/sources。",
+            "string",
+            True,
+            "occupancy",
+        ),
+        Q(
+            "reason",
+            "导出用途说明，8-240 字符，必填并写入审计。",
+            "string",
+            True,
+            "管理层周报数据核对",
+        ),
+        *RPT_FROM_TO,
+        Q("group_by", "仅 revenue 有效：day 或 type，缺省 day。"),
+    ],
+    permission="有效员工 + 与所选报表相同的门禁（revenue/adr=hotelapp.finance_access；"
+    "其余=hotelapp.view_accommodation）",
+    ok=(("200", "UTF-8 BOM 编码的 CSV 附件（最多 5000 行）"),),
+    data=s_str("CSV 文本；列取自当前报表 data.series 的字段，与页面查询同一口径。"),
+    envelope="raw",
+    content_type="text/csv; charset=utf-8-sig",
+    errors=E_STAFF_CONFLICT,
+    notes="直接调用对应只读报表视图并复用其门禁、日期口径与聚合结果，只序列化 data.series，"
+    "不在导出路径重写任何聚合逻辑；每次导出写 AuditEvent(action=report.export)，"
+    "含报表代码、行数、口径 metadata 与用途。memberships/sources 为快照型报表，忽略 from/to。",
 )
 
 # ========== 通知与待办（基线 2.0 §4.6；站内通知，无第三方渠道） ==========
@@ -4688,6 +5518,123 @@ op(
     "已解决项自动置已读；通知生成不产生 AuditEvent。",
 )
 
+# ========== 可执行待办 WorkItem（MC-007） ==========
+TASK_PERM = "有效员工 + 当前物业有效任职；完成/认领再按 task_code 校验现有业务权限码"
+TASK_DTO = s_obj(
+    {
+        "id": s_int(),
+        "task_code": s_str(),
+        "source_type": s_str(),
+        "source_id": s_str(),
+        "title": s_str(),
+        "status": s_str("PENDING/CLAIMED/DONE/CANCELLED。"),
+        "resolution": s_nullable(s_str("COMPLETED/SOURCE_RESOLVED/CANCELLED。")),
+        "assigned_to": s_nullable(s_int("当前负责人 StaffProfile ID。")),
+        "claimed_by": s_nullable(s_int()),
+        "completed_by": s_nullable(s_int()),
+        "can_complete": s_bool("该来源是否已登记可执行源领域服务。"),
+        "last_error_code": s_str(),
+        "last_error_summary": s_str(),
+    },
+    desc="WorkItem 只描述工作过程，不复制源业务状态。",
+)
+
+op(
+    "/tasks",
+    "get",
+    "通知与待办",
+    "我的可执行待办列表",
+    status="verified",
+    query=[
+        Q("status", "状态筛选；缺省为 PENDING/CLAIMED。"),
+        Q("task_code", "任务来源代码筛选。"),
+        Q("assigned", "me=指派给我 / group=待认领岗位任务 / all=全部可见。"),
+        *PQ(),
+    ],
+    permission=TASK_PERM,
+    ok=(("200", "待办列表 + meta.pagination；note 明确已读≠完成"),),
+    data=s_arr(TASK_DTO),
+    errors=E_STAFF,
+    notes="按当前有效任职/岗位动态可见；调岗离职后旧岗位任务自动不可见。",
+)
+
+op(
+    "/tasks/{work_item_id}",
+    "get",
+    "通知与待办",
+    "可执行待办详情",
+    status="verified",
+    path_params=[("work_item_id", "WorkItem ID。")],
+    permission=TASK_PERM,
+    ok=(("200", "待办详情"),),
+    data=TASK_DTO,
+    errors=E_STAFF,
+)
+
+op(
+    "/tasks/{work_item_id}/claim",
+    "post",
+    "通知与待办",
+    "认领可执行待办",
+    status="verified",
+    path_params=[("work_item_id", "WorkItem ID。")],
+    no_body=True,
+    permission=TASK_PERM,
+    ok=(("200", "认领成功；重复认领返回 changed=false"),),
+    data=s_obj({"changed": s_bool()}),
+    errors=E_STAFF_CONFLICT,
+    notes="只改分配事实；他人已认领或任务已关闭返回 409。",
+    extras={
+        "x-idempotency": {
+            "header": "Idempotency-Key",
+            "required": False,
+            "max_length": 128,
+            "semantics": "api_contract.idempotent；同键重放首次响应。",
+        }
+    },
+)
+
+op(
+    "/tasks/{work_item_id}/assign",
+    "post",
+    "通知与待办",
+    "指派可执行待办",
+    status="verified",
+    path_params=[("work_item_id", "WorkItem ID。")],
+    body=s_obj(
+        {"assigned_to": s_int("目标员工档案 ID（须在当前物业有有效任职）。")},
+        required=("assigned_to",),
+    ),
+    permission="有效员工 + identity.staff_manage",
+    ok=(("200", "指派成功；任务回到待认领状态"),),
+    data=TASK_DTO,
+    errors=E_STAFF_CONFLICT,
+    notes="只改负责人，不改源业务状态。",
+)
+
+op(
+    "/tasks/{work_item_id}/complete",
+    "post",
+    "通知与待办",
+    "完成可执行待办（调用源领域服务）",
+    status="verified",
+    path_params=[("work_item_id", "WorkItem ID。")],
+    body=s_obj(
+        {
+            "reason": s_str("审批/复核说明。"),
+            "decision": s_str("break-glass 复核结论 CONFIRMED/REJECTED。"),
+        },
+        desc="按 task_code 使用相应字段。",
+    ),
+    body_required=False,
+    permission=TASK_PERM,
+    ok=(("200", "源业务成功后关闭任务；重复完成 changed=false"),),
+    data=s_obj({"changed": s_bool()}),
+    errors=E_STAFF_CONFLICT,
+    notes="源服务失败保留待处理并写 last_error_*；通知已读不能完成待办；"
+    "未登记源服务的来源返回 409，须跳转权威业务工作流。",
+)
+
 # ========== 文档 ==========
 op(
     "/openapi.json",
@@ -4769,7 +5716,7 @@ def _render_operation(entry):
     for code, desc in entry["ok"]:
         responses[code] = {
             "description": desc,
-            "content": {"application/json": {"schema": _envelope_data(entry)}},
+            "content": {entry["content_type"]: {"schema": _envelope_data(entry)}},
         }
     public = not entry["auth"]
     for code in entry["errors"]:

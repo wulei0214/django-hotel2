@@ -65,16 +65,19 @@
     <section class="pms-panel" aria-label="报表结果">
       <form class="pms-tools" id="rp-form">
         <strong id="rp-report-title">入住率报表</strong>
-        <label for="rp-from" style="font-size:13px;color:var(--color-text-secondary,#637188)">开始</label>
-        <input type="date" id="rp-from" required>
-        <label for="rp-to" style="font-size:13px;color:var(--color-text-secondary,#637188)">结束</label>
-        <input type="date" id="rp-to" required>
+        <span id="rp-range-fields" class="pms-range">
+          <label for="rp-from" style="font-size:13px;color:var(--color-text-secondary,#637188)">开始</label>
+          <input type="date" id="rp-from">
+          <label for="rp-to" style="font-size:13px;color:var(--color-text-secondary,#637188)">结束</label>
+          <input type="date" id="rp-to">
+        </span>
+        <span class="pms-meta" id="rp-range-note">区间最长 92 天</span>
+        <span class="pms-meta" id="rp-snapshot-note" hidden>快照型报表：固定近 30 天趋势窗口，不接受日期区间</span>
         <select id="rp-group-by" hidden aria-label="收入分组维度">
           <option value="day">按营业日</option>
           <option value="type">按凭证类型</option>
         </select>
         <button type="submit">查询</button>
-        <span class="pms-meta">区间最长 92 天</span>
       </form>
       <div id="rp-error" class="pms-drawer-err" hidden></div>
       <div class="rp-summary" id="rp-summary"></div>
@@ -82,6 +85,17 @@
       <div class="rp-basis" id="rp-basis" hidden>
         <h4>统计口径说明（随响应 meta 下发）</h4>
         <ul id="rp-basis-list"></ul>
+      </div>
+    </section>
+
+    {# ── 受控导出：与当前查询同一报表/口径，原因必填并写审计 ── #}
+    <section class="pms-panel" aria-label="受控导出">
+      <div class="pms-tools">
+        <strong style="font-size:14px">受控导出</strong>
+        <label for="rp-export-reason" style="font-size:13px;color:var(--color-text-secondary,#637188)">用途说明（8-240 字）</label>
+        <input type="text" id="rp-export-reason" maxlength="240" placeholder="例如：管理层周报数据核对">
+        <button type="button" id="rp-export-btn">导出当前报表 CSV</button>
+        <span class="pms-meta">复用当前报表口径；每次导出写入审计事件</span>
       </div>
     </section>
   </div>
@@ -159,6 +173,32 @@
         {path: "date", label: "自然日"},
         {path: "status_changes", label: "状态流转次数", num: true}],
     },
+    memberships: {
+      name: "会员报表", gate: "view_accommodation", snapshot: true,
+      description: "会员总数/等级状态分布/近 30 天新增趋势/Top 会员（快照型，不取 from/to）",
+      summary: [["total_members", "会员总数"], ["active_members", "有效会员"],
+                ["pending_members", "待生效"], ["suspended_members", "暂停"]],
+      columns: [
+        {path: "level_label", label: "会员等级"},
+        {path: "level_code", label: "代码"},
+        {path: "members", label: "会员数", num: true}],
+    },
+    sources: {
+      name: "渠道来源报表", gate: "view_accommodation", snapshot: true,
+      description: "各来源订单/确认转化/入住转化/GMV + 近 30 天趋势（快照型，不取 from/to）",
+      summary: [["total_reservations", "订单总数"], ["confirmed_reservations", "确认转化"],
+                ["with_stay_reservations", "入住转化"], ["gmv", "GMV"],
+                ["confirmed_rate", "确认转化率%"], ["stay_rate", "入住转化率%"]],
+      columns: [
+        {path: "source_label", label: "预订来源"},
+        {path: "source", label: "代码"},
+        {path: "reservations", label: "订单数", num: true},
+        {path: "confirmed", label: "确认转化", num: true},
+        {path: "confirmed_rate", label: "确认转化率%", num: true},
+        {path: "with_stay", label: "入住转化", num: true},
+        {path: "stay_rate", label: "入住转化率%", num: true},
+        {path: "gmv", label: "GMV", num: true}],
+    },
   };
   const GROUPABLE = new Set(["revenue"]);
   const SUMMARY_TEXT = new Set(["currency"]);
@@ -222,6 +262,10 @@
     });
     document.getElementById("rp-report-title").textContent = REPORTS[key].name;
     document.getElementById("rp-group-by").hidden = !GROUPABLE.has(key);
+    const snapshot = !!REPORTS[key].snapshot;
+    document.getElementById("rp-range-fields").hidden = snapshot;
+    document.getElementById("rp-range-note").hidden = snapshot;
+    document.getElementById("rp-snapshot-note").hidden = !snapshot;
     document.getElementById("rp-table-wrap").replaceChildren();
     document.getElementById("rp-summary").replaceChildren();
     document.getElementById("rp-basis").hidden = true;
@@ -303,10 +347,11 @@
     const errBox = document.getElementById("rp-error");
     errBox.hidden = true;
     const spec = REPORTS[current];
-    const params = new URLSearchParams({
-      from: document.getElementById("rp-from").value,
-      to: document.getElementById("rp-to").value,
-    });
+    const params = new URLSearchParams();
+    if (!spec.snapshot) {
+      params.set("from", document.getElementById("rp-from").value);
+      params.set("to", document.getElementById("rp-to").value);
+    }
     if (spec.groupBy) {
       params.set("group_by", document.getElementById("rp-group-by").value);
     }
@@ -326,6 +371,54 @@
     load();
   });
   document.getElementById("rp-group-by").addEventListener("change", load);
+
+  /* ---------- 受控导出：同一报表口径 + 必填原因 + 审计 ---------- */
+  async function exportCsv() {
+    const errBox = document.getElementById("rp-error");
+    errBox.hidden = true;
+    if (!current) return;
+    const spec = REPORTS[current];
+    const reason = document.getElementById("rp-export-reason").value.trim();
+    if (reason.length < 8 || reason.length > 240) {
+      errBox.textContent = "导出用途需填写 8 至 240 个字符。";
+      errBox.hidden = false;
+      return;
+    }
+    const params = new URLSearchParams({report: current, reason: reason});
+    if (!spec.snapshot) {
+      params.set("from", document.getElementById("rp-from").value);
+      params.set("to", document.getElementById("rp-to").value);
+    }
+    if (spec.groupBy) {
+      params.set("group_by", document.getElementById("rp-group-by").value);
+    }
+    try {
+      const response = await fetch("/api/v1/reports/export?" + params.toString(), {
+        credentials: "same-origin", headers: {"Accept": "text/csv"}
+      });
+      if (!response.ok) {
+        let message = "导出失败（HTTP " + response.status + "）";
+        try {
+          const payload = await response.json();
+          if (payload && payload.error && payload.error.message) message = payload.error.message;
+        } catch (ignored) { /* 非 JSON 错误响应保留 HTTP 提示 */ }
+        throw new Error(message);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "report-" + current + ".csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      errBox.textContent = error.message;
+      errBox.hidden = false;
+    }
+  }
+  document.getElementById("rp-export-btn").addEventListener("click", exportCsv);
 
   initDates();
   load();

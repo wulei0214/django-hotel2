@@ -704,6 +704,9 @@ def memberships_report(request):
         "by_status": by_status,
         "new_trend": new_trend,
         "top_members": top_members,
+        # 报表中心前端与受控导出统一读 data.series（同 guests/sources 惯例）；
+        # by_level 保留为语义别名，二者指向同一数组。
+        "series": by_level,
         "metadata": _metadata(
             property_obj,
             trend_start,

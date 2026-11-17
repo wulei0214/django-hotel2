@@ -1,0 +1,51 @@
+PMS 管理中心闭环整改专项证据（MC-002 / MC-003 / MC-004 / MC-005 / MC-006 / MC-007 / MC-008 / MC-009 / MC-010）
+日期：2026-11-17
+被测树：工作区未提交整改（审查基线 main SHA ceeff0cf429e5fb77e25dd1cf787d80cde35082d）
+环境：DJANGO_ENV=test；DJANGO_DB_ENGINE=sqlite；DJANGO_DB_NAME=:memory:；Python 3.9.0
+说明：专项与全量均不带 --keepdb；日志中的 traceback（db unavailable / Redis unavailable）为测试用例主动模拟的降级分支，最终结论以 Ran/OK 行为准。
+
+[1] 全量回归（权威口径）
+命令：python manage.py test --noinput -v 1
+结果：Ran 1646 tests in 443.633s
+      OK (skipped=26)
+原始输出：.work/full_regression.log（临时工作副本，结论见本证据）
+
+[2] 专项整合回归（管理中心 + 契约相关 10 个模块）
+命令：python manage.py test apps.api.test_management_center_actions
+      apps.api.test_center_template_regressions apps.api.test_five_centers_closure
+      apps.api.test_audit_center apps.api.test_audit_governance
+      apps.api.test_report_center apps.api.test_report_export
+      apps.api.test_night_audit_center apps.api.test_night_audit_blockers
+      apps.api.test_openapi_schema -v 1
+结果：Found 183 test(s) / Ran 183 tests in 68.070s / OK
+
+[3] OpenAPI 契约与双快照
+命令：python manage.py test apps.api.test_openapi_schema -v 1
+结果：Found 43 test(s) / Ran 43 tests in 0.755s / OK
+导出：python manage.py export_openapi_schema -> 166 paths
+双快照：权威与镜像逐字节一致，1329590 字节，SHA256 1b0783066a64c5cf45941943dc334883c8496096d1fc9187ba860d2a6a2635b3
+业务 operation：167（另 /api/v1/openapi.json 自身 1 项，共 168）；verified 168 / partial 0
+
+[4] 本轮新增端点专项
+命令：python manage.py test apps.api.test_audit_governance
+      apps.api.test_report_export apps.api.test_night_audit_blockers -v 2
+结果：Ran 13 tests in 5.828s / OK
+说明：首轮发现 audit_governance 漏导入 api_response 导致 500，已修复后复跑全绿。
+
+[5] 既有 MC 专项（本轮改动后仍保持）
+MC-002 页面交互 + 模板守卫 + 五中心闭环：Ran 34 tests / OK
+MC-007 任务中心 + 通知中心：44 tests / OK
+MC-006 清洁维修任务链：41 tests / OK
+MC-005 员工资料维护：39 tests / OK
+MC-003 Guest 子资源：3 tests / OK
+MC-004 库存受控写：3 tests / OK
+
+[6] 质量门禁（36 个触碰文件）
+ruff 0.6.9 check：All checks passed
+black 24.8.0 --check：36 files compliant
+ruff format --check：36 files already formatted
+scripts/mypy_baseline.py check-files：通过——36 个触碰文件无新增错误（未改基线）
+python scripts/docs_link_check.py check：新增违规数=0，受保护变更=0
+
+[7] 未包含的验收范围
+真实浏览器 E2E、九角色走查、MySQL 目标环境部署、调度器安装与失败重跑、数据库 append-only 账号权限与备份恢复演练，均不在本证据范围；不得以本日志宣布业务闭环或上线验收通过。

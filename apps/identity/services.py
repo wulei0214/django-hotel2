@@ -394,6 +394,85 @@ class EmployeeLifecycleService:
         )
         return assignment
 
+    # ---------- 档案资料维护（MC-005：不触碰任职/角色/工号事实） ----------
+    @classmethod
+    @transaction.atomic
+    def update_profile(
+        cls,
+        profile,
+        *,
+        property_obj,
+        full_name=None,
+        phone=None,
+        position_code=None,
+        changed_by=None,
+        reason="",
+        request=None,
+    ):
+        """更新员工可纠错资料；工号、任职状态与角色授权必须走各自专用入口。"""
+        from apps.core.models import AuditEvent
+
+        reason = str(reason or "").strip()
+        if not 2 <= len(reason) <= 240:
+            raise EmployeeLifecycleError("资料更新必须填写 2 至 240 个字符的原因。")
+        membership = cls.get_membership(profile, property_obj)
+        if membership is None:
+            raise EmployeeLifecycleError("员工不属于当前物业，不能维护档案资料。")
+        if profile.employment_status == StaffProfile.EmploymentStatus.TERMINATED:
+            raise EmployeeLifecycleError("已离职员工档案不能在日常工作台维护。")
+
+        before = {}
+        profile = type(profile).objects.select_for_update().get(pk=profile.pk)
+        if full_name is not None:
+            full_name = str(full_name).strip()
+            if not full_name or len(full_name) > 120:
+                raise EmployeeLifecycleError("姓名需为 1 至 120 个字符。")
+            if profile.full_name != full_name:
+                before["full_name"] = profile.full_name
+                profile.full_name = full_name
+        if phone is not None:
+            phone = str(phone).strip()
+            if len(phone) > 32:
+                raise EmployeeLifecycleError("联系电话不得超过 32 个字符。")
+            if profile.phone != phone:
+                before["phone"] = profile.phone
+                profile.phone = phone
+        if before:
+            profile.save(update_fields=(*before.keys(), "updated_at"))
+        after = dict(before)
+
+        membership = type(membership).objects.select_for_update().get(pk=membership.pk)
+        if position_code is not None:
+            position_code = str(position_code).strip()
+            if not position_code or len(position_code) > 64:
+                raise EmployeeLifecycleError("岗位编码需为 1 至 64 个字符。")
+            if membership.position_code != position_code:
+                before["membership.position_code"] = membership.position_code
+                membership.position_code = position_code
+                membership.save(update_fields=("position_code",))
+                after["membership.position_code"] = position_code
+        if not before:
+            return profile, membership, False
+        AuditEvent.record(
+            action="identity.employee_profile_update",
+            entity_type="StaffProfile",
+            entity_id=profile.pk,
+            actor=changed_by,
+            property_obj=property_obj,
+            before=before,
+            after=after,
+            reason=reason,
+            request=request,
+        )
+        audit.info(
+            "员工档案资料更新 operator=%s profile=%s fields=%s reason=%s",
+            getattr(changed_by, "username", "system"),
+            profile.pk,
+            sorted(before),
+            reason,
+        )
+        return profile, membership, True
+
     # ---------- 停用 / 离职（STAFF-09） ----------
     @classmethod
     @transaction.atomic

@@ -3,15 +3,21 @@ from django.urls import path
 from . import (
     approval,
     audit_center,
+    audit_governance,
     billing_center,
     front_desk,
     guest_center,
+    guest_subresources,
     housekeeping_center,
+    housekeeping_workflow_center,
+    inventory_admin_center,
     night_audit,
     notification_center,
     report_center,
+    report_export,
     reservation_center,
     staff_center,
+    task_center,
     views,
 )
 
@@ -19,6 +25,11 @@ app_name = "api"
 
 urlpatterns = [
     path("night-audit/preview", night_audit.night_audit_preview, name="night_audit_preview"),
+    path(
+        "night-audit/blockers",
+        night_audit.night_audit_blockers,
+        name="night_audit_blockers",
+    ),
     path("night-audit/run", night_audit.night_audit_run, name="night_audit_run"),
     # §4.2 营业日中心只读端点：列表/当前/详情 + 夜审历史 + break-glass 列表
     path(
@@ -199,11 +210,106 @@ urlpatterns = [
         guest_center.guest_reveal_phone,
         name="guest_reveal_phone",
     ),
+    # MC-003：电话/证件子资源生命周期（全部复用 GuestService）
+    path(
+        "guests/<int:guest_id>/phones", guest_subresources.phone_create, name="guest_phone_create"
+    ),
+    path(
+        "guests/<int:guest_id>/phones/<int:phone_id>/primary",
+        guest_subresources.phone_set_primary,
+        name="guest_phone_set_primary",
+    ),
+    path(
+        "guests/<int:guest_id>/phones/<int:phone_id>/verify",
+        guest_subresources.phone_verify,
+        name="guest_phone_verify",
+    ),
+    path(
+        "guests/<int:guest_id>/documents",
+        guest_subresources.document_create,
+        name="guest_document_create",
+    ),
+    path(
+        "guests/<int:guest_id>/documents/<int:document_id>/update",
+        guest_subresources.document_update,
+        name="guest_document_update",
+    ),
+    path(
+        "guests/<int:guest_id>/documents/<int:document_id>/verify",
+        guest_subresources.document_verify,
+        name="guest_document_verify",
+    ),
+    path(
+        "guests/<int:guest_id>/documents/<int:document_id>/invalidate",
+        guest_subresources.document_invalidate,
+        name="guest_document_invalidate",
+    ),
     # --- Room 中心 (V1.1 Phase 1 只读原型) ---
     path("rooms/status", guest_center.room_status_list, name="room_status_list"),
     path("room-types", guest_center.room_type_list, name="room_type_list"),
     path("rate-calendar", guest_center.rate_calendar, name="rate_calendar"),
     path("financial-summary", guest_center.financial_summary_api, name="financial_summary"),
+    # MC-004：库存中心受控写工作台（主数据/关房/停售/差异修复）
+    path(
+        "inventory/daily-rates/<int:rate_id>/close",
+        inventory_admin_center.daily_rate_close,
+        name="inventory_rate_close",
+    ),
+    path(
+        "inventory/stock/<int:inventory_id>/stop-sell",
+        inventory_admin_center.stock_stop_sell,
+        name="inventory_stock_stop_sell",
+    ),
+    path(
+        "inventory/room-types/create",
+        inventory_admin_center.room_type_create,
+        name="inventory_room_type_create",
+    ),
+    path(
+        "inventory/room-types/<int:room_type_id>/update",
+        inventory_admin_center.room_type_update,
+        name="inventory_room_type_update",
+    ),
+    path(
+        "inventory/rooms/create",
+        inventory_admin_center.room_create,
+        name="inventory_room_create",
+    ),
+    path(
+        "inventory/rooms/<int:room_id>/update",
+        inventory_admin_center.room_update,
+        name="inventory_room_update",
+    ),
+    path(
+        "inventory/discrepancies",
+        inventory_admin_center.discrepancy_list,
+        name="inventory_discrepancy_list",
+    ),
+    path(
+        "inventory/discrepancies/scan",
+        inventory_admin_center.discrepancy_scan,
+        name="inventory_discrepancy_scan",
+    ),
+    path(
+        "inventory/discrepancies/<int:discrepancy_id>/fix-request",
+        inventory_admin_center.discrepancy_fix_request,
+        name="inventory_discrepancy_fix_request",
+    ),
+    path(
+        "inventory/discrepancies/<int:discrepancy_id>/approve",
+        inventory_admin_center.discrepancy_approve,
+        name="inventory_discrepancy_approve",
+    ),
+    path(
+        "inventory/discrepancies/<int:discrepancy_id>/execute",
+        inventory_admin_center.discrepancy_execute,
+        name="inventory_discrepancy_execute",
+    ),
+    path(
+        "inventory/discrepancies/<int:discrepancy_id>/dismiss",
+        inventory_admin_center.discrepancy_dismiss,
+        name="inventory_discrepancy_dismiss",
+    ),
     # --- ApprovalRecord (V1.2 Q-05/Q-06/Q-14) ---
     path("approvals", approval.approval_list, name="approval_list"),
     path("approvals/request", approval.approval_request, name="approval_request"),
@@ -224,6 +330,18 @@ urlpatterns = [
     path("audit/events/<int:event_id>", audit_center.audit_event_detail, name="audit_event_detail"),
     path("audit/summary", audit_center.audit_summary, name="audit_summary"),
     path("audit/actions", audit_center.audit_actions, name="audit_actions"),
+    # MC-008：受控导出、留存状态与只读完整性摘要
+    path("audit/export", audit_governance.audit_export, name="audit_export"),
+    path(
+        "audit/retention/status",
+        audit_governance.audit_retention_status,
+        name="audit_retention_status",
+    ),
+    path(
+        "audit/integrity/check",
+        audit_governance.audit_integrity_check,
+        name="audit_integrity_check",
+    ),
     path(
         "daily-rates/<int:rate_id>/adjust",
         guest_center.adjust_daily_rate_api,
@@ -372,6 +490,83 @@ urlpatterns = [
         housekeeping_center.housekeeping_maintenance_change,
         name="housekeeping_maintenance_change",
     ),
+    # MC-006：任务级接单/派工/开始/完成/检查 + 维修工单全生命周期
+    path("housekeeping/tasks", housekeeping_workflow_center.task_list, name="housekeeping_tasks"),
+    path(
+        "housekeeping/tasks/<int:task_id>",
+        housekeeping_workflow_center.task_detail,
+        name="housekeeping_task_detail",
+    ),
+    path(
+        "housekeeping/tasks/<int:task_id>/claim",
+        housekeeping_workflow_center.task_claim,
+        name="housekeeping_task_claim",
+    ),
+    path(
+        "housekeeping/tasks/<int:task_id>/assign",
+        housekeeping_workflow_center.task_assign,
+        name="housekeeping_task_assign",
+    ),
+    path(
+        "housekeeping/tasks/<int:task_id>/start",
+        housekeeping_workflow_center.task_start,
+        name="housekeeping_task_start",
+    ),
+    path(
+        "housekeeping/tasks/<int:task_id>/complete",
+        housekeeping_workflow_center.task_complete,
+        name="housekeeping_task_complete",
+    ),
+    path(
+        "housekeeping/tasks/<int:task_id>/inspect",
+        housekeeping_workflow_center.task_inspect,
+        name="housekeeping_task_inspect",
+    ),
+    path(
+        "housekeeping/tasks/<int:task_id>/cancel",
+        housekeeping_workflow_center.task_cancel,
+        name="housekeeping_task_cancel",
+    ),
+    path(
+        "maintenance/tickets",
+        housekeeping_workflow_center.ticket_list,
+        name="maintenance_tickets",
+    ),
+    path(
+        "maintenance/tickets/<int:ticket_id>",
+        housekeeping_workflow_center.ticket_detail,
+        name="maintenance_ticket_detail",
+    ),
+    path(
+        "maintenance/tickets/create",
+        housekeeping_workflow_center.ticket_create,
+        name="maintenance_ticket_create",
+    ),
+    path(
+        "maintenance/tickets/<int:ticket_id>/assign",
+        housekeeping_workflow_center.ticket_assign,
+        name="maintenance_ticket_assign",
+    ),
+    path(
+        "maintenance/tickets/<int:ticket_id>/start",
+        housekeeping_workflow_center.ticket_start,
+        name="maintenance_ticket_start",
+    ),
+    path(
+        "maintenance/tickets/<int:ticket_id>/resolve",
+        housekeeping_workflow_center.ticket_resolve,
+        name="maintenance_ticket_resolve",
+    ),
+    path(
+        "maintenance/tickets/<int:ticket_id>/verify",
+        housekeeping_workflow_center.ticket_verify,
+        name="maintenance_ticket_verify",
+    ),
+    path(
+        "maintenance/tickets/<int:ticket_id>/cancel",
+        housekeeping_workflow_center.ticket_cancel,
+        name="maintenance_ticket_cancel",
+    ),
     # --- 报表分析中心 (基线 2.0 §4.5；只读聚合。收入/ADR=finance_access，
     #     入住率/客源/清洁=view_accommodation；期间上限 92 天) ---
     path("reports/occupancy", report_center.occupancy_report, name="report_occupancy"),
@@ -384,6 +579,7 @@ urlpatterns = [
     # 均挂运营类门禁 hotelapp.view_accommodation）
     path("reports/memberships", report_center.memberships_report, name="report_memberships"),
     path("reports/sources", report_center.sources_report, name="report_sources"),
+    path("reports/export", report_export.report_export, name="report_export"),
     # --- 通知与待办中心 (基线 2.0 §4.6；站内通知，门禁=认证+当前物业有效任职，
     #     不设专项权限码——全员工作入口；refresh=实时派生，按物业隔离) ---
     path("notifications", notification_center.notification_list, name="notification_list"),
@@ -399,4 +595,10 @@ urlpatterns = [
         notification_center.mark_read,
         name="notification_mark_read",
     ),
+    # --- 可执行待办（MC-007）：通知已读与任务完成完全分离 ---
+    path("tasks", task_center.task_list, name="task_list"),
+    path("tasks/<int:work_item_id>", task_center.task_detail, name="task_detail"),
+    path("tasks/<int:work_item_id>/claim", task_center.task_claim, name="task_claim"),
+    path("tasks/<int:work_item_id>/assign", task_center.task_assign, name="task_assign"),
+    path("tasks/<int:work_item_id>/complete", task_center.task_complete, name="task_complete"),
 ]

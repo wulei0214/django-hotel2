@@ -685,6 +685,15 @@ class Notification(models.Model):
         verbose_name="待办去重键",
         help_text="运营待办业务键（来源代码|业务键|目标组）；空=人工/公告类，不参与自动销项",
     )
+    work_item: models.ForeignKey = models.ForeignKey(
+        "WorkItem",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="notifications",
+        verbose_name="关联可执行待办",
+        help_text="仅提示投影关联；已读通知不关闭待办，待办关闭由源领域服务决定",
+    )
     expires_at = models.DateTimeField(null=True, blank=True, verbose_name="失效时间")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
 
@@ -748,3 +757,137 @@ class NotificationRead(models.Model):
 
     def __str__(self):
         return f"通知#{self.notification_id} 已由员工档案#{self.staff_profile_id}读取"
+
+
+class WorkItem(models.Model):
+    """可执行待办编排记录（基线 2.0 §4.6 / 审查报告 MC-007）。
+
+    职责边界（强制）：
+      * 源业务模型（Reservation/Room/ApprovalRecord/BreakGlassRecord 等）是
+        业务事实唯一权威，WorkItem 只记录“谁被分配去处理哪件事、处理到哪一步”；
+      * Notification 是提示投影，NotificationRead 是个人已读回执；
+        已读/隐藏通知绝不关闭 WorkItem，不修改任何源业务状态；
+      * 完成动作必须通过 task_registry 调用源领域服务，源服务成功后才关闭，
+        失败保留待处理并写 last_error_*，可重试；
+      * dedupe_key 一个物业内唯一且必填，同一源事实只生成一条可执行任务，
+        岗位组只决定可见性，不为每个组复制一份任务。
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "待认领"
+        CLAIMED = "CLAIMED", "处理中"
+        DONE = "DONE", "已关闭"
+        CANCELLED = "CANCELLED", "已取消"
+
+    class Resolution(models.TextChoices):
+        COMPLETED = "COMPLETED", "源服务执行成功"
+        SOURCE_RESOLVED = "SOURCE_RESOLVED", "源业务在其他入口完成"
+        CANCELLED = "CANCELLED", "源事实撤销"
+
+    property: models.ForeignKey = models.ForeignKey(
+        Property, on_delete=models.PROTECT, related_name="work_items", verbose_name="物业"
+    )
+    task_code: models.CharField = models.CharField(max_length=64, verbose_name="任务代码")
+    source_type: models.CharField = models.CharField(max_length=64, verbose_name="源业务实体类型")
+    source_id: models.CharField = models.CharField(max_length=64, verbose_name="源业务实体标识")
+    title: models.CharField = models.CharField(max_length=120, verbose_name="任务标题")
+    body: models.CharField = models.CharField(max_length=240, blank=True, verbose_name="任务说明")
+    link: models.CharField = models.CharField(max_length=200, blank=True, verbose_name="跳转链接")
+    severity: models.CharField = models.CharField(
+        max_length=8,
+        choices=Notification.Severity.choices,
+        default=Notification.Severity.INFO,
+        verbose_name="级别",
+    )
+    status: models.CharField = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        verbose_name="处理状态",
+    )
+    resolution: models.CharField = models.CharField(
+        max_length=24,
+        choices=Resolution.choices,
+        blank=True,
+        verbose_name="关闭原因",
+    )
+    assigned_profile: models.ForeignKey = models.ForeignKey(
+        "identity.StaffProfile",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="assigned_work_items",
+        verbose_name="当前负责人",
+    )
+    assigned_group: models.ForeignKey = models.ForeignKey(
+        Group,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="work_items",
+        verbose_name="可见岗位组",
+    )
+    claimed_by: models.ForeignKey = models.ForeignKey(
+        "identity.StaffProfile",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="claimed_work_items",
+        verbose_name="认领人",
+    )
+    claimed_at: models.DateTimeField = models.DateTimeField(
+        null=True, blank=True, verbose_name="认领时间"
+    )
+    completed_by: models.ForeignKey = models.ForeignKey(
+        "identity.StaffProfile",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="completed_work_items",
+        verbose_name="完成人",
+    )
+    completed_at: models.DateTimeField = models.DateTimeField(
+        null=True, blank=True, verbose_name="完成时间"
+    )
+    due_at: models.DateTimeField = models.DateTimeField(
+        null=True, blank=True, verbose_name="要求完成时间"
+    )
+    expires_at: models.DateTimeField = models.DateTimeField(
+        null=True, blank=True, verbose_name="失效时间"
+    )
+    dedupe_key: models.CharField = models.CharField(max_length=128, verbose_name="任务去重键")
+    last_error_code: models.CharField = models.CharField(
+        max_length=64, blank=True, verbose_name="最近失败代码"
+    )
+    last_error_summary: models.CharField = models.CharField(
+        max_length=500, blank=True, verbose_name="最近失败原因"
+    )
+    created_at: models.DateTimeField = models.DateTimeField(
+        auto_now_add=True, verbose_name="创建时间"
+    )
+    updated_at: models.DateTimeField = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "可执行待办"
+        verbose_name_plural = "可执行待办"
+        ordering = ("-created_at", "-id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("property", "dedupe_key"), name="uq_workitem_prop_dedupe"
+            ),
+            models.CheckConstraint(
+                check=~Q(status="DONE") | Q(resolution__gt=""),
+                name="ck_workitem_done_has_resolution",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=("property", "status", "-created_at"), name="idx_workitem_prop_status"
+            ),
+            models.Index(fields=("assigned_profile", "status"), name="idx_workitem_profile_status"),
+            models.Index(fields=("assigned_group", "status"), name="idx_workitem_group_status"),
+            models.Index(fields=("source_type", "source_id"), name="idx_workitem_source"),
+        ]
+
+    def __str__(self):
+        return f"{self.task_code}/{self.source_id} {self.get_status_display()}"
