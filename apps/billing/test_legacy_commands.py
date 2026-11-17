@@ -29,7 +29,7 @@ from apps.billing.legacy_batches import (
     reject_batch,
 )
 from apps.billing.legacy_credentials import LegacyMigrationDenied
-from apps.billing.legacy_migration import reconcile_batch
+from apps.billing.legacy_migration import Decision, Plan, execute_plan, reconcile_batch
 from apps.billing.models import Folio, LedgerEntry, LegacyArchiveRun, LegacyMigrationBatch
 from apps.core.models import AuditEvent, LegacyRecordLink, Property
 from apps.guests.models import Guest
@@ -609,6 +609,63 @@ class LegacyMigrationCommandTests(TestCase):
                 reference=entry.reference,
                 description="重复 reference 测试",
             )
+
+    def test_c4_c5_cannot_bypass_closed_batch_authorization(self):
+        """C2-C5 不经过凭证入口，批次关闭后也不得写入映射。"""
+        self.batch.status = LegacyMigrationBatch.Status.CLOSED
+        self.batch.save()
+        plan = Plan(
+            decisions=[
+                Decision(
+                    source_model="Folio",
+                    source_pk="9002",
+                    category="C5",
+                    reason="关闭批次拒绝测试",
+                )
+            ]
+        )
+        with self.assertRaises(LegacyMigrationDenied):
+            execute_plan(
+                batch=self.batch,
+                plan=plan,
+                credential_factory=lambda: "",
+                executor=self.executor,
+            )
+        self.assertFalse(
+            LegacyRecordLink.objects.filter(
+                migration_batch=self.batch.batch_uid, source_pk="9002"
+            ).exists()
+        )
+        self.assertTrue(
+            AuditEvent.objects.filter(action="billing.legacy_migration_denied").exists()
+        )
+
+    def test_c4_c5_require_approved_batch(self):
+        """ACTIVE 但无批准人记录时，非凭证类别也必须拒绝。"""
+        self.batch.approved_by = None
+        self.batch.save()
+        plan = Plan(
+            decisions=[
+                Decision(
+                    source_model="Folio",
+                    source_pk="9002",
+                    category="C5",
+                    reason="缺少批准人拒绝测试",
+                )
+            ]
+        )
+        with self.assertRaises(LegacyMigrationDenied):
+            execute_plan(
+                batch=self.batch,
+                plan=plan,
+                credential_factory=lambda: "",
+                executor=self.executor,
+            )
+        self.assertFalse(
+            LegacyRecordLink.objects.filter(
+                migration_batch=self.batch.batch_uid, source_pk="9002"
+            ).exists()
+        )
 
     @skipIf(
         connection.vendor != "sqlite",
