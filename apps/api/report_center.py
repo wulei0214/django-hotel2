@@ -41,8 +41,8 @@ P0-07 模式，对齐 apps/api/guest_center.py::financial_summary_api）。
 """
 from datetime import date, timedelta
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 from typing import TypedDict
+from zoneinfo import ZoneInfo
 
 
 def _property_tz_bounds(property_obj, date_from, date_to):
@@ -75,10 +75,10 @@ from apps.reservations.models import Reservation, Stay
 
 from .billing_center import _money_str  # 金额两位小数字符串，与账务中心同口径
 
+
 class _MemberAggregate(TypedDict):
     room_nights: int
     spend: Decimal
-
 
 # 区间上限（§4.5 技术要求：复杂报表查询需最大日期范围控制）
 MAX_RANGE_DAYS = 92
@@ -129,7 +129,7 @@ def _parse_day(value, field):
     try:
         return date.fromisoformat(str(value).strip())
     except (TypeError, ValueError):
-        raise ApiError("VALIDATION_ERROR", f"{field} 必须使用 YYYY-MM-DD 格式。")
+        raise ApiError("VALIDATION_ERROR", f"{field} 必须使用 YYYY-MM-DD 格式。") from None
 
 
 def _parse_range(request, property_obj):
