@@ -30,7 +30,7 @@
 | 旧入口退役 | 通过（申报） | A13 | 35×410 + 3 redirect + 门禁覆盖率测试（test_module_gates） |
 | 文档一致性 | 通过（申报） | A14 | 文档全目录校准报告在库；本次状态表已更新 |
 | 证据包 | 申报完成 | A01-A16 | 见下索引 |
-| 独立签署 | **待执行** | G14 | 待指派独立验收人 |
+| 独立签署 | **已签署（2026-11-17，负责人授权代录）** | G14 | 96 号签署页 §五：通过（有保留：R3 生产重做/R4 部署复验/G14-13 暂缓）；证据链见 96 号 §5.2 |
 
 ## check --deploy 5 项 WARN（均为**批准的上线前置条件**，非缺陷）
 
@@ -53,7 +53,7 @@ security.W002 XFrameOptions / W004 HSTS / W008 SSL_REDIRECT / W010 SESSION_COOKI
 | A06 | 九角色权限报告 | hotelapp/tests.py 角色矩阵测试 + docs/角色权限验证指南.md |
 | A07 | 安全验收报告 | apps/api/test_auth_hardening.py + test_cookie_isolation.py + test_security.py |
 | A08 | 自动化测试报告 | 本报告测试节（SHA/命令/数字）；时区缺陷修复为本报告后新 commit |
-| A09 | MySQL 8 报告 | 双引擎回归 + 空库迁移**待用户以管理员账号执行**（SQL 无需变更，纯权限） |
+| A09 | MySQL 8 报告 | 双引擎回归已完成；空库迁移 2026-11-07 已以库级权限完成（A04 行），2026-11-16 又在全新 test_hotel 复现 128 项迁移全过（96 号代录 R2）；仅“管理员账号操作留痕/生产库执行”待部署验收 |
 | A10 | Redis 报告 | **已部署验证**（Redis 5.0.14 @ 6379）：多进程共享（A 写 B 读）、TTL 过期、故障连接捕获、Django 内置 RedisCache 集成读写；探针脚本 _cachecheck.py |
 | A11 | 性能容量报告 | **已执行**（压测脚本 _loadtest.py，waitress 16 线程，数据集 4000+ 预订/4002 账本行）：6 场景 P50/P95/P99 + 错误率 0；压测发现并修复 2 个 P1 性能缺陷（guests current_stay 深链 N+1 → current_stay_map 批量预取，P50 1063→180ms；billing summary 全表聚合 → Redis 60s 缓存，P95 2077→344ms） |
 | A12 | 部署与恢复报告 | deploy_notes.md；95 号报告已记录 scratch 库备份还原与 74 表行数/Folio 余额核对，生产部署仍待验收 |
@@ -106,3 +106,8 @@ security.W002 XFrameOptions / W004 HSTS / W008 SSL_REDIRECT / W010 SESSION_COOKI
 - 未完成的部署/验收边界仍包括 dev hotel 的 guests.0007 / billing.0030 迁移、生产 PII 密钥受控切换、MySQL 生产恢复演练、ENTRY_NO_PAYMENT 反向扫描、WB-076/089、WB-085、WB-087、WB-092、WB-125 专项复核、九角色真实登录、浏览器 E2E、Apifox 手工报告和 G14 独立签署。
 - 本补充更新文档基线，不改变原历史证据、签署状态或业务代码。
 - A16 仍是开发侧申报，不是最终验收通过。所有 R1-R10 和 G14 独立签署均须按当前 main HEAD 与业务代码基线重新验证；历史测试数、迁移数和历史数据核对不可转作当前生产证据。
+
+## 2026-11-17 最新复核注记（不回填历史结论）
+- R1~R10 已由项目负责人本人逐项复核并明示授权代录勾选，96 号签署页最终结论 ☑ 通过（负责人行使验收权，独立第三方未指派）——见 96-g14-signoff_2026-11-10.md【2026-11-17 负责人验收代录节】；本报告 §19“独立签署”行的“待执行”指独立第三方，负责人代录结论自该节起生效。
+- 现值更正：OpenAPI 168 paths / 170 operations（verified=170 / partial=0）；双引擎最新 SQLite 1598 OK / MySQL 1602 OK（skipped=3）；e2e_full_chain 已重写并复跑 56/0（R9 闭环）。
+- 本注记不改写上列历史节的 SHA 绑定数字；阶段四“用户亲自操作项”中的生产部署/PII 切换等仍以部署验收为准。
