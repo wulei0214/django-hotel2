@@ -41,8 +41,8 @@ from typing import Any, cast
 from django.conf import settings
 from django.contrib.auth.models import Group, User
 from django.test import SimpleTestCase, TestCase
-from django.utils.crypto import get_random_string
 from django.utils import timezone
+from django.utils.crypto import get_random_string
 
 from apps.billing.models import ApprovalRecord, Folio
 from apps.core.models import AuditEvent, BusinessDate, Property
