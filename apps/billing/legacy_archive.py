@@ -213,7 +213,9 @@ def archive_table(
                 f"源记录 {spec.source_model}#{source_pk} 的物业归属必须是已存在的 Property"
             )
 
-    batch = billing_models.LegacyMigrationBatch.objects.filter(batch_uid=batch_uid).first()
+    batch = (
+        billing_models.LegacyMigrationBatch.objects.filter(batch_uid=batch_uid).first()
+    )
     if batch is not None:
         mismatched = sorted(
             source_pk

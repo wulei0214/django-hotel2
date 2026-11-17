@@ -170,7 +170,9 @@ class ArchiveTableTests(TestCase):
         self.assertEqual(LegacyAccommodationArchive.objects.count(), 1)
         self.assertEqual(LegacyFinanceRecordArchive.objects.count(), 1)
         self.assertEqual(LegacyNightAuditArchive.objects.count(), 1)
-        self.assertEqual(LegacyArchiveRun.objects.filter(batch_uid="ARC-ALL").count(), 4)
+        self.assertEqual(
+            LegacyArchiveRun.objects.filter(batch_uid="ARC-ALL").count(), 4
+        )
 
     def test_same_batch_and_table_archived_once(self):
         spec = get_spec("Folio")
@@ -224,7 +226,9 @@ class ArchiveTableTests(TestCase):
         self.assertEqual(LegacyAccommodationArchive.objects.count(), 0)
 
     def test_property_snapshot_is_not_inferred_when_mapping_is_absent(self):
-        archive_table(spec=get_spec("Accommodation"), batch_uid="ARC-NO-PROP", operator="ops")
+        archive_table(
+            spec=get_spec("Accommodation"), batch_uid="ARC-NO-PROP", operator="ops"
+        )
         row = LegacyAccommodationArchive.objects.get(pk=8101)
         self.assertIsNone(row.property_id)
 
@@ -270,7 +274,9 @@ class ArchiveCommandTests(TestCase):
         with self.assertRaises(CommandError):
             call_command("archive_legacy_finance", stdout=StringIO())
         with self.assertRaises(CommandError):
-            call_command("archive_legacy_finance", "--batch-uid", "ARC-CMD", stdout=StringIO())
+            call_command(
+                "archive_legacy_finance", "--batch-uid", "ARC-CMD", stdout=StringIO()
+            )
 
     def test_execute_then_verify(self):
         out = StringIO()
@@ -284,7 +290,9 @@ class ArchiveCommandTests(TestCase):
             "Folio,NightAudit",
             stdout=out,
         )
-        self.assertEqual(LegacyArchiveRun.objects.filter(batch_uid="ARC-CMD").count(), 2)
+        self.assertEqual(
+            LegacyArchiveRun.objects.filter(batch_uid="ARC-CMD").count(), 2
+        )
         verify_out = StringIO()
         call_command(
             "archive_legacy_finance",
@@ -360,7 +368,9 @@ class ArchiveCommandTests(TestCase):
         )
         run = LegacyArchiveRun.objects.get(batch_uid="ARC-BAD2")
         # 绕过只读管理器改元数据（模拟"元数据被写错"，用裸 QuerySet 是唯一绕过方式）。
-        django_models.QuerySet(LegacyArchiveRun).filter(pk=run.pk).update(table_digest="f" * 64)
+        django_models.QuerySet(LegacyArchiveRun).filter(pk=run.pk).update(
+            table_digest="f" * 64
+        )
         with self.assertRaises(CommandError):
             call_command(
                 "archive_legacy_finance",

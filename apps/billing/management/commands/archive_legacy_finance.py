@@ -59,7 +59,9 @@ class Command(BaseCommand):
             raise CommandError("--batch-uid 必填（归档批次号会写进归档行与元数据）")
         if not options["operator"].strip():
             raise CommandError("--operator 必填（元数据须登记执行人）")
-        return self._execute(specs, batch_uid, options["operator"].strip(), property_assignments)
+        return self._execute(
+            specs, batch_uid, options["operator"].strip(), property_assignments
+        )
 
     def _specs(self, raw):
         names = [item.strip() for item in raw.split(",") if item.strip()]
@@ -161,7 +163,9 @@ class Command(BaseCommand):
                         spec=spec,
                         batch_uid=batch_uid,
                         operator=operator,
-                        property_assignments=property_assignments.get(spec.source_model, {}),
+                        property_assignments=property_assignments.get(
+                            spec.source_model, {}
+                        ),
                     )
                     AuditEvent.record(
                         action="billing.legacy_archive",
