@@ -1143,6 +1143,7 @@ def batch_links(batch: LegacyMigrationBatch) -> Any:
 def plan_summary(plan: Plan) -> dict[str, Any]:
     counts = plan.by_category()
     counts["total"] = len(plan.decisions)
+    counts["blocking"] = sum(1 for decision in plan.decisions if decision.blocks_batch)
     return counts
 
 
@@ -1158,6 +1159,7 @@ def write_plan_json(plan: Plan, path: str | Path) -> None:
             "business_date": d.business_date.isoformat() if d.business_date else None,
             "target_folio_id": d.target_folio_id,
             "candidate_entry_id": d.candidate_entry_id,
+            "blocks_batch": d.blocks_batch,
         }
         for d in plan.decisions
     ]
