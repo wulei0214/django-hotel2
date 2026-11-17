@@ -508,27 +508,23 @@ class MembershipCenterContractTests(PartialContractVerificationBase):
         membership = GuestMembership.objects.get(pk=payload["data"]["id"])
         self.assertEqual(membership.member_no, "PCV-M-CREATE-001")
         self.assertEqual(membership.guest.pk, guest.pk)
-        self.assertTopLevelKeysWithinContract(
-            "POST", "/api/v1/memberships/create", response)
+        self.assertTopLevelKeysWithinContract("POST", "/api/v1/memberships/create", response)
 
     def test_membership_create_invalid_guest_id_gets_400(self):
         self.client.force_login(self.front)
-        response = self._post_json(
-            "/api/v1/memberships/create", {"guest_id": "abc"})
+        response = self._post_json("/api/v1/memberships/create", {"guest_id": "abc"})
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
 
     def test_membership_create_anonymous_gets_403(self):
-        response = self._post_json(
-            "/api/v1/memberships/create", {"guest_id": 1})
+        response = self._post_json("/api/v1/memberships/create", {"guest_id": 1})
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
     def test_membership_create_housekeeper_gets_403(self):
         guest = self._make_guest()
         self.client.force_login(self.housekeeper)
-        response = self._post_json(
-            "/api/v1/memberships/create", {"guest_id": guest.pk})
+        response = self._post_json("/api/v1/memberships/create", {"guest_id": guest.pk})
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
@@ -538,31 +534,35 @@ class MembershipCenterContractTests(PartialContractVerificationBase):
         self.client.force_login(self.owner)
         response = self._post_json(
             f"/api/v1/memberships/{membership.pk}/level",
-            {"level_code": "GOLD", "reason": "契约核验：长期入住升级"})
+            {"level_code": "GOLD", "reason": "契约核验：长期入住升级"},
+        )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json()["data"]["level_code"], "GOLD")
         membership.refresh_from_db()
         self.assertEqual(membership.level_code, "GOLD")
-        self.assertTrue(MembershipLevelHistory.objects.filter(
-            membership=membership, from_level="STANDARD",
-            to_level="GOLD").exists())
+        self.assertTrue(
+            MembershipLevelHistory.objects.filter(
+                membership=membership, from_level="STANDARD", to_level="GOLD"
+            ).exists()
+        )
         self.assertTopLevelKeysWithinContract(
-            "POST", "/api/v1/memberships/{membership_id}/level", response)
+            "POST", "/api/v1/memberships/{membership_id}/level", response
+        )
 
     def test_membership_level_change_without_reason_gets_400(self):
         membership = self._make_membership()
         self.client.force_login(self.owner)
         response = self._post_json(
-            f"/api/v1/memberships/{membership.pk}/level",
-            {"level_code": "GOLD"})
+            f"/api/v1/memberships/{membership.pk}/level", {"level_code": "GOLD"}
+        )
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
 
     def test_membership_level_change_anonymous_gets_403(self):
         membership = self._make_membership()
         response = self._post_json(
-            f"/api/v1/memberships/{membership.pk}/level",
-            {"level_code": "GOLD", "reason": "x"})
+            f"/api/v1/memberships/{membership.pk}/level", {"level_code": "GOLD", "reason": "x"}
+        )
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
@@ -571,7 +571,8 @@ class MembershipCenterContractTests(PartialContractVerificationBase):
         self.client.force_login(self.housekeeper)
         response = self._post_json(
             f"/api/v1/memberships/{membership.pk}/level",
-            {"level_code": "GOLD", "reason": "越权尝试"})
+            {"level_code": "GOLD", "reason": "越权尝试"},
+        )
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
@@ -603,33 +604,31 @@ class GuestCenterContractTests(PartialContractVerificationBase):
 
     def test_guest_create_ok_for_front_desk_and_persists(self):
         self.client.force_login(self.front)
-        response = self._post_json("/api/v1/guests/create", {
-            "full_name": "契约核验新建住客", "phone": "13957712345"})
+        response = self._post_json(
+            "/api/v1/guests/create", {"full_name": "契约核验新建住客", "phone": "13957712345"}
+        )
         self.assertEqual(response.status_code, 201, response.content)
         guest_id = response.json()["data"]["id"]
         guest = Guest.objects.get(pk=guest_id)
         self.assertEqual(guest.full_name, "契约核验新建住客")
-        self.assertTopLevelKeysWithinContract(
-            "POST", "/api/v1/guests/create", response)
+        self.assertTopLevelKeysWithinContract("POST", "/api/v1/guests/create", response)
 
     def test_guest_create_non_object_body_gets_400(self):
         self.client.force_login(self.front)
         response = self.client.post(
-            "/api/v1/guests/create", data="[1, 2]",
-            content_type="application/json")
+            "/api/v1/guests/create", data="[1, 2]", content_type="application/json"
+        )
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
 
     def test_guest_create_anonymous_gets_403(self):
-        response = self._post_json(
-            "/api/v1/guests/create", {"full_name": "匿名访客"})
+        response = self._post_json("/api/v1/guests/create", {"full_name": "匿名访客"})
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
     def test_guest_create_housekeeper_gets_403(self):
         self.client.force_login(self.housekeeper)
-        response = self._post_json(
-            "/api/v1/guests/create", {"full_name": "越权住客"})
+        response = self._post_json("/api/v1/guests/create", {"full_name": "越权住客"})
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
@@ -647,8 +646,7 @@ class RoomRateContractTests(PartialContractVerificationBase):
         response = self.client.get("/api/v1/rooms/status")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(response.json()["data"])
-        self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/rooms/status", response)
+        self.assertTopLevelKeysWithinContract("GET", "/api/v1/rooms/status", response)
 
     def test_room_status_anonymous_gets_403(self):
         response = self.client.get("/api/v1/rooms/status")
@@ -668,8 +666,7 @@ class RoomRateContractTests(PartialContractVerificationBase):
         self.assertEqual(response.status_code, 200, response.content)
         codes = [row["code"] for row in response.json()["data"]]
         self.assertIn("PCV-KING", codes)
-        self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/room-types", response)
+        self.assertTopLevelKeysWithinContract("GET", "/api/v1/room-types", response)
 
     def test_room_type_list_anonymous_gets_403(self):
         response = self.client.get("/api/v1/room-types")
@@ -684,17 +681,18 @@ class RoomRateContractTests(PartialContractVerificationBase):
 
     def test_rate_calendar_ok_for_front_desk_and_keys_within_contract(self):
         self.client.force_login(self.front)
-        response = self.client.get(
-            f"/api/v1/rate-calendar?start={self.today.isoformat()}&days=2")
+        response = self.client.get(f"/api/v1/rate-calendar?start={self.today.isoformat()}&days=2")
         self.assertEqual(response.status_code, 200, response.content)
         payload = response.json()
         self.assertTrue(payload["data"]["rates"])
         self.assertTrue(payload["data"]["inventory"])
-        self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/rate-calendar", response)
+        self.assertTopLevelKeysWithinContract("GET", "/api/v1/rate-calendar", response)
         self.assertDataKeysWithinContract(
-            "GET", "/api/v1/rate-calendar", response,
-            finding_extras={"inventory_pagination", "rates_pagination"})
+            "GET",
+            "/api/v1/rate-calendar",
+            response,
+            finding_extras={"inventory_pagination", "rates_pagination"},
+        )
         # P4-FINDING F6: 契约 RateCalendarData 只声明 inventory/rates，
         # 实际 data 含 inventory_pagination/rates_pagination（P0-03 双集合
         # 分页补齐晚于契约快照，additionalProperties=true 允许）；
@@ -714,49 +712,51 @@ class RoomRateContractTests(PartialContractVerificationBase):
     def test_daily_rate_adjust_ok_for_owner_and_updates_price(self):
         # 调价权限 inventory.manage_rates 仅店长持有（矩阵外点 F-09）。
         rate = DailyRate.objects.get(
-            property=self.property, room_type=self.room_type,
-            stay_date=self.today)
+            property=self.property, room_type=self.room_type, stay_date=self.today
+        )
         self.client.force_login(self.owner)
         response = self._post_json(
             f"/api/v1/daily-rates/{rate.pk}/adjust",
-            {"price": "350.00", "reason": "契约核验：旺季调价"})
+            {"price": "350.00", "reason": "契约核验：旺季调价"},
+        )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(response.json()["data"]["changed"])
         rate.refresh_from_db()
         self.assertEqual(rate.price, Decimal("350.00"))
         self.assertTopLevelKeysWithinContract(
-            "POST", "/api/v1/daily-rates/{rate_id}/adjust", response)
+            "POST", "/api/v1/daily-rates/{rate_id}/adjust", response
+        )
 
     def test_daily_rate_adjust_non_object_body_gets_400(self):
         rate = DailyRate.objects.get(
-            property=self.property, room_type=self.room_type,
-            stay_date=self.today)
+            property=self.property, room_type=self.room_type, stay_date=self.today
+        )
         self.client.force_login(self.owner)
         response = self.client.post(
-            f"/api/v1/daily-rates/{rate.pk}/adjust", data='"350"',
-            content_type="application/json")
+            f"/api/v1/daily-rates/{rate.pk}/adjust", data='"350"', content_type="application/json"
+        )
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
 
     def test_daily_rate_adjust_anonymous_gets_403(self):
         rate = DailyRate.objects.get(
-            property=self.property, room_type=self.room_type,
-            stay_date=self.today)
+            property=self.property, room_type=self.room_type, stay_date=self.today
+        )
         response = self._post_json(
-            f"/api/v1/daily-rates/{rate.pk}/adjust",
-            {"price": "350.00", "reason": "匿名调价"})
+            f"/api/v1/daily-rates/{rate.pk}/adjust", {"price": "350.00", "reason": "匿名调价"}
+        )
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
     def test_daily_rate_adjust_front_desk_gets_403(self):
         # 前台为明显无权角色：manage_rates 仅店长（矩阵外点 F-09）。
         rate = DailyRate.objects.get(
-            property=self.property, room_type=self.room_type,
-            stay_date=self.today)
+            property=self.property, room_type=self.room_type, stay_date=self.today
+        )
         self.client.force_login(self.front)
         response = self._post_json(
-            f"/api/v1/daily-rates/{rate.pk}/adjust",
-            {"price": "350.00", "reason": "前台越权调价"})
+            f"/api/v1/daily-rates/{rate.pk}/adjust", {"price": "350.00", "reason": "前台越权调价"}
+        )
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
         rate.refresh_from_db()
@@ -775,11 +775,10 @@ class FinancialSummaryContractTests(PartialContractVerificationBase):
         self.assertEqual(response.status_code, 200, response.content)
         payload = response.json()
         self.assertIn("total_revenue", payload["data"])
-        self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/financial-summary", response)
+        self.assertTopLevelKeysWithinContract("GET", "/api/v1/financial-summary", response)
         self.assertDataKeysWithinContract(
-            "GET", "/api/v1/financial-summary", response,
-            finding_extras={"metadata"})
+            "GET", "/api/v1/financial-summary", response, finding_extras={"metadata"}
+        )
         # P4-FINDING F7: 契约 FinancialSummaryData 未声明 metadata，
         # 实际 data 含 metadata（P0-07 统计口径注记晚于契约快照，
         # additionalProperties=true 允许）；断言以实际行为为准放行。
@@ -816,8 +815,7 @@ class ApprovalContractTests(PartialContractVerificationBase):
     def test_approval_list_anonymous_gets_401(self):
         response = self.client.get("/api/v1/approvals")
         self.assertEqual(response.status_code, 401, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
     def test_approval_list_housekeeper_gets_403(self):
         self.client.force_login(self.housekeeper)
@@ -832,30 +830,46 @@ class ApprovalContractTests(PartialContractVerificationBase):
         record.refresh_from_db()
         self.assertEqual(record.status, ApprovalRecord.Status.PENDING)
         self.assertEqual(record.action_code, "night_audit.reopen")
-        self.assertTopLevelKeysWithinContract(
-            "POST", "/api/v1/approvals/request", response)
+        self.assertTopLevelKeysWithinContract("POST", "/api/v1/approvals/request", response)
 
     def test_approval_request_unknown_action_code_gets_400(self):
         self.client.force_login(self.duty)
-        response = self._post_json("/api/v1/approvals/request", {
-            "action_code": "billing.void_everything",
-            "entity_type": "Refund", "entity_id": "1", "reason": "未知动作"})
+        response = self._post_json(
+            "/api/v1/approvals/request",
+            {
+                "action_code": "billing.void_everything",
+                "entity_type": "Refund",
+                "entity_id": "1",
+                "reason": "未知动作",
+            },
+        )
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
 
     def test_approval_request_anonymous_gets_401(self):
-        response = self._post_json("/api/v1/approvals/request", {
-            "action_code": "night_audit.reopen",
-            "entity_type": "BusinessDate", "entity_id": "1", "reason": "匿名"})
+        response = self._post_json(
+            "/api/v1/approvals/request",
+            {
+                "action_code": "night_audit.reopen",
+                "entity_type": "BusinessDate",
+                "entity_id": "1",
+                "reason": "匿名",
+            },
+        )
         self.assertEqual(response.status_code, 401, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
     def test_approval_request_housekeeper_gets_403(self):
         self.client.force_login(self.housekeeper)
-        response = self._post_json("/api/v1/approvals/request", {
-            "action_code": "night_audit.reopen",
-            "entity_type": "BusinessDate", "entity_id": "1", "reason": "越权"})
+        response = self._post_json(
+            "/api/v1/approvals/request",
+            {
+                "action_code": "night_audit.reopen",
+                "entity_type": "BusinessDate",
+                "entity_id": "1",
+                "reason": "越权",
+            },
+        )
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
@@ -863,73 +877,67 @@ class ApprovalContractTests(PartialContractVerificationBase):
         # SoD：发起（值班经理）≠ 审批（店长），店长持有 business_date_reopen。
         _, record = self._make_reopen_request_via_api(self.duty)
         self.client.force_login(self.owner)
-        response = self._post_json(
-            f"/api/v1/approvals/{record.pk}/approve", {})
+        response = self._post_json(f"/api/v1/approvals/{record.pk}/approve", {})
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(
-            response.json()["data"]["status"], ApprovalRecord.Status.APPROVED)
+        self.assertEqual(response.json()["data"]["status"], ApprovalRecord.Status.APPROVED)
         record.refresh_from_db()
         self.assertEqual(record.status, ApprovalRecord.Status.APPROVED)
         self.assertTopLevelKeysWithinContract(
-            "POST", "/api/v1/approvals/{record_id}/approve", response)
+            "POST", "/api/v1/approvals/{record_id}/approve", response
+        )
         # 说明：approve 不解析请求体（任何载荷同等处理），无 400 路径——
         # "非法载荷 400" 断言对本端点不适用。
 
     def test_approval_approve_anonymous_gets_401(self):
         response = self._post_json("/api/v1/approvals/1/approve", {})
         self.assertEqual(response.status_code, 401, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
     def test_approval_approve_housekeeper_gets_403(self):
         _, record = self._make_reopen_request_via_api(self.duty)
         self.client.force_login(self.housekeeper)
-        response = self._post_json(
-            f"/api/v1/approvals/{record.pk}/approve", {})
+        response = self._post_json(f"/api/v1/approvals/{record.pk}/approve", {})
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
         record.refresh_from_db()
-        self.assertEqual(
-            record.status, ApprovalRecord.Status.PENDING, "越权不得改状态")
+        self.assertEqual(record.status, ApprovalRecord.Status.PENDING, "越权不得改状态")
 
     def test_approval_reject_ok_for_owner_and_updates_status(self):
         _, record = self._make_reopen_request_via_api(self.duty)
         self.client.force_login(self.owner)
         response = self._post_json(
-            f"/api/v1/approvals/{record.pk}/reject",
-            {"reason": "契约核验：凭证不符驳回"})
+            f"/api/v1/approvals/{record.pk}/reject", {"reason": "契约核验：凭证不符驳回"}
+        )
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(
-            response.json()["data"]["status"], ApprovalRecord.Status.REJECTED)
+        self.assertEqual(response.json()["data"]["status"], ApprovalRecord.Status.REJECTED)
         record.refresh_from_db()
         self.assertEqual(record.status, ApprovalRecord.Status.REJECTED)
         self.assertTopLevelKeysWithinContract(
-            "POST", "/api/v1/approvals/{record_id}/reject", response)
+            "POST", "/api/v1/approvals/{record_id}/reject", response
+        )
 
     def test_approval_reject_non_object_body_returns_400(self):
         _, record = self._make_reopen_request_via_api(self.duty)
         self.client.force_login(self.owner)
         response = self.client.post(
-            f"/api/v1/approvals/{record.pk}/reject", data='["reason"]',
-            content_type="application/json")
+            f"/api/v1/approvals/{record.pk}/reject",
+            data='["reason"]',
+            content_type="application/json",
+        )
         # F8 已修复（2026-11-16）：approval.py 非 JSON 对象体显式
         # 400 VALIDATION_ERROR（WB-46 同款口径），恢复契约声明行为。
         self.assertEqual(response.status_code, 400, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
 
     def test_approval_reject_anonymous_gets_401(self):
-        response = self._post_json(
-            "/api/v1/approvals/1/reject", {"reason": "匿名驳回"})
+        response = self._post_json("/api/v1/approvals/1/reject", {"reason": "匿名驳回"})
         self.assertEqual(response.status_code, 401, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
     def test_approval_reject_housekeeper_gets_403(self):
         _, record = self._make_reopen_request_via_api(self.duty)
         self.client.force_login(self.housekeeper)
-        response = self._post_json(
-            f"/api/v1/approvals/{record.pk}/reject", {"reason": "越权驳回"})
+        response = self._post_json(f"/api/v1/approvals/{record.pk}/reject", {"reason": "越权驳回"})
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
@@ -942,15 +950,18 @@ class AuditTimelineContractTests(PartialContractVerificationBase):
 
     def test_audit_timeline_ok_for_duty_manager_and_keys_within_contract(self):
         AuditEvent.record(
-            action="contract.verify.event", entity_type="ContractProbe",
-            entity_id="1", actor=self.duty, property_obj=self.property,
-            reason="契约核验事件")
+            action="contract.verify.event",
+            entity_type="ContractProbe",
+            entity_id="1",
+            actor=self.duty,
+            property_obj=self.property,
+            reason="契约核验事件",
+        )
         self.client.force_login(self.duty)
         response = self.client.get("/api/v1/audit-timeline")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(response.json()["data"])
-        self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/audit-timeline", response)
+        self.assertTopLevelKeysWithinContract("GET", "/api/v1/audit-timeline", response)
 
     def test_audit_timeline_anonymous_gets_403(self):
         response = self.client.get("/api/v1/audit-timeline")
@@ -977,8 +988,7 @@ class ReservationMgmtContractTests(PartialContractVerificationBase):
         self.assertEqual(response.status_code, 200, response.content)
         nos = [row["booking_no"] for row in response.json()["data"]]
         self.assertIn(reservation.booking_no, nos)
-        self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/reservations-mgmt", response)
+        self.assertTopLevelKeysWithinContract("GET", "/api/v1/reservations-mgmt", response)
 
     def test_reservation_mgmt_list_anonymous_gets_403(self):
         response = self.client.get("/api/v1/reservations-mgmt")
@@ -994,20 +1004,18 @@ class ReservationMgmtContractTests(PartialContractVerificationBase):
     def test_reservation_mgmt_detail_ok_for_front_desk_and_keys_within_contract(self):
         reservation, _ = self._make_reservation()
         self.client.force_login(self.front)
-        response = self.client.get(
-            f"/api/v1/reservations-mgmt/{reservation.booking_no}")
+        response = self.client.get(f"/api/v1/reservations-mgmt/{reservation.booking_no}")
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(
-            response.json()["data"]["booking_no"], reservation.booking_no)
+        self.assertEqual(response.json()["data"]["booking_no"], reservation.booking_no)
         self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/reservations-mgmt/{booking_no}", response)
+            "GET", "/api/v1/reservations-mgmt/{booking_no}", response
+        )
 
     def test_reservation_mgmt_detail_unknown_booking_no_gets_404(self):
         self.client.force_login(self.front)
         response = self.client.get("/api/v1/reservations-mgmt/PCV-NOT-EXIST")
         self.assertEqual(response.status_code, 404, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
+        self.assertEqual(response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
 
     def test_reservation_mgmt_detail_anonymous_gets_403(self):
         response = self.client.get("/api/v1/reservations-mgmt/PCV-ANY")
@@ -1017,8 +1025,7 @@ class ReservationMgmtContractTests(PartialContractVerificationBase):
     def test_reservation_mgmt_detail_housekeeper_gets_403(self):
         reservation, _ = self._make_reservation()
         self.client.force_login(self.housekeeper)
-        response = self.client.get(
-            f"/api/v1/reservations-mgmt/{reservation.booking_no}")
+        response = self.client.get(f"/api/v1/reservations-mgmt/{reservation.booking_no}")
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
@@ -1035,20 +1042,19 @@ class FrontDeskContractTests(PartialContractVerificationBase):
         _, _, line = self._make_inhouse_stay()
         self.client.force_login(self.front)
         response = self.client.get(
-            f"/api/v1/front-desk/departures?date={line.check_out.isoformat()}")
+            f"/api/v1/front-desk/departures?date={line.check_out.isoformat()}"
+        )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(response.json()["data"], "当日待离店在住记录非空")
         # P4-FINDING F1: 契约 200 schema properties 只声明 data，实际响应含
         # meta（分页 + date + source_system）；快照描述已注明"列表附 meta 分页"，
         # additionalProperties=true 允许但键未显式声明——以实际行为为准放行。
-        self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/front-desk/departures", response)
+        self.assertTopLevelKeysWithinContract("GET", "/api/v1/front-desk/departures", response)
 
     def test_departures_anonymous_gets_401(self):
         response = self.client.get("/api/v1/front-desk/departures")
         self.assertEqual(response.status_code, 401, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
     def test_departures_housekeeper_gets_403(self):
         self.client.force_login(self.housekeeper)
@@ -1063,14 +1069,12 @@ class FrontDeskContractTests(PartialContractVerificationBase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(response.json()["data"], "在住列表非空")
         # P4-FINDING F2: 同 F1——契约只声明 data，实际响应含 meta 分页键。
-        self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/front-desk/in-house", response)
+        self.assertTopLevelKeysWithinContract("GET", "/api/v1/front-desk/in-house", response)
 
     def test_in_house_anonymous_gets_401(self):
         response = self.client.get("/api/v1/front-desk/in-house")
         self.assertEqual(response.status_code, 401, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
     def test_in_house_housekeeper_gets_403(self):
         self.client.force_login(self.housekeeper)
@@ -1086,14 +1090,12 @@ class FrontDeskContractTests(PartialContractVerificationBase):
         nos = [row["booking_no"] for row in response.json()["data"]]
         self.assertIn(reservation.booking_no, nos)
         # P4-FINDING F3: 同 F1——契约只声明 data，实际响应含 meta 分页键。
-        self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/front-desk/reservations", response)
+        self.assertTopLevelKeysWithinContract("GET", "/api/v1/front-desk/reservations", response)
 
     def test_front_desk_reservations_anonymous_gets_401(self):
         response = self.client.get("/api/v1/front-desk/reservations")
         self.assertEqual(response.status_code, 401, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
     def test_front_desk_reservations_housekeeper_gets_403(self):
         self.client.force_login(self.housekeeper)
@@ -1104,34 +1106,29 @@ class FrontDeskContractTests(PartialContractVerificationBase):
     def test_front_desk_reservation_detail_ok_and_keys_within_contract(self):
         reservation, _ = self._make_reservation()
         self.client.force_login(self.front)
-        response = self.client.get(
-            f"/api/v1/front-desk/reservations/{reservation.booking_no}")
+        response = self.client.get(f"/api/v1/front-desk/reservations/{reservation.booking_no}")
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(
-            response.json()["data"]["booking_no"], reservation.booking_no)
+        self.assertEqual(response.json()["data"]["booking_no"], reservation.booking_no)
         # 该端点实际响应仅 {data}（无 meta），与契约声明一致。
         self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/front-desk/reservations/{booking_no}", response)
+            "GET", "/api/v1/front-desk/reservations/{booking_no}", response
+        )
 
     def test_front_desk_reservation_detail_unknown_booking_no_gets_404(self):
         self.client.force_login(self.front)
-        response = self.client.get(
-            "/api/v1/front-desk/reservations/PCV-NOT-EXIST")
+        response = self.client.get("/api/v1/front-desk/reservations/PCV-NOT-EXIST")
         self.assertEqual(response.status_code, 404, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
+        self.assertEqual(response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
 
     def test_front_desk_reservation_detail_anonymous_gets_401(self):
         response = self.client.get("/api/v1/front-desk/reservations/PCV-ANY")
         self.assertEqual(response.status_code, 401, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
     def test_front_desk_reservation_detail_housekeeper_gets_403(self):
         reservation, _ = self._make_reservation()
         self.client.force_login(self.housekeeper)
-        response = self.client.get(
-            f"/api/v1/front-desk/reservations/{reservation.booking_no}")
+        response = self.client.get(f"/api/v1/front-desk/reservations/{reservation.booking_no}")
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
@@ -1140,27 +1137,27 @@ class FrontDeskContractTests(PartialContractVerificationBase):
         _, line = self._make_reservation()
         self.client.force_login(self.front)
         response = self.client.get(
-            f"/api/v1/front-desk/rooms/assignable?reservation_room_id={line.pk}")
+            f"/api/v1/front-desk/rooms/assignable?reservation_room_id={line.pk}"
+        )
         self.assertEqual(response.status_code, 200, response.content)
         numbers = [row["number"] for row in response.json()["data"]]
         self.assertIn("PCV-8202", numbers)
         # P4-FINDING F4: 同 F1——契约只声明 data，实际响应含 meta
         # （total + reservation_room_id）。
         self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/front-desk/rooms/assignable", response)
+            "GET", "/api/v1/front-desk/rooms/assignable", response
+        )
 
     def test_assignable_rooms_missing_param_gets_400(self):
         self.client.force_login(self.front)
         response = self.client.get("/api/v1/front-desk/rooms/assignable")
         self.assertEqual(response.status_code, 400, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
 
     def test_assignable_rooms_anonymous_gets_401(self):
         response = self.client.get("/api/v1/front-desk/rooms/assignable")
         self.assertEqual(response.status_code, 401, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
     def test_assignable_rooms_housekeeper_gets_403(self):
         self.client.force_login(self.housekeeper)
@@ -1171,34 +1168,31 @@ class FrontDeskContractTests(PartialContractVerificationBase):
     def test_available_stay_rooms_ok_for_front_desk_and_keys_within_contract(self):
         stay_id, _, _ = self._make_inhouse_stay()
         self.client.force_login(self.front)
-        response = self.client.get(
-            f"/api/v1/front-desk/stays/{stay_id}/available-rooms")
+        response = self.client.get(f"/api/v1/front-desk/stays/{stay_id}/available-rooms")
         self.assertEqual(response.status_code, 200, response.content)
         numbers = [row["number"] for row in response.json()["data"]]
         self.assertIn("PCV-8202", numbers, "同房型空闲干净房为换房候选")
         # P4-FINDING F5: 同 F1——契约只声明 data，实际响应含 meta
         # （total + stay_id）。
         self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/front-desk/stays/{stay_id}/available-rooms", response)
+            "GET", "/api/v1/front-desk/stays/{stay_id}/available-rooms", response
+        )
 
     def test_available_stay_rooms_unknown_stay_gets_404(self):
         self.client.force_login(self.front)
         response = self.client.get("/api/v1/front-desk/stays/999999/available-rooms")
         self.assertEqual(response.status_code, 404, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
+        self.assertEqual(response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
 
     def test_available_stay_rooms_anonymous_gets_401(self):
         response = self.client.get("/api/v1/front-desk/stays/1/available-rooms")
         self.assertEqual(response.status_code, 401, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
     def test_available_stay_rooms_housekeeper_gets_403(self):
         stay_id, _, _ = self._make_inhouse_stay()
         self.client.force_login(self.housekeeper)
-        response = self.client.get(
-            f"/api/v1/front-desk/stays/{stay_id}/available-rooms")
+        response = self.client.get(f"/api/v1/front-desk/stays/{stay_id}/available-rooms")
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
@@ -1207,37 +1201,33 @@ class FrontDeskContractTests(PartialContractVerificationBase):
         # 键结构与 PMS2 预订无关）；造数可命中 200 路径，另附 404 错误体断言。
         order = self._make_legacy_order()
         self.client.force_login(self.front)
-        response = self.client.get(
-            f"/api/v1/front-desk/legacy-reservations/{order.pk}")
+        response = self.client.get(f"/api/v1/front-desk/legacy-reservations/{order.pk}")
         self.assertEqual(response.status_code, 200, response.content)
         payload = response.json()
         self.assertEqual(payload["data"]["legacy_id"], order.pk)
         self.assertTrue(payload["data"]["legacy_entries"])
         self.assertTopLevelKeysWithinContract(
-            "GET", "/api/v1/front-desk/legacy-reservations/{legacy_id}", response)
+            "GET", "/api/v1/front-desk/legacy-reservations/{legacy_id}", response
+        )
 
     def test_legacy_reservation_detail_unknown_id_gets_404_with_error_body(self):
         self.client.force_login(self.front)
-        response = self.client.get(
-            "/api/v1/front-desk/legacy-reservations/999999")
+        response = self.client.get("/api/v1/front-desk/legacy-reservations/999999")
         self.assertEqual(response.status_code, 404, response.content)
         payload = response.json()
+        self.assertEqual(payload["error"]["code"], "RESOURCE_NOT_FOUND")
         self.assertEqual(
-            payload["error"]["code"], "RESOURCE_NOT_FOUND")
-        self.assertEqual(
-            set(payload.keys()), {"error"},
-            "404 错误体为前台错误封套（仅 error 键，无 data/meta）")
+            set(payload.keys()), {"error"}, "404 错误体为前台错误封套（仅 error 键，无 data/meta）"
+        )
 
     def test_legacy_reservation_detail_anonymous_gets_401(self):
         response = self.client.get("/api/v1/front-desk/legacy-reservations/1")
         self.assertEqual(response.status_code, 401, response.content)
-        self.assertEqual(
-            response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
     def test_legacy_reservation_detail_housekeeper_gets_403(self):
         order = self._make_legacy_order()
         self.client.force_login(self.housekeeper)
-        response = self.client.get(
-            f"/api/v1/front-desk/legacy-reservations/{order.pk}")
+        response = self.client.get(f"/api/v1/front-desk/legacy-reservations/{order.pk}")
         self.assertEqual(response.status_code, 403, response.content)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
