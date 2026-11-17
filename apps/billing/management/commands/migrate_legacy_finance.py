@@ -40,7 +40,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--mapping-file",
             default="",
-            help="人工确认映射 JSON（可选）：订单-预订关系以关系表为准，本文件补充 C2/C3 候选与冲销配对",
+            help=(
+                "人工确认映射 JSON：orders 仅作关系表兼容回退；record_reservations 逐凭证选边；"
+                "finance_natures 确认收入资金性质；candidates 标记 C2/C3；reversal_pairs 配对冲账"
+            ),
         )
         parser.add_argument("--dry-run", action="store_true", help="只分类不写库")
         parser.add_argument("--plan-out", default="", help="把分类清单写到指定 JSON 路径")
