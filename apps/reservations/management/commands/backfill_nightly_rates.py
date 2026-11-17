@@ -72,6 +72,7 @@ def _collect_rows(property_id):
         ReservationRoom.objects.filter(property_id=property_id).order_by("id")
         if property_id
         else ReservationRoom.objects.all().order_by("id")
+    )
     rows = []
     for room in qs.iterator():
         if not room.nightly_rates:  # 空数组 / NULL 均视为无逐晚快照
