@@ -28,7 +28,7 @@
 | `docs/acceptance/evidence/test-mysql-walkin-round.log` | Ran 1307，OK | 同上 |
 | `docs/acceptance/evidence/docgate-publicapierror-convergence.log` | Ran 43，OK | 契约套件，SHA `3fd3c0d` |
 
-- **双引擎全量回归（2026-11-16 重跑，G14-01/02 前置证据）**：SQLite **1558 tests OK（skipped=26）**（`docs/acceptance/evidence/test-sqlite-g14pre-20261116.log`）；MySQL 已用 `--noinput` 全新测试库重跑（66F/21E，见 §4 回归行登记）。walkin-round 旧数字仅作轮次记录。
+- **双引擎全量回归（2026-11-16 重跑，G14-01/02 前置证据）**：SQLite **1558 tests OK（skipped=26）**（`docs/acceptance/evidence/test-sqlite-g14pre-20261116.log`）；MySQL 首轮 `test-mysql-g14pre-20261116.log` 的 66F/21E 经定位为**测试环境白名单污染**（非缺种子），修复后 2026-11-17 重取 **1602 tests OK（skipped=3）**（`docs/acceptance/evidence/test-mysql-env-sanitized-20261117.log`）。walkin-round 旧数字仅作轮次记录。
 - 规则：历史报告中的测试数字仅对其各自 SHA 有效；readme 历史段落的 887/948/…/1285 均为绑定值，不得挪用到其他基线。
 
 ## 4. 遗留门禁（截至本轮）
@@ -41,8 +41,8 @@
 | dev 库 hotel 迁移（guests.0007、billing.0030） | 上线前应用 + 核对；本轮未连接该库 |
 | 生产 PII 独立密钥受控切换 | 按 07 目录 PII 手册流程，禁止直换环境变量 |
 | WB-015~045、WB-068、WB-113、WB-46-01~13 原始映射找回 | 待办 |
-| 双引擎全量回归 | SQLite **1558 OK** 已重跑；MySQL **全新测试库 66F/21E——身份测试 setUp 取 Group'客房服务员' 不存在**（角色组未在全新 MySQL 测试库种子化，f13e32f 时代 MySQL 全绿后主线自行变红；与本专项改动无关——本专项仅动 billing 旧数据模块、docs 与 scripts），归主线缺陷流程修复后重取 G14-02 MySQL 证据 |
-| `scripts/test_evidence.py` 凭据与证据树绑定 | **已修复（`60481e9`）**：凭据入环境变量（缺失快速失败）、`--noinput` 全新建库、被测树绑定检测 |
+| 双引擎全量回归 | SQLite **1558 OK**（2026-11-16）；MySQL **1602 OK（skipped=3）**（2026-11-17，`test-mysql-env-sanitized-20261117.log`）。原登记的「66F/21E——身份测试组未种子化」为**误判**：日志无任何 `Group.DoesNotExist`，真实根因是本机 `source .env` 把 `DJANGO_PLATFORM_ADMIN_*` 透传给测试子进程、激活平台后台白名单（403 != 200 / 200 != 302）；已由 `387e6bf` 在证据生成器统一剔除并加 4 条净化单测，复现与重取证据均已归档 |
+| `scripts/test_evidence.py` 凭据与证据树绑定 | **已修复（`60481e9` + `387e6bf`）**：凭据入环境变量（缺失快速失败）、`--noinput` 全新建库、被测树绑定检测、测试子进程环境净化（剔除平台后台白名单变量） |
 
 ## 5. 待负责人裁定项
 
