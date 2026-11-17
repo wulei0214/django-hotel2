@@ -365,11 +365,9 @@ RETIRED_VIEW_NAMES = {
     "checkout",
     "uncheckout",
     "extend_stay",
-    "change_room",
     "express_checkout",
     "walkin_create",
     "night_audit_run",
-    "room_status_change",
     "finance_add",
     "staff_toggle",
     "export_staff",
@@ -388,9 +386,6 @@ RETIRED_VIEW_NAMES = {
     "insert_park",
     "delete_park",
     "update_park",
-    "insert_room",
-    "delete_room",
-    "update_room",
     "insert_order",
     "delete_order",
     "insert_accomodation",
@@ -514,11 +509,9 @@ RETIRED_410_ROUTES = (
     "/checkout/",
     "/uncheckout/",
     "/extend_stay/",
-    "/change_room/",
     "/express_checkout/",
     "/walkin_create/",
     "/nightaudit_run/",
-    "/room_status/",
     "/finance_add/",
     "/staff_toggle/",
     "/export/staff/",
@@ -537,9 +530,6 @@ RETIRED_410_ROUTES = (
     "/insert_park/",
     "/delete_park/",
     "/update_park/",
-    "/insert_room/",
-    "/delete_room/",
-    "/update_room/",
     "/insert_order/",
     "/delete_order/",
     "/insert_accomodation/",
@@ -646,6 +636,22 @@ class LegacyEntryNoBypassTests(TestCase):
                     f"匿名 POST {route} 的 302 必须是登录墙",
                 )
         self.assertEqual(_legacy_counts(), before, "匿名访问 410 路由不得产生任何旧表写入")
+
+    def test_m41_removed_room_write_routes_are_gone_and_never_write(self):
+        """M4-1（2026-11-18）：5 条旧房态写路由已从 urlpatterns 摘除——
+        员工/匿名 POST 一律 404（比 410 更强的退役终态），永不产生旧表写入。"""
+        removed = ("/change_room/", "/room_status/", "/insert_room/", "/delete_room/", "/update_room/")
+        before = _legacy_counts()
+        for route in removed:
+            self.client.force_login(self.owner)
+            self.assertEqual(
+                self.client.post(route, {"id": "1", "room": "9801"}).status_code, 404,
+                f"POST {route}：路由已摘除，应 404")
+            self.client.logout()
+            self.assertEqual(
+                self.client.post(route, {"id": "1"}).status_code, 404,
+                f"匿名 POST {route}：路由已摘除，应 404")
+        self.assertEqual(_legacy_counts(), before, "摘除路由不得产生任何旧表写入")
 
     def test_legacy_register_booking_cancel_redirect_and_never_write(self):
         """AUTH-01/AUTH-02/P1-04 终验：旧注册/预订/取消入口 → /reserve/，零写入。"""
