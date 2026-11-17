@@ -42,6 +42,21 @@ from django.contrib.auth.models import Group, User
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from django.utils.crypto import get_random_string
+from hotelapp.models import (
+    Accommodation as LegacyAccommodation,
+)
+from hotelapp.models import (
+    Client as LegacyClient,
+)
+from hotelapp.models import (
+    Folio as LegacyFolio,
+)
+from hotelapp.models import (
+    Room as LegacyRoom,
+)
+from hotelapp.models import (
+    Staff as LegacyStaff,
+)
 
 from apps.billing.models import ApprovalRecord, Folio
 from apps.core.models import AuditEvent, BusinessDate, Property
@@ -53,13 +68,6 @@ from apps.identity.models import (
 )
 from apps.inventory.models import DailyRate, RatePlan, Room, RoomType, RoomTypeInventory
 from apps.reservations.models import Reservation, ReservationRoom
-from hotelapp.models import (
-    Accommodation as LegacyAccommodation,
-    Client as LegacyClient,
-    Folio as LegacyFolio,
-    Room as LegacyRoom,
-    Staff as LegacyStaff,
-)
 
 # 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
 _TEST_PW_3D7B9A21 = get_random_string(24)
