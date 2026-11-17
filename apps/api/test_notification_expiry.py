@@ -18,42 +18,26 @@ class NotificationExpiryTests(NotificationCenterTestBase):
 
         listed = self.client.get("/api/v1/notifications")
         self.assertEqual(listed.status_code, 200)
-        self.assertNotIn(
-            notification.pk, {row["id"] for row in listed.json()["data"]}
-        )
+        self.assertNotIn(notification.pk, {row["id"] for row in listed.json()["data"]})
 
         unread = self.client.get("/api/v1/notifications/unread-count")
         self.assertEqual(unread.json()["data"]["unread_count"], 0)
 
-        marked = self.client.post(
-            f"/api/v1/notifications/{notification.pk}/read"
-        )
+        marked = self.client.post(f"/api/v1/notifications/{notification.pk}/read")
         self.assertEqual(marked.status_code, 404)
 
         read_all = self.client.post("/api/v1/notifications/read-all")
         self.assertEqual(read_all.json()["data"]["marked_read"], 0)
-        self.assertFalse(
-            NotificationRead.objects.filter(notification=notification).exists()
-        )
+        self.assertFalse(NotificationRead.objects.filter(notification=notification).exists())
 
     def test_resolved_todo_closes_without_marking_personal_read(self):
-        reservation = self._reservation(
-            status=Reservation.Status.PENDING, check_in_offset=5
-        )
+        reservation = self._reservation(status=Reservation.Status.PENDING, check_in_offset=5)
         refresh_operational_todos(self.property)
-        todos = Notification.objects.filter(
-            property=self.property, dedupe_key__isnull=False
-        )
+        todos = Notification.objects.filter(property=self.property, dedupe_key__isnull=False)
         self.assertTrue(todos.exists())
 
-        Reservation.objects.filter(pk=reservation.pk).update(
-            status=Reservation.Status.CONFIRMED
-        )
+        Reservation.objects.filter(pk=reservation.pk).update(status=Reservation.Status.CONFIRMED)
         refresh_operational_todos(self.property)
 
-        self.assertFalse(
-            NotificationRead.objects.filter(notification__in=todos).exists()
-        )
-        self.assertTrue(
-            all(row.resolved_at is not None for row in todos)
-        )
+        self.assertFalse(NotificationRead.objects.filter(notification__in=todos).exists())
+        self.assertTrue(all(row.resolved_at is not None for row in todos))
