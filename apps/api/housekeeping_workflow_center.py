@@ -7,6 +7,9 @@
 
 import json
 from datetime import date
+from django.db.models import Q
+from django.contrib.auth.models import User
+
 
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
@@ -179,6 +182,28 @@ def task_list(request):
     assigned = request.GET.get("assigned", "all").strip()
     if assigned == "me":
         qs = qs.filter(assigned_to=_profile(user))
+    elif assigned == "group":
+        # MC-006-R2（2026-11-18）：本岗位组任务 = 指派给「与当前员工同物业、
+        # 同有效岗位组」在职员工的任务（此前该分支未执行过滤，返回全物业列表）。
+        membership = AuthorizationService.get_active_membership(user, property_obj)
+        now = timezone.now()
+        my_group_ids = list(
+            membership.role_assignments.filter(starts_at__lte=now)
+            .filter(Q(ends_at__isnull=True) | Q(ends_at__gt=now))
+            .values_list("group_id", flat=True)
+        )
+        if not my_group_ids:
+            qs = qs.none()
+        else:
+            same_group_users = User.objects.filter(
+                staff_profile__property_memberships__property=property_obj,
+                staff_profile__property_memberships__role_assignments__group_id__in=my_group_ids,
+                staff_profile__property_memberships__role_assignments__starts_at__lte=now,
+            ).filter(
+                Q(staff_profile__property_memberships__role_assignments__ends_at__isnull=True)
+                | Q(staff_profile__property_memberships__role_assignments__ends_at__gt=now)
+            )
+            qs = qs.filter(assigned_to__in=same_group_users)
     elif assigned not in ("all", "group"):
         raise ApiError("VALIDATION_ERROR", "assigned 只能是 all/me/group。")
     room_id = request.GET.get("room_id", "").strip()

@@ -171,7 +171,10 @@ def task_claim(request, work_item_id):
 @api_view
 @idempotent
 def task_assign(request, work_item_id):
-    """管理者指派待办；只改负责人，不改源业务状态。"""
+    """管理者指派待办；只改负责人，不改源业务状态。
+
+    MC-007-R1 口径：指派属显式管理权限路径（identity.staff_manage + 指派审计），
+    不经任务可见范围过滤——这是负责人认可的管理者跨组处理例外，非隐式放开。"""
     property_obj, profile, group_ids = _context(request)
     work_item = _work_item_or_404(property_obj, work_item_id)
     if not AuthorizationService.has_permission(
@@ -204,9 +207,16 @@ def task_assign(request, work_item_id):
 @api_view
 @idempotent
 def task_complete(request, work_item_id):
-    """完成待办：必须经源领域服务；源业务失败时任务保留待处理。"""
+    """完成待办：必须经源领域服务；源业务失败时任务保留待处理。
+
+    MC-007-R1（2026-11-18）：完成接口与 detail/claim 一致，统一走任务可见范围
+    过滤——非指派给自己/本岗位组可见的任务一律 404，不依赖业务权限隐式放开。
+    （指派接口保留 identity.staff_manage 显式管理权限规则，指派动作由
+    assign_work_item 落审计，属负责人认可的例外路径。）"""
     property_obj, profile, group_ids = _context(request)
-    work_item = _work_item_or_404(property_obj, work_item_id)
+    work_item = _work_item_or_404(
+        property_obj, work_item_id, _visible_work_items(property_obj, profile, group_ids)
+    )
     spec = get_spec(work_item.task_code)
     if (
         spec

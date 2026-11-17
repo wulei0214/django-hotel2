@@ -94,6 +94,21 @@ class HousekeepingTaskWorkflowTests(HousekeepingCenterTestBase):
         inspection = RoomInspection.objects.get(task=task)
         self.assertEqual(inspection.failed_items, ["地面有水渍"])
 
+    def test_assigned_group_filter_isolates_cross_group_tasks(self):
+        """MC-006-R2：assigned=group 必须真过滤——本组任务可见，跨组任务不可见。"""
+        hk2 = self._make_staff("hk_center_cleaner2", "客房服务员")
+        fnb = self._make_staff("fnb_cross_group", "餐饮服务员")
+        t_mine = self._task(self._make_dirty_room("HK-R2-1"), assigned_to=self.hk)
+        t_same = self._task(self._make_dirty_room("HK-R2-2"), assigned_to=hk2)
+        t_cross = self._task(self._make_dirty_room("HK-R2-3"), assigned_to=fnb)
+        self.client.force_login(self.hk)
+        response = self.client.get("/api/v1/housekeeping/tasks?assigned=group")
+        self.assertEqual(response.status_code, 200, response.content)
+        ids = {item["id"] for item in response.json()["data"]["items"]}
+        self.assertIn(t_mine.pk, ids)
+        self.assertIn(t_same.pk, ids)
+        self.assertNotIn(t_cross.pk, ids)
+
     def test_task_api_permissions_and_cross_property_isolation(self):
         room = self._make_dirty_room("HK-WF-04")
         task = self._task(room)

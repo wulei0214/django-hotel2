@@ -158,6 +158,43 @@ class TaskCenterClosureTests(NotificationCenterTestBase):
         self.assertEqual(task.resolution, WorkItem.Resolution.SOURCE_RESOLVED)
         self.assertIsNone(task.completed_by_id)
 
+    def test_complete_not_visible_task_returns_404(self):
+        """MC-007-R1：完成接口统一可见范围校验——任务改属他组后，原组管理者 404。"""
+        from django.contrib.auth.models import Group
+
+        record, task = self._approval_task()
+        housekeeping_group = Group.objects.get(name="客房服务员")
+        WorkItem.objects.filter(pk=task.pk).update(
+            assigned_group=housekeeping_group, assigned_profile=None, claimed_by=None
+        )
+        response = self._post(f"/api/v1/tasks/{task.pk}/complete", {"note": "越权尝试"})
+        self.assertEqual(response.status_code, 404, response.content)
+        task.refresh_from_db()
+        self.assertEqual(task.status, WorkItem.Status.PENDING)
+
+    def test_assign_invisible_task_via_staff_manage_is_documented_path(self):
+        """MC-007-R1 例外口径：staff_manage 管理者指派不可见任务=显式管理路径（审计留痕）。"""
+        from django.contrib.auth.models import Group
+
+        record, task = self._approval_task()
+        housekeeping_group = Group.objects.get(name="客房服务员")
+        WorkItem.objects.filter(pk=task.pk).update(
+            assigned_group=housekeeping_group, assigned_profile=None, claimed_by=None
+        )
+        owner_manager = self._make_staff("task_owner_mgr", "店长")
+        self.client.force_login(owner_manager)
+        other = self._make_staff("task_hk_member", "客房服务员")
+        from apps.identity.models import StaffProfile
+
+        other_profile = StaffProfile.objects.get(user=other)
+        response = self._post(
+            f"/api/v1/tasks/{task.pk}/assign", {"assigned_to": other_profile.pk}
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(
+            AuditEvent.objects.filter(action="workitem.assigned", entity_id=str(task.pk)).exists()
+        )
+
     def test_list_filters_and_cross_property_detail_is_404(self):
         _, task = self._approval_task()
         response = self.client.get("/api/v1/tasks?status=PENDING&assigned=all")
