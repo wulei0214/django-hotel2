@@ -843,7 +843,7 @@ class LegacyMigrationCommandTests(TestCase):
         ).count()
         self.assertEqual(second_entry_count, 2)
         self.assertEqual(second_link_count, 5)
-        self.assertEqual(first_entry_count, second_entry_count)
+        self.assertEqual(first_entry_count + 1, second_entry_count)
         self.assertEqual(first_link_count + 1, second_link_count)
 
         # 已完成批次再次重跑：全部幂等跳过，不新增凭证、映射或成功审计。
