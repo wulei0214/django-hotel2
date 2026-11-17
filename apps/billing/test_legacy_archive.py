@@ -165,9 +165,7 @@ class ArchiveTableTests(TestCase):
                 property_assignments={source_pks[spec.source_model]: self.prop},
             )
             self.assertTrue(verify_archive_run(run)["ok"], msg=spec.archive_table)
-            mapped_row = spec.archive_model.objects.get(
-                archive_batch="ARC-ALL", pk=source_pks[spec.source_model]
-            )
+            mapped_row = spec.archive_model.objects.get(archive_batch="ARC-ALL", pk=source_pks[spec.source_model])
             self.assertEqual(mapped_row.property_id, self.prop.pk)
             unattributed_rows = spec.archive_model.objects.filter(
                 archive_batch="ARC-ALL"
