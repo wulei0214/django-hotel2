@@ -647,6 +647,9 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
     expected_groups: dict[tuple[int, str, str], Decimal] = defaultdict(lambda: Decimal("0.00"))
     actual_groups: dict[tuple[int, str, str], Decimal] = defaultdict(lambda: Decimal("0.00"))
     scope_models = list(batch.scope_source_models or [])
+    unscoped_links = links.exclude(source_model__in=scope_models)
+    if unscoped_links.exists():
+        report["diffs"].append("批次映射包含未授权来源模型，必须人工核查")
     all_expected_references: set[str] = set()
     c1_target_ids: list[str] = []
 
@@ -719,6 +722,8 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
         invalid_targets = []
         leaked_new_entries = []
         for link in model_links:
+            if link.property_id != batch.scope_property_id:
+                invalid_targets.append(link.source_pk)
             category = next(
                 (name for name, method in METHOD_BY_CATEGORY.items() if method == link.match_method),
                 None,
