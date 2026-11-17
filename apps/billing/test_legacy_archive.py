@@ -320,8 +320,10 @@ class ArchiveCommandTests(TestCase):
         with patch(
             "apps.billing.management.commands.archive_legacy_finance.AuditEvent.record",
             side_effect=RuntimeError("audit unavailable"),
-        ), self.assertRaises(CommandError):
-            call_command(
+        ):
+            self.assertRaises(
+                CommandError,
+                call_command,
                 "archive_legacy_finance",
                 "--batch-uid",
                 "ARC-AUDIT-ATOMIC",
@@ -331,9 +333,7 @@ class ArchiveCommandTests(TestCase):
                 "Folio",
                 stdout=StringIO(),
             )
-        self.assertFalse(
-            LegacyArchiveRun.objects.filter(batch_uid="ARC-AUDIT-ATOMIC").exists()
-        )
+        self.assertFalse(LegacyArchiveRun.objects.filter(batch_uid="ARC-AUDIT-ATOMIC").exists())
         self.assertFalse(
             LegacyFolioArchive.objects.filter(archive_batch="ARC-AUDIT-ATOMIC").exists()
         )
@@ -361,9 +361,7 @@ class ArchiveCommandTests(TestCase):
         )
         run = LegacyArchiveRun.objects.get(batch_uid="ARC-BAD2")
         # 绕过只读管理器改元数据（模拟"元数据被写错"，用裸 QuerySet 是唯一绕过方式）。
-        django_models.QuerySet(LegacyArchiveRun).filter(pk=run.pk).update(
-            table_digest="f" * 64
-        )
+        django_models.QuerySet(LegacyArchiveRun).filter(pk=run.pk).update(table_digest="f" * 64)
         with self.assertRaises(CommandError):
             call_command(
                 "archive_legacy_finance",
