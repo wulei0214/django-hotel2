@@ -15,7 +15,7 @@ from io import StringIO
 from pathlib import Path
 from unittest import mock, skipIf
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.core.management import CommandError, call_command
 from django.db import IntegrityError, connection, models as django_models, transaction
 from django.test import TestCase, override_settings
@@ -30,9 +30,17 @@ from apps.billing.legacy_batches import (
 )
 from apps.billing.legacy_credentials import LegacyMigrationDenied
 from apps.billing.legacy_migration import Decision, Plan, execute_plan, reconcile_batch
-from apps.billing.models import Folio, LedgerEntry, LegacyArchiveRun, LegacyMigrationBatch
+from apps.billing.models import (
+    Folio,
+    LedgerEntry,
+    LegacyArchiveRun,
+    LegacyFolioArchive,
+    LegacyMigrationBatch,
+)
 from apps.core.models import AuditEvent, LegacyRecordLink, Property
+from apps.billing.services_v2 import BillingService
 from apps.guests.models import Guest
+from apps.identity.models import PermissionMatrixApproval
 from apps.reservations.models import Reservation
 
 
@@ -313,6 +321,9 @@ class LegacyMigrationCommandTests(TestCase):
         self.assertEqual(entry.entry_type, LedgerEntry.EntryType.PAYMENT)
         self.assertEqual(entry.amount, Decimal("-688.00"))
         self.assertEqual(entry.posted_by_id, self.executor.pk)
+        finance_entry = LedgerEntry.objects.get(reference="legacy:finance:7001")
+        self.assertEqual(finance_entry.entry_type, LedgerEntry.EntryType.PAYMENT)
+        self.assertEqual(finance_entry.amount, Decimal("-688.00"))
         self.assertEqual(
             LegacyRecordLink.objects.filter(
                 migration_batch=self.batch.batch_uid,
@@ -326,6 +337,279 @@ class LegacyMigrationCommandTests(TestCase):
         self.assertEqual(conflict.mapping_status, LegacyRecordLink.MappingStatus.CONFLICT)
         ignored = LegacyRecordLink.objects.get(source_model="Folio", source_pk="9002")
         self.assertEqual(ignored.mapping_status, LegacyRecordLink.MappingStatus.IGNORED)
+
+    def test_room_charge_and_deposit_sign_conversion(self):
+        """M1/M2：房费正向入账，押金按新口径转为负数。"""
+        from hotelapp.models import Accommodation, Folio as LegacyFolio
+
+        old_order = Accommodation.objects.get(pk=8101)
+        LegacyFolio.objects.create(
+            id=9011,
+            order=old_order,
+            类型="房费",
+            金额="120.00",
+            事由="旧房费",
+            日期="2026-01-02",
+        )
+        LegacyFolio.objects.create(
+            id=9012,
+            order=old_order,
+            类型="押金",
+            金额="300.00",
+            事由="旧押金",
+            日期="2026-01-02",
+        )
+        self._call()
+        room_charge = LedgerEntry.objects.get(reference="legacy:folio:9011")
+        deposit = LedgerEntry.objects.get(reference="legacy:folio:9012")
+        self.assertEqual(room_charge.entry_type, LedgerEntry.EntryType.ROOM_CHARGE)
+        self.assertEqual(room_charge.amount, Decimal("120.00"))
+        self.assertEqual(deposit.entry_type, LedgerEntry.EntryType.DEPOSIT)
+        self.assertEqual(deposit.amount, Decimal("-300.00"))
+
+    def test_malformed_amount_date_and_orphan_records_are_c4_and_archived(self):
+        """M6-M8：金额/日期解析失败与孤儿凭证均为 C4，原始值仍进入归档快照。"""
+        from hotelapp.models import Accommodation, Folio as LegacyFolio
+
+        old_order = Accommodation.objects.get(pk=8101)
+        LegacyFolio.objects.create(
+            id=9006,
+            order=old_order,
+            类型="收款",
+            金额="100.00",
+            事由="日期无分隔符",
+            日期="20260101",
+        )
+        LegacyFolio.objects.create(
+            id=9007,
+            order=None,
+            类型="收款",
+            金额="200.00",
+            事由="孤儿凭证",
+            日期="2026-01-02",
+        )
+        out = self._call()
+        self.assertIn("C4=3", out)
+        for source_pk in ("9003", "9006", "9007"):
+            self.assertFalse(
+                LedgerEntry.objects.filter(reference=f"legacy:folio:{source_pk}").exists()
+            )
+            link = LegacyRecordLink.objects.get(
+                migration_batch=self.batch.batch_uid,
+                source_model="Folio",
+                source_pk=source_pk,
+            )
+            self.assertEqual(link.mapping_status, LegacyRecordLink.MappingStatus.CONFLICT)
+
+        call_command(
+            "archive_legacy_finance",
+            "--execute",
+            "--batch-uid",
+            "ARC-M6-M8",
+            "--operator",
+            "ops-archive",
+            "--approval-ref",
+            "GOV03-M6-M8-TEST",
+            "--tables",
+            "Folio",
+            stdout=StringIO(),
+        )
+        self.assertEqual(LegacyFolioArchive.objects.get(pk=9003).金额, "abc")
+        self.assertEqual(LegacyFolioArchive.objects.get(pk=9006).日期, "20260101")
+        self.assertEqual(LegacyFolioArchive.objects.get(pk=9007).金额, "200.00")
+
+    def test_unconfirmed_reversal_is_conflict_and_never_posts(self):
+        """M4：无法证明原凭证的旧冲账默认 C4/CONFLICT，不创建 REVERSAL。"""
+        from hotelapp.models import Accommodation, Folio as LegacyFolio
+
+        old_order = Accommodation.objects.get(pk=8101)
+        LegacyFolio.objects.create(
+            id=9016,
+            order=old_order,
+            类型="冲账",
+            金额="50.00",
+            事由="未确认原凭证的冲账",
+            日期="2026-01-02",
+        )
+        out = self._call()
+        self.assertIn("C4=2", out)
+        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:folio:9016").exists())
+        link = LegacyRecordLink.objects.get(
+            migration_batch=self.batch.batch_uid,
+            source_model="Folio",
+            source_pk="9016",
+        )
+        self.assertEqual(link.mapping_status, LegacyRecordLink.MappingStatus.CONFLICT)
+
+    def test_confirmed_reversal_runs_through_controlled_command(self):
+        """M5/M17：命令只在人工配对后经受控入口创建 legacy_workflow REVERSAL。"""
+        from hotelapp.models import Accommodation, Folio as LegacyFolio
+
+        original, _ = BillingService.post_entry(
+            property_obj=self.prop,
+            folio=self.folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+            amount=Decimal("-50.00"),
+            reference="legacy:folio:9014",
+            business_date=timezone.localdate(),
+            description="已存在的原凭证",
+        )
+        old_order = Accommodation.objects.get(pk=8101)
+        LegacyFolio.objects.create(
+            id=9015,
+            order=old_order,
+            类型="冲账",
+            金额="50.00",
+            事由="人工确认冲账",
+            日期="2026-01-02",
+        )
+        payload = json.loads(self.mapping_path.read_text(encoding="utf-8"))
+        payload["reversal_pairs"] = {
+            "9015": {
+                "void_reference": "legacy:folio:9014",
+                "confirmed_by": "finance-lead",
+                "basis": "原始凭证影像 + 同订单金额核对",
+            }
+        }
+        self.mapping_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+        self._call()
+        reversal = LedgerEntry.objects.get(reference="legacy:folio:9015")
+        self.assertEqual(reversal.entry_type, LedgerEntry.EntryType.REVERSAL)
+        self.assertTrue(reversal.legacy_workflow)
+        self.assertEqual(reversal.void_of_id, original.pk)
+        self.assertIsNone(reversal.approval_record_id)
+
+    def test_missing_order_mapping_downgrades_order_facts_to_c4(self):
+        """M13：缺少订单-预订关系时，该订单名下所有财务凭证均不得新建。"""
+        payload = json.loads(self.mapping_path.read_text(encoding="utf-8"))
+        payload["orders"] = {}
+        self.mapping_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        out = self._call()
+        self.assertIn("C1=0", out)
+        self.assertEqual(LedgerEntry.objects.filter(reference__startswith="legacy:").count(), 0)
+        for source_model, source_pk in (("Folio", "9001"), ("FinanceRecord", "7001")):
+            link = LegacyRecordLink.objects.get(
+                migration_batch=self.batch.batch_uid,
+                source_model=source_model,
+                source_pk=source_pk,
+            )
+            self.assertEqual(link.mapping_status, LegacyRecordLink.MappingStatus.CONFLICT)
+
+    def test_cross_property_mapping_blocks_batch_and_marks_conflicts(self):
+        """M14：订单映射指向其他物业时整批阻断，冲突来源落 C4/CONFLICT。"""
+        from hotelapp.models import Accommodation, Folio as LegacyFolio
+
+        other_prop = Property.objects.create(code="OTHER-MIG-PROP", name="其他迁移物业")
+        other_guest = Guest.objects.create(property=other_prop, full_name="其他物业客人")
+        other_reservation = Reservation.objects.create(
+            property=other_prop,
+            guest=other_guest,
+            booking_no="LEGACY-OTHER-PROP",
+            status=Reservation.Status.CONFIRMED,
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            room_count=1,
+            total_amount=Decimal("120.00"),
+            currency="CNY",
+        )
+        Folio.objects.create(
+            property=other_prop,
+            reservation=other_reservation,
+            guest=other_guest,
+            currency="CNY",
+        )
+        old_order = Accommodation.objects.get(pk=8101)
+        Accommodation.objects.create(
+            id=8102,
+            顾客id=old_order.顾客id,
+            客房编号=old_order.客房编号,
+            状态=old_order.状态,
+            入住时间=old_order.入住时间,
+        )
+        LegacyFolio.objects.create(
+            id=9010,
+            order_id=8102,
+            类型="房费",
+            金额="120.00",
+            事由="同批次有效物业记录",
+            日期="2026-01-02",
+        )
+        payload = json.loads(self.mapping_path.read_text(encoding="utf-8"))
+        payload["orders"]["8101"]["reservation"] = other_reservation.pk
+        payload["orders"]["8102"] = {
+            "reservation": self.reservation.pk,
+            "basis": "同物业人工确认",
+            "confirmed_by": "finance-lead",
+        }
+        self.mapping_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+        with self.assertRaises(CommandError):
+            self._call()
+        self.assertEqual(LedgerEntry.objects.filter(reference__startswith="legacy:").count(), 0)
+        for source_model, source_pk in (("Folio", "9001"), ("FinanceRecord", "7001")):
+            link = LegacyRecordLink.objects.get(
+                migration_batch=self.batch.batch_uid,
+                source_model=source_model,
+                source_pk=source_pk,
+            )
+            self.assertEqual(link.mapping_status, LegacyRecordLink.MappingStatus.CONFLICT)
+        self.assertFalse(
+            LegacyRecordLink.objects.filter(
+                migration_batch=self.batch.batch_uid, source_model="Folio", source_pk="9010"
+            ).exists()
+        )
+
+    def test_existing_manual_mapping_is_never_overwritten(self):
+        """M15：已有人工复核结果不被迁移工具覆盖。"""
+        manual = LegacyRecordLink.objects.create(
+            property=self.prop,
+            source_system="hotelapp",
+            source_model="Folio",
+            source_pk="9001",
+            target_model="",
+            target_pk="",
+            mapping_status=LegacyRecordLink.MappingStatus.CONFLICT,
+            match_method="manual_review",
+            reviewed_by=self.approver,
+            reviewed_at=timezone.now(),
+            review_note="人工确认暂不迁移",
+            migration_batch="MANUAL-REVIEW",
+        )
+        with self.assertRaises(CommandError):
+            self._call()
+        manual.refresh_from_db()
+        self.assertEqual(manual.mapping_status, LegacyRecordLink.MappingStatus.CONFLICT)
+        self.assertEqual(manual.match_method, "manual_review")
+        self.assertEqual(manual.review_note, "人工确认暂不迁移")
+        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:folio:9001").exists())
+
+    def test_cancelled_permission_approval_does_not_affect_finance_migration(self):
+        """M12：CANCELLED 是权限申请终态，不阻塞财务迁移，也不被迁移改写。"""
+        group = Group.objects.create(name="legacy-migration-permission-test")
+        approval = PermissionMatrixApproval.objects.create(
+            group=group,
+            requested_by=self.executor,
+            reason="测试权限矩阵变更",
+            diff_hash="a1b2c3d4e5f60708",
+            payload_snapshot={"added": [], "removed": [], "version": 1},
+        )
+        approval.status = PermissionMatrixApproval.Status.CANCELLED
+        approval.save()
+        self._call()
+        approval.refresh_from_db()
+        self.assertEqual(approval.status, PermissionMatrixApproval.Status.CANCELLED)
+        self.assertIsNone(approval.approved_by_id)
+        self.assertIsNone(approval.pending_diff_key)
+        # CANCELLED 已释放 pending_diff_key，同一 group/diff 可创建新的申请。
+        replacement = PermissionMatrixApproval.objects.create(
+            group=group,
+            requested_by=self.executor,
+            reason="同 diff 重新申请",
+            diff_hash="a1b2c3d4e5f60708",
+            payload_snapshot={"added": [], "removed": [], "version": 2},
+        )
+        self.assertEqual(replacement.status, PermissionMatrixApproval.Status.PENDING)
 
     def test_execute_rejects_bad_password_and_audits(self):
         with self.assertRaises(CommandError):
