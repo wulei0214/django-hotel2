@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
@@ -24,10 +25,12 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
+from django.db import IntegrityError, transaction
+from django.db.models import Count
 from django.utils import timezone
 
 from apps.billing.models import Folio, LedgerEntry, LegacyMigrationBatch
-from apps.core.models import LegacyRecordLink
+from apps.core.models import LegacyRecordLink, Property
 
 AMOUNT_RE = re.compile(r"^-?\d+(\.\d{1,2})?$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -463,16 +466,64 @@ def _link(
     )
 
 
+def _existing_link_matches_decision(
+    *, batch: LegacyMigrationBatch, decision: Decision, link: LegacyRecordLink
+) -> bool:
+    """同批次同分类的已完成映射视为幂等成功；任何不一致都拒绝覆盖。"""
+    method = METHOD_BY_CATEGORY[decision.category]
+    if (
+        link.property_id != batch.scope_property_id
+        or link.migration_batch != batch.batch_uid
+        or link.match_method != method
+    ):
+        return False
+
+    if decision.category == "C1":
+        if (
+            link.mapping_status != LegacyRecordLink.MappingStatus.LINKED
+            or link.target_model != "LedgerEntry"
+            or not link.target_pk
+        ):
+            return False
+        entry = LedgerEntry.objects.filter(pk=link.target_pk).first()
+        return bool(
+            entry
+            and entry.reference == decision.reference
+            and entry.property_id == batch.scope_property_id
+            and entry.entry_type == decision.entry_type
+            and entry.amount == decision.amount
+            and entry.business_date == decision.business_date
+        )
+
+    if decision.category in {"C2", "C3"}:
+        if (
+            link.mapping_status != LegacyRecordLink.MappingStatus.LINKED
+            or link.target_model != "LedgerEntry"
+            or str(link.target_pk) != str(decision.candidate_entry_id)
+        ):
+            return False
+        candidate = LedgerEntry.objects.filter(pk=link.target_pk).first()
+        return bool(candidate and candidate.property_id == batch.scope_property_id)
+
+    expected_status = (
+        LegacyRecordLink.MappingStatus.CONFLICT
+        if decision.category == "C4"
+        else LegacyRecordLink.MappingStatus.IGNORED
+    )
+    return (
+        link.mapping_status == expected_status
+        and not link.target_model
+        and not link.target_pk
+    )
+
+
 def execute_plan(
     *, batch: LegacyMigrationBatch, plan: Plan, credential_factory: Any, executor: Any
 ) -> dict[str, Any]:
-    """按计划落库：C1 经受控入口建凭证，C2/C3/C4/C5 只写映射。
+    """按计划落库；同批次已完成的逐条结果可安全跳过，支持失败后断点重执行。
 
-    C1 的凭证创建**逐条独立事务**：一条失败只回滚该条（不残留映射/审计），
-    不把整批拖入"部分成功但无法定位"的状态。失败逐条收集并在返回值中返回。
-
-    ``credential_factory`` 每次调用都必须铸造**新凭证**：执行凭证是 nonce 单次
-    消费制（§5.2），同一条凭证第二次使用会被判重放——长批次按需重新铸造。
+    C1 的凭证、映射和审计仍由受控入口在单条事务内完成；C2-C5 每条映射也在
+    独立事务中写入。并发撞唯一键只记为该条失败，不污染其他记录。
     """
     from apps.billing.legacy_credentials import LegacyMigrationDenied
     from apps.billing.services_v2 import BillingService
@@ -482,58 +533,71 @@ def execute_plan(
     for decision in plan.decisions:
         method = METHOD_BY_CATEGORY[decision.category]
         try:
-            if decision.category == "C1":
-                folio = Folio.objects.get(pk=decision.target_folio_id)
-                BillingService.post_legacy_migration_entry(
-                    credential_token=credential_factory(),
-                    batch=batch,
-                    property_obj=batch.scope_property,
-                    folio=folio,
-                    entry_type=decision.entry_type,
-                    amount=decision.amount,
-                    reference=decision.reference,
-                    source_model=decision.source_model,
-                    source_pk=decision.source_pk,
-                    description=decision.description,
-                    business_date=decision.business_date,
-                    void_of=(
-                        LedgerEntry.objects.get(pk=decision.void_of_pk)
-                        if decision.void_of_pk
-                        else None
-                    ),
-                    void_reason=decision.reason if decision.void_of_pk else "",
-                    reversal_confirmation=decision.reversal_confirmation,
-                    review_note=f"batch={batch.batch_uid} {decision.reason}",
+            with transaction.atomic():
+                existing_links = list(
+                    LegacyRecordLink.objects.select_for_update().filter(
+                        source_system="hotelapp",
+                        source_model=decision.source_model,
+                        source_pk=decision.source_pk,
+                    )[:2]
                 )
-            elif decision.category in {"C2", "C3"}:
-                _link(
-                    batch=batch,
-                    decision=decision,
-                    executor=executor,
-                    target_pk=str(decision.candidate_entry_id),
-                    method=method,
-                    note=f"batch={batch.batch_uid} {decision.reason}",
-                )
-            elif decision.category == "C4":
-                _link(
-                    batch=batch,
-                    decision=decision,
-                    executor=executor,
-                    target_pk="",
-                    method=method,
-                    note=f"batch={batch.batch_uid} {decision.reason}",
-                )
-            else:  # C5
-                _link(
-                    batch=batch,
-                    decision=decision,
-                    executor=executor,
-                    target_pk="",
-                    method=method,
-                    note=f"batch={batch.batch_uid} {decision.reason}",
-                )
-            counts[decision.category] += 1
-        except (LegacyMigrationDenied, ValueError, LegacyMigrationError) as exc:
+                if len(existing_links) > 1:
+                    raise LegacyMigrationDenied(
+                        f"来源记录 {decision.source_model}#{decision.source_pk} 存在多条映射，需人工处置"
+                    )
+                if existing_links:
+                    if _existing_link_matches_decision(
+                        batch=batch, decision=decision, link=existing_links[0]
+                    ):
+                        counts[decision.category] += 1
+                        continue
+                    raise LegacyMigrationDenied(
+                        f"来源记录 {decision.source_model}#{decision.source_pk} 已有不一致或其他批次映射，禁止覆盖"
+                    )
+
+                if decision.category == "C1":
+                    folio = Folio.objects.get(pk=decision.target_folio_id)
+                    BillingService.post_legacy_migration_entry(
+                        credential_token=credential_factory(),
+                        batch=batch,
+                        property_obj=batch.scope_property,
+                        folio=folio,
+                        entry_type=decision.entry_type,
+                        amount=decision.amount,
+                        reference=decision.reference,
+                        source_model=decision.source_model,
+                        source_pk=decision.source_pk,
+                        description=decision.description,
+                        business_date=decision.business_date,
+                        void_of=(
+                            LedgerEntry.objects.get(pk=decision.void_of_pk)
+                            if decision.void_of_pk
+                            else None
+                        ),
+                        void_reason=decision.reason if decision.void_of_pk else "",
+                        reversal_confirmation=decision.reversal_confirmation,
+                        review_note=f"batch={batch.batch_uid} {decision.reason}",
+                    )
+                elif decision.category in {"C2", "C3"}:
+                    _link(
+                        batch=batch,
+                        decision=decision,
+                        executor=executor,
+                        target_pk=str(decision.candidate_entry_id),
+                        method=method,
+                        note=f"batch={batch.batch_uid} {decision.reason}",
+                    )
+                else:
+                    _link(
+                        batch=batch,
+                        decision=decision,
+                        executor=executor,
+                        target_pk="",
+                        method=method,
+                        note=f"batch={batch.batch_uid} {decision.reason}",
+                    )
+                counts[decision.category] += 1
+        except (LegacyMigrationDenied, ValueError, LegacyMigrationError, IntegrityError) as exc:
             counts["failed"] += 1
             failures.append(f"{decision.source_model}#{decision.source_pk}: {exc}")
     return {"counts": counts, "failures": failures}
@@ -543,79 +607,250 @@ def execute_plan(
 # 对账（§1 分类守恒 + §1.2 金额守恒，按 来源模型 × 分类 × 批次 分组）
 # --------------------------------------------------------------------------- #
 def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
-    """按分类守恒与金额守恒核验一个批次，返回可打印的对账报告。
+    """只读核验分类守恒、凭证关联、金额分组守恒和归档元数据，不修复任何数据。"""
+    from hotelapp import models as legacy_models
 
-    守恒口径（§1.1）：
-      * C1：源记录数 = 新建凭证数 = LINKED 映射数（本实现以"链接指向的凭证存在"核验）；
-      * C2/C3：源记录数 = 已核验映射数，**新建凭证必须为 0**；
-      * C4：源记录数 = CONFLICT 映射数；
-      * C5：源记录数 = 归档（IGNORED）映射数。
-    金额守恒（§1.2）：按 来源模型 × 凭证类型 × 币种 分组，Σ新凭证 = Σ旧记录（换算符号后）。
-    """
     report: dict[str, Any] = {
         "batch_uid": batch.batch_uid,
         "categories": {},
         "amounts": [],
+        "amount_groups": [],
         "diffs": [],
         "archive": [],
     }
     links = LegacyRecordLink.objects.filter(
         source_system="hotelapp", migration_batch=batch.batch_uid
     )
-    for source_model in ("Folio", "FinanceRecord"):
-        rows: dict[str, Any] = {}
-        for category, method in METHOD_BY_CATEGORY.items():
-            count = links.filter(source_model=source_model, match_method=method).count()
-            rows[category] = count
-        c1_links = links.filter(source_model=source_model, match_method=METHOD_C1)
-        missing_entries = []
-        for link in c1_links.only("target_pk", "source_pk"):
-            if not LedgerEntry.objects.filter(pk=link.target_pk).exists():
-                missing_entries.append(link.source_pk)
-        rows["C1_missing_entries"] = missing_entries
-        # C2/C3 分类泄漏检查：这两类不得产生新凭证。
-        leaked = [
-            link.source_pk
-            for link in links.filter(
-                source_model=source_model, match_method__in=[METHOD_C2, METHOD_C3]
-            ).only("source_pk", "target_pk")
-            if LedgerEntry.objects.filter(
-                reference=f"legacy:{source_model}:{link.source_pk}"
-            ).exists()
-        ]
-        rows["leaked_new_entries"] = leaked
-        report["categories"][source_model] = rows
-        if missing_entries:
-            report["diffs"].append(
-                f"{source_model}: {len(missing_entries)} 条 C1 映射指向的凭证不存在"
+    source_model_classes = {
+        "Folio": legacy_models.Folio,
+        "FinanceRecord": legacy_models.FinanceRecord,
+    }
+    expected_status = {
+        "C1": LegacyRecordLink.MappingStatus.LINKED,
+        "C2": LegacyRecordLink.MappingStatus.LINKED,
+        "C3": LegacyRecordLink.MappingStatus.LINKED,
+        "C4": LegacyRecordLink.MappingStatus.CONFLICT,
+        "C5": LegacyRecordLink.MappingStatus.IGNORED,
+    }
+    expected_groups: dict[tuple[int, str, str], Decimal] = defaultdict(lambda: Decimal("0.00"))
+    actual_groups: dict[tuple[int, str, str], Decimal] = defaultdict(lambda: Decimal("0.00"))
+    scope_models = list(batch.scope_source_models or [])
+    all_expected_references: set[str] = set()
+    c1_target_ids: list[str] = []
+
+    for source_model in scope_models:
+        model = source_model_classes.get(source_model)
+        if model is None:
+            report["diffs"].append(f"批次授权了不支持的财务来源模型：{source_model}")
+            continue
+
+        record_range = batch.scope_record_range or {}
+        source_qs = model.objects.all()
+        allowed_pks = record_range.get("pks")
+        if isinstance(allowed_pks, list):
+            source_qs = source_qs.filter(pk__in=allowed_pks)
+        else:
+            pk_min = record_range.get("pk_min")
+            pk_max = record_range.get("pk_max")
+            if pk_min is None or pk_max is None:
+                report["diffs"].append(
+                    f"{source_model}: 批次授权范围缺少 pk_min/pk_max 或 pks 清单"
+                )
+                continue
+            source_qs = source_qs.filter(pk__gte=pk_min, pk__lte=pk_max)
+        source_pks = {str(pk) for pk in source_qs.values_list("pk", flat=True)}
+        all_expected_references.update(
+            f"legacy:{source_model}:{source_pk}" for source_pk in source_pks
+        )
+
+        model_links = list(
+            links.filter(source_model=source_model).select_related("property").order_by("source_pk")
+        )
+        link_pks = [str(link.source_pk) for link in model_links]
+        link_pk_set = set(link_pks)
+        missing_links = sorted(source_pks - link_pk_set)
+        out_of_scope_links = sorted(link_pk_set - source_pks)
+        duplicate_source_links = list(
+            LegacyRecordLink.objects.filter(
+                source_system="hotelapp",
+                source_model=source_model,
+                source_pk__in=source_pks,
             )
-        if leaked:
+            .values("source_pk")
+            .annotate(total=Count("id"))
+            .filter(total__gt=1)
+            .values_list("source_pk", flat=True)
+        )
+
+        rows: dict[str, Any] = {
+            "source_count": len(source_pks),
+            "link_count": len(model_links),
+            "missing_source_links": missing_links,
+            "out_of_scope_links": out_of_scope_links,
+            "duplicate_source_links": sorted(str(pk) for pk in duplicate_source_links),
+        }
+        for category, method in METHOD_BY_CATEGORY.items():
+            rows[category] = sum(1 for link in model_links if link.match_method == method)
+
+        if len(source_pks) != len(model_links) or missing_links or out_of_scope_links:
             report["diffs"].append(
-                f"{source_model}: {len(leaked)} 条 C2/C3 记录泄漏出新建凭证（阻断级）"
+                f"{source_model}: 来源记录 {len(source_pks)} 条、映射 {len(model_links)} 条，分类守恒不成立"
+            )
+        if duplicate_source_links:
+            report["diffs"].append(
+                f"{source_model}: {len(duplicate_source_links)} 条来源记录存在跨物业重复映射（阻断级）"
             )
 
-    # 金额守恒：逐条 C1 映射比对"新凭证金额"与"旧记录（按映射符号换算）"。
-    for link in links.filter(match_method=METHOD_C1).select_related("property"):
-        entry = LedgerEntry.objects.filter(pk=link.target_pk).first()
-        if entry is None:
-            continue
-        expected = _expected_signed_amount(link.source_model, link.source_pk)
-        if expected is None:
-            continue
-        if entry.amount != expected:
-            report["diffs"].append(
-                f"{link.source_model}#{link.source_pk}: 新凭证 {entry.amount} ≠ 旧记录 {expected}"
+        unknown_methods = []
+        status_mismatches = []
+        missing_entries = []
+        invalid_targets = []
+        leaked_new_entries = []
+        for link in model_links:
+            category = next(
+                (name for name, method in METHOD_BY_CATEGORY.items() if method == link.match_method),
+                None,
             )
-        report["amounts"].append(
+            if category is None:
+                unknown_methods.append(link.source_pk)
+                continue
+            if link.mapping_status != expected_status[category]:
+                status_mismatches.append(link.source_pk)
+
+            reference = f"legacy:{source_model}:{link.source_pk}"
+            reference_entry = LedgerEntry.objects.filter(reference=reference).first()
+            if category == "C1":
+                c1_target_ids.append(str(link.target_pk))
+                entry = LedgerEntry.objects.filter(pk=link.target_pk).select_related(
+                    "folio", "property"
+                ).first()
+                if (
+                    entry is None
+                    or link.target_model != "LedgerEntry"
+                    or not link.target_pk
+                    or entry.reference != reference
+                ):
+                    missing_entries.append(link.source_pk)
+                    continue
+                if (
+                    link.property_id != batch.scope_property_id
+                    or entry.property_id != link.property_id
+                    or entry.folio.property_id != link.property_id
+                ):
+                    invalid_targets.append(link.source_pk)
+                expected_amount = _expected_signed_amount(source_model, link.source_pk)
+                expected_type = _expected_entry_type(source_model, link.source_pk)
+                if expected_amount is None or expected_type is None:
+                    report["diffs"].append(
+                        f"{source_model}#{link.source_pk}: C1 来源金额或凭证类型无法核验"
+                    )
+                    continue
+                expected_currency = entry.folio.currency
+                expected_key = (link.property_id, expected_currency, expected_type)
+                actual_key = (entry.property_id, entry.currency, entry.entry_type)
+                expected_groups[expected_key] += expected_amount
+                actual_groups[actual_key] += entry.amount
+                if entry.currency != expected_currency:
+                    invalid_targets.append(link.source_pk)
+                if entry.amount != expected_amount:
+                    report["diffs"].append(
+                        f"{source_model}#{link.source_pk}: 新凭证 {entry.amount} ≠ 旧记录 {expected_amount}"
+                    )
+                if entry.entry_type != expected_type:
+                    invalid_targets.append(link.source_pk)
+                report["amounts"].append(
+                    {
+                        "source_model": source_model,
+                        "source_pk": link.source_pk,
+                        "entry_type": entry.entry_type,
+                        "currency": entry.currency,
+                        "expected": str(expected_amount),
+                        "actual": str(entry.amount),
+                    }
+                )
+            elif category in {"C2", "C3"}:
+                candidate = LedgerEntry.objects.filter(pk=link.target_pk).first()
+                if (
+                    link.target_model != "LedgerEntry"
+                    or not link.target_pk
+                    or candidate is None
+                    or candidate.property_id != link.property_id
+                ):
+                    invalid_targets.append(link.source_pk)
+                if reference_entry is not None:
+                    leaked_new_entries.append(link.source_pk)
+            else:
+                if link.target_model or link.target_pk:
+                    invalid_targets.append(link.source_pk)
+                if reference_entry is not None:
+                    leaked_new_entries.append(link.source_pk)
+
+        rows["unknown_methods"] = unknown_methods
+        rows["status_mismatches"] = status_mismatches
+        rows["C1_missing_entries"] = missing_entries
+        rows["invalid_targets"] = invalid_targets
+        rows["leaked_new_entries"] = leaked_new_entries
+        report["categories"][source_model] = rows
+
+        if unknown_methods:
+            report["diffs"].append(f"{source_model}: {len(unknown_methods)} 条映射使用未知分类")
+        if status_mismatches:
+            report["diffs"].append(f"{source_model}: {len(status_mismatches)} 条映射状态与分类不一致")
+        if missing_entries:
+            report["diffs"].append(
+                f"{source_model}: {len(missing_entries)} 条 C1 映射指向的凭证不存在或 reference 不一致"
+            )
+        if invalid_targets:
+            report["diffs"].append(f"{source_model}: {len(invalid_targets)} 条映射目标无效或物业不一致")
+        if leaked_new_entries:
+            report["diffs"].append(
+                f"{source_model}: {len(leaked_new_entries)} 条 C2/C3/C4/C5 记录泄漏出新建凭证（阻断级）"
+            )
+
+    duplicate_targets = [
+        target_pk for target_pk, count in Counter(c1_target_ids).items() if count > 1
+    ]
+    if duplicate_targets:
+        report["diffs"].append(
+            f"C1 多条旧记录指向同一新凭证（阻断级）：{', '.join(sorted(duplicate_targets))}"
+        )
+
+    # 兜底检查：范围内存在 legacy reference，但没有对应 C1 链接，属于孤儿新凭证。
+    linked_c1_refs = set(
+        links.filter(match_method=METHOD_C1).values_list("source_model", "source_pk")
+    )
+    source_ref_entries = LedgerEntry.objects.filter(reference__in=all_expected_references)
+    orphan_references = [
+        entry.reference
+        for entry in source_ref_entries
+        if tuple(entry.reference.split(":", 2)[1:]) not in linked_c1_refs
+    ]
+    if orphan_references:
+        report["diffs"].append(
+            f"存在未被 C1 映射认领的历史凭证 reference（阻断级）：{', '.join(sorted(orphan_references))}"
+        )
+
+    for key in sorted(set(expected_groups) | set(actual_groups)):
+        expected_total = expected_groups.get(key, Decimal("0.00"))
+        actual_total = actual_groups.get(key, Decimal("0.00"))
+        property_id, currency, entry_type = key
+        property_code = Property.objects.filter(pk=property_id).values_list("code", flat=True).first()
+        report["amount_groups"].append(
             {
-                "source_model": link.source_model,
-                "source_pk": link.source_pk,
-                "entry_type": entry.entry_type,
-                "currency": entry.currency,
-                "expected": str(expected),
-                "actual": str(entry.amount),
+                "property_id": property_id,
+                "property_code": property_code,
+                "currency": currency,
+                "entry_type": entry_type,
+                "expected": str(expected_total),
+                "actual": str(actual_total),
             }
         )
+        if expected_total != actual_total:
+            report["diffs"].append(
+                f"金额分组不守恒：property={property_code or property_id} "
+                f"currency={currency} entry_type={entry_type} "
+                f"期望 {expected_total}，实测 {actual_total}"
+            )
 
     archive_rows = []
     from apps.billing.models import LegacyArchiveRun
@@ -630,6 +865,24 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
         )
     report["archive"] = archive_rows
     return report
+
+
+def _expected_entry_type(source_model: str, source_pk: str) -> str | None:
+    """旧记录映射的期望凭证类型；未知类型不猜测。"""
+    from hotelapp import models as legacy_models
+
+    if source_model == "Folio":
+        row = legacy_models.Folio.objects.filter(pk=source_pk).values("类型").first()
+        mapping = FOLIO_TYPE_MAP
+    elif source_model == "FinanceRecord":
+        row = legacy_models.FinanceRecord.objects.filter(pk=source_pk).values("类型").first()
+        mapping = FINANCE_TYPE_MAP
+    else:
+        return None
+    if row is None:
+        return None
+    mapped = mapping.get(str(row["类型"] or "").strip())
+    return mapped[0] if mapped else None
 
 
 def _expected_signed_amount(source_model: str, source_pk: str) -> Decimal | None:
