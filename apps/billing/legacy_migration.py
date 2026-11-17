@@ -227,6 +227,9 @@ def _resolve_target_folio(
     assignment = (mapping.get("record_reservations") or {}).get(
         f"{source_model}:{source_pk}"
     )
+    assignment_data = assignment if isinstance(assignment, dict) else {}
+    if assignment is not None and not isinstance(assignment, dict):
+        return None, f"{source_model}#{source_pk} 的逐条归属结构非法"
     selected: dict[str, Any]
     if len(relations) > 1:
         if not isinstance(assignment, dict):
@@ -283,11 +286,13 @@ def _resolve_target_folio(
     except (KeyError, TypeError, ValueError):
         return None, f"订单 {key} 映射的 reservation 非法"
     relation_property_id = selected.get("property_id")
-    if (
-        relation_property_id not in (None, "")
-        and int(relation_property_id) != batch.scope_property_id
-    ):
-        return None, f"订单 {key} 关系物业与批次授权物业不一致"
+    if relation_property_id not in (None, ""):
+        try:
+            relation_property_id = int(relation_property_id)
+        except (TypeError, ValueError):
+            return None, f"订单 {key} 关系物业标识非法"
+        if relation_property_id != batch.scope_property_id:
+            return None, f"订单 {key} 关系物业与批次授权物业不一致"
     reservation_property_id = Reservation.objects.filter(pk=reservation_id).values_list(
         "property_id", flat=True
     ).first()
@@ -304,10 +309,14 @@ def _resolve_target_folio(
         return None, f"预订 {reservation_id} 账单物业与批次授权物业不一致"
 
     relation_id = selected.get("relation_id")
-    basis = str((assignment or {}).get("basis") or selected.get("basis") or "").strip()
+    basis = str(assignment_data.get("basis") or selected.get("basis") or "").strip()
     confirmer = str(
-        (assignment or {}).get("confirmed_by") or selected.get("confirmed_by") or ""
+        assignment_data.get("confirmed_by") or selected.get("confirmed_by") or ""
     ).strip()
+    if selected.get("source") != "legacy_order_reservation_map" and (
+        not basis or not confirmer
+    ):
+        return None, f"订单 {key} 的文件回退映射缺少人工确认依据/确认人"
     reason = (
         f"relation_id={relation_id or 'FILE_FALLBACK'} reservation={reservation_id}; "
         f"basis={basis or '未提供'}; confirmed_by={confirmer or '未提供'}"
