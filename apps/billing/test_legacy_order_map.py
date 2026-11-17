@@ -325,8 +325,6 @@ class LegacyOrderMapBaseTests(TestCase):
         )
 
     def _make_legacy_folio(self, pk=9101):
-        from hotelapp.models import Folio as LegacyFolio
-
         return LegacyFolio.objects.create(
             id=pk,
             order=self.legacy_order,
@@ -350,8 +348,6 @@ class LegacyOrderMapBaseTests(TestCase):
         self.assertEqual(folio_decisions[0].target_folio_id, master.pk)
 
     def test_build_plan_requires_record_assignment_for_split_order(self):
-        from hotelapp.models import Folio as LegacyFolio
-
         self._confirm()
         self._confirm(
             reservation_id=self.other_reservation.pk,
@@ -377,8 +373,6 @@ class LegacyOrderMapBaseTests(TestCase):
         self.assertIn("必须逐条指定", decision.reason)
 
     def test_build_plan_uses_record_level_relation_for_split_order(self):
-        from hotelapp.models import Folio as LegacyFolio
-
         first_relation = self._confirm()
         self._confirm(
             reservation_id=self.other_reservation.pk,
