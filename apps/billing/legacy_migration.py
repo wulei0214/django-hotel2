@@ -764,8 +764,8 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
         "C4": LegacyRecordLink.MappingStatus.CONFLICT,
         "C5": LegacyRecordLink.MappingStatus.IGNORED,
     }
-    expected_groups: dict[tuple[int, str, str], Decimal] = defaultdict(lambda: Decimal("0.00"))
-    actual_groups: dict[tuple[int, str, str], Decimal] = defaultdict(lambda: Decimal("0.00"))
+    expected_groups: dict[tuple[str, int, str, str], Decimal] = defaultdict(lambda: Decimal("0.00"))
+    actual_groups: dict[tuple[str, int, str, str], Decimal] = defaultdict(lambda: Decimal("0.00"))
     scope_models = list(batch.scope_source_models or [])
     unscoped_links = links.exclude(source_model__in=scope_models)
     if unscoped_links.exists():
@@ -889,8 +889,8 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
                     )
                     continue
                 expected_currency = entry.folio.currency
-                expected_key = (link.property_id, expected_currency, expected_type)
-                actual_key = (entry.property_id, entry.currency, entry.entry_type)
+                expected_key = ("C1", link.property_id, expected_currency, expected_type)
+                actual_key = ("C1", entry.property_id, entry.currency, entry.entry_type)
                 expected_groups[expected_key] += expected_amount
                 actual_groups[actual_key] += entry.amount
                 if entry.currency != expected_currency:
@@ -903,6 +903,7 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
                     invalid_targets.append(link.source_pk)
                 report["amounts"].append(
                     {
+                        "category": "C1",
                         "source_model": source_model,
                         "source_pk": link.source_pk,
                         "entry_type": entry.entry_type,
@@ -912,14 +913,63 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
                     }
                 )
             elif category in {"C2", "C3"}:
-                candidate = LedgerEntry.objects.filter(pk=link.target_pk).first()
+                candidate = (
+                    LedgerEntry.objects.filter(pk=link.target_pk)
+                    .select_related("folio", "property")
+                    .first()
+                )
                 if (
                     link.target_model != "LedgerEntry"
                     or not link.target_pk
                     or candidate is None
                     or candidate.property_id != link.property_id
+                    or candidate.folio.property_id != link.property_id
                 ):
                     invalid_targets.append(link.source_pk)
+                else:
+                    expected_amount = _expected_signed_amount(source_model, link.source_pk)
+                    expected_type = _expected_entry_type(source_model, link.source_pk)
+                    if expected_amount is None or expected_type is None:
+                        report["diffs"].append(
+                            f"{source_model}#{link.source_pk}: {category} 来源金额或凭证类型无法核验"
+                        )
+                    else:
+                        expected_currency = candidate.folio.currency
+                        expected_key = (
+                            category,
+                            link.property_id,
+                            expected_currency,
+                            expected_type,
+                        )
+                        actual_key = (
+                            category,
+                            candidate.property_id,
+                            candidate.currency,
+                            candidate.entry_type,
+                        )
+                        expected_groups[expected_key] += expected_amount
+                        actual_groups[actual_key] += candidate.amount
+                        if candidate.amount != expected_amount:
+                            report["diffs"].append(
+                                f"{source_model}#{link.source_pk}: {category} 候选凭证 "
+                                f"{candidate.amount} ≠ 旧记录 {expected_amount}"
+                            )
+                        if (
+                            candidate.entry_type != expected_type
+                            or candidate.currency != expected_currency
+                        ):
+                            invalid_targets.append(link.source_pk)
+                        report["amounts"].append(
+                            {
+                                "category": category,
+                                "source_model": source_model,
+                                "source_pk": link.source_pk,
+                                "entry_type": candidate.entry_type,
+                                "currency": candidate.currency,
+                                "expected": str(expected_amount),
+                                "actual": str(candidate.amount),
+                            }
+                        )
                 if reference_entry is not None:
                     leaked_new_entries.append(link.source_pk)
             else:
@@ -983,12 +1033,13 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
     for key in sorted(set(expected_groups) | set(actual_groups)):
         expected_total = expected_groups.get(key, Decimal("0.00"))
         actual_total = actual_groups.get(key, Decimal("0.00"))
-        property_id, currency, entry_type = key
+        category, property_id, currency, entry_type = key
         property_code = (
             Property.objects.filter(pk=property_id).values_list("code", flat=True).first()
         )
         report["amount_groups"].append(
             {
+                "category": category,
                 "property_id": property_id,
                 "property_code": property_code,
                 "currency": currency,
@@ -999,7 +1050,7 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
         )
         if expected_total != actual_total:
             report["diffs"].append(
-                f"金额分组不守恒：property={property_code or property_id} "
+                f"金额分组不守恒：category={category} property={property_code or property_id} "
                 f"currency={currency} entry_type={entry_type} "
                 f"期望 {expected_total}，实测 {actual_total}"
             )
