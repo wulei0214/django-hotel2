@@ -510,7 +510,7 @@ def _existing_link_matches_decision(
     """同批次同分类的已完成映射视为幂等成功；任何不一致都拒绝覆盖。"""
     method = METHOD_BY_CATEGORY[decision.category]
     if (
-        link.property_id != batch.scope_property_id
+        link.property.pk != batch.scope_property_id
         or link.migration_batch != batch.batch_uid
         or link.match_method != method
     ):
@@ -836,22 +836,17 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
                 f"{source_model}: {len(duplicate_source_links)} 条来源记录存在跨物业重复映射（阻断级）"
             )
 
-        unknown_methods = []
+        unknown_methods: list[str] = []
         status_mismatches = []
         missing_entries = []
         invalid_targets = []
         leaked_new_entries = []
         for link in model_links:
-            if link.property_id != batch.scope_property_id:
+            if link.property.pk != batch.scope_property_id:
                 invalid_targets.append(link.source_pk)
-            category = next(
-                (
-                    name
-                    for name, method in METHOD_BY_CATEGORY.items()
-                    if method == link.match_method
-                ),
-                None,
-            )
+            category = {
+                method: name for name, method in METHOD_BY_CATEGORY.items()
+            }.get(link.match_method)
             if category is None:
                 unknown_methods.append(link.source_pk)
                 continue
@@ -876,9 +871,9 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
                     missing_entries.append(link.source_pk)
                     continue
                 if (
-                    link.property_id != batch.scope_property_id
-                    or entry.property_id != link.property_id
-                    or entry.folio.property_id != link.property_id
+                    link.property.pk != batch.scope_property_id
+                    or entry.property_id != link.property.pk
+                    or entry.folio.property_id != link.property.pk
                 ):
                     invalid_targets.append(link.source_pk)
                 expected_amount = _expected_signed_amount(source_model, link.source_pk)
@@ -889,7 +884,7 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
                     )
                     continue
                 expected_currency = entry.folio.currency
-                expected_key = ("C1", link.property_id, expected_currency, expected_type)
+                expected_key = ("C1", link.property.pk, expected_currency, expected_type)
                 actual_key = ("C1", entry.property_id, entry.currency, entry.entry_type)
                 expected_groups[expected_key] += expected_amount
                 actual_groups[actual_key] += entry.amount
@@ -922,8 +917,8 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
                     link.target_model != "LedgerEntry"
                     or not link.target_pk
                     or candidate is None
-                    or candidate.property_id != link.property_id
-                    or candidate.folio.property_id != link.property_id
+                    or candidate.property_id != link.property.pk
+                    or candidate.folio.property_id != link.property.pk
                 ):
                     invalid_targets.append(link.source_pk)
                 else:
@@ -937,7 +932,7 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
                         expected_currency = candidate.folio.currency
                         expected_key = (
                             category,
-                            link.property_id,
+                            link.property.pk,
                             expected_currency,
                             expected_type,
                         )
