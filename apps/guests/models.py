@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Optional
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -43,11 +46,11 @@ class Guest(models.Model):
     # 合并是软归档——duplicate 保留行并指向 primary，不物理删除（§8.2-4
     # 要求保留主档案、源档案与完整关联映射）；账务事实（Folio/Payment）
     # 归属原预订不动，随预订 guest FK 一起迁移。
-    merged_into = models.ForeignKey(
+    merged_into: Optional["Guest"] = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.PROTECT,
         related_name="merged_sources", verbose_name="合并入主档案",
         help_text="非空表示本档案已合并入该主档案（软归档，保留行不物理删除）")
-    merged_at = models.DateTimeField(
+    merged_at: Optional[datetime] = models.DateTimeField(
         null=True, blank=True, verbose_name="合并时间",
         help_text="执行合并动作的时间；与 merged_into 成对写入")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")

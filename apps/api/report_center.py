@@ -41,6 +41,7 @@ P0-07 模式，对齐 apps/api/guest_center.py::financial_summary_api）。
 """
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 from zoneinfo import ZoneInfo
 
 
@@ -492,7 +493,7 @@ def housekeeping_report(request):
         property=property_obj, action="housekeeping.status_changed",
         created_at__gte=_tz_start, created_at__lte=_tz_end)
     # 分组按物业时区自然日（Python 侧分组：事件为操作级量级，可接受）
-    buckets = {}
+    buckets: dict[date, int] = {}
     for ev in qs.only("created_at"):
         local_day = timezone.localdate(ev.created_at, ZoneInfo(
             getattr(property_obj, "timezone", None) or "Asia/Shanghai"))
@@ -575,7 +576,7 @@ def memberships_report(request):
     # Top 会员：全部会员关系的客人入住/消费聚合（1 次预订查询 + Python 归集）
     member_rows = list(qs.values(
         "id", "member_no", "guest_id", "level_code", "status"))
-    per_guest = {}
+    per_guest: dict[int, dict[str, Any]] = {}
     guest_ids = {row["guest_id"] for row in member_rows}
     if guest_ids:
         for res in Reservation.objects.filter(

@@ -147,18 +147,18 @@ class GuestMergeServiceTests(TestCase):
         self.assertFalse(dup_phone_main.is_primary)
         self.assertTrue(GuestPhone.objects.filter(
             guest=self.primary, is_primary=True).count() == 1)
-        self.assertEqual(membership.guest_id, self.primary.pk)
+        self.assertEqual(membership.guest.pk, self.primary.pk)
         self.assertEqual(reservation.guest_id, self.primary.pk)
-        self.assertEqual(res_guest.guest_id, self.primary.pk)
-        self.assertEqual(stay_guest.guest_id, self.primary.pk)
+        self.assertEqual(res_guest.guest.pk, self.primary.pk)
+        self.assertEqual(stay_guest.guest.pk, self.primary.pk)
         self.assertEqual(
-            GuestDocumentIndex.objects.get(pk=dup_index.pk).guest_id,
+            GuestDocumentIndex.objects.get(pk=dup_index.pk).guest.pk,
             self.primary.pk)
         # 电话按 phone_hash 去重：duplicate 的同号行被丢弃
         self.assertEqual(result["phones_deduped"], 1)
         self.assertFalse(GuestPhone.objects.filter(pk=dup_dedup.pk).exists())
         # duplicate 软归档
-        self.assertEqual(self.duplicate.merged_into_id, self.primary.pk)
+        self.assertEqual(self.duplicate.merged_into.pk if self.duplicate.merged_into else None, self.primary.pk)
         self.assertIsNotNone(self.duplicate.merged_at)
         # 账务事实不动：Folio 归属原预订，预订 guest FK 已迁移
         self.assertEqual(folio.guest_id, self.duplicate.pk)
@@ -197,7 +197,7 @@ class GuestMergeServiceTests(TestCase):
         result = GuestService.merge_guests(
             self.primary, self.duplicate, reason="重复会员档案合并")
         dup_member.refresh_from_db()
-        self.assertEqual(dup_member.guest_id, self.primary.pk)
+        self.assertEqual(dup_member.guest.pk, self.primary.pk)
         self.assertEqual(dup_member.status, GuestMembership.Status.TERMINATED)
         self.assertEqual(result["memberships_terminated"], 1)
         self.assertEqual(GuestMembership.objects.filter(
@@ -215,7 +215,7 @@ class GuestMergeServiceTests(TestCase):
             membership=membership, to_level="STANDARD", reason="初始")
         GuestService.merge_guests(self.primary, self.duplicate, reason="合并")
         membership.refresh_from_db()
-        self.assertEqual(membership.guest_id, self.primary.pk)
+        self.assertEqual(membership.guest.pk, self.primary.pk)
         self.assertEqual(membership.status, GuestMembership.Status.SUSPENDED)
         self.assertTrue(MembershipLevelHistory.objects.filter(
             membership=membership).exists())
@@ -231,7 +231,7 @@ class GuestMergeServiceTests(TestCase):
         with self.assertRaises(GuestServiceError):
             GuestService.merge_guests(self.primary, outsider, reason="跨物业")
         self.duplicate.refresh_from_db()
-        self.assertIsNone(self.duplicate.merged_into_id)
+        self.assertIsNone(self.duplicate.merged_into)
 
     def test_merge_rejects_already_merged_participants(self):
         GuestService.merge_guests(self.primary, self.duplicate, reason="第一次合并")
@@ -247,7 +247,7 @@ class GuestMergeServiceTests(TestCase):
         with self.assertRaises(GuestServiceError):
             GuestService.merge_guests(self.primary, self.duplicate, reason="   ")
         self.duplicate.refresh_from_db()
-        self.assertIsNone(self.duplicate.merged_into_id)
+        self.assertIsNone(self.duplicate.merged_into)
 
     def test_merge_rejects_overlong_reason(self):
         with self.assertRaises(GuestServiceError):
@@ -276,8 +276,8 @@ class GuestMergeCommandTests(TestCase):
                      duplicate=self.duplicate.pk, reason="命令核对同一客人",
                      stdout=out)
         self.duplicate.refresh_from_db()
-        self.assertEqual(self.duplicate.merged_into_id, self.primary.pk)
-        self.assertEqual(self.primary.reservations.count(), 1)
+        self.assertEqual(self.duplicate.merged_into.pk if self.duplicate.merged_into else None, self.primary.pk)
+        self.assertEqual(Reservation.objects.filter(guest=self.primary).count(), 1)
         self.assertIn("客人合并完成", out.getvalue())
         self.assertTrue(AuditEvent.objects.filter(action="guest.merged").exists())
 
@@ -374,7 +374,7 @@ class GuestMergeApiTests(TestCase):
         self.assertEqual(data["reservations_moved"], 1)
         self.assertIsNotNone(data["merged_at"])
         self.duplicate.refresh_from_db()
-        self.assertEqual(self.duplicate.merged_into_id, self.primary.pk)
+        self.assertEqual(self.duplicate.merged_into.pk if self.duplicate.merged_into else None, self.primary.pk)
         # 合并后 duplicate 列表不可见
         self.assertNotIn(self.duplicate.pk, self._guest_list_ids())
         self.assertTrue(AuditEvent.objects.filter(

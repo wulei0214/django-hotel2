@@ -2,7 +2,8 @@
 
 用途 / 证据链（详见 docs 下《API契约与测试规范》）：
   * 权威快照 docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/openapi.json
-    （118 paths / 120 ops）标注 25 个 ``x-contract-status: partial`` 操作；
+    （当前 123 ops）全部标记 ``x-contract-status: verified``；此前 25 个 partial
+    端点的端点级成功/认证/权限与错误响应回归测试继续保留；
   * verified 定义 = 契约字段经源码核对 + 端点级 HTTP 测试（成功/认证/权限/
     错误响应按接口性质适用）；本模块为这 25 个操作提供端点级证据；
   * 数据驱动：运行时加载权威快照 JSON，按 operationId 收集 2xx 响应 schema
@@ -28,14 +29,14 @@ P4-FINDING（视图行为与契约声明矛盾，断言以实际行为为准放�
     含 inventory_pagination/rates_pagination（P0-03 双集合分页补齐晚于快照）；
   * F7：financial-summary 契约 FinancialSummaryData 未声明 metadata，实际 data
     含 metadata（P0-07 统计口径注记晚于快照）；
-  * F8：approvals reject 的契约声明 400（ApiErrorEnvelope）非法载荷路径，
-    实际数组请求体经 _json_body 触发 AttributeError → 统一兜底 500
-    INTERNAL_ERROR（产品缺陷，登记待修；断言以实际行为为准）。
+  * F8：已在 SYS-06/G14-11 收敛；审批 reject 非对象请求体返回 400 VALIDATION_ERROR，
+    由本包端点回归测试持续守卫。
 """
 import json
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Any, cast
 
 from django.conf import settings
 from django.contrib.auth.models import Group, User
@@ -79,9 +80,7 @@ OPENAPI_AUTHORITATIVE_SNAPSHOT = (
 with open(OPENAPI_AUTHORITATIVE_SNAPSHOT, encoding="utf-8") as _fh:
     _CONTRACT = json.load(_fh)
 
-# 25 个 x-contract-status=partial 目标操作（method, path）——与本包测试一一对应。
-PARTIAL_OPERATIONS = ()  # 2026-11-16：25 个 partial 已全部翻转 verified（SYS-06/G14-11），本包转为回归测试 + 快照守卫
-
+# 此前 25 个 partial 端点的回归用例保留在下方各测试类；快照守卫检查全量 operation 状态。
 
 # 允许的分页封套键（DRF 风格分页；本仓 25 个端点均未使用，保留同口径）。
 PAGINATION_LIST_KEYS = frozenset({"count", "next", "previous", "results"})
@@ -366,35 +365,33 @@ class PartialContractVerificationBase(TestCase):
 
 
 class ContractSnapshotIntegrityTests(SimpleTestCase):
-    """快照完整性守卫：25 个目标操作存在、均标注 partial、schema 可解析。"""
+    """快照完整性守卫：全量 OpenAPI operation 均为 verified，不允许回退为 partial。"""
 
-    def test_snapshot_contains_all_25_partial_operations(self):
-        for method, path in PARTIAL_OPERATIONS:
-            with self.subTest(operation=f"{method} {path}"):
-                self.assertIn(path, _CONTRACT["paths"])
-                self.assertIn(method.lower(), _CONTRACT["paths"][path])
-                op = _CONTRACT["paths"][path][method.lower()]
-                self.assertEqual(op.get("x-contract-status"), "partial")
-                self.assertTrue(op.get("operationId"))
-
-    def test_snapshot_has_no_other_partial_operations(self):
-        """快照内 partial 操作集合与本包清单严格一致（漂移即测试失败）。"""
-        found = set()
-        for path, path_item in _CONTRACT["paths"].items():
-            for method, op in path_item.items():
-                if method.lower() not in ("get", "post", "put", "patch", "delete"):
+    def test_all_openapi_operations_are_verified(self):
+        paths = cast(dict[str, dict[str, Any]], _CONTRACT["paths"])
+        http_methods = {"get", "post", "put", "patch", "delete", "options", "head"}
+        operation_count = 0
+        operation_ids = []
+        for path, path_item in paths.items():
+            for method, operation in path_item.items():
+                if method.lower() not in http_methods:
                     continue
-                if op.get("x-contract-status") == "partial":
-                    found.add((method.upper(), path))
-        self.assertEqual(found, set(PARTIAL_OPERATIONS))
-
-    def test_success_schemas_declare_envelope_keys(self):
-        for method, path in PARTIAL_OPERATIONS:
-            with self.subTest(operation=f"{method} {path}"):
-                declared, codes = contract_response_shape(method, path)
-                self.assertTrue(codes)
-                self.assertIn("data", declared,
-                              "全部 25 个操作均以 data 封套返回业务载荷")
+                operation_count += 1
+                with self.subTest(operation=f"{method.upper()} {path}"):
+                    self.assertEqual(
+                        operation.get("x-contract-status"),
+                        "verified",
+                        "全量 operation 必须保持 verified，不得回退为 partial",
+                    )
+                    operation_id = operation.get("operationId")
+                    self.assertTrue(operation_id, "每个 operation 必须有 operationId")
+                    operation_ids.append(operation_id)
+        self.assertGreater(operation_count, 0)
+        self.assertEqual(
+            len(operation_ids),
+            len(set(operation_ids)),
+            "OpenAPI operationId 必须全局唯一",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -458,7 +455,7 @@ class MembershipCenterContractTests(PartialContractVerificationBase):
         self.assertTrue(payload["data"]["id"])
         membership = GuestMembership.objects.get(pk=payload["data"]["id"])
         self.assertEqual(membership.member_no, "PCV-M-CREATE-001")
-        self.assertEqual(membership.guest_id, guest.pk)
+        self.assertEqual(membership.guest.pk, guest.pk)
         self.assertTopLevelKeysWithinContract(
             "POST", "/api/v1/memberships/create", response)
 

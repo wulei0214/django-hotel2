@@ -23,6 +23,7 @@ inventory.services.get_room_type_availability 的取价口径一致）。
 """
 from datetime import timedelta
 from decimal import Decimal
+from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
@@ -107,7 +108,7 @@ class Command(BaseCommand):
         would_backfill = 0
         skipped_rows = []        # 整段住宿区间都无价的明细
         skipped_dates = []       # (room_id, booking_no, [缺失日])——部分缺价
-        samples = []
+        samples: list[dict[str, Any]] = []
         backfilled = 0
         amount_mismatches = []
 
