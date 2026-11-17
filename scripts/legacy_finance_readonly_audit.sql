@@ -18,6 +18,8 @@
 --   （旧表 room.房间号 为整数字段，CAST 后继承 general_ci；新表 inventory_room.number
 --    为 0900_ai_ci）。本脚本两侧显式 COLLATE utf8mb4_unicode_ci 消除歧义，语义不变。
 --   此为只读盘点脚本的可执行性适配，不改变设计判定口径、不触及任何裁定。
+--   2026-11-17 追加适配：部分旧表为 utf8mb3，CAST 后直接挂 utf8mb4 排序规则
+--   会报 1253；改用 CONVERT(... USING utf8mb4) 转码后再挂，语义不变。
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -146,7 +148,7 @@ SELECT a.`id`                            AS accommodation_id,
        END                               AS attribution_verdict
   FROM `accommodation` a
   LEFT JOIN `room` r            ON r.`房间号` = a.`客房编号`
-  LEFT JOIN `inventory_room` nr ON nr.`number` COLLATE utf8mb4_unicode_ci = CAST(r.`房间号` AS CHAR) COLLATE utf8mb4_unicode_ci
+  LEFT JOIN `inventory_room` nr ON nr.`number` COLLATE utf8mb4_unicode_ci = CONVERT(CAST(r.`房间号` AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci
   LEFT JOIN `core_property` p   ON p.`id` = nr.`property_id`
  GROUP BY a.`id`, r.`房间号`
  ORDER BY a.`id`;
@@ -172,7 +174,7 @@ SELECT f.`id`                        AS legacy_folio_id,
   FROM `folio` f
   JOIN `accommodation` a         ON a.`id` = f.`order_id`
   JOIN `room` r                  ON r.`房间号` = a.`客房编号`
-  JOIN `inventory_room` nr       ON nr.`number` COLLATE utf8mb4_unicode_ci = CAST(r.`房间号` AS CHAR) COLLATE utf8mb4_unicode_ci
+  JOIN `inventory_room` nr       ON nr.`number` COLLATE utf8mb4_unicode_ci = CONVERT(CAST(r.`房间号` AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci
   JOIN `core_property` p         ON p.`id` = nr.`property_id`
   LEFT JOIN `billing_folio` bf   ON bf.`property_id` = nr.`property_id`
   LEFT JOIN `billing_ledgerentry` le ON le.`folio_id` = bf.`id`
@@ -203,7 +205,7 @@ SELECT f.`id`                        AS legacy_folio_id,
   FROM `folio` f
   JOIN `accommodation` a         ON a.`id` = f.`order_id`
   JOIN `room` r                  ON r.`房间号` = a.`客房编号`
-  JOIN `inventory_room` nr       ON nr.`number` COLLATE utf8mb4_unicode_ci = CAST(r.`房间号` AS CHAR) COLLATE utf8mb4_unicode_ci
+  JOIN `inventory_room` nr       ON nr.`number` COLLATE utf8mb4_unicode_ci = CONVERT(CAST(r.`房间号` AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci
   JOIN `core_property` p         ON p.`id` = nr.`property_id`
   JOIN `billing_folio` bf        ON bf.`property_id` = nr.`property_id`
   JOIN `billing_ledgerentry` le  ON le.`folio_id` = bf.`id`
@@ -253,7 +255,7 @@ SELECT fr.`id`                          AS legacy_finance_id,
         AND TRIM(fr.`关联订单`) REGEXP '^[0-9]+$'
         AND a.`id` = CAST(TRIM(fr.`关联订单`) AS UNSIGNED)
   LEFT JOIN `room` r                ON r.`房间号` = a.`客房编号`
-  LEFT JOIN `inventory_room` nr     ON nr.`number` COLLATE utf8mb4_unicode_ci = CAST(r.`房间号` AS CHAR) COLLATE utf8mb4_unicode_ci
+  LEFT JOIN `inventory_room` nr     ON nr.`number` COLLATE utf8mb4_unicode_ci = CONVERT(CAST(r.`房间号` AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci
   LEFT JOIN `core_property` p       ON p.`id` = nr.`property_id`
   LEFT JOIN `billing_ledgerentry` le
          ON le.`entry_type` = 'PAYMENT'

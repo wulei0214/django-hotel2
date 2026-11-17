@@ -1,0 +1,43 @@
+# 证据：迭代-2 财务旧数据只读盘点（GOV-02 裁定 5 执行 / 裁定 3 前置证据）
+SHA: f4efde86788c3e0a77e3e3258d279fe6ade02535
+date: 2026-11-17 23:36:38 +0800
+目标库: hotel @ localhost（只读账号，START TRANSACTION READ ONLY 技术兜底）
+command: mysql < scripts/legacy_finance_readonly_audit.sql（21 组 SELECT，输出逐组附于后；utf8mb3 适配后重跑）
+---
+TABLE_NAME	COLUMN_NAME	DATA_TYPE
+accommodation	客房编号	int
+accommodation	状态	varchar
+billing_ledgerentry	amount	decimal
+billing_ledgerentry	business_date	date
+billing_ledgerentry	entry_type	varchar
+core_property	code	varchar
+finance_record	日期	varchar
+finance_record	类型	varchar
+finance_record	金额	varchar
+folio	order_id	int
+folio	日期	varchar
+folio	类型	varchar
+folio	金额	varchar
+inventory_room	number	varchar
+inventory_room	property_id	bigint
+night_audit	营业日期	varchar
+room	房间号	int
+tbl	row_cnt
+finance_record	0
+folio	0
+accommodation	0
+night_audit	0
+tbl	min_date	max_date
+finance_record	NULL	NULL
+folio	NULL	NULL
+night_audit	NULL	NULL
+metric	cnt
+folio_orphan	0
+folio_amount_bad	folio_date_bad
+NULL	NULL
+finance_amount_bad	finance_date_bad
+NULL	NULL
+legacy_prefixed_entry_cnt_should_be_zero
+0
+---
+exit_code: 0
