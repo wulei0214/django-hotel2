@@ -224,9 +224,7 @@ def _resolve_target_folio(
     if not all(isinstance(item, dict) for item in relations):
         return None, f"订单 {key} 的关系映射结构非法"
 
-    assignment = (mapping.get("record_reservations") or {}).get(
-        f"{source_model}:{source_pk}"
-    )
+    assignment = (mapping.get("record_reservations") or {}).get(f"{source_model}:{source_pk}")
     assignment_data = assignment if isinstance(assignment, dict) else {}
     if assignment is not None and not isinstance(assignment, dict):
         return None, f"{source_model}#{source_pk} 的逐条归属结构非法"
@@ -241,9 +239,10 @@ def _resolve_target_folio(
                 f"订单 {key} 属于拆分/多目标关系，{source_model}#{source_pk} "
                 "必须逐条指定 relation_id/reservation",
             )
-        if not str(assignment.get("basis") or "").strip() or not str(
-            assignment.get("confirmed_by") or ""
-        ).strip():
+        if (
+            not str(assignment.get("basis") or "").strip()
+            or not str(assignment.get("confirmed_by") or "").strip()
+        ):
             return None, f"{source_model}#{source_pk} 的逐条归属缺少人工确认依据/确认人"
         relation_id = assignment.get("relation_id")
         reservation_id = assignment.get("reservation")
@@ -253,55 +252,48 @@ def _resolve_target_folio(
             item
             for item in relations
             if str(item.get("reservation")) == str(reservation_id)
-            and (
-                relation_id in (None, "")
-                or str(item.get("relation_id")) == str(relation_id)
-            )
+            and (relation_id in (None, "") or str(item.get("relation_id")) == str(relation_id))
         ]
         if len(matches) != 1:
             return None, f"{source_model}#{source_pk} 的逐条归属未指向唯一当前关系行"
         selected = matches[0]
-        if (
-            selected.get("source") == "legacy_order_reservation_map"
-            and relation_id in (None, "")
-        ):
+        if selected.get("source") == "legacy_order_reservation_map" and relation_id in (None, ""):
             return None, f"{source_model}#{source_pk} 必须指定关系表 relation_id"
     else:
         selected = relations[0]
         if isinstance(assignment, dict):
-            if not str(assignment.get("basis") or "").strip() or not str(
-                assignment.get("confirmed_by") or ""
-            ).strip():
+            if (
+                not str(assignment.get("basis") or "").strip()
+                or not str(assignment.get("confirmed_by") or "").strip()
+            ):
                 return None, f"{source_model}#{source_pk} 的逐条归属缺少人工确认依据/确认人"
-            if (
-                assignment.get("reservation") not in (None, "")
-                and str(assignment.get("reservation")) != str(selected.get("reservation"))
-            ):
+            if assignment.get("reservation") not in (None, "") and str(
+                assignment.get("reservation")
+            ) != str(selected.get("reservation")):
                 return None, f"{source_model}#{source_pk} 的逐条归属与当前关系冲突"
-            if (
-                assignment.get("relation_id") not in (None, "")
-                and str(assignment.get("relation_id")) != str(selected.get("relation_id"))
-            ):
+            if assignment.get("relation_id") not in (None, "") and str(
+                assignment.get("relation_id")
+            ) != str(selected.get("relation_id")):
                 return None, f"{source_model}#{source_pk} 指向的关系版本已失效或不匹配"
 
     reservation_value = selected.get("reservation")
     if reservation_value in (None, ""):
         return None, f"订单 {key} 映射的 reservation 非法"
     try:
-        reservation_id = int(reservation_value)
+        reservation_id = int(str(reservation_value))
     except (TypeError, ValueError):
         return None, f"订单 {key} 映射的 reservation 非法"
     relation_property_id = selected.get("property_id")
     if relation_property_id not in (None, ""):
         try:
-            relation_property_id = int(relation_property_id)
+            relation_property_id = int(str(relation_property_id))
         except (TypeError, ValueError):
             return None, f"订单 {key} 关系物业标识非法"
         if relation_property_id != batch.scope_property_id:
             return None, f"订单 {key} 关系物业与批次授权物业不一致"
-    reservation_property_id = Reservation.objects.filter(pk=reservation_id).values_list(
-        "property_id", flat=True
-    ).first()
+    reservation_property_id = (
+        Reservation.objects.filter(pk=reservation_id).values_list("property_id", flat=True).first()
+    )
     if reservation_property_id is None:
         return None, f"订单 {key} 映射的预订 {reservation_id} 不存在"
     if reservation_property_id != batch.scope_property_id:
@@ -328,9 +320,7 @@ def _resolve_target_folio(
     confirmer = str(
         assignment_data.get("confirmed_by") or selected.get("confirmed_by") or ""
     ).strip()
-    if selected.get("source") != "legacy_order_reservation_map" and (
-        not basis or not confirmer
-    ):
+    if selected.get("source") != "legacy_order_reservation_map" and (not basis or not confirmer):
         return None, f"订单 {key} 的文件回退映射缺少人工确认依据/确认人"
     reason = (
         f"rel#{relation_id or 'FILE'}->res#{reservation_id}; "
@@ -361,9 +351,7 @@ def _candidate_decision(
         candidate_entry_id = int(entry["entry"])
     except (KeyError, TypeError, ValueError) as exc:
         raise LegacyMigrationError(f"候选声明 {source_model}:{source_pk} 缺少合法 entry") from exc
-    candidate = (
-        LedgerEntry.objects.filter(pk=candidate_entry_id).select_related("folio").first()
-    )
+    candidate = LedgerEntry.objects.filter(pk=candidate_entry_id).select_related("folio").first()
     if candidate is None:
         raise LegacyMigrationError(
             f"候选声明 {source_model}:{source_pk} 指向的凭证 {candidate_entry_id} 不存在"
@@ -592,8 +580,7 @@ def classify_finance_row(
             ),
         )
     nature_reason = (
-        f"funds=PAYMENT by={str(nature['confirmed_by'])[:20]}; "
-        f"{str(nature['basis'])[:50]}"
+        f"funds=PAYMENT by={str(nature['confirmed_by'])[:20]}; " f"{str(nature['basis'])[:50]}"
     )
     return Decision(
         source_model="FinanceRecord",
@@ -767,10 +754,9 @@ def _existing_link_matches_decision(
 def _assert_batch_executor(batch: LegacyMigrationBatch, executor: Any) -> None:
     """C2-C5 不经过凭证入口，必须在写映射事务内复核同等批次授权。"""
     from apps.billing.legacy_credentials import LegacyMigrationDenied
+
     if batch.status != LegacyMigrationBatch.Status.ACTIVE:
-        raise LegacyMigrationDenied(
-            f"批次状态为 {batch.status}，仅 ACTIVE 批次可执行迁移"
-        )
+        raise LegacyMigrationDenied(f"批次状态为 {batch.status}，仅 ACTIVE 批次可执行迁移")
     if batch.approved_by_id is None:
         raise LegacyMigrationDenied("批次缺少正式批准人记录，禁止执行迁移")
     if batch.executed_by_id is None or getattr(executor, "pk", None) != batch.executed_by_id:
@@ -838,9 +824,7 @@ def execute_plan(
                     )
             counts["C4"] = len(blocking_decisions)
             counts["failed"] = 1
-            failures.append(
-                "检测到跨物业订单-预订映射，整批迁移已阻断；冲突记录已标记 C4/CONFLICT"
-            )
+            failures.append("检测到跨物业订单-预订映射，整批迁移已阻断；冲突记录已标记 C4/CONFLICT")
         except LegacyMigrationDenied as exc:
             record_denial(batch=batch, reason=str(exc), actor_id=getattr(executor, "pk", None))
             counts["failed"] = 1
@@ -899,9 +883,7 @@ def execute_plan(
                 )
             else:
                 with transaction.atomic():
-                    locked_batch = LegacyMigrationBatch.objects.select_for_update().get(
-                        pk=batch.pk
-                    )
+                    locked_batch = LegacyMigrationBatch.objects.select_for_update().get(pk=batch.pk)
                     _assert_batch_executor(locked_batch, executor)
                     # C2-C5 没有凭证入口；事务内 current read 复查并发写入。
                     raced_links = list(
@@ -935,9 +917,7 @@ def execute_plan(
             counts[decision.category] += 1
         except LegacyMigrationDenied as exc:
             if decision.category != "C1":
-                record_denial(
-                    batch=batch, reason=str(exc), actor_id=getattr(executor, "pk", None)
-                )
+                record_denial(batch=batch, reason=str(exc), actor_id=getattr(executor, "pk", None))
             counts["failed"] += 1
             failures.append(f"{decision.source_model}#{decision.source_pk}: {exc}")
         except (ValueError, LegacyMigrationError, IntegrityError) as exc:
@@ -1055,9 +1035,9 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
         for link in model_links:
             if link.property.pk != batch.scope_property_id:
                 invalid_targets.append(link.source_pk)
-            matched_category = {
-                method: name for name, method in METHOD_BY_CATEGORY.items()
-            }.get(link.match_method)
+            matched_category = {method: name for name, method in METHOD_BY_CATEGORY.items()}.get(
+                link.match_method
+            )
             if matched_category is None:
                 unknown_methods.append(link.source_pk)
                 continue

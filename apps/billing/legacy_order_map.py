@@ -131,7 +131,11 @@ def confirm_pair(
                 confirmed_by=confirmed_by,
                 confirmed_at=timezone.now(),
                 supersedes=supersedes,
-                position_key=pair_position_key(order_pk, reservation.pk, supersedes_id=None if supersedes is None else supersedes.pk),
+                position_key=pair_position_key(
+                    order_pk,
+                    reservation.pk,
+                    supersedes_id=None if supersedes is None else supersedes.pk,
+                ),
             )
     except IntegrityError as exc:
         raise LegacyOrderMapError(
@@ -219,17 +223,13 @@ def _normalize_order_entries(order_id: str, value: Any) -> list[dict[str, Any]]:
         try:
             reservation_id = int(raw["reservation"])
             relation_id = (
-                int(raw["relation_id"])
-                if raw.get("relation_id") not in (None, "")
-                else None
+                int(raw["relation_id"]) if raw.get("relation_id") not in (None, "") else None
             )
         except (TypeError, ValueError) as exc:
             raise LegacyOrderMapError(f"旧订单 {order_id} 的关系主键非法") from exc
         relation_type = str(raw.get("relation_type") or "")
         if relation_type and relation_type not in LegacyOrderReservationMap.RelationType.values:
-            raise LegacyOrderMapError(
-                f"旧订单 {order_id} 的关系角色非法：{relation_type}"
-            )
+            raise LegacyOrderMapError(f"旧订单 {order_id} 的关系角色非法：{relation_type}")
         identity = (str(reservation_id), str(relation_id or ""))
         if identity in seen:
             raise LegacyOrderMapError(f"旧订单 {order_id} 存在重复关系行 {identity}")

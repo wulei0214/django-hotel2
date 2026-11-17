@@ -270,6 +270,7 @@ class ControlledLegacyEntryTests(TestCase):
         with self.assertRaises(LegacyMigrationDenied):
             self._post(credential_token=token)
 
+
 @unittest.skipUnless(connection.vendor == "mysql", "SQLite 的 select_for_update 为 no-op")
 @override_settings(DEBUG=True, DJANGO_ENV="test")
 class ControlledLegacyEntryConcurrencyTests(TransactionTestCase):
@@ -278,9 +279,7 @@ class ControlledLegacyEntryConcurrencyTests(TransactionTestCase):
     reset_sequences = True
 
     def setUp(self):
-        self.prop, _ = Property.objects.get_or_create(
-            code="DEFAULT", defaults={"name": "默认物业"}
-        )
+        self.prop, _ = Property.objects.get_or_create(code="DEFAULT", defaults={"name": "默认物业"})
         BusinessDate.objects.get_or_create(
             property=self.prop,
             business_date=timezone.localdate(),
@@ -336,9 +335,7 @@ class ControlledLegacyEntryConcurrencyTests(TransactionTestCase):
                 batch = LegacyMigrationBatch.objects.get(pk=batch_id)
                 folio = Folio.objects.get(pk=folio_id)
                 property_obj = Property.objects.get(pk=property_id)
-                token = mint_credential(
-                    batch_uid=batch.batch_uid, executor_user_pk=executor.pk
-                )
+                token = mint_credential(batch_uid=batch.batch_uid, executor_user_pk=executor.pk)
                 barrier.wait(timeout=30)
                 entry, link = BillingService.post_legacy_migration_entry(
                     credential_token=token,
@@ -383,10 +380,7 @@ class ControlledLegacyEntryConcurrencyTests(TransactionTestCase):
             ).count(),
             1,
         )
-        self.assertEqual(
-            AuditEvent.objects.filter(action="billing.legacy_migration").count(), 1
-        )
+        self.assertEqual(AuditEvent.objects.filter(action="billing.legacy_migration").count(), 1)
         self.assertEqual(
             AuditEvent.objects.filter(action="billing.legacy_migration_denied").count(), 1
         )
-

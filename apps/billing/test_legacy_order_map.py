@@ -247,9 +247,7 @@ class LegacyOrderMapBaseTests(TestCase):
                 match_basis="并发第二行（无人工确认通道）",
                 confirmed_by=self.confirmer,
                 supersedes=None,
-                position_key=pair_position_key(
-                    self.legacy_order.pk, self.reservation.pk, None
-                ),
+                position_key=pair_position_key(self.legacy_order.pk, self.reservation.pk, None),
             )
         self.assertEqual(LegacyOrderReservationMap.objects.count(), 1)
         self.assertIsNotNone(first.pk)

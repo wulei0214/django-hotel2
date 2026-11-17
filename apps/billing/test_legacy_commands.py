@@ -288,7 +288,7 @@ class LegacyMigrationCommandTests(TestCase):
                             "basis": "旧收款记录与住客订单收款凭证相互印证",
                             "confirmed_by": "finance-lead",
                         }
-                    }
+                    },
                 },
                 ensure_ascii=False,
             ),
@@ -857,9 +857,7 @@ class LegacyMigrationCommandTests(TestCase):
             return original(**kwargs)
 
         with (
-            mock.patch.object(
-                BillingService, "post_legacy_migration_entry", side_effect=fail_once
-            ),
+            mock.patch.object(BillingService, "post_legacy_migration_entry", side_effect=fail_once),
             self.assertRaises(CommandError),
         ):
             self._call()
