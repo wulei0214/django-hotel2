@@ -39,7 +39,8 @@ P0-07 模式，对齐 apps/api/guest_center.py::financial_summary_api）。
   * 期间上限 92 天（防全表扫描，与 §4.1 billing/summary 同口径）；
   * 空区间返回空序列与零汇总，不报错；金额一律 Decimal → str。
 """
-from datetime import date, datetime, time as dtime, timedelta
+from datetime import date, datetime, timedelta
+from datetime import time as dtime
 from decimal import Decimal
 from typing import TypedDict
 from zoneinfo import ZoneInfo
