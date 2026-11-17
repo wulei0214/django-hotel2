@@ -21,6 +21,7 @@ inventory.services.get_room_type_availability 的取价口径一致）。
     python manage.py backfill_nightly_rates --execute --report  # 回填+金额核对清单
     python manage.py backfill_nightly_rates --property-id 1 --limit 200
 """
+
 from datetime import timedelta
 from decimal import Decimal
 
@@ -54,19 +55,23 @@ def _rebuild_snapshot(room, daily_rates):
         if rate is None:
             missing.append(stay_date)
             continue
-        nights.append({
-            "date": stay_date.isoformat(),
-            "price": str(rate.price),
-            "currency": rate.currency,
-        })
+        nights.append(
+            {
+                "date": stay_date.isoformat(),
+                "price": str(rate.price),
+                "currency": rate.currency,
+            }
+        )
     return nights, missing
 
 
 def _collect_rows(property_id):
     """找出 nightly_rates 为空（历史遗留）的 ReservationRoom 明细。"""
-    qs = ReservationRoom.objects.filter(
-        property_id=property_id).order_by("id") if property_id else \
-        ReservationRoom.objects.all().order_by("id")
+    qs = (
+        ReservationRoom.objects.filter(property_id=property_id).order_by("id")
+        if property_id
+        else ReservationRoom.objects.all().order_by("id")
+    )
     rows = []
     for room in qs.iterator():
         if not room.nightly_rates:  # 空数组 / NULL 均视为无逐晚快照
@@ -81,15 +86,23 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
-        parser.add_argument("--execute", action="store_true",
-                            help="实际写入 nightly_rates（缺省为 dry-run 只扫描报告）。")
-        parser.add_argument("--report", action="store_true",
-                            help="输出详细报告：价格缺失被跳过的日期、"
-                                 "（--execute 时）快照合计与明细金额不一致的行。")
-        parser.add_argument("--property-id", type=int, default=None,
-                            help="仅处理指定物业；省略时处理全部物业。")
-        parser.add_argument("--limit", type=int, default=None,
-                            help="最多处理 N 条明细（抽查用）；省略时处理全部。")
+        parser.add_argument(
+            "--execute",
+            action="store_true",
+            help="实际写入 nightly_rates（缺省为 dry-run 只扫描报告）。",
+        )
+        parser.add_argument(
+            "--report",
+            action="store_true",
+            help="输出详细报告：价格缺失被跳过的日期、"
+            "（--execute 时）快照合计与明细金额不一致的行。",
+        )
+        parser.add_argument(
+            "--property-id", type=int, default=None, help="仅处理指定物业；省略时处理全部物业。"
+        )
+        parser.add_argument(
+            "--limit", type=int, default=None, help="最多处理 N 条明细（抽查用）；省略时处理全部。"
+        )
 
     def handle(self, *args, **options):
         execute = options["execute"]
@@ -105,8 +118,8 @@ class Command(BaseCommand):
 
         scanned = len(rows)
         would_backfill = 0
-        skipped_rows = []        # 整段住宿区间都无价的明细
-        skipped_dates = []       # (room_id, booking_no, [缺失日])——部分缺价
+        skipped_rows = []  # 整段住宿区间都无价的明细
+        skipped_dates = []  # (room_id, booking_no, [缺失日])——部分缺价
         samples: list[dict[str, object]] = []
         backfilled = 0
         amount_mismatches = []
@@ -131,55 +144,68 @@ class Command(BaseCommand):
             if missing:
                 skipped_dates.append((room.pk, booking_no, missing))
             if len(samples) < SAMPLE_LIMIT:
-                samples.append({
-                    "reservation_room_id": room.pk,
-                    "booking_no": booking_no,
-                    "check_in": room.check_in.isoformat(),
-                    "check_out": room.check_out.isoformat(),
-                    "nights": len(nights),
-                    "snapshot_sum": str(
-                        sum((Decimal(n["price"]) for n in nights), start=Decimal("0.00"))),
-                    "amount": str(room.amount),
-                })
+                samples.append(
+                    {
+                        "reservation_room_id": room.pk,
+                        "booking_no": booking_no,
+                        "check_in": room.check_in.isoformat(),
+                        "check_out": room.check_out.isoformat(),
+                        "nights": len(nights),
+                        "snapshot_sum": str(
+                            sum((Decimal(n["price"]) for n in nights), start=Decimal("0.00"))
+                        ),
+                        "amount": str(room.amount),
+                    }
+                )
             if execute:
                 with transaction.atomic():
-                    ReservationRoom.objects.filter(pk=room.pk).update(
-                        nightly_rates=nights)
+                    ReservationRoom.objects.filter(pk=room.pk).update(nightly_rates=nights)
                     AuditEvent.record(
                         action=ACTION_BACKFILLED,
-                        entity_type="ReservationRoom", entity_id=room.pk,
+                        entity_type="ReservationRoom",
+                        entity_id=room.pk,
                         property_obj=room.property,
                         before={"nightly_rates": room.nightly_rates},
-                        after={"nights": len(nights),
-                               "missing_dates": [d.isoformat() for d in missing]},
+                        after={
+                            "nights": len(nights),
+                            "missing_dates": [d.isoformat() for d in missing],
+                        },
                     )
                     backfilled += 1
                 # 写后断言：明细金额与快照合计一致（不一致仅列出，不强改）
                 room.refresh_from_db()
                 snapshot_sum = sum(
-                    (Decimal(n["price"]) for n in room.nightly_rates),
-                    start=Decimal("0.00"))
+                    (Decimal(n["price"]) for n in room.nightly_rates), start=Decimal("0.00")
+                )
                 if Decimal(room.amount) != snapshot_sum:
-                    amount_mismatches.append({
-                        "reservation_room_id": room.pk,
-                        "booking_no": booking_no,
-                        "amount": str(room.amount),
-                        "snapshot_sum": str(snapshot_sum),
-                    })
+                    amount_mismatches.append(
+                        {
+                            "reservation_room_id": room.pk,
+                            "booking_no": booking_no,
+                            "amount": str(room.amount),
+                            "snapshot_sum": str(snapshot_sum),
+                        }
+                    )
 
         mode = "EXECUTE" if execute else "DRY-RUN"
         if execute:
-            self.stdout.write(self.style.SUCCESS(
-                f"[A8 nightly_rates 回填完成 mode={mode}] 扫描 {scanned} 条，"
-                f"回填 {backfilled} 条；整段缺价跳过 {len(skipped_rows)} 条；"
-                f"部分缺价日跳过 {len(skipped_dates)} 条明细；"
-                f"金额不一致 {len(amount_mismatches)} 条（未改账务，需人工核对）。"))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"[A8 nightly_rates 回填完成 mode={mode}] 扫描 {scanned} 条，"
+                    f"回填 {backfilled} 条；整段缺价跳过 {len(skipped_rows)} 条；"
+                    f"部分缺价日跳过 {len(skipped_dates)} 条明细；"
+                    f"金额不一致 {len(amount_mismatches)} 条（未改账务，需人工核对）。"
+                )
+            )
         else:
-            self.stdout.write(self.style.WARNING(
-                f"[DRY-RUN] 未写入任何记录。扫描 {scanned} 条历史明细，"
-                f"可回填 {would_backfill} 条；整段缺价跳过 {len(skipped_rows)} 条；"
-                f"部分缺价日跳过 {len(skipped_dates)} 条明细。"
-                f"确认无误后加 --execute 执行。"))
+            self.stdout.write(
+                self.style.WARNING(
+                    f"[DRY-RUN] 未写入任何记录。扫描 {scanned} 条历史明细，"
+                    f"可回填 {would_backfill} 条；整段缺价跳过 {len(skipped_rows)} 条；"
+                    f"部分缺价日跳过 {len(skipped_dates)} 条明细。"
+                    f"确认无误后加 --execute 执行。"
+                )
+            )
         if samples:
             self.stdout.write("样例（前 %d 条）：" % len(samples))
             for item in samples:
@@ -188,7 +214,8 @@ class Command(BaseCommand):
                     f"booking={item['booking_no']} "
                     f"{item['check_in']}~{item['check_out']} "
                     f"nights={item['nights']} "
-                    f"snapshot_sum={item['snapshot_sum']} amount={item['amount']}")
+                    f"snapshot_sum={item['snapshot_sum']} amount={item['amount']}"
+                )
         if verbose_report:
             if skipped_rows:
                 self.stdout.write("整段住宿区间缺价的明细（跳过，未回填）：")
@@ -201,17 +228,19 @@ class Command(BaseCommand):
                 for room_id, booking_no, missing in skipped_dates[:50]:
                     self.stdout.write(
                         f"  room_line={room_id} booking={booking_no} 缺价日="
-                        + ",".join(d.isoformat() for d in missing))
+                        + ",".join(d.isoformat() for d in missing)
+                    )
                 if len(skipped_dates) > 50:
                     self.stdout.write(f"  …（其余 {len(skipped_dates) - 50} 条略）")
             if amount_mismatches:
-                self.stdout.write(self.style.NOTICE(
-                    "快照合计与明细金额不一致的行（供人工核对，未强改）："))
+                self.stdout.write(
+                    self.style.NOTICE("快照合计与明细金额不一致的行（供人工核对，未强改）：")
+                )
                 for item in amount_mismatches[:50]:
                     self.stdout.write(
                         f"  room_line={item['reservation_room_id']} "
                         f"booking={item['booking_no']} "
-                        f"amount={item['amount']} snapshot_sum={item['snapshot_sum']}")
+                        f"amount={item['amount']} snapshot_sum={item['snapshot_sum']}"
+                    )
                 if len(amount_mismatches) > 50:
-                    self.stdout.write(
-                        f"  …（其余 {len(amount_mismatches) - 50} 条略）")
+                    self.stdout.write(f"  …（其余 {len(amount_mismatches) - 50} 条略）")
