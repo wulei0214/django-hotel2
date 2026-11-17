@@ -273,7 +273,7 @@ class LegacyOrderMapBaseTests(TestCase):
         self.assertEqual(entries[0]["confirmed_by"], "map-confirmer")
 
     def test_orders_mapping_preserves_one_to_many_relations(self):
-        self._confirm()
+        self._confirm(relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE)
         self._confirm(
             reservation_id=self.other_reservation.pk,
             relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE,
@@ -346,7 +346,7 @@ class LegacyOrderMapBaseTests(TestCase):
         self.assertEqual(folio_decisions[0].target_folio_id, master.pk)
 
     def test_build_plan_requires_record_assignment_for_split_order(self):
-        self._confirm()
+        self._confirm(relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE)
         self._confirm(
             reservation_id=self.other_reservation.pk,
             relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE,
@@ -371,7 +371,9 @@ class LegacyOrderMapBaseTests(TestCase):
         self.assertIn("必须逐条指定", decision.reason)
 
     def test_build_plan_uses_record_level_relation_for_split_order(self):
-        first_relation = self._confirm()
+        first_relation = self._confirm(
+            relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE
+        )
         self._confirm(
             reservation_id=self.other_reservation.pk,
             relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE,
