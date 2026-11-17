@@ -42,6 +42,7 @@ P0-07 模式，对齐 apps/api/guest_center.py::financial_summary_api）。
 from datetime import date, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
+from typing import TypedDict
 
 
 def _property_tz_bounds(property_obj, date_from, date_to):
@@ -73,6 +74,11 @@ from apps.inventory.services import _property_today
 from apps.reservations.models import Reservation, Stay
 
 from .billing_center import _money_str  # 金额两位小数字符串，与账务中心同口径
+
+class _MemberAggregate(TypedDict):
+    room_nights: int
+    spend: Decimal
+
 
 # 区间上限（§4.5 技术要求：复杂报表查询需最大日期范围控制）
 MAX_RANGE_DAYS = 92
@@ -499,7 +505,7 @@ def housekeeping_report(request):
         buckets[local_day] = buckets.get(local_day, 0) + 1
     series = [{"date": str(day), "status_changes": total}
               for day, total in sorted(buckets.items())]
-    total_changes = sum(row["status_changes"] for row in series)
+    total_changes = sum(buckets.values())
     distinct_rooms = qs.values("entity_id").distinct().count()
     period_days = (date_to - date_from).days + 1
     data = {
@@ -575,24 +581,23 @@ def memberships_report(request):
     # Top 会员：全部会员关系的客人入住/消费聚合（1 次预订查询 + Python 归集）
     member_rows = list(qs.values(
         "id", "member_no", "guest_id", "level_code", "status"))
-    per_guest: dict[int, tuple[int, Decimal]] = {}
+    per_guest: dict[int, _MemberAggregate] = {}
     guest_ids = {row["guest_id"] for row in member_rows}
     if guest_ids:
         for res in Reservation.objects.filter(
                 property=property_obj, guest_id__in=guest_ids,
                 status__in=STAYED_RESERVATION_STATES).values(
                 "guest_id", "check_in", "check_out", "room_count", "total_amount"):
-            guest_id = res["guest_id"]
-            room_nights, spend = per_guest.get(
-                guest_id, (0, Decimal("0.00")))
-            room_nights += (res["check_out"] - res["check_in"]).days * res["room_count"]
-            spend += res["total_amount"] or Decimal("0.00")
-            per_guest[guest_id] = (room_nights, spend)
+            agg = per_guest.setdefault(
+                res["guest_id"], {"room_nights": 0, "spend": Decimal("0.00")})
+            agg["room_nights"] += (res["check_out"] - res["check_in"]).days \
+                * res["room_count"]
+            agg["spend"] += res["total_amount"] or Decimal("0.00")
 
     def _top_key(row):
-        room_nights, spend = per_guest.get(
-            row["guest_id"], (0, Decimal("0.00")))
-        return (-room_nights, -spend, row["member_no"])
+        agg = per_guest.get(row["guest_id"],
+                            {"room_nights": 0, "spend": Decimal("0.00")})
+        return (-agg["room_nights"], -agg["spend"], row["member_no"])
 
     top_members = [{
         "member_no": row["member_no"],
