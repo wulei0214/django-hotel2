@@ -1,0 +1,22 @@
+name: Temporary mypy diagnostics
+
+on:
+  push:
+    branches:
+      - work/pms-mainline-followup-20261117
+
+jobs:
+  mypy-diagnostics:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: pip
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Print full mypy diagnostics
+        run: python -m mypy apps/ --show-error-codes --show-column-numbers
