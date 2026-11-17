@@ -86,7 +86,7 @@ class ControlledLegacyEntryTests(TestCase):
             "folio": self.folio,
             "entry_type": LedgerEntry.EntryType.PAYMENT,
             "amount": Decimal("-206.40"),
-            "reference": "legacy:Folio:1",
+            "reference": "legacy:folio:1",
             "source_model": "Folio",
             "source_pk": "1",
             "description": "旧收款迁移",
@@ -140,7 +140,7 @@ class ControlledLegacyEntryTests(TestCase):
     def test_entry_link_and_audit_written_together(self):
         """N6：凭证 + LegacyRecordLink + AuditEvent 同事务落库。"""
         entry, link = self._post()
-        self.assertEqual(entry.reference, "legacy:Folio:1")
+        self.assertEqual(entry.reference, "legacy:folio:1")
         self.assertEqual(entry.posted_by_id, self.executor.pk)
         self.assertFalse(entry.legacy_workflow)
         self.assertEqual(link.mapping_status, LegacyRecordLink.MappingStatus.LINKED)
@@ -158,7 +158,7 @@ class ControlledLegacyEntryTests(TestCase):
             self._post(
                 entry_type=LedgerEntry.EntryType.REVERSAL,
                 amount=Decimal("206.40"),
-                reference="legacy:Folio:2",
+                reference="legacy:folio:2",
                 source_pk="2",
                 void_of=original,
                 void_reason="旧冲账",
@@ -169,7 +169,7 @@ class ControlledLegacyEntryTests(TestCase):
         reversal, _ = self._post(
             entry_type=LedgerEntry.EntryType.REVERSAL,
             amount=Decimal("206.40"),
-            reference="legacy:Folio:2",
+            reference="legacy:folio:2",
             source_pk="2",
             void_of=original,
             void_reason="旧冲账（人工配对于 2026-11-16）",
@@ -193,7 +193,7 @@ class ControlledLegacyEntryTests(TestCase):
                 entity_id=str(self.batch.pk),
             ).exists()
         )
-        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:Folio:1").exists())
+        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:folio:1").exists())
 
     def test_source_model_outside_scope_denied(self):
         with self.assertRaises(LegacyMigrationDenied):
@@ -217,7 +217,7 @@ class ControlledLegacyEntryTests(TestCase):
         )
         with self.assertRaises(LegacyMigrationDenied):
             self._post()
-        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:Folio:1").exists())
+        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:folio:1").exists())
         self.assertFalse(AuditEvent.objects.filter(action="billing.legacy_migration").exists())
 
     def test_replayed_credential_denied(self):
@@ -227,7 +227,7 @@ class ControlledLegacyEntryTests(TestCase):
         with self.assertRaises(LegacyMigrationDenied) as ctx:
             self._post(
                 credential_token=token,
-                reference="legacy:Folio:3",
+                reference="legacy:folio:3",
                 source_pk="3",
             )
         self.assertIn("重放", str(ctx.exception))
@@ -238,7 +238,7 @@ class ControlledLegacyEntryTests(TestCase):
         self._post()
         with self.assertRaises(LegacyMigrationDenied):
             self._post()
-        self.assertEqual(LedgerEntry.objects.filter(reference="legacy:Folio:1").count(), 1)
+        self.assertEqual(LedgerEntry.objects.filter(reference="legacy:folio:1").count(), 1)
 
     def test_closed_batch_denied(self):
         """N8：CLOSED 后入口永久拒绝。"""
@@ -253,7 +253,7 @@ class ControlledLegacyEntryTests(TestCase):
         self.batch.save()
         with self.assertRaises(LegacyMigrationDenied):
             self._post()
-        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:Folio:1").exists())
+        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:folio:1").exists())
         self.assertTrue(
             AuditEvent.objects.filter(action="billing.legacy_migration_denied").exists()
         )
