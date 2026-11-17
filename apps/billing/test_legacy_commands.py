@@ -17,7 +17,8 @@ from unittest import mock, skipIf
 
 from django.contrib.auth.models import Group, User
 from django.core.management import CommandError, call_command
-from django.db import IntegrityError, connection, models as django_models, transaction
+from django.db import IntegrityError, connection, transaction
+from django.db import models as django_models
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -342,7 +343,8 @@ class LegacyMigrationCommandTests(TestCase):
 
     def test_room_charge_and_deposit_sign_conversion(self):
         """M1/M2：房费正向入账，押金按新口径转为负数。"""
-        from hotelapp.models import Accommodation, Folio as LegacyFolio
+        from hotelapp.models import Accommodation
+        from hotelapp.models import Folio as LegacyFolio
 
         old_order = Accommodation.objects.get(pk=8101)
         LegacyFolio.objects.create(
@@ -371,7 +373,8 @@ class LegacyMigrationCommandTests(TestCase):
 
     def test_malformed_amount_date_and_orphan_records_are_c4_and_archived(self):
         """M6-M8：金额/日期解析失败与孤儿凭证均为 C4，原始值仍进入归档快照。"""
-        from hotelapp.models import Accommodation, Folio as LegacyFolio
+        from hotelapp.models import Accommodation
+        from hotelapp.models import Folio as LegacyFolio
 
         old_order = Accommodation.objects.get(pk=8101)
         LegacyFolio.objects.create(
@@ -422,7 +425,8 @@ class LegacyMigrationCommandTests(TestCase):
 
     def test_unconfirmed_reversal_is_conflict_and_never_posts(self):
         """M4：无法证明原凭证的旧冲账默认 C4/CONFLICT，不创建 REVERSAL。"""
-        from hotelapp.models import Accommodation, Folio as LegacyFolio
+        from hotelapp.models import Accommodation
+        from hotelapp.models import Folio as LegacyFolio
 
         old_order = Accommodation.objects.get(pk=8101)
         LegacyFolio.objects.create(
@@ -445,7 +449,8 @@ class LegacyMigrationCommandTests(TestCase):
 
     def test_confirmed_reversal_runs_through_controlled_command(self):
         """M5/M17：命令只在人工配对后经受控入口创建 legacy_workflow REVERSAL。"""
-        from hotelapp.models import Accommodation, Folio as LegacyFolio
+        from hotelapp.models import Accommodation
+        from hotelapp.models import Folio as LegacyFolio
 
         original, _ = BillingService.post_entry(
             property_obj=self.prop,
@@ -500,7 +505,8 @@ class LegacyMigrationCommandTests(TestCase):
 
     def test_cross_property_mapping_blocks_batch_and_marks_conflicts(self):
         """M14：订单映射指向其他物业时整批阻断，冲突来源落 C4/CONFLICT。"""
-        from hotelapp.models import Accommodation, Folio as LegacyFolio
+        from hotelapp.models import Accommodation
+        from hotelapp.models import Folio as LegacyFolio
 
         from apps.billing.legacy_order_map import confirm_pair
 
@@ -865,7 +871,8 @@ class LegacyMigrationCommandTests(TestCase):
 
     def test_reconcile_amount_groups_do_not_net_different_currencies(self):
         """R7：不同币种分别守恒；CNY 与 USD 的反向差额不得相互抵消。"""
-        from hotelapp.models import Accommodation, Folio as LegacyFolio
+        from hotelapp.models import Accommodation
+        from hotelapp.models import Folio as LegacyFolio
 
         old_order = Accommodation.objects.get(pk=8101)
         Accommodation.objects.create(
