@@ -20,12 +20,13 @@ class Command(BaseCommand):
     help = "把 duplicate 客人档案合并入 primary（A3：软归档 + 全程审计，不改账务事实）。"
 
     def add_arguments(self, parser):
-        parser.add_argument("--primary", type=int, required=True,
-                            help="主档案 ID（合并保留方）。")
-        parser.add_argument("--duplicate", type=int, required=True,
-                            help="待合并档案 ID（软归档并入主档案）。")
-        parser.add_argument("--reason", required=True,
-                            help="业务理由（1-240 字符），完整进入审计。")
+        parser.add_argument("--primary", type=int, required=True, help="主档案 ID（合并保留方）。")
+        parser.add_argument(
+            "--duplicate", type=int, required=True, help="待合并档案 ID（软归档并入主档案）。"
+        )
+        parser.add_argument(
+            "--reason", required=True, help="业务理由（1-240 字符），完整进入审计。"
+        )
 
     def handle(self, *args, **options):
         primary_id = options["primary"]
@@ -38,27 +39,30 @@ class Command(BaseCommand):
             raise CommandError(f"主档案 {primary_id} 不存在。")
         if duplicate is None:
             raise CommandError(f"待合并档案 {duplicate_id} 不存在。")
-        if primary.property_id != duplicate.property_id:
+        if primary.property != duplicate.property:
             raise CommandError("只能合并同一物业内的客人档案。")
 
         try:
             result = GuestService.merge_guests(
-                primary, duplicate,
-                performed_by=None, reason=options["reason"])
+                primary, duplicate, performed_by=None, reason=options["reason"]
+            )
         except GuestServiceError as exc:
             raise CommandError(str(exc)) from None
 
-        self.stdout.write(self.style.SUCCESS(
-            "客人合并完成：duplicate {duplicate} → primary {primary}；"
-            "迁移预订 {reservations}、预订住客 {reservation_guests}、"
-            "在住人员 {stay_guests}；电话去重丢弃 {phones}、"
-            "证件去重丢弃 {documents}、终止重复有效会员 {memberships}。".format(
-                duplicate=result["duplicate_guest_id"],
-                primary=result["primary_guest_id"],
-                reservations=result["reservations_moved"],
-                reservation_guests=result["reservation_guests_moved"],
-                stay_guests=result["stay_guests_moved"],
-                phones=result["phones_deduped"],
-                documents=result["documents_deduped"],
-                memberships=result["memberships_terminated"],
-            )))
+        self.stdout.write(
+            self.style.SUCCESS(
+                "客人合并完成：duplicate {duplicate} → primary {primary}；"
+                "迁移预订 {reservations}、预订住客 {reservation_guests}、"
+                "在住人员 {stay_guests}；电话去重丢弃 {phones}、"
+                "证件去重丢弃 {documents}、终止重复有效会员 {memberships}。".format(
+                    duplicate=result["duplicate_guest_id"],
+                    primary=result["primary_guest_id"],
+                    reservations=result["reservations_moved"],
+                    reservation_guests=result["reservation_guests_moved"],
+                    stay_guests=result["stay_guests_moved"],
+                    phones=result["phones_deduped"],
+                    documents=result["documents_deduped"],
+                    memberships=result["memberships_terminated"],
+                )
+            )
+        )
