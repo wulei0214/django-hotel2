@@ -35,7 +35,9 @@ class Command(BaseCommand):
             default="Folio,FinanceRecord,NightAudit,Accommodation",
             help="逗号分隔的来源模型；默认四张全归档",
         )
-        parser.add_argument("--operator", default="", help="自报执行人标识（OS 账号/姓名；命令不做身份认证）")
+        parser.add_argument(
+            "--operator", default="", help="自报执行人标识（OS 账号/姓名；命令不做身份认证）"
+        )
         parser.add_argument(
             "--property-map-file",
             default="",
