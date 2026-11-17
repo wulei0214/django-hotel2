@@ -52,13 +52,11 @@ from apps.identity.models import (
     StaffProfile,
     StaffRoleAssignment,
 )
-from hotelapp.models import (
-    Accommodation as LegacyAccommodation,
-    Client as LegacyClient,
-    Folio as LegacyFolio,
-    Room as LegacyRoom,
-    Staff as LegacyStaff,
-)
+from hotelapp.models import Accommodation as LegacyAccommodation
+from hotelapp.models import Client as LegacyClient
+from hotelapp.models import Folio as LegacyFolio
+from hotelapp.models import Room as LegacyRoom
+from hotelapp.models import Staff as LegacyStaff
 from apps.inventory.models import DailyRate, RatePlan, Room, RoomType, RoomTypeInventory
 from apps.reservations.models import Reservation, ReservationRoom
 
