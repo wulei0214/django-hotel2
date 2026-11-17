@@ -103,7 +103,9 @@ def _mask_columns(spec: ArchiveSpec) -> tuple[str, ...]:
 
 
 def list_batches(*, property_obj: Any = None, is_superuser: bool = False) -> list[dict[str, Any]]:
-    """列出归档批次（非超管仅见所属物业的已登记批次）。"""
+    """列出归档批次（非超管必须提供物业上下文，且仅见该物业的已登记批次）。"""
+    if not is_superuser and property_obj is None:
+        raise LegacyArchiveAccessDenied("缺少物业上下文，拒绝列出归档批次")
     runs = billing_models.LegacyArchiveRun.objects.all().order_by("batch_uid", "source_table")
     items: list[dict[str, Any]] = []
     for run in runs:
@@ -149,7 +151,10 @@ def list_rows(
     has_next/has_previous），页大小上限 500；行内容按归档列序输出，电话列已掩码。
     """
     spec = resolve_spec(table_key)
-    authorize_batch(batch_uid=batch_uid, actor=actor, is_superuser=is_superuser)
+    batch_prop = authorize_batch(batch_uid=batch_uid, actor=actor, is_superuser=is_superuser)
+    if not is_superuser:
+        if property_obj is None or batch_prop is None or batch_prop.pk != property_obj.pk:
+            raise LegacyArchiveAccessDenied("批次物业与当前物业上下文不一致")
     run = billing_models.LegacyArchiveRun.objects.filter(
         batch_uid=batch_uid, source_table=spec.source_table
     ).first()
@@ -158,7 +163,11 @@ def list_rows(
             f"批次 {batch_uid} 未归档源表 {spec.source_table}（先执行 archive_legacy_finance）"
         )
     columns = spec.columns
-    queryset = spec.archive_model.objects.filter(archive_batch=batch_uid).order_by("id")
+    queryset = spec.archive_model.objects.filter(archive_batch=batch_uid)
+    if not is_superuser:
+        # FIN-02：逐记录物业快照才是 D6 物业级过滤依据；NULL/未确认归属仅超管可查。
+        queryset = queryset.filter(property_id=property_obj.pk)
+    queryset = queryset.order_by("id")
     if pk_min is not None:
         queryset = queryset.filter(id__gte=pk_min)
     if pk_max is not None:

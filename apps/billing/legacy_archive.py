@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -22,6 +22,7 @@ from django.db import transaction
 
 from apps.billing import models as billing_models
 from apps.billing.legacy_checksum import build_metadata, row_digest, table_digest
+from apps.core.models import Property
 
 
 class LegacyArchiveError(Exception):
@@ -164,7 +165,13 @@ def summarize_source(spec: ArchiveSpec) -> dict[str, Any]:
     }
 
 
-def archive_table(*, spec: ArchiveSpec, batch_uid: str, operator: str) -> Any:
+def archive_table(
+    *,
+    spec: ArchiveSpec,
+    batch_uid: str,
+    operator: str,
+    property_assignments: Mapping[str, Property] | None = None,
+) -> Any:
     """归档一张旧表：逐行写归档行（含行摘要）+ 登记整表摘要元数据。
 
     幂等口径：同一 (batch_uid, source_table) 只允许归档一次——重跑直接拒绝，
@@ -185,6 +192,40 @@ def archive_table(*, spec: ArchiveSpec, batch_uid: str, operator: str) -> Any:
 
     columns = spec.columns
     rows = read_source_rows(spec)
+    assignments = {
+        str(source_pk): property_obj
+        for source_pk, property_obj in (property_assignments or {}).items()
+    }
+    source_pks = {str(row["id"]) for row in rows}
+    unknown_pks = sorted(set(assignments) - source_pks)
+    if unknown_pks:
+        raise LegacyArchiveError(
+            "物业归属映射包含当前源表不存在的主键："
+            + ", ".join(unknown_pks[:20])
+        )
+    for source_pk, property_obj in assignments.items():
+        if (
+            not isinstance(property_obj, Property)
+            or property_obj.pk is None
+            or not Property.objects.filter(pk=property_obj.pk).exists()
+        ):
+            raise LegacyArchiveError(
+                f"源记录 {spec.source_model}#{source_pk} 的物业归属必须是已存在的 Property"
+            )
+
+    batch = billing_models.LegacyMigrationBatch.objects.filter(batch_uid=batch_uid).first()
+    if batch is not None:
+        mismatched = sorted(
+            source_pk
+            for source_pk, property_obj in assignments.items()
+            if property_obj.pk != batch.scope_property_id
+        )
+        if mismatched:
+            raise LegacyArchiveError(
+                "物业快照与迁移批次 scope_property 不一致："
+                + ", ".join(mismatched[:20])
+            )
+
     digests = [row_digest(row, columns).hex() for row in rows]
     summary = table_digest(rows, columns, "id")
     meta = build_metadata(
@@ -203,6 +244,7 @@ def archive_table(*, spec: ArchiveSpec, batch_uid: str, operator: str) -> Any:
                 **row,
                 archive_batch=batch_uid,
                 verified_checksum=digest,
+                property=assignments.get(str(row["id"])),
             ).save()
         run = billing_models.LegacyArchiveRun.objects.create(
             batch_uid=batch_uid,
