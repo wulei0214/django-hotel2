@@ -5,8 +5,8 @@
 """
 
 import inspect
-import unittest
 import threading
+import unittest
 from datetime import timedelta
 from decimal import Decimal
 from unittest import mock
