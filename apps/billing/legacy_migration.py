@@ -96,6 +96,7 @@ class Decision:
     void_of_pk: int | None = None
     reversal_confirmation: dict[str, Any] | None = None
     description: str = ""
+    blocks_batch: bool = False
 
     @property
     def reference(self) -> str:
@@ -303,7 +304,13 @@ def classify_folio_row(
         return candidate
     folio, reason = _resolve_target_folio(mapping, row.get("order_id"), batch=batch)
     if folio is None:
-        return Decision(source_model="Folio", source_pk=source_pk, category="C4", reason=reason)
+        return Decision(
+            source_model="Folio",
+            source_pk=source_pk,
+            category="C4",
+            reason=reason,
+            blocks_batch="物业与批次授权物业不一致" in reason,
+        )
     return Decision(
         source_model="Folio",
         source_pk=source_pk,
@@ -365,6 +372,7 @@ def classify_finance_row(
             source_pk=source_pk,
             category="C4",
             reason=reason,
+            blocks_batch="物业与批次授权物业不一致" in reason,
         )
     entry_type, sign = FINANCE_TYPE_MAP[legacy_type]
     return Decision(
