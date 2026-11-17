@@ -8,12 +8,12 @@
 3. **脱敏**：身份证/电话完整值不出现在任何输出——联系电话一律掩码；
 4. **审计**：每次查询登记 who/when/what（``billing.legacy_archive_query``）。
 
-物业隔离口径（不猜测，符合裁定 3）：
-归档行本身**不含物业列**（源表快照未自动推定物业归属），故物业隔离由归档批次
-的**登记来源**判定——``LegacyArchiveRun.batch_uid`` 对应已登记的
-``LegacyMigrationBatch`` 时，按其 ``scope_property`` 隔离；找不到对应迁移批次的
-归档批次属"未登记来源"，只有平台超管可查。这样既不自动推定物业，也不给出
-跨物业读取口子。
+物业隔离口径（不猜测，符合裁定 3 / FIN-02）：
+归档行含可空 ``property_id`` 快照列，仅由逐记录人工确认映射写入，不从 DEFAULT、
+房号、订单或批次自动推断。非超管先按 ``LegacyArchiveRun.batch_uid`` 对应的
+``LegacyMigrationBatch.scope_property`` 校验有效任职与 ``hotelapp.finance_access``，
+再按归档行 ``property_id`` 等于当前物业过滤明细；NULL/未确认归属行仅平台超管可查。
+找不到对应迁移批次的归档批次属于"未登记来源"，也仅平台超管可查。
 """
 
 from __future__ import annotations
