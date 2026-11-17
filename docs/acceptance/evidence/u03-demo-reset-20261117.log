@@ -1,0 +1,183 @@
+[SKIP] 以下表无 Django 模型映射（早期 schema 孤儿表，ORM 不触及，保留不动）：ledger_entry, payment, reservation, room_type_inventory
+[GUARD] 清空范围（ORM 逐模型删除，共 79 张交易/演示表）：
+[GUARD]   - accommodation
+[GUARD]   - billing_approvalrecord
+[GUARD]   - billing_billingadjustment
+[GUARD]   - billing_cashiershift
+[GUARD]   - billing_cashiershiftmovement
+[GUARD]   - billing_chargeline
+[GUARD]   - billing_checkoutexceptionrelease
+[GUARD]   - billing_folio
+[GUARD]   - billing_folioreconciliationdiff
+[GUARD]   - billing_folioreconciliationrun
+[GUARD]   - billing_foliotransfer
+[GUARD]   - billing_ledgerentry
+[GUARD]   - billing_legacyarchiverun
+[GUARD]   - billing_legacymigrationbatch
+[GUARD]   - billing_legacyorderreservationmap
+[GUARD]   - billing_payment
+[GUARD]   - billing_paymentcompensationtask
+[GUARD]   - billing_paymentintent
+[GUARD]   - billing_providertransaction
+[GUARD]   - billing_providertransactionevent
+[GUARD]   - billing_refund
+[GUARD]   - billing_refundliability
+[GUARD]   - billing_refundliability_source_payments
+[GUARD]   - billing_taxline
+[GUARD]   - client
+[GUARD]   - core_breakglassrecord
+[GUARD]   - core_businessdate
+[GUARD]   - core_exportcredential
+[GUARD]   - core_idempotencyrecord
+[GUARD]   - core_legacyrecordlink
+[GUARD]   - core_nightauditrun
+[GUARD]   - core_notification
+[GUARD]   - core_notificationread
+[GUARD]   - core_ratelimitcounter
+[GUARD]   - core_statustransition
+[GUARD]   - core_workitem
+[GUARD]   - django_admin_log
+[GUARD]   - finance_record
+[GUARD]   - folio
+[GUARD]   - food
+[GUARD]   - guests_guest
+[GUARD]   - guests_guestdocument
+[GUARD]   - guests_guestdocumentindex
+[GUARD]   - guests_guestmembership
+[GUARD]   - guests_guestphone
+[GUARD]   - guests_membershiplevelhistory
+[GUARD]   - identity_permissionmatrixapproval
+[GUARD]   - inventory_dailyrate
+[GUARD]   - inventory_housekeepingtask
+[GUARD]   - inventory_inventorydiscrepancy
+[GUARD]   - inventory_inventoryreconciliationrun
+[GUARD]   - inventory_maintenanceticket
+[GUARD]   - inventory_roominspection
+[GUARD]   - inventory_roomtypeinventory
+[GUARD]   - ledger_entry
+[GUARD]   - legacy_accommodation_archive
+[GUARD]   - legacy_finance_record_archive
+[GUARD]   - legacy_folio_archive
+[GUARD]   - legacy_night_audit_archive
+[GUARD]   - night_audit
+[GUARD]   - order
+[GUARD]   - park
+[GUARD]   - payment
+[GUARD]   - reservation
+[GUARD]   - reservations_bookingaccesstoken
+[GUARD]   - reservations_earlydeparturepolicy
+[GUARD]   - reservations_inventoryhold
+[GUARD]   - reservations_noshowrecord
+[GUARD]   - reservations_pendingbookinggate
+[GUARD]   - reservations_reservation
+[GUARD]   - reservations_reservationguest
+[GUARD]   - reservations_reservationroom
+[GUARD]   - reservations_stay
+[GUARD]   - reservations_stayguest
+[GUARD]   - reservations_stayroomsegment
+[GUARD]   - room
+[GUARD]   - room_type_inventory
+[GUARD]   - staff
+[GUARD]   - vip
+[GUARD] 保留范围（主数据/员工身份链/审计/工号计数器/迁移元数据，共 21 张）：
+[GUARD]   = auth_group
+[GUARD]   = auth_group_permissions
+[GUARD]   = auth_permission
+[GUARD]   = auth_user
+[GUARD]   = auth_user_groups
+[GUARD]   = auth_user_user_permissions
+[GUARD]   = core_auditevent
+[GUARD]   = core_property
+[GUARD]   = django_content_type
+[GUARD]   = django_migrations
+[GUARD]   = django_session
+[GUARD]   = identity_employeenumbercounter
+[GUARD]   = identity_invitation
+[GUARD]   = identity_propertystaffmembership
+[GUARD]   = identity_staffprofile
+[GUARD]   = identity_staffroleassignment
+[GUARD]   = inventory_rateplan
+[GUARD]   = inventory_room
+[GUARD]   = inventory_roomtype
+[GUARD]   = reservations_cancellationpolicy
+[GUARD]   = reservations_depositpolicy
+  清空 accommodation: 0 行
+  清空 billing_approvalrecord: 0 行
+  清空 billing_billingadjustment: 0 行
+  清空 billing_cashiershift: 0 行
+  清空 billing_cashiershiftmovement: 0 行
+  清空 billing_chargeline: 0 行
+  清空 billing_checkoutexceptionrelease: 0 行
+  清空 billing_folio: 0 行
+  清空 billing_folioreconciliationdiff: 0 行
+  清空 billing_folioreconciliationrun: 2 行
+  清空 billing_foliotransfer: 0 行
+  清空 billing_ledgerentry: 0 行
+  清空 billing_legacyarchiverun: 0 行
+  清空 billing_legacymigrationbatch: 0 行
+  清空 billing_legacyorderreservationmap: 0 行
+  清空 billing_payment: 0 行
+  清空 billing_paymentcompensationtask: 0 行
+  清空 billing_paymentintent: 0 行
+  清空 billing_providertransaction: 0 行
+  清空 billing_providertransactionevent: 0 行
+  清空 billing_refund: 0 行
+  清空 billing_refundliability: 0 行
+  清空 billing_refundliability_source_payments: 0 行
+  清空 billing_taxline: 0 行
+  清空 client: 0 行
+  清空 core_breakglassrecord: 0 行
+  清空 core_businessdate: 0 行
+  清空 core_exportcredential: 0 行
+  清空 core_idempotencyrecord: 0 行
+  清空 core_legacyrecordlink: 0 行
+  清空 core_nightauditrun: 0 行
+  清空 core_notification: 0 行
+  清空 core_notificationread: 0 行
+  清空 core_ratelimitcounter: 0 行
+  清空 core_statustransition: 0 行
+  清空 core_workitem: 0 行
+  清空 django_admin_log: 0 行
+  清空 finance_record: 0 行
+  清空 folio: 0 行
+  清空 food: 0 行
+  清空 guests_guest: 0 行
+  清空 guests_guestdocument: 0 行
+  清空 guests_guestdocumentindex: 0 行
+  清空 guests_guestmembership: 0 行
+  清空 guests_guestphone: 0 行
+  清空 guests_membershiplevelhistory: 0 行
+  清空 identity_permissionmatrixapproval: 0 行
+  清空 inventory_dailyrate: 0 行
+  清空 inventory_housekeepingtask: 0 行
+  清空 inventory_inventorydiscrepancy: 0 行
+  清空 inventory_inventoryreconciliationrun: 0 行
+  清空 inventory_maintenanceticket: 0 行
+  清空 inventory_roominspection: 0 行
+  清空 inventory_roomtypeinventory: 0 行
+  跳过 ledger_entry: 无模型映射（孤儿表保留）
+  清空 legacy_accommodation_archive: 0 行
+  清空 legacy_finance_record_archive: 0 行
+  清空 legacy_folio_archive: 0 行
+  清空 legacy_night_audit_archive: 0 行
+  清空 night_audit: 0 行
+  清空 order: 0 行
+  清空 park: 0 行
+  跳过 payment: 无模型映射（孤儿表保留）
+  跳过 reservation: 无模型映射（孤儿表保留）
+  清空 reservations_bookingaccesstoken: 14 行
+  清空 reservations_earlydeparturepolicy: 0 行
+  清空 reservations_inventoryhold: 13 行
+  清空 reservations_noshowrecord: 1 行
+  清空 reservations_pendingbookinggate: 11 行
+  清空 reservations_reservation: 31 行
+  清空 reservations_reservationguest: 0 行
+  清空 reservations_reservationroom: 31 行
+  清空 reservations_stay: 10 行
+  清空 reservations_stayguest: 0 行
+  清空 reservations_stayroomsegment: 9 行
+  清空 room: 0 行
+  跳过 room_type_inventory: 无模型映射（孤儿表保留）
+  清空 staff: 0 行
+  清空 vip: 0 行
+[DONE] 演示业务数据已清空（共 122 行）；备份：backups\hotel-before-f02-20261117.json

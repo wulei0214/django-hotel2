@@ -1,0 +1,12 @@
+已准备账号：test_front（前台）
+已准备账号：test_duty（值班经理）
+已准备账号：test_finance（财务）
+已准备账号：test_owner（店长）
+已准备账号：test_housekeeping（客房服务员）
+已准备账号：test_nightaudit（夜审员）
+已准备账号：test_fnb（餐饮服务员）
+已准备账号：test_fnbsup（餐饮主管）
+已准备账号：test_parking（停车安保）
+九角色测试账号处理完成：新建 0 个；密码未输出。
+
+[getpass 注入调用次数: 2]

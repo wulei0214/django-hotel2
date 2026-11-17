@@ -68,3 +68,4 @@ _pytest_smoke*.sqlite3
 .work/
 .ruff_cache/
 .mypy_cache/
+backups/
