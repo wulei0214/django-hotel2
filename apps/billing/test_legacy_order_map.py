@@ -272,6 +272,15 @@ class LegacyOrderMapBaseTests(TestCase):
         self.assertEqual(entries[0]["source"], "legacy_order_reservation_map")
         self.assertEqual(entries[0]["confirmed_by"], "map-confirmer")
 
+    def test_current_map_for_order_rejects_ambiguous_split(self):
+        self._confirm(relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE)
+        self._confirm(
+            reservation_id=self.other_reservation.pk,
+            relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE,
+        )
+        with self.assertRaises(LegacyOrderMapError):
+            current_map_for_order(self.legacy_order.pk, property_obj=self.prop)
+
     def test_orders_mapping_preserves_one_to_many_relations(self):
         self._confirm(relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE)
         self._confirm(
