@@ -24,7 +24,9 @@ from apps.core.models import AuditEvent, Property
 
 
 class Command(BaseCommand):
-    help = "归档旧财务四表并核验 checksum-v2（默认只读；写入须显式 --execute 并提供 --approval-ref）。"
+    help = (
+        "归档旧财务四表并核验 checksum-v2（默认只读；写入须显式 --execute 并提供 --approval-ref）。"
+    )
 
     def add_arguments(self, parser):
         parser.add_argument("--batch-uid", default="", help="归档批次号（执行时必填）")
@@ -68,7 +70,9 @@ class Command(BaseCommand):
             raise CommandError("--operator 必填（元数据须登记执行人）")
         approval_ref = options["approval_ref"].strip()
         if not approval_ref or len(approval_ref) > 128:
-            raise CommandError("--approval-ref 必填且不得超过 128 个字符（须引用负责人书面批准记录）")
+            raise CommandError(
+                "--approval-ref 必填且不得超过 128 个字符（须引用负责人书面批准记录）"
+            )
         return self._execute(
             specs, batch_uid, options["operator"].strip(), approval_ref, property_assignments
         )
