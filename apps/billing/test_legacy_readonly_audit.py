@@ -88,6 +88,7 @@ class LegacyFinanceReadonlyAuditScriptTests(SimpleTestCase):
         )
         self.assertEqual(len(labels), 6)
 
+
 @skipUnless(connection.vendor == "mysql", "requires MySQL 8.0")
 class LegacyFinanceReadonlyAuditMySQLTests(TransactionTestCase):
     def test_audit_script_executes_against_mysql_schema(self) -> None:
@@ -117,4 +118,3 @@ class LegacyFinanceReadonlyAuditMySQLTests(TransactionTestCase):
                 connection.rollback()
         self.assertEqual(select_count, 14)
         self.assertEqual(preflight_row_count, 31)
-
