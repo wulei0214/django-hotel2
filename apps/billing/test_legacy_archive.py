@@ -32,7 +32,7 @@ from apps.billing.models import (
     LegacyFolioArchive,
     LegacyNightAuditArchive,
 )
-from apps.core.models import Property
+from apps.core.models import AuditEvent, Property
 
 
 def _legacy_fixtures():
@@ -323,6 +323,14 @@ class ArchiveCommandTests(TestCase):
             stdout=out,
         )
         self.assertEqual(LegacyArchiveRun.objects.filter(batch_uid="ARC-CMD").count(), 2)
+        audit_events = AuditEvent.objects.filter(
+            action="billing.legacy_archive", reason__contains="batch=ARC-CMD"
+        )
+        self.assertEqual(audit_events.count(), 2)
+        self.assertEqual(
+            {event.after_json["approval_ref"] for event in audit_events},
+            {"TEST-GOV-ARCHIVE-01"},
+        )
         verify_out = StringIO()
         call_command(
             "archive_legacy_finance",
