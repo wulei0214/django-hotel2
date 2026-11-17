@@ -281,6 +281,13 @@ class LegacyMigrationCommandTests(TestCase):
                             "basis": "客人+日期+房型人工确认",
                             "confirmed_by": "finance-lead",
                         }
+                    },
+                    "finance_natures": {
+                        "FinanceRecord:7001": {
+                            "entry_type": "PAYMENT",
+                            "basis": "旧收款记录与住客订单收款凭证相互印证",
+                            "confirmed_by": "finance-lead",
+                        }
                     }
                 },
                 ensure_ascii=False,
@@ -700,6 +707,7 @@ class LegacyMigrationCommandTests(TestCase):
                 "category": "C2",
                 "entry": candidate.pk,
                 "note": "人工确认该旧记录已被现有凭证覆盖",
+                "confirmed_by": "finance-lead",
             }
         }
         self.mapping_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
