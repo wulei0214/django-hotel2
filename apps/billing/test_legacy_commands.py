@@ -17,7 +17,7 @@ from unittest import mock, skipIf
 
 from django.contrib.auth.models import User
 from django.core.management import CommandError, call_command
-from django.db import connection, IntegrityError, models as django_models, transaction
+from django.db import IntegrityError, connection, models as django_models, transaction
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
