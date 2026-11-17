@@ -65,6 +65,17 @@ METHOD_BY_CATEGORY = {
 }
 
 
+LEGACY_REFERENCE_NAMES = {"Folio": "folio", "FinanceRecord": "finance"}
+
+
+def legacy_reference(source_model: str, source_pk: str | int) -> str:
+    """生成迁移凭证唯一 reference；稳定使用业务名而非 Django 模型类名。"""
+    name = LEGACY_REFERENCE_NAMES.get(source_model)
+    if name is None:
+        raise LegacyMigrationError(f"不支持生成 {source_model} 的历史凭证 reference")
+    return f"legacy:{name}:{source_pk}"
+
+
 class LegacyMigrationError(Exception):
     """迁移计划/映射文件不合法（结构性错误，不是单条记录的业务分类）。"""
 
@@ -88,7 +99,7 @@ class Decision:
 
     @property
     def reference(self) -> str:
-        return f"legacy:{self.source_model}:{self.source_pk}"
+        return legacy_reference(self.source_model, self.source_pk)
 
 
 @dataclass
@@ -146,7 +157,7 @@ def load_mapping(path: str | Path) -> dict[str, Any]:
           "orders": {"<旧订单id>": {"reservation": 201, "basis": "...", "confirmed_by": "..."}},
           "candidates": {"<source_model>:<pk>": {"category": "C2",
                                                  "entry": 5001, "note": "..."}},
-          "reversal_pairs": {"<旧Folio pk>": {"void_reference": "legacy:Folio:12",
+          "reversal_pairs": {"<旧Folio pk>": {"void_reference": "legacy:folio:12",
                                               "confirmed_by": "...", "basis": "..."}}
         }
     """
@@ -709,7 +720,7 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
             source_qs = source_qs.filter(pk__gte=pk_min, pk__lte=pk_max)
         source_pks = {str(pk) for pk in source_qs.values_list("pk", flat=True)}
         all_expected_references.update(
-            f"legacy:{source_model}:{source_pk}" for source_pk in source_pks
+            legacy_reference(source_model, source_pk) for source_pk in source_pks
         )
 
         model_links = list(
@@ -772,7 +783,7 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
             if link.mapping_status != expected_status[category]:
                 status_mismatches.append(link.source_pk)
 
-            reference = f"legacy:{source_model}:{link.source_pk}"
+            reference = legacy_reference(source_model, link.source_pk)
             reference_entry = LedgerEntry.objects.filter(reference=reference).first()
             if category == "C1":
                 c1_target_ids.append(str(link.target_pk))
@@ -877,9 +888,12 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
         )
 
     # 兜底检查：范围内存在 legacy reference，但没有对应 C1 链接，属于孤儿新凭证。
-    linked_c1_refs = set(
-        links.filter(match_method=METHOD_C1).values_list("source_model", "source_pk")
-    )
+    linked_c1_refs = {
+        (LEGACY_REFERENCE_NAMES.get(source_model, source_model), str(source_pk))
+        for source_model, source_pk in links.filter(match_method=METHOD_C1).values_list(
+            "source_model", "source_pk"
+        )
+    }
     source_ref_entries = LedgerEntry.objects.filter(reference__in=all_expected_references)
     orphan_references = [
         entry.reference
