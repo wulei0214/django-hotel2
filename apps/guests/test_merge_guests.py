@@ -13,13 +13,13 @@ import json
 import uuid
 from datetime import timedelta
 from decimal import Decimal
+from io import StringIO
 
 from django.contrib.auth.models import Group, Permission, User
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from io import StringIO
 
 from apps.billing.models import Folio
 from apps.core.models import AuditEvent, Property
@@ -397,7 +397,7 @@ class GuestMergeApiTests(TestCase):
     def test_merge_api_missing_guest_returns_404(self):
         self._login()
         response = self.client.post(
-            f"/api/v1/guest-center/guests/999999/merge",
+            "/api/v1/guest-center/guests/999999/merge",
             data=json.dumps(self._merge_payload()), content_type="application/json")
         self.assertEqual(response.status_code, 404)
 
