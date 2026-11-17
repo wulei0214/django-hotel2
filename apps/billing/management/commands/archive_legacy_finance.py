@@ -74,7 +74,11 @@ class Command(BaseCommand):
                 "--approval-ref 必填且不得超过 128 个字符（须引用负责人书面批准记录）"
             )
         return self._execute(
-            specs, batch_uid, options["operator"].strip(), approval_ref, property_assignments
+            specs,
+            batch_uid,
+            options["operator"].strip(),
+            approval_ref,
+            property_assignments,
         )
 
     def _specs(self, raw):
@@ -181,7 +185,9 @@ class Command(BaseCommand):
                         spec=spec,
                         batch_uid=batch_uid,
                         operator=operator,
-                        property_assignments=property_assignments.get(spec.source_model, {}),
+                        property_assignments=property_assignments.get(
+                            spec.source_model, {}
+                        ),
                     )
                     AuditEvent.record(
                         action="billing.legacy_archive",
