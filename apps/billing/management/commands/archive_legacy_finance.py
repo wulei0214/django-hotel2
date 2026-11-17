@@ -59,9 +59,7 @@ class Command(BaseCommand):
             raise CommandError("--batch-uid 必填（归档批次号会写进归档行与元数据）")
         if not options["operator"].strip():
             raise CommandError("--operator 必填（元数据须登记执行人）")
-        return self._execute(
-            specs, batch_uid, options["operator"].strip(), property_assignments
-        )
+        return self._execute(specs, batch_uid, options["operator"].strip(), property_assignments)
 
     def _specs(self, raw):
         names = [item.strip() for item in raw.split(",") if item.strip()]
@@ -85,21 +83,21 @@ class Command(BaseCommand):
         unknown_models = sorted(set(payload) - set(allowed))
         if unknown_models:
             raise LegacyArchiveError(
-                "物业映射包含未在 --tables 中选择的来源模型："
-                + ", ".join(unknown_models)
+                "物业映射包含未在 --tables 中选择的来源模型：" + ", ".join(unknown_models)
             )
 
         result = {}
         for source_model, rows_map in payload.items():
             if not isinstance(rows_map, dict):
-                raise LegacyArchiveError(f"{source_model} 的物业映射必须是对象（源主键→物业代码）。")
+                raise LegacyArchiveError(
+                    f"{source_model} 的物业映射必须是对象（源主键→物业代码）。"
+                )
             spec = allowed[source_model]
             source_pks = {str(row["id"]) for row in read_source_rows(spec)}
             unknown_pks = sorted(set(map(str, rows_map)) - source_pks)
             if unknown_pks:
                 raise LegacyArchiveError(
-                    f"{source_model} 物业映射包含不存在的源主键："
-                    + ", ".join(unknown_pks[:20])
+                    f"{source_model} 物业映射包含不存在的源主键：" + ", ".join(unknown_pks[:20])
                 )
             resolved = {}
             for source_pk, property_code in rows_map.items():
@@ -128,7 +126,9 @@ class Command(BaseCommand):
             )
         if not property_assignments:
             self.stdout.write(
-                self.style.WARNING("未提供物业映射：所有归档行 property 快照保持 NULL，不自动推断。")
+                self.style.WARNING(
+                    "未提供物业映射：所有归档行 property 快照保持 NULL，不自动推断。"
+                )
             )
         self.stdout.write(self.style.WARNING("dry-run：未写入任何归档行与元数据。"))
 
@@ -163,9 +163,7 @@ class Command(BaseCommand):
                         spec=spec,
                         batch_uid=batch_uid,
                         operator=operator,
-                        property_assignments=property_assignments.get(
-                            spec.source_model, {}
-                        ),
+                        property_assignments=property_assignments.get(spec.source_model, {}),
                     )
                     AuditEvent.record(
                         action="billing.legacy_archive",

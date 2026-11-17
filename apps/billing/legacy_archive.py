@@ -200,8 +200,7 @@ def archive_table(
     unknown_pks = sorted(set(assignments) - source_pks)
     if unknown_pks:
         raise LegacyArchiveError(
-            "物业归属映射包含当前源表不存在的主键："
-            + ", ".join(unknown_pks[:20])
+            "物业归属映射包含当前源表不存在的主键：" + ", ".join(unknown_pks[:20])
         )
     for source_pk, property_obj in assignments.items():
         if (
@@ -213,9 +212,7 @@ def archive_table(
                 f"源记录 {spec.source_model}#{source_pk} 的物业归属必须是已存在的 Property"
             )
 
-    batch = (
-        billing_models.LegacyMigrationBatch.objects.filter(batch_uid=batch_uid).first()
-    )
+    batch = billing_models.LegacyMigrationBatch.objects.filter(batch_uid=batch_uid).first()
     if batch is not None:
         mismatched = sorted(
             source_pk
@@ -224,8 +221,7 @@ def archive_table(
         )
         if mismatched:
             raise LegacyArchiveError(
-                "物业快照与迁移批次 scope_property 不一致："
-                + ", ".join(mismatched[:20])
+                "物业快照与迁移批次 scope_property 不一致：" + ", ".join(mismatched[:20])
             )
 
     digests = [row_digest(row, columns).hex() for row in rows]
