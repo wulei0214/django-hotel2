@@ -1,4 +1,4 @@
-"""25 个 x-contract-status=partial 操作的端点级契约核验（转 verified 证据包）。
+"""此前 25 个 x-contract-status=partial 操作的端点级契约核验回归测试（转 verified 证据包）。
 
 用途 / 证据链（详见 docs 下《API契约与测试规范》）：
   * 权威快照 docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/openapi.json
@@ -41,8 +41,8 @@ from typing import Any, cast
 from django.conf import settings
 from django.contrib.auth.models import Group, User
 from django.test import SimpleTestCase, TestCase
-from django.utils import timezone
 from django.utils.crypto import get_random_string
+from django.utils import timezone
 
 from apps.billing.models import ApprovalRecord, Folio
 from apps.core.models import AuditEvent, BusinessDate, Property

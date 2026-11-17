@@ -14,7 +14,6 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
-from io import StringIO
 
 from django.contrib.auth.models import Group, Permission, User
 from django.core.management import call_command
