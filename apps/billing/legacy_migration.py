@@ -522,8 +522,8 @@ def execute_plan(
 ) -> dict[str, Any]:
     """按计划落库；同批次已完成的逐条结果可安全跳过，支持失败后断点重执行。
 
-    C1 的凭证、映射和审计仍由受控入口在单条事务内完成；C2-C5 每条映射也在
-    独立事务中写入。并发撞唯一键只记为该条失败，不污染其他记录。
+    C1 的凭证、映射和审计由受控入口在自身事务内完成；不能再套一层事务，
+    否则受控入口的独立拒绝审计会被外层回滚。C2-C5 每条映射单独事务提交。
     """
     from apps.billing.legacy_credentials import LegacyMigrationDenied
     from apps.billing.services_v2 import BillingService
@@ -533,70 +533,82 @@ def execute_plan(
     for decision in plan.decisions:
         method = METHOD_BY_CATEGORY[decision.category]
         try:
-            with transaction.atomic():
-                existing_links = list(
-                    LegacyRecordLink.objects.select_for_update().filter(
-                        source_system="hotelapp",
-                        source_model=decision.source_model,
-                        source_pk=decision.source_pk,
-                    )[:2]
+            existing_links = list(
+                LegacyRecordLink.objects.filter(
+                    source_system="hotelapp",
+                    source_model=decision.source_model,
+                    source_pk=decision.source_pk,
+                )[:2]
+            )
+            if len(existing_links) > 1:
+                raise LegacyMigrationDenied(
+                    f"来源记录 {decision.source_model}#{decision.source_pk} 存在多条映射，需人工处置"
                 )
-                if len(existing_links) > 1:
-                    raise LegacyMigrationDenied(
-                        f"来源记录 {decision.source_model}#{decision.source_pk} 存在多条映射，需人工处置"
-                    )
-                if existing_links:
-                    if _existing_link_matches_decision(
-                        batch=batch, decision=decision, link=existing_links[0]
-                    ):
-                        counts[decision.category] += 1
-                        continue
-                    raise LegacyMigrationDenied(
-                        f"来源记录 {decision.source_model}#{decision.source_pk} 已有不一致或其他批次映射，禁止覆盖"
-                    )
+            if existing_links:
+                if _existing_link_matches_decision(
+                    batch=batch, decision=decision, link=existing_links[0]
+                ):
+                    counts[decision.category] += 1
+                    continue
+                raise LegacyMigrationDenied(
+                    f"来源记录 {decision.source_model}#{decision.source_pk} 已有不一致或其他批次映射，禁止覆盖"
+                )
 
-                if decision.category == "C1":
-                    folio = Folio.objects.get(pk=decision.target_folio_id)
-                    BillingService.post_legacy_migration_entry(
-                        credential_token=credential_factory(),
+            if decision.category == "C1":
+                folio = Folio.objects.get(pk=decision.target_folio_id)
+                BillingService.post_legacy_migration_entry(
+                    credential_token=credential_factory(),
+                    batch=batch,
+                    property_obj=batch.scope_property,
+                    folio=folio,
+                    entry_type=decision.entry_type,
+                    amount=decision.amount,
+                    reference=decision.reference,
+                    source_model=decision.source_model,
+                    source_pk=decision.source_pk,
+                    description=decision.description,
+                    business_date=decision.business_date,
+                    void_of=(
+                        LedgerEntry.objects.get(pk=decision.void_of_pk)
+                        if decision.void_of_pk
+                        else None
+                    ),
+                    void_reason=decision.reason if decision.void_of_pk else "",
+                    reversal_confirmation=decision.reversal_confirmation,
+                    review_note=f"batch={batch.batch_uid} {decision.reason}",
+                )
+            else:
+                with transaction.atomic():
+                    # C2-C5 没有受控入口；事务内 current read 复查并发写入。
+                    raced_links = list(
+                        LegacyRecordLink.objects.select_for_update().filter(
+                            source_system="hotelapp",
+                            source_model=decision.source_model,
+                            source_pk=decision.source_pk,
+                        )[:2]
+                    )
+                    if raced_links:
+                        if len(raced_links) == 1 and _existing_link_matches_decision(
+                            batch=batch, decision=decision, link=raced_links[0]
+                        ):
+                            counts[decision.category] += 1
+                            continue
+                        raise LegacyMigrationDenied(
+                            f"来源记录 {decision.source_model}#{decision.source_pk} 并发产生冲突映射"
+                        )
+                    _link(
                         batch=batch,
-                        property_obj=batch.scope_property,
-                        folio=folio,
-                        entry_type=decision.entry_type,
-                        amount=decision.amount,
-                        reference=decision.reference,
-                        source_model=decision.source_model,
-                        source_pk=decision.source_pk,
-                        description=decision.description,
-                        business_date=decision.business_date,
-                        void_of=(
-                            LedgerEntry.objects.get(pk=decision.void_of_pk)
-                            if decision.void_of_pk
-                            else None
+                        decision=decision,
+                        executor=executor,
+                        target_pk=(
+                            str(decision.candidate_entry_id)
+                            if decision.category in {"C2", "C3"}
+                            else ""
                         ),
-                        void_reason=decision.reason if decision.void_of_pk else "",
-                        reversal_confirmation=decision.reversal_confirmation,
-                        review_note=f"batch={batch.batch_uid} {decision.reason}",
-                    )
-                elif decision.category in {"C2", "C3"}:
-                    _link(
-                        batch=batch,
-                        decision=decision,
-                        executor=executor,
-                        target_pk=str(decision.candidate_entry_id),
                         method=method,
                         note=f"batch={batch.batch_uid} {decision.reason}",
                     )
-                else:
-                    _link(
-                        batch=batch,
-                        decision=decision,
-                        executor=executor,
-                        target_pk="",
-                        method=method,
-                        note=f"batch={batch.batch_uid} {decision.reason}",
-                    )
-                counts[decision.category] += 1
+            counts[decision.category] += 1
         except (LegacyMigrationDenied, ValueError, LegacyMigrationError, IntegrityError) as exc:
             counts["failed"] += 1
             failures.append(f"{decision.source_model}#{decision.source_pk}: {exc}")
