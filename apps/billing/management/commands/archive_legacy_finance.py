@@ -185,9 +185,7 @@ class Command(BaseCommand):
                         spec=spec,
                         batch_uid=batch_uid,
                         operator=operator,
-                        property_assignments=property_assignments.get(
-                            spec.source_model, {}
-                        ),
+                        property_assignments=property_assignments.get(spec.source_model, {}),
                     )
                     AuditEvent.record(
                         action="billing.legacy_archive",
