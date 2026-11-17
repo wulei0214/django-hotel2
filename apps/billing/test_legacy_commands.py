@@ -414,9 +414,9 @@ class LegacyMigrationCommandTests(TestCase):
             "Folio",
             stdout=StringIO(),
         )
-        self.assertEqual(LegacyFolioArchive.objects.get(pk=9003).金额, "abc")
-        self.assertEqual(LegacyFolioArchive.objects.get(pk=9006).日期, "20260101")
-        self.assertEqual(LegacyFolioArchive.objects.get(pk=9007).金额, "200.00")
+        self.assertEqual(LegacyFolioArchive.objects.get(pk=9003).amount_text, "abc")
+        self.assertEqual(LegacyFolioArchive.objects.get(pk=9006).date_text, "20260101")
+        self.assertEqual(LegacyFolioArchive.objects.get(pk=9007).amount_text, "200.00")
 
     def test_unconfirmed_reversal_is_conflict_and_never_posts(self):
         """M4：无法证明原凭证的旧冲账默认 C4/CONFLICT，不创建 REVERSAL。"""
