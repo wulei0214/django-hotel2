@@ -17,6 +17,9 @@ from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+# 从任意工作目录执行脚本时也能导入 apps.core.testing_env（净化规则单一来源）。
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 
 def _git_state():
@@ -65,7 +68,7 @@ def _mysql_conn_kwargs():
 
 def _db_version(engine):
     try:
-        import pymysql
+        import pymysql  # type: ignore[import-untyped]  # 环境未安装 types-PyMySQL
 
         conn = pymysql.connect(**_mysql_conn_kwargs())
         with conn.cursor() as cur:
@@ -86,13 +89,17 @@ def main():
 
     import django
 
-    env = dict(**__import__("os").environ)
+    # 平台后台白名单变量须剔除（与 CI 口径一致），否则身份/权限用例出现假失败；
+    # 净化规则由 apps.core.testing_env 统一维护并有单测覆盖。
+    from apps.core.testing_env import test_process_env
+
+    env = test_process_env()
     if args.engine == "sqlite":
-        env.update({"DJANGO_DB_ENGINE": "sqlite", "DJANGO_ENV": "test"})
+        env["DJANGO_DB_ENGINE"] = "sqlite"
         db_desc = "SQLite（内存库，CI/轻量口径）"
     else:
         _mysql_conn_kwargs()  # 预校验：缺环境变量在跑测试前快速失败
-        env.update({"DJANGO_ENV": "test"})  # DB 连接参数由环境透传，不在脚本内覆写
+        # DB 连接参数由环境透传，不在脚本内覆写（禁止凭据字面量）。
         db_desc = _db_version("mysql")
         if args.keepdb:
             env["DJANGO_KEEPDB"] = "1"
@@ -101,7 +108,9 @@ def main():
     # --noinput：测试库一律全新创建（陈旧 keepdb 库会缺新迁移/种子数据；
     # 交互确认在无人值守下必撞 EOF）。需要复用库时显式走 manage.py test --keepdb。
     if args.keepdb:
-        test_cmd.append("--keepdb")  # keepdb 必须进 manage.py 参数（env DJANGO_KEEPDB 非 settings 约定）
+        test_cmd.append(
+            "--keepdb"
+        )  # keepdb 必须进 manage.py 参数（env DJANGO_KEEPDB 非 settings 约定）
     header = [
         f"证据生成时间：{datetime.now().isoformat(timespec='seconds')}",
         f"被测树：{_git_state()}",
