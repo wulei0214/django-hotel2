@@ -287,6 +287,7 @@ class GuestMergeCommandTests(TestCase):
     def setUp(self):
         self.prop = Property.objects.create(
             code=f"MC-{uuid.uuid4().hex[:8]}", name="命令合并测试物业"
+        )
         self.primary = Guest.objects.create(property=self.prop, full_name="命令主档案")
         self.duplicate = Guest.objects.create(property=self.prop, full_name="命令重复档案")
         Reservation.objects.create(
