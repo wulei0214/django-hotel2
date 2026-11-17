@@ -619,6 +619,8 @@ def build_plan(*, batch: LegacyMigrationBatch, mapping: Mapping[str, Any] | None
         orders_mapping,
     )
 
+    if mapping is not None and not isinstance(mapping, Mapping):
+        raise LegacyMigrationError("映射文件顶层必须是 JSON 对象")
     effective: dict[str, Any] = dict(mapping or {})
     for section in ("record_reservations", "finance_natures", "candidates", "reversal_pairs"):
         value = effective.get(section)
