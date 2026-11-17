@@ -46,9 +46,6 @@ jobs:
           else
             echo "No changed Python files under apps/ or hotel/ — ruff skipped"
           fi
-      - name: Diagnostic Black diff for three legacy-formatted files (temporary)
-        run: |
-          black --diff apps/guests/models.py apps/guests/test_merge_guests.py apps/api/test_partial_contract_verification.py apps/billing/management/commands/archive_legacy_finance.py apps/billing/test_legacy_archive.py apps/billing/test_legacy_readonly_audit.py || true
       - name: Black format check (changed files)
         run: |
           if [ -s existing_py.txt ]; then
