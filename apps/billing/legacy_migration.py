@@ -844,13 +844,13 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
         for link in model_links:
             if link.property.pk != batch.scope_property_id:
                 invalid_targets.append(link.source_pk)
-            category = {
+            matched_category = {
                 method: name for name, method in METHOD_BY_CATEGORY.items()
             }.get(link.match_method)
-            if category is None:
+            if matched_category is None:
                 unknown_methods.append(link.source_pk)
                 continue
-            if link.mapping_status != expected_status[category]:
+            if link.mapping_status != expected_status[matched_category]:
                 status_mismatches.append(link.source_pk)
 
             reference = legacy_reference(source_model, link.source_pk)
@@ -907,7 +907,7 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
                         "actual": str(entry.amount),
                     }
                 )
-            elif category in {"C2", "C3"}:
+            elif matched_category in {"C2", "C3"}:
                 candidate = (
                     LedgerEntry.objects.filter(pk=link.target_pk)
                     .select_related("folio", "property")
@@ -931,13 +931,13 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
                     else:
                         expected_currency = candidate.folio.currency
                         expected_key = (
-                            category,
+                            matched_category,
                             link.property.pk,
                             expected_currency,
                             expected_type,
                         )
                         actual_key = (
-                            category,
+                            matched_category,
                             candidate.property_id,
                             candidate.currency,
                             candidate.entry_type,
@@ -946,7 +946,7 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
                         actual_groups[actual_key] += candidate.amount
                         if candidate.amount != expected_amount:
                             report["diffs"].append(
-                                f"{source_model}#{link.source_pk}: {category} 候选凭证 "
+                                f"{source_model}#{link.source_pk}: {matched_category} 候选凭证 "
                                 f"{candidate.amount} ≠ 旧记录 {expected_amount}"
                             )
                         if (
@@ -956,7 +956,7 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
                             invalid_targets.append(link.source_pk)
                         report["amounts"].append(
                             {
-                                "category": category,
+                                "category": matched_category,
                                 "source_model": source_model,
                                 "source_pk": link.source_pk,
                                 "entry_type": candidate.entry_type,
