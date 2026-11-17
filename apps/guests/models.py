@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -316,6 +318,10 @@ class GuestDocumentIndex(models.Model):
 
 class GuestMembership(models.Model):
     """会员关系（V1.1 M-16 P0）：Guest 之上的物业会员关系，不是第二份自然人主档。"""
+    if TYPE_CHECKING:
+        property_id: int
+        guest_id: int
+
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "待生效"
