@@ -212,7 +212,7 @@ class PartialContractVerificationBase(TestCase):
     # 员工账号工厂（对齐 test_e2e_flows._make_staff 身份链）
     # ------------------------------------------------------------------
     def _make_staff(self, username, group_name):
-        user = User.objects.create_user(username=username, password=_TEST_PW_3D7B9A21
+        user = User.objects.create_user(username=username, password=_TEST_PW_3D7B9A21)
         profile = StaffProfile.objects.create(
             user=user, full_name=username, employment_status=StaffProfile.EmploymentStatus.ACTIVE
         )
