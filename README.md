@@ -16,8 +16,8 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
 | 夜审 | BusinessDate、NightAuditRun、NightAuditService | 营业日、夜审失败恢复和生产定时任务仍按部署验收 |
 | 清洁维修 | DIRTY→CLEANING→INSPECTING→CLEAN；维修专项权限 | 客房服务员不得执行净房放行 |
 | API | OpenAPI 3.1 静态快照；paths、operations 与 verified/partial 当前值统一以 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §2 为准 | 当前快照由 CI 守卫同步，不能用历史 partial 数量描述现状 |
-| 测试 | 双引擎全量 SQLite 1307 OK（skipped=25）/ MySQL 1307 OK（0 跳过，2026-11-14 本地证据，证据头含 SHA/环境/命令/退出码，见 evidence/test-{sqlite,mysql}-walkin-round.log）；历史 1201=round34 基线 a317ca2 时代，仅对其 SHA 有效 | 不等于真实浏览器 E2E、用户本地库或生产验收 |
-| 全链路串测 | scripts/e2e_full_chain.py 已提交 | 当前脚本存在导入缺失、空断言、凭据硬编码和清库护栏不足；36/36 尚不作为有效验收结论 |
+| 测试 | 最新双引擎证据（2026-11-17）：SQLite 1598 OK（skipped=26）（evidence/test-sqlite-batch23.log，被测树 1591ce2）；MySQL batch23 首跑 1598 FAILED（63F/21E/3skip）经定性为测试环境白名单污染（非代码缺陷），387e6bf 修复证据生成器后净化重取 1602 OK（skipped=3）（evidence/test-mysql-env-sanitized-20261117.log，被测树 387e6bf）；历史 1307=walkin-round（2026-11-14）、1201=round34（基线 a317ca2）均仅对其证据头 SHA 有效 | 不等于真实浏览器 E2E、用户本地库或生产验收 |
+| 全链路串测 | scripts/e2e_full_chain.py 已重写（护栏：--i-understand-reset / 目标库白名单 / 凭据注入 / 零硬编码 / 断言补齐） | 2026-11-17 隔离 MySQL 测试库复跑 56 项 / 失败 0（evidence/e2e-rerun-20261116.log，repo_head 1591ce2）；属开发侧证据、未纳入 CI，不替代独立验收 |
 | DEC-02-A1 账务调整 | `BillingAdjustment` 模型+服务+API+财务页面（财务发起→值班经理审批→执行生凭证；净额重建） | 开发完成，13/13 测试通过 |
 | DEC-02-B2 异常放行 | `CheckoutExceptionRelease` 模型+服务+API+前台引导+财务核查面板（申请→审批→放行不建负债→受控转负债/关闭） | 开发完成，13/13 测试通过 |
 | PAY-P0 支付意图 | `PaymentIntent` 模型+`payment_intents.py` 服务（创建/窗口延长/确认成功/过期/事件记录） | 开发完成，10/10 测试通过 |
@@ -56,8 +56,12 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
   - **RSV-05**：`create_walk_in` 入住/离店日期改物业时区业务日（与夜审/提前离店同口径）+ 弃用标注（生产零调用，供后续 API 接线复用，禁止零散重写）。
   - **MAINT-04**：公开端点（availability/reserve/详情/取消/支付意图/回调）25 处扁平 `{"error": "字符串"}` 收敛为 `{error:{code,message},meta}`；`ApiError` 增补 METHOD_NOT_ALLOWED/SERVICE_UNAVAILABLE/PROPERTY_UNAVAILABLE 三码（与 openapi 声明词汇对齐）；ErrorDetail 词汇表更新并重导 openapi.json 快照（113 paths）；6 处测试断言同步。
   - 回归证据：`docs/acceptance/evidence/test-sqlite-round34.log`（SQLite 全量）、`test-mysql-round34.log`（MySQL 全量）。
+- 【2026-11-16】本地部署验收走查（开发侧 · G14-06/07/09 前置）：浏览器真实 UI + requests 真实 HTTP、角色分离会话，核心链路全 PASS、九角色矩阵 12/12、越权 3 项 403（docs/acceptance/evidence/walkthrough-g14-dev-side-20261116.md，worktree 37a93fc + walkthrough-final-state-20261116.log）。
+- 【2026-11-16】空库全量迁移：test_hotel 全新库 migrate 128 项全部应用成功 + check 无问题（docs/acceptance/evidence/empty-db-migrate-20261116.log）。
+- 【2026-11-17】排期第2+3批交付回归：SQLite 1598 OK（skipped=26）/ MySQL 1598 首跑 FAILED（63F/21E）登记（docs/acceptance/evidence/test-{sqlite,mysql}-batch23.log，被测树 1591ce2）；同日更正根因为测试环境白名单污染，387e6bf 净化后重取 MySQL 1602 OK（skipped=3）（test-mysql-env-sanitized-20261117.log）。
+- 【2026-11-17】e2e_full_chain 重写后隔离 MySQL 复跑 56 项/失败 0（docs/acceptance/evidence/e2e-rerun-20261116.log，repo_head 1591ce2）。
 
-**注意：** 两条 CI 没有执行 scripts/e2e_full_chain.py。在脚本修复并于隔离 MySQL 数据库重新运行前，不得把提交标题中的 36/36 当成已验证结果。
+**注意：** 两条 CI 仍不执行 scripts/e2e_full_chain.py；脚本已于 2026-11-16 重写并在隔离 MySQL 测试库复跑 56/0（evidence/e2e-rerun-20261116.log），该结果为开发侧证据，仍不等于 CI 化串测或独立验收。
 
 ## 3. 核心业务链路
 
@@ -103,7 +107,7 @@ python manage.py seed_role_test_accounts
 
 ## 7. 验收声明
 
-历史 CI 通过（如 run #900/#874 的 887 项）是各自 SHA 时点的自动化回归证据，不代表 PMS2 最终验收通过；当前自动化证据规模见 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §3。九角色真实登录、核心业务操作走查、真实浏览器 E2E、OpenAPI partial 接口关闭和 G14 独立签署仍需完成。PMS3 正式业务代码开发继续受 PMS2 最终验收门禁约束。
+历史 CI 通过（如 run #900/#874 的 887 项）是各自 SHA 时点的自动化回归证据，不代表 PMS2 最终验收通过；当前自动化证据规模见 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §3。……OpenAPI 25 个 partial 已全部收敛 verified（2026-11-16，verified=170/partial=0）；九角色真实登录与核心业务走查已有开发侧走查证据（docs/acceptance/evidence/walkthrough-g14-dev-side-20261116.md），G14 已由项目负责人本人逐项复核后于 2026-11-17 代录“通过”（96 号签署页【2026-11-17 负责人验收代录节】，独立第三方验收人未另行指派）。真实浏览器 E2E、独立第三方签署（如需）与 MySQL 目标环境部署验收仍需完成。PMS3 启动门禁状态以 96 号代录结论与 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) 为准。
 
 ## 8. 文档入口与阅读路线
 

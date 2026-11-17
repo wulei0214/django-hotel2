@@ -319,7 +319,7 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 | 5.1 员工 | REQ-EMP-01~10 | BIZ-EMP-01~10 | SVC-01；IAM-01~10；DB-03；API-03/04 | 权限、会话、审计、待办转交 | **部分开发**：User/StaffProfile/Membership/Assignment、邀请、员工列表/详情在位 | 工号规则、再入职、批量导入、员工时间线未验收；`apps/identity`、`apps/api/staff_center.py` |
 | 5.2 Guest 360 | REQ-GST-01~10 | BIZ-GST-01~10 | SVC-02；DB-02/04/05 | 会员、预订、账务、通知 | **部分开发**：Guest/GuestPhone/GuestDocument/时间线/揭示在位 | GuestMergeRequest、`key_version` 未建；公共预订内联直写需收口（AR-03）；`apps/guests` |
 | 5.3 房态库存 | REQ-INV-01~10 | BIZ-INV-01~10 | SVC-03；DB-13；DB-18 | 预订、清洁维修、报表 | **部分开发**：Room/RoomType/RoomTypeInventory/InventoryHold/价格日历在位 | 可售公式、并发、Hold 过期、差异监控未验收；`apps/inventory`、`apps/reservations/models.py:376` |
-| 5.4 会员 | REQ-MEM-01~06 | BIZ-MEM-01~06 | SVC-11（新增收口）；API-03/04 | Guest、预订、账务 | **部分开发**：GuestMembership/MembershipLevelHistory/GuestMembershipService/会员 API 在位 | 等级权益、状态机、合并联动、会员报表未验收；`apps/guests/models.py:154`、`apps/guests/services.py` |
+| 5.4 会员 | REQ-MEM-01~06 | BIZ-MEM-01~06 | SVC-11（新增收口）；API-03/04 | Guest、预订、账务 | **部分开发**：GuestMembership/MembershipLevelHistory/GuestMembershipService/会员 API 在位 | 等级权益、状态机、合并联动、会员报表未验收（**2026-11-17 注记：合并联动与会员报表已实现（786becb）；"未验收"仍成立**）；`apps/guests/models.py:154`、`apps/guests/services.py` |
 | 5.5 预订入住 | REQ-RSV-01~18 | BIZ-RSV-01~18 | SVC-04；SVC-10；DB-06；DB-13/14 | 库存、支付、账务、清洁 | **部分开发**：Reservation/Stay/多房/令牌/公共预订 S1～S11/mock 支付在位 | 政策快照字段缺失；真实支付、ProviderTransaction、Hold 竞态、No-show 单入口未验收；`apps/reservations/models.py`、`apps/api/test_public_booking_lifecycle.py` |
 | 5.6 财务账单 | REQ-FIN-01~11 | BIZ-FIN-01~11 | SVC-05；DB-07/08/09/10；SVC-10 | 预订、夜审、支付、审批 | **部分开发**：Folio/Payment/Refund/LedgerEntry/Approval/CashierShift 与 BillingService 在位；Refund 已有 `executed_by`/SoD 约束 | Payment 缺 `business_date`/`received_by`；Refund 缺 EXECUTING/FAILED；真实渠道、对账、DB 不可变未验收；`apps/billing` |
 | 5.7 夜审营业日 | REQ-AUD-01~09 | BIZ-AUD-01~09 | SVC-06；DB-11 | 账务、入住、库存、报表 | **部分开发**：预览/执行/运行历史/重开/Break-glass API 在位；读权限 `core.night_audit_view`、执行 `hotelapp.night_audit_execute` | 全量 blocker、失败恢复、自动调度、差异报告未验收；`apps/api/night_audit.py` |
@@ -484,7 +484,7 @@ PMS 2.0 最终验收标准是上位门禁。启动 PMS 3.0 正式开发前，必
 | REQ-MEM-03 | P1 | 暂停/恢复/注销 | 状态机和重新激活规则 |
 | REQ-MEM-04 | P1 | 会员历史与权益摘要 | 只展示已批准范围内真实权益 |
 | REQ-MEM-05 | P2 | 会员标签/偏好 | 仅基于合法来源和业务用途 |
-| REQ-MEM-06 | P2 | 会员报表 | 会员数量、等级变动和活跃口径冻结 |
+| REQ-MEM-06 | P2 | 会员报表 | 会员数量、等级变动和活跃口径冻结（2026-11-17 注记：会员报表已实现（A4）） |
 
 #### 字段与规则
 
@@ -1779,10 +1779,10 @@ SQLite 不能作为 MySQL 的替代验证。
 |---|---|---|---|
 | DEC-01 | 员工再入职：恢复原 Membership 还是新建任职记录 | 保留历史；倾向新建任职事实并关联历史员工 | 员工中心/数据库 |
 | DEC-02 | 工号格式和是否允许人工修改 | 物业范围唯一；正式工号不可随意修改 | 员工中心 |
-| DEC-03 | Guest 合并权限与复核人 | 双人复核/高权限操作；保留来源映射 | Guest 360 |
+| DEC-03 | Guest 合并权限与复核人 | 双人复核/高权限操作；保留来源映射（2026-11-17 注记：PMS2 已落地受控合并（786becb）：change_client 单权限+reason 必填+审计+软归档不可撤销；双人复核与撤销机制仍未决） | Guest 360 |
 | DEC-04 | Guest 性别/国籍/生日/语言字段必要性 | 数据最小化，明确业务用途后再加 | Guest 360 |
 | DEC-05 | 证件留存期限及法律保留例外 | 依据经营地法律和业务规则制定 | Guest 360 |
-| DEC-06 | Guest 合并后是否允许撤销 | 需可追溯补偿；不能承诺无条件自动拆分 | Guest 360 |
+| DEC-06 | Guest 合并后是否允许撤销 | 需可追溯补偿；不能承诺无条件自动拆分（2026-11-17 注记：PMS2 已落地受控合并（786becb）：change_client 单权限+reason 必填+审计+软归档不可撤销；双人复核与撤销机制仍未决） | Guest 360 |
 | DEC-07 | Walk-in 无预订入住是否纳入 | 明确纳入/排除；纳入需独立账务来源 | 预订入住/财务 |
 | DEC-08 | 取消政策快照字段结构 | JSON 快照+版本引用，保留计算结果 | 预订 |
 | DEC-09 | DepositPolicy 版本和押金计算规则 | 版本化并保存预订时快照 | 预订/财务 |
@@ -1792,7 +1792,7 @@ SQLite 不能作为 MySQL 的替代验证。
 | DEC-13 | 夜审重开审批和复核 | 原则上高权限+理由+审计+重跑对账 | 夜审 |
 | DEC-14 | 净房放行是否需要双人复核 | 依房型/维修等级/风险定义 | 清洁维修 |
 | DEC-15 | 会员等级规则和权益 | 不在未定义权益前引入积分/储值 | 会员 |
-| DEC-16 | 报表指标口径 | 财务账本优先，物业时区和营业日明确 | 报表 |
+| DEC-16 | 报表指标口径 | 财务账本优先，物业时区和营业日明确（2026-11-17 注记：PMS2 域报表口径已由 DEC-16_报表口径正式决策基线_2026-11-13 批准；PMS3 扩展口径仍待确认） | 报表 |
 | DEC-17 | 通知渠道 | 首期站内通知；短信/邮件需另行批准和供应商接入 | 通知 |
 | DEC-18 | Redis 故障时限流策略 | 敏感入口 fail-closed 或 DB 安全降级 | 基础设施 |
 | DEC-19 | Python/Django 升级目标 | 评估 Python 3.12 + Django 5.2 LTS | 技术栈 |
@@ -2013,7 +2013,7 @@ SQLite 不能作为 MySQL 的替代验证。
 
 必须明确每个状态的唯一写服务、触发来源、允许迁移、超时规则、幂等键、并发锁、补偿动作和审计事件。
 
-**V2.1 现状声明（防止数据权威冲突）**：当前代码（`9542b8b`，支付/账务逻辑与 `7a2c9b8` 一致）**不存在**持久化的 PaymentIntent 与 ProviderTransaction 模型——mock 支付意图是无状态派生（`Payment` 行承载 `provider_ref`，重复创建意图返回同一 PENDING Payment）。因此 BIZ-RSV-14 的模型部分为**新建**性质：必须新建独立的支付意图/外部交易实体，**严禁复用 Payment 表承载意图状态**（否则 INV-A06"一个外部成功交易最多产生一笔有效 Payment"将无法在 DB 层约束）。新建表须带外部交易号唯一约束与渠道侧状态，迁移按 §10 Expand 流程执行。
+**V2.1 现状声明（防止数据权威冲突）**：当前代码（`9542b8b`，支付/账务逻辑与 `7a2c9b8` 一致）**不存在**持久化的 PaymentIntent 与 ProviderTransaction 模型——mock 支付意图是无状态派生（`Payment` 行承载 `provider_ref`，重复创建意图返回同一 PENDING Payment）。因此 BIZ-RSV-14 的模型部分为**新建**性质：必须新建独立的支付意图/外部交易实体，**严禁复用 Payment 表承载意图状态**（否则 INV-A06"一个外部成功交易最多产生一笔有效 Payment"将无法在 DB 层约束）。新建表须带外部交易号唯一约束与渠道侧状态，迁移按 §10 Expand 流程执行。（**2026-11-17 注记：该"不存在"声明已被实现推翻**——PaymentIntent/ProviderTransaction/ProviderTransactionEvent/PaymentCompensationTask 已建（billing.0025），窗口延长 API 已接线；但"严禁复用 Payment 表承载意图状态"的边界约束仍然有效。）
 
 #### 24.3.1 Reservation 目标状态机
 
@@ -2675,3 +2675,10 @@ PMS2 最终验收报告签署“通过”前，至少归档：
 - 未完成的部署/验收边界仍包括 dev hotel 的 guests.0007 / billing.0030 迁移、生产 PII 密钥受控切换、MySQL 生产恢复演练、ENTRY_NO_PAYMENT 反向扫描、WB-076/089、WB-085、WB-087、WB-092、WB-125 专项复核、九角色真实登录、浏览器 E2E、Apifox 手工报告和 G14 独立签署。
 - 本补充更新文档基线，不改变原历史证据、签署状态或业务代码。
 - PMS3.0 正式业务代码开发门禁仍由 PMS2 G14 独立签署控制。文档校准、OpenAPI 扩充或 CI 成功均不能自动解除门禁。
+
+
+## 2026-11-17 PMS2.0 门禁状态更新
+
+- **96 号页负责人代录结论 ☑ 通过（PMS3.0 门禁满足）**：负责人本人已行使验收权并授权代录（2026-11-17，786becb）——R1~R10 逐项 ☑ 通过 + 最终结论 ☑ 通过；独立第三方验收人仍未指派，代录性质已在页内如实声明。
+- OpenAPI 现值：**168 paths / 169 业务 operations（另有 /openapi.json 1 项，共 170），全 verified / partial 0**（b055666 全收敛 + MC 批次 + 第2+3批 + MC-008/009 凭证端点）。
+- **§20 各 DEC 仍待负责人确认，不因门禁满足自动解冻。**
