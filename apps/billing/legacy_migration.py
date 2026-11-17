@@ -31,6 +31,7 @@ from django.utils import timezone
 
 from apps.billing.models import Folio, LedgerEntry, LegacyMigrationBatch
 from apps.core.models import LegacyRecordLink, Property
+from apps.reservations.models import Reservation
 
 AMOUNT_RE = re.compile(r"^-?\d+(\.\d{1,2})?$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -182,14 +183,24 @@ def load_mapping(path: str | Path) -> dict[str, Any]:
 # 分类
 # --------------------------------------------------------------------------- #
 def _resolve_target_folio(
-    mapping: Mapping[str, Any], order_ref: Any, *, batch: LegacyMigrationBatch
+    mapping: Mapping[str, Any],
+    order_ref: Any,
+    *,
+    batch: LegacyMigrationBatch,
+    source_model: str,
+    source_pk: str,
 ) -> tuple[Folio | None, str]:
-    """订单 → 人工确认的新预订 → MASTER 账单；任一环节缺失都返回原因码。"""
+    """旧订单 → 当前有效关系集合 → 逐凭证选定预订 → MASTER 账单。
+
+    1:1/N:1 可使用唯一当前关系；1:N/N:M 必须通过 record_reservations
+    按来源模型+主键逐条选择关系行，禁止按日期、金额或列表顺序自动选边。
+    """
     key = "" if order_ref is None else str(order_ref).strip()
     if not key:
         return None, "旧凭证无订单关联（孤儿凭证）"
     if not key.isdigit():
         return None, f"订单号非数字：{order_ref!r}"
+
     from apps.billing.models import LegacyOrderReservationMap
 
     foreign_property_mapping = LegacyOrderReservationMap.objects.filter(
@@ -200,13 +211,90 @@ def _resolve_target_folio(
             None,
             f"订单 {key} 当前有效关系存在其他物业映射，物业与批次授权物业不一致",
         )
-    entry = (mapping.get("orders") or {}).get(key)
-    if not isinstance(entry, dict) or entry.get("reservation") in (None, ""):
+
+    raw_relations = (mapping.get("orders") or {}).get(key)
+    if isinstance(raw_relations, dict):
+        relations = [raw_relations]
+    elif isinstance(raw_relations, list):
+        relations = raw_relations
+    else:
+        relations = []
+    if not relations:
         return None, f"订单 {key} 未建立订单-预订关系映射（禁止判定 C1）"
+    if not all(isinstance(item, dict) for item in relations):
+        return None, f"订单 {key} 的关系映射结构非法"
+
+    assignment = (mapping.get("record_reservations") or {}).get(
+        f"{source_model}:{source_pk}"
+    )
+    selected: dict[str, Any]
+    if len(relations) > 1:
+        if not isinstance(assignment, dict):
+            return (
+                None,
+                f"订单 {key} 存在 {len(relations)} 条当前有效关系，"
+                f"{source_model}#{source_pk} 必须逐条指定 relation_id/reservation",
+            )
+        if not str(assignment.get("basis") or "").strip() or not str(
+            assignment.get("confirmed_by") or ""
+        ).strip():
+            return None, f"{source_model}#{source_pk} 的逐条归属缺少人工确认依据/确认人"
+        relation_id = assignment.get("relation_id")
+        reservation_id = assignment.get("reservation")
+        if reservation_id in (None, ""):
+            return None, f"{source_model}#{source_pk} 的逐条归属缺少 reservation"
+        matches = [
+            item
+            for item in relations
+            if str(item.get("reservation")) == str(reservation_id)
+            and (
+                relation_id in (None, "")
+                or str(item.get("relation_id")) == str(relation_id)
+            )
+        ]
+        if len(matches) != 1:
+            return None, f"{source_model}#{source_pk} 的逐条归属未指向唯一当前关系行"
+        selected = matches[0]
+        if (
+            selected.get("source") == "legacy_order_reservation_map"
+            and relation_id in (None, "")
+        ):
+            return None, f"{source_model}#{source_pk} 必须指定关系表 relation_id"
+    else:
+        selected = relations[0]
+        if isinstance(assignment, dict):
+            if not str(assignment.get("basis") or "").strip() or not str(
+                assignment.get("confirmed_by") or ""
+            ).strip():
+                return None, f"{source_model}#{source_pk} 的逐条归属缺少人工确认依据/确认人"
+            if (
+                assignment.get("reservation") not in (None, "")
+                and str(assignment.get("reservation")) != str(selected.get("reservation"))
+            ):
+                return None, f"{source_model}#{source_pk} 的逐条归属与当前关系冲突"
+            if (
+                assignment.get("relation_id") not in (None, "")
+                and str(assignment.get("relation_id")) != str(selected.get("relation_id"))
+            ):
+                return None, f"{source_model}#{source_pk} 指向的关系版本已失效或不匹配"
+
     try:
-        reservation_id = int(entry["reservation"])
-    except (TypeError, ValueError):
+        reservation_id = int(selected["reservation"])
+    except (KeyError, TypeError, ValueError):
         return None, f"订单 {key} 映射的 reservation 非法"
+    relation_property_id = selected.get("property_id")
+    if (
+        relation_property_id not in (None, "")
+        and int(relation_property_id) != batch.scope_property_id
+    ):
+        return None, f"订单 {key} 关系物业与批次授权物业不一致"
+    reservation_property_id = Reservation.objects.filter(pk=reservation_id).values_list(
+        "property_id", flat=True
+    ).first()
+    if reservation_property_id is None:
+        return None, f"订单 {key} 映射的预订 {reservation_id} 不存在"
+    if reservation_property_id != batch.scope_property_id:
+        return None, f"预订 {reservation_id} 物业与批次授权物业不一致"
     folio = Folio.objects.filter(
         reservation_id=reservation_id, folio_type=Folio.FolioType.MASTER
     ).first()
@@ -214,7 +302,17 @@ def _resolve_target_folio(
         return None, f"预订 {reservation_id} 无 MASTER 账单"
     if folio.property_id != batch.scope_property_id:
         return None, f"预订 {reservation_id} 账单物业与批次授权物业不一致"
-    return folio, ""
+
+    relation_id = selected.get("relation_id")
+    basis = str((assignment or {}).get("basis") or selected.get("basis") or "").strip()
+    confirmer = str(
+        (assignment or {}).get("confirmed_by") or selected.get("confirmed_by") or ""
+    ).strip()
+    reason = (
+        f"relation_id={relation_id or 'FILE_FALLBACK'} reservation={reservation_id}; "
+        f"basis={basis or '未提供'}; confirmed_by={confirmer or '未提供'}"
+    )
+    return folio, reason
 
 
 def _candidate_decision(
@@ -223,8 +321,10 @@ def _candidate_decision(
     source_model: str,
     source_pk: str,
     batch: LegacyMigrationBatch,
+    expected_folio_id: int,
+    relation_reason: str,
 ) -> Decision | None:
-    """人工显式声明的 C2/C3 候选（禁止自动判定，故只认文件里的声明）。"""
+    """人工显式声明的 C2/C3 候选，且必须落在逐条关系选定的账单上。"""
     entry = (mapping.get("candidates") or {}).get(f"{source_model}:{source_pk}")
     if not isinstance(entry, dict):
         return None
@@ -237,20 +337,27 @@ def _candidate_decision(
         candidate_entry_id = int(entry["entry"])
     except (KeyError, TypeError, ValueError) as exc:
         raise LegacyMigrationError(f"候选声明 {source_model}:{source_pk} 缺少合法 entry") from exc
-    candidate = LedgerEntry.objects.filter(pk=candidate_entry_id).first()
+    candidate = (
+        LedgerEntry.objects.filter(pk=candidate_entry_id).select_related("folio").first()
+    )
     if candidate is None:
         raise LegacyMigrationError(
             f"候选声明 {source_model}:{source_pk} 指向的凭证 {candidate_entry_id} 不存在"
         )
-    if candidate.property_id != batch.scope_property_id:
+    if (
+        candidate.property_id != batch.scope_property_id
+        or candidate.folio.property_id != batch.scope_property_id
+        or candidate.folio_id != expected_folio_id
+    ):
         raise LegacyMigrationError(
-            f"候选声明 {source_model}:{source_pk} 指向其他物业凭证，拒绝跨物业映射"
+            f"候选声明 {source_model}:{source_pk} 与逐条关系选定的账单不一致，拒绝映射"
         )
+    note = str(entry.get("note") or f"人工确认 {category}（新旧重复事实）")
     return Decision(
         source_model=source_model,
         source_pk=str(source_pk),
         category=category,
-        reason=str(entry.get("note") or f"人工确认 {category}（新旧重复事实）"),
+        reason=f"{note}；{relation_reason}",
         candidate_entry_id=candidate_entry_id,
     )
 
