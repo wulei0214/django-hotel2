@@ -2,8 +2,10 @@
 
 import re
 from pathlib import Path
+from unittest import skipUnless
 
-from django.test import SimpleTestCase
+from django.db import connection
+from django.test import SimpleTestCase, TransactionTestCase
 
 SQL_PATH = Path(__file__).resolve().parents[2] / "scripts" / "legacy_finance_readonly_audit.sql"
 SQL_TEXT = SQL_PATH.read_text(encoding="utf-8")
@@ -85,3 +87,34 @@ class LegacyFinanceReadonlyAuditScriptTests(SimpleTestCase):
             },
         )
         self.assertEqual(len(labels), 6)
+
+@skipUnless(connection.vendor == "mysql", "requires MySQL 8.0")
+class LegacyFinanceReadonlyAuditMySQLTests(TransactionTestCase):
+    def test_audit_script_executes_against_mysql_schema(self) -> None:
+        sql_without_comments = re.sub(r"(?m)^[ \t]*--.*$", "", SQL_TEXT)
+        statements = [part.strip() for part in sql_without_comments.split(";") if part.strip()]
+        started = False
+        preflight_row_count = 0
+        select_count = 0
+        try:
+            with connection.cursor() as cursor:
+                for statement in statements:
+                    keyword = statement.split(None, 1)[0].upper()
+                    if keyword == "START":
+                        cursor.execute(statement)
+                        started = True
+                    elif keyword == "COMMIT":
+                        cursor.execute(statement)
+                        started = False
+                    else:
+                        cursor.execute(statement)
+                        select_count += 1
+                        rows = cursor.fetchall()
+                        if "INFORMATION_SCHEMA.COLUMNS" in statement.upper():
+                            preflight_row_count = len(rows)
+        finally:
+            if started:
+                connection.rollback()
+        self.assertEqual(select_count, 14)
+        self.assertEqual(preflight_row_count, 31)
+
