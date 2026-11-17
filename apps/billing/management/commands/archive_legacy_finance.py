@@ -42,6 +42,11 @@ class Command(BaseCommand):
         mode = parser.add_mutually_exclusive_group()
         mode.add_argument("--dry-run", action="store_true", help="只盘点行数，不写任何表")
         mode.add_argument("--execute", action="store_true", help="显式执行归档写入（默认不执行）")
+        parser.add_argument(
+            "--approval-ref",
+            default="",
+            help="执行授权记录引用（GOV-03 签署记录/负责人书面批准编号；执行时必填）",
+        )
         mode.add_argument("--verify", action="store_true", help="重算已归档批次的整表摘要")
 
     def handle(self, *args, **options):
@@ -61,7 +66,12 @@ class Command(BaseCommand):
             raise CommandError("--batch-uid 必填（归档批次号会写进归档行与元数据）")
         if not options["operator"].strip():
             raise CommandError("--operator 必填（元数据须登记执行人）")
-        return self._execute(specs, batch_uid, options["operator"].strip(), property_assignments)
+        approval_ref = options["approval_ref"].strip()
+        if not approval_ref or len(approval_ref) > 128:
+            raise CommandError("--approval-ref 必填且不得超过 128 个字符（须引用负责人书面批准记录）")
+        return self._execute(
+            specs, batch_uid, options["operator"].strip(), approval_ref, property_assignments
+        )
 
     def _specs(self, raw):
         names = [item.strip() for item in raw.split(",") if item.strip()]
@@ -155,7 +165,7 @@ class Command(BaseCommand):
             raise CommandError("归档摘要不一致：" + ", ".join(failed))
         self.stdout.write(self.style.SUCCESS(f"批次 {uid} 全部表摘要与行数一致。"))
 
-    def _execute(self, specs, batch_uid, operator, property_assignments):
+    def _execute(self, specs, batch_uid, operator, approval_ref, property_assignments):
         batch = LegacyMigrationBatch.objects.filter(batch_uid=batch_uid).first()
         if batch is not None and batch.status != LegacyMigrationBatch.Status.ACTIVE:
             raise CommandError(f"批次 {batch_uid} 状态为 {batch.status}：仅 ACTIVE 批次可执行归档")
@@ -181,11 +191,12 @@ class Command(BaseCommand):
                             "row_count": run.row_count,
                             "table_digest": run.table_digest,
                             "operator": operator,
+                            "approval_ref": approval_ref,
                             "property_assigned_rows": len(
                                 property_assignments.get(spec.source_model, {})
                             ),
                         },
-                        reason=f"batch={batch_uid}",
+                        reason=f"batch={batch_uid}; approval_ref={approval_ref}",
                     )
             except Exception as exc:
                 errors.append(f"{spec.source_table}: {exc}")
