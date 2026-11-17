@@ -348,6 +348,28 @@ class LegacyMigrationCommandTests(TestCase):
         ignored = LegacyRecordLink.objects.get(source_model="Folio", source_pk="9002")
         self.assertEqual(ignored.mapping_status, LegacyRecordLink.MappingStatus.IGNORED)
 
+    def test_finance_record_income_without_funds_nature_is_c4(self):
+        """映射矩阵：仅有“收入”标签而无资金性质证据，不得自动记为 PAYMENT。"""
+        from hotelapp.models import FinanceRecord
+
+        FinanceRecord.objects.create(
+            id=7003,
+            类型="收入",
+            金额="50.00",
+            事由="普通收入",
+            关联订单="8101",
+            日期="2026-01-02",
+        )
+        out = self._call()
+        self.assertIn("C4=2", out)
+        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:finance:7003").exists())
+        link = LegacyRecordLink.objects.get(
+            migration_batch=self.batch.batch_uid,
+            source_model="FinanceRecord",
+            source_pk="7003",
+        )
+        self.assertEqual(link.mapping_status, LegacyRecordLink.MappingStatus.CONFLICT)
+
     def test_room_charge_and_deposit_sign_conversion(self):
         """M1/M2：房费正向入账，押金按新口径转为负数。"""
         from hotelapp.models import Accommodation
