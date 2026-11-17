@@ -39,6 +39,9 @@ jobs:
           while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done \
             < changed_py.txt > existing_py.txt || true
           echo "Changed Python files:"; cat existing_py.txt
+      - name: Ruff import fix diff (temporary)
+        run: |
+          ruff check --fix --diff apps/api/test_partial_contract_verification.py apps/billing/management/commands/archive_legacy_finance.py || true
       - name: Ruff (changed files must be clean)
         run: |
           if [ -s existing_py.txt ]; then

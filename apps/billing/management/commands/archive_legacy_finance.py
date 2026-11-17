@@ -15,8 +15,8 @@ from apps.billing.legacy_archive import (
     LegacyArchiveError,
     archive_table,
     get_spec,
-    unknown_source_primary_keys,
     summarize_source,
+    unknown_source_primary_keys,
     verify_archive_run,
 )
 from apps.billing.models import LegacyArchiveRun, LegacyMigrationBatch
