@@ -13,11 +13,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from apps.billing import models as billing_models
@@ -141,6 +142,42 @@ def _source_queryset(spec: ArchiveSpec) -> Any:
     return model.objects.all()
 
 
+def unknown_source_primary_keys(
+    spec: ArchiveSpec, source_pks: Iterable[str], chunk_size: int = 500
+) -> list[str]:
+    """只查询映射文件涉及的主键，分块校验，避免为物业映射重复读取整张旧表。"""
+    requested = sorted({str(source_pk) for source_pk in source_pks})
+    if not requested:
+        return []
+
+    source_queryset = _source_queryset(spec)
+    pk_field = source_queryset.model._meta.pk
+    converted: list[tuple[str, Any]] = []
+    unknown: set[str] = set()
+    for raw_pk in requested:
+        try:
+            converted_pk = pk_field.to_python(raw_pk)
+        except (TypeError, ValueError, ValidationError):
+            unknown.add(raw_pk)
+            continue
+        if str(converted_pk) != raw_pk:
+            unknown.add(raw_pk)
+            continue
+        converted.append((raw_pk, converted_pk))
+
+    converted_values = list({value for _, value in converted})
+    existing: set[str] = set()
+    for offset in range(0, len(converted_values), chunk_size):
+        chunk = converted_values[offset : offset + chunk_size]
+        existing.update(
+            str(pk)
+            for pk in source_queryset.filter(pk__in=chunk).values_list("pk", flat=True)
+        )
+
+    unknown.update(raw_pk for raw_pk, value in converted if str(value) not in existing)
+    return sorted(unknown)
+
+
 def read_source_rows(spec: ArchiveSpec) -> list[dict[str, Any]]:
     """按归档列序读取旧表（只读）；返回的键为**归档字段名**。"""
     source_fields = [source_field for _, source_field in spec.column_map]
@@ -202,15 +239,29 @@ def archive_table(
         raise LegacyArchiveError(
             "物业归属映射包含当前源表不存在的主键：" + ", ".join(unknown_pks[:20])
         )
-    for source_pk, property_obj in assignments.items():
-        if (
-            not isinstance(property_obj, Property)
-            or property_obj.pk is None
-            or not Property.objects.filter(pk=property_obj.pk).exists()
-        ):
-            raise LegacyArchiveError(
-                f"源记录 {spec.source_model}#{source_pk} 的物业归属必须是已存在的 Property"
-            )
+    invalid_assignments = [
+        source_pk
+        for source_pk, property_obj in assignments.items()
+        if not isinstance(property_obj, Property) or property_obj.pk is None
+    ]
+    if invalid_assignments:
+        raise LegacyArchiveError(
+            "物业归属必须引用已保存的 Property：" + ", ".join(invalid_assignments[:20])
+        )
+    property_ids = {property_obj.pk for property_obj in assignments.values()}
+    existing_property_ids = set(
+        Property.objects.filter(pk__in=property_ids).values_list("pk", flat=True)
+    )
+    missing_property_assignments = [
+        source_pk
+        for source_pk, property_obj in assignments.items()
+        if property_obj.pk not in existing_property_ids
+    ]
+    if missing_property_assignments:
+        raise LegacyArchiveError(
+            "物业归属引用了已不存在的 Property："
+            + ", ".join(missing_property_assignments[:20])
+        )
 
     batch = billing_models.LegacyMigrationBatch.objects.filter(batch_uid=batch_uid).first()
     if batch is not None:

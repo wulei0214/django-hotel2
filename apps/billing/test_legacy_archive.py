@@ -302,7 +302,7 @@ class ArchiveCommandTests(TestCase):
         self.assertIn("一致", verify_out.getvalue())
 
     def test_property_map_file_sets_only_explicit_snapshots(self):
-        payload = {"Folio": {"9001": "DEFAULT"}}
+        payload = {"Folio": {"9001": "DEFAULT", "9002": "DEFAULT"}}
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "property-map.json"
             path.write_text(json.dumps(payload), encoding="utf-8")
@@ -318,8 +318,11 @@ class ArchiveCommandTests(TestCase):
                 str(path),
                 stdout=StringIO(),
             )
-        row = LegacyFolioArchive.objects.get(pk=9001)
-        self.assertEqual(row.property_id, self.prop.pk)
+        rows = LegacyFolioArchive.objects.filter(archive_batch="ARC-PROP-CMD")
+        self.assertEqual(rows.count(), 2)
+        self.assertEqual(
+            set(rows.values_list("property_id", flat=True)), {self.prop.pk}
+        )
 
     def test_archive_and_audit_are_atomic(self):
         with patch(

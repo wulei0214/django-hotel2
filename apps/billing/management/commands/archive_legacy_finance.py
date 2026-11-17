@@ -15,7 +15,7 @@ from apps.billing.legacy_archive import (
     LegacyArchiveError,
     archive_table,
     get_spec,
-    read_source_rows,
+    unknown_source_primary_keys,
     summarize_source,
     verify_archive_run,
 )
@@ -93,25 +93,27 @@ class Command(BaseCommand):
                     f"{source_model} 的物业映射必须是对象（源主键→物业代码）。"
                 )
             spec = allowed[source_model]
-            source_pks = {str(row["id"]) for row in read_source_rows(spec)}
-            unknown_pks = sorted(set(map(str, rows_map)) - source_pks)
+            unknown_pks = unknown_source_primary_keys(spec, rows_map)
             if unknown_pks:
                 raise LegacyArchiveError(
                     f"{source_model} 物业映射包含不存在的源主键：" + ", ".join(unknown_pks[:20])
                 )
             resolved = {}
+            property_cache = {}
             for source_pk, property_code in rows_map.items():
                 code = str(property_code or "").strip()
                 if not code:
                     raise LegacyArchiveError(
                         f"{source_model}#{source_pk} 的物业代码不能为空；未确认记录请省略该键。"
                     )
-                try:
-                    resolved[str(source_pk)] = Property.objects.get(code=code)
-                except Property.DoesNotExist as exc:
-                    raise LegacyArchiveError(
-                        f"{source_model}#{source_pk} 指向不存在的物业代码 {code!r}"
-                    ) from exc
+                if code not in property_cache:
+                    try:
+                        property_cache[code] = Property.objects.get(code=code)
+                    except Property.DoesNotExist as exc:
+                        raise LegacyArchiveError(
+                            f"{source_model}#{source_pk} 指向不存在的物业代码 {code!r}"
+                        ) from exc
+                resolved[str(source_pk)] = property_cache[code]
             result[source_model] = resolved
         return result
 
