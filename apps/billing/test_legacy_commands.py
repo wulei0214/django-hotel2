@@ -598,7 +598,7 @@ class LegacyMigrationCommandTests(TestCase):
         """R4：reference 唯一约束阻止同一旧来源凭证被重复落账。"""
         self._call()
         entry = LedgerEntry.objects.get(reference="legacy:Folio:9001")
-        with transaction.atomic(), self.assertRaises(IntegrityError):
+        with self.assertRaises(IntegrityError), transaction.atomic():
             LedgerEntry.objects.create(
                 property=entry.property,
                 folio=entry.folio,
