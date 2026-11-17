@@ -372,7 +372,7 @@ class LegacyArchiveApiTests(TestCase):
                 spec=spec,
                 batch_uid="ARC-API-1",
                 operator="归档执行人",
-                property_assignments={source_pks[spec.source_model]: self.prop},
+                property_assignments={source_pks[spec.source_model]: cls.prop},
             )
 
     def test_batches_require_authentication(self):
