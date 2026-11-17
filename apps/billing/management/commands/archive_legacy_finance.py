@@ -1,6 +1,6 @@
 """四张旧财务表归档（归档门禁 §5）：建归档行 + 行摘要 + 整表摘要元数据 + 摘要核验。
 
-只读旧表、只写归档表；``--dry-run`` 全只读、``--verify`` 只重算摘要。
+只读旧表、只写归档表；默认只读盘点（等同 ``--dry-run``），仅显式 ``--execute`` 写入；``--verify`` 只重算摘要。
 物业快照只接受 ``--property-map-file`` 的逐记录人工确认映射，不从 DEFAULT、房号或批次自动推断。
 归档行、批次元数据与审计事件在同一事务提交。
 """
@@ -39,8 +39,10 @@ class Command(BaseCommand):
             default="",
             help="逐记录人工确认的物业归属 JSON；未提供的记录 property 快照保持 NULL",
         )
-        parser.add_argument("--dry-run", action="store_true", help="只盘点行数，不写任何表")
-        parser.add_argument("--verify", action="store_true", help="重算已归档批次的整表摘要")
+        mode = parser.add_mutually_exclusive_group()
+        mode.add_argument("--dry-run", action="store_true", help="只盘点行数，不写任何表")
+        mode.add_argument("--execute", action="store_true", help="显式执行归档写入（默认不执行）")
+        mode.add_argument("--verify", action="store_true", help="重算已归档批次的整表摘要")
 
     def handle(self, *args, **options):
         specs = self._specs(options["tables"])
@@ -52,7 +54,7 @@ class Command(BaseCommand):
             )
         except LegacyArchiveError as exc:
             raise CommandError(str(exc)) from exc
-        if options["dry_run"]:
+        if not options["execute"]:
             return self._dry_run(specs, property_assignments)
         batch_uid = options["batch_uid"].strip()
         if not batch_uid:
