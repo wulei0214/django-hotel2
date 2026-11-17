@@ -39,6 +39,11 @@ jobs:
           while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done \
             < changed_py.txt > existing_py.txt || true
           echo "Changed Python files:"; cat existing_py.txt
+      - name: Ruff import diagnostics (temporary)
+        run: |
+          if [ -s existing_py.txt ]; then
+            xargs -a existing_py.txt ruff check --fix --diff || true
+          fi
       - name: Ruff (changed files must be clean)
         run: |
           if [ -s existing_py.txt ]; then
@@ -72,7 +77,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
       - name: Mypy diagnostics (temporary)
-        run: mypy apps/billing/legacy_migration.py --show-error-codes --no-error-summary || true
+        run: mypy apps/billing/legacy_migration.py apps/billing/test_legacy_migration_entry.py --show-error-codes --no-error-summary || true
       - name: Mypy baseline check (new errors are blocking)
         run: python scripts/mypy_baseline.py check
 
