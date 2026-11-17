@@ -368,154 +368,208 @@ def _candidate_decision(
 
 
 def classify_folio_row(
-    row: Mapping[str, Any], mapping: Mapping[str, Any], *, batch: LegacyMigrationBatch
+    row: dict[str, Any], mapping: Mapping[str, Any], *, batch: LegacyMigrationBatch
 ) -> Decision:
-    """旧 Folio 单行分类（C1~C5，逐条给原因码）。"""
     source_pk = str(row["id"])
     legacy_type = str(row.get("类型") or "").strip()
-    if legacy_type in FOLIO_ARCHIVE_ONLY_TYPES:
-        return Decision(
-            source_model="Folio",
-            source_pk=source_pk,
-            category="C5",
-            reason=f"旧凭证类型「{legacy_type}」按裁定 1 原样归档，不建新凭证",
-        )
-    if legacy_type not in FOLIO_TYPE_MAP:
+    mapped = FOLIO_TYPE_MAP.get(legacy_type)
+    if mapped is None:
         return Decision(
             source_model="Folio",
             source_pk=source_pk,
             category="C4",
-            reason=f"未知旧凭证类型：{legacy_type!r}",
+            reason=f"未知 Folio 类型：{legacy_type or '空'}",
+        )
+    entry_type, sign = mapped
+    if entry_type is None:
+        return Decision(
+            source_model="Folio",
+            source_pk=source_pk,
+            category="C5",
+            reason=f"旧类型 {legacy_type} 按裁定仅归档，不迁入新账本",
         )
     try:
         amount = parse_amount(row.get("金额"))
         business_date = parse_business_date(row.get("日期"))
-    except LegacyMigrationError as exc:
+    except (InvalidOperation, ValueError, TypeError) as exc:
         return Decision(source_model="Folio", source_pk=source_pk, category="C4", reason=str(exc))
 
-    entry_type, sign = FOLIO_TYPE_MAP[legacy_type]
-    signed = amount * sign
-    if entry_type == LedgerEntry.EntryType.REVERSAL:
-        pair = (mapping.get("reversal_pairs") or {}).get(source_pk)
-        if not isinstance(pair, dict) or not str(pair.get("confirmed_by") or "").strip():
-            return Decision(
-                source_model="Folio",
-                source_pk=source_pk,
-                category="C4",
-                reason="旧冲账未配对或缺少人工确认（禁止伪造 void_of 链）",
-            )
-        void_reference = str(pair.get("void_reference") or "").strip()
-        void_of = LedgerEntry.objects.filter(reference=void_reference).first()
-        if void_of is None:
-            return Decision(
-                source_model="Folio",
-                source_pk=source_pk,
-                category="C4",
-                reason=f"冲销原凭证尚未迁移：{void_reference or '(未提供)'}",
-            )
-        return Decision(
-            source_model="Folio",
-            source_pk=source_pk,
-            category="C1",
-            reason=f"人工确认冲销配对（{pair.get('basis') or '人工确认'}）",
-            entry_type=entry_type,
-            amount=signed,
-            business_date=business_date,
-            target_folio_id=void_of.folio_id,
-            void_of_pk=void_of.pk,
-            reversal_confirmation={
-                "confirmed_by": str(pair["confirmed_by"]),
-                "basis": str(pair.get("basis") or ""),
-            },
-            description=str(row.get("事由") or "")[:240],
-        )
-
-    candidate = _candidate_decision(mapping, source_model="Folio", source_pk=source_pk, batch=batch)
-    if candidate is not None:
-        return candidate
-    folio, reason = _resolve_target_folio(mapping, row.get("order_id"), batch=batch)
+    folio, relation_reason = _resolve_target_folio(
+        mapping,
+        row.get("order_id"),
+        batch=batch,
+        source_model="Folio",
+        source_pk=source_pk,
+    )
     if folio is None:
         return Decision(
             source_model="Folio",
             source_pk=source_pk,
             category="C4",
-            reason=reason,
-            blocks_batch="物业与批次授权物业不一致" in reason,
+            reason=relation_reason,
+            blocks_batch="物业与批次授权物业不一致" in relation_reason,
         )
+
+    if entry_type == LedgerEntry.EntryType.REVERSAL:
+        pair = (mapping.get("reversal_pairs") or {}).get(source_pk)
+        if not isinstance(pair, dict):
+            return Decision(
+                source_model="Folio",
+                source_pk=source_pk,
+                category="C4",
+                reason=f"冲账 {source_pk} 未提供原凭证配对及人工确认，禁止自动迁移；{relation_reason}",
+            )
+        void_reference = str(pair.get("void_reference") or "")
+        void_of = LedgerEntry.objects.filter(reference=void_reference).first()
+        if not void_reference or void_of is None:
+            return Decision(
+                source_model="Folio",
+                source_pk=source_pk,
+                category="C4",
+                reason=f"冲账 {source_pk} 指向的原凭证不存在；{relation_reason}",
+            )
+        if void_of.folio_id != folio.pk:
+            return Decision(
+                source_model="Folio",
+                source_pk=source_pk,
+                category="C4",
+                reason=f"冲账原凭证账单与逐条关系选定账单不一致；{relation_reason}",
+            )
+        confirmation = {
+            "confirmed_by": str(pair.get("confirmed_by") or ""),
+            "basis": str(pair.get("basis") or ""),
+        }
+        if not confirmation["confirmed_by"] or not confirmation["basis"]:
+            return Decision(
+                source_model="Folio",
+                source_pk=source_pk,
+                category="C4",
+                reason=f"冲账 {source_pk} 缺少人工确认人或证据依据；{relation_reason}",
+            )
+        return Decision(
+            source_model="Folio",
+            source_pk=source_pk,
+            category="C1",
+            entry_type=entry_type,
+            amount=amount * sign,
+            business_date=business_date,
+            target_folio_id=folio.pk,
+            void_of_pk=void_of.pk,
+            reversal_confirmation=confirmation,
+            reason=f"人工确认冲销配对：{void_reference}；{relation_reason}",
+        )
+
+    candidate = _candidate_decision(
+        mapping,
+        source_model="Folio",
+        source_pk=source_pk,
+        batch=batch,
+        expected_folio_id=folio.pk,
+        relation_reason=relation_reason,
+    )
+    if candidate:
+        return candidate
     return Decision(
         source_model="Folio",
         source_pk=source_pk,
         category="C1",
-        reason="订单-预订关系已人工确认，可迁移",
         entry_type=entry_type,
-        amount=signed,
+        amount=amount * sign,
         business_date=business_date,
         target_folio_id=folio.pk,
-        description=str(row.get("事由") or "")[:240],
+        reason=f"订单-预订关系已确认，可迁移；{relation_reason}",
     )
 
 
 def classify_finance_row(
-    row: Mapping[str, Any], mapping: Mapping[str, Any], *, batch: LegacyMigrationBatch
+    row: dict[str, Any], mapping: Mapping[str, Any], *, batch: LegacyMigrationBatch
 ) -> Decision:
-    """旧 FinanceRecord 单行分类（C1~C5）。"""
     source_pk = str(row["id"])
     legacy_type = str(row.get("类型") or "").strip()
-    if legacy_type in FINANCE_ARCHIVE_ONLY_TYPES:
-        return Decision(
-            source_model="FinanceRecord",
-            source_pk=source_pk,
-            category="C5",
-            reason=f"旧流水类型「{legacy_type}」按裁定 2 归档，不扩展账本凭证类型",
-        )
-    if legacy_type not in FINANCE_TYPE_MAP:
+    mapped = FINANCE_TYPE_MAP.get(legacy_type)
+    if mapped is None:
         return Decision(
             source_model="FinanceRecord",
             source_pk=source_pk,
             category="C4",
-            reason=f"未知旧流水类型：{legacy_type!r}",
+            reason=f"未知 FinanceRecord 类型：{legacy_type or '空'}",
         )
-    related = str(row.get("关联订单") or "").strip()
-    if not related:
+    entry_type, sign = mapped
+    related_order = row.get("关联订单")
+    if related_order in (None, ""):
         return Decision(
             source_model="FinanceRecord",
             source_pk=source_pk,
             category="C5",
-            reason="无关联订单，资金性质待人工判定（仅归档）",
+            reason="无订单关联的独立收支按裁定仅归档",
         )
     try:
         amount = parse_amount(row.get("金额"))
         business_date = parse_business_date(row.get("日期"))
-    except LegacyMigrationError as exc:
+    except (InvalidOperation, ValueError, TypeError) as exc:
         return Decision(
             source_model="FinanceRecord",
             source_pk=source_pk,
             category="C4",
             reason=str(exc),
         )
-    candidate = _candidate_decision(mapping, source_model="FinanceRecord", source_pk=source_pk, batch=batch)
-    if candidate is not None:
-        return candidate
-    folio, reason = _resolve_target_folio(mapping, related, batch=batch)
+
+    folio, relation_reason = _resolve_target_folio(
+        mapping,
+        related_order,
+        batch=batch,
+        source_model="FinanceRecord",
+        source_pk=source_pk,
+    )
     if folio is None:
         return Decision(
             source_model="FinanceRecord",
             source_pk=source_pk,
             category="C4",
-            reason=reason,
-            blocks_batch="物业与批次授权物业不一致" in reason,
+            reason=relation_reason,
+            blocks_batch="物业与批次授权物业不一致" in relation_reason,
         )
-    entry_type, sign = FINANCE_TYPE_MAP[legacy_type]
+
+    candidate = _candidate_decision(
+        mapping,
+        source_model="FinanceRecord",
+        source_pk=source_pk,
+        batch=batch,
+        expected_folio_id=folio.pk,
+        relation_reason=relation_reason,
+    )
+    if candidate:
+        return candidate
+
+    nature = (mapping.get("finance_natures") or {}).get(f"FinanceRecord:{source_pk}")
+    if (
+        not isinstance(nature, dict)
+        or str(nature.get("entry_type") or "").upper() != "PAYMENT"
+        or not str(nature.get("basis") or "").strip()
+        or not str(nature.get("confirmed_by") or "").strip()
+    ):
+        return Decision(
+            source_model="FinanceRecord",
+            source_pk=source_pk,
+            category="C4",
+            reason=(
+                "FinanceRecord 仅有收入标签，缺少逐笔资金性质、人工确认人或证据依据；"
+                f"{relation_reason}"
+            ),
+        )
+    nature_reason = (
+        f"资金性质=PAYMENT; confirmed_by={nature['confirmed_by']}; "
+        f"basis={nature['basis']}"
+    )
     return Decision(
         source_model="FinanceRecord",
         source_pk=source_pk,
         category="C1",
-        reason="订单-预订关系已人工确认，可迁移",
         entry_type=entry_type,
         amount=amount * sign,
         business_date=business_date,
         target_folio_id=folio.pk,
-        description=str(row.get("事由") or "")[:240],
+        reason=f"资金性质人工确认，可迁移；{nature_reason}；{relation_reason}",
     )
 
 
