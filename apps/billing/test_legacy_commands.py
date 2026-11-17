@@ -37,8 +37,8 @@ from apps.billing.models import (
     LegacyFolioArchive,
     LegacyMigrationBatch,
 )
-from apps.core.models import AuditEvent, LegacyRecordLink, Property
 from apps.billing.services_v2 import BillingService
+from apps.core.models import AuditEvent, LegacyRecordLink, Property
 from apps.guests.models import Guest
 from apps.identity.models import PermissionMatrixApproval
 from apps.reservations.models import Reservation
