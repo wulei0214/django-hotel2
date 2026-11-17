@@ -159,6 +159,10 @@ def list_rows(
         )
     columns = spec.columns
     queryset = spec.archive_model.objects.filter(archive_batch=batch_uid).order_by("id")
+    # FIN-02：有物业上下文时按归档行快照列过滤，避免批次内跨物业行被越权输出；
+    # 超管传入 property_obj=None 时不加过滤（批次授权仍由 authorize_batch 校验）。
+    if property_obj is not None:
+        queryset = queryset.filter(property=property_obj)
     if pk_min is not None:
         queryset = queryset.filter(id__gte=pk_min)
     if pk_max is not None:
@@ -187,7 +191,11 @@ def list_rows(
         after={
             "batch_uid": batch_uid,
             "source_table": spec.source_table,
-            "filters": {"pk_min": pk_min, "pk_max": pk_max},
+            "filters": {
+                "pk_min": pk_min,
+                "pk_max": pk_max,
+                "property_id": getattr(property_obj, "pk", None),
+            },
             "page": current,
             "page_size": size,
             "returned_rows": len(rows),

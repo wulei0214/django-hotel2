@@ -26,6 +26,7 @@ from apps.billing.models import (
     LegacyArchiveRun,
     LegacyFinanceRecordArchive,
     LegacyFolioArchive,
+    LegacyMigrationBatch,
     LegacyNightAuditArchive,
 )
 from apps.core.models import Property
@@ -140,6 +141,26 @@ class ArchiveTableTests(TestCase):
         )
         self.assertEqual(run.table_digest, recomputed)
         self.assertTrue(verify_archive_run(run)["ok"])
+
+    def test_archive_rows_carry_registered_batch_property_snapshot(self):
+        """FIN-02：物业快照只取自已登记批次的授权范围，不从房间号反推。"""
+        batch_uid = "ARC-PROP-1"
+        LegacyMigrationBatch.objects.create(
+            batch_uid=batch_uid,
+            scope_property=self.prop,
+            scope_source_models=["Folio"],
+        )
+        archive_table(spec=get_spec("Folio"), batch_uid=batch_uid, operator="ops")
+        rows = list(LegacyFolioArchive.objects.filter(archive_batch=batch_uid))
+        self.assertTrue(rows)
+        self.assertEqual({row.property_id for row in rows}, {self.prop.pk})
+
+    def test_archive_rows_keep_null_property_for_unregistered_batch(self):
+        """未登记来源批次不推定物业，留 NULL 由授权人员逐记录核验后回填。"""
+        archive_table(spec=get_spec("Folio"), batch_uid="ARC-NO-BATCH", operator="ops")
+        rows = LegacyFolioArchive.objects.filter(archive_batch="ARC-NO-BATCH")
+        self.assertTrue(rows.exists())
+        self.assertEqual({row.property_id for row in rows}, {None})
 
     def test_all_four_tables_archive_and_verify(self):
         for spec in ARCHIVE_SPECS:

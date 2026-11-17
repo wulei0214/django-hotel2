@@ -192,6 +192,27 @@ class LegacyArchiveQueryTests(TestCase):
         )
 
     # --- 行查询 -----------------------------------------------------------
+    def test_list_rows_filters_by_property_snapshot(self):
+        """FIN-02：归档行带物业快照后，查询按物业过滤，他物业看不到行。"""
+        rows, pagination = list_rows(
+            batch_uid="ARC-Q-1",
+            table_key="folios",
+            actor=self.finance,
+            property_obj=self.prop,
+            is_superuser=False,
+        )
+        self.assertGreater(pagination["total"], 0)
+        self.assertTrue(rows)
+        other_rows, other_pagination = list_rows(
+            batch_uid="ARC-Q-1",
+            table_key="folios",
+            actor=self.finance,
+            property_obj=self.other_prop,
+            is_superuser=False,
+        )
+        self.assertEqual(other_pagination["total"], 0)
+        self.assertEqual(other_rows, [])
+
     def test_list_rows_masks_phone_and_writes_audit(self):
         rows, pagination = list_rows(
             batch_uid="ARC-Q-1",

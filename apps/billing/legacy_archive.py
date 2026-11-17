@@ -196,6 +196,11 @@ def archive_table(*, spec: ArchiveSpec, batch_uid: str, operator: str) -> Any:
         operator=operator,
     )
     archive_model = spec.archive_model
+    # FIN-02 裁定：归档行落物业归属快照。来源只能是已登记的迁移批次授权范围，
+    # 不从 room_id 反推（同号多物业历史数据会静默错归）；未登记批次保持 NULL，
+    # 由具备权限的人员按裁定 3 逐记录核验后再回填。
+    batch = billing_models.LegacyMigrationBatch.objects.filter(batch_uid=batch_uid).first()
+    property_id = batch.scope_property_id if batch is not None else None
 
     with transaction.atomic():
         for row, digest in zip(rows, digests):
@@ -203,6 +208,7 @@ def archive_table(*, spec: ArchiveSpec, batch_uid: str, operator: str) -> Any:
                 **row,
                 archive_batch=batch_uid,
                 verified_checksum=digest,
+                property_id=property_id,
             ).save()
         run = billing_models.LegacyArchiveRun.objects.create(
             batch_uid=batch_uid,
