@@ -1,8 +1,8 @@
-"""25 个 x-contract-status=partial 操作的端点级契约核验（转 verified 证据包）。
+"""原 25 个 x-contract-status=partial 操作的端点级契约核验（verified 回归证据包）。
 
 用途 / 证据链（详见 docs 下《API契约与测试规范》）：
   * 权威快照 docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/openapi.json
-    （118 paths / 120 ops）标注 25 个 ``x-contract-status: partial`` 操作；
+    （118 paths / 120 ops）原 25 个目标操作现均标记 ``x-contract-status: verified``；
   * verified 定义 = 契约字段经源码核对 + 端点级 HTTP 测试（成功/认证/权限/
     错误响应按接口性质适用）；本模块为这 25 个操作提供端点级证据；
   * 数据驱动：运行时加载权威快照 JSON，按 operationId 收集 2xx 响应 schema
@@ -41,10 +41,7 @@ from django.conf import settings
 from django.contrib.auth.models import Group, User
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
-
-# --- test-only generated passwords (no literals in source) ---
-# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
-from django.utils.crypto import get_random_string  # noqa: E402
+from django.utils.crypto import get_random_string
 
 from apps.billing.models import ApprovalRecord, Folio
 from apps.core.models import AuditEvent, BusinessDate, Property
@@ -64,6 +61,7 @@ from hotelapp.models import (
     Staff as LegacyStaff,
 )
 
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
 _TEST_PW_3D7B9A21 = get_random_string(24)
 
 # 权威快照路径（与 test_openapi_schema.OPENAPI_AUTHORITATIVE_SNAPSHOT 同源）。
