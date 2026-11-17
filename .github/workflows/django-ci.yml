@@ -39,11 +39,6 @@ jobs:
           while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done \
             < changed_py.txt > existing_py.txt || true
           echo "Changed Python files:"; cat existing_py.txt
-      - name: Ruff import fix diff (temporary)
-        run: |
-          if [ -s existing_py.txt ]; then
-            xargs -a existing_py.txt ruff check --fix --diff || true
-          fi
       - name: Ruff (changed files must be clean)
         run: |
           if [ -s existing_py.txt ]; then

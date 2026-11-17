@@ -52,8 +52,6 @@ from apps.identity.models import (
     StaffProfile,
     StaffRoleAssignment,
 )
-from apps.inventory.models import DailyRate, RatePlan, Room, RoomType, RoomTypeInventory
-from apps.reservations.models import Reservation, ReservationRoom
 from hotelapp.models import (
     Accommodation as LegacyAccommodation,
     Client as LegacyClient,
@@ -61,6 +59,8 @@ from hotelapp.models import (
     Room as LegacyRoom,
     Staff as LegacyStaff,
 )
+from apps.inventory.models import DailyRate, RatePlan, Room, RoomType, RoomTypeInventory
+from apps.reservations.models import Reservation, ReservationRoom
 
 _TEST_PW_3D7B9A21 = get_random_string(24)
 
