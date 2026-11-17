@@ -370,6 +370,23 @@ class LegacyOrderMapBaseTests(TestCase):
         self.assertEqual(decision.category, "C4")
         self.assertIn("必须逐条指定", decision.reason)
 
+    def test_split_source_requires_record_assignment_even_with_one_current_row(self):
+        self._confirm(
+            relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE,
+            match_basis="旧订单存在拆分可能，单条关系不代表全部归属",
+        )
+        Folio.objects.create(
+            property=self.prop,
+            reservation=self.reservation,
+            guest=self.guest,
+            currency="CNY",
+        )
+        self._make_legacy_folio()
+        plan = build_plan(batch=self._make_batch(), mapping=None)
+        decision = next(item for item in plan.decisions if item.source_pk == "9101")
+        self.assertEqual(decision.category, "C4")
+        self.assertIn("必须逐条指定", decision.reason)
+
     def test_build_plan_uses_record_level_relation_for_split_order(self):
         first_relation = self._confirm(
             relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE
