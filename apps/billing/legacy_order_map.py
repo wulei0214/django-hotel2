@@ -225,6 +225,11 @@ def _normalize_order_entries(order_id: str, value: Any) -> list[dict[str, Any]]:
             )
         except (TypeError, ValueError) as exc:
             raise LegacyOrderMapError(f"旧订单 {order_id} 的关系主键非法") from exc
+        relation_type = str(raw.get("relation_type") or "")
+        if relation_type and relation_type not in LegacyOrderReservationMap.RelationType.values:
+            raise LegacyOrderMapError(
+                f"旧订单 {order_id} 的关系角色非法：{relation_type}"
+            )
         identity = (str(reservation_id), str(relation_id or ""))
         if identity in seen:
             raise LegacyOrderMapError(f"旧订单 {order_id} 存在重复关系行 {identity}")
