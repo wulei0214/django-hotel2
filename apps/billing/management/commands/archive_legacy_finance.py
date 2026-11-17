@@ -35,7 +35,7 @@ class Command(BaseCommand):
             default="Folio,FinanceRecord,NightAudit,Accommodation",
             help="逗号分隔的来源模型；默认四张全归档",
         )
-        parser.add_argument("--operator", default="", help="执行人（OS 账号/姓名，登记进元数据）")
+        parser.add_argument("--operator", default="", help="自报执行人标识（OS 账号/姓名；命令不做身份认证）")
         parser.add_argument(
             "--property-map-file",
             default="",
@@ -67,7 +67,7 @@ class Command(BaseCommand):
         if not batch_uid:
             raise CommandError("--batch-uid 必填（归档批次号会写进归档行与元数据）")
         if not options["operator"].strip():
-            raise CommandError("--operator 必填（元数据须登记执行人）")
+            raise CommandError("--operator 必填（自报执行人标识须登记进元数据）")
         approval_ref = options["approval_ref"].strip()
         if not approval_ref or len(approval_ref) > 128:
             raise CommandError(
