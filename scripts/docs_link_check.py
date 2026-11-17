@@ -66,7 +66,7 @@ SUBPREFIX = (
     "PMS2.0_当前版本/06_验收与发布/", "PMS2.0_当前版本/07_部署运维与数据治理/",
     "PMS3.0_后续规划/",
 )
-RE_DOCS = re.compile(r"(docs/[^\s`\x60(),;，。；、）》§*{}]+)")
+RE_DOCS = re.compile(r"(docs/[^\s`\x60(),;，。；、（））》§*{}]+)")
 RE_REL = re.compile(r"((?:共享规范/|PMS1.0_历史归档/|公共资源/|接口文档/|acceptance/"
                     r"|PMS2.0_当前版本/(?:00|01|02|03|04|05|06|07)_[^/\s`]+/|PMS3.0_后续规划/)"
                     r"[^\s`\x60(),;，。；、）]+)")
@@ -101,6 +101,9 @@ def classify(mention, lookups):
         if t.startswith(prefix):
             cands.append(DOCS_PREFIX + t)
     if any(c in files or c in dirs or c + "/" in dirs for c in cands):
+        return None
+    # 占位符/通配/花括号简写/截断残段：非真实引用（门禁设计 C1 白名单口径）
+    if any(ch in t for ch in ("<", ">", "*", "{", "}")) or t.endswith("-") or "..." in t:
         return None
     if os.path.basename(t) in bases:
         return "STALE"

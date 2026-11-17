@@ -1,0 +1,215 @@
+# 证据：G14 R3 备份恢复演练（mysqldump → scratch 还原 → 行数零差异核对）
+SHA: 692f888e096d8c62c1d25758b36f512b9b366ef1 | date: 2026-11-17 23:39:02 +0800
+源库: hotel @ localhost；scratch 库: hotel_r3_scratch（演练后删除）
+---
+== 1) mysqldump 全库备份 ==
+dump OK: 504296 bytes
+== 2) 创建 scratch 库并还原 ==
+ERROR 1044 (42000) at line 1: Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+== 3) 行数零差异核对（源 vs scratch，逐表） ==
+ERROR 1103 (42000) at line 1: Incorrect table name 'accommodation'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'auth_group'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'auth_group_permissions'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'auth_permission'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'auth_user'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'auth_user_groups'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'auth_user_user_permissions'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_approvalrecord'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_billingadjustment'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_cashiershift'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_cashiershiftmovement'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_chargeline'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_checkoutexceptionrelease'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_folio'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_folioreconciliationdiff'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_folioreconciliationrun'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_foliotransfer'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_ledgerentry'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_legacyarchiverun'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_legacymigrationbatch'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_legacyorderreservationmap'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_payment'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_paymentcompensationtask'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_paymentintent'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_providertransaction'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_providertransactionevent'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_refund'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_refundliability'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_refundliability_source_payments'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'billing_taxline'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'client'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'core_auditevent'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'core_breakglassrecord'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'core_businessdate'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'core_exportcredential'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'core_idempotencyrecord'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'core_legacyrecordlink'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'core_nightauditrun'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'core_notification'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'core_notificationread'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'core_property'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'core_ratelimitcounter'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'core_statustransition'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'core_workitem'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'django_admin_log'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'django_content_type'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'django_migrations'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'django_session'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'finance_record'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'folio'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'food'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'guests_guest'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'guests_guestdocument'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'guests_guestdocumentindex'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'guests_guestmembership'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'guests_guestphone'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'guests_membershiplevelhistory'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'identity_employeenumbercounter'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'identity_invitation'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'identity_permissionmatrixapproval'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'identity_propertystaffmembership'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'identity_staffprofile'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'identity_staffroleassignment'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'inventory_dailyrate'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'inventory_housekeepingtask'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'inventory_inventorydiscrepancy'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'inventory_inventoryreconciliationrun'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'inventory_maintenanceticket'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'inventory_rateplan'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'inventory_room'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'inventory_roominspection'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'inventory_roomtype'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'inventory_roomtypeinventory'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'ledger_entry'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'legacy_accommodation_archive'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'legacy_finance_record_archive'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'legacy_folio_archive'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'legacy_night_audit_archive'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'night_audit'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'order'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'park'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'payment'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservation'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservations_bookingaccesstoken'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservations_cancellationpolicy'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservations_depositpolicy'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservations_earlydeparturepolicy'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservations_inventoryhold'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservations_noshowrecord'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservations_pendingbookinggate'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservations_reservation'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservations_reservationguest'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservations_reservationroom'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservations_stay'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservations_stayguest'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'reservations_stayroomsegment'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'room'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'room_type_inventory'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'staff'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+ERROR 1103 (42000) at line 1: Incorrect table name 'vip'
+ERROR 1044 (42000): Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+核对表数: 100；差异数: 0（0 = 零差异）
+== 4) 清理 scratch ==
+ERROR 1044 (42000) at line 1: Access denied for user 'hotelhotel'@'localhost' to database 'hotel_r3_scratch'
+---
+exit_code: 0

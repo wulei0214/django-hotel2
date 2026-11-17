@@ -8,7 +8,6 @@
    "docs/UI_GUIDE.md"
   ],
   "docs/PMS2.0_当前版本/02_技术架构与数据模型/PMS2平台身份权限与业务全链路治理开发实施方案_2026-11-10.md": [
-   "docs/audit/phase0/（工作流",
    "docs/：员工中心操作手册",
    "docs/：平台身份域设计与运行手册",
    "docs/：权限矩阵使用说明",
@@ -19,11 +18,10 @@
   ],
   "docs/PMS2.0_当前版本/02_技术架构与数据模型/PMS2统一业务模型与数据库治理实施方案_2026-11-10.md": [
    "docs/PMS2统一业务模型与数据库治理实施方案.md",
-   "docs/database/data_quality_report_<date>.md",
-   "docs/database/legacy_mapping_plan_<date>.md",
-   "docs/database/schema_inventory_<date>.md",
-   "docs/database/table_dependency_graph_<date>.json",
    "docs/development/PMS2_PAGE_API_SERVICE_MATRIX.md"
+  ],
+  "docs/PMS2.0_当前版本/02_技术架构与数据模型/架构治理第三模块_预订与入住退房治理设计提案_2026-11-17.md": [
+   "docs/acceptance/evidence/g14-r3-backup-restore-drill-20261117.log"
   ],
   "docs/PMS2.0_当前版本/05_测试审计与缺陷整改/PMS2文档与当前代码全量一致性复审报告_2026-11-06.md": [
    "docs/PMS2.0本轮缺陷复审与白盒测试整改清单.md",
@@ -67,6 +65,7 @@
   "docs/PMS2.0_当前版本/05_测试审计与缺陷整改/历史审计/phase0/80-architecture-review_2026-11-10.md": [
    "docs/PMS2.0最终开发完成与上线验收标准.md",
    "docs/PMS2全业务中心闭环补齐开发基线2.0.md",
+   "docs/PMS3.0全项目开发最终方案.md",
    "docs/acceptance/A16-final-acceptance-report.md",
    "docs/audit/phase0/10-routes.md",
    "docs/接口文档/apifox-env-template.json"
@@ -82,8 +81,7 @@
    "docs/audit/phase0"
   ],
   "docs/PMS2.0_当前版本/07_部署运维与数据治理/PMS2生产PII独立密钥备份重加密与切换手册_2026-11-12.md": [
-   "docs/PMS2.0_当前版本/07_部署运维与数据治理/PMS2",
-   "docs/acceptance/evidence/pii-rekey-prod-round<N>-<YYYYMMDD>.log"
+   "docs/PMS2.0_当前版本/07_部署运维与数据治理/PMS2"
   ],
   "docs/PMS3.0_后续规划/99_历史版本/PMS3.0全项目开发最终方案_历史版本_2026-11-10.md": [
    "docs/PMS3.0全项目开发最终方案.md",
@@ -169,13 +167,10 @@
   "docs/共享规范/docs全量一致性校准报告_2026-11-12.md": [
    "docs/工作流"
   ],
-  "docs/共享规范/主线变基与推送准备记录_2026-11-13.md": [
-   "docs/.../openapi.json"
-  ],
   "docs/共享规范/文档治理阶段一_文档引用关系清单_2026-11-14.md": [
    "docs/Markdown文档清单与维护状态_2026-11-09.md",
-   "docs/PMS2\"（行内截断",
-   "docs/PMS2.0_当前版本/04_开发实施记录/\"（目录导航",
+   "docs/PMS2\"",
+   "docs/PMS2.0_当前版本/04_开发实施记录/\"",
    "docs/PMS2三项业务政策",
    "docs/PMS2三项业务政策DEC待确认说明_2026-11-09.md",
    "docs/PMS2工程质量整改正式决策与实施基线_2026-11-10.md",
@@ -184,22 +179,16 @@
    "docs/PMS2最新代码单元测试与白盒全链路审查报告_2026-11-09.md",
    "docs/PMS2补充问题复核与整改进度报告_2026-11-06.md",
    "docs/UI_GUIDE.md",
-   "docs/acceptance/evidence/pii-rekey-prod-round<N>-<YYYYMMDD>.log",
    "docs/acceptance/evidence/test-mysql-c402a37.log",
    "docs/acceptance/evidence/test-mysql-e2e-fix.log",
    "docs/acceptance/evidence/test-sqlite-c402a37.log",
-   "docs/acceptance/evidence/（证据归档规则",
    "docs/audit/phase0/00-baseline.md",
    "docs/audit/phase0/README.md",
-   "docs/database/schema_inventory_<date>.md",
    "docs/代码与文档审查报告_2026-11-04.md",
    "docs/接口文档/apifox-env-template.json",
    "docs/系统架构说明.md"
   ],
   "docs/共享规范/文档治理阶段一_文档总台账_2026-11-14.md": [
-   "docs/PMS2.0_当前版本/01_产品需求与业务设计/PMS2文档...报告_2026-11-05/06.md",
-   "docs/PMS2.0_当前版本/03_.../接口文档/openapi.json",
-   "docs/PMS2.0_当前版本/05_.../PMS2",
    "docs/PMS2.0_当前版本/07_部署运维与数据治理/PMS2"
   ],
   "docs/共享规范/文档治理阶段一_重复文档及冲突清单_2026-11-14.md": [
@@ -229,22 +218,8 @@
  },
  "c2_known": [],
  "c4_known": [],
- "c5_known": {
-  "docs/共享规范/A7_E2E复跑与双库回归验证报告_2026-11-13.md": [
-   "26f68faeaccdd7235b20ed5a4903608fbc69ee13"
-  ],
-  "docs/共享规范/Issue7_阶段交付与签收记录_2026-11-13.md": [
-   "27107916aabf39c9ebde4b17e9c74d7d2f3c7f37"
-  ],
-  "docs/共享规范/主线变基与推送准备记录_2026-11-13.md": [
-   "7d6a7be7c782ff16141bc1198e536305af2304d5"
-  ],
-  "docs/共享规范/文档治理阶段一_附件B_冲突核查报告_2026-11-14.md": [
-   "27107916aabf39c9ebde4b17e9c74d7d2f3c7f37"
-  ],
-  "docs/共享规范/文档治理阶段四_附件_一致性复核扫描报告_2026-11-14.md": [
-   "0df34df4f4f186af9ccf8ddd5fd5415463aee85e"
-  ]
- },
- "c6_known": {}
+ "c5_known": {},
+ "c6_known": {
+  "docs/acceptance/evidence/waitress-deploy-20261117.log": "M"
+ }
 }
