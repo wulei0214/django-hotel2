@@ -490,6 +490,8 @@ def _existing_link_matches_decision(
             entry
             and entry.reference == decision.reference
             and entry.property_id == batch.scope_property_id
+            and entry.folio_id == decision.target_folio_id
+            and entry.currency == entry.folio.currency
             and entry.entry_type == decision.entry_type
             and entry.amount == decision.amount
             and entry.business_date == decision.business_date
