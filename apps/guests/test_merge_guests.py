@@ -291,37 +291,63 @@ class GuestMergeCommandTests(TestCase):
         self.primary = Guest.objects.create(property=self.prop, full_name="命令主档案")
         self.duplicate = Guest.objects.create(property=self.prop, full_name="命令重复档案")
         Reservation.objects.create(
-            property=self.prop, guest=self.duplicate,
+            property=self.prop,
+            guest=self.duplicate,
             booking_no=f"MC-{uuid.uuid4().hex[:12].upper()}",
             status=Reservation.Status.CONFIRMED,
-            check_in=timezone.localdate(), check_out=timezone.localdate() + timedelta(days=1),
-            room_count=1, total_amount=Decimal("300.00"), currency="CNY")
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            room_count=1,
+            total_amount=Decimal("300.00"),
+            currency="CNY",
+        )
 
     def test_command_merges_and_reports(self):
         out = StringIO()
-        call_command("merge_guests", primary=self.primary.pk,
-                     duplicate=self.duplicate.pk, reason="命令核对同一客人",
-                     stdout=out)
+        call_command(
+            "merge_guests",
+            primary=self.primary.pk,
+            duplicate=self.duplicate.pk,
+            reason="命令核对同一客人",
+            stdout=out,
+        )
         self.duplicate.refresh_from_db()
-        self.assertEqual(self.duplicate.merged_into.pk if self.duplicate.merged_into else None, self.primary.pk)
+        self.assertEqual(
+            self.duplicate.merged_into.pk if self.duplicate.merged_into else None, self.primary.pk
+        )
         self.assertEqual(Reservation.objects.filter(guest=self.primary).count(), 1)
         self.assertIn("客人合并完成", out.getvalue())
         self.assertTrue(AuditEvent.objects.filter(action="guest.merged").exists())
 
     def test_command_requires_reason(self):
         with self.assertRaises(CommandError):
-            call_command("merge_guests", primary=self.primary.pk,
-                         duplicate=self.duplicate.pk, reason="", stdout=StringIO())
+            call_command(
+                "merge_guests",
+                primary=self.primary.pk,
+                duplicate=self.duplicate.pk,
+                reason="",
+                stdout=StringIO(),
+            )
 
     def test_command_rejects_same_guest(self):
         with self.assertRaises(CommandError):
-            call_command("merge_guests", primary=self.primary.pk,
-                         duplicate=self.primary.pk, reason="同人", stdout=StringIO())
+            call_command(
+                "merge_guests",
+                primary=self.primary.pk,
+                duplicate=self.primary.pk,
+                reason="同人",
+                stdout=StringIO(),
+            )
 
     def test_command_rejects_missing_guest(self):
         with self.assertRaises(CommandError):
-            call_command("merge_guests", primary=999999,
-                         duplicate=self.duplicate.pk, reason="缺档案", stdout=StringIO())
+            call_command(
+                "merge_guests",
+                primary=999999,
+                duplicate=self.duplicate.pk,
+                reason="缺档案",
+                stdout=StringIO(),
+            )
 
 
 @override_settings(DEBUG=True, DJANGO_ENV="test")
@@ -336,31 +362,45 @@ class GuestMergeApiTests(TestCase):
         self.property = Property.objects.get(code="DEFAULT")
         self.user = User.objects.create_user(
             username=f"merge-user-{uuid.uuid4().hex[:8]}", password=_TEST_PW)
+        )
         self.profile = StaffProfile.objects.create(
-            user=self.user, full_name="客人合并测试员",
-            employment_status=StaffProfile.EmploymentStatus.ACTIVE)
+            user=self.user,
+            full_name="客人合并测试员",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
         self.membership = PropertyStaffMembership.objects.create(
-            staff_profile=self.profile, property=self.property,
+            staff_profile=self.profile,
+            property=self.property,
             employee_no=f"MG-{uuid.uuid4().hex[:6]}",
-            status=PropertyStaffMembership.Status.ACTIVE)
+            status=PropertyStaffMembership.Status.ACTIVE,
+        )
         self.role = Group.objects.create(name=f"合并测试组-{uuid.uuid4().hex[:6]}")
         self.permission = Permission.objects.get(
-            content_type__app_label="hotelapp", codename="change_client")
+            content_type__app_label="hotelapp", codename="change_client"
+        )
         self.role.permissions.add(self.permission)
         # 列表断言需要查看权限（guest_list 门禁 hotelapp.view_client）
-        self.role.permissions.add(Permission.objects.get(
-            content_type__app_label="hotelapp", codename="view_client"))
+        self.role.permissions.add(
+            Permission.objects.get(content_type__app_label="hotelapp", codename="view_client")
+        )
         StaffRoleAssignment.objects.create(
-            membership=self.membership, group=self.role,
-            starts_at=timezone.now() - timedelta(minutes=1))
+            membership=self.membership,
+            group=self.role,
+            starts_at=timezone.now() - timedelta(minutes=1),
+        )
         self.primary = Guest.objects.create(property=self.property, full_name="API主档案")
         self.duplicate = Guest.objects.create(property=self.property, full_name="API重复档案")
         Reservation.objects.create(
-            property=self.property, guest=self.duplicate,
+            property=self.property,
+            guest=self.duplicate,
             booking_no=f"MA-{uuid.uuid4().hex[:12].upper()}",
             status=Reservation.Status.CONFIRMED,
-            check_in=timezone.localdate(), check_out=timezone.localdate() + timedelta(days=1),
-            room_count=1, total_amount=Decimal("300.00"), currency="CNY")
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            room_count=1,
+            total_amount=Decimal("300.00"),
+            currency="CNY",
+        )
 
     def _merge_payload(self):
         return {"duplicate_id": self.duplicate.pk, "reason": "API 核对为同一客人"}
@@ -378,14 +418,18 @@ class GuestMergeApiTests(TestCase):
         self._login()
         response = self.client.post(
             f"/api/v1/guest-center/guests/{self.primary.pk}/merge",
-            data=json.dumps(self._merge_payload()), content_type="application/json")
+            data=json.dumps(self._merge_payload()),
+            content_type="application/json",
+        )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED")
 
     def test_merge_api_requires_authentication(self):
         response = self.client.post(
             f"/api/v1/guest-center/guests/{self.primary.pk}/merge",
-            data=json.dumps(self._merge_payload()), content_type="application/json")
+            data=json.dumps(self._merge_payload()),
+            content_type="application/json",
+        )
         self.assertEqual(response.status_code, 401)
 
     def test_merge_api_merges_and_hides_duplicate_from_list(self):
@@ -393,7 +437,9 @@ class GuestMergeApiTests(TestCase):
         self.assertIn(self.duplicate.pk, self._guest_list_ids())
         response = self.client.post(
             f"/api/v1/guest-center/guests/{self.primary.pk}/merge",
-            data=json.dumps(self._merge_payload()), content_type="application/json")
+            data=json.dumps(self._merge_payload()),
+            content_type="application/json",
+        )
         self.assertEqual(response.status_code, 200)
         data = response.json()["data"]
         self.assertEqual(data["primary_guest_id"], self.primary.pk)
@@ -401,11 +447,16 @@ class GuestMergeApiTests(TestCase):
         self.assertEqual(data["reservations_moved"], 1)
         self.assertIsNotNone(data["merged_at"])
         self.duplicate.refresh_from_db()
-        self.assertEqual(self.duplicate.merged_into.pk if self.duplicate.merged_into else None, self.primary.pk)
+        self.assertEqual(
+            self.duplicate.merged_into.pk if self.duplicate.merged_into else None, self.primary.pk
+        )
         # 合并后 duplicate 列表不可见
         self.assertNotIn(self.duplicate.pk, self._guest_list_ids())
-        self.assertTrue(AuditEvent.objects.filter(
-            action="guest.merged", entity_id=str(self.primary.pk)).exists())
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="guest.merged", entity_id=str(self.primary.pk)
+            ).exists()
+        )
 
     def test_merge_api_validates_body(self):
         self._login()
@@ -417,7 +468,9 @@ class GuestMergeApiTests(TestCase):
         ):
             response = self.client.post(
                 f"/api/v1/guest-center/guests/{self.primary.pk}/merge",
-                data=json.dumps(payload), content_type="application/json")
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
             self.assertEqual(response.status_code, 400, payload)
             self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
 
@@ -425,18 +478,20 @@ class GuestMergeApiTests(TestCase):
         self._login()
         response = self.client.post(
             "/api/v1/guest-center/guests/999999/merge",
-            data=json.dumps(self._merge_payload()), content_type="application/json")
+            data=json.dumps(self._merge_payload()),
+            content_type="application/json",
+        )
         self.assertEqual(response.status_code, 404)
 
     def test_merge_api_cross_property_duplicate_returns_404(self):
-        other = Property.objects.create(
-            code=f"MA2-{uuid.uuid4().hex[:8]}", name="API 另一物业")
+        other = Property.objects.create(code=f"MA2-{uuid.uuid4().hex[:8]}", name="API 另一物业")
         outsider = Guest.objects.create(property=other, full_name="别店客人")
         self._login()
         response = self.client.post(
             f"/api/v1/guest-center/guests/{self.primary.pk}/merge",
             data=json.dumps({"duplicate_id": outsider.pk, "reason": "跨物业拒绝"}),
-            content_type="application/json")
+            content_type="application/json",
+        )
         self.assertEqual(response.status_code, 404)
 
     def test_merge_api_replay_with_idempotency_key(self):
@@ -444,26 +499,33 @@ class GuestMergeApiTests(TestCase):
         key = f"merge-{uuid.uuid4().hex[:12]}"
         first = self.client.post(
             f"/api/v1/guest-center/guests/{self.primary.pk}/merge",
-            data=json.dumps(self._merge_payload()), content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=key)
+            data=json.dumps(self._merge_payload()),
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY=key,
+        )
         second = self.client.post(
             f"/api/v1/guest-center/guests/{self.primary.pk}/merge",
-            data=json.dumps(self._merge_payload()), content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=key)
+            data=json.dumps(self._merge_payload()),
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY=key,
+        )
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
         self.assertEqual(first.json()["data"], second.json()["data"])
-        self.assertEqual(
-            AuditEvent.objects.filter(action="guest.merged").count(), 1)
+        self.assertEqual(AuditEvent.objects.filter(action="guest.merged").count(), 1)
 
     def test_merge_api_repeat_without_key_conflicts(self):
         self._login()
         first = self.client.post(
             f"/api/v1/guest-center/guests/{self.primary.pk}/merge",
-            data=json.dumps(self._merge_payload()), content_type="application/json")
+            data=json.dumps(self._merge_payload()),
+            content_type="application/json",
+        )
         second = self.client.post(
             f"/api/v1/guest-center/guests/{self.primary.pk}/merge",
-            data=json.dumps(self._merge_payload()), content_type="application/json")
+            data=json.dumps(self._merge_payload()),
+            content_type="application/json",
+        )
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 409)
         self.assertEqual(second.json()["error"]["code"], "BUSINESS_CONFLICT")
@@ -473,5 +535,6 @@ class GuestMergeApiTests(TestCase):
         response = self.client.post(
             f"/api/v1/guest-center/guests/{self.primary.pk}/merge",
             data=json.dumps({"duplicate_id": self.primary.pk, "reason": "同人"}),
-            content_type="application/json")
+            content_type="application/json",
+        )
         self.assertEqual(response.status_code, 409)
