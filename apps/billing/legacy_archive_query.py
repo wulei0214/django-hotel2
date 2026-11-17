@@ -152,9 +152,10 @@ def list_rows(
     """
     spec = resolve_spec(table_key)
     batch_prop = authorize_batch(batch_uid=batch_uid, actor=actor, is_superuser=is_superuser)
-    if not is_superuser:
-        if property_obj is None or batch_prop is None or batch_prop.pk != property_obj.pk:
-            raise LegacyArchiveAccessDenied("批次物业与当前物业上下文不一致")
+    if not is_superuser and (
+        property_obj is None or batch_prop is None or batch_prop.pk != property_obj.pk
+    ):
+        raise LegacyArchiveAccessDenied("批次物业与当前物业上下文不一致")
     run = billing_models.LegacyArchiveRun.objects.filter(
         batch_uid=batch_uid, source_table=spec.source_table
     ).first()

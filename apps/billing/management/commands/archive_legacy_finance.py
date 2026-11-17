@@ -15,9 +15,9 @@ from apps.billing.legacy_archive import (
     LegacyArchiveError,
     archive_table,
     get_spec,
+    read_source_rows,
     summarize_source,
     verify_archive_run,
-    read_source_rows,
 )
 from apps.billing.models import LegacyArchiveRun, LegacyMigrationBatch
 from apps.core.models import AuditEvent, Property

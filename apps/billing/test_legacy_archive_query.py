@@ -16,7 +16,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from apps.billing.legacy_archive import ARCHIVE_SPECS, archive_table, get_spec
+from apps.billing.legacy_archive import ARCHIVE_SPECS, archive_table
 from apps.billing.legacy_archive_query import (
     LegacyArchiveAccessDenied,
     LegacyArchiveQueryError,

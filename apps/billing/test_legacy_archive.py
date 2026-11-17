@@ -319,18 +319,17 @@ class ArchiveCommandTests(TestCase):
         with patch(
             "apps.billing.management.commands.archive_legacy_finance.AuditEvent.record",
             side_effect=RuntimeError("audit unavailable"),
-        ):
-            with self.assertRaises(CommandError):
-                call_command(
-                    "archive_legacy_finance",
-                    "--batch-uid",
-                    "ARC-AUDIT-ATOMIC",
-                    "--operator",
-                    "ops-cmd",
-                    "--tables",
-                    "Folio",
-                    stdout=StringIO(),
-                )
+        ), self.assertRaises(CommandError):
+            call_command(
+                "archive_legacy_finance",
+                "--batch-uid",
+                "ARC-AUDIT-ATOMIC",
+                "--operator",
+                "ops-cmd",
+                "--tables",
+                "Folio",
+                stdout=StringIO(),
+            )
         self.assertFalse(
             LegacyArchiveRun.objects.filter(batch_uid="ARC-AUDIT-ATOMIC").exists()
         )
