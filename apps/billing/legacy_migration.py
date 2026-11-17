@@ -208,7 +208,11 @@ def _resolve_target_folio(
 
 
 def _candidate_decision(
-    mapping: Mapping[str, Any], *, source_model: str, source_pk: str
+    mapping: Mapping[str, Any],
+    *,
+    source_model: str,
+    source_pk: str,
+    batch: LegacyMigrationBatch,
 ) -> Decision | None:
     """人工显式声明的 C2/C3 候选（禁止自动判定，故只认文件里的声明）。"""
     entry = (mapping.get("candidates") or {}).get(f"{source_model}:{source_pk}")
@@ -223,9 +227,14 @@ def _candidate_decision(
         candidate_entry_id = int(entry["entry"])
     except (KeyError, TypeError, ValueError) as exc:
         raise LegacyMigrationError(f"候选声明 {source_model}:{source_pk} 缺少合法 entry") from exc
-    if not LedgerEntry.objects.filter(pk=candidate_entry_id).exists():
+    candidate = LedgerEntry.objects.filter(pk=candidate_entry_id).first()
+    if candidate is None:
         raise LegacyMigrationError(
             f"候选声明 {source_model}:{source_pk} 指向的凭证 {candidate_entry_id} 不存在"
+        )
+    if candidate.property_id != batch.scope_property_id:
+        raise LegacyMigrationError(
+            f"候选声明 {source_model}:{source_pk} 指向其他物业凭证，拒绝跨物业映射"
         )
     return Decision(
         source_model=source_model,
@@ -299,7 +308,7 @@ def classify_folio_row(
             description=str(row.get("事由") or "")[:240],
         )
 
-    candidate = _candidate_decision(mapping, source_model="Folio", source_pk=source_pk)
+    candidate = _candidate_decision(mapping, source_model="Folio", source_pk=source_pk, batch=batch)
     if candidate is not None:
         return candidate
     folio, reason = _resolve_target_folio(mapping, row.get("order_id"), batch=batch)
@@ -362,7 +371,7 @@ def classify_finance_row(
             category="C4",
             reason=str(exc),
         )
-    candidate = _candidate_decision(mapping, source_model="FinanceRecord", source_pk=source_pk)
+    candidate = _candidate_decision(mapping, source_model="FinanceRecord", source_pk=source_pk, batch=batch)
     if candidate is not None:
         return candidate
     folio, reason = _resolve_target_folio(mapping, related, batch=batch)
