@@ -572,6 +572,54 @@ def execute_plan(
 
     counts = {"C1": 0, "C2": 0, "C3": 0, "C4": 0, "C5": 0, "failed": 0}
     failures: list[str] = []
+    blocking_decisions = [decision for decision in plan.decisions if decision.blocks_batch]
+    if blocking_decisions:
+        try:
+            with transaction.atomic():
+                locked_batch = LegacyMigrationBatch.objects.select_for_update().get(pk=batch.pk)
+                _assert_batch_executor(locked_batch, executor)
+                for decision in blocking_decisions:
+                    existing = list(
+                        LegacyRecordLink.objects.select_for_update().filter(
+                            source_system="hotelapp",
+                            source_model=decision.source_model,
+                            source_pk=decision.source_pk,
+                        )[:2]
+                    )
+                    if len(existing) > 1:
+                        raise LegacyMigrationDenied(
+                            f"来源记录 {decision.source_model}#{decision.source_pk} 存在多条映射"
+                        )
+                    if existing:
+                        if not _existing_link_matches_decision(
+                            batch=locked_batch, decision=decision, link=existing[0]
+                        ):
+                            raise LegacyMigrationDenied(
+                                f"来源记录 {decision.source_model}#{decision.source_pk} 已有其他映射，禁止覆盖"
+                            )
+                        continue
+                    _link(
+                        batch=locked_batch,
+                        decision=decision,
+                        executor=executor,
+                        target_pk="",
+                        method=METHOD_C4,
+                        note=f"整批阻断：{decision.reason}",
+                    )
+            counts["C4"] = len(blocking_decisions)
+            counts["failed"] = 1
+            failures.append(
+                "检测到跨物业订单-预订映射，整批迁移已阻断；冲突记录已标记 C4/CONFLICT"
+            )
+        except LegacyMigrationDenied as exc:
+            record_denial(batch=batch, reason=str(exc), actor_id=getattr(executor, "pk", None))
+            counts["failed"] = 1
+            failures.append(str(exc))
+        except IntegrityError as exc:
+            record_denial(batch=batch, reason=str(exc), actor_id=getattr(executor, "pk", None))
+            counts["failed"] = 1
+            failures.append(f"跨物业冲突映射写入失败：{exc}")
+        return {"counts": counts, "failures": failures}
     for decision in plan.decisions:
         method = METHOD_BY_CATEGORY[decision.category]
         try:
