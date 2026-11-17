@@ -272,6 +272,19 @@ class ArchiveCommandTests(TestCase):
         self.assertEqual(LegacyArchiveRun.objects.count(), 0)
         self.assertEqual(LegacyFolioArchive.objects.count(), 0)
 
+    def test_default_is_dry_run_and_writes_nothing(self):
+        out = StringIO()
+        call_command("archive_legacy_finance", stdout=out)
+        self.assertIn("[dry-run]", out.getvalue())
+        self.assertEqual(LegacyArchiveRun.objects.count(), 0)
+        self.assertEqual(LegacyFolioArchive.objects.count(), 0)
+
+    def test_write_modes_are_mutually_exclusive(self):
+        with self.assertRaises(CommandError):
+            call_command("archive_legacy_finance", "--execute", "--dry-run", stdout=StringIO())
+        with self.assertRaises(CommandError):
+            call_command("archive_legacy_finance", "--execute", "--verify", stdout=StringIO())
+
     def test_execute_requires_batch_operator_and_approval_ref(self):
         with self.assertRaises(CommandError):
             call_command("archive_legacy_finance", "--execute", stdout=StringIO())
