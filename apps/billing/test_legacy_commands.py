@@ -939,8 +939,9 @@ class LegacyMigrationCommandTests(TestCase):
         duplicate = LedgerEntry.objects.get(reference="legacy:folio:9001")
         duplicate.pk = None
         duplicate.id = None
+        # 绕过模型不可变层，直接验证数据库唯一约束仍阻止重复 reference。
         with self.assertRaises(IntegrityError), transaction.atomic():
-            duplicate.save()
+            django_models.QuerySet(LedgerEntry).bulk_create([duplicate])
 
     def test_c4_c5_cannot_bypass_closed_batch_authorization(self):
         """C2-C5 不经过凭证入口，批次关闭后也不得写入映射。"""
