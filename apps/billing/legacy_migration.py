@@ -352,12 +352,17 @@ def _candidate_decision(
         raise LegacyMigrationError(
             f"候选声明 {source_model}:{source_pk} 与逐条关系选定的账单不一致，拒绝映射"
         )
-    note = str(entry.get("note") or f"人工确认 {category}（新旧重复事实）")
+    note = str(entry.get("note") or "").strip()
+    confirmer = str(entry.get("confirmed_by") or "").strip()
+    if not note or not confirmer:
+        raise LegacyMigrationError(
+            f"候选声明 {source_model}:{source_pk} 必须包含人工确认人和匹配证据"
+        )
     return Decision(
         source_model=source_model,
         source_pk=str(source_pk),
         category=category,
-        reason=f"{note}；{relation_reason}",
+        reason=f"confirmed_by={confirmer}; {note}；{relation_reason}",
         candidate_entry_id=candidate_entry_id,
     )
 
