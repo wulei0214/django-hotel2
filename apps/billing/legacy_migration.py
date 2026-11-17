@@ -309,6 +309,15 @@ def _resolve_target_folio(
         return None, f"预订 {reservation_id} 账单物业与批次授权物业不一致"
 
     relation_id = selected.get("relation_id")
+    if relation_id not in (None, "") and selected.get("source") != "legacy_order_reservation_map":
+        relation_row = LegacyOrderReservationMap.objects.filter(
+            pk=relation_id,
+            legacy_order_id=int(key),
+            property_id=batch.scope_property_id,
+            superseded_by__isnull=True,
+        ).first()
+        if relation_row is None:
+            return None, f"订单 {key} 指定的关系版本不存在、已失效或不属于本物业"
     basis = str(assignment_data.get("basis") or selected.get("basis") or "").strip()
     confirmer = str(
         assignment_data.get("confirmed_by") or selected.get("confirmed_by") or ""
