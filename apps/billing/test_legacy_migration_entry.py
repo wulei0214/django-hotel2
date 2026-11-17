@@ -278,7 +278,9 @@ class ControlledLegacyEntryConcurrencyTests(TransactionTestCase):
     reset_sequences = True
 
     def setUp(self):
-        self.prop = Property.objects.get(code="DEFAULT")
+        self.prop, _ = Property.objects.get_or_create(
+            code="DEFAULT", defaults={"name": "默认物业"}
+        )
         self.approver = User.objects.create_user(
             username="entry-concurrent-approver", password="pw", is_staff=True
         )
