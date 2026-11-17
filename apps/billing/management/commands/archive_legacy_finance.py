@@ -24,7 +24,7 @@ from apps.core.models import AuditEvent, Property
 
 
 class Command(BaseCommand):
-    help = "归档旧财务四表（folio/finance_record/night_audit/accommodation）并核验 checksum-v2。"
+    help = "归档旧财务四表并核验 checksum-v2（默认只读；写入须显式 --execute 并提供 --approval-ref）。"
 
     def add_arguments(self, parser):
         parser.add_argument("--batch-uid", default="", help="归档批次号（执行时必填）")
