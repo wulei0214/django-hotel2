@@ -94,7 +94,7 @@ class RegisterStopTheBleedingTests(TestCase):
 
 
 class HousekeepingReleaseTests(TestCase):
-    """P1-05（方案 §10）：旧 /room_status/ 写路由已退役（410）。
+    """P1-05 + M4-1（2026-11-18）：旧 /room_status/ 写路由与视图已摘除（404）。
 
     清洁链流转与净房放行的业务规则由 PMS2 前台工作台
     （/api/v1/front-desk/rooms + 房态中心）承接并另行测试。"""
@@ -107,11 +107,11 @@ class HousekeepingReleaseTests(TestCase):
         self.client.force_login(self.hk)
         self.assertEqual(
             self.client.post("/room_status/", {"room": "9001", "status": "清洁中"}).status_code,
-            410, "旧房态写入口应返回 410 Gone")
+            404, "旧房态写入口路由已摘除（M4-1），应 404")
         self.client.force_login(self.dm)
         self.assertEqual(
             self.client.post("/room_status/", {"room": "9001", "status": "空闲"}).status_code,
-            410, "旧房态写入口对有权限员工同样 410")
+            404, "旧房态写入口路由已摘除（M4-1），有权限员工同样 404")
 
 
 class HighRiskActionPermissionTests(TestCase):
@@ -586,13 +586,14 @@ class ChangeRoomPolicyTests(TestCase):
             id=7401, 顾客id=client, 客房编号=old_room, 状态="已入住", 入住时间="2026-11-02")
 
     def test_change_room_legacy_route_retired(self):
-        """P1-05：旧换房写入口已退役；跨房型/价差规则由 PMS2 换房 API 承接"""
+        """P1-05 + M4-1（2026-11-18）：旧换房写入口路由与视图已摘除（404）；
+        跨房型/价差规则由 PMS2 换房 API 承接"""
         response = self.client.post("/change_room/", {"id": self.acc.id, "new_room": 9402})
-        self.assertEqual(response.status_code, 410)
+        self.assertEqual(response.status_code, 404)
         self.client.force_login(self.dm)
         self.assertEqual(
             self.client.post("/change_room/", {"id": self.acc.id, "new_room": 9402}).status_code,
-            410)
+            404)
 
 
 class DefaultPropertyOnlyTests(TestCase):

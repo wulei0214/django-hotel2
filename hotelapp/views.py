@@ -597,27 +597,6 @@ def show_room(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.add_room')
-def insert_room(request):
-    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
-    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-
-
-@staff_required
-@pms_permission_required('hotelapp.delete_room')
-def delete_room(request):
-    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
-    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-
-
-@staff_required
-@pms_permission_required('hotelapp.change_room')
-def update_room(request):
-    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
-    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-
-
-@staff_required
 @pms_permission_required('hotelapp.view_room')
 def search_room(request):
     """客房信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
@@ -731,13 +710,6 @@ def extend_stay(request):
 
 @staff_required
 @pms_permission_required('hotelapp.change_accommodation')
-def change_room(request):
-    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
-    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-
-
-@staff_required
-@pms_permission_required('hotelapp.change_accommodation')
 def express_checkout(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
@@ -801,12 +773,6 @@ def folio_api(request):
 
 
 # ---------- 房间状态流转 ----------
-@staff_required
-def room_status_change(request):
-    # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
-    return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-
-
 
 
 # 通用业务数据导出（图5 导出数据按钮）：模块白名单 + 查看权限校验
