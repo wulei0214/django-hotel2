@@ -230,8 +230,7 @@ def refresh(request):
                  username=request.user.get_username()):
         raise ApiError(
             "RATE_LIMITED",
-            "待办刷新过于频繁，请稍后再试（建议等待 %s 秒）。" %
-            retry_after_seconds("pms.notification_refresh"),
+            f"待办刷新过于频繁，请稍后再试（建议等待 {retry_after_seconds('pms.notification_refresh')} 秒）。",
             retryable=True)
     summary = refresh_operational_todos(property_obj)
     AuditEvent.record(
