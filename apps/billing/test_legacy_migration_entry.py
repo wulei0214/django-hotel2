@@ -316,7 +316,7 @@ class ControlledLegacyEntryConcurrencyTests(TransactionTestCase):
     def test_concurrent_same_source_posts_exactly_one_entry_and_link(self):
         barrier = threading.Barrier(2)
         result_lock = threading.Lock()
-        results = []
+        results: list[tuple[str, object, object]] = []
         executor_id = self.executor.pk
         batch_id = self.batch.pk
         folio_id = self.folio.pk
@@ -350,10 +350,10 @@ class ControlledLegacyEntryConcurrencyTests(TransactionTestCase):
                     results.append(("ok", entry.pk, link.pk))
             except LegacyMigrationDenied as exc:
                 with result_lock:
-                    results.append(("rejected", str(exc)))
+                    results.append(("rejected", str(exc), None))
             except Exception as exc:  # 测试必须把线程异常显式带回主线程
                 with result_lock:
-                    results.append(("error", repr(exc)))
+                    results.append(("error", repr(exc), None))
             finally:
                 close_old_connections()
 
