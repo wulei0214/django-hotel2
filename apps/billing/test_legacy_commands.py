@@ -674,6 +674,48 @@ class LegacyMigrationCommandTests(TestCase):
         )
         self.assertIn("对账无差异", out.getvalue())
 
+    def test_reconcile_detects_c2_candidate_amount_mismatch(self):
+        """R2：C2 已有凭证也必须逐笔及按币种分组核对金额。"""
+        candidate, _ = BillingService.post_entry(
+            property_obj=self.prop,
+            folio=self.folio,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+            amount=Decimal("-600.00"),
+            reference="candidate:legacy:folio:9001",
+            business_date=timezone.localdate(),
+            description="人工确认的候选凭证",
+        )
+        payload = json.loads(self.mapping_path.read_text(encoding="utf-8"))
+        payload["candidates"] = {
+            "Folio:9001": {
+                "category": "C2",
+                "entry": candidate.pk,
+                "note": "人工确认该旧记录已被现有凭证覆盖",
+            }
+        }
+        self.mapping_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+        with self.assertRaises(CommandError):
+            self._call()
+        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:folio:9001").exists())
+        link = LegacyRecordLink.objects.get(
+            migration_batch=self.batch.batch_uid,
+            source_model="Folio",
+            source_pk="9001",
+        )
+        self.assertEqual(link.match_method, "legacy_migration_covered")
+        report = reconcile_batch(self.batch)
+        self.assertTrue(any("C2 候选凭证" in diff for diff in report["diffs"]))
+        self.assertTrue(
+            any(
+                row["category"] == "C2"
+                and row["currency"] == "CNY"
+                and row["expected"] == "-688.00"
+                and row["actual"] == "-600.00"
+                for row in report["amount_groups"]
+            )
+        )
+
     def test_reconcile_detects_category_leak(self):
         """C3 声明却确实存在新建凭证 → 分类泄漏，--fail-on-diff 必须报错。"""
         self._call()
