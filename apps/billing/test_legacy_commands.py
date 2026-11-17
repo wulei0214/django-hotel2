@@ -555,6 +555,9 @@ class LegacyMigrationCommandTests(TestCase):
         }
         self.mapping_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
+        dry_run = self._call("--dry-run")
+        self.assertIn("blocking=2", dry_run)
+        self.assertEqual(LedgerEntry.objects.filter(reference__startswith="legacy:").count(), 0)
         with self.assertRaises(CommandError):
             self._call()
         self.assertEqual(LedgerEntry.objects.filter(reference__startswith="legacy:").count(), 0)
