@@ -46,6 +46,11 @@ jobs:
           else
             echo "No changed Python files under apps/ or hotel/ — ruff skipped"
           fi
+      - name: Black diff diagnostics (temporary)
+        run: |
+          if [ -s existing_py.txt ]; then
+            xargs -a existing_py.txt black --diff || true
+          fi
       - name: Black format check (changed files)
         run: |
           if [ -s existing_py.txt ]; then
