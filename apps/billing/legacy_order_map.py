@@ -167,12 +167,17 @@ def current_rows(*, property_obj: Any = None) -> Any:
 
 
 def current_map_for_order(legacy_order_id: Any, *, property_obj: Any = None) -> Any:
-    """某旧订单的当前有效关系（派生口径，不做存储态翻转）。"""
-    return (
+    """仅在唯一关系时返回单行；1:N 必须使用 orders_mapping，不得静默取第一行。"""
+    rows = list(
         current_rows(property_obj=property_obj)
         .filter(legacy_order_id=_normalize_order_id(legacy_order_id))
-        .first()
+        .order_by("id")[:2]
     )
+    if len(rows) > 1:
+        raise LegacyOrderMapError(
+            f"旧订单 #{legacy_order_id} 存在多条当前有效关系，请使用 orders_mapping 并逐凭证选边"
+        )
+    return rows[0] if rows else None
 
 
 def orders_mapping(property_obj: Any) -> dict[str, list[dict[str, Any]]]:
