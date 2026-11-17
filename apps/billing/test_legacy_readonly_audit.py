@@ -1,7 +1,7 @@
 """静态守卫生产财务只读盘点 SQL 的安全边界与关键列完整性。"""
 
-import re
 from pathlib import Path
+import re
 
 from django.test import SimpleTestCase
 
