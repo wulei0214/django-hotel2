@@ -330,8 +330,8 @@ def _resolve_target_folio(
     ):
         return None, f"订单 {key} 的文件回退映射缺少人工确认依据/确认人"
     reason = (
-        f"relation_id={relation_id or 'FILE_FALLBACK'} reservation={reservation_id}; "
-        f"basis={basis or '未提供'}; confirmed_by={confirmer or '未提供'}"
+        f"rel#{relation_id or 'FILE'}->res#{reservation_id}; "
+        f"by={confirmer[:20]}; basis={basis[:50]}"
     )
     return folio, reason
 
@@ -383,7 +383,7 @@ def _candidate_decision(
         source_model=source_model,
         source_pk=str(source_pk),
         category=category,
-        reason=f"confirmed_by={confirmer}; {note}；{relation_reason}",
+        reason=f"{category} by={confirmer[:20]}; {note[:50]}；{relation_reason}",
         candidate_entry_id=candidate_entry_id,
     )
 
@@ -477,7 +477,10 @@ def classify_folio_row(
             target_folio_id=folio.pk,
             void_of_pk=void_of.pk,
             reversal_confirmation=confirmation,
-            reason=f"人工确认冲销配对：{void_reference}；{relation_reason}",
+            reason=(
+                f"冲销 {void_reference[:24]}; by={confirmation['confirmed_by'][:20]}; "
+                f"basis={confirmation['basis'][:50]}；{relation_reason}"
+            ),
         )
 
     candidate = _candidate_decision(
@@ -586,8 +589,8 @@ def classify_finance_row(
             ),
         )
     nature_reason = (
-        f"资金性质=PAYMENT; confirmed_by={nature['confirmed_by']}; "
-        f"basis={nature['basis']}"
+        f"funds=PAYMENT by={str(nature['confirmed_by'])[:20]}; "
+        f"{str(nature['basis'])[:50]}"
     )
     return Decision(
         source_model="FinanceRecord",
@@ -597,7 +600,7 @@ def classify_finance_row(
         amount=amount * sign,
         business_date=business_date,
         target_folio_id=folio.pk,
-        reason=f"资金性质人工确认，可迁移；{nature_reason}；{relation_reason}",
+        reason=f"资金性质人工确认，可迁移；{relation_reason}；{nature_reason}",
     )
 
 
