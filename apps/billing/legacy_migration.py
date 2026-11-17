@@ -231,12 +231,15 @@ def _resolve_target_folio(
     if assignment is not None and not isinstance(assignment, dict):
         return None, f"{source_model}#{source_pk} 的逐条归属结构非法"
     selected: dict[str, Any]
-    if len(relations) > 1:
+    requires_record_assignment = len(relations) > 1 or str(
+        relations[0].get("relation_type") or ""
+    ).upper() in {"SPLIT_SOURCE", "OTHER"}
+    if requires_record_assignment:
         if not isinstance(assignment, dict):
             return (
                 None,
-                f"订单 {key} 存在 {len(relations)} 条当前有效关系，"
-                f"{source_model}#{source_pk} 必须逐条指定 relation_id/reservation",
+                f"订单 {key} 属于拆分/多目标关系，{source_model}#{source_pk} "
+                "必须逐条指定 relation_id/reservation",
             )
         if not str(assignment.get("basis") or "").strip() or not str(
             assignment.get("confirmed_by") or ""
