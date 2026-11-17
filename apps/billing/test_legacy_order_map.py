@@ -469,7 +469,7 @@ class LegacyOrderMapBaseTests(TestCase):
         decision = next(item for item in plan.decisions if item.source_pk == "9101")
         self.assertEqual(decision.category, "C1")
         self.assertEqual(decision.target_folio_id, first_folio.pk)
-        self.assertIn(f"relation_id={first_relation.pk}", decision.reason)
+        self.assertIn(f"rel#{first_relation.pk}->res#{self.reservation.pk}", decision.reason)
 
     def test_build_plan_rejects_conflicting_mapping_file(self):
         self._make_legacy_folio()

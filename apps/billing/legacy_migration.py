@@ -384,6 +384,13 @@ def classify_folio_row(
 ) -> Decision:
     source_pk = str(row["id"])
     legacy_type = str(row.get("类型") or "").strip()
+    if legacy_type in FOLIO_ARCHIVE_ONLY_TYPES:
+        return Decision(
+            source_model="Folio",
+            source_pk=source_pk,
+            category="C5",
+            reason=f"旧类型 {legacy_type} 按裁定仅归档，不迁入新账本",
+        )
     mapped = FOLIO_TYPE_MAP.get(legacy_type)
     if mapped is None:
         return Decision(
@@ -501,6 +508,13 @@ def classify_finance_row(
 ) -> Decision:
     source_pk = str(row["id"])
     legacy_type = str(row.get("类型") or "").strip()
+    if legacy_type in FINANCE_ARCHIVE_ONLY_TYPES:
+        return Decision(
+            source_model="FinanceRecord",
+            source_pk=source_pk,
+            category="C5",
+            reason=f"旧类型 {legacy_type} 按裁定仅归档，不迁入新账本",
+        )
     mapped = FINANCE_TYPE_MAP.get(legacy_type)
     if mapped is None:
         return Decision(
@@ -528,7 +542,7 @@ def classify_finance_row(
     try:
         amount = parse_amount(row.get("金额"))
         business_date = parse_business_date(row.get("日期"))
-    except (InvalidOperation, ValueError, TypeError) as exc:
+    except (LegacyMigrationError, InvalidOperation, ValueError, TypeError) as exc:
         return Decision(
             source_model="FinanceRecord",
             source_pk=source_pk,
