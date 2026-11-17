@@ -165,8 +165,9 @@ class ArchiveTableTests(TestCase):
                 property_assignments={source_pks[spec.source_model]: self.prop},
             )
             self.assertTrue(verify_archive_run(run)["ok"], msg=spec.archive_table)
-            archived = spec.archive_model.objects.get(archive_batch="ARC-ALL")
-            self.assertEqual(archived.property_id, self.prop.pk)
+            archived_rows = list(spec.archive_model.objects.filter(archive_batch="ARC-ALL"))
+            self.assertTrue(archived_rows)
+            self.assertTrue(all(row.property_id == self.prop.pk for row in archived_rows))
         self.assertEqual(LegacyAccommodationArchive.objects.count(), 1)
         self.assertEqual(LegacyFinanceRecordArchive.objects.count(), 1)
         self.assertEqual(LegacyNightAuditArchive.objects.count(), 1)

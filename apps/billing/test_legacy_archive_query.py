@@ -361,8 +361,19 @@ class LegacyArchiveApiTests(TestCase):
             executed_by=executor,
             status=LegacyMigrationBatch.Status.ACTIVE,
         )
+        source_pks = {
+            "Folio": "9201",
+            "FinanceRecord": "7201",
+            "NightAudit": "6201",
+            "Accommodation": "8701",
+        }
         for spec in ARCHIVE_SPECS:
-            archive_table(spec=spec, batch_uid="ARC-API-1", operator="归档执行人")
+            archive_table(
+                spec=spec,
+                batch_uid="ARC-API-1",
+                operator="归档执行人",
+                property_assignments={source_pks[spec.source_model]: self.prop},
+            )
 
     def test_batches_require_authentication(self):
         response = self.client.get("/api/v1/billing/legacy-archives")
