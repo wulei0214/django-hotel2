@@ -309,6 +309,8 @@ class LegacyMigrationCommandTests(TestCase):
     def test_dry_run_classifies_without_writing(self):
         out = self._call("--dry-run")
         self.assertIn("C1=2", out)
+        self.assertIn("C2=0", out)
+        self.assertIn("C3=0", out)
         self.assertIn("C4=1", out)
         self.assertIn("C5=2", out)
         self.assertEqual(LedgerEntry.objects.filter(reference__startswith="legacy:").count(), 0)
