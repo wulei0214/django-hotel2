@@ -515,16 +515,40 @@ def _existing_link_matches_decision(
     return link.mapping_status == expected_status and not link.target_model and not link.target_pk
 
 
+def _assert_batch_executor(batch: LegacyMigrationBatch, executor: Any) -> None:
+    """C2-C5 不经过凭证入口，必须在写映射事务内复核同等批次授权。"""
+    if batch.status != LegacyMigrationBatch.Status.ACTIVE:
+        raise LegacyMigrationDenied(
+            f"批次状态为 {batch.status}，仅 ACTIVE 批次可执行迁移"
+        )
+    if batch.approved_by_id is None:
+        raise LegacyMigrationDenied("批次缺少正式批准人记录，禁止执行迁移")
+    if batch.executed_by_id is None or getattr(executor, "pk", None) != batch.executed_by_id:
+        raise LegacyMigrationDenied("当前执行人与批次登记的 executed_by 不一致")
+    if batch.approved_by_id == batch.executed_by_id:
+        raise LegacyMigrationDenied("批准人与执行人必须分离，禁止同一账号执行迁移")
+    if not getattr(executor, "is_active", False) or not getattr(executor, "is_staff", False):
+        raise LegacyMigrationDenied("执行账号未启用或不具备平台身份")
+
+
 def execute_plan(
     *, batch: LegacyMigrationBatch, plan: Plan, credential_factory: Any, executor: Any
 ) -> dict[str, Any]:
     """按计划落库；同批次已完成的逐条结果可安全跳过，支持失败后断点重执行。
 
     C1 的凭证、映射和审计由受控入口在自身事务内完成；不能再套一层事务，
-    否则受控入口的独立拒绝审计会被外层回滚。C2-C5 每条映射单独事务提交。
+    否则受控入口的独立拒绝审计会被外层回滚。C2-C5 在写映射事务内锁定并
+    复核 ACTIVE 批次、批准人/执行人分离与执行账号，防止绕过受控入口。
     """
-    from apps.billing.legacy_credentials import LegacyMigrationDenied
+    from apps.billing.legacy_credentials import LegacyMigrationDenied, record_denial
     from apps.billing.services_v2 import BillingService
+
+    batch.refresh_from_db()
+    try:
+        _assert_batch_executor(batch, executor)
+    except LegacyMigrationDenied as exc:
+        record_denial(batch=batch, reason=str(exc), actor_id=getattr(executor, "pk", None))
+        raise
 
     counts = {"C1": 0, "C2": 0, "C3": 0, "C4": 0, "C5": 0, "failed": 0}
     failures: list[str] = []
@@ -577,7 +601,11 @@ def execute_plan(
                 )
             else:
                 with transaction.atomic():
-                    # C2-C5 没有受控入口；事务内 current read 复查并发写入。
+                    locked_batch = LegacyMigrationBatch.objects.select_for_update().get(
+                        pk=batch.pk
+                    )
+                    _assert_batch_executor(locked_batch, executor)
+                    # C2-C5 没有凭证入口；事务内 current read 复查并发写入。
                     raced_links = list(
                         LegacyRecordLink.objects.select_for_update().filter(
                             source_system="hotelapp",
@@ -587,7 +615,7 @@ def execute_plan(
                     )
                     if raced_links:
                         if len(raced_links) == 1 and _existing_link_matches_decision(
-                            batch=batch, decision=decision, link=raced_links[0]
+                            batch=locked_batch, decision=decision, link=raced_links[0]
                         ):
                             counts[decision.category] += 1
                             continue
@@ -595,7 +623,7 @@ def execute_plan(
                             f"来源记录 {decision.source_model}#{decision.source_pk} 并发产生冲突映射"
                         )
                     _link(
-                        batch=batch,
+                        batch=locked_batch,
                         decision=decision,
                         executor=executor,
                         target_pk=(
@@ -607,7 +635,14 @@ def execute_plan(
                         note=f"batch={batch.batch_uid} {decision.reason}",
                     )
             counts[decision.category] += 1
-        except (LegacyMigrationDenied, ValueError, LegacyMigrationError, IntegrityError) as exc:
+        except LegacyMigrationDenied as exc:
+            if decision.category != "C1":
+                record_denial(
+                    batch=batch, reason=str(exc), actor_id=getattr(executor, "pk", None)
+                )
+            counts["failed"] += 1
+            failures.append(f"{decision.source_model}#{decision.source_pk}: {exc}")
+        except (ValueError, LegacyMigrationError, IntegrityError) as exc:
             counts["failed"] += 1
             failures.append(f"{decision.source_model}#{decision.source_pk}: {exc}")
     return {"counts": counts, "failures": failures}
