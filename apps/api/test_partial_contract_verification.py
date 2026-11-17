@@ -79,8 +79,7 @@ OPENAPI_AUTHORITATIVE_SNAPSHOT = (
 with open(OPENAPI_AUTHORITATIVE_SNAPSHOT, encoding="utf-8") as _fh:
     _CONTRACT = json.load(_fh)
 
-# 25 个 x-contract-status=partial 目标操作（method, path）——与本包测试一一对应。
-PARTIAL_OPERATIONS = ()  # 2026-11-16：25 个 partial 已全部翻转 verified（SYS-06/G14-11），本包转为回归测试 + 快照守卫
+# 2026-11-16：原 25 个 partial 操作均已翻转 verified；端点行为由下方专项测试覆盖。
 
 
 # 允许的分页封套键（DRF 风格分页；本仓 25 个端点均未使用，保留同口径）。
@@ -366,19 +365,10 @@ class PartialContractVerificationBase(TestCase):
 
 
 class ContractSnapshotIntegrityTests(SimpleTestCase):
-    """快照完整性守卫：25 个目标操作存在、均标注 partial、schema 可解析。"""
+    """快照完整性守卫：SYS-06 收敛后，权威 OpenAPI 快照不得残留 partial 操作。"""
 
-    def test_snapshot_contains_all_25_partial_operations(self):
-        for method, path in PARTIAL_OPERATIONS:
-            with self.subTest(operation=f"{method} {path}"):
-                self.assertIn(path, _CONTRACT["paths"])
-                self.assertIn(method.lower(), _CONTRACT["paths"][path])
-                op = _CONTRACT["paths"][path][method.lower()]
-                self.assertEqual(op.get("x-contract-status"), "partial")
-                self.assertTrue(op.get("operationId"))
-
-    def test_snapshot_has_no_other_partial_operations(self):
-        """快照内 partial 操作集合与本包清单严格一致（漂移即测试失败）。"""
+    def test_snapshot_has_no_partial_operations(self):
+        """所有业务端点已完成契约核验；快照出现 partial 必须阻断回归。"""
         found = set()
         for path, path_item in _CONTRACT["paths"].items():
             for method, op in path_item.items():
@@ -386,15 +376,7 @@ class ContractSnapshotIntegrityTests(SimpleTestCase):
                     continue
                 if op.get("x-contract-status") == "partial":
                     found.add((method.upper(), path))
-        self.assertEqual(found, set(PARTIAL_OPERATIONS))
-
-    def test_success_schemas_declare_envelope_keys(self):
-        for method, path in PARTIAL_OPERATIONS:
-            with self.subTest(operation=f"{method} {path}"):
-                declared, codes = contract_response_shape(method, path)
-                self.assertTrue(codes)
-                self.assertIn("data", declared,
-                              "全部 25 个操作均以 data 封套返回业务载荷")
+        self.assertEqual(found, set())
 
 
 # ---------------------------------------------------------------------------
