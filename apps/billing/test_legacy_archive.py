@@ -169,9 +169,9 @@ class ArchiveTableTests(TestCase):
                 archive_batch="ARC-ALL", pk=source_pks[spec.source_model]
             )
             self.assertEqual(mapped_row.property_id, self.prop.pk)
-            unattributed_rows = spec.archive_model.objects.filter(
-                archive_batch="ARC-ALL"
-            ).exclude(pk=source_pks[spec.source_model])
+            unattributed_rows = spec.archive_model.objects.filter(archive_batch="ARC-ALL").exclude(
+                pk=source_pks[spec.source_model]
+            )
             self.assertTrue(all(row.property_id is None for row in unattributed_rows))
         self.assertEqual(LegacyAccommodationArchive.objects.count(), 1)
         self.assertEqual(LegacyFinanceRecordArchive.objects.count(), 1)
