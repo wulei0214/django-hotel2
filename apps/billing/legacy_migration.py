@@ -284,9 +284,12 @@ def _resolve_target_folio(
             ):
                 return None, f"{source_model}#{source_pk} 指向的关系版本已失效或不匹配"
 
+    reservation_value = selected.get("reservation")
+    if reservation_value in (None, ""):
+        return None, f"订单 {key} 映射的 reservation 非法"
     try:
-        reservation_id = int(selected["reservation"])
-    except (KeyError, TypeError, ValueError):
+        reservation_id = int(reservation_value)
+    except (TypeError, ValueError):
         return None, f"订单 {key} 映射的 reservation 非法"
     relation_property_id = selected.get("property_id")
     if relation_property_id not in (None, ""):
@@ -412,7 +415,7 @@ def classify_folio_row(
     try:
         amount = parse_amount(row.get("金额"))
         business_date = parse_business_date(row.get("日期"))
-    except (InvalidOperation, ValueError, TypeError) as exc:
+    except (LegacyMigrationError, InvalidOperation, ValueError, TypeError) as exc:
         return Decision(source_model="Folio", source_pk=source_pk, category="C4", reason=str(exc))
 
     folio, relation_reason = _resolve_target_folio(

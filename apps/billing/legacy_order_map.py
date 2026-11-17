@@ -278,8 +278,8 @@ def merge_order_mappings(
                     for entry in existing
                 )
             else:
-                table_signature = sorted(str(entry["reservation"]) for entry in table_entries)
-                file_signature = sorted(str(entry["reservation"]) for entry in existing)
+                table_signature = sorted((str(entry["reservation"]), "") for entry in table_entries)
+                file_signature = sorted((str(entry["reservation"]), "") for entry in existing)
             if table_signature != file_signature:
                 conflicts.append(
                     f"旧订单 {key}：关系表关系集合 {table_signature}，"

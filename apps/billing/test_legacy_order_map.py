@@ -20,7 +20,7 @@ from typing import Any
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.management import CommandError, call_command
-from django.db import close_old_connections, connection, transaction
+from django.db import close_old_connections, connection
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
@@ -28,11 +28,11 @@ from apps.billing.legacy_migration import build_plan
 from apps.billing.legacy_order_map import (
     LegacyOrderMapError,
     confirm_pair,
-    pair_position_key,
     current_map_for_order,
     current_rows,
     merge_order_mappings,
     orders_mapping,
+    pair_position_key,
     superseded_chain,
 )
 from apps.billing.models import Folio, LegacyMigrationBatch, LegacyOrderReservationMap
@@ -238,9 +238,8 @@ class LegacyOrderMapBaseTests(TestCase):
         from django.db import IntegrityError, transaction
 
         first = self._confirm()
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                LegacyOrderReservationMap.objects.create(
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            LegacyOrderReservationMap.objects.create(
                 legacy_order=self.legacy_order,
                 reservation=self.reservation,
                 property=self.prop,
@@ -332,6 +331,8 @@ class LegacyOrderMapBaseTests(TestCase):
         )
 
     def _make_legacy_folio(self, pk=9101):
+        from hotelapp.models import Folio as LegacyFolio
+
         return LegacyFolio.objects.create(
             id=pk,
             order=self.legacy_order,
