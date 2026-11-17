@@ -498,8 +498,10 @@ def housekeeping_report(request):
         local_day = timezone.localdate(ev.created_at, ZoneInfo(
             getattr(property_obj, "timezone", None) or "Asia/Shanghai"))
         buckets[local_day] = buckets.get(local_day, 0) + 1
-    series = [{"date": str(day), "status_changes": total}
-              for day, total in sorted(buckets.items())]
+    series: list[dict[str, Any]] = [
+        {"date": str(day), "status_changes": total}
+        for day, total in sorted(buckets.items())
+    ]
     total_changes = sum(row["status_changes"] for row in series)
     distinct_rooms = qs.values("entity_id").distinct().count()
     period_days = (date_to - date_from).days + 1
