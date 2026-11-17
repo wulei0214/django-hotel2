@@ -118,12 +118,30 @@ def _consume_nonce(credential: ExecutionCredential, *, batch: Any) -> None:
 
 
 def _check_binding(credential: ExecutionCredential, batch: Any) -> None:
-    if credential.batch_uid != batch.batch_uid:
+    """用当前读锁定批次状态，避免过期对象绕过 ACTIVE/SoD 守卫。"""
+    fresh = type(batch).objects.select_for_update().get(pk=batch.pk)
+    if credential.batch_uid != fresh.batch_uid:
         raise LegacyMigrationDenied("凭证绑定的批次与目标批次不一致")
-    if batch.executed_by_id != credential.executor_user_pk:
+    if fresh.executed_by_id != credential.executor_user_pk:
         raise LegacyMigrationDenied("凭证执行人与批次登记的 executed_by 不一致")
-    if batch.status != batch.Status.ACTIVE:
-        raise LegacyMigrationDenied(f"批次状态为 {batch.status}，仅 ACTIVE 批次可执行迁移")
+    if fresh.status != fresh.Status.ACTIVE:
+        raise LegacyMigrationDenied(f"批次状态为 {fresh.status}，仅 ACTIVE 批次可执行迁移")
+    if fresh.approved_by_id is None:
+        raise LegacyMigrationDenied("批次缺少正式批准人记录，禁止执行迁移")
+    if fresh.approved_by_id == credential.executor_user_pk:
+        raise LegacyMigrationDenied("批准人与执行人必须分离，禁止同一账号执行迁移")
+
+    # 后续 scope 校验与写入使用锁定后的最新授权快照。
+    for field in (
+        "batch_uid",
+        "executed_by_id",
+        "approved_by_id",
+        "status",
+        "scope_property_id",
+        "scope_source_models",
+        "scope_record_range",
+    ):
+        setattr(batch, field, getattr(fresh, field))
 
 
 def authorize_execution(token: str, *, batch: Any) -> ExecutionCredential:

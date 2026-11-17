@@ -1,18 +1,18 @@
 -- =============================================================================
 -- 迭代-2 财务旧数据生产只读盘点脚本（GOV-02 裁定 5 交付物 / 裁定 3 前置证据）
 -- -----------------------------------------------------------------------------
--- 文件性质：只读盘点。全部语句为 SELECT；不含任何 INSERT/UPDATE/DELETE/DDL、
---           不建表、不迁移、不 REVOKE、不 GRANT、不切读路径、不物理删除。
+-- 文件性质：只读盘点。全部数据查询语句均为 SELECT；另含 START TRANSACTION READ ONLY
+--           与 COMMIT 两条事务控制语句；不含 INSERT/UPDATE/DELETE/DDL、建表、迁移、授权变更、切读路径或物理删除。
 -- 基线来源：设计六份文档之《迭代-2_历史账务数据迁移与对账方案》§2 命令清单
 --           +《迭代-2_财务与账本旧数据现状盘点》§6 + R4-01/R6-01/R6-02 修订查询
 -- 设计基线：fe579479ede9baa000e020bd5dd17ae3fe852de9（六份统一代码事实基线）
 -- 第六轮复审：R6-01~R6-04 设计层通过（REV6-AR-20261116 / Issue #7 评论 6915360118）
 -- 用途：供具备生产库只读权限的运维/财务人员执行，结果回填《现状盘点》§6；
 --       裁定 3（DEFAULT 归属）须以本脚本第 7 组产出的归属证据逐记录核验。
--- 敏感信息：本脚本仅 COUNT / SUM / MIN / MAX / 分类，不返回任何 PII 字段值
---           （不含手机号、证件号、顾客姓名明文）；GROUP_CONCAT 仅返回物业 code。
+-- 敏感信息：本脚本仅返回必要的业务记录 ID、金额/日期原值、聚合统计、物业 code 与分类；
+--           不返回手机号、证件号、顾客姓名等 PII 字段值；GROUP_CONCAT 仅返回物业 code。
 -- 执行纪律：只读 + 不迁移 + 不建表 + 不 REVOKE + 不暴露敏感信息（裁定 5 纪律）。
---           START TRANSACTION READ ONLY 提供技术兜底：事务内任何写操作将被拒绝。
+--           READ ONLY 仅阻止当前事务对非临时表的 DML；DDL 会隐式结束事务，不能依赖它拦截。
 -- 本地实测适配（2026-11-16）：设计文档原 SQL 的房号 JOIN
 --   nr.number = CAST(r.房间号 AS CHAR) 在 MySQL 8 下报 1267 Illegal mix of collations
 --   （旧表 room.房间号 为整数字段，CAST 后继承 general_ci；新表 inventory_room.number
@@ -25,9 +25,9 @@
 -- -----------------------------------------------------------------------------
 -- 执行人：____________  执行时间：____________  目标库/schema：____________
 -- 实例/版本：____________  只读账号：____________  结果回填位置：现状盘点 §6
--- 执行前置：与负责人确认只读账号；禁止使用应用写账号；禁止在执行库做任何变更前操作。
+-- 执行前置：使用仅具备所需 SELECT 权限的独立账号，确认无 DML/DDL/GRANT/REVOKE 权限；禁止使用应用写账号或管理员账号。
 
--- 强制只读事务（MySQL 8.0）：事务内出现任何 DML/DDL 直接报错，作为纪律兜底。
+-- 事务级辅助保护（MySQL 8.0）：阻止当前事务对非临时表的 DML；DDL 会隐式提交，必须由 SELECT-only 账号权限阻断。
 START TRANSACTION READ ONLY;
 
 -- -----------------------------------------------------------------------------
@@ -38,15 +38,21 @@ SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE
   FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = DATABASE()
    AND (TABLE_NAME, COLUMN_NAME) IN
-       (('finance_record','金额'), ('finance_record','日期'), ('finance_record','类型'),
-        ('folio','金额'), ('folio','日期'), ('folio','类型'), ('folio','order_id'),
-        ('accommodation','状态'), ('accommodation','客房编号'),
+       (('finance_record','id'), ('finance_record','金额'), ('finance_record','日期'),
+        ('finance_record','类型'), ('finance_record','关联订单'),
+        ('folio','id'), ('folio','金额'), ('folio','日期'), ('folio','类型'), ('folio','order_id'),
+        ('accommodation','id'), ('accommodation','状态'), ('accommodation','客房编号'),
+        ('accommodation','收款金额'), ('accommodation','押金'),
         ('night_audit','营业日期'), ('room','房间号'),
         ('inventory_room','number'), ('inventory_room','property_id'),
-        ('core_property','code'), ('billing_ledgerentry','entry_type'),
-        ('billing_ledgerentry','amount'), ('billing_ledgerentry','business_date'))
+        ('core_property','id'), ('core_property','code'),
+        ('billing_folio','id'), ('billing_folio','property_id'), ('billing_folio','reservation_id'),
+        ('billing_ledgerentry','id'), ('billing_ledgerentry','entry_type'),
+        ('billing_ledgerentry','amount'), ('billing_ledgerentry','business_date'),
+        ('billing_ledgerentry','folio_id'), ('billing_ledgerentry','property_id'),
+        ('billing_ledgerentry','reference'))
  ORDER BY TABLE_NAME, COLUMN_NAME;
--- 期望：16 行全部返回。缺列/缺表 → 停止，回填"前置校验未通过"并记录差异。
+-- 期望：31 行全部返回。缺列/缺表 → 停止，回填"前置校验未通过"并记录差异。
 
 -- =============================================================================
 -- 裁定 5 八项统计（结果逐组回填《现状盘点》§6）
@@ -137,7 +143,8 @@ SELECT a.`id`                            AS accommodation_id,
        COUNT(DISTINCT nr.`property_id`)  AS matched_property_count,
        GROUP_CONCAT(DISTINCT p.`code`)   AS matched_property_codes,
        CASE
-         WHEN r.`房间号` IS NULL THEN '旧数据关系异常（订单未关联旧房间）'
+         WHEN a.`客房编号` IS NULL THEN '旧订单未关联旧房间（FK 为空）'
+         WHEN r.`房间号` IS NULL THEN '旧订单房间引用断裂（FK 目标不存在）'
          WHEN COUNT(DISTINCT nr.`property_id`) = 0 THEN '证据不足（新侧无匹配房间）'
          WHEN COUNT(DISTINCT nr.`property_id`) = 1
               AND MAX(p.`code`) = 'DEFAULT' THEN '唯一匹配 DEFAULT（候选证据，须人工确认）'

@@ -131,7 +131,11 @@ def confirm_pair(
                 confirmed_by=confirmed_by,
                 confirmed_at=timezone.now(),
                 supersedes=supersedes,
-                position_key=pair_position_key(order_pk, reservation.pk, supersedes_id=None if supersedes is None else supersedes.pk),
+                position_key=pair_position_key(
+                    order_pk,
+                    reservation.pk,
+                    supersedes_id=None if supersedes is None else supersedes.pk,
+                ),
             )
     except IntegrityError as exc:
         raise LegacyOrderMapError(
@@ -167,48 +171,123 @@ def current_rows(*, property_obj: Any = None) -> Any:
 
 
 def current_map_for_order(legacy_order_id: Any, *, property_obj: Any = None) -> Any:
-    """某旧订单的当前有效关系（派生口径，不做存储态翻转）。"""
-    return (
+    """仅在唯一关系时返回单行；1:N 必须使用 orders_mapping，不得静默取第一行。"""
+    rows = list(
         current_rows(property_obj=property_obj)
         .filter(legacy_order_id=_normalize_order_id(legacy_order_id))
-        .first()
+        .order_by("id")[:2]
     )
+    if len(rows) > 1:
+        raise LegacyOrderMapError(
+            f"旧订单 #{legacy_order_id} 存在多条当前有效关系，请使用 orders_mapping 并逐凭证选边"
+        )
+    return rows[0] if rows else None
 
 
-def orders_mapping(property_obj: Any) -> dict[str, dict[str, Any]]:
-    """把关系表当前有效行转成迁移分类可用的 ``orders`` 映射结构。"""
-    result: dict[str, dict[str, Any]] = {}
+def orders_mapping(property_obj: Any) -> dict[str, list[dict[str, Any]]]:
+    """返回旧订单的全部当前有效关系；不得把 1:N 静默压成最后一条。"""
+    result: dict[str, list[dict[str, Any]]] = {}
     rows = current_rows(property_obj=property_obj).select_related("confirmed_by")
     for row in rows.order_by("legacy_order_id", "id"):
-        result[str(row.legacy_order_id)] = {
-            "reservation": row.reservation_id,
-            "basis": row.match_basis,
-            "confirmed_by": getattr(row.confirmed_by, "username", "") or str(row.confirmed_by_id),
-            "relation_type": row.relation_type,
-            "source": "legacy_order_reservation_map",
-        }
+        result.setdefault(str(row.legacy_order_id), []).append(
+            {
+                "reservation": row.reservation_id,
+                "relation_id": row.pk,
+                "property_id": row.property_id,
+                "basis": row.match_basis,
+                "confirmed_by": getattr(row.confirmed_by, "username", "")
+                or str(row.confirmed_by_id),
+                "relation_type": row.relation_type,
+                "source": "legacy_order_reservation_map",
+            }
+        )
     return result
+
+
+def _normalize_order_entries(order_id: str, value: Any) -> list[dict[str, Any]]:
+    """兼容旧单行输入与新版 relations 列表，统一为关系行列表。"""
+    if isinstance(value, dict):
+        raw_entries = value.get("relations") if "relations" in value else [value]
+    elif isinstance(value, list):
+        raw_entries = value
+    else:
+        raise LegacyOrderMapError(f"旧订单 {order_id} 的映射必须是对象或 relations 列表")
+    if not isinstance(raw_entries, list) or not raw_entries:
+        raise LegacyOrderMapError(f"旧订单 {order_id} 的 relations 必须是非空列表")
+
+    normalized: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for raw in raw_entries:
+        if not isinstance(raw, dict) or raw.get("reservation") in (None, ""):
+            raise LegacyOrderMapError(f"旧订单 {order_id} 的关系行缺少 reservation")
+        try:
+            reservation_id = int(raw["reservation"])
+            relation_id = (
+                int(raw["relation_id"]) if raw.get("relation_id") not in (None, "") else None
+            )
+        except (TypeError, ValueError) as exc:
+            raise LegacyOrderMapError(f"旧订单 {order_id} 的关系主键非法") from exc
+        relation_type = str(raw.get("relation_type") or "")
+        if relation_type and relation_type not in LegacyOrderReservationMap.RelationType.values:
+            raise LegacyOrderMapError(f"旧订单 {order_id} 的关系角色非法：{relation_type}")
+        identity = (str(reservation_id), str(relation_id or ""))
+        if identity in seen:
+            raise LegacyOrderMapError(f"旧订单 {order_id} 存在重复关系行 {identity}")
+        seen.add(identity)
+        item = dict(raw)
+        item["reservation"] = reservation_id
+        if relation_id is not None:
+            item["relation_id"] = relation_id
+        normalized.append(item)
+    return sorted(
+        normalized,
+        key=lambda item: (
+            int(item.get("relation_id") or 0),
+            int(item["reservation"]),
+        ),
+    )
 
 
 def merge_order_mappings(
     *, table_map: Mapping[str, Any], file_map: Mapping[str, Any]
-) -> dict[str, dict[str, Any]]:
-    """合并关系表与人工映射文件；同一旧订单指向不同预订即拒绝（不静默选边）。"""
-    merged: dict[str, dict[str, Any]] = {str(k): dict(v) for k, v in (file_map or {}).items()}
+) -> dict[str, list[dict[str, Any]]]:
+    """关系表优先；文件仅作兼容回退，双来源必须表达同一组关系。
+
+    单个旧订单可对应多条当前有效关系。若文件只给其中一条而关系表已有多条，
+    视为冲突，不静默选择。具体旧凭证归属由 record_reservations 逐条指定。
+    """
+    merged: dict[str, list[dict[str, Any]]] = {
+        str(key): _normalize_order_entries(str(key), value)
+        for key, value in (file_map or {}).items()
+    }
     conflicts: list[str] = []
-    for key, entry in (table_map or {}).items():
-        existing = merged.get(key)
+    for key, value in (table_map or {}).items():
+        table_entries = _normalize_order_entries(str(key), value)
+        existing = merged.get(str(key))
         if existing is not None:
-            table_res = entry.get("reservation")
-            file_res = existing.get("reservation")
-            if str(table_res) != str(file_res):
+            file_has_relation_ids = any(
+                entry.get("relation_id") not in (None, "") for entry in existing
+            )
+            if file_has_relation_ids:
+                table_signature = sorted(
+                    (str(entry["reservation"]), str(entry.get("relation_id") or ""))
+                    for entry in table_entries
+                )
+                file_signature = sorted(
+                    (str(entry["reservation"]), str(entry.get("relation_id") or ""))
+                    for entry in existing
+                )
+            else:
+                table_signature = sorted((str(entry["reservation"]), "") for entry in table_entries)
+                file_signature = sorted((str(entry["reservation"]), "") for entry in existing)
+            if table_signature != file_signature:
                 conflicts.append(
-                    f"旧订单 {key}：关系表指向预订 {table_res}，映射文件指向预订 {file_res}"
+                    f"旧订单 {key}：关系表关系集合 {table_signature}，"
+                    f"映射文件关系集合 {file_signature}"
                 )
                 continue
-            merged[key] = dict(entry)
-            continue
-        merged[key] = dict(entry)
+        # 关系表记录含 relation_id、property_id 和确认人证据，优先作为权威值。
+        merged[str(key)] = table_entries
     if conflicts:
         raise LegacyOrderMapError(
             "关系表与映射文件不一致，禁止迁移（须人工消除冲突后重跑）：" + "；".join(conflicts)

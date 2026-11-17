@@ -151,8 +151,19 @@ class LegacyArchiveQueryTests(TestCase):
             executed_by=executor,
             status=LegacyMigrationBatch.Status.ACTIVE,
         )
+        source_pks = {
+            "Folio": "9201",
+            "FinanceRecord": "7201",
+            "NightAudit": "6201",
+            "Accommodation": "8701",
+        }
         for spec in ARCHIVE_SPECS:
-            archive_table(spec=spec, batch_uid="ARC-Q-1", operator="归档执行人")
+            archive_table(
+                spec=spec,
+                batch_uid="ARC-Q-1",
+                operator="归档执行人",
+                property_assignments={source_pks[spec.source_model]: cls.prop},
+            )
 
     # --- 批次清单 ---------------------------------------------------------
     def test_list_batches_scoped_by_property(self):
@@ -167,6 +178,10 @@ class LegacyArchiveQueryTests(TestCase):
     def test_list_batches_includes_all_for_superuser(self):
         items = list_batches(property_obj=self.other_prop, is_superuser=True)
         self.assertEqual(len(items), 4)
+
+    def test_list_batches_requires_property_context_for_non_superuser(self):
+        with self.assertRaises(LegacyArchiveAccessDenied):
+            list_batches(property_obj=None, is_superuser=False)
 
     def test_unregistered_batch_only_visible_to_superuser(self):
         """找不到登记批次的归档批次 = 来源未登记，非超管不可见。"""
@@ -192,6 +207,15 @@ class LegacyArchiveQueryTests(TestCase):
         )
 
     # --- 行查询 -----------------------------------------------------------
+    def test_list_rows_requires_matching_property_context(self):
+        with self.assertRaises(LegacyArchiveAccessDenied):
+            list_rows(
+                batch_uid="ARC-Q-1",
+                table_key="folios",
+                actor=self.finance,
+                property_obj=None,
+            )
+
     def test_list_rows_masks_phone_and_writes_audit(self):
         rows, pagination = list_rows(
             batch_uid="ARC-Q-1",
@@ -203,6 +227,43 @@ class LegacyArchiveQueryTests(TestCase):
         self.assertEqual(rows[0]["contact_phone"], "139****5678")
         self.assertNotIn("13912345678", str(rows))
         self.assertTrue(AuditEvent.objects.filter(action="billing.legacy_archive_query").exists())
+
+    def test_unattributed_rows_are_hidden_from_finance_but_visible_to_superuser(self):
+        from apps.billing.models import LegacyAccommodationArchive
+
+        LegacyAccommodationArchive.objects.create(
+            id=8702,
+            client_id=None,
+            room_id=None,
+            check_in_text="2026-02-02",
+            status="已退房",
+            contact_phone="13900001111",
+            received_amount_text="0.00",
+            deposit_text="0.00",
+            check_out_text="2026-02-03",
+            reversed_by=None,
+            reversed_at_text=None,
+            archive_batch="ARC-Q-1",
+            verified_checksum="0" * 64,
+            property=None,
+        )
+        finance_rows, finance_pagination = list_rows(
+            batch_uid="ARC-Q-1",
+            table_key="accommodations",
+            actor=self.finance,
+            property_obj=self.prop,
+        )
+        admin_rows, admin_pagination = list_rows(
+            batch_uid="ARC-Q-1",
+            table_key="accommodations",
+            actor=self.admin,
+            property_obj=None,
+            is_superuser=True,
+        )
+        self.assertEqual(finance_pagination["total"], 1)
+        self.assertEqual(len(finance_rows), 1)
+        self.assertEqual(admin_pagination["total"], 2)
+        self.assertEqual(len(admin_rows), 2)
 
     def test_list_rows_folio_content(self):
         rows, _ = list_rows(
@@ -300,8 +361,19 @@ class LegacyArchiveApiTests(TestCase):
             executed_by=executor,
             status=LegacyMigrationBatch.Status.ACTIVE,
         )
+        source_pks = {
+            "Folio": "9201",
+            "FinanceRecord": "7201",
+            "NightAudit": "6201",
+            "Accommodation": "8701",
+        }
         for spec in ARCHIVE_SPECS:
-            archive_table(spec=spec, batch_uid="ARC-API-1", operator="归档执行人")
+            archive_table(
+                spec=spec,
+                batch_uid="ARC-API-1",
+                operator="归档执行人",
+                property_assignments={source_pks[spec.source_model]: cls.prop},
+            )
 
     def test_batches_require_authentication(self):
         response = self.client.get("/api/v1/billing/legacy-archives")

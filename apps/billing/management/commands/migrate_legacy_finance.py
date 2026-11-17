@@ -14,7 +14,11 @@ import getpass
 from django.contrib.auth import authenticate
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.billing.legacy_credentials import mint_credential, record_denial
+from apps.billing.legacy_credentials import (
+    LegacyMigrationDenied,
+    mint_credential,
+    record_denial,
+)
 from apps.billing.legacy_migration import (
     LegacyMigrationError,
     build_plan,
@@ -36,7 +40,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--mapping-file",
             default="",
-            help="人工确认映射 JSON（可选）：订单-预订关系以关系表为准，本文件补充 C2/C3 候选与冲销配对",
+            help=(
+                "人工确认映射 JSON：orders 仅作关系表兼容回退；record_reservations 逐凭证选边；"
+                "finance_natures 确认收入资金性质；candidates 标记 C2/C3；reversal_pairs 配对冲账"
+            ),
         )
         parser.add_argument("--dry-run", action="store_true", help="只分类不写库")
         parser.add_argument("--plan-out", default="", help="把分类清单写到指定 JSON 路径")
@@ -76,14 +83,17 @@ class Command(BaseCommand):
             return
 
         executor = self._authenticate(batch, options)
-        result = execute_plan(
-            batch=batch,
-            plan=plan,
-            credential_factory=lambda: mint_credential(
-                batch_uid=batch.batch_uid, executor_user_pk=executor.pk
-            ),
-            executor=executor,
-        )
+        try:
+            result = execute_plan(
+                batch=batch,
+                plan=plan,
+                credential_factory=lambda: mint_credential(
+                    batch_uid=batch.batch_uid, executor_user_pk=executor.pk
+                ),
+                executor=executor,
+            )
+        except LegacyMigrationDenied as exc:
+            raise CommandError(str(exc)) from exc
         counts = result["counts"]
         self.stdout.write(
             "执行结果：" + "，".join(f"{key}={value}" for key, value in counts.items())
@@ -106,7 +116,11 @@ class Command(BaseCommand):
         password = getpass.getpass(f"请输入 {username} 的密码以铸造执行凭证：")
         user = authenticate(username=username, password=password)
         reason = ""
-        if user is None:
+        if batch.status != LegacyMigrationBatch.Status.ACTIVE:
+            reason = f"批次状态为 {batch.status}，仅 ACTIVE 批次可执行迁移"
+        elif batch.approved_by_id is None:
+            reason = "批次缺少正式批准人记录，禁止执行迁移"
+        elif user is None:
             reason = "密码认证失败"
         elif not user.is_active:
             reason = "账号已停用"

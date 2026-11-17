@@ -4,8 +4,12 @@
 与 §4.2（行摘要/整表摘要/元数据登记），以及 D3 收口的 `--verify` 核验路径。
 """
 
+import json
+import tempfile
 from io import StringIO
+from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.core.management import CommandError, call_command
@@ -28,7 +32,7 @@ from apps.billing.models import (
     LegacyFolioArchive,
     LegacyNightAuditArchive,
 )
-from apps.core.models import Property
+from apps.core.models import AuditEvent, Property
 
 
 def _legacy_fixtures():
@@ -109,7 +113,12 @@ class ArchiveTableTests(TestCase):
 
     def test_folio_archive_rows_match_source_and_metadata(self):
         spec = get_spec("Folio")
-        run = archive_table(spec=spec, batch_uid="ARC-001", operator="ops-archive")
+        run = archive_table(
+            spec=spec,
+            batch_uid="ARC-001",
+            operator="ops-archive",
+            property_assignments={"9001": self.prop},
+        )
         rows = list(LegacyFolioArchive.objects.order_by("id"))
         self.assertEqual([row.id for row in rows], [9001, 9002])
         self.assertEqual(rows[0].amount_text, "688.00")
@@ -142,9 +151,28 @@ class ArchiveTableTests(TestCase):
         self.assertTrue(verify_archive_run(run)["ok"])
 
     def test_all_four_tables_archive_and_verify(self):
+        source_pks = {
+            "Folio": "9001",
+            "FinanceRecord": "7001",
+            "NightAudit": "6001",
+            "Accommodation": "8101",
+        }
         for spec in ARCHIVE_SPECS:
-            run = archive_table(spec=spec, batch_uid="ARC-ALL", operator="ops")
+            run = archive_table(
+                spec=spec,
+                batch_uid="ARC-ALL",
+                operator="ops",
+                property_assignments={source_pks[spec.source_model]: self.prop},
+            )
             self.assertTrue(verify_archive_run(run)["ok"], msg=spec.archive_table)
+            mapped_row = spec.archive_model.objects.get(
+                archive_batch="ARC-ALL", pk=source_pks[spec.source_model]
+            )
+            self.assertEqual(mapped_row.property_id, self.prop.pk)
+            unattributed_rows = spec.archive_model.objects.filter(archive_batch="ARC-ALL").exclude(
+                pk=source_pks[spec.source_model]
+            )
+            self.assertTrue(all(row.property_id is None for row in unattributed_rows))
         self.assertEqual(LegacyAccommodationArchive.objects.count(), 1)
         self.assertEqual(LegacyFinanceRecordArchive.objects.count(), 1)
         self.assertEqual(LegacyNightAuditArchive.objects.count(), 1)
@@ -201,6 +229,20 @@ class ArchiveTableTests(TestCase):
         self.assertEqual(summary["min_pk"], 8101)
         self.assertEqual(LegacyAccommodationArchive.objects.count(), 0)
 
+    def test_property_snapshot_is_not_inferred_when_mapping_is_absent(self):
+        archive_table(spec=get_spec("Accommodation"), batch_uid="ARC-NO-PROP", operator="ops")
+        row = LegacyAccommodationArchive.objects.get(pk=8101)
+        self.assertIsNone(row.property_id)
+
+    def test_unknown_source_pk_in_property_mapping_is_rejected(self):
+        with self.assertRaises(LegacyArchiveError):
+            archive_table(
+                spec=get_spec("Accommodation"),
+                batch_uid="ARC-BAD-PROP",
+                operator="ops",
+                property_assignments={"999999": self.prop},
+            )
+
 
 @override_settings(DEBUG=True, DJANGO_ENV="test")
 class EmptyTableArchiveTests(TestCase):
@@ -230,11 +272,40 @@ class ArchiveCommandTests(TestCase):
         self.assertEqual(LegacyArchiveRun.objects.count(), 0)
         self.assertEqual(LegacyFolioArchive.objects.count(), 0)
 
-    def test_execute_requires_batch_and_operator(self):
+    def test_default_is_dry_run_and_writes_nothing(self):
+        out = StringIO()
+        call_command("archive_legacy_finance", stdout=out)
+        self.assertIn("[dry-run]", out.getvalue())
+        self.assertEqual(LegacyArchiveRun.objects.count(), 0)
+        self.assertEqual(LegacyFolioArchive.objects.count(), 0)
+
+    def test_write_modes_are_mutually_exclusive(self):
         with self.assertRaises(CommandError):
-            call_command("archive_legacy_finance", stdout=StringIO())
+            call_command("archive_legacy_finance", "--execute", "--dry-run", stdout=StringIO())
         with self.assertRaises(CommandError):
-            call_command("archive_legacy_finance", "--batch-uid", "ARC-CMD", stdout=StringIO())
+            call_command("archive_legacy_finance", "--execute", "--verify", stdout=StringIO())
+
+    def test_execute_requires_batch_operator_and_approval_ref(self):
+        with self.assertRaises(CommandError):
+            call_command("archive_legacy_finance", "--execute", stdout=StringIO())
+        with self.assertRaises(CommandError):
+            call_command(
+                "archive_legacy_finance",
+                "--execute",
+                "--batch-uid",
+                "ARC-CMD",
+                stdout=StringIO(),
+            )
+        with self.assertRaises(CommandError):
+            call_command(
+                "archive_legacy_finance",
+                "--execute",
+                "--batch-uid",
+                "ARC-CMD",
+                "--operator",
+                "ops-cmd",
+                stdout=StringIO(),
+            )
 
     def test_execute_then_verify(self):
         out = StringIO()
@@ -242,6 +313,9 @@ class ArchiveCommandTests(TestCase):
             "archive_legacy_finance",
             "--batch-uid",
             "ARC-CMD",
+            "--execute",
+            "--approval-ref",
+            "TEST-GOV-ARCHIVE-01",
             "--operator",
             "ops-cmd",
             "--tables",
@@ -249,6 +323,14 @@ class ArchiveCommandTests(TestCase):
             stdout=out,
         )
         self.assertEqual(LegacyArchiveRun.objects.filter(batch_uid="ARC-CMD").count(), 2)
+        audit_events = AuditEvent.objects.filter(
+            action="billing.legacy_archive", reason__contains="batch=ARC-CMD"
+        )
+        self.assertEqual(audit_events.count(), 2)
+        self.assertEqual(
+            {event.after_json["approval_ref"] for event in audit_events},
+            {"TEST-GOV-ARCHIVE-01"},
+        )
         verify_out = StringIO()
         call_command(
             "archive_legacy_finance",
@@ -258,6 +340,55 @@ class ArchiveCommandTests(TestCase):
             stdout=verify_out,
         )
         self.assertIn("一致", verify_out.getvalue())
+
+    def test_property_map_file_sets_only_explicit_snapshots(self):
+        payload = {"Folio": {"9001": "DEFAULT", "9002": "DEFAULT"}}
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "property-map.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            call_command(
+                "archive_legacy_finance",
+                "--batch-uid",
+                "ARC-PROP-CMD",
+                "--execute",
+                "--approval-ref",
+                "TEST-GOV-ARCHIVE-02",
+                "--operator",
+                "ops-cmd",
+                "--tables",
+                "Folio",
+                "--property-map-file",
+                str(path),
+                stdout=StringIO(),
+            )
+        rows = LegacyFolioArchive.objects.filter(archive_batch="ARC-PROP-CMD")
+        self.assertEqual(rows.count(), 2)
+        self.assertEqual(set(rows.values_list("property_id", flat=True)), {self.prop.pk})
+
+    def test_archive_and_audit_are_atomic(self):
+        with patch(
+            "apps.billing.management.commands.archive_legacy_finance.AuditEvent.record",
+            side_effect=RuntimeError("audit unavailable"),
+        ):
+            self.assertRaises(
+                CommandError,
+                call_command,
+                "archive_legacy_finance",
+                "--batch-uid",
+                "ARC-AUDIT-ATOMIC",
+                "--execute",
+                "--approval-ref",
+                "TEST-GOV-ARCHIVE-03",
+                "--operator",
+                "ops-cmd",
+                "--tables",
+                "Folio",
+                stdout=StringIO(),
+            )
+        self.assertFalse(LegacyArchiveRun.objects.filter(batch_uid="ARC-AUDIT-ATOMIC").exists())
+        self.assertFalse(
+            LegacyFolioArchive.objects.filter(archive_batch="ARC-AUDIT-ATOMIC").exists()
+        )
 
     def test_verify_without_runs_fails(self):
         with self.assertRaises(CommandError):
@@ -274,6 +405,9 @@ class ArchiveCommandTests(TestCase):
             "archive_legacy_finance",
             "--batch-uid",
             "ARC-BAD2",
+            "--execute",
+            "--approval-ref",
+            "TEST-GOV-ARCHIVE-04",
             "--operator",
             "ops",
             "--tables",

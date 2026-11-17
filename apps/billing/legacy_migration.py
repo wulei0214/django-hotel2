@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
@@ -24,10 +25,13 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
+from django.db import IntegrityError, transaction
+from django.db.models import Count
 from django.utils import timezone
 
 from apps.billing.models import Folio, LedgerEntry, LegacyMigrationBatch
-from apps.core.models import LegacyRecordLink
+from apps.core.models import LegacyRecordLink, Property
+from apps.reservations.models import Reservation
 
 AMOUNT_RE = re.compile(r"^-?\d+(\.\d{1,2})?$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -62,6 +66,17 @@ METHOD_BY_CATEGORY = {
 }
 
 
+LEGACY_REFERENCE_NAMES = {"Folio": "folio", "FinanceRecord": "finance"}
+
+
+def legacy_reference(source_model: str, source_pk: str | int) -> str:
+    """生成迁移凭证唯一 reference；稳定使用业务名而非 Django 模型类名。"""
+    name = LEGACY_REFERENCE_NAMES.get(source_model)
+    if name is None:
+        raise LegacyMigrationError(f"不支持生成 {source_model} 的历史凭证 reference")
+    return f"legacy:{name}:{source_pk}"
+
+
 class LegacyMigrationError(Exception):
     """迁移计划/映射文件不合法（结构性错误，不是单条记录的业务分类）。"""
 
@@ -82,10 +97,11 @@ class Decision:
     void_of_pk: int | None = None
     reversal_confirmation: dict[str, Any] | None = None
     description: str = ""
+    blocks_batch: bool = False
 
     @property
     def reference(self) -> str:
-        return f"legacy:{self.source_model}:{self.source_pk}"
+        return legacy_reference(self.source_model, self.source_pk)
 
 
 @dataclass
@@ -143,7 +159,7 @@ def load_mapping(path: str | Path) -> dict[str, Any]:
           "orders": {"<旧订单id>": {"reservation": 201, "basis": "...", "confirmed_by": "..."}},
           "candidates": {"<source_model>:<pk>": {"category": "C2",
                                                  "entry": 5001, "note": "..."}},
-          "reversal_pairs": {"<旧Folio pk>": {"void_reference": "legacy:Folio:12",
+          "reversal_pairs": {"<旧Folio pk>": {"void_reference": "legacy:folio:12",
                                               "confirmed_by": "...", "basis": "..."}}
         }
     """
@@ -167,21 +183,121 @@ def load_mapping(path: str | Path) -> dict[str, Any]:
 # 分类
 # --------------------------------------------------------------------------- #
 def _resolve_target_folio(
-    mapping: Mapping[str, Any], order_ref: Any, *, batch: LegacyMigrationBatch
+    mapping: Mapping[str, Any],
+    order_ref: Any,
+    *,
+    batch: LegacyMigrationBatch,
+    source_model: str,
+    source_pk: str,
 ) -> tuple[Folio | None, str]:
-    """订单 → 人工确认的新预订 → MASTER 账单；任一环节缺失都返回原因码。"""
+    """旧订单 → 当前有效关系集合 → 逐凭证选定预订 → MASTER 账单。
+
+    1:1/N:1 可使用唯一当前关系；1:N/N:M 必须通过 record_reservations
+    按来源模型+主键逐条选择关系行，禁止按日期、金额或列表顺序自动选边。
+    """
     key = "" if order_ref is None else str(order_ref).strip()
     if not key:
         return None, "旧凭证无订单关联（孤儿凭证）"
     if not key.isdigit():
         return None, f"订单号非数字：{order_ref!r}"
-    entry = (mapping.get("orders") or {}).get(key)
-    if not isinstance(entry, dict) or entry.get("reservation") in (None, ""):
+
+    from apps.billing.models import LegacyOrderReservationMap
+
+    foreign_property_mapping = LegacyOrderReservationMap.objects.filter(
+        legacy_order_id=int(key), superseded_by__isnull=True
+    ).exclude(property_id=batch.scope_property_id)
+    if foreign_property_mapping.exists():
+        return (
+            None,
+            f"订单 {key} 当前有效关系存在其他物业映射，物业与批次授权物业不一致",
+        )
+
+    raw_relations = (mapping.get("orders") or {}).get(key)
+    if isinstance(raw_relations, dict):
+        relations = [raw_relations]
+    elif isinstance(raw_relations, list):
+        relations = raw_relations
+    else:
+        relations = []
+    if not relations:
         return None, f"订单 {key} 未建立订单-预订关系映射（禁止判定 C1）"
+    if not all(isinstance(item, dict) for item in relations):
+        return None, f"订单 {key} 的关系映射结构非法"
+
+    assignment = (mapping.get("record_reservations") or {}).get(f"{source_model}:{source_pk}")
+    assignment_data = assignment if isinstance(assignment, dict) else {}
+    if assignment is not None and not isinstance(assignment, dict):
+        return None, f"{source_model}#{source_pk} 的逐条归属结构非法"
+    selected: dict[str, Any]
+    requires_record_assignment = len(relations) > 1 or str(
+        relations[0].get("relation_type") or ""
+    ).upper() in {"SPLIT_SOURCE", "OTHER"}
+    if requires_record_assignment:
+        if not isinstance(assignment, dict):
+            return (
+                None,
+                f"订单 {key} 属于拆分/多目标关系，{source_model}#{source_pk} "
+                "必须逐条指定 relation_id/reservation",
+            )
+        if (
+            not str(assignment.get("basis") or "").strip()
+            or not str(assignment.get("confirmed_by") or "").strip()
+        ):
+            return None, f"{source_model}#{source_pk} 的逐条归属缺少人工确认依据/确认人"
+        relation_id = assignment.get("relation_id")
+        reservation_id = assignment.get("reservation")
+        if reservation_id in (None, ""):
+            return None, f"{source_model}#{source_pk} 的逐条归属缺少 reservation"
+        matches = [
+            item
+            for item in relations
+            if str(item.get("reservation")) == str(reservation_id)
+            and (relation_id in (None, "") or str(item.get("relation_id")) == str(relation_id))
+        ]
+        if len(matches) != 1:
+            return None, f"{source_model}#{source_pk} 的逐条归属未指向唯一当前关系行"
+        selected = matches[0]
+        if selected.get("source") == "legacy_order_reservation_map" and relation_id in (None, ""):
+            return None, f"{source_model}#{source_pk} 必须指定关系表 relation_id"
+    else:
+        selected = relations[0]
+        if isinstance(assignment, dict):
+            if (
+                not str(assignment.get("basis") or "").strip()
+                or not str(assignment.get("confirmed_by") or "").strip()
+            ):
+                return None, f"{source_model}#{source_pk} 的逐条归属缺少人工确认依据/确认人"
+            if assignment.get("reservation") not in (None, "") and str(
+                assignment.get("reservation")
+            ) != str(selected.get("reservation")):
+                return None, f"{source_model}#{source_pk} 的逐条归属与当前关系冲突"
+            if assignment.get("relation_id") not in (None, "") and str(
+                assignment.get("relation_id")
+            ) != str(selected.get("relation_id")):
+                return None, f"{source_model}#{source_pk} 指向的关系版本已失效或不匹配"
+
+    reservation_value = selected.get("reservation")
+    if reservation_value in (None, ""):
+        return None, f"订单 {key} 映射的 reservation 非法"
     try:
-        reservation_id = int(entry["reservation"])
+        reservation_id = int(str(reservation_value))
     except (TypeError, ValueError):
         return None, f"订单 {key} 映射的 reservation 非法"
+    relation_property_id = selected.get("property_id")
+    if relation_property_id not in (None, ""):
+        try:
+            relation_property_id = int(str(relation_property_id))
+        except (TypeError, ValueError):
+            return None, f"订单 {key} 关系物业标识非法"
+        if relation_property_id != batch.scope_property_id:
+            return None, f"订单 {key} 关系物业与批次授权物业不一致"
+    reservation_property_id = (
+        Reservation.objects.filter(pk=reservation_id).values_list("property_id", flat=True).first()
+    )
+    if reservation_property_id is None:
+        return None, f"订单 {key} 映射的预订 {reservation_id} 不存在"
+    if reservation_property_id != batch.scope_property_id:
+        return None, f"预订 {reservation_id} 物业与批次授权物业不一致"
     folio = Folio.objects.filter(
         reservation_id=reservation_id, folio_type=Folio.FolioType.MASTER
     ).first()
@@ -189,13 +305,40 @@ def _resolve_target_folio(
         return None, f"预订 {reservation_id} 无 MASTER 账单"
     if folio.property_id != batch.scope_property_id:
         return None, f"预订 {reservation_id} 账单物业与批次授权物业不一致"
-    return folio, ""
+
+    relation_id = selected.get("relation_id")
+    if relation_id not in (None, "") and selected.get("source") != "legacy_order_reservation_map":
+        relation_row = LegacyOrderReservationMap.objects.filter(
+            pk=relation_id,
+            legacy_order_id=int(key),
+            property_id=batch.scope_property_id,
+            superseded_by__isnull=True,
+        ).first()
+        if relation_row is None:
+            return None, f"订单 {key} 指定的关系版本不存在、已失效或不属于本物业"
+    basis = str(assignment_data.get("basis") or selected.get("basis") or "").strip()
+    confirmer = str(
+        assignment_data.get("confirmed_by") or selected.get("confirmed_by") or ""
+    ).strip()
+    if selected.get("source") != "legacy_order_reservation_map" and (not basis or not confirmer):
+        return None, f"订单 {key} 的文件回退映射缺少人工确认依据/确认人"
+    reason = (
+        f"rel#{relation_id or 'FILE'}->res#{reservation_id}; "
+        f"by={confirmer[:20]}; basis={basis[:50]}"
+    )
+    return folio, reason
 
 
 def _candidate_decision(
-    mapping: Mapping[str, Any], *, source_model: str, source_pk: str
+    mapping: Mapping[str, Any],
+    *,
+    source_model: str,
+    source_pk: str,
+    batch: LegacyMigrationBatch,
+    expected_folio_id: int,
+    relation_reason: str,
 ) -> Decision | None:
-    """人工显式声明的 C2/C3 候选（禁止自动判定，故只认文件里的声明）。"""
+    """人工显式声明的 C2/C3 候选，且必须落在逐条关系选定的账单上。"""
     entry = (mapping.get("candidates") or {}).get(f"{source_model}:{source_pk}")
     if not isinstance(entry, dict):
         return None
@@ -208,23 +351,37 @@ def _candidate_decision(
         candidate_entry_id = int(entry["entry"])
     except (KeyError, TypeError, ValueError) as exc:
         raise LegacyMigrationError(f"候选声明 {source_model}:{source_pk} 缺少合法 entry") from exc
-    if not LedgerEntry.objects.filter(pk=candidate_entry_id).exists():
+    candidate = LedgerEntry.objects.filter(pk=candidate_entry_id).select_related("folio").first()
+    if candidate is None:
         raise LegacyMigrationError(
             f"候选声明 {source_model}:{source_pk} 指向的凭证 {candidate_entry_id} 不存在"
+        )
+    if (
+        candidate.property_id != batch.scope_property_id
+        or candidate.folio.property_id != batch.scope_property_id
+        or candidate.folio_id != expected_folio_id
+    ):
+        raise LegacyMigrationError(
+            f"候选声明 {source_model}:{source_pk} 与逐条关系选定的账单不一致，拒绝映射"
+        )
+    note = str(entry.get("note") or "").strip()
+    confirmer = str(entry.get("confirmed_by") or "").strip()
+    if not note or not confirmer:
+        raise LegacyMigrationError(
+            f"候选声明 {source_model}:{source_pk} 必须包含人工确认人和匹配证据"
         )
     return Decision(
         source_model=source_model,
         source_pk=str(source_pk),
         category=category,
-        reason=str(entry.get("note") or f"人工确认 {category}（新旧重复事实）"),
+        reason=f"{category} by={confirmer[:20]}; {note[:50]}；{relation_reason}",
         candidate_entry_id=candidate_entry_id,
     )
 
 
 def classify_folio_row(
-    row: Mapping[str, Any], mapping: Mapping[str, Any], *, batch: LegacyMigrationBatch
+    row: dict[str, Any], mapping: Mapping[str, Any], *, batch: LegacyMigrationBatch
 ) -> Decision:
-    """旧 Folio 单行分类（C1~C5，逐条给原因码）。"""
     source_pk = str(row["id"])
     legacy_type = str(row.get("类型") or "").strip()
     if legacy_type in FOLIO_ARCHIVE_ONLY_TYPES:
@@ -232,81 +389,123 @@ def classify_folio_row(
             source_model="Folio",
             source_pk=source_pk,
             category="C5",
-            reason=f"旧凭证类型「{legacy_type}」按裁定 1 原样归档，不建新凭证",
+            reason=f"旧类型 {legacy_type} 按裁定仅归档，不迁入新账本",
         )
-    if legacy_type not in FOLIO_TYPE_MAP:
+    mapped = FOLIO_TYPE_MAP.get(legacy_type)
+    if mapped is None:
         return Decision(
             source_model="Folio",
             source_pk=source_pk,
             category="C4",
-            reason=f"未知旧凭证类型：{legacy_type!r}",
+            reason=f"未知 Folio 类型：{legacy_type or '空'}",
+        )
+    entry_type, sign = mapped
+    if entry_type is None:
+        return Decision(
+            source_model="Folio",
+            source_pk=source_pk,
+            category="C5",
+            reason=f"旧类型 {legacy_type} 按裁定仅归档，不迁入新账本",
         )
     try:
         amount = parse_amount(row.get("金额"))
         business_date = parse_business_date(row.get("日期"))
-    except LegacyMigrationError as exc:
+    except (LegacyMigrationError, InvalidOperation, ValueError, TypeError) as exc:
         return Decision(source_model="Folio", source_pk=source_pk, category="C4", reason=str(exc))
 
-    entry_type, sign = FOLIO_TYPE_MAP[legacy_type]
-    signed = amount * sign
+    folio, relation_reason = _resolve_target_folio(
+        mapping,
+        row.get("order_id"),
+        batch=batch,
+        source_model="Folio",
+        source_pk=source_pk,
+    )
+    if folio is None:
+        return Decision(
+            source_model="Folio",
+            source_pk=source_pk,
+            category="C4",
+            reason=relation_reason,
+            blocks_batch="物业与批次授权物业不一致" in relation_reason,
+        )
+
     if entry_type == LedgerEntry.EntryType.REVERSAL:
         pair = (mapping.get("reversal_pairs") or {}).get(source_pk)
-        if not isinstance(pair, dict) or not str(pair.get("confirmed_by") or "").strip():
+        if not isinstance(pair, dict):
             return Decision(
                 source_model="Folio",
                 source_pk=source_pk,
                 category="C4",
-                reason="旧冲账未配对或缺少人工确认（禁止伪造 void_of 链）",
+                reason=f"冲账 {source_pk} 未提供原凭证配对及人工确认，禁止自动迁移；{relation_reason}",
             )
-        void_reference = str(pair.get("void_reference") or "").strip()
+        void_reference = str(pair.get("void_reference") or "")
         void_of = LedgerEntry.objects.filter(reference=void_reference).first()
-        if void_of is None:
+        if not void_reference or void_of is None:
             return Decision(
                 source_model="Folio",
                 source_pk=source_pk,
                 category="C4",
-                reason=f"冲销原凭证尚未迁移：{void_reference or '(未提供)'}",
+                reason=f"冲账 {source_pk} 指向的原凭证不存在；{relation_reason}",
+            )
+        if void_of.folio_id != folio.pk:
+            return Decision(
+                source_model="Folio",
+                source_pk=source_pk,
+                category="C4",
+                reason=f"冲账原凭证账单与逐条关系选定账单不一致；{relation_reason}",
+            )
+        confirmation = {
+            "confirmed_by": str(pair.get("confirmed_by") or ""),
+            "basis": str(pair.get("basis") or ""),
+        }
+        if not confirmation["confirmed_by"] or not confirmation["basis"]:
+            return Decision(
+                source_model="Folio",
+                source_pk=source_pk,
+                category="C4",
+                reason=f"冲账 {source_pk} 缺少人工确认人或证据依据；{relation_reason}",
             )
         return Decision(
             source_model="Folio",
             source_pk=source_pk,
             category="C1",
-            reason=f"人工确认冲销配对（{pair.get('basis') or '人工确认'}）",
             entry_type=entry_type,
-            amount=signed,
+            amount=amount * sign,
             business_date=business_date,
-            target_folio_id=void_of.folio_id,
+            target_folio_id=folio.pk,
             void_of_pk=void_of.pk,
-            reversal_confirmation={
-                "confirmed_by": str(pair["confirmed_by"]),
-                "basis": str(pair.get("basis") or ""),
-            },
-            description=str(row.get("事由") or "")[:240],
+            reversal_confirmation=confirmation,
+            reason=(
+                f"冲销 {void_reference[:24]}; by={confirmation['confirmed_by'][:20]}; "
+                f"basis={confirmation['basis'][:50]}；{relation_reason}"
+            ),
         )
 
-    candidate = _candidate_decision(mapping, source_model="Folio", source_pk=source_pk)
-    if candidate is not None:
+    candidate = _candidate_decision(
+        mapping,
+        source_model="Folio",
+        source_pk=source_pk,
+        batch=batch,
+        expected_folio_id=folio.pk,
+        relation_reason=relation_reason,
+    )
+    if candidate:
         return candidate
-    folio, reason = _resolve_target_folio(mapping, row.get("order_id"), batch=batch)
-    if folio is None:
-        return Decision(source_model="Folio", source_pk=source_pk, category="C4", reason=reason)
     return Decision(
         source_model="Folio",
         source_pk=source_pk,
         category="C1",
-        reason="订单-预订关系已人工确认，可迁移",
         entry_type=entry_type,
-        amount=signed,
+        amount=amount * sign,
         business_date=business_date,
         target_folio_id=folio.pk,
-        description=str(row.get("事由") or "")[:240],
+        reason=f"订单-预订关系已确认，可迁移；{relation_reason}",
     )
 
 
 def classify_finance_row(
-    row: Mapping[str, Any], mapping: Mapping[str, Any], *, batch: LegacyMigrationBatch
+    row: dict[str, Any], mapping: Mapping[str, Any], *, batch: LegacyMigrationBatch
 ) -> Decision:
-    """旧 FinanceRecord 单行分类（C1~C5）。"""
     source_pk = str(row["id"])
     legacy_type = str(row.get("类型") or "").strip()
     if legacy_type in FINANCE_ARCHIVE_ONLY_TYPES:
@@ -314,64 +513,107 @@ def classify_finance_row(
             source_model="FinanceRecord",
             source_pk=source_pk,
             category="C5",
-            reason=f"旧流水类型「{legacy_type}」按裁定 2 归档，不扩展账本凭证类型",
+            reason=f"旧类型 {legacy_type} 按裁定仅归档，不迁入新账本",
         )
-    if legacy_type not in FINANCE_TYPE_MAP:
+    mapped = FINANCE_TYPE_MAP.get(legacy_type)
+    if mapped is None:
         return Decision(
             source_model="FinanceRecord",
             source_pk=source_pk,
             category="C4",
-            reason=f"未知旧流水类型：{legacy_type!r}",
+            reason=f"未知 FinanceRecord 类型：{legacy_type or '空'}",
         )
-    related = str(row.get("关联订单") or "").strip()
-    if not related:
+    entry_type, sign = mapped
+    if entry_type is None:
         return Decision(
             source_model="FinanceRecord",
             source_pk=source_pk,
             category="C5",
-            reason="无关联订单，资金性质待人工判定（仅归档）",
+            reason=f"旧类型 {legacy_type} 按裁定仅归档，不迁入新账本",
+        )
+    related_order = row.get("关联订单")
+    if related_order in (None, ""):
+        return Decision(
+            source_model="FinanceRecord",
+            source_pk=source_pk,
+            category="C5",
+            reason="无订单关联的独立收支按裁定仅归档",
         )
     try:
         amount = parse_amount(row.get("金额"))
         business_date = parse_business_date(row.get("日期"))
-    except LegacyMigrationError as exc:
+    except (LegacyMigrationError, InvalidOperation, ValueError, TypeError) as exc:
         return Decision(
             source_model="FinanceRecord",
             source_pk=source_pk,
             category="C4",
             reason=str(exc),
         )
-    candidate = _candidate_decision(mapping, source_model="FinanceRecord", source_pk=source_pk)
-    if candidate is not None:
-        return candidate
-    folio, reason = _resolve_target_folio(mapping, related, batch=batch)
+
+    folio, relation_reason = _resolve_target_folio(
+        mapping,
+        related_order,
+        batch=batch,
+        source_model="FinanceRecord",
+        source_pk=source_pk,
+    )
     if folio is None:
         return Decision(
             source_model="FinanceRecord",
             source_pk=source_pk,
             category="C4",
-            reason=reason,
+            reason=relation_reason,
+            blocks_batch="物业与批次授权物业不一致" in relation_reason,
         )
-    entry_type, sign = FINANCE_TYPE_MAP[legacy_type]
+
+    candidate = _candidate_decision(
+        mapping,
+        source_model="FinanceRecord",
+        source_pk=source_pk,
+        batch=batch,
+        expected_folio_id=folio.pk,
+        relation_reason=relation_reason,
+    )
+    if candidate:
+        return candidate
+
+    nature = (mapping.get("finance_natures") or {}).get(f"FinanceRecord:{source_pk}")
+    if (
+        not isinstance(nature, dict)
+        or str(nature.get("entry_type") or "").upper() != "PAYMENT"
+        or not str(nature.get("basis") or "").strip()
+        or not str(nature.get("confirmed_by") or "").strip()
+    ):
+        return Decision(
+            source_model="FinanceRecord",
+            source_pk=source_pk,
+            category="C4",
+            reason=(
+                "FinanceRecord 仅有收入标签，缺少逐笔资金性质、人工确认人或证据依据；"
+                f"{relation_reason}"
+            ),
+        )
+    nature_reason = (
+        f"funds=PAYMENT by={str(nature['confirmed_by'])[:20]}; " f"{str(nature['basis'])[:50]}"
+    )
     return Decision(
         source_model="FinanceRecord",
         source_pk=source_pk,
         category="C1",
-        reason="订单-预订关系已人工确认，可迁移",
         entry_type=entry_type,
         amount=amount * sign,
         business_date=business_date,
         target_folio_id=folio.pk,
-        description=str(row.get("事由") or "")[:240],
+        reason=f"资金性质人工确认，可迁移；{relation_reason}；{nature_reason}",
     )
 
 
 def build_plan(*, batch: LegacyMigrationBatch, mapping: Mapping[str, Any] | None = None) -> Plan:
     """按批次 scope 读取旧表并逐条分类（只读，不写任何表）。
 
-    订单-预订关系来源以 ``legacy_order_reservation_map`` 的当前有效行为权威；
-    ``--mapping-file`` 的 ``orders`` 是关系表铺满前的兼容输入。两者同时给出且
-    指向不同预订 → 拒绝（不静默选一边，见 :mod:`apps.billing.legacy_order_map`）。
+    订单-预订关系来源以 ``legacy_order_reservation_map`` 的全部当前有效行为权威；
+    ``--mapping-file`` 的 ``orders`` 仅作关系表铺满前的兼容回退，双来源必须表达
+    同一关系集合。1:N/SPLIT_SOURCE 必须用 ``record_reservations`` 逐凭证选边。
     """
     from hotelapp import models as legacy_models
 
@@ -381,11 +623,22 @@ def build_plan(*, batch: LegacyMigrationBatch, mapping: Mapping[str, Any] | None
         orders_mapping,
     )
 
+    if mapping is not None and not isinstance(mapping, Mapping):
+        raise LegacyMigrationError("映射文件顶层必须是 JSON 对象")
     effective: dict[str, Any] = dict(mapping or {})
+    for section in ("record_reservations", "finance_natures", "candidates", "reversal_pairs"):
+        value = effective.get(section)
+        if value is None:
+            effective[section] = {}
+        elif not isinstance(value, dict):
+            raise LegacyMigrationError(f"映射文件 {section} 必须是 JSON 对象")
+    raw_orders = effective.get("orders") or {}
+    if not isinstance(raw_orders, dict):
+        raise LegacyMigrationError("映射文件 orders 必须是 JSON 对象")
     try:
         effective["orders"] = merge_order_mappings(
             table_map=orders_mapping(batch.scope_property),
-            file_map=effective.get("orders") or {},
+            file_map=raw_orders,
         )
     except LegacyOrderMapError as exc:
         raise LegacyMigrationError(str(exc)) from exc
@@ -463,25 +716,162 @@ def _link(
     )
 
 
+def _existing_link_matches_decision(
+    *, batch: LegacyMigrationBatch, decision: Decision, link: LegacyRecordLink
+) -> bool:
+    """同批次同分类的已完成映射视为幂等成功；任何不一致都拒绝覆盖。"""
+    method = METHOD_BY_CATEGORY[decision.category]
+    if (
+        link.property.pk != batch.scope_property_id
+        or link.migration_batch != batch.batch_uid
+        or link.match_method != method
+    ):
+        return False
+
+    if decision.category == "C1":
+        if (
+            link.mapping_status != LegacyRecordLink.MappingStatus.LINKED
+            or link.target_model != "LedgerEntry"
+            or not link.target_pk
+        ):
+            return False
+        entry = LedgerEntry.objects.filter(pk=link.target_pk).first()
+        return bool(
+            entry
+            and entry.reference == decision.reference
+            and entry.property_id == batch.scope_property_id
+            and entry.folio_id == decision.target_folio_id
+            and entry.currency == entry.folio.currency
+            and entry.entry_type == decision.entry_type
+            and entry.amount == decision.amount
+            and entry.business_date == decision.business_date
+        )
+
+    if decision.category in {"C2", "C3"}:
+        if (
+            link.mapping_status != LegacyRecordLink.MappingStatus.LINKED
+            or link.target_model != "LedgerEntry"
+            or str(link.target_pk) != str(decision.candidate_entry_id)
+        ):
+            return False
+        candidate = LedgerEntry.objects.filter(pk=link.target_pk).first()
+        return bool(candidate and candidate.property_id == batch.scope_property_id)
+
+    expected_status = (
+        LegacyRecordLink.MappingStatus.CONFLICT
+        if decision.category == "C4"
+        else LegacyRecordLink.MappingStatus.IGNORED
+    )
+    return link.mapping_status == expected_status and not link.target_model and not link.target_pk
+
+
+def _assert_batch_executor(batch: LegacyMigrationBatch, executor: Any) -> None:
+    """C2-C5 不经过凭证入口，必须在写映射事务内复核同等批次授权。"""
+    from apps.billing.legacy_credentials import LegacyMigrationDenied
+
+    if batch.status != LegacyMigrationBatch.Status.ACTIVE:
+        raise LegacyMigrationDenied(f"批次状态为 {batch.status}，仅 ACTIVE 批次可执行迁移")
+    if batch.approved_by_id is None:
+        raise LegacyMigrationDenied("批次缺少正式批准人记录，禁止执行迁移")
+    if batch.executed_by_id is None or getattr(executor, "pk", None) != batch.executed_by_id:
+        raise LegacyMigrationDenied("当前执行人与批次登记的 executed_by 不一致")
+    if batch.approved_by_id == batch.executed_by_id:
+        raise LegacyMigrationDenied("批准人与执行人必须分离，禁止同一账号执行迁移")
+    if not getattr(executor, "is_active", False) or not getattr(executor, "is_staff", False):
+        raise LegacyMigrationDenied("执行账号未启用或不具备平台身份")
+
+
 def execute_plan(
     *, batch: LegacyMigrationBatch, plan: Plan, credential_factory: Any, executor: Any
 ) -> dict[str, Any]:
-    """按计划落库：C1 经受控入口建凭证，C2/C3/C4/C5 只写映射。
+    """按计划落库；同批次已完成的逐条结果可安全跳过，支持失败后断点重执行。
 
-    C1 的凭证创建**逐条独立事务**：一条失败只回滚该条（不残留映射/审计），
-    不把整批拖入"部分成功但无法定位"的状态。失败逐条收集并在返回值中返回。
-
-    ``credential_factory`` 每次调用都必须铸造**新凭证**：执行凭证是 nonce 单次
-    消费制（§5.2），同一条凭证第二次使用会被判重放——长批次按需重新铸造。
+    C1 的凭证、映射和审计由受控入口在自身事务内完成；不能再套一层事务，
+    否则受控入口的独立拒绝审计会被外层回滚。C2-C5 在写映射事务内锁定并
+    复核 ACTIVE 批次、批准人/执行人分离与执行账号，防止绕过受控入口。
     """
-    from apps.billing.legacy_credentials import LegacyMigrationDenied
+    from apps.billing.legacy_credentials import LegacyMigrationDenied, record_denial
     from apps.billing.services_v2 import BillingService
+
+    batch.refresh_from_db()
+    try:
+        _assert_batch_executor(batch, executor)
+    except LegacyMigrationDenied as exc:
+        record_denial(batch=batch, reason=str(exc), actor_id=getattr(executor, "pk", None))
+        raise
 
     counts = {"C1": 0, "C2": 0, "C3": 0, "C4": 0, "C5": 0, "failed": 0}
     failures: list[str] = []
+    blocking_decisions = [decision for decision in plan.decisions if decision.blocks_batch]
+    if blocking_decisions:
+        try:
+            with transaction.atomic():
+                locked_batch = LegacyMigrationBatch.objects.select_for_update().get(pk=batch.pk)
+                _assert_batch_executor(locked_batch, executor)
+                for decision in blocking_decisions:
+                    existing = list(
+                        LegacyRecordLink.objects.select_for_update().filter(
+                            source_system="hotelapp",
+                            source_model=decision.source_model,
+                            source_pk=decision.source_pk,
+                        )[:2]
+                    )
+                    if len(existing) > 1:
+                        raise LegacyMigrationDenied(
+                            f"来源记录 {decision.source_model}#{decision.source_pk} 存在多条映射"
+                        )
+                    if existing:
+                        if not _existing_link_matches_decision(
+                            batch=locked_batch, decision=decision, link=existing[0]
+                        ):
+                            raise LegacyMigrationDenied(
+                                f"来源记录 {decision.source_model}#{decision.source_pk} 已有其他映射，禁止覆盖"
+                            )
+                        continue
+                    _link(
+                        batch=locked_batch,
+                        decision=decision,
+                        executor=executor,
+                        target_pk="",
+                        method=METHOD_C4,
+                        note=f"整批阻断：{decision.reason}",
+                    )
+            counts["C4"] = len(blocking_decisions)
+            counts["failed"] = 1
+            failures.append("检测到跨物业订单-预订映射，整批迁移已阻断；冲突记录已标记 C4/CONFLICT")
+        except LegacyMigrationDenied as exc:
+            record_denial(batch=batch, reason=str(exc), actor_id=getattr(executor, "pk", None))
+            counts["failed"] = 1
+            failures.append(str(exc))
+        except IntegrityError as exc:
+            record_denial(batch=batch, reason=str(exc), actor_id=getattr(executor, "pk", None))
+            counts["failed"] = 1
+            failures.append(f"跨物业冲突映射写入失败：{exc}")
+        return {"counts": counts, "failures": failures}
     for decision in plan.decisions:
         method = METHOD_BY_CATEGORY[decision.category]
         try:
+            existing_links = list(
+                LegacyRecordLink.objects.filter(
+                    source_system="hotelapp",
+                    source_model=decision.source_model,
+                    source_pk=decision.source_pk,
+                )[:2]
+            )
+            if len(existing_links) > 1:
+                raise LegacyMigrationDenied(
+                    f"来源记录 {decision.source_model}#{decision.source_pk} 存在多条映射，需人工处置"
+                )
+            if existing_links:
+                if _existing_link_matches_decision(
+                    batch=batch, decision=decision, link=existing_links[0]
+                ):
+                    counts[decision.category] += 1
+                    continue
+                raise LegacyMigrationDenied(
+                    f"来源记录 {decision.source_model}#{decision.source_pk} 已有不一致或其他批次映射，禁止覆盖"
+                )
+
             if decision.category == "C1":
                 folio = Folio.objects.get(pk=decision.target_folio_id)
                 BillingService.post_legacy_migration_entry(
@@ -505,35 +895,46 @@ def execute_plan(
                     reversal_confirmation=decision.reversal_confirmation,
                     review_note=f"batch={batch.batch_uid} {decision.reason}",
                 )
-            elif decision.category in {"C2", "C3"}:
-                _link(
-                    batch=batch,
-                    decision=decision,
-                    executor=executor,
-                    target_pk=str(decision.candidate_entry_id),
-                    method=method,
-                    note=f"batch={batch.batch_uid} {decision.reason}",
-                )
-            elif decision.category == "C4":
-                _link(
-                    batch=batch,
-                    decision=decision,
-                    executor=executor,
-                    target_pk="",
-                    method=method,
-                    note=f"batch={batch.batch_uid} {decision.reason}",
-                )
-            else:  # C5
-                _link(
-                    batch=batch,
-                    decision=decision,
-                    executor=executor,
-                    target_pk="",
-                    method=method,
-                    note=f"batch={batch.batch_uid} {decision.reason}",
-                )
+            else:
+                with transaction.atomic():
+                    locked_batch = LegacyMigrationBatch.objects.select_for_update().get(pk=batch.pk)
+                    _assert_batch_executor(locked_batch, executor)
+                    # C2-C5 没有凭证入口；事务内 current read 复查并发写入。
+                    raced_links = list(
+                        LegacyRecordLink.objects.select_for_update().filter(
+                            source_system="hotelapp",
+                            source_model=decision.source_model,
+                            source_pk=decision.source_pk,
+                        )[:2]
+                    )
+                    if raced_links:
+                        if len(raced_links) == 1 and _existing_link_matches_decision(
+                            batch=locked_batch, decision=decision, link=raced_links[0]
+                        ):
+                            counts[decision.category] += 1
+                            continue
+                        raise LegacyMigrationDenied(
+                            f"来源记录 {decision.source_model}#{decision.source_pk} 并发产生冲突映射"
+                        )
+                    _link(
+                        batch=locked_batch,
+                        decision=decision,
+                        executor=executor,
+                        target_pk=(
+                            str(decision.candidate_entry_id)
+                            if decision.category in {"C2", "C3"}
+                            else ""
+                        ),
+                        method=method,
+                        note=f"batch={batch.batch_uid} {decision.reason}",
+                    )
             counts[decision.category] += 1
-        except (LegacyMigrationDenied, ValueError, LegacyMigrationError) as exc:
+        except LegacyMigrationDenied as exc:
+            if decision.category != "C1":
+                record_denial(batch=batch, reason=str(exc), actor_id=getattr(executor, "pk", None))
+            counts["failed"] += 1
+            failures.append(f"{decision.source_model}#{decision.source_pk}: {exc}")
+        except (ValueError, LegacyMigrationError, IntegrityError) as exc:
             counts["failed"] += 1
             failures.append(f"{decision.source_model}#{decision.source_pk}: {exc}")
     return {"counts": counts, "failures": failures}
@@ -543,79 +944,316 @@ def execute_plan(
 # 对账（§1 分类守恒 + §1.2 金额守恒，按 来源模型 × 分类 × 批次 分组）
 # --------------------------------------------------------------------------- #
 def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
-    """按分类守恒与金额守恒核验一个批次，返回可打印的对账报告。
+    """只读核验分类守恒、凭证关联、金额分组守恒和归档元数据，不修复任何数据。"""
+    from hotelapp import models as legacy_models
 
-    守恒口径（§1.1）：
-      * C1：源记录数 = 新建凭证数 = LINKED 映射数（本实现以"链接指向的凭证存在"核验）；
-      * C2/C3：源记录数 = 已核验映射数，**新建凭证必须为 0**；
-      * C4：源记录数 = CONFLICT 映射数；
-      * C5：源记录数 = 归档（IGNORED）映射数。
-    金额守恒（§1.2）：按 来源模型 × 凭证类型 × 币种 分组，Σ新凭证 = Σ旧记录（换算符号后）。
-    """
     report: dict[str, Any] = {
         "batch_uid": batch.batch_uid,
         "categories": {},
         "amounts": [],
+        "amount_groups": [],
         "diffs": [],
         "archive": [],
     }
     links = LegacyRecordLink.objects.filter(
         source_system="hotelapp", migration_batch=batch.batch_uid
     )
-    for source_model in ("Folio", "FinanceRecord"):
-        rows: dict[str, Any] = {}
-        for category, method in METHOD_BY_CATEGORY.items():
-            count = links.filter(source_model=source_model, match_method=method).count()
-            rows[category] = count
-        c1_links = links.filter(source_model=source_model, match_method=METHOD_C1)
-        missing_entries = []
-        for link in c1_links.only("target_pk", "source_pk"):
-            if not LedgerEntry.objects.filter(pk=link.target_pk).exists():
-                missing_entries.append(link.source_pk)
-        rows["C1_missing_entries"] = missing_entries
-        # C2/C3 分类泄漏检查：这两类不得产生新凭证。
-        leaked = [
-            link.source_pk
-            for link in links.filter(
-                source_model=source_model, match_method__in=[METHOD_C2, METHOD_C3]
-            ).only("source_pk", "target_pk")
-            if LedgerEntry.objects.filter(
-                reference=f"legacy:{source_model}:{link.source_pk}"
-            ).exists()
-        ]
-        rows["leaked_new_entries"] = leaked
-        report["categories"][source_model] = rows
-        if missing_entries:
-            report["diffs"].append(
-                f"{source_model}: {len(missing_entries)} 条 C1 映射指向的凭证不存在"
+    source_model_classes = {
+        "Folio": legacy_models.Folio,
+        "FinanceRecord": legacy_models.FinanceRecord,
+    }
+    expected_status = {
+        "C1": LegacyRecordLink.MappingStatus.LINKED,
+        "C2": LegacyRecordLink.MappingStatus.LINKED,
+        "C3": LegacyRecordLink.MappingStatus.LINKED,
+        "C4": LegacyRecordLink.MappingStatus.CONFLICT,
+        "C5": LegacyRecordLink.MappingStatus.IGNORED,
+    }
+    expected_groups: dict[tuple[str, int, str, str], Decimal] = defaultdict(lambda: Decimal("0.00"))
+    actual_groups: dict[tuple[str, int, str, str], Decimal] = defaultdict(lambda: Decimal("0.00"))
+    scope_models = list(batch.scope_source_models or [])
+    unscoped_links = links.exclude(source_model__in=scope_models)
+    if unscoped_links.exists():
+        report["diffs"].append("批次映射包含未授权来源模型，必须人工核查")
+    all_expected_references: set[str] = set()
+    c1_target_ids: list[str] = []
+
+    for source_model in scope_models:
+        model = source_model_classes.get(source_model)
+        if model is None:
+            report["diffs"].append(f"批次授权了不支持的财务来源模型：{source_model}")
+            continue
+
+        record_range = batch.scope_record_range or {}
+        source_qs = model.objects.all()
+        allowed_pks = record_range.get("pks")
+        if isinstance(allowed_pks, list):
+            source_qs = source_qs.filter(pk__in=allowed_pks)
+        else:
+            pk_min = record_range.get("pk_min")
+            pk_max = record_range.get("pk_max")
+            if pk_min is None or pk_max is None:
+                report["diffs"].append(
+                    f"{source_model}: 批次授权范围缺少 pk_min/pk_max 或 pks 清单"
+                )
+                continue
+            source_qs = source_qs.filter(pk__gte=pk_min, pk__lte=pk_max)
+        source_pks = {str(pk) for pk in source_qs.values_list("pk", flat=True)}
+        all_expected_references.update(
+            legacy_reference(source_model, source_pk) for source_pk in source_pks
+        )
+
+        model_links = list(
+            links.filter(source_model=source_model).select_related("property").order_by("source_pk")
+        )
+        link_pks = [str(link.source_pk) for link in model_links]
+        link_pk_set = set(link_pks)
+        missing_links = sorted(source_pks - link_pk_set)
+        out_of_scope_links = sorted(link_pk_set - source_pks)
+        duplicate_source_links = list(
+            LegacyRecordLink.objects.filter(
+                source_system="hotelapp",
+                source_model=source_model,
+                source_pk__in=source_pks,
             )
-        if leaked:
+            .values("source_pk")
+            .annotate(total=Count("id"))
+            .filter(total__gt=1)
+            .values_list("source_pk", flat=True)
+        )
+
+        rows: dict[str, Any] = {
+            "source_count": len(source_pks),
+            "link_count": len(model_links),
+            "missing_source_links": missing_links,
+            "out_of_scope_links": out_of_scope_links,
+            "duplicate_source_links": sorted(str(pk) for pk in duplicate_source_links),
+        }
+        for category, method in METHOD_BY_CATEGORY.items():
+            rows[category] = sum(1 for link in model_links if link.match_method == method)
+
+        if len(source_pks) != len(model_links) or missing_links or out_of_scope_links:
             report["diffs"].append(
-                f"{source_model}: {len(leaked)} 条 C2/C3 记录泄漏出新建凭证（阻断级）"
+                f"{source_model}: 来源记录 {len(source_pks)} 条、映射 {len(model_links)} 条，分类守恒不成立"
+            )
+        if duplicate_source_links:
+            report["diffs"].append(
+                f"{source_model}: {len(duplicate_source_links)} 条来源记录存在跨物业重复映射（阻断级）"
             )
 
-    # 金额守恒：逐条 C1 映射比对"新凭证金额"与"旧记录（按映射符号换算）"。
-    for link in links.filter(match_method=METHOD_C1).select_related("property"):
-        entry = LedgerEntry.objects.filter(pk=link.target_pk).first()
-        if entry is None:
-            continue
-        expected = _expected_signed_amount(link.source_model, link.source_pk)
-        if expected is None:
-            continue
-        if entry.amount != expected:
-            report["diffs"].append(
-                f"{link.source_model}#{link.source_pk}: 新凭证 {entry.amount} ≠ 旧记录 {expected}"
+        unknown_methods: list[str] = []
+        status_mismatches = []
+        missing_entries = []
+        invalid_targets = []
+        leaked_new_entries = []
+        for link in model_links:
+            if link.property.pk != batch.scope_property_id:
+                invalid_targets.append(link.source_pk)
+            matched_category = {method: name for name, method in METHOD_BY_CATEGORY.items()}.get(
+                link.match_method
             )
-        report["amounts"].append(
+            if matched_category is None:
+                unknown_methods.append(link.source_pk)
+                continue
+            if link.mapping_status != expected_status[matched_category]:
+                status_mismatches.append(link.source_pk)
+
+            reference = legacy_reference(source_model, link.source_pk)
+            reference_entry = LedgerEntry.objects.filter(reference=reference).first()
+            if matched_category == "C1":
+                c1_target_ids.append(str(link.target_pk))
+                entry = (
+                    LedgerEntry.objects.filter(pk=link.target_pk)
+                    .select_related("folio", "property")
+                    .first()
+                )
+                if (
+                    entry is None
+                    or link.target_model != "LedgerEntry"
+                    or not link.target_pk
+                    or entry.reference != reference
+                ):
+                    missing_entries.append(link.source_pk)
+                    continue
+                if (
+                    link.property.pk != batch.scope_property_id
+                    or entry.property_id != link.property.pk
+                    or entry.folio.property_id != link.property.pk
+                ):
+                    invalid_targets.append(link.source_pk)
+                expected_amount = _expected_signed_amount(source_model, link.source_pk)
+                expected_type = _expected_entry_type(source_model, link.source_pk)
+                if expected_amount is None or expected_type is None:
+                    report["diffs"].append(
+                        f"{source_model}#{link.source_pk}: C1 来源金额或凭证类型无法核验"
+                    )
+                    continue
+                expected_currency = entry.folio.currency
+                expected_key = ("C1", link.property.pk, expected_currency, expected_type)
+                actual_key = ("C1", entry.property_id, entry.currency, entry.entry_type)
+                expected_groups[expected_key] += expected_amount
+                actual_groups[actual_key] += entry.amount
+                if entry.currency != expected_currency:
+                    invalid_targets.append(link.source_pk)
+                if entry.amount != expected_amount:
+                    report["diffs"].append(
+                        f"{source_model}#{link.source_pk}: 新凭证 {entry.amount} ≠ 旧记录 {expected_amount}"
+                    )
+                if entry.entry_type != expected_type:
+                    invalid_targets.append(link.source_pk)
+                report["amounts"].append(
+                    {
+                        "category": "C1",
+                        "source_model": source_model,
+                        "source_pk": link.source_pk,
+                        "entry_type": entry.entry_type,
+                        "currency": entry.currency,
+                        "expected": str(expected_amount),
+                        "actual": str(entry.amount),
+                    }
+                )
+            elif matched_category in {"C2", "C3"}:
+                candidate = (
+                    LedgerEntry.objects.filter(pk=link.target_pk)
+                    .select_related("folio", "property")
+                    .first()
+                )
+                if (
+                    link.target_model != "LedgerEntry"
+                    or not link.target_pk
+                    or candidate is None
+                    or candidate.property_id != link.property.pk
+                    or candidate.folio.property_id != link.property.pk
+                ):
+                    invalid_targets.append(link.source_pk)
+                else:
+                    expected_amount = _expected_signed_amount(source_model, link.source_pk)
+                    expected_type = _expected_entry_type(source_model, link.source_pk)
+                    if expected_amount is None or expected_type is None:
+                        report["diffs"].append(
+                            f"{source_model}#{link.source_pk}: {matched_category} 来源金额或凭证类型无法核验"
+                        )
+                    else:
+                        expected_currency = candidate.folio.currency
+                        expected_key = (
+                            matched_category,
+                            link.property.pk,
+                            expected_currency,
+                            expected_type,
+                        )
+                        actual_key = (
+                            matched_category,
+                            candidate.property_id,
+                            candidate.currency,
+                            candidate.entry_type,
+                        )
+                        expected_groups[expected_key] += expected_amount
+                        actual_groups[actual_key] += candidate.amount
+                        if candidate.amount != expected_amount:
+                            report["diffs"].append(
+                                f"{source_model}#{link.source_pk}: {matched_category} 候选凭证 "
+                                f"{candidate.amount} ≠ 旧记录 {expected_amount}"
+                            )
+                        if (
+                            candidate.entry_type != expected_type
+                            or candidate.currency != expected_currency
+                        ):
+                            invalid_targets.append(link.source_pk)
+                        report["amounts"].append(
+                            {
+                                "category": matched_category,
+                                "source_model": source_model,
+                                "source_pk": link.source_pk,
+                                "entry_type": candidate.entry_type,
+                                "currency": candidate.currency,
+                                "expected": str(expected_amount),
+                                "actual": str(candidate.amount),
+                            }
+                        )
+                if reference_entry is not None:
+                    leaked_new_entries.append(link.source_pk)
+            else:
+                if link.target_model or link.target_pk:
+                    invalid_targets.append(link.source_pk)
+                if reference_entry is not None:
+                    leaked_new_entries.append(link.source_pk)
+
+        rows["unknown_methods"] = unknown_methods
+        rows["status_mismatches"] = status_mismatches
+        rows["C1_missing_entries"] = missing_entries
+        rows["invalid_targets"] = invalid_targets
+        rows["leaked_new_entries"] = leaked_new_entries
+        report["categories"][source_model] = rows
+
+        if unknown_methods:
+            report["diffs"].append(f"{source_model}: {len(unknown_methods)} 条映射使用未知分类")
+        if status_mismatches:
+            report["diffs"].append(
+                f"{source_model}: {len(status_mismatches)} 条映射状态与分类不一致"
+            )
+        if missing_entries:
+            report["diffs"].append(
+                f"{source_model}: {len(missing_entries)} 条 C1 映射指向的凭证不存在或 reference 不一致"
+            )
+        if invalid_targets:
+            report["diffs"].append(
+                f"{source_model}: {len(invalid_targets)} 条映射目标无效或物业不一致"
+            )
+        if leaked_new_entries:
+            report["diffs"].append(
+                f"{source_model}: {len(leaked_new_entries)} 条 C2/C3/C4/C5 记录泄漏出新建凭证（阻断级）"
+            )
+
+    duplicate_targets = [
+        target_pk for target_pk, count in Counter(c1_target_ids).items() if count > 1
+    ]
+    if duplicate_targets:
+        report["diffs"].append(
+            f"C1 多条旧记录指向同一新凭证（阻断级）：{', '.join(sorted(duplicate_targets))}"
+        )
+
+    # 兜底检查：范围内存在 legacy reference，但没有对应 C1 链接，属于孤儿新凭证。
+    linked_c1_refs = {
+        (LEGACY_REFERENCE_NAMES.get(source_model, source_model), str(source_pk))
+        for source_model, source_pk in links.filter(match_method=METHOD_C1).values_list(
+            "source_model", "source_pk"
+        )
+    }
+    source_ref_entries = LedgerEntry.objects.filter(reference__in=all_expected_references)
+    orphan_references = [
+        entry.reference
+        for entry in source_ref_entries
+        if tuple(entry.reference.split(":", 2)[1:]) not in linked_c1_refs
+    ]
+    if orphan_references:
+        report["diffs"].append(
+            f"存在未被 C1 映射认领的历史凭证 reference（阻断级）：{', '.join(sorted(orphan_references))}"
+        )
+
+    for key in sorted(set(expected_groups) | set(actual_groups)):
+        expected_total = expected_groups.get(key, Decimal("0.00"))
+        actual_total = actual_groups.get(key, Decimal("0.00"))
+        category, property_id, currency, entry_type = key
+        property_code = (
+            Property.objects.filter(pk=property_id).values_list("code", flat=True).first()
+        )
+        report["amount_groups"].append(
             {
-                "source_model": link.source_model,
-                "source_pk": link.source_pk,
-                "entry_type": entry.entry_type,
-                "currency": entry.currency,
-                "expected": str(expected),
-                "actual": str(entry.amount),
+                "category": category,
+                "property_id": property_id,
+                "property_code": property_code,
+                "currency": currency,
+                "entry_type": entry_type,
+                "expected": str(expected_total),
+                "actual": str(actual_total),
             }
         )
+        if expected_total != actual_total:
+            report["diffs"].append(
+                f"金额分组不守恒：category={category} property={property_code or property_id} "
+                f"currency={currency} entry_type={entry_type} "
+                f"期望 {expected_total}，实测 {actual_total}"
+            )
 
     archive_rows = []
     from apps.billing.models import LegacyArchiveRun
@@ -630,6 +1268,24 @@ def reconcile_batch(batch: LegacyMigrationBatch) -> dict[str, Any]:
         )
     report["archive"] = archive_rows
     return report
+
+
+def _expected_entry_type(source_model: str, source_pk: str) -> str | None:
+    """旧记录映射的期望凭证类型；未知类型不猜测。"""
+    from hotelapp import models as legacy_models
+
+    if source_model == "Folio":
+        row = legacy_models.Folio.objects.filter(pk=source_pk).values("类型").first()
+        mapping = FOLIO_TYPE_MAP
+    elif source_model == "FinanceRecord":
+        row = legacy_models.FinanceRecord.objects.filter(pk=source_pk).values("类型").first()
+        mapping = FINANCE_TYPE_MAP
+    else:
+        return None
+    if row is None:
+        return None
+    mapped = mapping.get(str(row["类型"] or "").strip())
+    return mapped[0] if mapped else None
 
 
 def _expected_signed_amount(source_model: str, source_pk: str) -> Decimal | None:
@@ -687,6 +1343,7 @@ def batch_links(batch: LegacyMigrationBatch) -> Any:
 def plan_summary(plan: Plan) -> dict[str, Any]:
     counts = plan.by_category()
     counts["total"] = len(plan.decisions)
+    counts["blocking"] = sum(1 for decision in plan.decisions if decision.blocks_batch)
     return counts
 
 
@@ -702,6 +1359,7 @@ def write_plan_json(plan: Plan, path: str | Path) -> None:
             "business_date": d.business_date.isoformat() if d.business_date else None,
             "target_folio_id": d.target_folio_id,
             "candidate_entry_id": d.candidate_entry_id,
+            "blocks_batch": d.blocks_batch,
         }
         for d in plan.decisions
     ]

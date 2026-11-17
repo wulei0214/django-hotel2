@@ -25,16 +25,14 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from apps.billing.legacy_migration import build_plan
-from django.db import transaction
-
 from apps.billing.legacy_order_map import (
     LegacyOrderMapError,
     confirm_pair,
-    pair_position_key,
     current_map_for_order,
     current_rows,
     merge_order_mappings,
     orders_mapping,
+    pair_position_key,
     superseded_chain,
 )
 from apps.billing.models import Folio, LegacyMigrationBatch, LegacyOrderReservationMap
@@ -240,9 +238,8 @@ class LegacyOrderMapBaseTests(TestCase):
         from django.db import IntegrityError, transaction
 
         first = self._confirm()
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                LegacyOrderReservationMap.objects.create(
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            LegacyOrderReservationMap.objects.create(
                 legacy_order=self.legacy_order,
                 reservation=self.reservation,
                 property=self.prop,
@@ -250,9 +247,7 @@ class LegacyOrderMapBaseTests(TestCase):
                 match_basis="并发第二行（无人工确认通道）",
                 confirmed_by=self.confirmer,
                 supersedes=None,
-                position_key=pair_position_key(
-                    self.legacy_order.pk, self.reservation.pk, None
-                ),
+                position_key=pair_position_key(self.legacy_order.pk, self.reservation.pk, None),
             )
         self.assertEqual(LegacyOrderReservationMap.objects.count(), 1)
         self.assertIsNotNone(first.pk)
@@ -265,12 +260,48 @@ class LegacyOrderMapBaseTests(TestCase):
 
     # --- 映射来源合并 -----------------------------------------------------
     def test_orders_mapping_shape(self):
-        self._confirm()
+        relation = self._confirm()
         mapping = orders_mapping(self.prop)
-        entry = mapping[str(self.legacy_order.pk)]
-        self.assertEqual(entry["reservation"], self.reservation.pk)
-        self.assertEqual(entry["source"], "legacy_order_reservation_map")
-        self.assertEqual(entry["confirmed_by"], "map-confirmer")
+        entries = mapping[str(self.legacy_order.pk)]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["reservation"], self.reservation.pk)
+        self.assertEqual(entries[0]["relation_id"], relation.pk)
+        self.assertEqual(entries[0]["source"], "legacy_order_reservation_map")
+        self.assertEqual(entries[0]["confirmed_by"], "map-confirmer")
+
+    def test_current_map_for_order_rejects_ambiguous_split(self):
+        self._confirm(relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE)
+        self._confirm(
+            reservation_id=self.other_reservation.pk,
+            relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE,
+        )
+        with self.assertRaises(LegacyOrderMapError):
+            current_map_for_order(self.legacy_order.pk, property_obj=self.prop)
+
+    def test_orders_mapping_preserves_one_to_many_relations(self):
+        self._confirm(relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE)
+        self._confirm(
+            reservation_id=self.other_reservation.pk,
+            relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE,
+            match_basis="第二段入住日期与旧凭证日期匹配",
+        )
+        entries = orders_mapping(self.prop)[str(self.legacy_order.pk)]
+        self.assertEqual(
+            {entry["reservation"] for entry in entries},
+            {self.reservation.pk, self.other_reservation.pk},
+        )
+        self.assertEqual(len(entries), 2)
+
+    def test_merge_rejects_partial_fallback_for_split_relation(self):
+        table_map = {
+            "8501": [
+                {"reservation": 201, "relation_id": 11},
+                {"reservation": 202, "relation_id": 12},
+            ]
+        }
+        file_map = {"8501": {"reservation": 201}}
+        with self.assertRaises(LegacyOrderMapError):
+            merge_order_mappings(table_map=table_map, file_map=file_map)
 
     def test_merge_detects_conflict(self):
         table_map = {"8501": {"reservation": 201}}
@@ -282,8 +313,8 @@ class LegacyOrderMapBaseTests(TestCase):
         table_map = {"8501": {"reservation": 201}}
         file_map = {"8501": {"reservation": 201}, "8502": {"reservation": 202}}
         merged = merge_order_mappings(table_map=table_map, file_map=file_map)
-        self.assertEqual(merged["8501"]["reservation"], 201)
-        self.assertEqual(merged["8502"]["reservation"], 202)
+        self.assertEqual(merged["8501"][0]["reservation"], 201)
+        self.assertEqual(merged["8502"][0]["reservation"], 202)
 
     # --- 与迁移分类的接缝 -------------------------------------------------
     def _make_batch(self):
@@ -321,6 +352,124 @@ class LegacyOrderMapBaseTests(TestCase):
         self.assertEqual(len(folio_decisions), 1)
         self.assertEqual(folio_decisions[0].category, "C1")
         self.assertEqual(folio_decisions[0].target_folio_id, master.pk)
+
+    def test_build_plan_requires_record_assignment_for_split_order(self):
+        self._confirm(relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE)
+        self._confirm(
+            reservation_id=self.other_reservation.pk,
+            relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE,
+            match_basis="第二段入住日期与旧凭证日期匹配",
+        )
+        Folio.objects.create(
+            property=self.prop,
+            reservation=self.reservation,
+            guest=self.guest,
+            currency="CNY",
+        )
+        Folio.objects.create(
+            property=self.prop,
+            reservation=self.other_reservation,
+            guest=self.guest,
+            currency="CNY",
+        )
+        self._make_legacy_folio()
+        plan = build_plan(batch=self._make_batch(), mapping=None)
+        decision = next(item for item in plan.decisions if item.source_pk == "9101")
+        self.assertEqual(decision.category, "C4")
+        self.assertIn("必须逐条指定", decision.reason)
+
+    def test_record_assignment_cannot_reference_superseded_relation_version(self):
+        old_relation = self._confirm(
+            relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE
+        )
+        current_relation = self._confirm(
+            reservation_id=self.other_reservation.pk,
+            relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE,
+            supersedes=old_relation,
+        )
+        Folio.objects.create(
+            property=self.prop,
+            reservation=self.reservation,
+            guest=self.guest,
+            currency="CNY",
+        )
+        Folio.objects.create(
+            property=self.prop,
+            reservation=self.other_reservation,
+            guest=self.guest,
+            currency="CNY",
+        )
+        self._make_legacy_folio()
+        mapping = {
+            "record_reservations": {
+                "Folio:9101": {
+                    "relation_id": old_relation.pk,
+                    "reservation": self.reservation.pk,
+                    "basis": "旧版关系下的人工判断",
+                    "confirmed_by": "map-confirmer",
+                }
+            }
+        }
+        plan = build_plan(batch=self._make_batch(), mapping=mapping)
+        decision = next(item for item in plan.decisions if item.source_pk == "9101")
+        self.assertEqual(decision.category, "C4")
+        self.assertIn("未指向唯一当前关系行", decision.reason)
+        self.assertNotEqual(old_relation.pk, current_relation.pk)
+
+    def test_split_source_requires_record_assignment_even_with_one_current_row(self):
+        self._confirm(
+            relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE,
+            match_basis="旧订单存在拆分可能，单条关系不代表全部归属",
+        )
+        Folio.objects.create(
+            property=self.prop,
+            reservation=self.reservation,
+            guest=self.guest,
+            currency="CNY",
+        )
+        self._make_legacy_folio()
+        plan = build_plan(batch=self._make_batch(), mapping=None)
+        decision = next(item for item in plan.decisions if item.source_pk == "9101")
+        self.assertEqual(decision.category, "C4")
+        self.assertIn("必须逐条指定", decision.reason)
+
+    def test_build_plan_uses_record_level_relation_for_split_order(self):
+        first_relation = self._confirm(
+            relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE
+        )
+        self._confirm(
+            reservation_id=self.other_reservation.pk,
+            relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE,
+            match_basis="第二段入住日期与旧凭证日期匹配",
+        )
+        first_folio = Folio.objects.create(
+            property=self.prop,
+            reservation=self.reservation,
+            guest=self.guest,
+            currency="CNY",
+        )
+        Folio.objects.create(
+            property=self.prop,
+            reservation=self.other_reservation,
+            guest=self.guest,
+            currency="CNY",
+        )
+        self._make_legacy_folio()
+        mapping = {
+            "record_reservations": {
+                "Folio:9101": {
+                    "relation_id": first_relation.pk,
+                    "reservation": self.reservation.pk,
+                    "basis": "旧凭证日期落在第一段入住期间",
+                    "confirmed_by": "map-confirmer",
+                }
+            }
+        }
+        plan = build_plan(batch=self._make_batch(), mapping=mapping)
+        decision = next(item for item in plan.decisions if item.source_pk == "9101")
+        self.assertEqual(decision.category, "C1")
+        self.assertEqual(decision.target_folio_id, first_folio.pk)
+        self.assertIn(f"rel#{first_relation.pk}->res#{self.reservation.pk}", decision.reason)
 
     def test_build_plan_rejects_conflicting_mapping_file(self):
         self._make_legacy_folio()

@@ -5,12 +5,15 @@
 """
 
 import inspect
+import threading
+import unittest
 from datetime import timedelta
 from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.db import close_old_connections, connection
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from apps.billing.legacy_credentials import (
@@ -19,7 +22,7 @@ from apps.billing.legacy_credentials import (
 )
 from apps.billing.models import Folio, LedgerEntry, LegacyMigrationBatch
 from apps.billing.services_v2 import BillingService
-from apps.core.models import AuditEvent, LegacyRecordLink, Property
+from apps.core.models import AuditEvent, BusinessDate, LegacyRecordLink, Property
 from apps.guests.models import Guest
 from apps.reservations.models import Reservation
 
@@ -86,7 +89,7 @@ class ControlledLegacyEntryTests(TestCase):
             "folio": self.folio,
             "entry_type": LedgerEntry.EntryType.PAYMENT,
             "amount": Decimal("-206.40"),
-            "reference": "legacy:Folio:1",
+            "reference": "legacy:folio:1",
             "source_model": "Folio",
             "source_pk": "1",
             "description": "旧收款迁移",
@@ -140,7 +143,7 @@ class ControlledLegacyEntryTests(TestCase):
     def test_entry_link_and_audit_written_together(self):
         """N6：凭证 + LegacyRecordLink + AuditEvent 同事务落库。"""
         entry, link = self._post()
-        self.assertEqual(entry.reference, "legacy:Folio:1")
+        self.assertEqual(entry.reference, "legacy:folio:1")
         self.assertEqual(entry.posted_by_id, self.executor.pk)
         self.assertFalse(entry.legacy_workflow)
         self.assertEqual(link.mapping_status, LegacyRecordLink.MappingStatus.LINKED)
@@ -158,7 +161,7 @@ class ControlledLegacyEntryTests(TestCase):
             self._post(
                 entry_type=LedgerEntry.EntryType.REVERSAL,
                 amount=Decimal("206.40"),
-                reference="legacy:Folio:2",
+                reference="legacy:folio:2",
                 source_pk="2",
                 void_of=original,
                 void_reason="旧冲账",
@@ -169,7 +172,7 @@ class ControlledLegacyEntryTests(TestCase):
         reversal, _ = self._post(
             entry_type=LedgerEntry.EntryType.REVERSAL,
             amount=Decimal("206.40"),
-            reference="legacy:Folio:2",
+            reference="legacy:folio:2",
             source_pk="2",
             void_of=original,
             void_reason="旧冲账（人工配对于 2026-11-16）",
@@ -193,7 +196,7 @@ class ControlledLegacyEntryTests(TestCase):
                 entity_id=str(self.batch.pk),
             ).exists()
         )
-        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:Folio:1").exists())
+        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:folio:1").exists())
 
     def test_source_model_outside_scope_denied(self):
         with self.assertRaises(LegacyMigrationDenied):
@@ -217,7 +220,7 @@ class ControlledLegacyEntryTests(TestCase):
         )
         with self.assertRaises(LegacyMigrationDenied):
             self._post()
-        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:Folio:1").exists())
+        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:folio:1").exists())
         self.assertFalse(AuditEvent.objects.filter(action="billing.legacy_migration").exists())
 
     def test_replayed_credential_denied(self):
@@ -227,7 +230,7 @@ class ControlledLegacyEntryTests(TestCase):
         with self.assertRaises(LegacyMigrationDenied) as ctx:
             self._post(
                 credential_token=token,
-                reference="legacy:Folio:3",
+                reference="legacy:folio:3",
                 source_pk="3",
             )
         self.assertIn("重放", str(ctx.exception))
@@ -238,7 +241,7 @@ class ControlledLegacyEntryTests(TestCase):
         self._post()
         with self.assertRaises(LegacyMigrationDenied):
             self._post()
-        self.assertEqual(LedgerEntry.objects.filter(reference="legacy:Folio:1").count(), 1)
+        self.assertEqual(LedgerEntry.objects.filter(reference="legacy:folio:1").count(), 1)
 
     def test_closed_batch_denied(self):
         """N8：CLOSED 后入口永久拒绝。"""
@@ -246,6 +249,17 @@ class ControlledLegacyEntryTests(TestCase):
         self.batch.save()
         with self.assertRaises(LegacyMigrationDenied):
             self._post()
+
+    def test_active_batch_without_approver_is_denied(self):
+        """ACTIVE 但缺少正式批准人不得通过受控入口。"""
+        self.batch.approved_by = None
+        self.batch.save()
+        with self.assertRaises(LegacyMigrationDenied):
+            self._post()
+        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:folio:1").exists())
+        self.assertTrue(
+            AuditEvent.objects.filter(action="billing.legacy_migration_denied").exists()
+        )
 
     def test_stale_credential_denied(self):
         """N11：TTL 过期（等价于超时凭证）拒绝。"""
@@ -255,3 +269,118 @@ class ControlledLegacyEntryTests(TestCase):
         self.addCleanup(patcher.stop)
         with self.assertRaises(LegacyMigrationDenied):
             self._post(credential_token=token)
+
+
+@unittest.skipUnless(connection.vendor == "mysql", "SQLite 的 select_for_update 为 no-op")
+@override_settings(DEBUG=True, DJANGO_ENV="test")
+class ControlledLegacyEntryConcurrencyTests(TransactionTestCase):
+    """真实 MySQL：同一旧来源并发迁移，只允许一份凭证和一条映射落库。"""
+
+    reset_sequences = True
+
+    def setUp(self):
+        self.prop, _ = Property.objects.get_or_create(code="DEFAULT", defaults={"name": "默认物业"})
+        BusinessDate.objects.get_or_create(
+            property=self.prop,
+            business_date=timezone.localdate(),
+            defaults={"status": BusinessDate.Status.OPEN},
+        )
+        self.approver = User.objects.create_user(
+            username="entry-concurrent-approver", password="pw", is_staff=True
+        )
+        self.executor = User.objects.create_user(
+            username="entry-concurrent-executor", password="pw", is_staff=True
+        )
+        guest = Guest.objects.create(property=self.prop, full_name="并发迁移测试客")
+        today = timezone.localdate()
+        reservation = Reservation.objects.create(
+            property=self.prop,
+            guest=guest,
+            booking_no="LEGACY-CONCURRENT-ENTRY",
+            status=Reservation.Status.CONFIRMED,
+            check_in=today,
+            check_out=today + timedelta(days=1),
+            room_count=1,
+            total_amount=Decimal("206.40"),
+            currency="CNY",
+        )
+        self.folio = Folio.objects.create(
+            property=self.prop, reservation=reservation, guest=guest, currency="CNY"
+        )
+        self.batch = LegacyMigrationBatch.objects.create(
+            batch_uid="BATCH-ENTRY-CONCURRENT",
+            approved_by=self.approver,
+            approved_at=timezone.now(),
+            approval_basis="并发迁移测试批准",
+            scope_property=self.prop,
+            scope_source_models=["Folio"],
+            scope_record_range={"pk_min": 1, "pk_max": 100},
+            executed_by=self.executor,
+            status=LegacyMigrationBatch.Status.ACTIVE,
+        )
+
+    def test_concurrent_same_source_posts_exactly_one_entry_and_link(self):
+        barrier = threading.Barrier(2)
+        result_lock = threading.Lock()
+        results: list[tuple[str, object, object]] = []
+        executor_id = self.executor.pk
+        batch_id = self.batch.pk
+        folio_id = self.folio.pk
+        property_id = self.prop.pk
+
+        def worker():
+            close_old_connections()
+            try:
+                executor = User.objects.get(pk=executor_id)
+                batch = LegacyMigrationBatch.objects.get(pk=batch_id)
+                folio = Folio.objects.get(pk=folio_id)
+                property_obj = Property.objects.get(pk=property_id)
+                token = mint_credential(batch_uid=batch.batch_uid, executor_user_pk=executor.pk)
+                barrier.wait(timeout=30)
+                entry, link = BillingService.post_legacy_migration_entry(
+                    credential_token=token,
+                    batch=batch,
+                    property_obj=property_obj,
+                    folio=folio,
+                    entry_type=LedgerEntry.EntryType.PAYMENT,
+                    amount=Decimal("-206.40"),
+                    reference="legacy:folio:99",
+                    source_model="Folio",
+                    source_pk="99",
+                    description="并发旧收款迁移",
+                    business_date=timezone.localdate(),
+                )
+                with result_lock:
+                    results.append(("ok", entry.pk, link.pk))
+            except LegacyMigrationDenied as exc:
+                with result_lock:
+                    results.append(("rejected", str(exc), None))
+            except Exception as exc:  # 测试必须把线程异常显式带回主线程
+                with result_lock:
+                    results.append(("error", repr(exc), None))
+            finally:
+                close_old_connections()
+
+        threads = [threading.Thread(target=worker), threading.Thread(target=worker)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=90)
+            self.assertFalse(thread.is_alive(), "并发迁移线程超时（疑似死锁）")
+
+        self.assertEqual(len([item for item in results if item[0] == "ok"]), 1, results)
+        self.assertEqual(len([item for item in results if item[0] == "rejected"]), 1, results)
+        self.assertFalse([item for item in results if item[0] == "error"], results)
+        self.assertEqual(LedgerEntry.objects.filter(reference="legacy:folio:99").count(), 1)
+        self.assertEqual(
+            LegacyRecordLink.objects.filter(
+                migration_batch=self.batch.batch_uid,
+                source_model="Folio",
+                source_pk="99",
+            ).count(),
+            1,
+        )
+        self.assertEqual(AuditEvent.objects.filter(action="billing.legacy_migration").count(), 1)
+        self.assertEqual(
+            AuditEvent.objects.filter(action="billing.legacy_migration_denied").count(), 1
+        )
