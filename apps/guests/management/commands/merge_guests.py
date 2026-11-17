@@ -38,7 +38,7 @@ class Command(BaseCommand):
             raise CommandError(f"主档案 {primary_id} 不存在。")
         if duplicate is None:
             raise CommandError(f"待合并档案 {duplicate_id} 不存在。")
-        if primary.property_id != duplicate.property_id:
+        if primary.property != duplicate.property:
             raise CommandError("只能合并同一物业内的客人档案。")
 
         try:
