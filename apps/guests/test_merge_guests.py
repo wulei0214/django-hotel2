@@ -361,7 +361,8 @@ class GuestMergeApiTests(TestCase):
     def setUp(self):
         self.property = Property.objects.get(code="DEFAULT")
         self.user = User.objects.create_user(
-            username=f"merge-user-{uuid.uuid4().hex[:8]}", password=_TEST_PW)
+            username=f"merge-user-{uuid.uuid4().hex[:8]}",
+            password=_TEST_PW,
         )
         self.profile = StaffProfile.objects.create(
             user=self.user,
