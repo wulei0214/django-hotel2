@@ -39,6 +39,7 @@ P0-07 模式，对齐 apps/api/guest_center.py::financial_summary_api）。
   * 期间上限 92 天（防全表扫描，与 §4.1 billing/summary 同口径）；
   * 空区间返回空序列与零汇总，不报错；金额一律 Decimal → str。
 """
+
 from datetime import date, datetime, timedelta
 from datetime import time as dtime
 from decimal import Decimal
@@ -89,23 +90,30 @@ TREND_DAYS = 30
 # 会员报表 Top 会员条数
 TOP_MEMBERS_LIMIT = 10
 # 渠道来源"确认转化"状态集：CONFIRMED 及其后的生命周期状态
-#（未到店 NO_SHOW 亦视为确认生效——订单已确认、违约发生在确认之后）；
+# （未到店 NO_SHOW 亦视为确认生效——订单已确认、违约发生在确认之后）；
 # PENDING / CANCELLED / EXPIRED 不计入。
-CONFIRMED_STATES = (Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN,
-                    Reservation.Status.CHECKED_OUT, Reservation.Status.NO_SHOW)
+CONFIRMED_STATES = (
+    Reservation.Status.CONFIRMED,
+    Reservation.Status.CHECKED_IN,
+    Reservation.Status.CHECKED_OUT,
+    Reservation.Status.NO_SHOW,
+)
 # 渠道来源"入住转化"：存在非作废 Stay（在住/已退房）；VOIDED 不算入住
 STAY_STATES = (Stay.Status.IN_HOUSE, Stay.Status.CHECKED_OUT)
 # 会员"累计入住晚数/消费"口径：仅实际发生入住的预订（已入住/已退房）；
 # 待支付/已确认未入住/未到店/取消/过期均不计入
-STAYED_RESERVATION_STATES = (Reservation.Status.CHECKED_IN,
-                             Reservation.Status.CHECKED_OUT)
+STAYED_RESERVATION_STATES = (Reservation.Status.CHECKED_IN, Reservation.Status.CHECKED_OUT)
 
 # 入口类型标签（避免逐行 get_Foo_display 查询，聚合行只有代码值）
 ENTRY_TYPE_LABELS = dict(LedgerEntry.EntryType.choices)
 
 # 客源来源标签（同 front_desk._source_label 口径）
-SOURCE_LABELS = {"WEBSITE": "官网预订", "WALK_IN": "散客直入",
-                 "OTA": "渠道预订", "PHONE": "电话预订"}
+SOURCE_LABELS = {
+    "WEBSITE": "官网预订",
+    "WALK_IN": "散客直入",
+    "OTA": "渠道预订",
+    "PHONE": "电话预订",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -133,10 +141,16 @@ def _parse_day(value, field):
 
 def _parse_range(request, property_obj):
     """解析 from/to：缺省最近 7 天；from>to 或跨度 >92 天 → 400。"""
-    date_to = _parse_day(request.GET.get("to"), "to") if request.GET.get("to") \
+    date_to = (
+        _parse_day(request.GET.get("to"), "to")
+        if request.GET.get("to")
         else _property_today(property_obj)
-    date_from = _parse_day(request.GET.get("from"), "from") if request.GET.get("from") \
+    )
+    date_from = (
+        _parse_day(request.GET.get("from"), "from")
+        if request.GET.get("from")
         else date_to - timedelta(days=DEFAULT_RANGE_DAYS - 1)
+    )
     if date_from > date_to:
         raise ApiError("VALIDATION_ERROR", "from 不能晚于 to。")
     if (date_to - date_from).days > MAX_RANGE_DAYS:
@@ -155,8 +169,11 @@ def _metadata(property_obj, date_from, date_to, date_basis, status_scope, extra=
     """统计口径 metadata（P0-07 模式）：物业/期间/日期口径/状态范围/币种/生成时间。"""
     meta = {
         "property": {"code": property_obj.code, "name": property_obj.name},
-        "period": {"start": str(date_from), "end": str(date_to),
-                   "days": (date_to - date_from).days + 1},
+        "period": {
+            "start": str(date_from),
+            "end": str(date_to),
+            "days": (date_to - date_from).days + 1,
+        },
         "date_basis": date_basis,
         "status_scope": status_scope,
         "currency": property_obj.currency,
@@ -208,12 +225,21 @@ def occupancy_report(request):
     """
     property_obj = _context(request, "hotelapp.view_accommodation")
     date_from, date_to = _parse_range(request, property_obj)
-    rows = (RoomTypeInventory.objects.filter(
-        property=property_obj, stay_date__gte=date_from, stay_date__lte=date_to,
-    ).values("stay_date").annotate(
-        total=Sum("total_rooms"), sold=Sum("sold"), held=Sum("held"),
-        out_of_service=Sum("out_of_service"),
-    ).order_by("stay_date"))
+    rows = (
+        RoomTypeInventory.objects.filter(
+            property=property_obj,
+            stay_date__gte=date_from,
+            stay_date__lte=date_to,
+        )
+        .values("stay_date")
+        .annotate(
+            total=Sum("total_rooms"),
+            sold=Sum("sold"),
+            held=Sum("held"),
+            out_of_service=Sum("out_of_service"),
+        )
+        .order_by("stay_date")
+    )
     series = []
     total_sellable = total_sold = 0
     for row in rows:
@@ -221,15 +247,17 @@ def occupancy_report(request):
         sold = row["sold"] or 0
         total_sellable += sellable
         total_sold += sold
-        series.append({
-            "date": str(row["stay_date"]),
-            "total_rooms": row["total"] or 0,
-            "out_of_service": row["out_of_service"] or 0,
-            "held": row["held"] or 0,
-            "sold_room_nights": sold,
-            "sellable_room_nights": sellable,
-            "occupancy_pct": _pct_str(sold, sellable),
-        })
+        series.append(
+            {
+                "date": str(row["stay_date"]),
+                "total_rooms": row["total"] or 0,
+                "out_of_service": row["out_of_service"] or 0,
+                "held": row["held"] or 0,
+                "sold_room_nights": sold,
+                "sellable_room_nights": sellable,
+                "occupancy_pct": _pct_str(sold, sellable),
+            }
+        )
     data = {
         "series": series,
         "summary": {
@@ -238,13 +266,16 @@ def occupancy_report(request):
             "occupancy_pct": _pct_str(total_sold, total_sellable),
         },
         "metadata": _metadata(
-            property_obj, date_from, date_to,
+            property_obj,
+            date_from,
+            date_to,
             date_basis={"inventory": "住宿日（stay_date，逐日库存快照）"},
             status_scope={
                 "occ_numerator": "RoomTypeInventory.sold（已售房量求和）",
                 "occ_denominator": "total_rooms − out_of_service（停用房从分母剔除）；"
-                                   "held（待支付冻结）计入分母不计入分子",
-            }),
+                "held（待支付冻结）计入分母不计入分子",
+            },
+        ),
     }
     return api_response(request, data)
 
@@ -265,17 +296,22 @@ def adr_report(request):
     date_from, date_to = _parse_range(request, property_obj)
     base_currency = property_obj.currency
     room_revenue_qs = LedgerEntry.objects.filter(
-        property=property_obj, business_date__gte=date_from,
+        property=property_obj,
+        business_date__gte=date_from,
         business_date__lte=date_to,
     ).filter(
         Q(entry_type=LedgerEntry.EntryType.ROOM_CHARGE)
-        | Q(entry_type=LedgerEntry.EntryType.REVERSAL,
-            void_of__entry_type=LedgerEntry.EntryType.ROOM_CHARGE))
+        | Q(
+            entry_type=LedgerEntry.EntryType.REVERSAL,
+            void_of__entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+        )
+    )
     # 90+ 天同样单查询聚合：按营业日×币种一次取回，Python 侧拆主币种序列。
     by_day = {
         row["business_date"]: row["revenue"]
         for row in room_revenue_qs.values("business_date", "currency").annotate(
-            revenue=Sum("amount"))
+            revenue=Sum("amount")
+        )
         if row["currency"] == base_currency
     }
     per_currency = {
@@ -285,8 +321,10 @@ def adr_report(request):
     sold_by_day = {
         row["stay_date"]: row["sold"]
         for row in RoomTypeInventory.objects.filter(
-            property=property_obj, stay_date__gte=date_from,
-            stay_date__lte=date_to).values("stay_date").annotate(sold=Sum("sold"))
+            property=property_obj, stay_date__gte=date_from, stay_date__lte=date_to
+        )
+        .values("stay_date")
+        .annotate(sold=Sum("sold"))
     }
     # 序列只覆盖有数据（房费凭证或库存快照）的日期；空期间 → 空序列不报错。
     series = []
@@ -297,15 +335,18 @@ def adr_report(request):
         sold = sold_by_day.get(day) or 0
         total_revenue += revenue
         total_sold += sold
-        series.append({
-            "date": str(day),
-            "room_revenue": _money_str(revenue),
-            "sold_room_nights": sold,
-            "adr": _money_str(revenue / Decimal(sold)) if sold else None,
-        })
+        series.append(
+            {
+                "date": str(day),
+                "room_revenue": _money_str(revenue),
+                "sold_room_nights": sold,
+                "adr": _money_str(revenue / Decimal(sold)) if sold else None,
+            }
+        )
     other = [
         {"currency": code, "room_revenue": _money_str(amount)}
-        for code, amount in sorted(per_currency.items()) if code != base_currency
+        for code, amount in sorted(per_currency.items())
+        if code != base_currency
     ]
     data = {
         "series": series,
@@ -317,17 +358,20 @@ def adr_report(request):
             "other_currencies": other,
         },
         "metadata": _metadata(
-            property_obj, date_from, date_to,
+            property_obj,
+            date_from,
+            date_to,
             date_basis={
                 "room_revenue": "营业日（LedgerEntry.business_date）",
                 "sold_room_nights": "住宿日（RoomTypeInventory.stay_date）",
             },
             status_scope={
                 "numerator": "ROOM_CHARGE 凭证 + 其红字冲销（REVERSAL）带符号合计；"
-                             "不含押金/收款/调整（支付金额不直接当收入）",
+                "不含押金/收款/调整（支付金额不直接当收入）",
                 "denominator": "RoomTypeInventory.sold 求和（库存已售间夜）",
                 "adr_currency": "仅对物业结算币种计算；其他币种房费单列不相加",
-            }),
+            },
+        ),
     }
     return api_response(request, data)
 
@@ -350,14 +394,21 @@ def revenue_report(request):
         raise ApiError("VALIDATION_ERROR", "group_by 只支持 day 或 type。")
     base_currency = property_obj.currency
     dim = "business_date" if group_by == "day" else "entry_type"
-    rows = (LedgerEntry.objects.filter(
-        property=property_obj, business_date__gte=date_from,
-        business_date__lte=date_to,
-    ).values(dim, "currency").annotate(
-        revenue=Sum("amount", filter=Q(amount__gt=0)),
-        expense=Sum("amount", filter=Q(amount__lt=0)),
-        net=Sum("amount"), entries=Count("id"),
-    ).order_by(dim))
+    rows = (
+        LedgerEntry.objects.filter(
+            property=property_obj,
+            business_date__gte=date_from,
+            business_date__lte=date_to,
+        )
+        .values(dim, "currency")
+        .annotate(
+            revenue=Sum("amount", filter=Q(amount__gt=0)),
+            expense=Sum("amount", filter=Q(amount__lt=0)),
+            net=Sum("amount"),
+            entries=Count("id"),
+        )
+        .order_by(dim)
+    )
 
     def _row(row):
         expense = row["expense"] or Decimal("0.00")
@@ -372,20 +423,24 @@ def revenue_report(request):
 
     base_rows = [row for row in rows if row["currency"] == base_currency]
     series = [_row(row) for row in base_rows]
-    other_currencies = [{
-        "currency": row["currency"],
-        "revenue": _money_str(row["revenue"] or Decimal("0.00")),
-        "expense": _money_str(-(row["expense"] or Decimal("0.00"))),
-        "net": _money_str(row["net"] or Decimal("0.00")),
-        "entries": row["entries"],
-    } for row in rows if row["currency"] != base_currency]
+    other_currencies = [
+        {
+            "currency": row["currency"],
+            "revenue": _money_str(row["revenue"] or Decimal("0.00")),
+            "expense": _money_str(-(row["expense"] or Decimal("0.00"))),
+            "net": _money_str(row["net"] or Decimal("0.00")),
+            "entries": row["entries"],
+        }
+        for row in rows
+        if row["currency"] != base_currency
+    ]
 
     # 汇总用原始 Decimal 聚合值求和（序列行已序列化为字符串）；
     # 负数聚合列（expense）取绝对值口径。
-    total_revenue = sum((row["revenue"] or Decimal("0.00") for row in base_rows),
-                        Decimal("0.00"))
-    total_expense = sum((-row["expense"] for row in base_rows
-                         if row["expense"] is not None), Decimal("0.00"))
+    total_revenue = sum((row["revenue"] or Decimal("0.00") for row in base_rows), Decimal("0.00"))
+    total_expense = sum(
+        (-row["expense"] for row in base_rows if row["expense"] is not None), Decimal("0.00")
+    )
     total_entries = sum(row["entries"] for row in base_rows)
     data = {
         "group_by": group_by,
@@ -399,16 +454,19 @@ def revenue_report(request):
             "other_currencies": other_currencies,
         },
         "metadata": _metadata(
-            property_obj, date_from, date_to,
+            property_obj,
+            date_from,
+            date_to,
             date_basis={"ledger_entries": "营业日（LedgerEntry.business_date）"},
             status_scope={
                 "entries": "全部状态（账本只追加，凭证即事实）",
                 "revenue": "收入=正数凭证合计（房费/消费/正向调整）；"
-                           "支出=负数凭证合计的绝对值（收款/押金/退款/红字冲销等"
-                           "负向凭证，账本资金变动口径，非损益口径）；"
-                           "净额=全部凭证带符号合计，已体现冲销关系",
+                "支出=负数凭证合计的绝对值（收款/押金/退款/红字冲销等"
+                "负向凭证，账本资金变动口径，非损益口径）；"
+                "净额=全部凭证带符号合计，已体现冲销关系",
                 "multi_currency": "主序列仅物业结算币种；其他币种单列不相加",
-            }),
+            },
+        ),
     }
     return api_response(request, data)
 
@@ -430,25 +488,32 @@ def guests_report(request):
     date_from, date_to = _parse_range(request, property_obj)
     _tz_start, _tz_end = _property_tz_bounds(property_obj, date_from, date_to)
     new_guests = Guest.objects.filter(
-        property=property_obj, created_at__gte=_tz_start,
-        created_at__lte=_tz_end).count()
+        property=property_obj, created_at__gte=_tz_start, created_at__lte=_tz_end
+    ).count()
     period_qs = Reservation.objects.filter(
-        property=property_obj, created_at__gte=_tz_start,
-        created_at__lte=_tz_end)
+        property=property_obj, created_at__gte=_tz_start, created_at__lte=_tz_end
+    )
     guest_ids = list(period_qs.values_list("guest_id", flat=True).distinct())
     history_counts = {
         row["guest_id"]: row["total"]
         for row in Reservation.objects.filter(
-            property=property_obj, guest_id__in=guest_ids,
-        ).values("guest_id").annotate(total=Count("id"))
+            property=property_obj,
+            guest_id__in=guest_ids,
+        )
+        .values("guest_id")
+        .annotate(total=Count("id"))
     }
     returning_guests = sum(1 for total in history_counts.values() if total >= 2)
-    by_source = [{
-        "source": row["source"],
-        "source_label": SOURCE_LABELS.get(row["source"], row["source"] or "其他"),
-        "reservations": row["total"],
-    } for row in period_qs.values("source").annotate(
-        total=Count("id")).order_by("-total", "source")]
+    by_source = [
+        {
+            "source": row["source"],
+            "source_label": SOURCE_LABELS.get(row["source"], row["source"] or "其他"),
+            "reservations": row["total"],
+        }
+        for row in period_qs.values("source")
+        .annotate(total=Count("id"))
+        .order_by("-total", "source")
+    ]
     data = {
         "summary": {
             "new_guests": new_guests,
@@ -462,7 +527,9 @@ def guests_report(request):
         # by_source 保留为兼容别名，二者指向同一数组。
         "series": by_source,
         "metadata": _metadata(
-            property_obj, date_from, date_to,
+            property_obj,
+            date_from,
+            date_to,
             date_basis={
                 "new_guests": "自然日（Guest.created_at 建档时间）",
                 "reservations": "自然日（Reservation.created_at 下单时间）",
@@ -470,10 +537,11 @@ def guests_report(request):
             status_scope={
                 "new_guests": "全部建档（含未入住）",
                 "returning_guests": "期间内有预订且本物业历史预订总数 ≥ 2 的去重客人"
-                                    "（含已取消预订；一次预订计数一次）",
+                "（含已取消预订；一次预订计数一次）",
                 "by_source": "全部预订状态",
                 "pii": "仅聚合计数，不输出客人身份字段",
-            }),
+            },
+        ),
     }
     return api_response(request, data)
 
@@ -494,16 +562,19 @@ def housekeeping_report(request):
     date_from, date_to = _parse_range(request, property_obj)
     _tz_start, _tz_end = _property_tz_bounds(property_obj, date_from, date_to)
     qs = AuditEvent.objects.filter(
-        property=property_obj, action="housekeeping.status_changed",
-        created_at__gte=_tz_start, created_at__lte=_tz_end)
+        property=property_obj,
+        action="housekeeping.status_changed",
+        created_at__gte=_tz_start,
+        created_at__lte=_tz_end,
+    )
     # 分组按物业时区自然日（Python 侧分组：事件为操作级量级，可接受）
     buckets: dict[date, int] = {}
     for ev in qs.only("created_at"):
-        local_day = timezone.localdate(ev.created_at, ZoneInfo(
-            getattr(property_obj, "timezone", None) or "Asia/Shanghai"))
+        local_day = timezone.localdate(
+            ev.created_at, ZoneInfo(getattr(property_obj, "timezone", None) or "Asia/Shanghai")
+        )
         buckets[local_day] = buckets.get(local_day, 0) + 1
-    series = [{"date": str(day), "status_changes": total}
-              for day, total in sorted(buckets.items())]
+    series = [{"date": str(day), "status_changes": total} for day, total in sorted(buckets.items())]
     total_changes = sum(buckets.values())
     distinct_rooms = qs.values("entity_id").distinct().count()
     period_days = (date_to - date_from).days + 1
@@ -512,17 +583,21 @@ def housekeeping_report(request):
         "summary": {
             "total_changes": total_changes,
             "rooms_involved": distinct_rooms,
-            "avg_changes_per_day": _money_str(
-                Decimal(total_changes) / Decimal(period_days)) if period_days else None,
+            "avg_changes_per_day": (
+                _money_str(Decimal(total_changes) / Decimal(period_days)) if period_days else None
+            ),
         },
         "metadata": _metadata(
-            property_obj, date_from, date_to,
+            property_obj,
+            date_from,
+            date_to,
             date_basis={"events": "自然日（AuditEvent.created_at，非营业日）"},
             status_scope={
                 "events": "仅 action=housekeeping.status_changed 的审计事件计数"
-                          "（清洁链每次流转记一次，含净房放行与检查退回）",
+                "（清洁链每次流转记一次，含净房放行与检查退回）",
                 "note": "事件口径为运营趋势参考，非清洁任务完成率",
-            }),
+            },
+        ),
     }
     return api_response(request, data)
 
@@ -549,19 +624,25 @@ def memberships_report(request):
     property_obj = _context(request, "hotelapp.view_accommodation")
     qs = GuestMembership.objects.filter(property=property_obj)
     total_members = qs.count()
-    by_level = [{
-        "level_code": row["level_code"],
-        "level_label": L.member_level_label(row["level_code"]),
-        "members": row["members"],
-    } for row in qs.values("level_code").annotate(
-        members=Count("id")).order_by("-members", "level_code")]
+    by_level = [
+        {
+            "level_code": row["level_code"],
+            "level_label": L.member_level_label(row["level_code"]),
+            "members": row["members"],
+        }
+        for row in qs.values("level_code")
+        .annotate(members=Count("id"))
+        .order_by("-members", "level_code")
+    ]
     status_labels = L.gmembership_status_labels()
-    by_status = [{
-        "status": row["status"],
-        "status_label": status_labels.get(row["status"], row["status"]),
-        "members": row["members"],
-    } for row in qs.values("status").annotate(
-        members=Count("id")).order_by("-members", "status")]
+    by_status = [
+        {
+            "status": row["status"],
+            "status_label": status_labels.get(row["status"], row["status"]),
+            "members": row["members"],
+        }
+        for row in qs.values("status").annotate(members=Count("id")).order_by("-members", "status")
+    ]
     status_counts = {row["status"]: row["members"] for row in by_status}
 
     # 近 30 天新增趋势（含 0 日）：建档时间按物业时区自然日归桶
@@ -569,45 +650,44 @@ def memberships_report(request):
     tz = ZoneInfo(getattr(property_obj, "timezone", None) or "Asia/Shanghai")
     day_keys = _trend_day_keys(trend_start)
     for row in GuestMembership.objects.filter(
-            property=property_obj, created_at__gte=tz_start,
-            created_at__lte=tz_end).values("created_at"):
+        property=property_obj, created_at__gte=tz_start, created_at__lte=tz_end
+    ).values("created_at"):
         day = _bucket_day(row["created_at"], tz, day_keys)
         if day is not None:
             day_keys[day] += 1
-    new_trend = [{"date": str(day), "new_members": count}
-                 for day, count in day_keys.items()]
+    new_trend = [{"date": str(day), "new_members": count} for day, count in day_keys.items()]
 
     # Top 会员：全部会员关系的客人入住/消费聚合（1 次预订查询 + Python 归集）
-    member_rows = list(qs.values(
-        "id", "member_no", "guest_id", "level_code", "status"))
+    member_rows = list(qs.values("id", "member_no", "guest_id", "level_code", "status"))
     per_guest: dict[int, _MemberAggregate] = {}
     guest_ids = {row["guest_id"] for row in member_rows}
     if guest_ids:
         for res in Reservation.objects.filter(
-                property=property_obj, guest_id__in=guest_ids,
-                status__in=STAYED_RESERVATION_STATES).values(
-                "guest_id", "check_in", "check_out", "room_count", "total_amount"):
+            property=property_obj, guest_id__in=guest_ids, status__in=STAYED_RESERVATION_STATES
+        ).values("guest_id", "check_in", "check_out", "room_count", "total_amount"):
             agg = per_guest.setdefault(
-                res["guest_id"], {"room_nights": 0, "spend": Decimal("0.00")})
-            agg["room_nights"] += (res["check_out"] - res["check_in"]).days \
-                * res["room_count"]
+                res["guest_id"], {"room_nights": 0, "spend": Decimal("0.00")}
+            )
+            agg["room_nights"] += (res["check_out"] - res["check_in"]).days * res["room_count"]
             agg["spend"] += res["total_amount"] or Decimal("0.00")
 
     def _top_key(row):
-        agg = per_guest.get(row["guest_id"],
-                            {"room_nights": 0, "spend": Decimal("0.00")})
+        agg = per_guest.get(row["guest_id"], {"room_nights": 0, "spend": Decimal("0.00")})
         return (-agg["room_nights"], -agg["spend"], row["member_no"])
 
-    top_members = [{
-        "member_no": row["member_no"],
-        "level_code": row["level_code"],
-        "level_label": L.member_level_label(row["level_code"]),
-        "status": row["status"],
-        "room_nights": per_guest.get(
-            row["guest_id"], {"room_nights": 0})["room_nights"],
-        "total_spend": _money_str(per_guest.get(
-            row["guest_id"], {"spend": Decimal("0.00")})["spend"]),
-    } for row in sorted(member_rows, key=_top_key)[:TOP_MEMBERS_LIMIT]]
+    top_members = [
+        {
+            "member_no": row["member_no"],
+            "level_code": row["level_code"],
+            "level_label": L.member_level_label(row["level_code"]),
+            "status": row["status"],
+            "room_nights": per_guest.get(row["guest_id"], {"room_nights": 0})["room_nights"],
+            "total_spend": _money_str(
+                per_guest.get(row["guest_id"], {"spend": Decimal("0.00")})["spend"]
+            ),
+        }
+        for row in sorted(member_rows, key=_top_key)[:TOP_MEMBERS_LIMIT]
+    ]
 
     data = {
         "summary": {
@@ -617,8 +697,7 @@ def memberships_report(request):
             "suspended_members": status_counts.get(GuestMembership.Status.SUSPENDED, 0),
             "expired_members": status_counts.get(GuestMembership.Status.EXPIRED, 0),
             "terminated_members": status_counts.get(GuestMembership.Status.TERMINATED, 0),
-            "trend_window": {"start": str(trend_start), "end": str(trend_end),
-                             "days": TREND_DAYS},
+            "trend_window": {"start": str(trend_start), "end": str(trend_end), "days": TREND_DAYS},
             "top_members_limit": TOP_MEMBERS_LIMIT,
             "top_metric": "room_nights",
         },
@@ -627,23 +706,26 @@ def memberships_report(request):
         "new_trend": new_trend,
         "top_members": top_members,
         "metadata": _metadata(
-            property_obj, trend_start, trend_end,
+            property_obj,
+            trend_start,
+            trend_end,
             date_basis={
                 "memberships": "全量快照（不限统计期间）",
                 "new_trend": "自然日（GuestMembership.created_at 建档时间，"
-                             "物业时区；joined_at 允许为空不作趋势口径）",
+                "物业时区；joined_at 允许为空不作趋势口径）",
             },
             status_scope={
                 "members": "全部 GuestMembership 状态（含待生效/暂停）",
                 "new_trend": f"近 {TREND_DAYS} 天按日新增（含 0 计数日），"
-                             "窗口=[物业时区今天−29, 物业时区今天]",
+                "窗口=[物业时区今天−29, 物业时区今天]",
                 "top_members": f"按累计入住晚数降序 Top {TOP_MEMBERS_LIMIT}："
-                               "间夜=Σ(check_out−check_in)×room_count，仅取 "
-                               "CHECKED_IN/CHECKED_OUT 预订（Reservation.guest="
-                               "预订联系人口径）；total_spend=同状态预订 "
-                               "total_amount 合计（订单金额口径，非账务实收）",
+                "间夜=Σ(check_out−check_in)×room_count，仅取 "
+                "CHECKED_IN/CHECKED_OUT 预订（Reservation.guest="
+                "预订联系人口径）；total_spend=同状态预订 "
+                "total_amount 合计（订单金额口径，非账务实收）",
                 "pii": "仅输出 member_no 与聚合数值，不输出客人姓名/手机号",
-            }),
+            },
+        ),
     }
     return api_response(request, data)
 
@@ -668,33 +750,42 @@ def sources_report(request):
     property_obj = _context(request, "hotelapp.view_accommodation")
     base_currency = property_obj.currency
     qs = Reservation.objects.filter(property=property_obj)
-    source_rows = qs.values("source").annotate(
-        reservations=Count("id"),
-        confirmed=Count("id", filter=Q(status__in=CONFIRMED_STATES)),
-    ).order_by("-reservations", "source")
+    source_rows = (
+        qs.values("source")
+        .annotate(
+            reservations=Count("id"),
+            confirmed=Count("id", filter=Q(status__in=CONFIRMED_STATES)),
+        )
+        .order_by("-reservations", "source")
+    )
     # 入住转化单独一查询（join Stay 会复制行，distinct 去重预订计数）
     stay_by_source = {
         row["source"]: row["with_stay"]
         for row in qs.filter(
             reservation_rooms__stay__status__in=STAY_STATES,
-        ).values("source").annotate(with_stay=Count("id", distinct=True))
+        )
+        .values("source")
+        .annotate(with_stay=Count("id", distinct=True))
     }
     gmv_by_source = {
         row["source"]: row["gmv"] or Decimal("0.00")
-        for row in qs.filter(currency=base_currency).values("source").annotate(
-            gmv=Sum("total_amount"))
+        for row in qs.filter(currency=base_currency)
+        .values("source")
+        .annotate(gmv=Sum("total_amount"))
     }
-    by_source = [{
-        "source": row["source"],
-        "source_label": SOURCE_LABELS.get(row["source"], row["source"] or "其他"),
-        "reservations": row["reservations"],
-        "confirmed": row["confirmed"],
-        "confirmed_rate": _pct_str(row["confirmed"], row["reservations"]),
-        "with_stay": stay_by_source.get(row["source"], 0),
-        "stay_rate": _pct_str(stay_by_source.get(row["source"], 0),
-                              row["reservations"]),
-        "gmv": _money_str(gmv_by_source.get(row["source"], Decimal("0.00"))),
-    } for row in source_rows]
+    by_source = [
+        {
+            "source": row["source"],
+            "source_label": SOURCE_LABELS.get(row["source"], row["source"] or "其他"),
+            "reservations": row["reservations"],
+            "confirmed": row["confirmed"],
+            "confirmed_rate": _pct_str(row["confirmed"], row["reservations"]),
+            "with_stay": stay_by_source.get(row["source"], 0),
+            "stay_rate": _pct_str(stay_by_source.get(row["source"], 0), row["reservations"]),
+            "gmv": _money_str(gmv_by_source.get(row["source"], Decimal("0.00"))),
+        }
+        for row in source_rows
+    ]
 
     total_reservations = sum(row["reservations"] for row in source_rows)
     total_confirmed = sum(row["confirmed"] for row in source_rows)
@@ -707,17 +798,18 @@ def sources_report(request):
     day_keys = _trend_day_keys(trend_start)
     gmv_by_day = {day: Decimal("0.00") for day in day_keys}
     for row in Reservation.objects.filter(
-            property=property_obj, created_at__gte=tz_start,
-            created_at__lte=tz_end).values(
-            "created_at", "currency", "total_amount"):
+        property=property_obj, created_at__gte=tz_start, created_at__lte=tz_end
+    ).values("created_at", "currency", "total_amount"):
         day = _bucket_day(row["created_at"], tz, day_keys)
         if day is None:
             continue
         day_keys[day] += 1
         if row["currency"] == base_currency:
             gmv_by_day[day] += row["total_amount"] or Decimal("0.00")
-    trend = [{"date": str(day), "reservations": day_keys[day],
-              "gmv": _money_str(gmv_by_day[day])} for day in day_keys]
+    trend = [
+        {"date": str(day), "reservations": day_keys[day], "gmv": _money_str(gmv_by_day[day])}
+        for day in day_keys
+    ]
 
     data = {
         "summary": {
@@ -727,8 +819,7 @@ def sources_report(request):
             "gmv": _money_str(total_gmv),
             "confirmed_rate": _pct_str(total_confirmed, total_reservations),
             "stay_rate": _pct_str(total_with_stay, total_reservations),
-            "trend_window": {"start": str(trend_start), "end": str(trend_end),
-                             "days": TREND_DAYS},
+            "trend_window": {"start": str(trend_start), "end": str(trend_end), "days": TREND_DAYS},
         },
         "by_source": by_source,
         # 报表中心前端统一读 data.series 渲染明细表（同 guests 报表惯例），
@@ -736,7 +827,9 @@ def sources_report(request):
         "series": by_source,
         "trend": trend,
         "metadata": _metadata(
-            property_obj, trend_start, trend_end,
+            property_obj,
+            trend_start,
+            trend_end,
             date_basis={
                 "by_source": "全量快照（不限统计期间）",
                 "trend": "自然日（Reservation.created_at 下单时间，物业时区）",
@@ -744,12 +837,13 @@ def sources_report(request):
             status_scope={
                 "reservations": "全部预订状态",
                 "confirmed": "状态 ∈ CONFIRMED/CHECKED_IN/CHECKED_OUT/NO_SHOW"
-                             "（确认生效口径，未到店计入转化）",
+                "（确认生效口径，未到店计入转化）",
                 "with_stay": "存在非作废 Stay（IN_HOUSE/CHECKED_OUT）的去重预订数",
                 "gmv": "全部状态预订 total_amount 合计（订单金额口径，未扣"
-                       "取消/未入住，非账务实收）；仅物业结算币种（多币种不相加）",
+                "取消/未入住，非账务实收）；仅物业结算币种（多币种不相加）",
                 "trend": f"近 {TREND_DAYS} 天按日下单量与 GMV（含 0 计数日），"
-                         "窗口=[物业时区今天−29, 物业时区今天]",
-            }),
+                "窗口=[物业时区今天−29, 物业时区今天]",
+            },
+        ),
     }
     return api_response(request, data)
