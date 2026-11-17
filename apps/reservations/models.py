@@ -28,7 +28,7 @@ class Reservation(models.Model):
         max_length=32, unique=True, verbose_name="预订编号",
         help_text="全局唯一；客人凭编号+手机号查询/支付",
     )
-    guest = models.ForeignKey(
+    guest: models.ForeignKey = models.ForeignKey(
         "guests.Guest", on_delete=models.PROTECT, related_name="reservations",
         verbose_name="入住客人",
     )
@@ -313,7 +313,7 @@ class ReservationGuest(models.Model):
     reservation = models.ForeignKey(
         Reservation, on_delete=models.PROTECT, related_name="reservation_guests",
         verbose_name="预订主单")
-    guest = models.ForeignKey(
+    guest: models.ForeignKey = models.ForeignKey(
         "guests.Guest", null=True, blank=True,
         on_delete=models.PROTECT, related_name="reservation_guest_records",
         verbose_name="关联客人档案",
@@ -369,7 +369,7 @@ class StayGuest(models.Model):
         ReservationGuest, null=True, blank=True,
         on_delete=models.PROTECT, related_name="stay_guest_records",
         verbose_name="关联预订住客", help_text="现场加人时可为空")
-    guest = models.ForeignKey(
+    guest: models.ForeignKey = models.ForeignKey(
         "guests.Guest", null=True, blank=True,
         on_delete=models.PROTECT, related_name="stay_guest_records",
         verbose_name="客人档案")
