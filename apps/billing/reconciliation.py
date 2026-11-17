@@ -26,7 +26,7 @@ from apps.billing.models import (
     Refund,
     RefundLiability,
 )
-from apps.core.models import AuditEvent
+from apps.core.models import AuditEvent, LegacyRecordLink
 
 # WB-092：原始收款凭证核对覆盖全部"资金已到账/已动用"状态——不只
 # SUCCEEDED；退款相关终态（REFUND_PENDING/PARTIALLY_REFUNDED/REFUNDED）
@@ -63,8 +63,8 @@ def scan_folio_reconciliation(*, property_obj, checked_by=None, batch_size=200):
     7. 反向（WB-092 反向扫描）：PMS2 支付流程产生的 PAYMENT/DEPOSIT 凭证
        必须能精确追回到一笔白名单状态内的 Payment（ENTRY_NO_PAYMENT）。
        历史迁移凭证使用 legacy:{source_model}:{source_pk}，按已签署裁定
-       不创建 Payment，改由迁移批次 reconcile_batch() 通过 LegacyRecordLink
-       核验；不得误报为 ENTRY_NO_PAYMENT。
+       不创建 Payment；必须有同物业、同来源、同目标的 LINKED LegacyRecordLink，
+       缺失或不匹配仍记 ENTRY_NO_PAYMENT，不能把合法迁移误报为孤立凭证。
     """
     from apps.billing.dec02 import liability_net_snapshot
     run = FolioReconciliationRun.objects.create(
@@ -141,6 +141,20 @@ def scan_folio_reconciliation(*, property_obj, checked_by=None, batch_size=200):
             # Payment——与正向扫描互补，兜住"凭证孤立/伪造/重复入账"方向；
             # 引用仍按 payment:{provider_ref} / deposit:{provider_ref} 精确
             # 匹配，金额方向为 -payment.amount。
+            legacy_entry_ids = [
+                str(e["pk"])
+                for e in entries
+                if str(e["reference"] or "").startswith("legacy:")
+            ]
+            legacy_links = set(
+                LegacyRecordLink.objects.filter(
+                    property=property_obj,
+                    source_system="hotelapp",
+                    target_model="LedgerEntry",
+                    mapping_status=LegacyRecordLink.MappingStatus.LINKED,
+                    target_pk__in=legacy_entry_ids,
+                ).values_list("source_model", "source_pk", "target_pk")
+            )
             payments_by_ref = {}
             for p in Payment.objects.filter(folio=folio).only(
                     "pk", "provider", "provider_ref", "amount", "currency",
@@ -153,9 +167,29 @@ def scan_folio_reconciliation(*, property_obj, checked_by=None, batch_size=200):
                     continue
                 ref = e["reference"] or ""
                 if ref.startswith("legacy:"):
-                    # 历史收款/押金迁移不创建 Payment（映射矩阵 §2.1/§2.2）；
-                    # 其来源链由 reconcile_batch() 核验 LegacyRecordLink，不能
-                    # 在 Payment 反向扫描中误报为 ENTRY_NO_PAYMENT。
+                    parts = ref.split(":", 2)
+                    expected_link = (
+                        (parts[1], parts[2], str(e["pk"])) if len(parts) == 3 else None
+                    )
+                    if (
+                        e["property_id"] == property_obj.pk
+                        and expected_link is not None
+                        and expected_link in legacy_links
+                    ):
+                        continue
+                    detail = (
+                        f"历史迁移收款凭证 {e['pk']}（{ref}）缺少同物业、同来源、"
+                        "同目标的 LINKED LegacyRecordLink"
+                    )
+                    FolioReconciliationDiff.objects.create(
+                        run=run,
+                        folio=folio,
+                        diff_type=FolioReconciliationDiff.DiffType.ENTRY_NO_PAYMENT,
+                        entity_type="LedgerEntry",
+                        entity_id=e["pk"],
+                        detail=detail,
+                    )
+                    diff_count += 1
                     continue
                 if ref.startswith("payment:"):
                     ref_value = ref[len("payment:"):]

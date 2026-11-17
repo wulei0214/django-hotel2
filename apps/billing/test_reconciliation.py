@@ -64,6 +64,18 @@ class FolioReconciliationReverseScanTests(TestCase):
         )
         self.assertEqual(run.diff_count, 1)
 
+    def test_legacy_payment_entry_without_matching_link_generates_entry_no_payment(self):
+        entry = self._payment_entry("legacy:Folio:9002")
+
+        run = scan_folio_reconciliation(property_obj=self.property)
+
+        diff = FolioReconciliationDiff.objects.get(
+            run=run,
+            diff_type=FolioReconciliationDiff.DiffType.ENTRY_NO_PAYMENT,
+            entity_id=entry.pk,
+        )
+        self.assertIn("LegacyRecordLink", diff.detail)
+
     def test_linked_legacy_payment_entries_are_not_misclassified(self):
         entries = (
             ("Folio", "9001"),
