@@ -1,9 +1,9 @@
 name: Temporary mypy diagnostics
 
 on:
-  push:
+  pull_request:
     branches:
-      - work/pms-mainline-followup-20261117
+      - main
 
 jobs:
   mypy-diagnostics:
