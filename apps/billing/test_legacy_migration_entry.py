@@ -5,6 +5,7 @@
 """
 
 import inspect
+import unittest
 import threading
 from datetime import timedelta
 from decimal import Decimal
@@ -316,13 +317,18 @@ class ControlledLegacyEntryConcurrencyTests(TransactionTestCase):
         barrier = threading.Barrier(2)
         result_lock = threading.Lock()
         results = []
+        executor_id = self.executor.pk
+        batch_id = self.batch.pk
+        folio_id = self.folio.pk
+        property_id = self.prop.pk
 
         def worker():
             close_old_connections()
             try:
-                executor = User.objects.get(pk=self.executor.pk)
-                batch = LegacyMigrationBatch.objects.get(pk=self.batch.pk)
-                folio = Folio.objects.get(pk=self.folio.pk)
+                executor = User.objects.get(pk=executor_id)
+                batch = LegacyMigrationBatch.objects.get(pk=batch_id)
+                folio = Folio.objects.get(pk=folio_id)
+                property_obj = Property.objects.get(pk=property_id)
                 token = mint_credential(
                     batch_uid=batch.batch_uid, executor_user_pk=executor.pk
                 )
@@ -330,7 +336,7 @@ class ControlledLegacyEntryConcurrencyTests(TransactionTestCase):
                 entry, link = BillingService.post_legacy_migration_entry(
                     credential_token=token,
                     batch=batch,
-                    property_obj=self.prop,
+                    property_obj=property_obj,
                     folio=folio,
                     entry_type=LedgerEntry.EntryType.PAYMENT,
                     amount=Decimal("-206.40"),
