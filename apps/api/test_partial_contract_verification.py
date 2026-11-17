@@ -44,6 +44,12 @@ from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 
+from hotelapp.models import Accommodation as LegacyAccommodation
+from hotelapp.models import Client as LegacyClient
+from hotelapp.models import Folio as LegacyFolio
+from hotelapp.models import Room as LegacyRoom
+from hotelapp.models import Staff as LegacyStaff
+
 from apps.billing.models import ApprovalRecord, Folio
 from apps.core.models import AuditEvent, BusinessDate, Property
 from apps.guests.models import Guest, GuestMembership, MembershipLevelHistory
@@ -52,11 +58,6 @@ from apps.identity.models import (
     StaffProfile,
     StaffRoleAssignment,
 )
-from hotelapp.models import Accommodation as LegacyAccommodation
-from hotelapp.models import Client as LegacyClient
-from hotelapp.models import Folio as LegacyFolio
-from hotelapp.models import Room as LegacyRoom
-from hotelapp.models import Staff as LegacyStaff
 from apps.inventory.models import DailyRate, RatePlan, Room, RoomType, RoomTypeInventory
 from apps.reservations.models import Reservation, ReservationRoom
 
