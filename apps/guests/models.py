@@ -11,7 +11,7 @@ class Guest(models.Model):
     完整号码只能经 reveal_phone（权限+审计）解密获取，不留明文旁路。
     """
 
-    property = models.ForeignKey(
+    property: models.ForeignKey = models.ForeignKey(
         "core.Property", on_delete=models.PROTECT, related_name="guests",
         verbose_name="所属酒店",
     )
@@ -43,11 +43,11 @@ class Guest(models.Model):
     # 合并是软归档——duplicate 保留行并指向 primary，不物理删除（§8.2-4
     # 要求保留主档案、源档案与完整关联映射）；账务事实（Folio/Payment）
     # 归属原预订不动，随预订 guest FK 一起迁移。
-    merged_into = models.ForeignKey(
+    merged_into: models.ForeignKey = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.PROTECT,
         related_name="merged_sources", verbose_name="合并入主档案",
         help_text="非空表示本档案已合并入该主档案（软归档，保留行不物理删除）")
-    merged_at = models.DateTimeField(
+    merged_at: models.DateTimeField = models.DateTimeField(
         null=True, blank=True, verbose_name="合并时间",
         help_text="执行合并动作的时间；与 merged_into 成对写入")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
@@ -78,7 +78,7 @@ class GuestPhone(models.Model):
         WORK = "WORK", "工作电话"
         OTHER = "OTHER", "其他"
 
-    guest = models.ForeignKey(
+    guest: models.ForeignKey = models.ForeignKey(
         Guest, on_delete=models.CASCADE, related_name="phones",
         verbose_name="所属客人")
     phone = models.CharField(
@@ -165,10 +165,10 @@ class GuestDocument(models.Model):
         TAIWAN = "TAIWAN", "台湾通行证"
         OTHER = "OTHER", "其他"
 
-    guest = models.ForeignKey(
+    guest: models.ForeignKey = models.ForeignKey(
         Guest, on_delete=models.CASCADE, related_name="documents",
         verbose_name="所属客人")
-    doc_type = models.CharField(
+    doc_type: models.CharField = models.CharField(
         max_length=12, choices=DocType.choices, default=DocType.ID_CARD,
         verbose_name="证件类型")
     doc_no_ciphertext = models.TextField(verbose_name="证件号密文")
@@ -178,7 +178,7 @@ class GuestDocument(models.Model):
                                        verbose_name="签发国家/地区")
     expiry_date = models.DateField(null=True, blank=True, verbose_name="有效期至")
     verified_at = models.DateTimeField(null=True, blank=True, verbose_name="核验时间")
-    verified_by = models.ForeignKey(
+    verified_by: models.ForeignKey = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.PROTECT, related_name="guest_documents_verified",
         verbose_name="核验人")
@@ -221,10 +221,10 @@ class GuestDocumentIndex(models.Model):
     若未来增加换证/解绑服务，必须在同一事务内同步删除/迁移本索引行。
     """
 
-    property = models.ForeignKey(
+    property: models.ForeignKey = models.ForeignKey(
         "core.Property", on_delete=models.PROTECT,
         related_name="guest_document_indexes", verbose_name="所属酒店")
-    guest = models.ForeignKey(
+    guest: models.ForeignKey = models.ForeignKey(
         Guest, on_delete=models.PROTECT, related_name="document_indexes",
         verbose_name="占用客人")
     doc_no_hash = models.CharField(
@@ -255,10 +255,10 @@ class GuestMembership(models.Model):
         EXPIRED = "EXPIRED", "已过期"
         TERMINATED = "TERMINATED", "已终止"
 
-    property = models.ForeignKey(
+    property: models.ForeignKey = models.ForeignKey(
         "core.Property", on_delete=models.PROTECT, related_name="guest_memberships",
         verbose_name="所属酒店")
-    guest = models.ForeignKey(
+    guest: models.ForeignKey = models.ForeignKey(
         Guest, on_delete=models.PROTECT, related_name="memberships",
         verbose_name="客人")
     member_no = models.CharField(max_length=32, verbose_name="会员编号",
