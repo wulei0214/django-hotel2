@@ -247,6 +247,17 @@ class ControlledLegacyEntryTests(TestCase):
         with self.assertRaises(LegacyMigrationDenied):
             self._post()
 
+    def test_active_batch_without_approver_is_denied(self):
+        """ACTIVE 但缺少正式批准人不得通过受控入口。"""
+        self.batch.approved_by = None
+        self.batch.save()
+        with self.assertRaises(LegacyMigrationDenied):
+            self._post()
+        self.assertFalse(LedgerEntry.objects.filter(reference="legacy:Folio:1").exists())
+        self.assertTrue(
+            AuditEvent.objects.filter(action="billing.legacy_migration_denied").exists()
+        )
+
     def test_stale_credential_denied(self):
         """N11：TTL 过期（等价于超时凭证）拒绝。"""
         token = self._token()
