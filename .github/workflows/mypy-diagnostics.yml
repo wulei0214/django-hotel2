@@ -20,5 +20,7 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
       - name: Show Ruff import-order fix diff
         run: ruff check --fix --diff apps/api/report_center.py apps/api/test_partial_contract_verification.py
+      - name: Show Black formatting diff
+        run: black --diff apps/api/report_center.py apps/api/test_partial_contract_verification.py apps/guests/management/commands/merge_guests.py apps/guests/models.py apps/guests/test_merge_guests.py apps/reservations/management/commands/backfill_nightly_rates.py apps/reservations/models.py
       - name: Print full mypy diagnostics
         run: python -m mypy apps/ --show-error-codes --show-column-numbers
