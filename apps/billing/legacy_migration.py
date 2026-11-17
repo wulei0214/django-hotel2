@@ -190,6 +190,16 @@ def _resolve_target_folio(
         return None, "旧凭证无订单关联（孤儿凭证）"
     if not key.isdigit():
         return None, f"订单号非数字：{order_ref!r}"
+    from apps.billing.models import LegacyOrderReservationMap
+
+    foreign_property_mapping = LegacyOrderReservationMap.objects.filter(
+        legacy_order_id=int(key), superseded_by__isnull=True
+    ).exclude(property_id=batch.scope_property_id)
+    if foreign_property_mapping.exists():
+        return (
+            None,
+            f"订单 {key} 当前有效关系存在其他物业映射，物业与批次授权物业不一致",
+        )
     entry = (mapping.get("orders") or {}).get(key)
     if not isinstance(entry, dict) or entry.get("reservation") in (None, ""):
         return None, f"订单 {key} 未建立订单-预订关系映射（禁止判定 C1）"
