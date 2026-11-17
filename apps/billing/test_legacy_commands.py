@@ -525,7 +525,7 @@ class LegacyMigrationCommandTests(TestCase):
 
     def test_reconcile_amount_groups_do_not_net_different_currencies(self):
         """R7：不同币种分别守恒；CNY 与 USD 的反向差额不得相互抵消。"""
-        from hotelapp.models import Accommodation
+        from hotelapp.models import Accommodation, Folio as LegacyFolio
 
         old_order = Accommodation.objects.get(pk=8101)
         Accommodation.objects.create(
@@ -535,7 +535,6 @@ class LegacyMigrationCommandTests(TestCase):
             状态=old_order.状态,
             入住时间=old_order.入住时间,
         )
-        LegacyFolio = __import__("hotelapp.models", fromlist=["Folio"]).Folio
         LegacyFolio.objects.create(
             id=9004,
             order_id=8102,
@@ -597,18 +596,11 @@ class LegacyMigrationCommandTests(TestCase):
     def test_duplicate_legacy_reference_is_rejected_by_database(self):
         """R4：reference 唯一约束阻止同一旧来源凭证被重复落账。"""
         self._call()
-        entry = LedgerEntry.objects.get(reference="legacy:Folio:9001")
+        duplicate = LedgerEntry.objects.get(reference="legacy:Folio:9001")
+        duplicate.pk = None
+        duplicate.id = None
         with self.assertRaises(IntegrityError), transaction.atomic():
-            LedgerEntry.objects.create(
-                property=entry.property,
-                folio=entry.folio,
-                entry_type=entry.entry_type,
-                amount=entry.amount,
-                currency=entry.currency,
-                business_date=entry.business_date,
-                reference=entry.reference,
-                description="重复 reference 测试",
-            )
+            duplicate.save()
 
     def test_c4_c5_cannot_bypass_closed_batch_authorization(self):
         """C2-C5 不经过凭证入口，批次关闭后也不得写入映射。"""
