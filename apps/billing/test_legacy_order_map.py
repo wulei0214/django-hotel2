@@ -20,13 +20,11 @@ from typing import Any
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.management import CommandError, call_command
-from django.db import close_old_connections, connection
+from django.db import close_old_connections, connection, transaction
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from apps.billing.legacy_migration import build_plan
-from django.db import transaction
-
 from apps.billing.legacy_order_map import (
     LegacyOrderMapError,
     confirm_pair,
