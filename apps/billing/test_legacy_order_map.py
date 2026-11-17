@@ -370,6 +370,44 @@ class LegacyOrderMapBaseTests(TestCase):
         self.assertEqual(decision.category, "C4")
         self.assertIn("必须逐条指定", decision.reason)
 
+    def test_record_assignment_cannot_reference_superseded_relation_version(self):
+        old_relation = self._confirm(
+            relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE
+        )
+        current_relation = self._confirm(
+            reservation_id=self.other_reservation.pk,
+            relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE,
+            supersedes=old_relation,
+        )
+        Folio.objects.create(
+            property=self.prop,
+            reservation=self.reservation,
+            guest=self.guest,
+            currency="CNY",
+        )
+        Folio.objects.create(
+            property=self.prop,
+            reservation=self.other_reservation,
+            guest=self.guest,
+            currency="CNY",
+        )
+        self._make_legacy_folio()
+        mapping = {
+            "record_reservations": {
+                "Folio:9101": {
+                    "relation_id": old_relation.pk,
+                    "reservation": self.reservation.pk,
+                    "basis": "旧版关系下的人工判断",
+                    "confirmed_by": "map-confirmer",
+                }
+            }
+        }
+        plan = build_plan(batch=self._make_batch(), mapping=mapping)
+        decision = next(item for item in plan.decisions if item.source_pk == "9101")
+        self.assertEqual(decision.category, "C4")
+        self.assertIn("未指向唯一当前关系行", decision.reason)
+        self.assertNotEqual(old_relation.pk, current_relation.pk)
+
     def test_split_source_requires_record_assignment_even_with_one_current_row(self):
         self._confirm(
             relation_type=LegacyOrderReservationMap.RelationType.SPLIT_SOURCE,
