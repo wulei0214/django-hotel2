@@ -39,7 +39,7 @@ P0-07 模式，对齐 apps/api/guest_center.py::financial_summary_api）。
   * 期间上限 92 天（防全表扫描，与 §4.1 billing/summary 同口径）；
   * 空区间返回空序列与零汇总，不报错；金额一律 Decimal → str。
 """
-from datetime import date, timedelta
+from datetime import date, datetime, time as dtime, timedelta
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -51,8 +51,6 @@ def _property_tz_bounds(property_obj, date_from, date_to):
     此前 created_at__date 查找按 settings 时区（UTC）切日，上海凌晨时段
     写入的数据会落到 UTC 的"昨天"，导致 MySQL+USE_TZ 下"今天"过滤漏数据。
     """
-    from datetime import datetime
-    from datetime import time as dtime
     tz = ZoneInfo(getattr(property_obj, "timezone", None) or "Asia/Shanghai")
     start = timezone.make_aware(datetime.combine(date_from, dtime.min), tz)
     end = timezone.make_aware(datetime.combine(date_to, dtime.max), tz)
@@ -124,7 +122,7 @@ def _parse_day(value, field):
     try:
         return date.fromisoformat(str(value).strip())
     except (TypeError, ValueError):
-        raise ApiError("VALIDATION_ERROR", f"{field} 必须使用 YYYY-MM-DD 格式。")
+        raise ApiError("VALIDATION_ERROR", f"{field} 必须使用 YYYY-MM-DD 格式。") from None
 
 
 def _parse_range(request, property_obj):

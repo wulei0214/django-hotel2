@@ -42,10 +42,7 @@ from django.conf import settings
 from django.contrib.auth.models import Group, User
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
-
-# --- test-only generated passwords (no literals in source) ---
-# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
-from django.utils.crypto import get_random_string  # noqa: E402
+from django.utils.crypto import get_random_string
 
 from apps.billing.models import ApprovalRecord, Folio
 from apps.core.models import AuditEvent, BusinessDate, Property
