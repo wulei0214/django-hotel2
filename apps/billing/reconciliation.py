@@ -60,10 +60,11 @@ def scan_folio_reconciliation(*, property_obj, checked_by=None, batch_size=200):
        账外事实，跳过余额核对，不视为差异。
     6. RefundLiability 净额重建：remaining_amount == amount − 已成功退款
        − 已执行抵扣 + 已执行增加（未执行/未批准调整不计入）。
-    7. 反向（WB-092 反向扫描）：每张 PAYMENT/DEPOSIT 凭证必须能精确
-       追回到一笔白名单状态内的 Payment（ENTRY_NO_PAYMENT）——凭证
-       孤立、引用命名不合规、渠道类别不符、状态失配、金额方向/币种/
-       物业不符均报差异。
+    7. 反向（WB-092 反向扫描）：PMS2 支付流程产生的 PAYMENT/DEPOSIT 凭证
+       必须能精确追回到一笔白名单状态内的 Payment（ENTRY_NO_PAYMENT）。
+       历史迁移凭证使用 legacy:{source_model}:{source_pk}，按已签署裁定
+       不创建 Payment，改由迁移批次 reconcile_batch() 通过 LegacyRecordLink
+       核验；不得误报为 ENTRY_NO_PAYMENT。
     """
     from apps.billing.dec02 import liability_net_snapshot
     run = FolioReconciliationRun.objects.create(
@@ -151,6 +152,11 @@ def scan_folio_reconciliation(*, property_obj, checked_by=None, batch_size=200):
                         LedgerEntry.EntryType.DEPOSIT):
                     continue
                 ref = e["reference"] or ""
+                if ref.startswith("legacy:"):
+                    # 历史收款/押金迁移不创建 Payment（映射矩阵 §2.1/§2.2）；
+                    # 其来源链由 reconcile_batch() 核验 LegacyRecordLink，不能
+                    # 在 Payment 反向扫描中误报为 ENTRY_NO_PAYMENT。
+                    continue
                 if ref.startswith("payment:"):
                     ref_value = ref[len("payment:"):]
                     require_deposit = False
