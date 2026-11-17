@@ -39,25 +39,10 @@ P0-07 模式，对齐 apps/api/guest_center.py::financial_summary_api）。
   * 期间上限 92 天（防全表扫描，与 §4.1 billing/summary 同口径）；
   * 空区间返回空序列与零汇总，不报错；金额一律 Decimal → str。
 """
-from datetime import date, timedelta
+from datetime import date, datetime, time as dtime, timedelta
 from decimal import Decimal
 from typing import TypedDict
 from zoneinfo import ZoneInfo
-
-
-def _property_tz_bounds(property_obj, date_from, date_to):
-    """验收缺陷修复（§6 时间口径）：日期边界按**物业时区**换算为 aware datetime。
-
-    此前 created_at__date 查找按 settings 时区（UTC）切日，上海凌晨时段
-    写入的数据会落到 UTC 的"昨天"，导致 MySQL+USE_TZ 下"今天"过滤漏数据。
-    """
-    from datetime import datetime
-    from datetime import time as dtime
-    tz = ZoneInfo(getattr(property_obj, "timezone", None) or "Asia/Shanghai")
-    start = timezone.make_aware(datetime.combine(date_from, dtime.min), tz)
-    end = timezone.make_aware(datetime.combine(date_to, dtime.max), tz)
-    return start, end
-
 
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
@@ -79,6 +64,19 @@ from .billing_center import _money_str  # 金额两位小数字符串，与账�
 class _MemberAggregate(TypedDict):
     room_nights: int
     spend: Decimal
+
+
+def _property_tz_bounds(property_obj, date_from, date_to):
+    """验收缺陷修复（§6 时间口径）：日期边界按**物业时区**换算为 aware datetime。
+
+    此前 created_at__date 查找按 settings 时区（UTC）切日，上海凌晨时段
+    写入的数据会落到 UTC 的"昨天"，导致 MySQL+USE_TZ 下"今天"过滤漏数据。
+    """
+    tz = ZoneInfo(getattr(property_obj, "timezone", None) or "Asia/Shanghai")
+    start = timezone.make_aware(datetime.combine(date_from, dtime.min), tz)
+    end = timezone.make_aware(datetime.combine(date_to, dtime.max), tz)
+    return start, end
+
 
 # 区间上限（§4.5 技术要求：复杂报表查询需最大日期范围控制）
 MAX_RANGE_DAYS = 92
