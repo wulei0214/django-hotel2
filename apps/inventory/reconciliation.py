@@ -6,6 +6,14 @@
 - 修复申请需原因+证据+影响范围；审批人与申请人分离。
 - 执行前重新计算并检查版本；数据已变化则拒绝旧方案。
 - 修复使用唯一服务+事务+行锁+审计；修复后再次对账。
+
+M4-3（架构治理模块④批次，2026-11-19）补充：
+- 扫描调度幂等：同一（物业, 房型, 住宿日）只保留一条 OPEN 报告，重算值
+  变化时原位更新，重复调度不堆积重复差异行/待办（待办经 MC-007
+  inventory.discrepancy_open 任务源按差异主键去重）。
+- review_discrepancy：待办完成入口调用的唯一复核服务——按同一重算口径
+  复核，差异已消除/误报才经 dismiss_discrepancy 关闭；差异仍在时拒绝
+  闭环并指向唯一修复工作流（申请→审批→执行），不做改状态字段式完成。
 """
 
 from django.db import transaction
@@ -50,18 +58,27 @@ def _recompute_inventory_days(*, property_obj, room_type, stay_dates):
     lo, hi = min(dates), max(dates)
     held_counts = dict(
         InventoryHold.objects.filter(
-            property=property_obj, room_type=room_type,
-            stay_date__gte=lo, stay_date__lte=hi,
+            property=property_obj,
+            room_type=room_type,
+            stay_date__gte=lo,
+            stay_date__lte=hi,
             status=InventoryHold.HoldStatus.HELD,
-        ).values("stay_date").annotate(n=Count("pk"))
-        .values_list("stay_date", "n"))
+        )
+        .values("stay_date")
+        .annotate(n=Count("pk"))
+        .values_list("stay_date", "n")
+    )
     lines = list(
         ReservationRoom.objects.filter(
-            property=property_obj, room_type=room_type,
-            check_in__lte=hi, check_out__gt=lo,
+            property=property_obj,
+            room_type=room_type,
+            check_in__lte=hi,
+            check_out__gt=lo,
             reservation__status__in=SOLD_RECOMPUTE_STATUSES,
-        ).exclude(no_show_record__isnull=False)
-        .values_list("check_in", "check_out", "inventory_released_from"))
+        )
+        .exclude(no_show_record__isnull=False)
+        .values_list("check_in", "check_out", "inventory_released_from")
+    )
     sold_counts = {d: 0 for d in dates}
     for check_in, check_out, released_from in lines:
         for d in dates:
@@ -77,8 +94,8 @@ def _recompute_inventory_days(*, property_obj, room_type, stay_dates):
 def _recompute_inventory_day(*, property_obj, room_type, stay_date):
     """扫描端与执行端共用的**唯一**单日重算入口。"""
     return _recompute_inventory_days(
-        property_obj=property_obj, room_type=room_type,
-        stay_dates=[stay_date])[stay_date]
+        property_obj=property_obj, room_type=room_type, stay_dates=[stay_date]
+    )[stay_date]
 
 
 def scan_inventory_discrepancies(*, property_obj, days_back=30, checked_by=None):
@@ -102,70 +119,130 @@ def scan_inventory_discrepancies(*, property_obj, days_back=30, checked_by=None)
     end = today + timezone.timedelta(days=30)
 
     run = InventoryReconciliationRun.objects.create(
-        property=property_obj, status=InventoryReconciliationRun.Status.COMPLETED,
-        checked_by=checked_by)
+        property=property_obj,
+        status=InventoryReconciliationRun.Status.COMPLETED,
+        checked_by=checked_by,
+    )
 
     types = RoomType.objects.filter(property=property_obj, is_active=True)
     diff_count = 0
+    new_count = 0
     scanned_dates = 0
     scanned_types = len(types)
 
     for rt in types:
-        inventory_rows = list(RoomTypeInventory.objects.filter(
-            property=property_obj, room_type=rt,
-            stay_date__gte=start, stay_date__lt=end).order_by("stay_date"))
+        inventory_rows = list(
+            RoomTypeInventory.objects.filter(
+                property=property_obj, room_type=rt, stay_date__gte=start, stay_date__lt=end
+            ).order_by("stay_date")
+        )
         date_set = {row.stay_date for row in inventory_rows}
         scanned_dates = max(scanned_dates, len(date_set))
         # PERF-01：每个房型一次批量重算整个窗口，替代逐行 2 条 COUNT。
         recomputed = _recompute_inventory_days(
-            property_obj=property_obj, room_type=rt,
-            stay_dates=sorted(date_set))
+            property_obj=property_obj, room_type=rt, stay_dates=sorted(date_set)
+        )
 
         for row in inventory_rows:
             # RSV-02：与执行端共用同一重算口径，杜绝两处手写漂移。
             actual_held, actual_sold = recomputed[row.stay_date]
 
             recomputed_oos = row.out_of_service
-            recomputed_total = (recomputed_oos + actual_held + actual_sold)
+            recomputed_total = recomputed_oos + actual_held + actual_sold
 
             # WB-026：判定口径修正——①held/sold 与真值不一致必须报差异
             # （此前 `and recomputed_total > 0` 因运算符优先级只约束
             # total_rooms 一项）；②total_rooms 是物理容量（≥ 占用合计），
             # 重算占用超过容量即为超卖，报差异（此前"!= 重算和"把容量
             # 误当占用和，所有未满房行都会误报）。
-            if (row.held != actual_held
-                    or row.sold != actual_sold
-                    or row.total_rooms < recomputed_total):
+            if (
+                row.held != actual_held
+                or row.sold != actual_sold
+                or row.total_rooms < recomputed_total
+            ):
                 diff = row.total_rooms - recomputed_total
-                InventoryDiscrepancy.objects.create(
-                    run=run, property=property_obj, room_type=rt,
-                    stay_date=row.stay_date,
-                    current_total=row.total_rooms,
-                    recomputed_total=recomputed_total,
-                    diff=diff,
-                    held_count=actual_held, sold_count=actual_sold,
-                    oos_count=recomputed_oos)
+                # M4-3/D4-4 调度幂等：同一（物业, 房型, 住宿日）只保留一条
+                # OPEN 差异报告；重算值变化时原位更新（首报运行归属不变），
+                # 重复调度不再堆积重复差异行与重复待办。
+                disc = (
+                    InventoryDiscrepancy.objects.filter(
+                        property=property_obj,
+                        room_type=rt,
+                        stay_date=row.stay_date,
+                        status=InventoryDiscrepancy.Status.OPEN,
+                    )
+                    .order_by("pk")
+                    .first()
+                )
+                if disc is None:
+                    InventoryDiscrepancy.objects.create(
+                        run=run,
+                        property=property_obj,
+                        room_type=rt,
+                        stay_date=row.stay_date,
+                        current_total=row.total_rooms,
+                        recomputed_total=recomputed_total,
+                        diff=diff,
+                        held_count=actual_held,
+                        sold_count=actual_sold,
+                        oos_count=recomputed_oos,
+                    )
+                    new_count += 1
+                elif (
+                    disc.current_total != row.total_rooms
+                    or disc.recomputed_total != recomputed_total
+                    or disc.held_count != actual_held
+                    or disc.sold_count != actual_sold
+                    or disc.oos_count != recomputed_oos
+                ):
+                    disc.current_total = row.total_rooms
+                    disc.recomputed_total = recomputed_total
+                    disc.diff = diff
+                    disc.held_count = actual_held
+                    disc.sold_count = actual_sold
+                    disc.oos_count = recomputed_oos
+                    disc.save(
+                        update_fields=(
+                            "current_total",
+                            "recomputed_total",
+                            "diff",
+                            "held_count",
+                            "sold_count",
+                            "oos_count",
+                            "updated_at",
+                        )
+                    )
                 diff_count += 1
 
     run.diff_count = diff_count
     run.scanned_dates = scanned_dates
     run.scanned_types = scanned_types
     run.save(update_fields=("diff_count", "scanned_dates", "scanned_types"))
+    scan_audit_meta = {
+        "diff_count": diff_count,
+        "scanned_dates": scanned_dates,
+        "new_discrepancies": new_count,
+    }
     AuditEvent.record(
         action="inventory.reconciliation_scanned",
-        entity_type="InventoryReconciliationRun", entity_id=run.pk,
-        actor=checked_by, property_obj=property_obj,
-        after={"diff_count": diff_count, "scanned_dates": scanned_dates},
-        reason="D4 库存差异扫描")
+        entity_type="InventoryReconciliationRun",
+        entity_id=run.pk,
+        actor=checked_by,
+        property_obj=property_obj,
+        after=scan_audit_meta,
+        reason="D4 库存差异扫描",
+    )
     return run
 
 
 @transaction.atomic
-def request_inventory_fix(*, property_obj, discrepancy_id, fix_reason,
-                          fix_evidence, requested_by):
+def request_inventory_fix(*, property_obj, discrepancy_id, fix_reason, fix_evidence, requested_by):
     """D4：授权人员发起库存修复申请（不自动覆盖权威计数）。"""
-    disc = InventoryDiscrepancy.objects.select_for_update().filter(
-        pk=discrepancy_id, property=property_obj).first()
+    disc = (
+        InventoryDiscrepancy.objects.select_for_update()
+        .filter(pk=discrepancy_id, property=property_obj)
+        .first()
+    )
     if disc is None:
         raise ValueError("差异记录不存在或不属于当前物业。")
     if disc.status != InventoryDiscrepancy.Status.OPEN:
@@ -178,21 +255,36 @@ def request_inventory_fix(*, property_obj, discrepancy_id, fix_reason,
     disc.fix_evidence = str(fix_evidence or "").strip()[:500]
     disc.requested_by = requested_by
     disc.requested_at = timezone.now()
-    disc.save(update_fields=("status", "fix_reason", "fix_evidence",
-                             "requested_by", "requested_at", "updated_at"))
+    disc.save(
+        update_fields=(
+            "status",
+            "fix_reason",
+            "fix_evidence",
+            "requested_by",
+            "requested_at",
+            "updated_at",
+        )
+    )
     AuditEvent.record(
-        action="inventory.fix_requested", entity_type="InventoryDiscrepancy",
-        entity_id=disc.pk, actor=requested_by, property_obj=property_obj,
+        action="inventory.fix_requested",
+        entity_type="InventoryDiscrepancy",
+        entity_id=disc.pk,
+        actor=requested_by,
+        property_obj=property_obj,
         after={"status": disc.status, "reason": fix_reason[:200]},
-        reason="发起库存修复申请")
+        reason="发起库存修复申请",
+    )
     return disc
 
 
 @transaction.atomic
 def approve_inventory_fix(*, property_obj, discrepancy_id, approved_by):
     """D4：独立审批；申请人不得自批。"""
-    disc = InventoryDiscrepancy.objects.select_for_update().filter(
-        pk=discrepancy_id, property=property_obj).first()
+    disc = (
+        InventoryDiscrepancy.objects.select_for_update()
+        .filter(pk=discrepancy_id, property=property_obj)
+        .first()
+    )
     if disc is None:
         raise ValueError("差异记录不存在或不属于当前物业。")
     if disc.status != InventoryDiscrepancy.Status.FIX_REQUESTED:
@@ -204,10 +296,14 @@ def approve_inventory_fix(*, property_obj, discrepancy_id, approved_by):
     disc.approved_at = timezone.now()
     disc.save(update_fields=("status", "approved_by", "approved_at", "updated_at"))
     AuditEvent.record(
-        action="inventory.fix_approved", entity_type="InventoryDiscrepancy",
-        entity_id=disc.pk, actor=approved_by, property_obj=property_obj,
+        action="inventory.fix_approved",
+        entity_type="InventoryDiscrepancy",
+        entity_id=disc.pk,
+        actor=approved_by,
+        property_obj=property_obj,
         after={"status": disc.status},
-        reason="审批库存修复申请")
+        reason="审批库存修复申请",
+    )
     return disc
 
 
@@ -223,8 +319,11 @@ class _MissingHoldDetails(Exception):
 @transaction.atomic
 def _execute_inventory_fix_atomic(*, property_obj, discrepancy_id, executed_by):
     """D4：执行已批准修复（事务内修正 held/sold；修复后立即再次核对）。"""
-    disc = InventoryDiscrepancy.objects.select_for_update().filter(
-        pk=discrepancy_id, property=property_obj).first()
+    disc = (
+        InventoryDiscrepancy.objects.select_for_update()
+        .filter(pk=discrepancy_id, property=property_obj)
+        .first()
+    )
     if disc is None:
         raise ValueError("差异记录不存在或不属于当前物业。")
     if disc.status != InventoryDiscrepancy.Status.FIX_APPROVED:
@@ -232,14 +331,17 @@ def _execute_inventory_fix_atomic(*, property_obj, discrepancy_id, executed_by):
 
     # RSV-02：执行前重新计算，且必须与扫描端使用完全相同的口径。
     actual_held, actual_sold = _recompute_inventory_day(
-        property_obj=property_obj, room_type=disc.room_type,
-        stay_date=disc.stay_date)
+        property_obj=property_obj, room_type=disc.room_type, stay_date=disc.stay_date
+    )
 
     # RSV-02：此前此处没有物业过滤，room_type 全局非唯一时会锁到/改写
     # 其他物业的库存行。按物业 + 主键固定顺序锁定。
-    row = RoomTypeInventory.objects.select_for_update().filter(
-        property=property_obj, room_type=disc.room_type,
-        stay_date=disc.stay_date).order_by("pk").first()
+    row = (
+        RoomTypeInventory.objects.select_for_update()
+        .filter(property=property_obj, room_type=disc.room_type, stay_date=disc.stay_date)
+        .order_by("pk")
+        .first()
+    )
     if row is None:
         raise ValueError("库存行不存在或不属于当前物业。")
 
@@ -250,8 +352,8 @@ def _execute_inventory_fix_atomic(*, property_obj, discrepancy_id, executed_by):
     # 权威计数并要求人工核对。
     if actual_held == 0 and row.held > 0:
         has_any_detail = InventoryHold.objects.filter(
-            property=property_obj, room_type=disc.room_type,
-            stay_date=disc.stay_date).exists()
+            property=property_obj, room_type=disc.room_type, stay_date=disc.stay_date
+        ).exists()
         if not has_any_detail:
             # 不要在此直接写审计再抛错：本函数处于 @transaction.atomic 内，
             # 异常会回滚整块，拒绝证据会一起消失（第 28 轮专项故障注入发现）。
@@ -278,23 +380,33 @@ def _execute_inventory_fix_atomic(*, property_obj, discrepancy_id, executed_by):
 
     # 修复后立即再次对账（held 与 sold 都用同一口径复核）
     post_held, post_sold = _recompute_inventory_day(
-        property_obj=property_obj, room_type=disc.room_type,
-        stay_date=disc.stay_date)
+        property_obj=property_obj, room_type=disc.room_type, stay_date=disc.stay_date
+    )
     if post_held != row.held or post_sold != row.sold:
         AuditEvent.record(
             action="inventory.fix_post_check_failed",
-            entity_type="InventoryDiscrepancy", entity_id=disc.pk,
-            actor=executed_by, property_obj=property_obj,
-            after={"held": row.held, "sold": row.sold,
-                   "post_held": post_held, "post_sold": post_sold},
-            reason="修复后核对仍不一致，需升级处理")
+            entity_type="InventoryDiscrepancy",
+            entity_id=disc.pk,
+            actor=executed_by,
+            property_obj=property_obj,
+            after={
+                "held": row.held,
+                "sold": row.sold,
+                "post_held": post_held,
+                "post_sold": post_sold,
+            },
+            reason="修复后核对仍不一致，需升级处理",
+        )
 
     AuditEvent.record(
-        action="inventory.fix_executed", entity_type="InventoryDiscrepancy",
-        entity_id=disc.pk, actor=executed_by, property_obj=property_obj,
-        after={"status": disc.status, "held": row.held, "sold": row.sold,
-               "version": row.version},
-        reason="D4 执行库存修复")
+        action="inventory.fix_executed",
+        entity_type="InventoryDiscrepancy",
+        entity_id=disc.pk,
+        actor=executed_by,
+        property_obj=property_obj,
+        after={"status": disc.status, "held": row.held, "sold": row.sold, "version": row.version},
+        reason="D4 执行库存修复",
+    )
     return disc
 
 
@@ -308,26 +420,32 @@ def execute_inventory_fix(*, property_obj, discrepancy_id, executed_by):
     """
     try:
         return _execute_inventory_fix_atomic(
-            property_obj=property_obj, discrepancy_id=discrepancy_id,
-            executed_by=executed_by)
+            property_obj=property_obj, discrepancy_id=discrepancy_id, executed_by=executed_by
+        )
     except _MissingHoldDetails as exc:
         AuditEvent.record(
             action="inventory.fix_refused_missing_hold_details",
-            entity_type="InventoryDiscrepancy", entity_id=exc.discrepancy_id,
-            actor=executed_by, property_obj=property_obj,
+            entity_type="InventoryDiscrepancy",
+            entity_id=exc.discrepancy_id,
+            actor=executed_by,
+            property_obj=property_obj,
             after={"row_held": exc.row_held, "recomputed_held": 0},
-            reason="无冻结明细，禁止清零真实 held（RSV-01），转人工核对")
+            reason="无冻结明细，禁止清零真实 held（RSV-01），转人工核对",
+        )
         raise ValueError(
             "该住宿日无任何库存冻结明细，无法独立重建 held；为避免"
-            "清零真实冻结，已拒绝自动修复，请人工核对（RSV-01）。") from exc
+            "清零真实冻结，已拒绝自动修复，请人工核对（RSV-01）。"
+        ) from exc
 
 
 @transaction.atomic
-def dismiss_discrepancy(*, property_obj, discrepancy_id, dismissed_by,
-                        reason=""):
+def dismiss_discrepancy(*, property_obj, discrepancy_id, dismissed_by, reason=""):
     """关闭差异（无差异/误报）。"""
-    disc = InventoryDiscrepancy.objects.select_for_update().filter(
-        pk=discrepancy_id, property=property_obj).first()
+    disc = (
+        InventoryDiscrepancy.objects.select_for_update()
+        .filter(pk=discrepancy_id, property=property_obj)
+        .first()
+    )
     if disc is None:
         raise ValueError("差异记录不存在或不属于当前物业。")
     if disc.status != InventoryDiscrepancy.Status.OPEN:
@@ -335,8 +453,95 @@ def dismiss_discrepancy(*, property_obj, discrepancy_id, dismissed_by,
     disc.status = InventoryDiscrepancy.Status.DISMISSED
     disc.save(update_fields=("status", "updated_at"))
     AuditEvent.record(
-        action="inventory.disc_dismissed", entity_type="InventoryDiscrepancy",
-        entity_id=disc.pk, actor=dismissed_by, property_obj=property_obj,
+        action="inventory.disc_dismissed",
+        entity_type="InventoryDiscrepancy",
+        entity_id=disc.pk,
+        actor=dismissed_by,
+        property_obj=property_obj,
         after={"status": disc.status},
-        reason=str(reason or "")[:240])
+        reason=str(reason or "")[:240],
+    )
     return disc
+
+
+@transaction.atomic
+def review_discrepancy(*, property_obj, discrepancy_id, reviewed_by):
+    """M4-3/D4-4：inventory.discrepancy_open 待办的唯一完成复核服务。
+
+    与扫描/执行端共用同一重算口径（``_recompute_inventory_day``）复核差异：
+      * 差异已消除/误报 → 经 dismiss_discrepancy 关闭（源领域服务成功，
+        WorkItem 随之关闭；不直接改 WorkItem 状态字段伪造闭环）；
+      * 差异仍在 → 拒绝完成并指向唯一修复工作流（申请→审批→执行，
+        职责分离），WorkItem 保持待处理可重试；
+      * 只报告不修复：本服务从不改写库存权威计数（held/sold），也不触碰
+        排房明细——排房冲突维度后续只报告、不自动改派（负责人约束）。
+    """
+    disc = (
+        InventoryDiscrepancy.objects.select_for_update()
+        .filter(pk=discrepancy_id, property=property_obj)
+        .first()
+    )
+    if disc is None:
+        raise ValueError("差异记录不存在或不属于当前物业。")
+    if disc.status != InventoryDiscrepancy.Status.OPEN:
+        raise ValueError("只有待处理的差异可以复核。")
+
+    row = (
+        RoomTypeInventory.objects.filter(
+            property=property_obj, room_type=disc.room_type, stay_date=disc.stay_date
+        )
+        .order_by("pk")
+        .first()
+    )
+    if row is None:
+        raise ValueError("库存行不存在，无法复核；请先核对房型库存主数据。")
+
+    actual_held, actual_sold = _recompute_inventory_day(
+        property_obj=property_obj, room_type=disc.room_type, stay_date=disc.stay_date
+    )
+    recomputed_total = row.out_of_service + actual_held + actual_sold
+    healed = (
+        row.held == actual_held and row.sold == actual_sold and row.total_rooms >= recomputed_total
+    )
+    if not healed:
+        AuditEvent.record(
+            action="inventory.disc_review_rejected",
+            entity_type="InventoryDiscrepancy",
+            entity_id=disc.pk,
+            actor=reviewed_by,
+            property_obj=property_obj,
+            after={
+                "held": row.held,
+                "sold": row.sold,
+                "actual_held": actual_held,
+                "actual_sold": actual_sold,
+            },
+            reason="复核确认差异仍存在，转唯一修复工作流",
+        )
+        raise ValueError(
+            "复核确认差异仍存在（账面 held/sold 与重算真值不一致），"
+            "请走唯一库存修复工作流：申请修复→独立审批→执行（职责分离）。"
+        )
+
+    dismissed = dismiss_discrepancy(
+        property_obj=property_obj,
+        discrepancy_id=disc.pk,
+        dismissed_by=reviewed_by,
+        reason="对账复核：按唯一重算口径核对，差异已消除/误报",
+    )
+    AuditEvent.record(
+        action="inventory.disc_reviewed",
+        entity_type="InventoryDiscrepancy",
+        entity_id=disc.pk,
+        actor=reviewed_by,
+        property_obj=property_obj,
+        after={
+            "held": row.held,
+            "sold": row.sold,
+            "actual_held": actual_held,
+            "actual_sold": actual_sold,
+            "status": dismissed.status,
+        },
+        reason="D4-4 待办复核：重算核对后关闭差异",
+    )
+    return dismissed

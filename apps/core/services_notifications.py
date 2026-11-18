@@ -24,7 +24,11 @@
   * housekeeping.release_pending  待放行净房（INSPECTING 汇总计数，单条）；
   * approval.pending              待审批（ApprovalRecord PENDING，逐条——含退款
     待审批/营业日重开待审批等所有高危审批动作）；
-  * audit.breakglass_review       break-glass 事后复核（USED 待复核，逐条）。
+  * audit.breakglass_review       break-glass 事后复核（USED 待复核，逐条）；
+  * inventory.discrepancy_open    库存对账差异（OPEN 逐条；M4-3/D4-4 调度扫描
+    只报告，复核走 WorkItem→review_discrepancy，修复走唯一工作流）；
+  * inventory.calendar_coverage   库存日历覆盖不足（启用房型 MAX(stay_date)<
+    今天+7，逐房型；M4-3/D4-3，补齐走唯一同步命令）。
 
   文档清单中"夜审阻挡项 / 维修超时待验收 / 预订资料待补充 / 收银班次未关班 /
   邀请待激活"首期不派生（对应源模型/工作台尚未提供可执行闭环），后续按需扩展。
@@ -40,7 +44,8 @@ from apps.core.models import BreakGlassRecord, Notification
 from apps.core.services_work_items import sync_work_items, work_item_dedupe_key
 from apps.core.task_registry import get_spec
 from apps.identity.models import Group
-from apps.inventory.models import Room
+from apps.inventory.models import InventoryDiscrepancy, Room
+from apps.inventory.services import calendar_coverage_gaps
 from apps.reservations.models import Reservation
 
 # 汇总类待办的固定业务键（单条/物业）
@@ -52,6 +57,7 @@ LINK_FRONT_DESK = "/checkin/"
 LINK_HOUSEKEEPING = "/manage/housekeeping/"
 LINK_NIGHT_AUDIT = "/manage/night-audit/"
 LINK_FINANCE = "/manage/finance/"
+LINK_ROOMS = "/manage/rooms/"
 
 # 岗位广播目标（按 ROLE_REGISTRY 既有岗位组名；组不存在时跳过该目标）
 AUDIENCE_FRONT = ("前台", "值班经理")
@@ -59,6 +65,7 @@ AUDIENCE_HOUSEKEEPING = ("客房服务员", "值班经理")
 AUDIENCE_RELEASE = ("值班经理",)  # 净房放行归管理者（room_release_ready 口径）
 AUDIENCE_APPROVAL = ("值班经理", "店长")  # 高危审批人口径（refund_approve 等）
 AUDIENCE_BREAKGLASS = ("值班经理", "店长")  # core.breakglass_review 持有者
+AUDIENCE_INVENTORY = ("值班经理", "店长")  # inventory.maintenance_manage 持有者
 
 
 def property_business_date(property_obj):
@@ -260,6 +267,51 @@ def _collect_active_items(property_obj, today):
                 "营业日紧急重开（break-glass）已执行，须独立事后复核。",
                 LINK_NIGHT_AUDIT,
                 AUDIENCE_BREAKGLASS,
+            )
+        )
+
+    # 9. 库存对账差异：OPEN 逐条（M4-3/D4-4：调度扫描只报告；复核走 WorkItem
+    #    → review_discrepancy，修复走唯一工作流；源差异关闭后随刷新自动销项）
+    discrepancies = (
+        InventoryDiscrepancy.objects.filter(
+            property=property_obj, status=InventoryDiscrepancy.Status.OPEN
+        )
+        .select_related("room_type")
+        .order_by("stay_date", "id")
+    )
+    for disc in discrepancies:
+        items.append(
+            _item(
+                "inventory.discrepancy_open",
+                str(disc.pk),
+                Notification.Category.AUDIT,
+                Notification.Severity.WARNING,
+                f"库存差异待复核 {disc.room_type.name} {disc.stay_date:%Y-%m-%d}",
+                f"{disc.room_type.code} {disc.stay_date:%Y-%m-%d} 账面 "
+                f"{disc.current_total} 与重算 {disc.recomputed_total} 不符"
+                f"（差 {disc.diff}），请复核或走修复工作流。",
+                LINK_ROOMS,
+                AUDIENCE_INVENTORY,
+            )
+        )
+
+    # 10. 库存日历覆盖不足：启用房型 MAX(stay_date) < 今天+7（M4-3/D4-3，
+    #     与覆盖检测命令共用 calendar_coverage_gaps 口径；补齐走唯一同步命令）
+    for gap in calendar_coverage_gaps(property_obj, today=today):
+        room_type = gap["room_type"]
+        max_stay = gap["max_stay"]
+        covered = f"{max_stay:%Y-%m-%d}" if max_stay is not None else "未建立（无库存行）"
+        items.append(
+            _item(
+                "inventory.calendar_coverage",
+                str(room_type.pk),
+                Notification.Category.SYSTEM,
+                Notification.Severity.WARNING,
+                f"库存日历覆盖不足 {room_type.name}",
+                f"{room_type.code} 日历最远 {covered}，要求 ≥ "
+                f"{gap['horizon']:%Y-%m-%d}；请核查滚动同步任务。",
+                LINK_ROOMS,
+                AUDIENCE_INVENTORY,
             )
         )
 

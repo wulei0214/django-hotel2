@@ -63,6 +63,22 @@ def _break_glass_review_executor(*, work_item, actor, payload, request):
     )
 
 
+def _inventory_discrepancy_review_executor(*, work_item, actor, payload, request):
+    """库存差异复核（M4-3/D4-4）：调用对账服务按唯一重算口径核对。
+
+    差异已消除/误报 → 经 dismiss_discrepancy 关闭（源领域服务成功后才关
+    WorkItem）；差异仍在 → 拒绝闭环并指向唯一修复工作流（申请→审批→执行），
+    绝不改 WorkItem 状态字段伪造完成。
+    """
+    from apps.inventory.reconciliation import review_discrepancy
+
+    return review_discrepancy(
+        property_obj=work_item.property,
+        discrepancy_id=int(work_item.source_id),
+        reviewed_by=actor,
+    )
+
+
 TASK_SPECS = {
     "approval.pending": TaskSpec(
         task_code="approval.pending",
@@ -135,6 +151,24 @@ TASK_SPECS = {
         executor=None,
         link="/manage/housekeeping/",
         note="汇总型提示不生成可完成 WorkItem；净房放行须按房间逐间执行。",
+    ),
+    "inventory.discrepancy_open": TaskSpec(
+        task_code="inventory.discrepancy_open",
+        source_type="InventoryDiscrepancy",
+        title="库存对账差异待复核",
+        permission="inventory.maintenance_manage",
+        executor=_inventory_discrepancy_review_executor,
+        link="/manage/rooms/",
+        note="完成调用 reconciliation.review_discrepancy 重算核对；差异仍在须走唯一修复工作流（申请→审批→执行），不改状态字段闭环。",
+    ),
+    "inventory.calendar_coverage": TaskSpec(
+        task_code="inventory.calendar_coverage",
+        source_type="RoomType",
+        title="库存日历覆盖不足",
+        permission="inventory.maintenance_manage",
+        executor=None,
+        link="/manage/rooms/",
+        note="日历滚动补齐走唯一同步命令 sync_inventory_calendar（调度每日 02:30）；待办随覆盖恢复自动销项。",
     ),
 }
 

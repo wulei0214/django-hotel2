@@ -85,6 +85,40 @@ def _property_today(property_obj):
     return timezone.localdate(timezone.now(), tz)
 
 
+# D4-3/M4-3：库存日历滚动覆盖告警阈值（未来天数）。
+CALENDAR_COVER_HORIZON_DAYS = 7
+
+
+def calendar_coverage_gaps(property_obj, *, horizon_days=CALENDAR_COVER_HORIZON_DAYS, today=None):
+    """库存日历滚动覆盖缺口（D4-3/M4-3，告警命令与待办派生共用口径）。
+
+    对每个启用房型取 ``MAX(stay_date)``（无库存行视为未覆盖），小于
+    物业时区"今天"+horizon_days 即覆盖不足。返回
+    ``[{"room_type", "max_stay", "horizon"}, ...]``；只读，不写任何表。
+    """
+    from django.db.models import Max
+
+    from .models import RoomType
+
+    today = today or _property_today(property_obj)
+    horizon = today + timedelta(days=horizon_days)
+    coverage = dict(
+        RoomTypeInventory.objects.filter(property=property_obj)
+        .values("room_type_id")
+        .annotate(max_stay=Max("stay_date"))
+        .values_list("room_type_id", "max_stay")
+    )
+    gaps = []
+    for room_type in RoomType.objects.filter(property=property_obj, is_active=True).order_by(
+        "code"
+    ):
+        max_stay = coverage.get(room_type.pk)
+        if max_stay is not None and max_stay >= horizon:
+            continue
+        gaps.append({"room_type": room_type, "max_stay": max_stay, "horizon": horizon})
+    return gaps
+
+
 @transaction.atomic
 def change_housekeeping_status(
     *, property_obj, room_id, target_status, changed_by=None, request=None, notes=""

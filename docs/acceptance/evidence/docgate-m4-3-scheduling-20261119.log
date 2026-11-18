@@ -1,0 +1,127 @@
+# 证据：M4-3 库存日历滚动自动化 + 对账扫描调度化 + MC-007 WorkItem 衔接（模块④批次 M4-3）
+SHA: 6973f49fcc1d23d33f6cf39065f8f708289ccd08（main；工作区含未提交变更 20 项：证据树不等于该提交，需以本行为准。M4-3 触碰文件=apps/core/services_notifications.py、apps/core/task_registry.py、apps/inventory/reconciliation.py、apps/inventory/services.py、apps/inventory/management/commands/{sync_inventory_calendar,check_inventory_calendar_coverage,run_inventory_reconciliation}.py、apps/inventory/test_reconciliation_scheduling.py、apps/api/test_e2e_flows.py、scripts/install_scheduler_tasks.ps1、性能优化与生产部署升级说明.md、本证据与实施记录；另有并行在途=apps/api/{front_desk,openapi_schema,test_openapi_schema,test_walk_in_api}.py（walk-in 退役批次）与并行遗留 waitress-deploy-20261117.log/_selftest//mc-selftest-20261118/（非本批产物））
+date: 2026-11-19 03:16:00 +0800
+env: DJANGO_ENV=test DJANGO_DB_ENGINE=mysql（连接参数经 set -a && source .env 透传；DJANGO_PLATFORM_ADMIN_USERNAME/PASSWORD 已按 apps.core.testing_env.test_process_env 同口径剔除）；双引擎第二跑 DJANGO_DB_ENGINE=sqlite
+python: 3.9.0  django: 4.1.13（.venv）
+
+== 步骤 1：manage.py check ==
+command: python manage.py check（DJANGO_ENV=test，engine=mysql）
+System check identified no issues (0 silenced).
+exit_code=0
+
+== 步骤 2：迁移零漂移 ==
+command: python manage.py makemigrations --check --dry-run
+No changes detected
+exit_code=0
+（M4-3 零模型/迁移变更，回滚演练按派发口径不适用；RSV-01 防线与 available_count 派生口径未动。）
+
+== 步骤 3：触碰文件静态门禁（ruff 0.6.9 / black 24.8.0，与 django-ci.yml 版本一致） ==
+command: ruff check <9 个触碰 py 文件>
+All checks passed!
+exit_code=0
+command: black --check <同 9 文件>
+9 files would be left unchanged.
+exit_code=0
+说明：apps/inventory/reconciliation.py、apps/api/test_e2e_flows.py 为存量非全格式文件；CI 门禁（django-ci.yml）对 apps/ 变更文件做全文件 black --check，触碰即须全文件重排（apps/ 域与 hotelapp 域豁免口径不同，后者不在 CI 采集范围，见实施记录 §六）。
+
+== 步骤 4：M4-3 专项测试（MySQL 测试库全新创建，select_for_update 真锁口径） ==
+command: python manage.py test apps.inventory.test_reconciliation_scheduling --noinput -v 2
+Found 18 test(s).
+覆盖：日历覆盖告警触发/达标静默/未建立日历/滚动补齐自动销项/任务源登记约束/阈值边界含今天+7/非法 horizon 拒绝/--all-room-types 与单房型互斥/无房间房型跳过告警不中断/单房型显式失败/容量冲突跳过+不改占用权威计数/重复滚动幂等 version+1/对账扫描建差异+派生待办/重复扫描幂等不堆积/原位更新/待办完成经 review_discrepancy 关闭/差异仍在拒绝闭环（不改库存计数、不触碰排房明细、不改预订状态）/他处关闭 SOURCE_RESOLVED
+Ran 18 tests in 10.181s
+
+OK
+Destroying test database for alias 'default' ('test_hotel')...
+exit_code=0
+
+== 步骤 5：M4-3 相关组合（SQLite 双引擎第二跑） ==
+command: python manage.py test apps.inventory.test_reconciliation_scheduling apps.inventory.test_reconciliation apps.api.test_notification_center apps.api.test_task_center --noinput（DJANGO_DB_ENGINE=sqlite）
+Ran 73 tests in 35.605s
+
+OK
+Destroying test database for alias 'default'...
+exit_code=0
+说明：SQLite 下 select_for_update 为 no-op（AGENTS.md 会话纪律），锁/幂等/并发语义以步骤 4/6/7 的 MySQL 结果为权威。
+
+== 步骤 6：M4-3 触碰域组合回归（MySQL） ==
+command: python manage.py test apps.inventory apps.core apps.api.test_notification_center apps.api.test_task_center apps.api.test_e2e_flows --noinput
+Ran 128 tests in 55.051s
+
+OK
+Destroying test database for alias 'default'...
+exit_code=0
+
+== 步骤 7：全量回归（MySQL，1740 项） ==
+command: python manage.py test --noinput（DJANGO_ENV=test，engine=mysql）
+Found 1740 test(s).
+Ran 1740 tests in 489.596s
+
+FAILED (failures=1, skipped=3)
+exit_code=1
+唯一失败=apps.api.test_housekeeping_workflow.MaintenanceTicketWorkflowTests.test_full_maintenance_chain_restores_inventory_only_after_acceptance（400 != 200 @ assign 步骤）——**MC-006-R1 已登记的存量测试隔离缺陷，非本批引入**：
+  * 同一用例、同一失败步骤已由 M3-2 批次全量回归证据登记（docs/acceptance/evidence/docgate-m3-2-regression-20261119.log：Ran 1701, FAILED failures=1，判语"MC-006-R1 维修工单链测试在 MySQL 包序下存在测试隔离缺陷（多个不相关前置模块均可触发；M3-2 改动文件与其调用图零交集）……移交 MC-006-R1/主会话复核"）；
+  * 本批单独复跑该用例：Ran 1, OK, exit 0（隔离通过）；
+  * skipped=3 与 M3-2 基线一致；M4-3 触碰域（inventory/core/notification/task center/e2e）在全量内零失败。
+本批判定：全量除上述已登记存量缺陷外全绿。
+
+== 步骤 8：调度器真实安装与触发（Windows Task Scheduler） ==
+command: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install_scheduler_tasks.ps1
+installed: PMS2 expire_reservation_holds
+installed: PMS2 expire_invitations
+installed: PMS2 billing_maintenance
+installed: PMS2 payment_compensation_worker
+installed: PMS2 recover_stale_night_audits
+installed: PMS2 inventory_reconciliation        ← M4-3 新增（每小时）
+installed: PMS2 sync_inventory_calendar
+installed: PMS2 check_calendar_coverage         ← M4-3 新增（每日 03:00）
+exit_code=0
+
+command: schtasks /Query /TN "PMS2 inventory_reconciliation" /FO LIST（Git Bash 下 //TN //FO 转义）
+任务名: \PMS2 inventory_reconciliation   下次运行时间: 2026/11/19 3:04:15   模式: 就绪
+command: schtasks /Query /TN "PMS2 check_calendar_coverage" /FO LIST
+任务名: \PMS2 check_calendar_coverage    下次运行时间: 2026/11/20 3:00:00   模式: 就绪
+（Get-ScheduledTask 全量 8 任务 State=Ready；新任务 LastResult 初始 267011=尚未运行。）
+
+command: schtasks /Run /TN "PMS2 inventory_reconciliation"（×2）+ /TN "PMS2 check_calendar_coverage" + /TN "PMS2 sync_inventory_calendar"
+成功: 尝试运行 ……（四条全部成功）
+exit_code=0
+
+logs/scheduler/inventory_reconciliation.log（UTF-8，节选首跑 + 复跑）：
+===== run_inventory_reconciliation --property-code DEFAULT | 2026-11-19T03:03:42 =====
+差异 #1 BUS 2026-11-18：账面 4 / 重算 1（差 3），held=0 sold=1 oos=0 → 待办 inventory.discrepancy_open
+（……共 21 条真实差异：BUS/DLX/STD/SUP 各房型 2026-11-18~2026-12-01，账面 held/sold 计数与明细重算不符——U-03 演示清库重置后遗留的真实漂移，扫描只报告不修复）
+对账运行 #1：扫描 5 房型 / 31 住宿日（回看 30 天），差异 21 条；待办对账 active=58 created=28 updated=0 resolved=0。
+===== exit 0 =====
+===== run_inventory_reconciliation --property-code DEFAULT | 2026-11-19T03:05:xx（第二次 /Run；03:04:15 另有一次调度自动触发，共 3 runs） =====
+对账运行 #3：扫描 5 房型 / 31 住宿日（回看 30 天），差异 21 条；待办对账 active=58 created=0 updated=0 resolved=0。
+===== exit 0 =====
+（幂等实证：重复调度差异仍 21 条不堆积、待办 created=0 不重复建单。）
+
+logs/scheduler/check_calendar_coverage.log：
+===== check_inventory_calendar_coverage --property-code DEFAULT | 2026-11-19T03:03:42 =====
+日历覆盖检查通过：全部启用房型滚动覆盖达标。
+待办对账：active=30 created=20 updated=0 resolved=6。
+===== exit 0 =====
+
+logs/scheduler/sync_inventory_calendar.log（改造后任务真实执行，节选）：
+===== sync_inventory_calendar --property-code DEFAULT --room-type-code STD --start-date=2026-11-18 --end-date=2026-12-18 | 2026-11-18T14:01:21 =====（改造前旧口径：只滚 STD）
+===== sync_inventory_calendar --property-code DEFAULT --all-room-types --start-date=2026-11-19 --end-date=2026-12-19 | 2026-11-19T03:05:26 =====
+已同步 商务套房：2026-11-19 至 2026-12-19，共 31 个住宿日；总房量 5，停用 1。
+已同步 豪华套房：2026-11-19 至 2026-12-19，共 31 个住宿日；总房量 6，停用 3。
+已同步 家庭房：2026-11-19 至 2026-12-19，共 31 个住宿日；总房量 6，停用 0。
+已同步 标准间：2026-11-19 至 2026-12-19，共 31 个住宿日；总房量 6，停用 0。
+已同步 高级大床房：2026-11-19 至 2026-12-19，共 31 个住宿日；总房量 5，停用 1。
+全部 5 个启用房型日历已滚动至 2026-12-19。
+===== exit 0 =====
+（D4-3 实证：此前仅 STD 滚动、其余房型覆盖逐日衰减；改造后 5 启用房型全部滚动，覆盖窗口 30 天 ≥ 调度周期+7 天阈值。）
+
+== 步骤 9：开发库（dev MySQL hotel）只读核验（manage.py shell，仅 SELECT） ==
+runs: 3（含 03:04:15 调度自动触发 1 次——自动调度链路成立）
+open discs: 21（三次运行后稳定不堆积）
+disc todos（WorkItem task_code=inventory.discrepancy_open）: 21（=差异条数，一条源事实一条任务，MC-007 dedupe 生效）
+disc notifications: 42（=21×值班经理+店长 两岗位广播，无重复）
+coverage todos: 0（日历覆盖达标，不派生）
+
+== 环境备注 ==
+* 调度日志文件均为 UTF-8（scheduler_runner 以 encoding="utf-8" 追加写）；终端 tail 显示乱码为控制台代码页映射问题，文件字节已核（od -c 抽查）无损。
+* 本证据生成期间工作区存在并行批次（walk-in 退役）在途编辑；步骤 4-6 的测试对象与并行文件零交集（apps/inventory、apps/core、通知/任务中心），全量步骤 7 的唯一失败亦与并行文件无关（见步骤 7 判语）。

@@ -2,13 +2,15 @@
 # 依据：《性能优化与生产部署升级说明》§三 Windows Task Scheduler 调度口径
 #       （expire_reservation_holds 5min / expire_invitations 15min /
 #         run_billing_maintenance 10min / payment_compensation_worker 5min /
-#         recover_stale_night_audits 15min / sync_inventory_calendar daily 02:30）
+#         recover_stale_night_audits 15min / sync_inventory_calendar daily 02:30 /
+#         M4-3 增补：inventory_reconciliation hourly 60min /
+#                    check_calendar_coverage daily 03:00，共 8 任务）
 #
 # 设计约束（2026-11-18 修正，务必保持）：
 #   1. 动作一律用 pythonw.exe：python.exe 是控制台子系统程序，以交互会话
 #      运行时会由 Windows Terminal 弹出可见窗口（标题显示可执行文件路径），
 #      且并发触发时控制台创建会失败返回 0x800710E0。pythonw 不分配控制台。
-#   2. 每类任务显式 --log=logs/scheduler/<slug>.log：六类任务并发追加同一
+#   2. 每类任务显式 --log=logs/scheduler/<slug>.log：多类任务并发追加同一
 #      文件会互相穿插，证据不可读。
 #   3. payment_compensation_worker 必须带 --once：该命令默认 while True 循环，
 #      不带 --once 的任务永不退出，会长期占用一个实例并使后续触发全部被拒。
@@ -17,6 +19,11 @@
 #   6. sync_inventory_calendar 必须带 --start-date/--end-date（命令强制要求），
 #      用 {today} / {today+30} 占位符表示滚动窗口，由 scheduler_runner.py 展开；
 #      早期漏传导致该任务每天 02:30 都以退出码 2 静默失败。
+#   7. M4-3（2026-11-19）新增两条任务沿用同一安装器（不新增第二套调度）：
+#      - PMS2 inventory_reconciliation（每小时）：run_inventory_reconciliation
+#        幂等（同一差异只一条 OPEN 报告），差异经 MC-007 派生 WorkItem；
+#      - PMS2 check_calendar_coverage（每日 03:00，晚于 02:30 同步）：
+#        日历覆盖 < 今天+7 告警并派生待办，作为滚动同步失效的探测面。
 #
 # 用法：
 #   安装（注册并启用，等同"我要在本机部署调度"）：
@@ -87,7 +94,8 @@ $tasks = @(
     @{ Slug = "expire_invitations";          Name = "PMS2 expire_invitations";          Cmd = "expire_invitations";                      Interval = 15 },
     @{ Slug = "billing_maintenance";         Name = "PMS2 billing_maintenance";         Cmd = "run_billing_maintenance";                 Interval = 10 },
     @{ Slug = "payment_compensation";        Name = "PMS2 payment_compensation_worker"; Cmd = "payment_compensation_worker --once";       Interval = 5 },
-    @{ Slug = "recover_stale_night_audits";  Name = "PMS2 recover_stale_night_audits";  Cmd = "recover_stale_night_audits";              Interval = 15 }
+    @{ Slug = "recover_stale_night_audits";  Name = "PMS2 recover_stale_night_audits";  Cmd = "recover_stale_night_audits";              Interval = 15 },
+    @{ Slug = "inventory_reconciliation";    Name = "PMS2 inventory_reconciliation";    Cmd = "run_inventory_reconciliation --property-code DEFAULT"; Interval = 60 }
 )
 
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
@@ -118,7 +126,9 @@ $dailyLog = "logs/scheduler/sync_inventory_calendar.log"
 # 滚动窗口 {today} ~ {today+30}：与部署文档 cron 口径
 # （--start-date $(date +%F) --end-date $(date -d "+30 days" +%F)）一致；
 # 由 scheduler_runner.py 在派发前展开为 ISO 日期。
-$dailyArgs = ' sync_inventory_calendar --property-code DEFAULT --room-type-code STD' +
+# M4-3/D4-3：--all-room-types 滚动全部启用房型（此前只滚 STD，其余房型
+# 覆盖逐日衰减）；单一房型容量冲突时跳过并告警，由覆盖检查次日兜底。
+$dailyArgs = ' sync_inventory_calendar --property-code DEFAULT --all-room-types' +
     ' --start-date={today} --end-date={today+30}'
 $dailyAction = New-ScheduledTaskAction -Execute $python `
     -Argument ('"' + $runner + '" --log=' + $dailyLog + $dailyArgs) `
@@ -127,3 +137,15 @@ $dailyTrigger = New-ScheduledTaskTrigger -Daily -At "02:30"
 Register-ScheduledTask -TaskName "PMS2 sync_inventory_calendar" -Action $dailyAction `
     -Trigger $dailyTrigger -Settings $settings -Principal $principal -Force | Out-Null
 Write-Output "installed: PMS2 sync_inventory_calendar"
+
+# M4-3/D4-3：日历覆盖检测（每日 03:00，晚于 02:30 滚动同步——检查当日
+# 滚动结果）。MAX(stay_date) < 今天+7 输出告警并经 MC-007 派生待办。
+$coverageLog = "logs/scheduler/check_calendar_coverage.log"
+$coverageArgs = ' check_inventory_calendar_coverage --property-code DEFAULT'
+$coverageAction = New-ScheduledTaskAction -Execute $python `
+    -Argument ('"' + $runner + '" --log=' + $coverageLog + $coverageArgs) `
+    -WorkingDirectory $repo
+$coverageTrigger = New-ScheduledTaskTrigger -Daily -At "03:00"
+Register-ScheduledTask -TaskName "PMS2 check_calendar_coverage" -Action $coverageAction `
+    -Trigger $coverageTrigger -Settings $settings -Principal $principal -Force | Out-Null
+Write-Output "installed: PMS2 check_calendar_coverage"
