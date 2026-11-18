@@ -73,10 +73,14 @@ class ClientAdmin(NoAdminDeleteMixin, admin.ModelAdmin):
 
 
 class RoomAdmin(NoAdminDeleteMixin, admin.ModelAdmin):
-    '''客房信息：房态流转走业务视图（room_status/工作流按钮）'''
+    """旧轨 Room 只读（M4-2/D4-7 A，ReadOnlyLegacyAdmin 模式）：旧写路由已退役、房态流转
+    收口到 PMS2 工作台（/manage/rooms/），Admin 仅保留只读展示，拒绝新增/修改/删除。"""
+
     list_display = ("房间号", "客房类型", "价格", "房间状态", "负责人编号")
     list_filter = ("房间状态", "客房类型", "价格", "负责人编号")
     list_per_page = 15
+    # ReadOnlyLegacyAdmin 先例（apps/billing/admin.py LegacyOrderReservationMapAdmin）：全字段只读
+    readonly_fields = tuple(field.name for field in Room._meta.fields)
 
 
 class StaffAdmin(NoAdminDeleteMixin, admin.ModelAdmin):

@@ -42,6 +42,9 @@ logger = logging.getLogger(__name__)
 from .models import (Staff, Room, Client, Food, Vip, Park, Order, Accommodation,
                      FinanceRecord, Folio)
 
+# M3-2（D6 读路径切换）：show_accomodation 数据源改归档查询通道（只读）。
+from apps.billing.legacy_archive_query import legacy_accommodation_queryset
+
 
 # ---------- 模块启停注册表（RBAC 决策：餐饮/停车对接第三方，本阶段隐藏入口） ----------
 # §7 跨 App RBAC 注册表（apps/identity/registry.py）自 Phase 2 起是模块启停的
@@ -601,6 +604,13 @@ def show_room(request):
 def search_room(request):
     """客房信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
     rows, searched = _search(Room, "房间号", ROOM_SEARCH_FIELDS, request)
+    # M4-2 观察点（D4-5 修订②）：旧出口暂保留，登记真实访问流量以支撑退役裁定；只登记不改行为
+    logger.info(
+        "M4-2 观察点: search_room 访问 user=%s method=%s searched=%s",
+        request.user.pk,
+        request.method,
+        searched,
+    )
     people = rows if searched else Room.objects.order_by("房间号")
     return render(request, "room.html", {
         "people_list": people,
@@ -654,13 +664,60 @@ def search_order(request):
 
 
 # ---------- 客房订单管理 ----------
+
+class _LegacyArchiveClientRef:
+    """归档行的顾客引用：模板 ``line.顾客id.顾客id`` 形状兼容（快照仅含 client_id）。"""
+
+    def __init__(self, client_id):
+        self.顾客id = client_id
+
+
+class _LegacyArchiveRoomRef:
+    """归档行的客房引用：模板 ``line.客房编号.房间号`` 形状兼容。
+
+    快照 room_id 即旧 ``room.房间号`` 主键，房号展示等价；房型名未归档，
+    模板列表页不消费该列。"""
+
+    def __init__(self, room_id):
+        self.房间号 = room_id
+
+
+def _legacy_archive_row_wrapper(row):
+    """归档 accommodation 行 → accomodation.html 现状契约的行形状。
+
+    列语义与旧直读一致：状态（已冲账行灰显徽标）、联系电话（模板 mask_tel
+    脱敏，服务端渲染输出不含完整值）、入住/退房时间、收款金额。
+    """
+    row.顾客id = _LegacyArchiveClientRef(row.client_id) if row.client_id is not None else None
+    row.客房编号 = _LegacyArchiveRoomRef(row.room_id) if row.room_id is not None else None
+    row.状态 = row.status
+    row.联系电话 = row.contact_phone
+    row.入住时间 = row.check_in_text
+    row.退房时间 = row.check_out_text
+    row.收款金额 = row.received_amount_text
+    return row
+
+
 @staff_required
 @pms_permission_required('hotelapp.view_accommodation')
 def show_accomodation(request):
-    """客房订单管理列表（图5）：分页 15 条/页"""
-    paginator = Paginator(Accommodation.objects.order_by("id"), 15)
+    """客房订单管理列表（图5）：分页 15 条/页。
+
+    M3-2（D6 读路径切换）：数据源=归档查询通道（legacy_accommodation_archive
+    全列快照，apps.billing.legacy_archive_query），不再直读旧 accommodation 表；
+    分页/列表行为与旧直读一致（id 升序，15 条/页）。"""
+    from apps.billing.legacy_archive_query import record_adapter_query_audit
+
+    queryset = legacy_accommodation_queryset()
+    paginator = Paginator(queryset, 15)
     page = paginator.get_page(request.GET.get("page"))
-    return render(request, "accomodation.html", {"people_list": page.object_list, "page_obj": page})
+    people = [_legacy_archive_row_wrapper(row) for row in page.object_list]
+    record_adapter_query_audit(
+        source_table="accommodation", actor=request.user, request=request,
+        filters={"page": page.number, "page_size": 15},
+        returned_rows=len(people), total=paginator.count,
+    )
+    return render(request, "accomodation.html", {"people_list": people, "page_obj": page})
 
 
 @staff_required

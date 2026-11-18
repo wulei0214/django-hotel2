@@ -1,0 +1,49 @@
+# 证据：M4-2 旧轨只读面收口（派发单 GOV-DISPATCH-M3M4M5-001 · 派发单 M4-2）
+SHA: cdc262d7ae5d8cb288eb37cf8915380b0a863429（工作区含未提交变更 11 项：证据树不等于该提交，需以本行为准；在途变更含并行批次 M3-2 的 apps/api/front_desk.py 等文件域，M4-2 触碰文件=hotelapp/admin.py、hotelapp/views.py、templates/room.html、hotelapp/test_m4_2_readonly.py）
+date: 2026-11-18 23:53:06 +0800
+env: DJANGO_ENV=test DJANGO_DB_ENGINE=mysql（连接参数经 set -a && source .env 透传；DJANGO_PLATFORM_ADMIN_USERNAME/PASSWORD 已按 apps/core.testing_env.test_process_env 同口径剔除——平台后台白名单变量会致身份用例 403 假失败，apps/identity/test_cookie_isolation.py 与 scripts/test_evidence.py 同口径）
+python: 3.9.0  django: 4.1
+
+== 步骤 1：manage.py check ==
+command: python manage.py check
+System check identified no issues (0 silenced).
+exit_code=0
+
+== 步骤 2：hotelapp 全量回归（MySQL 测试库全新创建） ==
+command: python manage.py test hotelapp
+Found 120 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+............................................................................................................check_unique cache read failed; falling back to DB
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\hotelapp\views.py", line 206, in _unique_field_exists
+    exists = cache.get(key)
+  File "D:\Python39\lib\unittest\mock.py", line 1093, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1097, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1152, in _execute_mock_call
+    raise effect
+RuntimeError: Redis unavailable
+check_unique cache write failed; returning DB result
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\hotelapp\views.py", line 214, in _unique_field_exists
+    cache.set(key, exists, 60)
+  File "D:\Python39\lib\unittest\mock.py", line 1093, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1097, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "D:\Python39\lib\unittest\mock.py", line 1152, in _execute_mock_call
+    raise effect
+RuntimeError: Redis unavailable
+............
+----------------------------------------------------------------------
+Ran 120 tests in 30.169s
+
+OK
+Destroying test database for alias 'default'...
+exit_code=0
+
+== 步骤 3：room.html 写交互残留静态断言（grep 期望 0 命中） ==
+command: grep -nE 'insert_room|delete_room|update_room|btn-add|form-card|st-btn' templates/room.html
+grep_exit=1（1=无命中，即无写交互残留）
