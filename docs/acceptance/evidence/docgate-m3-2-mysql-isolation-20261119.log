@@ -1,0 +1,998 @@
+# 证据：M3-2 MySQL 唯一失败项隔离复跑（测试隔离缺陷判定）
+SHA: 51110a55838ffe519dd382cb1695dbf6417d685b
+date: 2026-11-19 02:16:17 +0800
+env: DJANGO_ENV=test，MySQL（.env 凭据，--noinput 全新测试库）
+command: python manage.py test apps.api.test_housekeeping_workflow.MaintenanceTicketWorkflowTests --keepdb（隔离单类复跑）
+---
+Found 3 test(s).
+Using existing test database for alias 'default'...
+System check identified no issues (0 silenced).
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Desktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 224, in test_cleaner_cannot_create_maintenance_ticket
+    response = self._post(
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 143, in _post
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 140, in get_response
+    response = self._middleware_chain(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\whitenoise\middleware.py", line 123, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\apps\identity\middleware.py", line 84, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\hotelapp\audit_middleware.py", line 19, in __call__
+    audit.info("%s %s -> %s (user=%s)",
+Message: '%s %s -> %s (user=%s)'
+Arguments: ('POST', '/api/v1/maintenance/tickets/create', 403, 'mt_workflow_cleaner')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Desktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 154, in test_full_maintenance_chain_restores_inventory_only_after_acceptance
+    response = self._post(
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 143, in _post
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 140, in get_response
+    response = self._middleware_chain(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\whitenoise\middleware.py", line 123, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\apps\identity\middleware.py", line 84, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\hotelapp\audit_middleware.py", line 19, in __call__
+    audit.info("%s %s -> %s (user=%s)",
+Message: '%s %s -> %s (user=%s)'
+Arguments: ('POST', '/api/v1/maintenance/tickets/create', 201, 'mt_workflow_duty')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Desktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 169, in test_full_maintenance_chain_restores_inventory_only_after_acceptance
+    self._post(
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 143, in _post
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 140, in get_response
+    response = self._middleware_chain(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\whitenoise\middleware.py", line 123, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\apps\identity\middleware.py", line 84, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\hotelapp\audit_middleware.py", line 19, in __call__
+    audit.info("%s %s -> %s (user=%s)",
+Message: '%s %s -> %s (user=%s)'
+Arguments: ('POST', '/api/v1/maintenance/tickets/1/assign', 200, 'mt_workflow_duty')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Desktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 177, in test_full_maintenance_chain_restores_inventory_only_after_acceptance
+    self._post(f"/api/v1/maintenance/tickets/{ticket_id}/start", user=self.dm).status_code,
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 143, in _post
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 140, in get_response
+    response = self._middleware_chain(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\whitenoise\middleware.py", line 123, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\apps\identity\middleware.py", line 84, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\hotelapp\audit_middleware.py", line 19, in __call__
+    audit.info("%s %s -> %s (user=%s)",
+Message: '%s %s -> %s (user=%s)'
+Arguments: ('POST', '/api/v1/maintenance/tickets/1/start', 200, 'mt_workflow_duty')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Desktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 180, in test_full_maintenance_chain_restores_inventory_only_after_acceptance
+    response = self._post(
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 143, in _post
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 140, in get_response
+    response = self._middleware_chain(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\whitenoise\middleware.py", line 123, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\apps\identity\middleware.py", line 84, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\hotelapp\audit_middleware.py", line 19, in __call__
+    audit.info("%s %s -> %s (user=%s)",
+Message: '%s %s -> %s (user=%s)'
+Arguments: ('POST', '/api/v1/maintenance/tickets/1/resolve', 200, 'mt_workflow_duty')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Desktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 189, in test_full_maintenance_chain_restores_inventory_only_after_acceptance
+    response = self._post(
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 143, in _post
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 140, in get_response
+    response = self._middleware_chain(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\whitenoise\middleware.py", line 123, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\apps\identity\middleware.py", line 84, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\hotelapp\audit_middleware.py", line 19, in __call__
+    audit.info("%s %s -> %s (user=%s)",
+Message: '%s %s -> %s (user=%s)'
+Arguments: ('POST', '/api/v1/maintenance/tickets/1/verify', 200, 'mt_workflow_manager')
+.--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Desktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 207, in test_reporter_cannot_self_accept
+    response = self._post(
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 143, in _post
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 140, in get_response
+    response = self._middleware_chain(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\whitenoise\middleware.py", line 123, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\apps\identity\middleware.py", line 84, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\hotelapp\audit_middleware.py", line 19, in __call__
+    audit.info("%s %s -> %s (user=%s)",
+Message: '%s %s -> %s (user=%s)'
+Arguments: ('POST', '/api/v1/maintenance/tickets/create', 201, 'mt_workflow_duty')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Desktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 213, in test_reporter_cannot_self_accept
+    self._post(f"/api/v1/maintenance/tickets/{ticket_id}/start", user=self.dm)
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 143, in _post
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 140, in get_response
+    response = self._middleware_chain(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\whitenoise\middleware.py", line 123, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\apps\identity\middleware.py", line 84, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\hotelapp\audit_middleware.py", line 19, in __call__
+    audit.info("%s %s -> %s (user=%s)",
+Message: '%s %s -> %s (user=%s)'
+Arguments: ('POST', '/api/v1/maintenance/tickets/2/start', 200, 'mt_workflow_duty')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Desktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 214, in test_reporter_cannot_self_accept
+    self._post(f"/api/v1/maintenance/tickets/{ticket_id}/resolve", user=self.dm)
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 143, in _post
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 140, in get_response
+    response = self._middleware_chain(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\whitenoise\middleware.py", line 123, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\apps\identity\middleware.py", line 84, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\hotelapp\audit_middleware.py", line 19, in __call__
+    audit.info("%s %s -> %s (user=%s)",
+Message: '%s %s -> %s (user=%s)'
+Arguments: ('POST', '/api/v1/maintenance/tickets/2/resolve', 200, 'mt_workflow_duty')
+--- Logging error ---
+Traceback (most recent call last):
+  File "D:\Python39\lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "D:\Python39\lib\logging\handlers.py", line 177, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "D:\Python39\lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\Desktop\\django-hotel\\logs\\audit.log' -> 'F:\\Desktop\\django-hotel\\logs\\audit.log.1'
+Call stack:
+  File "F:\Desktop\django-hotel\manage.py", line 15, in <module>
+    execute_from_command_line(sys.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 446, in execute_from_command_line
+    utility.execute()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\__init__.py", line 440, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 24, in run_from_argv
+    super().run_from_argv(argv)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 402, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\base.py", line 448, in execute
+    output = self.handle(*args, **options)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\management\commands\test.py", line 68, in handle
+    failures = test_runner.run_tests(test_labels)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 1057, in run_tests
+    result = self.run_suite(suite)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\runner.py", line 979, in run_suite
+    return runner.run(suite)
+  File "D:\Python39\lib\unittest\runner.py", line 176, in run
+    test(result)
+  File "D:\Python39\lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 380, in __call__
+    self._setup_and_call(result)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\testcases.py", line 415, in _setup_and_call
+    super().__call__(result)
+  File "D:\Python39\lib\unittest\case.py", line 653, in __call__
+    return self.run(*args, **kwds)
+  File "D:\Python39\lib\unittest\case.py", line 593, in run
+    self._callTestMethod(testMethod)
+  File "D:\Python39\lib\unittest\case.py", line 550, in _callTestMethod
+    method()
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 215, in test_reporter_cannot_self_accept
+    response = self._post(
+  File "F:\Desktop\django-hotel\apps\api\test_housekeeping_workflow.py", line 143, in _post
+    return self.client.post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 852, in post
+    response = super().post(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 441, in post
+    return self.generic(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 541, in generic
+    return self.request(**r)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 805, in request
+    response = self.handler(environ)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\test\client.py", line 153, in __call__
+    response = self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\base.py", line 140, in get_response
+    response = self._middleware_chain(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\whitenoise\middleware.py", line 123, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\apps\identity\middleware.py", line 84, in __call__
+    return self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\utils\deprecation.py", line 136, in __call__
+    response = response or self.get_response(request)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\core\handlers\exception.py", line 56, in inner
+    response = get_response(request)
+  File "F:\Desktop\django-hotel\hotelapp\audit_middleware.py", line 19, in __call__
+    audit.info("%s %s -> %s (user=%s)",
+Message: '%s %s -> %s (user=%s)'
+Arguments: ('POST', '/api/v1/maintenance/tickets/2/verify', 409, 'mt_workflow_duty')
+.
+----------------------------------------------------------------------
+Ran 3 tests in 1.709s
+
+OK
+Preserving test database for alias 'default'...
+---
+结论：隔离单类复跑结果如上；若全绿则判定为测试隔离缺陷（包级并发/顺序耦合），非产品缺陷。移交编号：DEF-M3-2-ISO-01（登记于 M3-2 实施记录 §残项与 MC 报告残项节）。
+exit_code: 0
