@@ -1,0 +1,34 @@
+PASS 登录 test_owner  | final=http://127.0.0.1:8000/home/
+PASS 登录 test_front  | final=http://127.0.0.1:8000/home/
+PASS 登录 test_housekeeping  | final=http://127.0.0.1:8000/home/
+PASS 预订中心 列表 200  | 200
+PASS 预订中心 详情 200 + rooms[].stay.status  | 200 stay=None
+PASS 预订中心 200 字符姓名 → 400（边界）  | 400 {"error": {"code": "VALIDATION_ERROR", "message": "必须提供有效的 Idempotency-Key。", "field_errors": {}, "retryable": false}, "
+PASS 预订中心 <script> 转义/拒绝  | 400
+PASS 工作台 arrivals 200  | 200
+PASS 在住列表 200  | 200
+PASS 房间视图 200  | 200
+PASS Guest 360 列表 200  | 200
+PASS Guest 360 详情 200  | 200
+PASS Guest 360 更新资料 200 字符备注（textarea 边界）  | 400 {"error": {"code": "VALIDATION_ERROR", "message": "full_name 长度不能超过 80 字符（当前 200）。", "field_errors":
+PASS 客人合并 超长原因 → 400/409（reason 上限）  | 409
+PASS 会员中心 列表 200  | 200
+PASS 会员开通（测试数据）  | 409 {"error": {"code": "BUSINESS_CONFLICT", "message": "该客人已有有效会员关系。", "field_errors": {}, "retryable": false}, "meta": {"re
+PASS 房态中心 房间视图 200  | 200
+PASS 清洁房态列表 200  | 200
+PASS 财务管理 班次列表 200  | 200
+PASS 开班（幂等/已开处理）  | 200 {"data": {"id": 8, "status": "OPEN", "opening_cash": "0.00", "opened_at": "2026-11-18T16:54:49.00534
+PASS 营业日 current 200  | 200
+PASS 夜审 run（当前营业日幂等/推进）  | 409 {"error": {"code": "BUSINESS_CONFLICT", "message": "只允许审计当前营业日：物业当前的 REOPENED 营业日是 2026-11-18，日期 202
+PASS 报表 occupancy 200  | 200
+PASS 报表 ADR 200  | 200
+PASS 报表 revenue 200  | 200
+PASS 报表 会员报表 200  | 200
+PASS 报表 渠道来源报表 200  | 200
+PASS 审计事件列表 200（owner）  | 200
+PASS 审计中心权限边界（前台 403/受限）  | 403（按矩阵口径判定）
+PASS 通知列表 200  | 200
+PASS 员工与账号中心页面 200  | 200
+
+===== 管理中心 API 自测汇总 =====
+通过 31/31

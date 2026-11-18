@@ -278,6 +278,13 @@ def normalize_phone(raw):
 
 
 class GuestServiceError(Exception):
+    pass
+
+
+class GuestFieldError(GuestServiceError):
+    """入参字段格式/长度错误（RSV-10 口径：应映射 400 VALIDATION_ERROR，
+    与业务状态冲突 409 区分）。"""
+    pass
     """客人服务业务校验失败。"""
 
 
@@ -363,9 +370,16 @@ class GuestService:
             .get(pk=guest_id, property=property_obj)
         )
         changed = {}
+        # 自测发现（2026-11-19）：超长字段此前直接落库触发 MySQL DataError
+        # → API 500；按模型 max_length 在服务层校验，超长返回 400 语义错误。
+        field_limits = {"full_name": 80, "email": 254, "notes": 500}
         for field in ("full_name", "email", "notes"):
             if field in fields and fields[field] is not None:
                 new_val = str(fields[field]).strip()
+                if len(new_val) > field_limits[field]:
+                    raise GuestFieldError(
+                        f"{field} 长度不能超过 {field_limits[field]} 字符"
+                        f"（当前 {len(new_val)}）。")
                 old_val = getattr(guest, field) or ""
                 if new_val != old_val:
                     changed[field] = {"before": old_val, "after": new_val}

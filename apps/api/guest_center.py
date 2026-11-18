@@ -23,6 +23,7 @@ from apps.guests.models import (
     MembershipLevelHistory,
 )
 from apps.guests.services import (
+    GuestFieldError,
     GuestService,
     GuestServiceError,
     _mask,
@@ -683,6 +684,9 @@ def guest_update(request, guest_id):
             notes=body.get("notes"))
     except Guest.DoesNotExist:
         raise ApiError("RESOURCE_NOT_FOUND", "客人不存在。")
+    except GuestFieldError as exc:
+        # RSV-10：入参长度/格式错误 → 400 VALIDATION_ERROR（先于业务冲突捕获）
+        raise ApiError("VALIDATION_ERROR", str(exc))
     except GuestServiceError as exc:
         raise ApiError("BUSINESS_CONFLICT", str(exc))
     return api_response(request, {"id": guest.pk, "changed": list(changed.keys())})
