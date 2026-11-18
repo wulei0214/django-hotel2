@@ -18,11 +18,24 @@
 #      用 {today} / {today+30} 占位符表示滚动窗口，由 scheduler_runner.py 展开；
 #      早期漏传导致该任务每天 02:30 都以退出码 2 静默失败。
 #
-# 用法：powershell -ExecutionPolicy Bypass -File scripts\install_scheduler_tasks.ps1
-# 卸载：powershell -ExecutionPolicy Bypass -File scripts\install_scheduler_tasks.ps1 -Uninstall
+# 用法：
+#   安装（注册并启用，等同"我要在本机部署调度"）：
+#     powershell -ExecutionPolicy Bypass -File scripts\install_scheduler_tasks.ps1
+#   停用（保留定义、不再触发；本机日常开发默认用这个）：
+#     powershell -ExecutionPolicy Bypass -File scripts\install_scheduler_tasks.ps1 -Disable
+#   重新启用（不改定义，仅恢复触发）：
+#     powershell -ExecutionPolicy Bypass -File scripts\install_scheduler_tasks.ps1 -Enable
+#   彻底移除：
+#     powershell -ExecutionPolicy Bypass -File scripts\install_scheduler_tasks.ps1 -Uninstall
+#
+# 状态语义（务必区分）：
+#   安装 = 部署意图；Disable/Enable 只切换计划任务 State，不重写定义，
+#   因此停用后不会因为重跑 -Enable 之外的任何操作悄悄恢复触发。
 
 param(
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [switch]$Disable,
+    [switch]$Enable
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,19 +45,40 @@ $repo = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $repo ".venv\Scripts\pythonw.exe"
 $runner = Join-Path $repo "scripts\scheduler_runner.py"
 
+# 卸载/停用/启用只操作既有任务，不依赖 venv，故校验放在安装分支内
+if ($Uninstall) {
+    Get-ScheduledTask | Where-Object { $_.TaskName -like 'PMS2 *' } | ForEach-Object {
+        if ($_.State -eq "Running") { Stop-ScheduledTask -TaskName $_.TaskName }
+        Unregister-ScheduledTask -TaskName $_.TaskName -Confirm:$false
+        Write-Output ("removed: " + $_.TaskName)
+    }
+    return
+}
+
+if ($Disable -or $Enable) {
+    $targets = @(Get-ScheduledTask | Where-Object { $_.TaskName -like 'PMS2 *' })
+    if ($targets.Count -eq 0) {
+        throw "未找到 PMS2 * 计划任务；请先执行安装（不带开关）。"
+    }
+    foreach ($t in $targets) {
+        if ($Disable) {
+            # 正在跑的一轮先停掉，否则禁用后仍会跑完才退出
+            if ($t.State -eq "Running") { Stop-ScheduledTask -TaskName $t.TaskName }
+            Disable-ScheduledTask -TaskName $t.TaskName | Out-Null
+            Write-Output ("disabled: " + $t.TaskName)
+        } else {
+            Enable-ScheduledTask -TaskName $t.TaskName | Out-Null
+            Write-Output ("enabled: " + $t.TaskName)
+        }
+    }
+    return
+}
+
 if (-not (Test-Path -LiteralPath $python)) {
     throw "缺少 GUI 子系统解释器：$python（venv 内应自带 pythonw.exe）"
 }
 if (-not (Test-Path -LiteralPath $runner)) {
     throw "缺少调度入口：$runner"
-}
-
-if ($Uninstall) {
-    Get-ScheduledTask | Where-Object { $_.TaskName -like 'PMS2 *' } | ForEach-Object {
-        Unregister-ScheduledTask -TaskName $_.TaskName -Confirm:$false
-        Write-Output ("removed: " + $_.TaskName)
-    }
-    return
 }
 
 # Slug 用于独立日志文件；Cmd 为完整 manage.py 参数串
