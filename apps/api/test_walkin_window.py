@@ -12,6 +12,14 @@ A2（POST /api/v1/billing/payment-intents/{intent_id}/window-extension）：
   * 复用 extend_intent_window（D2 服务端策略，mock 渠道 max_extensions=1）；
   * 意图不存在/跨物业 → 404；终态/超上限 → 409 消息透传；
   * 无 finance_access → 403 PERMISSION_DENIED。
+
+R3（PENDING 订单前台确认回归，PendingConfirmationFlowTests，R3-01/02/03）：
+  * 公开预订 PENDING 单：前台收款即确认 / 押金即确认 → CONFIRMED
+    → 排房 → 办理入住 IN_HOUSE 全链路；
+  * 列表对 PENDING 单返回 stay_status=None、assigned_room=None
+    （前端"待确认"引导文案的数据前提）；
+  * 无 change_accommodation 权限账号收款/押金 403、确认不可达
+    （后端权限不因前端修复放松，防复发回归）。
 """
 
 import json
@@ -602,3 +610,202 @@ class ReservationListStatusTests(WalkInApiTestBase):
                          "单间预订退房后整单迁移为 CHECKED_OUT（列表直接显示已退房）")
         self.assertEqual(row["stay_status"], "CHECKED_OUT")
         self.assertTrue(row["assigned_room"])
+
+
+class PendingConfirmationFlowTests(WalkInApiTestBase):
+    """R3-01/02/03：PENDING 公开订单的前台确认路径回归（测试固化，无行为修改）。
+
+    业务闭环口径（collect_manual_payment / record_deposit 服务端实现）：
+    PENDING 订单在前台登记收款或押金即确认（先确认库存占用再迁移状态，
+    与在线支付回调同口径）。此前前端把 PENDING 单当"待排房"引导是前端
+    误读列表缺字段所致（走查发现修复）；本组用例固化后端契约数据前提，
+    防止后端权限/状态口径随前端修复被放松。
+    """
+
+    public_url = "/api/v1/reservations"
+
+    def _seed_pending_order(self, phone, idem_key):
+        """经公开预订 API 构造真实 PENDING 订单（今晚入住、含 Hold 与主账单）。"""
+        today = timezone.localdate()
+        payload = {
+            "full_name": "待确认订单客人",
+            "phone": phone,
+            "room_type_id": self.room_type.pk,
+            "rate_plan_id": self.rate_plan.pk,
+            "check_in": today.isoformat(),
+            "check_out": (today + timedelta(days=1)).isoformat(),
+            "rooms": 1,
+            "adults": 1,
+            "children": 0,
+        }
+        response = _post_json(
+            self.client, self.public_url, payload, HTTP_IDEMPOTENCY_KEY=idem_key
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+        booking_no = body["booking_no"]
+        reservation = Reservation.objects.get(booking_no=booking_no)
+        self.assertEqual(reservation.status, Reservation.Status.PENDING)
+        self.assertEqual(reservation.source, "WEBSITE")
+        # PENDING 引导前提：未排房、无 Stay、无押金
+        self.assertFalse(reservation.reservation_rooms.first().assigned_room_id)
+        self.assertFalse(Stay.objects.filter(
+            reservation_room__reservation=reservation).exists())
+        return reservation
+
+    def _front_desk_row(self, booking_no):
+        response = self.client.get(
+            "/api/v1/front-desk/reservations", {"q": booking_no})
+        self.assertEqual(response.status_code, 200, response.content)
+        rows = [r for r in response.json()["data"] if r["booking_no"] == booking_no]
+        self.assertEqual(len(rows), 1, f"应恰有一行 {booking_no}")
+        return rows[0]
+
+    # ------------------------------------------------------------------
+    # R3-01：PENDING → 收款即确认 → 排房 → 入住 IN_HOUSE 全链路
+    # ------------------------------------------------------------------
+    def test_pending_order_full_frontdesk_cycle(self):
+        reservation = self._seed_pending_order("13811110001", "r3-cycle-001")
+        booking_no = reservation.booking_no
+        self._auth()
+
+        # ① 前台登记收款（收款即确认）
+        collect = _post_json(
+            self.client,
+            f"/api/v1/front-desk/reservations/{booking_no}/payments",
+            {"amount": "300.00", "method": "CARD"},
+            HTTP_IDEMPOTENCY_KEY="r3-cycle-pay-001",
+        )
+        self.assertEqual(collect.status_code, 201, collect.content)
+        payment_data = collect.json()["data"]
+        self.assertEqual(payment_data["status"], Payment.Status.SUCCEEDED)
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.Status.CONFIRMED,
+                         "前台收款成功即确认（与在线支付回调同口径）")
+        self.assertTrue(Payment.objects.filter(
+            pk=payment_data["payment_id"],
+            reservation=reservation,
+            provider="frontdesk_manual").exists())
+
+        # ② 排房
+        line = reservation.reservation_rooms.first()
+        assign = _post_json(
+            self.client,
+            f"/api/v1/front-desk/reservation-rooms/{line.pk}/assign",
+            {"room_id": self.room.pk},
+        )
+        self.assertEqual(assign.status_code, 201, assign.content)
+        self.assertEqual(
+            assign.json()["data"]["assigned_room"]["number"], "WBI-8101")
+
+        # ③ 办理入住 → IN_HOUSE
+        check_in = _post_json(
+            self.client,
+            f"/api/v1/front-desk/reservation-rooms/{line.pk}/check-in",
+            {},
+        )
+        self.assertEqual(check_in.status_code, 201, check_in.content)
+        stay = Stay.objects.get(reservation_room=line)
+        self.assertEqual(stay.status, Stay.Status.IN_HOUSE)
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.Status.CHECKED_IN)
+        self.room.refresh_from_db()
+        self.assertEqual(self.room.occupancy_status, Room.OccupancyStatus.OCCUPIED)
+        # 全链路后列表不再呈现"待确认"引导态
+        row = self._front_desk_row(booking_no)
+        self.assertEqual(row["reservation_status"], "CHECKED_IN")
+        self.assertEqual(row["stay_status"], "IN_HOUSE")
+        self.assertTrue(row["assigned_room"])
+
+    # ------------------------------------------------------------------
+    # R3-02：PENDING → 押金即确认 → 排房 → 入住
+    # ------------------------------------------------------------------
+    def test_pending_order_deposit_confirm_cycle(self):
+        reservation = self._seed_pending_order("13811110002", "r3-dep-001")
+        booking_no = reservation.booking_no
+        self._auth()
+
+        deposit = _post_json(
+            self.client,
+            f"/api/v1/front-desk/reservations/{booking_no}/deposits",
+            {"amount": "90.00", "method": "CARD"},
+            HTTP_IDEMPOTENCY_KEY="r3-dep-pay-001",
+        )
+        self.assertEqual(deposit.status_code, 201, deposit.content)
+        deposit_data = deposit.json()["data"]
+        self.assertEqual(deposit_data["payment_kind"], "DEPOSIT")
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.Status.CONFIRMED,
+                         "押金登记成功即确认（PENDING → CONFIRMED）")
+        self.assertEqual(reservation.deposit_amount, Decimal("90.00"))
+        deposit_payment = Payment.objects.get(
+            pk=deposit_data["payment_id"], reservation=reservation)
+        self.assertEqual(deposit_payment.provider, "frontdesk_deposit")
+        self.assertEqual(deposit_payment.amount, Decimal("90.00"))
+
+        line = reservation.reservation_rooms.first()
+        assign = _post_json(
+            self.client,
+            f"/api/v1/front-desk/reservation-rooms/{line.pk}/assign",
+            {"room_id": self.room.pk},
+        )
+        self.assertEqual(assign.status_code, 201, assign.content)
+        check_in = _post_json(
+            self.client,
+            f"/api/v1/front-desk/reservation-rooms/{line.pk}/check-in",
+            {},
+        )
+        self.assertEqual(check_in.status_code, 201, check_in.content)
+        stay = Stay.objects.get(reservation_room=line)
+        self.assertEqual(stay.status, Stay.Status.IN_HOUSE)
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.Status.CHECKED_IN)
+
+    # ------------------------------------------------------------------
+    # R3-03：PENDING 单列表行呈"引导态"——stay_status/assigned_room 皆空
+    # ------------------------------------------------------------------
+    def test_pending_list_shows_guidance_state(self):
+        reservation = self._seed_pending_order("13811110003", "r3-list-001")
+        self._auth()
+        row = self._front_desk_row(reservation.booking_no)
+        self.assertEqual(row["reservation_status"], "PENDING")
+        self.assertIsNone(row["stay_status"],
+                          "PENDING 单无 Stay，列表 stay_status 必须为 None")
+        self.assertIsNone(row["assigned_room"],
+                          "PENDING 单未排房，列表 assigned_room 必须为 None")
+        self.assertFalse(any(room["assigned_room"] for room in row["rooms"]),
+                         "明细行同样未排房（前端待确认引导文案的数据前提）")
+
+    # ------------------------------------------------------------------
+    # R3-01 权限防线：无 change_accommodation 账号收款 403、确认不可达
+    # ------------------------------------------------------------------
+    def test_registrar_without_operate_permission_cannot_confirm(self):
+        reservation = self._seed_pending_order("13811110004", "r3-noperm-001")
+        booking_no = reservation.booking_no
+        # 仅入住查看权、无修改权（_front_desk_write_required 双权限要求）
+        self._auth(codenames=("view_accommodation",))
+
+        collect = _post_json(
+            self.client,
+            f"/api/v1/front-desk/reservations/{booking_no}/payments",
+            {"amount": "300.00", "method": "CARD"},
+            HTTP_IDEMPOTENCY_KEY="r3-noperm-pay-001",
+        )
+        self.assertEqual(collect.status_code, 403, collect.content)
+        self.assertEqual(collect.json()["error"]["code"], "PERMISSION_DENIED")
+
+        deposit = _post_json(
+            self.client,
+            f"/api/v1/front-desk/reservations/{booking_no}/deposits",
+            {"amount": "90.00", "method": "CARD"},
+            HTTP_IDEMPOTENCY_KEY="r3-noperm-dep-001",
+        )
+        self.assertEqual(deposit.status_code, 403, deposit.content)
+        self.assertEqual(deposit.json()["error"]["code"], "PERMISSION_DENIED")
+
+        # 确认不可达：两条资金路径均被拦，订单保持 PENDING、无支付事实
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.Status.PENDING,
+                         "后端权限不因前端修复放松：无操作权账号不得触发确认")
+        self.assertFalse(Payment.objects.filter(reservation=reservation).exists())
+        self.assertFalse(reservation.reservation_rooms.first().assigned_room_id)

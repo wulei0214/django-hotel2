@@ -1937,7 +1937,10 @@ fd_write = [
         "复用 apps.reservations.walkin.create_walk_in：同一事务完成 Guest→Reservation"
         "(source=WALK_IN)→ReservationRoom→Folio→Hold→确认→排房→入住→Stay；"
         "无手机号时由服务层生成确定性占位号；住客档案不按手机号自动合并"
-        "（共享号码仅标记人工核验）。Idempotency-Key 必填（1-128 字符）。",
+        "（共享号码仅标记人工核验）。Idempotency-Key 必填（1-128 字符）。"
+        "已退役规划（DEC-WI-01）：迁移至 /front-desk/walk-ins，本兼容端点将在"
+        "观察期后返回 410；兼容期入口记 frontdesk.legacy_walk_in_called 观测审计"
+        "（纯观测，不影响业务响应）。",
         FD_WRITE_PERM,
         (("201", "散客已创建并入住房间；同 Idempotency-Key 重放返回同一结果。"),),
     ),
@@ -2029,6 +2032,10 @@ _walkin_entry["extras"]["x-idempotency"] = {
     "semantics": "服务强校验必填；同 key 重放返回首次已建 Stay（业务层幂等，无重复写入）。",
     "source": "apps.reservations.walkin.create_walk_in",
 }
+# R2-02（DEC-WI-01 双端点收敛）：旧 /front-desk/walk-in 标记 deprecated——
+# 兼容期仍可用（x-contract-status 保持 verified），观察期后返回 410 退役
+# （触发条件与步骤清单见 docs/PMS2.0_当前版本/04_开发实施记录/ R2 实施记录）。
+_walkin_entry["extras"]["deprecated"] = True
 
 # A1 /front-desk/walk-ins：幂等由服务层 (property, idempotency_key) 唯一约束 +
 # 请求指纹仲裁（不经 @idempotent 装饰器短路——装饰器会缓存并重放首次 201 响应）。

@@ -5186,7 +5186,7 @@
           "前台接待"
         ],
         "summary": "散客直入",
-        "description": "复用 apps.reservations.walkin.create_walk_in：同一事务完成 Guest→Reservation(source=WALK_IN)→ReservationRoom→Folio→Hold→确认→排房→入住→Stay；无手机号时由服务层生成确定性占位号；住客档案不按手机号自动合并（共享号码仅标记人工核验）。Idempotency-Key 必填（1-128 字符）。\n\n权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "description": "复用 apps.reservations.walkin.create_walk_in：同一事务完成 Guest→Reservation(source=WALK_IN)→ReservationRoom→Folio→Hold→确认→排房→入住→Stay；无手机号时由服务层生成确定性占位号；住客档案不按手机号自动合并（共享号码仅标记人工核验）。Idempotency-Key 必填（1-128 字符）。已退役规划（DEC-WI-01）：迁移至 /front-desk/walk-ins，本兼容端点将在观察期后返回 410；兼容期入口记 frontdesk.legacy_walk_in_called 观测审计（纯观测，不影响业务响应）。\n\n权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_front_desk_walk_in",
         "responses": {
           "201": {
@@ -5329,6 +5329,7 @@
           "semantics": "服务强校验必填；同 key 重放返回首次已建 Stay（业务层幂等，无重复写入）。",
           "source": "apps.reservations.walkin.create_walk_in"
         },
+        "deprecated": true,
         "parameters": [
           {
             "name": "Idempotency-Key",

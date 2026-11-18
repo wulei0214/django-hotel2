@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from django.utils import timezone
 
+from apps.core.models import AuditEvent
 from apps.guests.models import Guest
 from apps.guests.services import phone_hash
 from apps.inventory.models import DailyRate, RatePlan, Room, RoomType, RoomTypeInventory
@@ -88,6 +89,30 @@ class WalkInApiTestBase(WhiteboxApiTestBase):
 
 class WalkInCreateApiTests(WalkInApiTestBase):
     url = "/api/v1/front-desk/walk-in"
+
+    def test_walk_in_legacy_call_records_observation_audit(self):
+        """R2-03（DEC-WI-01）：兼容端点入口记观测审计且业务仍正常。
+
+        纯观测断言：frontdesk.legacy_walk_in_called 事件带物业/操作人；
+        业务链路不受影响（201 + Stay 建立）。
+        """
+        user = self._auth()
+        response = _post_json(
+            self.client, self.url, self._payload(), HTTP_IDEMPOTENCY_KEY="wbi-obs-001"
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        events = AuditEvent.objects.filter(action="frontdesk.legacy_walk_in_called")
+        self.assertEqual(events.count(), 1)
+        event = events.get()
+        self.assertEqual(event.entity_type, "FrontDeskEndpoint")
+        self.assertEqual(event.entity_id, "front-desk/walk-in")
+        self.assertEqual(event.property_id, self.property.pk)
+        self.assertEqual(event.actor_id, user.pk)
+        # 观测不写业务：观测事件之外，散客入住主链路照常完成
+        booking_no = response.json()["data"]["booking_no"]
+        self.assertTrue(
+            Stay.objects.filter(reservation_room__reservation__booking_no=booking_no).exists()
+        )
 
     def test_walk_in_no_phone_creates_stay_returns_201(self):
         """无手机号散客：占位号建档、生成 Stay、source=WALK_IN。"""

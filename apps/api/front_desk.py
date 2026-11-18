@@ -3,6 +3,7 @@
 查询接口组装预订、Stay、客房和 Folio DTO；写接口只负责认证/权限/参数边界，
 具体事务和状态迁移由 apps.reservations.front_desk_services 负责。
 """
+import logging
 import uuid
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -24,6 +25,7 @@ from apps.billing.models import Folio, Payment, PaymentIntent, Refund
 from apps.billing.payment_intents import extend_intent_window, get_channel_window
 from apps.core import labels as L
 from apps.core.api_contract import ApiError, api_response, api_view, idempotent, parse_page_args
+from apps.core.models import AuditEvent
 from apps.guests.services import guest_phone_plain, phone_hash
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import Room, RoomType
@@ -67,6 +69,8 @@ from apps.reservations.walkin import create_walk_in
 
 from .billing_center import _require_finance_access
 from .views import _body, api_guard
+
+logger = logging.getLogger("hotel.api")
 
 PAGE_DEFAULT = 20
 PAGE_MAX = 100
@@ -1316,17 +1320,41 @@ def walk_in_create(request):
     """POST /api/v1/front-desk/walk-in — 散客直入（DEC-WALKIN-01）。
 
     .. deprecated:: 2026-11-14
-        与 POST /api/v1/front-desk/walk-ins（A1 契约口径：重放 200 created=false、
-        响应含服务端 30% 押金、入参校验更严）构成同一业务动作的双端点并存。
-        收敛决策待负责人裁定后二选一退役；两者复用同一服务层事实源
-        create_walk_in，不存在双写分叉。
+        兼容期端点（R2-02，DEC-WI-01 双端点收敛）：新调用一律走
+        POST /api/v1/front-desk/walk-ins（A1 契约口径：重放 200 created=false、
+        响应含服务端 30% 押金、入参校验更严）。本端点兼容期仍可用
+        （x-contract-status 保持 verified），仅作纯观测——入口记
+        frontdesk.legacy_walk_in_called 审计 + hotel.api 日志（R2-03，
+        不参与业务分支）；调用方=0 且观察期 ≥1 个营业日后改为返回 410
+        退役（触发条件与步骤清单见 docs/PMS2.0_当前版本/04_开发实施记录/
+        Walk-in双端点统一与观察统计R2实施记录_2026-11-19.md）。
 
-    复用 apps.reservations.walkin.create_walk_in：同一事务内完成
+    与 walk_ins_create 同服务层事实源：复用
+    apps.reservations.walkin.create_walk_in，同一事务内完成
     Guest→Reservation(source=WALK_IN)→ReservationRoom→Folio→Hold→确认→排房→入住→Stay。
     无手机号时由服务层生成确定性占位号；住客档案不按手机号自动合并
     （共享号码仅标记人工核验）。Idempotency-Key 必填，业务层幂等重放
     返回同一 Stay，无重复写入。
     """
+    # R2-03（DEC-WI-01 旧接口观察统计）：兼容期纯观测——只落事实，不影响业务分支。
+    _user = getattr(request, "user", None)
+    _property_obj = getattr(request, "front_desk_property", None)
+    AuditEvent.record(
+        action="frontdesk.legacy_walk_in_called",
+        entity_type="FrontDeskEndpoint",
+        entity_id="front-desk/walk-in",
+        actor=_user if _user is not None and _user.is_authenticated else None,
+        property_obj=_property_obj,
+        reason="DEC-WI-01 兼容期旧端点观察统计；迁移目标 POST /front-desk/walk-ins。",
+        request=request,
+    )
+    logger.info(
+        "frontdesk.legacy_walk_in_called: legacy walk-in endpoint called "
+        "(property=%s, user=%s, request_id=%s)",
+        getattr(_property_obj, "code", "") or "",
+        getattr(_user, "pk", None),
+        getattr(request, "request_id", "") or "",
+    )
     key = (request.headers.get("Idempotency-Key") or "").strip()
     if not key:
         return _response({"error": {"code": "VALIDATION_ERROR",
