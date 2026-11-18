@@ -1,0 +1,92 @@
+PMS2 调度任务静默化修复证据（MC-010 残项补正）
+采集时间: 2026-11-18 14:03:02    主机: DESKTOP-V42JQB9
+
+[现象] 交互会话下弹出 Windows Terminal 空白窗口，标题为 F:\Desktop\django-hotel\.venv\Scripts\python.exe
+[根因] 1) 动作使用控制台子系统 python.exe 且 Hidden=False；2) payment_compensation_worker 未传 --once，
+        该命令默认 while True 循环导致任务永不退出（窗口常驻，重启后再次触发即复现）；
+        3) 并发触发时控制台创建失败返回 0x800710E0。
+        另发现 sync_inventory_calendar 漏传 --start-date/--end-date（命令强制），每天以退出码 2 静默失败。
+[修法] pythonw.exe + Hidden + ExecutionTimeLimit=PT15M + IgnoreNew + 10 年重复期 + --once + {today}/{today+30} 占位符
+        + 每类任务独立 logs/scheduler/<slug>.log
+
+[安装后任务配置]
+  PMS2 billing_maintenance
+    Execute   : F:\Desktop\django-hotel\.venv\Scripts\pythonw.exe
+    Arguments : "F:\Desktop\django-hotel\scripts\scheduler_runner.py" --log=logs/scheduler/billing_maintenance.log run_billing_maintenance
+    WorkingDir: F:\Desktop\django-hotel
+    Hidden=True  LogonType=Interactive  ExecutionTimeLimit=PT15M  MultipleInstances=IgnoreNew
+    Repetition: Interval=PT10M  Duration=P3650D
+  PMS2 expire_invitations
+    Execute   : F:\Desktop\django-hotel\.venv\Scripts\pythonw.exe
+    Arguments : "F:\Desktop\django-hotel\scripts\scheduler_runner.py" --log=logs/scheduler/expire_invitations.log expire_invitations
+    WorkingDir: F:\Desktop\django-hotel
+    Hidden=True  LogonType=Interactive  ExecutionTimeLimit=PT15M  MultipleInstances=IgnoreNew
+    Repetition: Interval=PT15M  Duration=P3650D
+  PMS2 expire_reservation_holds
+    Execute   : F:\Desktop\django-hotel\.venv\Scripts\pythonw.exe
+    Arguments : "F:\Desktop\django-hotel\scripts\scheduler_runner.py" --log=logs/scheduler/expire_reservation_holds.log expire_reservation_holds
+    WorkingDir: F:\Desktop\django-hotel
+    Hidden=True  LogonType=Interactive  ExecutionTimeLimit=PT15M  MultipleInstances=IgnoreNew
+    Repetition: Interval=PT5M  Duration=P3650D
+  PMS2 payment_compensation_worker
+    Execute   : F:\Desktop\django-hotel\.venv\Scripts\pythonw.exe
+    Arguments : "F:\Desktop\django-hotel\scripts\scheduler_runner.py" --log=logs/scheduler/payment_compensation.log payment_compensation_worker --once
+    WorkingDir: F:\Desktop\django-hotel
+    Hidden=True  LogonType=Interactive  ExecutionTimeLimit=PT15M  MultipleInstances=IgnoreNew
+    Repetition: Interval=PT5M  Duration=P3650D
+  PMS2 recover_stale_night_audits
+    Execute   : F:\Desktop\django-hotel\.venv\Scripts\pythonw.exe
+    Arguments : "F:\Desktop\django-hotel\scripts\scheduler_runner.py" --log=logs/scheduler/recover_stale_night_audits.log recover_stale_night_audits
+    WorkingDir: F:\Desktop\django-hotel
+    Hidden=True  LogonType=Interactive  ExecutionTimeLimit=PT15M  MultipleInstances=IgnoreNew
+    Repetition: Interval=PT15M  Duration=P3650D
+  PMS2 sync_inventory_calendar
+    Execute   : F:\Desktop\django-hotel\.venv\Scripts\pythonw.exe
+    Arguments : "F:\Desktop\django-hotel\scripts\scheduler_runner.py" --log=logs/scheduler/sync_inventory_calendar.log sync_inventory_calendar --property-code DEFAULT --room-type-code STD --start-date={today} --end-date={today+30}
+    WorkingDir: F:\Desktop\django-hotel
+    Hidden=True  LogonType=Interactive  ExecutionTimeLimit=PT15M  MultipleInstances=IgnoreNew
+    Repetition: Interval=  Duration=
+
+[强制触发结果] 六项 Start-ScheduledTask 后等待 22s 采集
+  PMS2 billing_maintenance               State=Ready   LastTaskResult=0 LastRun=2026/11/18 14:01:01
+  PMS2 expire_invitations                State=Ready   LastTaskResult=0 LastRun=2026/11/18 14:01:01
+  PMS2 expire_reservation_holds          State=Ready   LastTaskResult=0 LastRun=2026/11/18 14:01:01
+  PMS2 payment_compensation_worker       State=Ready   LastTaskResult=0 LastRun=2026/11/18 14:01:01
+  PMS2 recover_stale_night_audits        State=Ready   LastTaskResult=0 LastRun=2026/11/18 14:01:01
+  PMS2 sync_inventory_calendar           State=Ready   LastTaskResult=0 LastRun=2026/11/18 14:01:01
+
+[静默性复核]
+  WindowsTerminal 进程数 = 0
+  pythonw 残留进程数     = 0
+
+[各任务日志尾部]
+  --- billing_maintenance.log ---
+    ===== run_billing_maintenance | 2026-11-18T14:01:37 =====
+    支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+    
+    ===== exit 0 =====
+  --- expire_invitations.log ---
+    ===== expire_invitations | 2026-11-18T14:01:37 =====
+    邀请过期扫描完成：归档 0 条
+    
+    ===== exit 0 =====
+  --- expire_reservation_holds.log ---
+    ===== expire_reservation_holds | 2026-11-18T14:01:37 =====
+    已释放 0 笔超时预订的库存。
+    
+    ===== exit 0 =====
+  --- payment_compensation.log ---
+    
+    ===== payment_compensation_worker --once | 2026-11-18T14:01:37 =====
+    
+    ===== exit 0 =====
+  --- recover_stale_night_audits.log ---
+    ===== recover_stale_night_audits | 2026-11-18T14:01:37 =====
+    已恢复 0 条超时夜审 RUNNING 记录（阈值 15 分钟）。
+    
+    ===== exit 0 =====
+  --- sync_inventory_calendar.log ---
+    ===== sync_inventory_calendar --property-code DEFAULT --room-type-code STD --start-date=2026-11-18 --end-date=2026-12-18 | 2026-11-18T14:01:21 =====
+    已同步 标准间：2026-11-18 至 2026-12-18，共 31 个住宿日；总房量 6，停用 0。
+    
+    ===== exit 0 =====
