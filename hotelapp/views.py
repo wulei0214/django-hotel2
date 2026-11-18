@@ -713,9 +713,12 @@ def show_accomodation(request):
     page = paginator.get_page(request.GET.get("page"))
     people = [_legacy_archive_row_wrapper(row) for row in page.object_list]
     record_adapter_query_audit(
-        source_table="accommodation", actor=request.user, request=request,
+        source_table="accommodation",
+        actor=request.user,
+        request=request,
         filters={"page": page.number, "page_size": 15},
-        returned_rows=len(people), total=paginator.count,
+        returned_rows=len(people),
+        total=paginator.count,
     )
     return render(request, "accomodation.html", {"people_list": people, "page_obj": page})
 

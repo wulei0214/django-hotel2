@@ -14,9 +14,12 @@ from django.db.models import Prefetch, Q
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
-from hotelapp.models import Accommodation as LegacyAccommodation
-from hotelapp.models import Folio as LegacyFolio
 
+from apps.billing.legacy_archive_query import (
+    legacy_folio_rows,
+    legacy_reservation_row,
+    legacy_reservation_rows,
+)
 from apps.billing.models import Folio, Payment, PaymentIntent, Refund
 from apps.billing.payment_intents import extend_intent_window, get_channel_window
 from apps.core import labels as L
@@ -910,94 +913,152 @@ def _legacy_money(value):
         return None
 
 
-def _legacy_reservation_dto(item):
-    guest = item.顾客id
-    room = item.客房编号
+def _legacy_reservation_payload(
+    *,
+    legacy_id,
+    status,
+    phone_masked,
+    check_in,
+    check_out,
+    paid_amount,
+    deposit_amount,
+    guest_id,
+    guest_name,
+    room_type_name,
+    room_number,
+):
+    """LegacyReservationDto 组装（E3/E4 共用形状）。
+
+    ``phone_masked`` 必须是**最终掩码值**（旧直读路径传 ``_mask_phone`` 结果，
+    归档路径传通道掩码值）；``guest_name``/``room_type_name``/``room_number``
+    缺源时传 None，按 DTO 既有兜底退化为“历史住客”/“历史房型”/无房号。
+    旧直读路径的逐字段语义基线冻结在 apps/api/test_legacy_equivalence.py。
+    """
     return {
-        "booking_no": f"LEGACY-{item.pk}",
-        "legacy_id": item.pk,
-        "status": item.状态 or "历史记录",
-        "status_label": item.状态 or "历史记录",
+        "booking_no": f"LEGACY-{legacy_id}",
+        "legacy_id": legacy_id,
+        "status": status or "历史记录",
+        "status_label": status or "历史记录",
         "source": "LEGACY",
         "source_label": "历史 hotelapp 订单",
         "guest": {
-            "id": guest.pk if guest else None,
-            "full_name": (guest.姓名 if guest else "") or "历史住客",
-            "phone_masked": _mask_phone(item.联系电话),
+            "id": guest_id,
+            "full_name": guest_name or "历史住客",
+            "phone_masked": phone_masked,
         },
-        "check_in": _legacy_date(item.入住时间),
-        "check_out": _legacy_date(item.退房时间),
+        "check_in": _legacy_date(check_in),
+        "check_out": _legacy_date(check_out),
         "room_count": 1,
         "adult_count": None,
         "child_count": None,
         "total_amount": None,
         "currency": "CNY",
-        "rooms": [{
-            "id": None,
-            "room_type": {"name": room.客房类型 if room else "历史房型"},
-            "assigned_room": {"number": str(room.房间号)} if room else None,
-        }],
-        "room_type": {"name": room.客房类型 if room else "历史房型"},
-        "assigned_room": {"number": str(room.房间号)} if room else None,
-        "legacy_paid_amount": _legacy_money(item.收款金额),
-        "legacy_deposit_amount": _legacy_money(item.押金),
+        "rooms": [
+            {
+                "id": None,
+                "room_type": {"name": room_type_name if room_type_name is not None else "历史房型"},
+                "assigned_room": {"number": room_number} if room_number is not None else None,
+            }
+        ],
+        "room_type": {"name": room_type_name if room_type_name is not None else "历史房型"},
+        "assigned_room": {"number": room_number} if room_number is not None else None,
+        "legacy_paid_amount": _legacy_money(paid_amount),
+        "legacy_deposit_amount": _legacy_money(deposit_amount),
         "folio_summary": {"status": "LEGACY_ARCHIVE", "currency": "CNY"},
         "source_system": "LEGACY",
         "read_only": True,
     }
 
 
+def _legacy_reservation_dto_from_archive(row):
+    """归档快照行 → LegacyReservationDto（M3-2 后 E3/E4 唯一数据源）。
+
+    与旧直读基线（pre-M3-2 ``_legacy_reservation_dto``，冻结于等价对比测试）的
+    等价边界：legacy_id/booking_no/状态/日期/金额（``_legacy_money`` 同口径）/
+    guest.id（=快照 client_id）/ assigned_room.number（快照 room_id 即旧
+    ``room.房间号`` 主键）完全等价；guest 姓名/客房类型名不可解析（归档快照
+    未含 client/room 名目表）→ 按兜底值退化，已登记 M3-2 实施记录设计边界。
+    """
+    room_id = row.get("room_id")
+    return _legacy_reservation_payload(
+        legacy_id=row["id"],
+        status=row.get("status"),
+        phone_masked=row.get("contact_phone") or "—",
+        check_in=row.get("check_in_text"),
+        check_out=row.get("check_out_text"),
+        paid_amount=row.get("received_amount_text"),
+        deposit_amount=row.get("deposit_text"),
+        guest_id=row.get("client_id"),
+        guest_name=None,
+        room_type_name=None,
+        room_number=str(room_id) if room_id is not None else None,
+    )
+
+
 @require_GET
 @api_guard
 @_front_desk_required
 def legacy_reservations(request):
-    """历史 hotelapp 客房订单只读适配器；不把旧记录伪造为 PMS2 Reservation。"""
+    """历史 hotelapp 客房订单只读适配器；不把旧记录伪造为 PMS2 Reservation。
+
+    M3-2（D6 读路径切换）：数据源=归档查询通道（legacy_accommodation_archive
+    全列快照，apps.billing.legacy_archive_query），不再直读旧 accommodation 表。
+    搜索按快照列：联系电话包含匹配 + 纯数字旧订单 id；姓名搜索随 client 名目表
+    未归档而降级（设计边界登记 M3-2 实施记录）。
+    """
     try:
         page, page_size = _page_args(request)
     except (ValueError, ApiError) as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
-    queryset = LegacyAccommodation.objects.select_related("顾客id", "客房编号").order_by("-id")
     value = (request.GET.get("q") or "").strip()
-    if value:
-        if len(value) > 80:
-            return _response({"error": {"code": "VALIDATION_ERROR", "message": "搜索内容不能超过 80 个字符。"}}, 400)
-        condition = (
-            Q(顾客id__姓名__icontains=value)
-            | Q(联系电话__icontains=value)
+    if len(value) > 80:
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": "搜索内容不能超过 80 个字符。"}}, 400
         )
-        if value.isdigit():
-            condition |= Q(id=int(value))
-        queryset = queryset.filter(condition)
-    status = (request.GET.get("status") or "").strip()
-    if status:
-        queryset = queryset.filter(状态=status)
-    rows, meta = _paginate(queryset, page, page_size)
-    return _response({
-        "data": [_legacy_reservation_dto(item) for item in rows],
-        "meta": {**meta, "source_system": "LEGACY", "read_only": True},
-    })
+    rows, meta = legacy_reservation_rows(
+        search=value,
+        status=(request.GET.get("status") or "").strip(),
+        page=page,
+        page_size=page_size,
+        actor=request.user,
+        request=request,
+    )
+    return _response(
+        {
+            "data": [_legacy_reservation_dto_from_archive(row) for row in rows],
+            "meta": {**meta, "source_system": "LEGACY", "read_only": True},
+        }
+    )
 
 
 @require_GET
 @api_guard
 @_front_desk_required
 def legacy_reservation_detail(request, legacy_id):
-    """历史订单及旧 Folio 原样只读展示，金额不参与 PMS2 账单余额计算。"""
-    item = LegacyAccommodation.objects.select_related("顾客id", "客房编号").filter(pk=legacy_id).first()
-    if item is None:
-        return _response({"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到历史订单。"}}, 404)
+    """历史订单及旧 Folio 原样只读展示，金额不参与 PMS2 账单余额计算。
+
+    M3-2：主行与凭证行均取归档查询通道（folio 归档快照金额字符串原样，
+    含红字负数），不再直读旧 accommodation/folio 表。
+    """
+    row = legacy_reservation_row(legacy_id=legacy_id, actor=request.user, request=request)
+    if row is None:
+        return _response(
+            {"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到历史订单。"}}, 404
+        )
     entries = []
-    for entry in LegacyFolio.objects.filter(order=item).order_by("id"):
-        entries.append({
-            "id": entry.pk,
-            "entry_type": entry.类型,
-            "amount_raw": entry.金额,
-            "business_date": _legacy_date(entry.日期),
-            "description": entry.事由,
-            "operator": entry.经手人,
-            "source_system": "LEGACY",
-        })
-    data = _legacy_reservation_dto(item)
+    for entry in legacy_folio_rows(legacy_id=legacy_id, actor=request.user, request=request):
+        entries.append(
+            {
+                "id": entry["id"],
+                "entry_type": entry["entry_type"],
+                "amount_raw": entry["amount_text"],
+                "business_date": _legacy_date(entry["date_text"]),
+                "description": entry["subject"],
+                "operator": entry["handler"],
+                "source_system": "LEGACY",
+            }
+        )
+    data = _legacy_reservation_dto_from_archive(row)
     data["legacy_entries"] = entries
     data["legacy_note"] = "历史账单来自旧 hotelapp.Folio，仅按原始凭证展示，不与 PMS2 Folio 汇总或对账。"
     data["timeline"] = {"created_at": None, "updated_at": None, "stays": []}

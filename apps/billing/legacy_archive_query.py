@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db.models import Q
+
 from apps.billing import models as billing_models
 from apps.billing.legacy_archive import ARCHIVE_SPECS, ArchiveSpec, get_spec_by_table
 from apps.core.models import AuditEvent
@@ -211,6 +213,166 @@ def list_rows(
         "has_previous": current > 1,
     }
     return rows, pagination
+
+
+# ---------------------------------------------------------------------------
+# 适配器形状只读查询（模块③批次 M3-2：E2/E3/E4 读路径切换专用）
+#
+# 与 list_rows（归档浏览 API，按批次授权）不同，适配器查询是**跨批次**的：
+# 旧读入口（show_accomodation / legacy-reservations 系列）按 D3-3 甲不加物业过滤
+# （P1-06 单店 DEFAULT 边界，隔离能力随归档行 property 快照列在后续按需启用），
+# 权限判定仍由调用方（front_desk/staff_required 门禁）先行。
+# ---------------------------------------------------------------------------
+
+# 适配器行返回的列 = accommodation 归档规格源列（全列快照，行=源表逐列对位）。
+_ADAPTER_ACCOMMODATION_COLUMNS: tuple[str, ...] = get_spec_by_table("accommodation").columns
+_ADAPTER_FOLIO_COLUMNS: tuple[str, ...] = get_spec_by_table("folio").columns
+
+
+def record_adapter_query_audit(
+    *,
+    source_table: str,
+    actor: Any,
+    request: Any = None,
+    filters: dict[str, Any] | None = None,
+    returned_rows: int | None = None,
+    total: int | None = None,
+    property_obj: Any = None,
+) -> None:
+    """适配器路径的归档查询审计（归档门禁 §4.1 第 5 条：访问记 who/when/what）。
+
+    与 list_rows 的逐批次事件同一动作代码；entity_id 以 ``adapter/`` 前缀区分
+    跨批次适配器查询，便于审计抽样时分离两类读路径。
+    """
+    AuditEvent.record(
+        action="billing.legacy_archive_query",
+        entity_type="LegacyArchiveRun",
+        entity_id=f"adapter/{source_table}",
+        actor=actor,
+        property_obj=property_obj,
+        reason="模块③ M3-2 读路径切换：旧读入口归档通道取数",
+        after={
+            "channel": "adapter",
+            "source_table": source_table,
+            "filters": filters or {},
+            "returned_rows": returned_rows,
+            "total": total,
+        },
+        request=request,
+    )
+
+
+def legacy_accommodation_queryset() -> Any:
+    """E2 ``show_accomodation`` 数据源：归档 accommodation 全列快照（id 升序）。
+
+    只读 QuerySet（ImmutableArchiveQuerySet 禁改删）；行含快照原值（含联系电话），
+    脱敏按现状契约留在渲染层（accomodation.html 的 ``mask_tel`` 模板过滤器，
+    服务端渲染输出不含完整值）——本函数不得用于任何直接对外输出场景。
+    """
+    return billing_models.LegacyAccommodationArchive.objects.order_by("id")
+
+
+def legacy_reservation_rows(
+    *,
+    search: str | None = None,
+    status: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+    actor: Any = None,
+    request: Any = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """E3 ``legacy-reservations`` 列表数据源：归档 accommodation 行 + 分页。
+
+    搜索口径按归档快照列：联系电话包含匹配 + 纯数字时按旧订单 id 精确匹配
+    （归档快照未含 client 名目表，姓名搜索不再命中——降级已登记于 M3-2 实施记录）。
+    返回 ``(rows, pagination)``；pagination 键与 front_desk ``_paginate`` 一致，
+    行内联系电话已按 :func:`mask_phone` 掩码，其余列 = 源表快照原值（金额字符串原样）。
+    """
+    queryset = billing_models.LegacyAccommodationArchive.objects.order_by("-id")
+    value = str(search or "").strip()
+    if value:
+        condition = Q(contact_phone__icontains=value)
+        if value.isdigit():
+            condition |= Q(id=int(value))
+        queryset = queryset.filter(condition)
+    status_value = str(status or "").strip()
+    if status_value:
+        queryset = queryset.filter(status=status_value)
+    total = queryset.count()
+    # 页大小与 list_rows 同口径封顶 500（front_desk 侧另有 parse_page_args ≤100 校验）。
+    size = max(1, min(int(page_size or 20), 500))
+    current = max(1, int(page or 1))
+    start = (current - 1) * size
+    rows = [
+        dict(row) for row in queryset.values(*_ADAPTER_ACCOMMODATION_COLUMNS)[start : start + size]
+    ]
+
+    for row in rows:
+        row["contact_phone"] = mask_phone(row.get("contact_phone"))
+    record_adapter_query_audit(
+        source_table="accommodation",
+        actor=actor,
+        request=request,
+        filters={"search": value, "status": status_value},
+        returned_rows=len(rows),
+        total=total,
+    )
+    pagination = {
+        "page": current,
+        "page_size": size,
+        "total": total,
+        "has_previous": current > 1,
+        "has_next": start + size < total,
+    }
+    return rows, pagination
+
+
+def legacy_reservation_row(
+    *, legacy_id: int, actor: Any = None, request: Any = None
+) -> dict[str, Any] | None:
+    """E4 详情主行：归档 accommodation 单行（联系电话已掩码）；不存在返回 None。"""
+    row = (
+        billing_models.LegacyAccommodationArchive.objects.filter(pk=legacy_id)
+        .values(*_ADAPTER_ACCOMMODATION_COLUMNS)
+        .first()
+    )
+    if row is None:
+        return None
+    item = dict(row)
+    item["contact_phone"] = mask_phone(item.get("contact_phone"))
+    record_adapter_query_audit(
+        source_table="accommodation",
+        actor=actor,
+        request=request,
+        filters={"legacy_id": legacy_id},
+        returned_rows=1,
+        total=1,
+    )
+    return item
+
+
+def legacy_folio_rows(
+    *, legacy_id: int, actor: Any = None, request: Any = None
+) -> list[dict[str, Any]]:
+    """E4 旧凭证行：归档 folio 中 order_id 指向该旧订单的凭证（id 升序）。
+
+    金额为 ``amount_text`` 快照字符串原样（含负数红字冲账），不做任何换算。
+    """
+    rows = [
+        dict(row)
+        for row in billing_models.LegacyFolioArchive.objects.filter(order_id=legacy_id)
+        .order_by("id")
+        .values(*_ADAPTER_FOLIO_COLUMNS)
+    ]
+    record_adapter_query_audit(
+        source_table="folio",
+        actor=actor,
+        request=request,
+        filters={"legacy_id": legacy_id},
+        returned_rows=len(rows),
+        total=len(rows),
+    )
+    return rows
 
 
 def table_keys() -> list[str]:

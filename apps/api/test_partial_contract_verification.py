@@ -331,10 +331,12 @@ class PartialContractVerificationBase(TestCase):
         )
 
     def _make_legacy_order(self):
-        """旧 hotelapp 客房订单链（对齐 hotelapp/tests.py 造数模式）。
+        """旧 hotelapp 客房订单链（对齐 hotelapp/tests.py 造数模式）+ 同批次归档。
 
-        legacy-reservations/{legacy_id} 端点语义：旧 Accommodation 只读适配器，
-        无物业过滤（历史数据面），键结构与 PMS2 预订无关。
+        M3-2（D6 读路径切换）后 legacy-reservations 系列端点的数据源为归档查询
+        通道：夹具先造旧表行，再经归档服务写快照（独立批次号，幂等口径不重跑），
+        旧表行保留（归档只做快照不改旧表）。端点语义不变：旧 Accommodation 只读
+        适配器，无物业过滤（历史数据面），键结构与 PMS2 预订无关。
         """
         self._seq += 1
         seq = self._seq
@@ -368,6 +370,11 @@ class PartialContractVerificationBase(TestCase):
             日期="2026-11-01",
             经手人="契约核验",
         )
+        from apps.billing.legacy_archive import archive_table, get_spec
+
+        batch_uid = f"PCV-LEGACY-{seq:04d}"
+        archive_table(spec=get_spec("Accommodation"), batch_uid=batch_uid, operator="契约核验")
+        archive_table(spec=get_spec("Folio"), batch_uid=batch_uid, operator="契约核验")
         return order
 
     def _make_reopen_request_via_api(self, requester):
