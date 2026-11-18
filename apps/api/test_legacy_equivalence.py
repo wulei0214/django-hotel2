@@ -22,6 +22,7 @@
 """
 
 import uuid
+from datetime import timedelta
 
 from django.contrib.auth.models import Group, Permission, User
 from django.test import TestCase
@@ -29,7 +30,7 @@ from django.utils import timezone
 
 # --- test-only generated passwords (no literals in source) ---
 # 测试专用密码：运行时随机生成，源码不落凭据字面量（AGENTS.md 会话纪律）。
-from django.utils.crypto import get_random_string  # noqa: E402
+from django.utils.crypto import get_random_string
 from hotelapp.models import Accommodation as LegacyAccommodation
 from hotelapp.models import Client as LegacyClient
 from hotelapp.models import Folio as LegacyFolio
@@ -161,7 +162,7 @@ class LegacyEquivalenceBase(TestCase):
         StaffRoleAssignment.objects.create(
             membership=membership,
             group=role,
-            starts_at=timezone.now() - timezone.timedelta(minutes=1),
+            starts_at=timezone.now() - timedelta(minutes=1),
         )
         self.front = self.user
         self._seed_legacy_tables()
@@ -298,7 +299,7 @@ class EmptyDatabaseIdentityTests(LegacyEquivalenceBase):
         StaffRoleAssignment.objects.create(
             membership=membership,
             group=role,
-            starts_at=timezone.now() - timezone.timedelta(minutes=1),
+            starts_at=timezone.now() - timedelta(minutes=1),
         )
         self.front = self.user
 
@@ -589,8 +590,8 @@ class SeededEquivalenceTests(LegacyEquivalenceBase):
             self.assertEqual(wrapped.入住时间, old.入住时间)
             self.assertEqual(wrapped.退房时间, old.退房时间)
             self.assertEqual(wrapped.收款金额, old.收款金额)
-            self.assertEqual(wrapped.顾客id.顾客id, old.顾客id_id)
-            self.assertEqual(wrapped.客房编号.房间号, old.客房编号_id)
+            self.assertEqual(wrapped.顾客id.顾客id, old.顾客id_id)  # type: ignore[attr-defined]  # wrapped=归档行+注入形状（views._legacy_archive_row_wrapper），非模型声明属性
+            self.assertEqual(wrapped.客房编号.房间号, old.客房编号_id)  # type: ignore[attr-defined]
         # 模板层 mask_tel 脱敏口径保持（服务端渲染输出不含完整值）。
         self.assertContains(response, "138****5678")
         self.assertNotContains(response, "13812345678")
