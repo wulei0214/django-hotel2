@@ -23005,8 +23005,8 @@
                         "legacy_vip_id": {
                           "anyOf": [
                             {
-                              "type": "integer",
-                              "description": "旧 Vip 表映射 ID。"
+                              "type": "string",
+                              "description": "旧 Vip 表映射引用（旧来源映射标识，允许非数字标识）。"
                             },
                             {
                               "type": "null"
@@ -37498,8 +37498,8 @@
           "legacy_vip_id": {
             "anyOf": [
               {
-                "type": "integer",
-                "description": "旧 Vip 表映射 ID。"
+                "type": "string",
+                "description": "旧 Vip 表映射引用（旧来源映射标识，允许非数字标识）。"
               },
               {
                 "type": "null"

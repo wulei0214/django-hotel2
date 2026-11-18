@@ -3,7 +3,6 @@
 路由分组：
   /login/ /logout/          前台独立登录/退出
   /                         按当前角色权限跳转到首个可访问模块
-  /check_unique/            唯一字段失焦查重接口（JSON）
   /index/ /insert/ ...      员工管理（index 即员工模块首页）
   /show_client/ ...         其余 7 个模块：show_/insert_/update_/delete_/search_ 五件套
   /manage/staff/ ...        员工中心（§10.1：生命周期写工作台 + actions 写路由）
@@ -126,7 +125,6 @@ urlpatterns = [
         name="legacy_finance_redirect",
     ),
     path("finance_add/", views.finance_add),
-    path("check_unique/", views.check_unique),
     path("client/reveal_id/", views.client_reveal_id),
     path("vip/reveal_tel/", views.vip_reveal_tel),
     path("staff_accounts/", views.staff_accounts, name="staff_accounts"),

@@ -3,7 +3,6 @@
 覆盖：注册止血、净房放行门控、夜审权限、冲账执行权、隐藏模块门禁、敏感导出授权。
 """
 from datetime import date, timedelta
-from unittest.mock import Mock, patch
 
 from django.contrib.auth.models import Group, User
 from django.test import TestCase
@@ -1649,30 +1648,6 @@ class SeedHotelDataEnvironmentGuardTests(TestCase):
             with self.assertRaises(CommandError):
                 call_command("seed_hotel_data", stdout=StringIO())
         self.assertEqual(Property.objects.count(), before)
-
-
-class UniqueCheckCacheResilienceTests(TestCase):
-    """查重缓存故障不得让失焦校验接口返回 500。"""
-
-    def test_cache_read_and_write_failures_fall_back_to_database(self):
-        from hotelapp.views import _unique_field_exists
-        queryset = Mock()
-        queryset.exists.return_value = True
-        with patch("hotelapp.views.cache.get", side_effect=RuntimeError("Redis unavailable")) as cache_get, \
-             patch("hotelapp.views.cache.set", side_effect=RuntimeError("Redis unavailable")), \
-             patch.object(Client.objects, "filter", return_value=queryset) as db_filter:
-            self.assertTrue(_unique_field_exists(Client, "身份证号", "TEST-ID"))
-        cache_key = cache_get.call_args.args[0]
-        self.assertNotIn("TEST-ID", cache_key, "敏感值不得以明文进入缓存键")
-        db_filter.assert_called_once_with(**{"身份证号": "TEST-ID"})
-        queryset.exists.assert_called_once_with()
-
-    def test_cache_hit_does_not_query_database(self):
-        from hotelapp.views import _unique_field_exists
-        with patch("hotelapp.views.cache.get", return_value=True), \
-             patch.object(Client.objects, "filter") as db_filter:
-            self.assertTrue(_unique_field_exists(Client, "身份证号", "TEST-ID"))
-        db_filter.assert_not_called()
 
 
 class HomeDisplayFallbackTests(TestCase):

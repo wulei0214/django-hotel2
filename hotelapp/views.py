@@ -12,14 +12,15 @@ hotelapp 视图层：前台 8 大业务模块的全部页面与接口。
   * _first_error   逐字段格式校验，返回 (错误信息, 出错输入框name)，用于页面回填
   * _error_context 错误重渲染上下文：保留已填内容，仅清空出错字段
   * _search        查询字段白名单校验 + 按主键排序，杜绝注入
-  * UNIQUE_FIELDS  唯一性字段注册表（身份证/手机号/菜名/车牌），供 check_unique 失焦查重
   * 视图统一挂 @staff_required（登录+员工身份）与 @permission_required（模块权限）
+
+（M5-2 / D5-3 甲：check_unique 失焦查重接口及其 UNIQUE_FIELDS 注册表、
+_unique_field_exists 缓存回退助手已随旧页僵尸表单一并摘除，路由不再注册。）
 """
 
 import csv
 import datetime
 import functools
-import hashlib
 import logging
 import re
 
@@ -30,7 +31,6 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
@@ -164,14 +164,6 @@ VALIDATORS = {
 
 STAFF_JOBS = ("总经理", "大堂经理", "厨师", "服务员", "保安")
 
-# 具有唯一性业务含义的字段（失焦即时查重接口使用）：同一证件/手机号/菜名/车牌全局唯一
-UNIQUE_FIELDS = {
-    "client": ("身份证号", Client),
-    "vip": ("联系方式", Vip),
-    "food": ("菜名", Food),
-    "park": ("车辆牌号", Park),
-}
-
 
 def _first_error(checks):
     """依次校验字段列表，返回 (第一条错误信息, 出错字段的输入name)。
@@ -195,38 +187,6 @@ def _error_context(request, efield):
     if efield:
         form[efield] = ""
     return {"error": None, "form": form}
-
-
-def _unique_field_exists(model, field, value):
-    """查重缓存是可选加速层；缓存故障时必须回退数据库权威查询。"""
-    # 证件号/手机号等敏感值不应以明文进入 Redis key 或异常日志。
-    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
-    key = f"uq:{model.__name__}:{field}:{digest}"
-    try:
-        exists = cache.get(key)
-    except Exception:
-        logger.warning("check_unique cache read failed; falling back to DB",
-                       exc_info=True, extra={"cache_key": key})
-        exists = None
-    if exists is None:
-        exists = model.objects.filter(**{field: value}).exists()
-        try:
-            cache.set(key, exists, 60)
-        except Exception:
-            logger.warning("check_unique cache write failed; returning DB result",
-                           exc_info=True, extra={"cache_key": key})
-    return exists
-
-
-@staff_required
-def check_unique(request):
-    """唯一字段查重接口：/check_unique/?model=client&value=xxx（结果缓存 60 秒）"""
-    info = UNIQUE_FIELDS.get(request.GET.get("model"))
-    value = (request.GET.get("value") or "").strip()
-    if not info or not value:
-        return JsonResponse({"exists": False})
-    field, model = info
-    return JsonResponse({"exists": _unique_field_exists(model, field, value)})
 
 
 def _get_staff(sid, job):

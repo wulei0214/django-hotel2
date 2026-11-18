@@ -1091,7 +1091,11 @@ COMPONENTS = {
             "status_label": s_str(),
             "joined_at": s_nullable(s_str()),
             "expires_at": s_nullable(s_str()),
-            "legacy_vip_id": s_nullable(s_int("旧 Vip 表映射 ID。")),
+            # D5-8 甲（P-09 契约漂移修复）：对齐模型 CharField(32)——旧来源映射引用
+            # 允许非数字标识（如 "vip:123"），不得声明为 integer。
+            "legacy_vip_id": s_nullable(
+                s_str("旧 Vip 表映射引用（旧来源映射标识，允许非数字标识）。")
+            ),
             "source_system": s_str(),
         }
     ),

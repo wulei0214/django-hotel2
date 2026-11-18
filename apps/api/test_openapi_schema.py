@@ -783,6 +783,22 @@ class PMS2FieldLevelConsistencyTests(TestCase):
             props["summary"]["anyOf"][0]["$ref"], "#/components/schemas/FolioSummaryDto"
         )
 
+    def test_membership_legacy_vip_id_declared_nullable_string(self):
+        """D5-8 甲（P-09 漂移修复）：legacy_vip_id 契约必须为 nullable string。
+
+        模型 GuestMembership.legacy_vip_id 为 CharField(32)，DTO 返回字符串
+        （staff_center.py `m.legacy_vip_id or None`）；语义是"旧来源映射引用"，
+        允许非数字标识（如 "vip:123"），契约不得声明 integer。
+        """
+        prop = self.schemas["MembershipDto"]["properties"]["legacy_vip_id"]
+        variants = prop.get("anyOf", [])
+        types = {variant.get("type") for variant in variants}
+        self.assertEqual(
+            types,
+            {"string", "null"},
+            "legacy_vip_id 契约必须为 nullable string（对齐模型 CharField(32)）",
+        )
+
     def test_availability_query_params_match_view_reads(self):
         """availability 视图只读取 check_in/check_out/rooms/room_type_id。"""
         operation = self.spec["paths"][BASE + "/availability"]["get"]

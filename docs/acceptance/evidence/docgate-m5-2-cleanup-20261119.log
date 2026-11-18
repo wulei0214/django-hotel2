@@ -1,0 +1,90 @@
+# 证据：M5-2 僵尸交互与 410 桩清理（派发单 GOV-DISPATCH-M3M4M5-001 · 派发单 M5-2）
+SHA: 1bd57bd3200ca62789f42b5cb21b349c51dc9d89（工作区含未提交变更 15 项：证据树不等于该提交，需以本行为准；在途变更=本批 M5-2 触碰文件，另有并行遗留 waitress-deploy-20261117.log/_selftest//mc-selftest-20261118/ 非本批产物；M5-2 触碰文件=hotel/urls.py、hotelapp/views.py、hotelapp/tests.py、hotelapp/test_m5_2_cleanup.py、templates/html1.html、templates/vip.html、apps/api/openapi_schema.py、apps/api/test_openapi_schema.py、双快照 openapi.json、接口指南/性能优化两处同步行）
+date: 2026-11-19 01:32:00 +0800
+env: DJANGO_ENV=test DJANGO_DB_ENGINE=mysql（连接参数经 set -a && source .env 透传；DJANGO_PLATFORM_ADMIN_USERNAME/PASSWORD 已按 apps/core.testing_env.test_process_env 同口径剔除——平台后台白名单变量会致身份用例 403 假失败）
+python: 3.9.0  django: 4.1
+
+== 步骤 1：manage.py check ==
+command: python manage.py check
+System check identified no issues (0 silenced).
+exit_code=0
+
+== 步骤 2：apps.guests 全量回归（MySQL 测试库全新创建） ==
+command: python manage.py test apps.guests
+Found 81 test(s).
+Creating test database for alias 'default'...
+……（逐用例进度点输出省略；Ran/OK/库销毁摘要与退出码原样保留如下）……
+Ran 81 tests in 4.101s
+
+OK
+Destroying test database for alias 'default'...
+
+exit_code=0
+
+== 步骤 3：OpenAPI 契约测试 + partial 契约核验回归 ==
+command: python manage.py test apps.api.test_openapi_schema apps.api.test_partial_contract_verification
+Found 133 test(s).
+Creating test database for alias 'default'...
+……（逐用例进度点输出省略；Ran/OK/库销毁摘要与退出码原样保留如下）……
+Ran 133 tests in 82.952s
+
+OK
+Destroying test database for alias 'default'...
+
+exit_code=0
+
+== 步骤 4：hotelapp 全量回归（MySQL 测试库全新创建；含新增 M5-2 11 用例） ==
+command: python manage.py test hotelapp
+Found 129 test(s).
+Creating test database for alias 'default'...
+……（逐用例进度点输出省略；Ran/OK/库销毁摘要与退出码原样保留如下）……
+Ran 129 tests in 31.413s
+
+OK
+Destroying test database for alias 'default'...
+
+exit_code=0
+
+== 步骤 5：僵尸交互/查重端点残留静态断言（grep 期望 0 命中） ==
+command: grep -nE 'insert_client|delete_client|update_client|insert_vip|delete_vip|update_vip|btn-add|form-card|data-unique|check_unique' templates/html1.html templates/vip.html
+template_grep_exit=1（1=无命中，即无僵尸交互/查重引用残留）
+
+command: python -c "import django; django.setup(); import hotelapp.views as v; ..."（DJANGO_SETTINGS_MODULE=hotel.settings）
+residual_symbols= []
+exit_code=0
+
+command: grep -n 'check_unique' hotel/urls.py hotelapp/tests.py
+route_grep_exit=1（1=无命中；hotelapp/views.py 仅余 M5-2 摘除说明 docstring 一处，非代码引用，已由上一条 hasattr 断言覆盖）
+
+== 步骤 6：OpenAPI 双快照一致性 + legacy_vip_id string 契约断言 ==
+command: cmp 权威快照 vs 镜像快照
+cmp_exit=0（0=权威快照与镜像快照逐字节一致）
+
+command: python JSON 解析双快照，断言全部 legacy_vip_id 声明均为 nullable string（无 integer）
+权威快照: legacy_vip_id 声明 2 处，类型集合={('null', 'string')}
+镜像快照: legacy_vip_id 声明 2 处，类型集合={('null', 'string')}
+legacy_vip_id string 契约断言：PASS
+exit_code=0
+
+== 步骤 7：ruff / black（触碰文件；hotelapp 在 ruff exclude 域，按 M4-2 先例口径） ==
+command: .venv/Scripts/ruff.exe check apps/api/openapi_schema.py apps/api/test_openapi_schema.py hotel/urls.py
+All checks passed!
+ruff_exit=0
+
+command: .venv/Scripts/black.exe --check apps/api/openapi_schema.py apps/api/test_openapi_schema.py hotelapp/test_m5_2_cleanup.py hotel/urls.py
+All done! ✨ 🍰 ✨
+4 files would be left unchanged.
+black_exit=0
+
+说明：hotelapp/views.py、hotelapp/tests.py 为存量非 black 全格式文件（pyproject ruff exclude=hotelapp），本批仅保证新增/改写行合规——新增行仅 views.py 模块 docstring 摘除注记（black 不重排 docstring），其余均为删码，无新增违规（black --diff 复核确认 hunk 均为存量风格，未触及本批新增行）。
+
+== 步骤 8：docs 链接门禁 ==
+command: python scripts/docs_link_check.py check
+摘要：扫描文件数=161 断链对=152 重复组=0 不可解析SHA=0 受保护变更=1 新增缺元数据=0 重复标题=0 新增违规数=0
+exit_code=0
+
+== 步骤 8 补跑：实施记录落盘后复跑 docs 链接门禁 ==
+（补记：步骤 8 首跑后实施记录 docs/PMS2.0_当前版本/04_开发实施记录/架构治理模块五批次M5-2实施记录_2026-11-19.md 落盘，工作区未提交变更 15→16 项，门禁复跑结果如下）
+command: python scripts/docs_link_check.py check
+摘要：扫描文件数=161 断链对=152 重复组=0 不可解析SHA=0 受保护变更=1 新增缺元数据=0 重复标题=0 新增违规数=0
+exit_code=0
