@@ -82,6 +82,16 @@
         .pms-kv{width:100%;border-collapse:collapse;margin-bottom:16px}
         .pms-kv th{width:110px;text-align:left;padding:8px 10px;color:var(--color-text-secondary,#637188);font-weight:600;font-size:13px;background:var(--color-bg-subtle,#f7f9fc);border-bottom:1px solid var(--color-border-separator,#edf0f4);vertical-align:top}
         .pms-kv td{padding:8px 10px;font-size:13px;border-bottom:1px solid var(--color-border-separator,#edf0f4);color:var(--color-text-primary,#243247);word-break:break-all}
+        /* 任务池与维修工单（MC-006） */
+        .hk-table{width:100%;border-collapse:collapse;margin-top:12px}
+        .hk-table th{text-align:left;padding:8px 10px;font-size:12px;color:var(--color-text-secondary,#637188);background:var(--color-bg-subtle,#f7f9fc);border-bottom:1px solid var(--color-border-separator,#edf0f4);white-space:nowrap}
+        .hk-table td{padding:8px 10px;font-size:13px;color:var(--color-text-primary,#243247);border-bottom:1px solid var(--color-border-separator,#edf0f4);vertical-align:top;word-break:break-word}
+        .hk-row-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+        .hk-mini-input{width:110px;padding:6px 8px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:var(--radius-md,6px);font-size:12px}
+        .hk-fail-input{flex:1;min-width:180px;max-width:260px;padding:6px 8px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:var(--radius-md,6px);font-size:12px}
+        .hk-row-msg{flex-basis:100%;font-size:12px;line-height:1.5}
+        .hk-row-msg.hk-ok{color:var(--color-success-text,#3d7a1e)}
+        .hk-row-msg.hk-err{color:var(--color-danger-text,#b34a4a)}
         @media(max-width:720px){.pms-center{padding:14px}.pms-panel{padding:10px}.pms-tools input,.pms-tools select{min-width:0}}
         @media (prefers-reduced-motion: reduce){.pms-drawer-mask,.pms-drawer{transition:none}}
     </style>
@@ -155,6 +165,85 @@
         </span>
       </div>
     </section>
+
+    {# ── 清洁任务池（GET /api/v1/housekeeping/tasks + claim/assign/start/complete/inspect） ── #}
+    <section class="pms-panel" aria-label="清洁任务池">
+      <div class="pms-tools">
+        <strong>清洁任务池</strong>
+        <select id="hk-task-status" aria-label="任务状态筛选">
+          <option value="">全部状态</option>
+          <option value="PENDING">待清洁</option>
+          <option value="IN_PROGRESS">清洁中</option>
+          <option value="DONE">待检查</option>
+          <option value="INSPECTED">检查通过</option>
+          <option value="REJECTED">检查退回</option>
+          <option value="CANCELLED">已取消</option>
+        </select>
+        <select id="hk-task-type" aria-label="任务类型筛选">
+          <option value="">全部类型</option>
+          <option value="DEPARTURE">退房清洁</option>
+          <option value="STAYOVER">住中清扫</option>
+          <option value="DEEP_CLEAN">深度清洁</option>
+          <option value="INSPECTION">检查</option>
+          <option value="TURNDOWN">夜床</option>
+        </select>
+        <select id="hk-task-assigned" aria-label="负责人范围筛选">
+          <option value="all">全部任务</option>
+          <option value="me">指派给我</option>
+          <option value="group">本岗位组</option>
+        </select>
+        <button id="hk-task-reload" type="button">查询</button>
+        <span class="pms-meta" id="hk-task-meta">读取中…</span>
+      </div>
+      <div id="hk-task-error" class="pms-drawer-err" hidden></div>
+      <table class="hk-table" id="hk-task-table">
+        <thead>
+          <tr><th>房间</th><th>类型</th><th>状态</th><th>负责人</th><th>优先级</th><th>截止时间</th><th>操作</th></tr>
+        </thead>
+        <tbody id="hk-task-body"><tr><td colspan="7" class="pms-state">读取中…</td></tr></tbody>
+      </table>
+    </section>
+
+    {# ── 维修工单（GET /api/v1/maintenance/tickets + create/assign/start/resolve/verify） ── #}
+    <section class="pms-panel" aria-label="维修工单">
+      <div class="pms-tools">
+        <strong>维修工单</strong>
+        <select id="hk-ticket-status" aria-label="工单状态筛选">
+          <option value="">全部状态</option>
+          <option value="OPEN">已报修</option>
+          <option value="IN_PROGRESS">维修中</option>
+          <option value="PENDING_VERIFY">待验收</option>
+          <option value="VERIFIED">验收通过</option>
+          <option value="CANCELLED">已取消</option>
+        </select>
+        <button id="hk-ticket-reload" type="button">查询</button>
+        <span class="pms-meta" id="hk-ticket-meta">读取中…</span>
+      </div>
+      <div id="hk-ticket-error" class="pms-drawer-err" hidden></div>
+      <table class="hk-table" id="hk-ticket-table">
+        <thead>
+          <tr><th>房间</th><th>故障描述</th><th>状态</th><th>负责人</th><th>操作</th></tr>
+        </thead>
+        <tbody id="hk-ticket-body"><tr><td colspan="5" class="pms-state">读取中…</td></tr></tbody>
+      </table>
+      {% if can_register_maintenance %}
+      <form id="hk-ticket-form" class="hk-form">
+        <div>
+          <label for="hk-ticket-room">房号</label>
+          <input id="hk-ticket-room" list="hk-ticket-rooms" autocomplete="off" required>
+          <datalist id="hk-ticket-rooms"></datalist>
+        </div>
+        <div>
+          <label for="hk-ticket-reason">故障描述</label>
+          <input id="hk-ticket-reason" maxlength="240" placeholder="例如：空调漏水" required>
+        </div>
+        <div class="hk-span2 hk-form-actions">
+          <button type="submit">登记报修</button>
+        </div>
+        <div id="hk-ticket-result" class="hk-span2"></div>
+      </form>
+      {% endif %}
+    </section>
   </div>
 </div>
 
@@ -176,6 +265,7 @@
   const canFlow = {{ can_flow_housekeeping|yesno:"true,false" }};
   const canRelease = {{ can_release_room|yesno:"true,false" }};
   const canMaintain = {{ can_register_maintenance|yesno:"true,false" }};
+  const currentUserId = {{ current_user_id|default:"0" }};
 
   const HK_BADGES = {CLEAN: "hk-clean", DIRTY: "hk-dirty", CLEANING: "hk-cleaning", INSPECTING: "hk-inspecting"};
 
@@ -204,8 +294,10 @@
       try { payload = JSON.parse(raw); } catch (parseError) { payload = null; }
     }
     if (!response.ok) {
-      throw new Error(payload && payload.error && payload.error.message
+      const err = new Error(payload && payload.error && payload.error.message
           || ("请求失败（HTTP " + response.status + "）"));
+      if (payload && payload.error && payload.error.code) err.code = payload.error.code;
+      throw err;
     }
     if (!payload || typeof payload !== "object") {
       throw new Error("服务器返回非 JSON 响应（HTTP " + response.status +
@@ -518,9 +610,384 @@
   document.getElementById("hk-drawer-close").addEventListener("click", closeDrawer);
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeDrawer(); });
 
+  /* ---------- 清洁任务池（MC-006：claim/assign/start/complete/inspect） ---------- */
+  const TASK_STATUS_LABELS = {
+    PENDING: "待清洁", IN_PROGRESS: "清洁中", DONE: "待检查",
+    INSPECTED: "检查通过", REJECTED: "检查退回", CANCELLED: "已取消"};
+  const TASK_STATUS_BADGES = {
+    PENDING: "hk-dirty", IN_PROGRESS: "hk-cleaning", DONE: "hk-inspecting",
+    INSPECTED: "hk-clean", REJECTED: "hk-dirty", CANCELLED: "hk-occ"};
+  const TASK_TYPE_LABELS = {
+    DEPARTURE: "退房清洁", STAYOVER: "住中清扫", DEEP_CLEAN: "深度清洁",
+    INSPECTION: "检查", TURNDOWN: "夜床"};
+  const TASK_PRIORITY_LABELS = {P1: "加急", P2: "普通", P3: "低"};
+  const TASK_MESSAGES = new Map();
+  const TICKET_STATUS_LABELS = {
+    OPEN: "已报修", IN_PROGRESS: "维修中", PENDING_VERIFY: "待验收",
+    VERIFIED: "验收通过", RESTORED: "已恢复", CANCELLED: "已取消"};
+  const TICKET_STATUS_BADGES = {
+    OPEN: "hk-dirty", IN_PROGRESS: "hk-cleaning", PENDING_VERIFY: "hk-inspecting",
+    VERIFIED: "hk-clean", RESTORED: "hk-clean", CANCELLED: "hk-occ"};
+  const TICKET_MESSAGES = new Map();
+
+  function pad2(value) { return String(value).padStart(2, "0"); }
+  function fmtTime(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return (d.getMonth() + 1) + "-" + pad2(d.getDate()) + " "
+        + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+  }
+  function errorText(error) {
+    return error.code ? error.message + "（" + error.code + "）" : error.message;
+  }
+  function statusBadge(status, labels, badges) {
+    return el("span", "hk-badge " + (badges[status] || "hk-occ"),
+        labels[status] || status || "—");
+  }
+  function emptyRow(colspan, text) {
+    const tr = el("tr");
+    const td = el("td", "pms-state", text);
+    td.colSpan = colspan;
+    tr.appendChild(td);
+    return tr;
+  }
+  function clearRowMsg(box) { box.textContent = ""; box.className = "hk-row-msg"; }
+  function showRowMsg(box, cls, message) {
+    box.textContent = message;
+    box.className = "hk-row-msg " + cls;
+  }
+  function assignInput() {
+    const input = el("input", "hk-mini-input");
+    input.type = "number";
+    input.min = "1";
+    input.placeholder = "员工档案ID";
+    input.setAttribute("aria-label", "被指派员工档案ID");
+    return input;
+  }
+  function parseAssignee(input, msgBox) {
+    const value = Number.parseInt(input.value, 10);
+    if (!Number.isInteger(value) || value < 1) {
+      showRowMsg(msgBox, "hk-err", "请输入被指派员工的档案 ID。");
+      return null;
+    }
+    return value;
+  }
+  function refreshBoard() {
+    return Promise.all([loadRooms(page, true, true), loadSummary()]);
+  }
+
+  async function runTaskAction(tr, task, msgBox, action, body, successText, btn) {
+    if (btn) btn.disabled = true;
+    TASK_MESSAGES.delete(task.id);
+    clearRowMsg(msgBox);
+    try {
+      const payload = await postJson(
+          "/api/v1/housekeeping/tasks/" + task.id + "/" + action, body || {});
+      const data = payload.data;
+      const dto = data.task || data;
+      TASK_MESSAGES.set(dto.id, {
+        cls: "hk-ok",
+        text: data.changed === false ? "任务已是目标状态（幂等空操作）。" : successText(data)});
+      tr.replaceWith(taskRow(dto));
+      await refreshBoard();
+    } catch (error) {
+      showRowMsg(msgBox, "hk-err", errorText(error));
+      if (btn) btn.disabled = false;
+    }
+  }
+  function taskButton(tr, task, msgBox, label, cls, action, body, successText) {
+    const btn = el("button", "pms-row-btn" + (cls ? " " + cls : ""), label);
+    btn.type = "button";
+    btn.addEventListener("click", function () {
+      runTaskAction(tr, task, msgBox, action, body, successText, btn);
+    });
+    return btn;
+  }
+  function taskRow(task) {
+    const tr = el("tr");
+    tr.appendChild(el("td", "", task.room_number || task.room_id));
+    tr.appendChild(el("td", "", TASK_TYPE_LABELS[task.task_type] || task.task_type));
+    const statusTd = el("td");
+    statusTd.appendChild(statusBadge(task.status, TASK_STATUS_LABELS, TASK_STATUS_BADGES));
+    tr.appendChild(statusTd);
+    tr.appendChild(el("td", "", task.assigned_to ? "员工 #" + task.assigned_to : "未派工"));
+    tr.appendChild(el("td", "", TASK_PRIORITY_LABELS[task.priority] || task.priority));
+    tr.appendChild(el("td", "", fmtTime(task.due_at) + (task.overdue ? "（已逾期）" : "")));
+    const actionsTd = el("td");
+    const actions = el("div", "hk-row-actions");
+    const msgBox = el("div", "hk-row-msg");
+    if (task.status === "PENDING" && canFlow) {
+      actions.appendChild(taskButton(tr, task, msgBox, "认领", "", "claim", null,
+          function () { return "已认领，负责人已改为当前账号。"; }));
+      const input = assignInput();
+      const btn = el("button", "pms-row-btn", "派工");
+      btn.type = "button";
+      btn.addEventListener("click", function () {
+        const value = parseAssignee(input, msgBox);
+        if (value === null) return;
+        runTaskAction(tr, task, msgBox, "assign", {"assigned_to": value},
+            function () { return "已派工给员工档案 " + value + "。"; }, btn);
+      });
+      actions.appendChild(input);
+      actions.appendChild(btn);
+    }
+    if (task.status === "IN_PROGRESS" && canFlow) {
+      actions.appendChild(taskButton(tr, task, msgBox, "完成", "", "complete", null,
+          function () { return "清洁已完成，等待检查。"; }));
+    }
+    if (task.status === "DONE") {
+      if (canRelease && task.completed_by !== currentUserId) {
+        actions.appendChild(taskButton(tr, task, msgBox, "检查通过", "hk-release",
+            "inspect", {"result": "PASS"},
+            function () { return "检查通过，房间已放行净房。"; }));
+      }
+      if (canFlow) {
+        const input = el("input", "hk-fail-input");
+        input.placeholder = "不合格项（多项用逗号分隔）";
+        input.setAttribute("aria-label", "检查不合格项");
+        const btn = el("button", "pms-row-btn hk-danger", "检查退回");
+        btn.type = "button";
+        btn.addEventListener("click", function () {
+          const raw = input.value.trim();
+          const items = raw.split(/[，,;；\n]+/)
+              .map(function (item) { return item.trim(); }).filter(Boolean);
+          if (!items.length) {
+            showRowMsg(msgBox, "hk-err", "检查退回必须填写不合格项。");
+            return;
+          }
+          runTaskAction(tr, task, msgBox, "inspect",
+              {"result": "FAIL", "failed_items": items, "notes": raw},
+              function () { return "已退回：房间转脏房，并生成返工任务。"; }, btn);
+        });
+        actions.appendChild(input);
+        actions.appendChild(btn);
+      }
+    }
+    if (task.status === "REJECTED" && canFlow) {
+      actions.appendChild(taskButton(tr, task, msgBox, "重新开始", "", "start", null,
+          function () { return "任务已重新开始，状态回到清洁中。"; }));
+    }
+    if (!actions.children.length) {
+      actions.appendChild(el("span", "hk-room-type", "—"));
+    }
+    actions.appendChild(msgBox);
+    const stored = TASK_MESSAGES.get(task.id);
+    if (stored) showRowMsg(msgBox, stored.cls, stored.text);
+    actionsTd.appendChild(actions);
+    tr.appendChild(actionsTd);
+    return tr;
+  }
+  async function loadTasks() {
+    const errBox = document.getElementById("hk-task-error");
+    const meta = document.getElementById("hk-task-meta");
+    const body = document.getElementById("hk-task-body");
+    errBox.hidden = true;
+    TASK_MESSAGES.clear();
+    meta.textContent = "读取中…";
+    const params = new URLSearchParams({page_size: "50"});
+    const status = document.getElementById("hk-task-status").value;
+    const taskType = document.getElementById("hk-task-type").value;
+    if (status) params.set("status", status);
+    if (taskType) params.set("task_type", taskType);
+    params.set("assigned", document.getElementById("hk-task-assigned").value);
+    try {
+      const payload = await api("/api/v1/housekeeping/tasks?" + params.toString());
+      const pageInfo = payload.meta.pagination;
+      body.replaceChildren();
+      if (!payload.data.items.length) {
+        body.appendChild(emptyRow(7, "当前筛选下没有清洁任务"));
+      } else {
+        payload.data.items.forEach(function (task) { body.appendChild(taskRow(task)); });
+      }
+      meta.textContent = "共 " + pageInfo.total + " 条任务";
+    } catch (error) {
+      body.replaceChildren();
+      body.appendChild(emptyRow(7, error.message));
+      meta.textContent = "读取失败";
+      alertBox(errBox, "pms-drawer-err", error.message);
+    }
+  }
+
+  /* ---------- 维修工单（MC-006：create/assign/start/resolve/verify） ---------- */
+  let roomIndex = null;
+  async function ensureRoomIndex() {
+    if (roomIndex) return roomIndex;
+    const payload = await api("/api/v1/housekeeping/rooms?page_size=100");
+    roomIndex = new Map();
+    const datalist = document.getElementById("hk-ticket-rooms");
+    if (datalist) datalist.replaceChildren();
+    payload.data.forEach(function (room) {
+      roomIndex.set(room.number, room.id);
+      if (datalist) {
+        const option = el("option", "",
+            room.number + " · " + room.floor + " · " + room.room_type.name);
+        option.value = room.number;
+        datalist.appendChild(option);
+      }
+    });
+    return roomIndex;
+  }
+  async function runTicketAction(tr, ticket, msgBox, action, body, successText, btn) {
+    if (btn) btn.disabled = true;
+    TICKET_MESSAGES.delete(ticket.id);
+    clearRowMsg(msgBox);
+    try {
+      const payload = await postJson(
+          "/api/v1/maintenance/tickets/" + ticket.id + "/" + action, body || {});
+      const data = payload.data;
+      TICKET_MESSAGES.set(data.id, {
+        cls: "hk-ok",
+        text: data.changed === false ? "工单已是目标状态（幂等空操作）。" : successText(data)});
+      tr.replaceWith(ticketRow(data));
+      await refreshBoard();
+    } catch (error) {
+      showRowMsg(msgBox, "hk-err", errorText(error));
+      if (btn) btn.disabled = false;
+    }
+  }
+  function ticketButton(tr, ticket, msgBox, label, cls, action, body, successText) {
+    const btn = el("button", "pms-row-btn" + (cls ? " " + cls : ""), label);
+    btn.type = "button";
+    btn.addEventListener("click", function () {
+      runTicketAction(tr, ticket, msgBox, action, body, successText, btn);
+    });
+    return btn;
+  }
+  function ticketRow(ticket) {
+    const tr = el("tr");
+    const roomTd = el("td");
+    roomTd.appendChild(el("div", "", ticket.room_number || ticket.room_id));
+    roomTd.appendChild(el("div", "hk-room-type", ticket.ticket_no));
+    tr.appendChild(roomTd);
+    tr.appendChild(el("td", "", ticket.reason));
+    const statusTd = el("td");
+    statusTd.appendChild(statusBadge(ticket.status, TICKET_STATUS_LABELS, TICKET_STATUS_BADGES));
+    tr.appendChild(statusTd);
+    tr.appendChild(el("td", "", ticket.assigned_to ? "员工 #" + ticket.assigned_to : "未派工"));
+    const actionsTd = el("td");
+    const actions = el("div", "hk-row-actions");
+    const msgBox = el("div", "hk-row-msg");
+    if (canMaintain) {
+      if (ticket.status === "OPEN") {
+        const input = assignInput();
+        const btn = el("button", "pms-row-btn", "派工");
+        btn.type = "button";
+        btn.addEventListener("click", function () {
+          const value = parseAssignee(input, msgBox);
+          if (value === null) return;
+          runTicketAction(tr, ticket, msgBox, "assign", {"assigned_to": value},
+              function () { return "已派工给员工档案 " + value + "。"; }, btn);
+        });
+        actions.appendChild(input);
+        actions.appendChild(btn);
+        actions.appendChild(ticketButton(tr, ticket, msgBox, "开始", "", "start", null,
+            function () { return "维修已开始。"; }));
+      }
+      if (ticket.status === "IN_PROGRESS") {
+        actions.appendChild(ticketButton(tr, ticket, msgBox, "完成维修", "", "resolve", {},
+            function () { return "维修已完成，等待验收。"; }));
+      }
+      if (ticket.status === "PENDING_VERIFY") {
+        if (ticket.reported_by !== currentUserId) {
+          actions.appendChild(ticketButton(tr, ticket, msgBox, "验收通过", "hk-release",
+              "verify", {"result": "PASS"},
+              function () { return "验收通过，房间恢复可售。"; }));
+        }
+        actions.appendChild(ticketButton(tr, ticket, msgBox, "验收不通过", "hk-danger",
+            "verify", {"result": "FAIL"},
+            function () { return "验收不通过，工单退回维修中。"; }));
+      }
+    }
+    if (!actions.children.length) {
+      actions.appendChild(el("span", "hk-room-type", "—"));
+    }
+    actions.appendChild(msgBox);
+    const stored = TICKET_MESSAGES.get(ticket.id);
+    if (stored) showRowMsg(msgBox, stored.cls, stored.text);
+    actionsTd.appendChild(actions);
+    tr.appendChild(actionsTd);
+    return tr;
+  }
+  async function loadTickets() {
+    const errBox = document.getElementById("hk-ticket-error");
+    const meta = document.getElementById("hk-ticket-meta");
+    const body = document.getElementById("hk-ticket-body");
+    errBox.hidden = true;
+    TICKET_MESSAGES.clear();
+    meta.textContent = "读取中…";
+    const params = new URLSearchParams({page_size: "50"});
+    const status = document.getElementById("hk-ticket-status").value;
+    if (status) params.set("status", status);
+    try {
+      const payload = await api("/api/v1/maintenance/tickets?" + params.toString());
+      const pageInfo = payload.meta.pagination;
+      body.replaceChildren();
+      if (!payload.data.items.length) {
+        body.appendChild(emptyRow(5, "当前筛选下没有维修工单"));
+      } else {
+        payload.data.items.forEach(function (ticket) { body.appendChild(ticketRow(ticket)); });
+      }
+      meta.textContent = "共 " + pageInfo.total + " 单";
+    } catch (error) {
+      body.replaceChildren();
+      body.appendChild(emptyRow(5, error.message));
+      meta.textContent = "读取失败";
+      alertBox(errBox, "pms-drawer-err", error.message);
+    }
+  }
+  function formMsg(node, cls, message) {
+    node.className = "hk-span2 " + cls;
+    node.textContent = message;
+  }
+  function bindTicketForm() {
+    const form = document.getElementById("hk-ticket-form");
+    if (!form) return;
+    const result = document.getElementById("hk-ticket-result");
+    const roomInput = document.getElementById("hk-ticket-room");
+    const reasonInput = document.getElementById("hk-ticket-reason");
+    const submit = form.querySelector("button[type=submit]");
+    ensureRoomIndex().catch(function () {});
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      const number = roomInput.value.trim();
+      const reason = reasonInput.value.trim();
+      if (!number) { formMsg(result, "pms-drawer-err", "请填写房号。"); return; }
+      if (!reason) { formMsg(result, "pms-drawer-err", "请填写故障描述。"); return; }
+      submit.disabled = true;
+      try {
+        const rooms = await ensureRoomIndex();
+        const roomId = rooms.get(number);
+        if (!roomId) {
+          formMsg(result, "pms-drawer-err", "未找到房号 " + number + "，请核对后重试。");
+          submit.disabled = false;
+          return;
+        }
+        const payload = await postJson("/api/v1/maintenance/tickets/create",
+            {"room_id": roomId, "reason": reason});
+        formMsg(result, "pms-drawer-ok", "维修工单 " + payload.data.ticket_no + " 已登记。");
+        reasonInput.value = "";
+        await Promise.all([loadTickets(), refreshBoard()]);
+      } catch (error) {
+        formMsg(result, "pms-drawer-err", errorText(error));
+        submit.disabled = false;
+      }
+    });
+  }
+
+  document.getElementById("hk-task-reload").addEventListener("click", function () { loadTasks(); });
+  ["hk-task-status", "hk-task-type", "hk-task-assigned"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", function () { loadTasks(); });
+  });
+  document.getElementById("hk-ticket-reload").addEventListener("click", function () { loadTickets(); });
+  document.getElementById("hk-ticket-status").addEventListener("change", function () { loadTickets(); });
+
   /* ---------- 初始化 ---------- */
   loadSummary();
   loadRooms(1);
+  loadTasks();
+  loadTickets();
+  bindTicketForm();
 })();
 </script>
 </body>
