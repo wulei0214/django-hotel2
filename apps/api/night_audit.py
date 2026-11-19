@@ -431,12 +431,33 @@ def night_audit_business_date_current(request):
     比对后抛错，这里只取它的"解析"半边语义。
     """
     property_obj = _context(request, "core.night_audit_view")
-    bd = BusinessDate.objects.filter(
-        property=property_obj,
-        status__in=(BusinessDate.Status.OPEN, BusinessDate.Status.REOPENED),
-    ).order_by("-business_date").first()
+    bd = (
+        BusinessDate.objects.filter(
+            property=property_obj,
+            status__in=(BusinessDate.Status.OPEN, BusinessDate.Status.REOPENED),
+        )
+        .order_by("-business_date")
+        .first()
+    )
     if bd is None:
         day = property_date(property_obj)
+        # D-R4-13：当日存在 CLOSED 行时如实返回已关账——否则夜审后到午夜前
+        # 这段窗口 UI 显示"营业中"而 WB-079 写守卫按 CLOSED 行 fail-closed
+        # 拒绝一切新增凭证，前端无提示引导。"按 OPEN 口径回退"只适用于
+        # 首夜审/当日从未建立行的场景。
+        closed_today = (
+            BusinessDate.objects.filter(
+                property=property_obj,
+                business_date=day,
+                status=BusinessDate.Status.CLOSED,
+            )
+            .order_by("-id")
+            .first()
+        )
+        if closed_today is not None:
+            data = _business_date_dto(closed_today)
+            data["exists"] = True
+            return api_response(request, data)
         return api_response(
             request,
             {

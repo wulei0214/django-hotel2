@@ -13,6 +13,7 @@
 hotelapp.night_audit_execute；营业日重开审批（hotelapp.business_date_reopen）
 是独立写审批权限，不作为读取基线。
 """
+
 from datetime import timedelta
 
 from apps.api.test_e2e_flows import E2EFlowTestBase
@@ -62,53 +63,56 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
         for url in self.READ_ENDPOINTS:
             response = self.client.get(url)
             self.assertEqual(response.status_code, 401, url)
-            self.assertEqual(response.json()["error"]["code"],
-                             "AUTHENTICATION_REQUIRED", url)
+            self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED", url)
 
     def test_read_endpoints_require_night_audit_view_permission(self):
         """只读接口独立使用 core.night_audit_view；前台无查看权应 403。"""
         self.client.force_login(self.fd)
-        self.assertFalse(AuthorizationService.has_permission(
-            self.fd, self.property, "core.night_audit_view"))
+        self.assertFalse(
+            AuthorizationService.has_permission(self.fd, self.property, "core.night_audit_view")
+        )
         for url in self.READ_ENDPOINTS:
             response = self.client.get(url)
             self.assertEqual(response.status_code, 403, url)
-            self.assertEqual(response.json()["error"]["code"],
-                             "PERMISSION_DENIED", url)
+            self.assertEqual(response.json()["error"]["code"], "PERMISSION_DENIED", url)
 
     def test_business_dates_list_pagination_stable_order_and_isolation(self):
-        other_property = Property.objects.create(
-            code="NA-OTHER", name="其他物业")
+        other_property = Property.objects.create(code="NA-OTHER", name="其他物业")
         BusinessDate.objects.create(
             property=other_property,
             business_date=self.today - timedelta(days=9),
-            status=BusinessDate.Status.CLOSED)
-        closed_dates = [
-            self.today - timedelta(days=2), self.today - timedelta(days=1)]
+            status=BusinessDate.Status.CLOSED,
+        )
+        closed_dates = [self.today - timedelta(days=2), self.today - timedelta(days=1)]
         for day in closed_dates:
             BusinessDate.objects.create(
-                property=self.property, business_date=day,
-                status=BusinessDate.Status.CLOSED)
+                property=self.property, business_date=day, status=BusinessDate.Status.CLOSED
+            )
         current = BusinessDate.objects.create(
-            property=self.property, business_date=self.today,
-            status=BusinessDate.Status.OPEN)
+            property=self.property, business_date=self.today, status=BusinessDate.Status.OPEN
+        )
 
         response = self.client.get("/api/v1/night-audit/business-dates")
         self.assertEqual(response.status_code, 200, response.content)
         payload = response.json()
-        self.assertEqual(payload["meta"]["pagination"],
-                         {"page": 1, "page_size": 20, "total": 3,
-                          "has_next": False, "has_previous": False})
+        self.assertEqual(
+            payload["meta"]["pagination"],
+            {"page": 1, "page_size": 20, "total": 3, "has_next": False, "has_previous": False},
+        )
         # 稳定排序 -business_date,-id：当前日在前；跨物业数据不出现
-        self.assertEqual([item["business_date"] for item in payload["data"]],
-                         [self.today.isoformat(),
-                          (self.today - timedelta(days=1)).isoformat(),
-                          (self.today - timedelta(days=2)).isoformat()])
-        self.assertTrue(all(item["id"] != other_property.business_dates.first().pk
-                            for item in payload["data"]))
+        self.assertEqual(
+            [item["business_date"] for item in payload["data"]],
+            [
+                self.today.isoformat(),
+                (self.today - timedelta(days=1)).isoformat(),
+                (self.today - timedelta(days=2)).isoformat(),
+            ],
+        )
+        self.assertTrue(
+            all(item["id"] != other_property.business_dates.first().pk for item in payload["data"])
+        )
         # 分页 page_size=1：第 2 页（共 3 页），前后页均存在
-        paged = self.client.get(
-            "/api/v1/night-audit/business-dates?page=2&page_size=1").json()
+        paged = self.client.get("/api/v1/night-audit/business-dates?page=2&page_size=1").json()
         self.assertEqual(paged["meta"]["pagination"]["total"], 3)
         self.assertEqual(paged["meta"]["pagination"]["page"], 2)
         self.assertTrue(paged["meta"]["pagination"]["has_previous"])
@@ -129,13 +133,15 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
                 status=BusinessDate.Status.CLOSED,
             )
         first = self.client.get(
-            "/api/v1/night-audit/business-dates?status=CLOSED&page=1&page_size=100")
+            "/api/v1/night-audit/business-dates?status=CLOSED&page=1&page_size=100"
+        )
         self.assertEqual(first.status_code, 200, first.content)
         first_data = first.json()
         self.assertEqual(len(first_data["data"]), 100)
         self.assertTrue(first_data["meta"]["pagination"]["has_next"])
         second = self.client.get(
-            "/api/v1/night-audit/business-dates?status=CLOSED&page=2&page_size=100")
+            "/api/v1/night-audit/business-dates?status=CLOSED&page=2&page_size=100"
+        )
         self.assertEqual(second.status_code, 200, second.content)
         second_data = second.json()
         self.assertEqual(len(second_data["data"]), 1)
@@ -143,23 +149,22 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
 
     def test_business_dates_list_status_filter_and_invalid_status(self):
         BusinessDate.objects.create(
-            property=self.property, business_date=self.today - timedelta(days=1),
-            status=BusinessDate.Status.CLOSED)
+            property=self.property,
+            business_date=self.today - timedelta(days=1),
+            status=BusinessDate.Status.CLOSED,
+        )
         BusinessDate.objects.create(
-            property=self.property, business_date=self.today,
-            status=BusinessDate.Status.OPEN)
+            property=self.property, business_date=self.today, status=BusinessDate.Status.OPEN
+        )
 
-        closed = self.client.get(
-            "/api/v1/night-audit/business-dates?status=CLOSED").json()
+        closed = self.client.get("/api/v1/night-audit/business-dates?status=CLOSED").json()
         self.assertEqual(closed["meta"]["pagination"]["total"], 1)
         self.assertEqual(closed["data"][0]["status"], BusinessDate.Status.CLOSED)
-        opened = self.client.get(
-            "/api/v1/night-audit/business-dates?status=OPEN").json()
+        opened = self.client.get("/api/v1/night-audit/business-dates?status=OPEN").json()
         self.assertEqual(opened["meta"]["pagination"]["total"], 1)
         self.assertEqual(opened["data"][0]["status"], BusinessDate.Status.OPEN)
 
-        invalid = self.client.get(
-            "/api/v1/night-audit/business-dates?status=WHATEVER")
+        invalid = self.client.get("/api/v1/night-audit/business-dates?status=WHATEVER")
         self.assertEqual(invalid.status_code, 400)
         self.assertEqual(invalid.json()["error"]["code"], "VALIDATION_ERROR")
 
@@ -173,17 +178,15 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
         self.assertEqual(latest["status"], NightAuditRun.RunStatus.SUCCESS)
 
     def test_business_date_current_endpoint(self):
-        missing = self.client.get(
-            "/api/v1/night-audit/business-dates/current").json()["data"]
+        missing = self.client.get("/api/v1/night-audit/business-dates/current").json()["data"]
         self.assertFalse(missing["exists"])
         self.assertEqual(missing["status"], BusinessDate.Status.OPEN)
         self.assertEqual(missing["business_date"], self.today.isoformat())
 
         bd = BusinessDate.objects.create(
-            property=self.property, business_date=self.today,
-            status=BusinessDate.Status.OPEN)
-        current = self.client.get(
-            "/api/v1/night-audit/business-dates/current").json()["data"]
+            property=self.property, business_date=self.today, status=BusinessDate.Status.OPEN
+        )
+        current = self.client.get("/api/v1/night-audit/business-dates/current").json()["data"]
         self.assertTrue(current["exists"])
         self.assertEqual(current["id"], bd.pk)
         self.assertEqual(current["status"], BusinessDate.Status.OPEN)
@@ -198,23 +201,35 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
             property=self.property,
             business_date=self.today - timedelta(days=1),
             status=BusinessDate.Status.REOPENED,
-            reopen_reason="夜审后发现漏记房费需要补记凭证")
-        data = self.client.get(
-            "/api/v1/night-audit/business-dates/current").json()["data"]
+            reopen_reason="夜审后发现漏记房费需要补记凭证",
+        )
+        data = self.client.get("/api/v1/night-audit/business-dates/current").json()["data"]
         self.assertTrue(data["exists"])
         self.assertEqual(data["id"], reopened.pk)
-        self.assertEqual(data["business_date"],
-                         (self.today - timedelta(days=1)).isoformat())
+        self.assertEqual(data["business_date"], (self.today - timedelta(days=1)).isoformat())
         self.assertEqual(data["status"], BusinessDate.Status.REOPENED)
 
         # 页面口径与夜审执行一致：以 current 返回的营业日发起 preview → 200；
         # 而按 property_date（今天）发起仍被守卫拒绝 → 409（守卫语义未被削弱）
-        consistent = self.client.get(
-            "/api/v1/night-audit/preview?date=" + data["business_date"])
+        consistent = self.client.get("/api/v1/night-audit/preview?date=" + data["business_date"])
         self.assertEqual(consistent.status_code, 200, consistent.content)
         conflicting = self.client.get("/api/v1/night-audit/preview")
         self.assertEqual(conflicting.status_code, 409, conflicting.content)
         self.assertEqual(conflicting.json()["error"]["code"], "BUSINESS_CONFLICT")
+
+    def test_current_returns_closed_row_when_today_closed(self):
+        """D-R4-13：夜审把当日行关账后、午夜前这段窗口，当日无 OPEN/REOPENED
+        行但存在 CLOSED 行——current 必须如实返回已关账（与 WB-079 写守卫
+        fail-closed 口径一致），不得按"首夜审 OPEN 惯例"误报营业中。
+        （首夜审"无当日行 → OPEN 回退"由 test_business_date_current_endpoint
+        的 missing 断言覆盖。）"""
+        closed_today = BusinessDate.objects.create(
+            property=self.property, business_date=self.today, status=BusinessDate.Status.CLOSED
+        )
+        data = self.client.get("/api/v1/night-audit/business-dates/current").json()["data"]
+        self.assertTrue(data["exists"])
+        self.assertEqual(data["id"], closed_today.pk)
+        self.assertEqual(data["status"], BusinessDate.Status.CLOSED)
 
     # ------------------------------------------------------------------
     # 2) 详情数据正确性：运行历史 / 过租凭证 / 未到候选 / 异常房态 / 审批
@@ -255,16 +270,14 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
         after = LedgerEntry.objects.count()
         self.assertEqual(after, before)
         failed = NightAuditRun.objects.filter(
-            business_date__property=self.property,
-            status=NightAuditRun.RunStatus.FAILED).count()
+            business_date__property=self.property, status=NightAuditRun.RunStatus.FAILED
+        ).count()
         self.assertEqual(failed, 1)
 
     def test_business_date_detail_after_run(self):
         run_data, booking_no, _ = self._run_audit_with_stay()
-        bd = BusinessDate.objects.get(property=self.property,
-                                      business_date=self.today)
-        response = self.client.get(
-            f"/api/v1/night-audit/business-dates/{bd.pk}")
+        bd = BusinessDate.objects.get(property=self.property, business_date=self.today)
+        response = self.client.get(f"/api/v1/night-audit/business-dates/{bd.pk}")
         self.assertEqual(response.status_code, 200, response.content)
         data = response.json()["data"]
         self.assertEqual(data["status"], BusinessDate.Status.CLOSED)
@@ -292,14 +305,13 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
         self.assertEqual(missing.status_code, 404)
         self.assertEqual(missing.json()["error"]["code"], "RESOURCE_NOT_FOUND")
 
-        other_property = Property.objects.create(
-            code="NA-OTHER2", name="其他物业二")
+        other_property = Property.objects.create(code="NA-OTHER2", name="其他物业二")
         other_bd = BusinessDate.objects.create(
             property=other_property,
             business_date=self.today - timedelta(days=1),
-            status=BusinessDate.Status.CLOSED)
-        cross = self.client.get(
-            f"/api/v1/night-audit/business-dates/{other_bd.pk}")
+            status=BusinessDate.Status.CLOSED,
+        )
+        cross = self.client.get(f"/api/v1/night-audit/business-dates/{other_bd.pk}")
         self.assertEqual(cross.status_code, 404)
         self.assertEqual(cross.json()["error"]["code"], "RESOURCE_NOT_FOUND")
 
@@ -308,20 +320,17 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
     # ------------------------------------------------------------------
     def test_runs_list_filters_and_run_detail(self):
         run_data, _, _ = self._run_audit_with_stay()
-        bd = BusinessDate.objects.get(property=self.property,
-                                      business_date=self.today)
+        bd = BusinessDate.objects.get(property=self.property, business_date=self.today)
 
         listing = self.client.get("/api/v1/night-audit/runs").json()
         self.assertEqual(listing["meta"]["pagination"]["total"], 1)
         self.assertEqual(listing["data"][0]["id"], run_data["run_id"])
 
-        success = self.client.get(
-            "/api/v1/night-audit/runs?status=SUCCESS").json()
+        success = self.client.get("/api/v1/night-audit/runs?status=SUCCESS").json()
         self.assertEqual(success["meta"]["pagination"]["total"], 1)
         failed = self.client.get("/api/v1/night-audit/runs?status=FAILED").json()
         self.assertEqual(failed["meta"]["pagination"]["total"], 0)
-        by_date = self.client.get(
-            f"/api/v1/night-audit/runs?business_date_id={bd.pk}").json()
+        by_date = self.client.get(f"/api/v1/night-audit/runs?business_date_id={bd.pk}").json()
         self.assertEqual(by_date["meta"]["pagination"]["total"], 1)
 
         bad_status = self.client.get("/api/v1/night-audit/runs?status=XXX")
@@ -329,8 +338,7 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
         bad_bd = self.client.get("/api/v1/night-audit/runs?business_date_id=abc")
         self.assertEqual(bad_bd.status_code, 400)
 
-        detail = self.client.get(
-            f"/api/v1/night-audit/runs/{run_data['run_id']}").json()["data"]
+        detail = self.client.get(f"/api/v1/night-audit/runs/{run_data['run_id']}").json()["data"]
         self.assertEqual(detail["status"], NightAuditRun.RunStatus.SUCCESS)
         self.assertIn("stay_count", detail["summary"])
         missing = self.client.get("/api/v1/night-audit/runs/999999")
@@ -342,14 +350,17 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
     def test_break_glass_list_filter_and_review_fields(self):
         # 让值班经理成为物业内唯一持 business_date_reopen 的有效账号
         from django.contrib.auth.models import Group, Permission, User
+
         run_data, _, _ = self._run_audit_with_stay()
-        bd = BusinessDate.objects.get(property=self.property,
-                                      business_date=self.today)
+        bd = BusinessDate.objects.get(property=self.property, business_date=self.today)
         User.objects.exclude(pk__in=[self.dm.pk, self.fd.pk]).update(is_active=False)
         granted = self._post_json(
             f"/api/v1/night-audit/business-dates/{bd.pk}/break-glass",
-            {"password": "na_center_duty-pass123",
-             "reason": "夜审后发现重大账务差错需要紧急重开修正"})
+            {
+                "password": "na_center_duty-pass123",
+                "reason": "夜审后发现重大账务差错需要紧急重开修正",
+            },
+        )
         self.assertEqual(granted.status_code, 201, granted.content)
         record_id = granted.json()["data"]["break_glass_id"]
 
@@ -362,36 +373,37 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
         self.assertFalse(row["is_expired_grant"])
 
         # 复核状态筛选：REVIEWED 为 0；非法值 400
-        reviewed = self.client.get(
-            "/api/v1/night-audit/break-glass?status=REVIEWED").json()
+        reviewed = self.client.get("/api/v1/night-audit/break-glass?status=REVIEWED").json()
         self.assertEqual(reviewed["meta"]["pagination"]["total"], 0)
         invalid = self.client.get("/api/v1/night-audit/break-glass?status=XXX")
         self.assertEqual(invalid.status_code, 400)
 
         # 执行后 USED → review_pending=True
         executed = self._post_json(
-            f"/api/v1/night-audit/business-dates/{bd.pk}/break-glass/{record_id}/execute")
+            f"/api/v1/night-audit/business-dates/{bd.pk}/break-glass/{record_id}/execute"
+        )
         self.assertEqual(executed.status_code, 200, executed.content)
-        used = self.client.get(
-            "/api/v1/night-audit/break-glass?status=USED").json()
+        used = self.client.get("/api/v1/night-audit/break-glass?status=USED").json()
         self.assertEqual(used["meta"]["pagination"]["total"], 1)
         self.assertTrue(used["data"][0]["review_pending"])
 
         # 另一名授权经理复核 → REVIEWED
         reviewer = self._make_staff("na_center_reviewer", "店长")
         review_permission = Permission.objects.get(
-            content_type__app_label="core", codename="breakglass_review")
+            content_type__app_label="core", codename="breakglass_review"
+        )
         Group.objects.get(name="店长").permissions.add(review_permission)
         self.client.force_login(reviewer)
         review = self._post_json(
             f"/api/v1/night-audit/break-glass/{record_id}/review",
-            {"decision": "CONFIRMED", "reason": "已核对紧急重开原因与事后账务修正凭证"})
+            {"decision": "CONFIRMED", "reason": "已核对紧急重开原因与事后账务修正凭证"},
+        )
         self.assertEqual(review.status_code, 200, review.content)
         reviewed_rows = self.client.get(
-            "/api/v1/night-audit/break-glass?review_decision=CONFIRMED").json()
+            "/api/v1/night-audit/break-glass?review_decision=CONFIRMED"
+        ).json()
         self.assertEqual(reviewed_rows["meta"]["pagination"]["total"], 1)
-        self.assertEqual(reviewed_rows["data"][0]["status"],
-                         BreakGlassRecord.Status.REVIEWED)
+        self.assertEqual(reviewed_rows["data"][0]["status"], BreakGlassRecord.Status.REVIEWED)
         self.assertFalse(reviewed_rows["data"][0]["review_pending"])
 
 
@@ -419,17 +431,23 @@ class NightAuditBlockingRuleTests(E2EFlowTestBase):
         self._run_audit()
         booking_no, line = self._new_confirmed_booking()
         assigned_line, created = assign_room(
-            property_obj=self.property, reservation_room_id=line.pk,
-            room_id=self.room2.pk, assigned_by=self.fd)
+            property_obj=self.property,
+            reservation_room_id=line.pk,
+            room_id=self.room2.pk,
+            assigned_by=self.fd,
+        )
         self.assertTrue(created)
         with self.assertRaises(FrontDeskOperationError) as ctx:
             check_in_stay(
                 property_obj=self.property,
-                reservation_room_id=assigned_line.pk, checked_in_by=self.fd)
+                reservation_room_id=assigned_line.pk,
+                checked_in_by=self.fd,
+            )
         self.assertIn("已完成夜审关账", str(ctx.exception))
         self.assertFalse(Stay.objects.filter(reservation_room=assigned_line).exists())
-        self.assertEqual(Reservation.objects.get(
-            booking_no=booking_no).status, Reservation.Status.CONFIRMED)
+        self.assertEqual(
+            Reservation.objects.get(booking_no=booking_no).status, Reservation.Status.CONFIRMED
+        )
 
     def test_check_in_api_blocked_but_assign_allowed_after_close(self):
         """API 级：夜审关账后排房仍可（次日到店预备），入住 409。"""
@@ -437,12 +455,11 @@ class NightAuditBlockingRuleTests(E2EFlowTestBase):
         booking_no, line = self._new_confirmed_booking()
         self.client.force_login(self.fd)
         assign = self._post_json(
-            f"/api/v1/front-desk/reservation-rooms/{line.pk}/assign",
-            {"room_id": self.room2.pk})
+            f"/api/v1/front-desk/reservation-rooms/{line.pk}/assign", {"room_id": self.room2.pk}
+        )
         self.assertEqual(assign.status_code, 201, assign.content)
 
-        blocked = self._post_json(
-            f"/api/v1/front-desk/reservation-rooms/{line.pk}/check-in")
+        blocked = self._post_json(f"/api/v1/front-desk/reservation-rooms/{line.pk}/check-in")
         self.assertEqual(blocked.status_code, 409, blocked.content)
         self.assertEqual(blocked.json()["error"]["code"], "BUSINESS_CONFLICT")
         self.assertIn("已完成夜审关账", blocked.json()["error"]["message"])
@@ -451,19 +468,19 @@ class NightAuditBlockingRuleTests(E2EFlowTestBase):
     def test_reopened_business_date_allows_check_in_again(self):
         """重开审批通过（REOPENED）后恢复入住；阻挡只针对 CLOSED。"""
         self._run_audit()
-        bd = BusinessDate.objects.get(property=self.property,
-                                      business_date=self.today)
+        bd = BusinessDate.objects.get(property=self.property, business_date=self.today)
         request_resp = self._post_json(
             f"/api/v1/night-audit/business-dates/{bd.pk}/reopen-request",
-            {"reason": "夜审后发现漏记房费需要补记凭证"})
+            {"reason": "夜审后发现漏记房费需要补记凭证"},
+        )
         self.assertEqual(request_resp.status_code, 201, request_resp.content)
         approval_id = request_resp.json()["data"]["approval_id"]
 
         owner = self._make_staff("na_block_owner", "店长")
         self.client.force_login(owner)
         approve = self._post_json(
-            f"/api/v1/night-audit/business-dates/{bd.pk}/approvals/"
-            f"{approval_id}/approve")
+            f"/api/v1/night-audit/business-dates/{bd.pk}/approvals/" f"{approval_id}/approve"
+        )
         self.assertEqual(approve.status_code, 200, approve.content)
         bd.refresh_from_db()
         self.assertEqual(bd.status, BusinessDate.Status.REOPENED)
@@ -511,12 +528,14 @@ class NightAuditCenterPageTests(E2EFlowTestBase):
         from django.contrib.auth.models import Permission
 
         from apps.identity.models import PropertyStaffMembership
+
         membership = PropertyStaffMembership.objects.get(
-            property=self.property, staff_profile__user=self.dm)
+            property=self.property, staff_profile__user=self.dm
+        )
         group = membership.role_assignments.get(group__name="值班经理").group
         execute_permission = Permission.objects.get(
-            content_type__app_label="hotelapp",
-            codename="night_audit_execute")
+            content_type__app_label="hotelapp", codename="night_audit_execute"
+        )
         group.permissions.remove(execute_permission)
         self.client.force_login(self.dm)
 
@@ -531,7 +550,8 @@ class NightAuditCenterPageTests(E2EFlowTestBase):
         self.assertEqual(preview_response.status_code, 200, preview_response.content)
 
         run_response = self.client.post(
-            "/api/v1/night-audit/run", data="{}", content_type="application/json")
+            "/api/v1/night-audit/run", data="{}", content_type="application/json"
+        )
         self.assertEqual(run_response.status_code, 403, run_response.content)
 
     def test_reopen_select_loads_all_pages_of_closed_business_dates(self):
@@ -539,15 +559,22 @@ class NightAuditCenterPageTests(E2EFlowTestBase):
         response = self.client.get("/manage/night-audit/")
         self.assertEqual(response.status_code, 200, response.content)
         content = response.content.decode("utf-8")
-        self.assertIn('let hasNext = true', content)
-        self.assertIn('page_size=100', content)
-        self.assertIn('const maxRows = 5000', content)
-        for control_id in ("na-bd-goto", "na-runs-goto", "na-bg-goto",
-                           "na-bd-page-size", "na-runs-page-size", "na-bg-page-size"):
+        self.assertIn("let hasNext = true", content)
+        self.assertIn("page_size=100", content)
+        self.assertIn("const maxRows = 5000", content)
+        for control_id in (
+            "na-bd-goto",
+            "na-runs-goto",
+            "na-bg-goto",
+            "na-bd-page-size",
+            "na-runs-page-size",
+            "na-bg-page-size",
+        ):
             self.assertIn('id="' + control_id + '"', content)
 
     def test_center_page_registered_in_management_centers(self):
         from apps.api.pages import MANAGEMENT_CENTERS
+
         config = MANAGEMENT_CENTERS["night-audit"]
         self.assertEqual(config["permission"], "core.night_audit_view")
         self.assertEqual(config["template"], "pms/night_audit_center.html")
