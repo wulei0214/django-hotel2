@@ -45,3 +45,27 @@
 6. 链路 F：业务数据→营业日→夜审→ CONTINUATION
 7. 缺陷 ORM 核实 + 修复 D-R4-06/07/08/10
 8. 交付物：11 中心矩阵/状态机/API 对照表 + R6 文档 + 独立验收材料
+
+## 2026-11-20 续作更新（第二批）
+
+### 缺陷处置结果
+- **D-R4-07 已修（9004155）**：loadDetail 缺 replaceChildren，房行重复渲染；复验房行=1 与 DB 一致
+- **D-R4-06 已修（9004155）**：详情列 sticky right，实测无需横向滚动可命中
+- **D-R4-10 已修（9004155）**：PENDING 文案补充库存保留期说明
+- **D-R4-08 口径确认**：CLOSED 不计入摘要聚合是 test_e2e_flows:475 固化的已评审口径；退房多收款按 DEC-02 转 RefundLiability（LI5 ¥100 OPEN 实证），资金完整性无缺口
+- **D-R4-11 撤销**：夜审员/停车安保/餐饮主管/餐饮服务员四空组是 0014 决策 5 有意设计（夜审由值班经理/店长兼岗；餐饮/停车模块未启用）——registry.py:387-406 明文
+- **D-R4-13（高，待修）**：夜审关账后当日行 CLOSED，夜审中心/前台仍显示"营业中"（按 OPEN 口径显示与 fail-closed 写入矛盾），写操作全部被 WB-079 拒绝且无引导
+- **day-use 过租缺口（待负责人裁定）**：当日入住当日退房（营业日内）错过夜审过租窗口且退房按实际入住晚数计 0 晚房费 → folio 不平关账（credits>0/charges=0）由 DEC-02 负债兜底，但房租收入缺失涉及计费语义
+
+### 链路进度
+- **链路 A 全链 PASS**：建档→预订→收款（自动确认 DEC-PND-01）→入住→退房→财务对账→夜审 run_id=8 SUCCESS
+- **链路 B 全链闭环（API 治理路径，浏览器点击在 billing_center 表格行按钮上受 IAB 限制）**：
+  - 申请 RF7（test_finance，幂等键）→ 审批（test_duty，SoD 申请人≠审批人）→ 执行守卫链：执行人≠申请人≠审批人 → 需执行人本人班次 → 班次现金余额 → 营业日 fail-closed（WB-079）→ **重开审批链**（duty 申请 approval 11 → owner 批准 → 11-20 REOPENED）→ 执行 SUCCEEDED（executed_by=31 test_finance2，shift 10）→ **B4 对账截图**：退款 1 笔/100.00、负债已清零、凭证数 3
+  - **DEC-RF-01 实证**：退款 business_date=执行时营业日（11-20 当日执行）
+  - 新增账号：test_finance2（E2026-FIN2，生命周期服务 create_employee，granted_by=店长，refund_execute ✓）——同时是链路 E 任职/授权证据
+- **链路 E**：任职/授权段 PASS（生命周期服务）；WorkItem/审计段待走
+- 链路 D/F 待走
+- 自动化配方新增：稳定双采样坐标（防粒子动画/平滑滚动导致的 stale 坐标误触侧栏链接）；form-POST 登录/退出（环境准备）；confirm 用 getJsDialog 同轮应答
+
+### 关键 ID
+RF7（退款）/ LI5（负债 ¥100 已清）/ shift 9（front）、10（finance2）/ approval 11（重开）/ run 8（夜审 11-20）/ E2026-FIN2（新员工）
