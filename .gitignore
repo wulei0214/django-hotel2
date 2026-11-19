@@ -31,6 +31,8 @@ Thumbs.db
 
 # 环境变量（本地密钥，禁止提交）
 .env
+# 受控测试凭据（TASK-04：本地自动化唯一读取点，禁止提交）
+scripts/r6_env.txt
 
 # P0 遗留实现（hotelapp/api.py 与 hotelapp/services/）已于 2026-11-07 从磁盘删除：
 # 零活引用、git 历史 2aab3cd 有归档。迁移 0010/0011 已在版本控制中（0012 依赖 0011）。

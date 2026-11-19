@@ -3,7 +3,7 @@
 - 环境：本地 waitress http://127.0.0.1:8000（Django 4.1 PMS）
 - 代码版本：main `8ebf918`（= 简报基线 `e56164d` + 1 commit；工作树另有 15 个未提交改动文件，属其他在途工作，本次验收未触碰）
 - 浏览器：ZCode IAB 真实点击（1440x900），登录表单 `form.submit()`，按钮经 `evaluate(el.click())` 原子点击，原生 confirm 用 `getJsDialog`（本次流程未触发 confirm 场景）
-- 账号：U-03 重置后 9 个测试账号口令统一为 `Pms#Demo2026`（已在 DB 侧 `check_password` 核实；简报中 "test_housekeeping 口令 Accept-2026-Walk" 已过期失效，首次登录实测失败并以此核实）
+- 账号：U-03 重置后 9 个测试账号口令统一为 `（口令已轮换，见受控配置）`（已在 DB 侧 `check_password` 核实；简报中 "test_housekeeping 口令 （历史临时口令，已失效，字面量不入档）" 已过期失效，首次登录实测失败并以此核实）
 - 证据目录：`docs/acceptance/evidence/r4-browser-20261119/`（00–18 共 19 张截图）
 - 纪律遵守：未 git commit；新增测试数据均带 r4 前缀；未删除既有走查数据（会员/房态/维修操作全部 round-trip 回原状态）
 
@@ -90,7 +90,7 @@
 | D-R4-03 | 中（可用性） | `apps/api/guest_center.py::rate_calendar`（L614-624 rate_data 序列化不含行 id） | 房价日历 API 房价行/库存行均不返回 id，而房态中心操作表单要求填写「房价行 ID/库存行 ID」→ 用户无从得知合法 ID（本次以 DB 直查取得 218 才能测试后端）。与 D-R4-04 叠加使这三个操作在 UI 上双重不可用 | /api/v1/rate-calendar 响应 rate 行无 id 字段 |
 
 备注（非缺陷）：
-1. 简报口令过期：test_housekeeping 实际口令为统一口令 `Pms#Demo2026`（Accept-2026-Walk 已失效），已在 DB 核实并按统一口令完成验收。
+1. 简报口令过期：test_housekeeping 实际口令为统一口令 `（口令已轮换，见受控配置）`（（历史临时口令，已失效，字面量不入档） 已失效），已在 DB 核实并按统一口令完成验收。
 2. 已知守卫按预期复现，不计缺陷：PENDING 订单直接入住 409（本轮未复演，前任走查已覆盖）、front/housekeeping 各 API 403 文案明确、PLANNED 默认拒绝。
 3. 报表分析中心无抽屉形态（只读聚合页），以「查询+导出 CSV」替代抽屉操作要求。
 

@@ -1,7 +1,7 @@
 # R4-04 六链路浏览器 E2E 续作日志（2026-11-20）
 
 服务：waitress :8000 @ 4ba29da（venv python 启动，重启于本日 01:37 前后）。
-账号：test_front / test_duty / test_housekeeping / test_owner / test_finance / test_nightaudit，口令 Pms#Demo2026。
+账号：test_front / test_duty / test_housekeeping / test_owner / test_finance / test_nightaudit，测试口令（不入文档——见 scripts/r6_env.txt 受控配置，TASK-04 已轮换）。
 班次：班次 #9（test_front，备用金 0.00，OPEN）。
 
 ## 自动化配方（IAB 已验证）

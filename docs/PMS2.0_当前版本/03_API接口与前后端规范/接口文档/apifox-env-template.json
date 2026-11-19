@@ -3,7 +3,7 @@
   "values": [
     { "key": "baseUrl", "value": "http://127.0.0.1:8000", "enabled": true, "note": "本地 Django 服务地址；按实际部署替换" },
     { "key": "staffUser", "value": "test_front", "enabled": true, "note": "员工测试账号（前台）；矩阵验证换 test_owner/test_finance 等" },
-    { "key": "staffPassword", "value": "Abc123456", "enabled": true, "note": "测试账号统一密码；仅限本机演示环境" },
+    { "key": "staffPassword", "value": "${TEST_ACCOUNT_PASSWORD}", "enabled": true, "note": "测试账号统一密码；仅限本机演示环境" },
     { "key": "superUser", "value": "admin", "enabled": true, "note": "平台超管（/admin/ 与 /platform/）" },
     { "key": "superPassword", "value": "Admin@123456", "enabled": true, "note": "仅限本机演示环境" },
     { "key": "sessionCookie", "value": "sessionid", "enabled": true, "note": "PMS 会话 Cookie 名" },
