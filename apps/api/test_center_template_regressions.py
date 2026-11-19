@@ -95,3 +95,16 @@ class CenterTemplateRegressionTests(SimpleTestCase):
         self.assertIn("text instanceof Node", helper)
         self.assertIn("node.appendChild(text)", helper)
         self.assertIn("node.textContent = String(text)", helper)
+
+    def test_management_center_resolves_page_action_path_placeholders_before_fetch(self):
+        """D-R4-04：submitAction 必须先按表单字段解析 endpoint 路径占位符
+        （{rate_id}/{inventory_id} 等）再 fetch。page 级渲染路径没有选中行
+        上下文，此前直接 fetch endpoint 原文 → 字面 {rate_id} 路径 404，
+        前端统一显示"网络错误"误导排障（房态中心三个写操作不可用）。"""
+        source = self.read_template("management_center.html")
+        self.assertIn("function resolveEndpoint(", source)
+        self.assertIn("const requestUrl = resolveEndpoint(endpoint, payload);", source)
+        self.assertIn("fetch(requestUrl, {", source)
+        # 未解析成功的占位符不得打到服务端（给出明确提示而非 404 网络错误）
+        self.assertIn("/\\{\\w+\\}/.test(requestUrl)", source)
+        self.assertIn("缺少定位操作行所需的 ID 字段", source)

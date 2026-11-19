@@ -176,6 +176,20 @@
     return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() :
       ("pms-" + Date.now() + "-" + Math.random().toString(16).slice(2));
   }
+  /* D-R4-04：page 级 action 的 endpoint 路径占位符（如房态中心的
+     {rate_id}/{inventory_id}）在 page 渲染路径没有选中行上下文，改为
+     提交时按注册表声明的同名字段解析；row 级 {id} 已在 openDetail 注入，
+     其余占位符同样由表单字段补齐，避免字面 {xxx} 打到服务端 404。 */
+  function resolveEndpoint(endpoint, payload) {
+    let url = endpoint;
+    Object.keys(payload || {}).forEach(function (key) {
+      const token = "{" + key + "}";
+      if (url.indexOf(token) !== -1) {
+        url = url.split(token).join(encodeURIComponent(String(payload[key])));
+      }
+    });
+    return url;
+  }
   function submitAction(action, endpoint, form, resultBox) {
     const payload = {};
     (action.fields || []).forEach(function (f) {
@@ -186,8 +200,13 @@
       else if (typeof v === "string" && /^(true|false)$/i.test(v)) v = v.toLowerCase() === "true";
       payload[f.name] = v;
     });
+    const requestUrl = resolveEndpoint(endpoint, payload);
+    if (/\{\w+\}/.test(requestUrl)) {
+      resultBox.textContent = "缺少定位操作行所需的 ID 字段，请填写后再提交。";
+      return;
+    }
     resultBox.textContent = "提交中…";
-    fetch(endpoint, {
+    fetch(requestUrl, {
       method: "POST", credentials: "same-origin",
       headers: {"Content-Type": "application/json", "Accept": "application/json",
                 "X-CSRFToken": csrfToken, "Idempotency-Key": newIdemKey()},

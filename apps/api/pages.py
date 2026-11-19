@@ -218,6 +218,9 @@ MANAGEMENT_CENTERS = {
                 "page_param": "rate_page",
                 "size_param": "rate_page_size",
                 "columns": [
+                    # D-R4-03：rate-calendar 行补充行 id 后在此展示，
+                    # 供"调整房价/关房开房"表单按行 ID 定位。
+                    {"label": "房价行 ID", "path": "id"},
                     {"label": "住宿日期", "path": "stay_date"},
                     {"label": "房型", "path": "room_type.name"},
                     {"label": "房价计划", "path": "rate_plan.name"},
@@ -233,6 +236,7 @@ MANAGEMENT_CENTERS = {
                 "page_param": "inventory_page",
                 "size_param": "inventory_page_size",
                 "columns": [
+                    {"label": "库存行 ID", "path": "id"},
                     {"label": "住宿日期", "path": "stay_date"},
                     {"label": "房型", "path": "room_type.name"},
                     {"label": "总房量", "path": "total_rooms"},
@@ -367,7 +371,12 @@ MANAGEMENT_CENTERS = {
                         "type": "number",
                         "required": True,
                     },
-                    {"name": "level", "label": "会员等级", "required": True},
+                    # D-R4-01：对齐 staff_center.membership_create 的 body 契约
+                    # （GuestMembershipService.create_membership 必填 member_no，
+                    # 缺字段声明导致 UI 提交必 400）；等级字段名对齐 level_code
+                    # （D-R4-02，后端不读 level）。
+                    {"name": "member_no", "label": "会员编号", "required": True},
+                    {"name": "level_code", "label": "会员等级", "required": True},
                 ],
             },
             {
@@ -377,7 +386,9 @@ MANAGEMENT_CENTERS = {
                 "permission": "hotelapp.change_vip",
                 "scope": "row",
                 "fields": [
-                    {"name": "level", "label": "新等级", "required": True},
+                    # D-R4-02：membership_change_level 读 body.level_code，
+                    # 旧字段名 level 会被后端忽略并必回 400。
+                    {"name": "level_code", "label": "新等级", "required": True},
                     {"name": "reason", "label": "变更原因", "required": True},
                 ],
             },

@@ -421,11 +421,22 @@ def night_audit_business_dates(request):
 @require_GET
 @api_view
 def night_audit_business_date_current(request):
-    """当前营业日：无记录时按 OPEN 口径返回（与 NightAuditService.preview 一致）。"""
+    """当前营业日：与 NightAuditService._resolve_date 守卫语义（WB-080）单一口径。
+
+    取最新 OPEN/REOPENED 营业日行作为当前营业日（REOPENED 期间页面展示与
+    夜审 preview/run 两步执行使用同一日期，不再出现页面"今天"而守卫按
+    重开行拒绝 409 的双口径）；物业无 OPEN/REOPENED 行时回退 property_date
+    并按 OPEN 口径返回（首夜审/全部已关账，run() 会 get_or_create 当日行）。
+    不能直接调用 _resolve_date(None)：其守卫会把 property_date 与重开行
+    比对后抛错，这里只取它的"解析"半边语义。
+    """
     property_obj = _context(request, "core.night_audit_view")
-    day = property_date(property_obj)
-    bd = BusinessDate.objects.filter(property=property_obj, business_date=day).first()
+    bd = BusinessDate.objects.filter(
+        property=property_obj,
+        status__in=(BusinessDate.Status.OPEN, BusinessDate.Status.REOPENED),
+    ).order_by("-business_date").first()
     if bd is None:
+        day = property_date(property_obj)
         return api_response(
             request,
             {

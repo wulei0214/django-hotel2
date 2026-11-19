@@ -188,6 +188,34 @@ class NightAuditCenterReadApiTests(E2EFlowTestBase):
         self.assertEqual(current["id"], bd.pk)
         self.assertEqual(current["status"], BusinessDate.Status.OPEN)
 
+    def test_business_date_current_returns_reopened_row_not_property_date(self):
+        """D-R4-05：REOPENED 行存在时 current 必须返回该行口径
+        （权威口径 = NightAuditService._resolve_date 守卫语义，WB-080）。
+        此前 current 按 property_date 返回"今天/OPEN"，而夜审守卫按最新
+        OPEN/REOPENED 行拒绝 → 营业日中心页面显示今天、夜审两步执行必然
+        409 BUSINESS_CONFLICT 的双口径缺陷。"""
+        reopened = BusinessDate.objects.create(
+            property=self.property,
+            business_date=self.today - timedelta(days=1),
+            status=BusinessDate.Status.REOPENED,
+            reopen_reason="夜审后发现漏记房费需要补记凭证")
+        data = self.client.get(
+            "/api/v1/night-audit/business-dates/current").json()["data"]
+        self.assertTrue(data["exists"])
+        self.assertEqual(data["id"], reopened.pk)
+        self.assertEqual(data["business_date"],
+                         (self.today - timedelta(days=1)).isoformat())
+        self.assertEqual(data["status"], BusinessDate.Status.REOPENED)
+
+        # 页面口径与夜审执行一致：以 current 返回的营业日发起 preview → 200；
+        # 而按 property_date（今天）发起仍被守卫拒绝 → 409（守卫语义未被削弱）
+        consistent = self.client.get(
+            "/api/v1/night-audit/preview?date=" + data["business_date"])
+        self.assertEqual(consistent.status_code, 200, consistent.content)
+        conflicting = self.client.get("/api/v1/night-audit/preview")
+        self.assertEqual(conflicting.status_code, 409, conflicting.content)
+        self.assertEqual(conflicting.json()["error"]["code"], "BUSINESS_CONFLICT")
+
     # ------------------------------------------------------------------
     # 2) 详情数据正确性：运行历史 / 过租凭证 / 未到候选 / 异常房态 / 审批
     # ------------------------------------------------------------------

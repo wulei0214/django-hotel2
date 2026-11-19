@@ -598,6 +598,8 @@ def rate_calendar(request):
         rate_qs, request, "rate", default_size=20)
 
     inventory_data = [{
+        # D-R4-03：行内携带 id，房态中心"停售/开售"表单按库存行 ID 定位。
+        "id": inv.pk,
         "room_type": {"id": inv.room_type.pk, "code": inv.room_type.code,
                       "name": inv.room_type.name},
         "stay_date": str(inv.stay_date),
@@ -607,6 +609,8 @@ def rate_calendar(request):
         "stop_sell": inv.stop_sell,
     } for inv in inv_page_rows]
     rate_data = [{
+        # D-R4-03：行内携带 id，房态中心"调整房价/关房开房"表单按房价行 ID 定位。
+        "id": dr.pk,
         "room_type": {"id": dr.room_type.pk, "code": dr.room_type.code,
                       "name": dr.room_type.name},
         "rate_plan": {"id": dr.rate_plan.pk, "code": dr.rate_plan.code,
