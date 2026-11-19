@@ -15,6 +15,7 @@ from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.http import JsonResponse
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.billing.legacy_archive_query import (
@@ -1775,8 +1776,14 @@ def exception_release_request(request, booking_no):
 
 
 @api_guard
+@csrf_exempt
 @require_POST
 def walk_in_create(request):
+    """POST /api/v1/front-desk/walk-in — 已退役，恒返 410 Gone（R2-04，DEC-WI-01）。
+
+    csrf_exempt 说明：退役端点无任何写操作与会话依赖，CSRF 校验对它没有
+    保护意义；豁免后旧客户端（无 CSRF cookie 的残留调用方）也能收到
+    明确的 410 Gone 退役通知，而不是难解的 403。"""
     """POST /api/v1/front-desk/walk-in — 已退役，恒返 410 Gone（R2-04，DEC-WI-01）。
 
     已按 DEC-WI-01 双端点收敛决策退役（观察期结束，2026-11-19 执行）：任意 POST
