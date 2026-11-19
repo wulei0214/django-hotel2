@@ -3,7 +3,7 @@
   "info": {
     "title": "PMS2 酒店管理系统 API",
     "version": "2.1.0",
-    "description": "PMS2 模块化单体 API 契约（方案 §9.8）。只包含当前注册的 JSON API；HTML 页面、表单动作和历史页面入口不作为 REST API。\n\n契约状态（x-contract-status）：verified = 字段经源码核实且有端点级 HTTP 测试；partial = 字段经源码核实但端点级测试待补齐；planned = 规划未实现（当前不存在）。\n\n安全模型：员工端统一 Django Session Cookie（登录入口为 POST /login/ HTML Form，不存在 JSON 登录接口），所有写操作需要 X-CSRFToken；公开预订/支付为匿名访问，凭 Booking Access Token 业务凭据 + §6.3 限流 + 审计。"
+    "description": "PMS2 模块化单体 API 契约（方案 §9.8）。只包含当前注册的 JSON API；HTML 页面、表单动作和历史页面入口不作为 REST API。\n\n契约状态（x-contract-status）：verified = 字段经源码核实且有端点级 HTTP 测试；partial = 字段经源码核实但端点级测试待补齐；planned = 规划未实现（当前不存在）；retired = 已退役端点（路由保留仅返回 410 Gone，无业务能力，无 2xx 成功响应）。\n\n安全模型：员工端统一 Django Session Cookie（登录入口为 POST /login/ HTML Form，不存在 JSON 登录接口），所有写操作需要 X-CSRFToken；公开预订/支付为匿名访问，凭 Booking Access Token 业务凭据 + §6.3 限流 + 审计。"
   },
   "servers": [
     {
@@ -5185,131 +5185,12 @@
         "tags": [
           "前台接待"
         ],
-        "summary": "散客直入",
-        "description": "复用 apps.reservations.walkin.create_walk_in：同一事务完成 Guest→Reservation(source=WALK_IN)→ReservationRoom→Folio→Hold→确认→排房→入住→Stay；无手机号时由服务层生成确定性占位号；住客档案不按手机号自动合并（共享号码仅标记人工核验）。Idempotency-Key 必填（1-128 字符）。已退役规划（DEC-WI-01）：迁移至 /front-desk/walk-ins，本兼容端点将在观察期后返回 410；兼容期入口记 frontdesk.legacy_walk_in_called 观测审计（纯观测，不影响业务响应）。\n\n权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "summary": "散客直入（已退役）",
+        "description": "已退役（R2-04，DEC-WI-01，2026-11-19）：任意 POST 一律 410 Gone——不再区分认证/权限/入参，不读取请求体，不做任何业务写入，也不再记 frontdesk.legacy_walk_in_called 观测审计（观察期随退役一并结束）。标准入口：POST /front-desk/walk-ins（A1 契约口径）。业务事实源 apps.reservations.walkin.create_walk_in 保留于服务层，仅由 /front-desk/walk-ins 继续使用；路由仅作 410 载体保留（僵尸路由清单随下一批次清理）。\n\n权限要求：有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation。\n\n契约状态 retired：端点已退役（410 Gone），路由仅作退役载体保留，无业务能力。",
         "operationId": "post_front_desk_walk_in",
         "responses": {
-          "201": {
-            "description": "散客已创建并入住房间；同 Idempotency-Key 重放返回同一结果。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "description": "{data, ...} 前台封套；列表附 meta 分页，写操作附 created/changed 标志。",
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "description": "",
-                      "properties": {
-                        "booking_no": {
-                          "type": "string",
-                          "description": "预订号。"
-                        },
-                        "reservation_id": {
-                          "type": "integer",
-                          "description": "预订主单 ID。"
-                        },
-                        "stay_id": {
-                          "type": "integer",
-                          "description": "入住 Stay ID。"
-                        },
-                        "room_id": {
-                          "type": "integer",
-                          "description": "分配房间 ID。"
-                        },
-                        "room_number": {
-                          "type": "string",
-                          "description": "房间号。"
-                        },
-                        "source": {
-                          "type": "string",
-                          "description": "固定 WALK_IN。"
-                        },
-                        "guest_name": {
-                          "type": "string",
-                          "description": "住客姓名。"
-                        },
-                        "phone_provided": {
-                          "type": "boolean",
-                          "description": "本次是否提供了手机号。"
-                        }
-                      },
-                      "additionalProperties": true
-                    },
-                    "meta": {
-                      "$ref": "#/components/schemas/ResponseMeta"
-                    }
-                  },
-                  "additionalProperties": true,
-                  "required": [
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务器内部错误（INTERNAL_ERROR）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorEnvelope"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
+          "410": {
+            "description": "端点已按 DEC-WI-01 退役（GONE）；标准入口为 POST /front-desk/walk-ins",
             "content": {
               "application/json": {
                 "schema": {
@@ -5319,28 +5200,11 @@
             }
           }
         },
-        "x-contract-status": "verified",
+        "x-contract-status": "retired",
         "x-authentication": "Django Session Cookie + 员工任职",
         "x-required-permission": "有效员工任职（DEFAULT 物业）+ hotelapp.view_accommodation + hotelapp.change_accommodation",
-        "x-idempotency": {
-          "header": "Idempotency-Key",
-          "required": true,
-          "max_length": 128,
-          "semantics": "服务强校验必填；同 key 重放返回首次已建 Stay（业务层幂等，无重复写入）。",
-          "source": "apps.reservations.walkin.create_walk_in"
-        },
         "deprecated": true,
         "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "description": "幂等键（必填，1-128 字符）。",
-            "schema": {
-              "type": "string",
-              "maxLength": 128
-            }
-          },
           {
             "name": "X-CSRFToken",
             "in": "header",
@@ -5351,88 +5215,7 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "description": "",
-                "properties": {
-                  "full_name": {
-                    "type": "string",
-                    "description": "住客姓名（必填）。",
-                    "maxLength": 80
-                  },
-                  "phone": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "description": "手机号；可留空表示无手机号散客（系统生成确定性占位号）。",
-                        "maxLength": 24
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "room_type_id": {
-                    "type": "integer",
-                    "description": "房型 ID（须属 DEFAULT 物业且当天可售）。"
-                  },
-                  "rate_plan_id": {
-                    "anyOf": [
-                      {
-                        "type": "integer",
-                        "description": "价格计划 ID；不传由服务按有价计划自动选择。"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "nights": {
-                    "type": "integer",
-                    "description": "住宿晚数，默认 1。",
-                    "minimum": 1,
-                    "maximum": 10,
-                    "default": 1
-                  },
-                  "adults": {
-                    "type": "integer",
-                    "description": "成人数，默认 1。",
-                    "minimum": 1,
-                    "maximum": 10,
-                    "default": 1
-                  },
-                  "children": {
-                    "type": "integer",
-                    "description": "儿童数，默认 0。",
-                    "minimum": 0,
-                    "maximum": 10,
-                    "default": 0
-                  },
-                  "deposit_amount": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "description": "到店押金金额（大于零）；不传则不收押金。"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "additionalProperties": true,
-                "required": [
-                  "full_name",
-                  "room_type_id"
-                ]
-              }
-            }
-          }
-        },
+        "x-no-request-body": true,
         "security": [
           {
             "PMS2Session": []

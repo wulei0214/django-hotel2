@@ -1128,6 +1128,7 @@ ERROR_DESCRIPTIONS = {
     "401": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
     "403": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
     "404": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+    "410": "端点已按 DEC-WI-01 退役（GONE）；标准入口为 POST /front-desk/walk-ins",
     "409": "业务状态冲突、库存冲突或幂等冲突（BUSINESS_CONFLICT）",
     "429": "请求频率超限；请遵循 Retry-After（RATE_LIMITED，仅公开面）",
     "500": "服务器内部错误（INTERNAL_ERROR）",
@@ -1904,45 +1905,19 @@ fd_write = [
     ),
     (
         "/front-desk/walk-in",
-        "散客直入",
-        "verified",
+        "散客直入（已退役）",
+        "retired",
         [],
-        s_obj(
-            {
-                "full_name": s_str("住客姓名（必填）。", maxLength=80),
-                "phone": s_nullable(
-                    s_str("手机号；可留空表示无手机号散客（系统生成确定性占位号）。", maxLength=24)
-                ),
-                "room_type_id": s_int("房型 ID（须属 DEFAULT 物业且当天可售）。"),
-                "rate_plan_id": s_nullable(s_int("价格计划 ID；不传由服务按有价计划自动选择。")),
-                "nights": s_int("住宿晚数，默认 1。", minimum=1, maximum=10, default=1),
-                "adults": s_int("成人数，默认 1。", minimum=1, maximum=10, default=1),
-                "children": s_int("儿童数，默认 0。", minimum=0, maximum=10, default=0),
-                "deposit_amount": s_nullable(s_str("到店押金金额（大于零）；不传则不收押金。")),
-            },
-            required=["full_name", "room_type_id"],
-        ),
-        s_obj(
-            {
-                "booking_no": s_str("预订号。"),
-                "reservation_id": s_int("预订主单 ID。"),
-                "stay_id": s_int("入住 Stay ID。"),
-                "room_id": s_int("分配房间 ID。"),
-                "room_number": s_str("房间号。"),
-                "source": s_str("固定 WALK_IN。"),
-                "guest_name": s_str("住客姓名。"),
-                "phone_provided": s_bool("本次是否提供了手机号。"),
-            }
-        ),
-        "复用 apps.reservations.walkin.create_walk_in：同一事务完成 Guest→Reservation"
-        "(source=WALK_IN)→ReservationRoom→Folio→Hold→确认→排房→入住→Stay；"
-        "无手机号时由服务层生成确定性占位号；住客档案不按手机号自动合并"
-        "（共享号码仅标记人工核验）。Idempotency-Key 必填（1-128 字符）。"
-        "已退役规划（DEC-WI-01）：迁移至 /front-desk/walk-ins，本兼容端点将在"
-        "观察期后返回 410；兼容期入口记 frontdesk.legacy_walk_in_called 观测审计"
-        "（纯观测，不影响业务响应）。",
+        None,
+        None,
+        "已退役（R2-04，DEC-WI-01，2026-11-19）：任意 POST 一律 410 Gone——不再区分"
+        "认证/权限/入参，不读取请求体，不做任何业务写入，也不再记"
+        " frontdesk.legacy_walk_in_called 观测审计（观察期随退役一并结束）。"
+        "标准入口：POST /front-desk/walk-ins（A1 契约口径）。业务事实源"
+        " apps.reservations.walkin.create_walk_in 保留于服务层，仅由 /front-desk/walk-ins"
+        " 继续使用；路由仅作 410 载体保留（僵尸路由清单随下一批次清理）。",
         FD_WRITE_PERM,
-        (("201", "散客已创建并入住房间；同 Idempotency-Key 重放返回同一结果。"),),
+        (),
     ),
     (
         "/front-desk/walk-ins",
@@ -2023,19 +1998,14 @@ for _path in (
         "source": "apps.reservations.front_desk_services / lifecycle_services / BillingService",
     }
 
-# Walk-in 强校验 Idempotency-Key（1-128 字符必填）；业务层幂等重放返回首次已建 Stay。
+# R2-04（DEC-WI-01 收敛收口）：旧 /front-desk/walk-in 已退役——operation 仅保留
+# 410 Gone 错误响应（无 2xx 成功响应），x-contract-status=retired；不再声明
+# x-idempotency（视图不读取请求体与 Idempotency-Key，不做任何业务写入，
+# @idempotent 装饰器已随退役一并摘除），保留 deprecated 标记。
 _walkin_entry = next(e for e in CONTRACTS if e["path"] == "/front-desk/walk-in")
-_walkin_entry["extras"]["x-idempotency"] = {
-    "header": "Idempotency-Key",
-    "required": True,
-    "max_length": 128,
-    "semantics": "服务强校验必填；同 key 重放返回首次已建 Stay（业务层幂等，无重复写入）。",
-    "source": "apps.reservations.walkin.create_walk_in",
-}
-# R2-02（DEC-WI-01 双端点收敛）：旧 /front-desk/walk-in 标记 deprecated——
-# 兼容期仍可用（x-contract-status 保持 verified），观察期后返回 410 退役
-# （触发条件与步骤清单见 docs/PMS2.0_当前版本/04_开发实施记录/ R2 实施记录）。
-_walkin_entry["extras"]["deprecated"] = True
+_walkin_entry["ok"] = ()
+_walkin_entry["errors"] = ("410",)
+_walkin_entry["extras"] = {"deprecated": True}
 
 # A1 /front-desk/walk-ins：幂等由服务层 (property, idempotency_key) 唯一约束 +
 # 请求指纹仲裁（不经 @idempotent 装饰器短路——装饰器会缓存并重放首次 201 响应）。
@@ -5809,6 +5779,10 @@ def _render_operation(entry):
         notes = (
             notes + "\n\n" if notes else ""
         ) + "契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。"
+    elif entry["status"] == "retired":
+        notes = (
+            notes + "\n\n" if notes else ""
+        ) + "契约状态 retired：端点已退役（410 Gone），路由仅作退役载体保留，无业务能力。"
 
     item = {
         "tags": [entry["tag"]],
@@ -5859,7 +5833,8 @@ def build_openapi():
                 "PMS2 模块化单体 API 契约（方案 §9.8）。只包含当前注册的 JSON API；"
                 "HTML 页面、表单动作和历史页面入口不作为 REST API。\n\n"
                 "契约状态（x-contract-status）：verified = 字段经源码核实且有端点级 HTTP 测试；"
-                "partial = 字段经源码核实但端点级测试待补齐；planned = 规划未实现（当前不存在）。\n\n"
+                "partial = 字段经源码核实但端点级测试待补齐；planned = 规划未实现（当前不存在）；"
+                "retired = 已退役端点（路由保留仅返回 410 Gone，无业务能力，无 2xx 成功响应）。\n\n"
                 "安全模型：员工端统一 Django Session Cookie（登录入口为 POST /login/ HTML Form，"
                 "不存在 JSON 登录接口），所有写操作需要 X-CSRFToken；公开预订/支付为匿名访问，"
                 "凭 Booking Access Token 业务凭据 + §6.3 限流 + 审计。"

@@ -4,8 +4,8 @@
 1. openapi.json 可解析且 OpenAPI 3.1 结构合法（operationId 唯一、$ref 全部可解析、
    每个 operation 有 summary/tags/成功响应 schema）。
 2. schema 与 apps.api.urls 双向一致：无遗漏路由、无幽灵路由。
-3. 每个业务 operation 都有 x-contract-status（verified/partial/planned），
-   非 planned 端点必须有具体请求/响应 schema。
+3. 每个业务 operation 都有 x-contract-status（verified/partial/planned/retired），
+   非 planned 端点必须有具体请求/响应 schema（retired 端点除外：仅 410 错误响应）。
 4. 抽样断言：公开预订创建请求字段与视图实际一致；错误结构统一。
 5. x-required-permission 与视图装饰器/AuthorizationService 校验一致（全量抽样核对）。
 6. 公开预订三端点特别标注：Idempotency-Key 幂等、§6.3 限流阈值（与
@@ -23,7 +23,8 @@ from django.urls import URLPattern, resolve
 from apps.api.openapi_schema import BASE, build_openapi
 from apps.core.rate_limit import DEFAULT_LIMITS
 
-CONTRACT_STATUSES = {"verified", "partial", "planned"}
+# R2-04（DEC-WI-01）：retired = 已退役端点（路由保留仅返回 410 Gone，无 2xx 成功响应）。
+CONTRACT_STATUSES = {"verified", "partial", "planned", "retired"}
 
 # OpenAPI 双快照：
 # - 权威快照：契约唯一事实来源，由 `manage.py export_openapi_schema` 生成；
@@ -335,6 +336,11 @@ class PMS2OpenApiStructureValidityTests(TestCase):
             for tag in operation["tags"]:
                 self.assertIn(tag, declared_tags, f"{op_id} 使用了未声明的 tag：{tag}")
             success = [code for code in operation["responses"] if code.startswith("2")]
+            if operation.get("x-contract-status") == "retired":
+                # R2-04（DEC-WI-01）：retired 端点仅保留 410 错误响应，
+                # 不得再声明任何 2xx 成功响应（避免虚构已不存在的业务能力）。
+                self.assertEqual(success, [], f"{op_id} 已退役（retired），不得声明 2xx 成功响应")
+                continue
             self.assertTrue(success, f"{op_id} 缺少 2xx 成功响应")
             for code in success:
                 schema = _success_schema(operation, code)

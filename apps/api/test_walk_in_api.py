@@ -1,18 +1,30 @@
-"""A1 Walk-in 散客直入 HTTP 端点测试（DEC-WALKIN-01）。
+"""A1 Walk-in 旧端点退役行为测试（R2-04，DEC-WI-01 收敛收口）。
 
-只断言 API 层行为契约：复用 create_walk_in 的原子链路、无手机号占位、
-同 Idempotency-Key 幂等重放、不按手机号自动合并住客、认证/权限/物业隔离、
-无净房时 400。业务细节由 apps/reservations/test_whitebox_services.py 覆盖，
+原兼容期 HTTP 契约测试（DEC-WALKIN-01：复用 create_walk_in 原子链路、无手机号
+占位、幂等重放、认证/权限/物业门禁等 201/400/401/403 断言）已于 2026-11-19
+随 410 退役转化为退役行为测试：POST /api/v1/front-desk/walk-in 恒返
+410 Gone（error.code=GONE，文案注明已按 DEC-WI-01 退役并指向标准入口
+POST /api/v1/front-desk/walk-ins），且不产生任何业务写入——
+Reservation/Guest/Stay/Payment/Folio 计数不变、无 frontdesk.legacy_walk_in_called
+观测审计新写、无 IdempotencyRecord 幂等记录新写。
+
+每项测试保留原场景入参（匿名 / 仅查看权 / 缺幂等键 / 缺字段 / 带手机号 /
+无净房 / 同幂等键重放等），以证明退役对任意调用形态一律生效、不设任何分支。
+业务能力由 POST /api/v1/front-desk/walk-ins 承接（服务层事实源
+apps.reservations.walkin.create_walk_in 不变，行为覆盖见
+apps/reservations/test_whitebox_services.py 及本包 walk-ins 相关用例）；
 本文件不触碰服务层实现。
 """
 
+import contextlib
 import json
 from datetime import timedelta
 from decimal import Decimal
 
 from django.utils import timezone
 
-from apps.core.models import AuditEvent
+from apps.billing.models import Folio, Payment
+from apps.core.models import AuditEvent, IdempotencyRecord
 from apps.guests.models import Guest
 from apps.guests.services import phone_hash
 from apps.inventory.models import DailyRate, RatePlan, Room, RoomType, RoomTypeInventory
@@ -26,7 +38,11 @@ def _post_json(client, url, payload, **extra):
 
 
 class WalkInApiTestBase(WhiteboxApiTestBase):
-    """复用 DEFAULT 物业上下文 + 员工账号工厂，叠加 Walk-in 库存。"""
+    """复用 DEFAULT 物业上下文 + 员工账号工厂，叠加 Walk-in 库存。
+
+    库存/房价夹具保留原契约测试口径：即使库存充足、入参合法，退役端点也
+    必须零写入（410 先于任何业务分支）。
+    """
 
     def setUp(self):
         super().setUp()
@@ -63,15 +79,15 @@ class WalkInApiTestBase(WhiteboxApiTestBase):
     def _auth(self, codenames=("view_accommodation", "change_accommodation")):
         user = self._make_staff(codenames=set(codenames))
         self.client.force_login(user)
-        # R1-02：押金强制化后 Walk-in 创建必经 record_deposit（CASH 需本人
-        # OPEN 班次）——为登录用户预开班次，避免未开班次的 409 掩盖契约断言。
+        # 沿用原契约测试夹具：预开班次（退役路径不读取任何业务上下文，仅保证
+        # "已授权 + 班次就绪" 场景下退役行为与其他场景一致）。
         from apps.billing.services_v2 import BillingService
-        try:
+
+        with contextlib.suppress(Exception):
+            # 该用户已有进行中班次则沿用
             BillingService.open_shift(
                 property_obj=self.property, cashier=user, opening_cash=Decimal("0.00")
             )
-        except Exception:
-            pass  # 该用户已有进行中班次则沿用
         return user
 
     def _payload(self, **overrides):
@@ -86,88 +102,105 @@ class WalkInApiTestBase(WhiteboxApiTestBase):
         payload.update(overrides)
         return payload
 
+    def _snapshot_counts(self):
+        """业务写入面快照：退役调用前后必须逐项不变。"""
+        return {
+            "reservation": Reservation.objects.count(),
+            "guest": Guest.objects.count(),
+            "stay": Stay.objects.count(),
+            "payment": Payment.objects.count(),
+            "folio": Folio.objects.count(),
+            "audit_total": AuditEvent.objects.count(),
+            "legacy_observation_audit": AuditEvent.objects.filter(
+                action="frontdesk.legacy_walk_in_called"
+            ).count(),
+            "idempotency_record": IdempotencyRecord.objects.count(),
+        }
+
+    def _assert_retired(self, response, before):
+        """统一退役断言：410 + GONE + 指向标准入口 + 零业务写入（含观测审计）。"""
+        self.assertEqual(response.status_code, 410, response.content)
+        body = response.json()
+        self.assertEqual(body["error"]["code"], "GONE")
+        self.assertIn("DEC-WI-01", body["error"]["message"])
+        self.assertIn("/api/v1/front-desk/walk-ins", body["error"]["message"])
+        self.assertEqual(
+            self._snapshot_counts(),
+            before,
+            "退役端点不得产生任何业务/审计/幂等写入",
+        )
+
 
 class WalkInCreateApiTests(WalkInApiTestBase):
+    """POST /api/v1/front-desk/walk-in 退役行为（R2-04，DEC-WI-01）。
+
+    类名保留原契约测试语义（Walk-in 创建端点 API 行为），全部用例断言
+    恒定 410 + 零写入；与原 201/400/401/403 契约测试一一对应。
+    """
+
     url = "/api/v1/front-desk/walk-in"
 
-    def test_walk_in_legacy_call_records_observation_audit(self):
-        """R2-03（DEC-WI-01）：兼容端点入口记观测审计且业务仍正常。
-
-        纯观测断言：frontdesk.legacy_walk_in_called 事件带物业/操作人；
-        业务链路不受影响（201 + Stay 建立）。
-        """
-        user = self._auth()
+    def test_walk_in_retired_records_no_observation_audit(self):
+        """原 R2-03 观测断言转"无观测审计新写"：410 路径不再记
+        frontdesk.legacy_walk_in_called（观察期随退役一并结束）。"""
+        self._auth()
+        before = self._snapshot_counts()
         response = _post_json(
             self.client, self.url, self._payload(), HTTP_IDEMPOTENCY_KEY="wbi-obs-001"
         )
-        self.assertEqual(response.status_code, 201, response.content)
-        events = AuditEvent.objects.filter(action="frontdesk.legacy_walk_in_called")
-        self.assertEqual(events.count(), 1)
-        event = events.get()
-        self.assertEqual(event.entity_type, "FrontDeskEndpoint")
-        self.assertEqual(event.entity_id, "front-desk/walk-in")
-        self.assertEqual(event.property_id, self.property.pk)
-        self.assertEqual(event.actor_id, user.pk)
-        # 观测不写业务：观测事件之外，散客入住主链路照常完成
-        booking_no = response.json()["data"]["booking_no"]
-        self.assertTrue(
-            Stay.objects.filter(reservation_room__reservation__booking_no=booking_no).exists()
+        self._assert_retired(response, before)
+        self.assertEqual(
+            AuditEvent.objects.filter(action="frontdesk.legacy_walk_in_called").count(), 0
         )
 
-    def test_walk_in_no_phone_creates_stay_returns_201(self):
-        """无手机号散客：占位号建档、生成 Stay、source=WALK_IN。"""
+    def test_walk_in_retired_valid_payload_returns_410_without_writes(self):
+        """原"无手机号散客 201"场景：合法入参 + 库存充足仍 410，零业务写入。"""
         self._auth()
+        before = self._snapshot_counts()
         response = _post_json(
             self.client, self.url, self._payload(), HTTP_IDEMPOTENCY_KEY="wbi-nophone-001"
         )
-        self.assertEqual(response.status_code, 201, response.content)
-        data = response.json()["data"]
-        self.assertEqual(data["source"], "WALK_IN")
-        self.assertFalse(data["phone_provided"])
-        reservation = Reservation.objects.get(booking_no=data["booking_no"])
-        self.assertEqual(reservation.source, "WALK_IN")
-        self.assertTrue(Stay.objects.filter(reservation_room__reservation=reservation).exists())
-        # 无手机号：服务层生成确定性占位号，不落明文手机号
-        guest = reservation.guest
-        self.assertFalse(guest.phone)
-        self.assertTrue(guest.phone_hash)
+        self._assert_retired(response, before)
+        self.assertEqual(Reservation.objects.filter(source="WALK_IN").count(), 0)
 
-    def test_walk_in_idempotent_replay_returns_same_booking(self):
-        """同 Idempotency-Key 重放：返回同一预订号，不重复建档。"""
+    def test_walk_in_retired_idempotent_key_replay_returns_410(self):
+        """原"同幂等键重放"场景：重放两次均 410，不建档、不写幂等记录。"""
         self._auth()
+        before = self._snapshot_counts()
         kw = {"HTTP_IDEMPOTENCY_KEY": "wbi-replay-001"}
         first = _post_json(self.client, self.url, self._payload(), **kw)
         second = _post_json(self.client, self.url, self._payload(), **kw)
-        self.assertEqual(first.status_code, 201, first.content)
-        self.assertEqual(second.status_code, 201, second.content)
-        self.assertEqual(first.json()["data"]["booking_no"], second.json()["data"]["booking_no"])
-        booking_no = first.json()["data"]["booking_no"]
-        self.assertEqual(Reservation.objects.filter(booking_no=booking_no).count(), 1)
-        self.assertEqual(Guest.objects.filter(full_name="散客张三").count(), 1)
+        self._assert_retired(first, before)
+        self._assert_retired(second, before)
+        self.assertEqual(Guest.objects.filter(full_name="散客张三").count(), 0)
 
-    def test_walk_in_requires_idempotency_key_returns_400(self):
-        """缺少 Idempotency-Key 请求头 → 400。"""
+    def test_walk_in_retired_missing_idempotency_key_returns_410(self):
+        """原"缺幂等键 400"场景：退役端点不设入参分支，缺键也 410。"""
         self._auth()
+        before = self._snapshot_counts()
         response = _post_json(self.client, self.url, self._payload())
-        self.assertEqual(response.status_code, 400, response.content)
-        self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
+        self._assert_retired(response, before)
 
-    def test_walk_in_missing_full_name_returns_400(self):
+    def test_walk_in_retired_missing_full_name_returns_410(self):
+        """原"缺姓名 400"场景：退役端点不校验入参，缺姓名也 410。"""
         payload = self._payload()
         del payload["full_name"]
         self._auth()
+        before = self._snapshot_counts()
         response = _post_json(self.client, self.url, payload, HTTP_IDEMPOTENCY_KEY="wbi-noname-001")
-        self.assertEqual(response.status_code, 400, response.content)
+        self._assert_retired(response, before)
 
-    def test_walk_in_missing_room_type_returns_400(self):
+    def test_walk_in_retired_missing_room_type_returns_410(self):
+        """原"缺房型 400"场景：退役端点不校验入参，缺房型也 410。"""
         payload = self._payload()
         del payload["room_type_id"]
         self._auth()
+        before = self._snapshot_counts()
         response = _post_json(self.client, self.url, payload, HTTP_IDEMPOTENCY_KEY="wbi-noroom-001")
-        self.assertEqual(response.status_code, 400, response.content)
+        self._assert_retired(response, before)
 
-    def test_walk_in_with_phone_does_not_merge_existing_guest(self):
-        """同手机号散客：新建独立住客档案，不自动合并既有档案。"""
+    def test_walk_in_retired_with_phone_does_not_create_or_merge_guest(self):
+        """原"同手机号不合并"场景：既有档案保持唯一，无新档案、无合并写入。"""
         existing = Guest.objects.create(
             property=self.property,
             full_name="既有住客",
@@ -175,42 +208,47 @@ class WalkInCreateApiTests(WalkInApiTestBase):
             phone_hash=phone_hash("13800006699"),
         )
         self._auth()
+        before = self._snapshot_counts()
         response = _post_json(
             self.client,
             self.url,
             self._payload(full_name="散客李四", phone="13800006699"),
             HTTP_IDEMPOTENCY_KEY="wbi-merge-001",
         )
-        self.assertEqual(response.status_code, 201, response.content)
-        reservation = Reservation.objects.get(booking_no=response.json()["data"]["booking_no"])
-        # 不自动合并：新住客档案独立于既有档案
-        self.assertNotEqual(reservation.guest.pk, existing.pk)
-        self.assertGreaterEqual(Guest.objects.filter(phone_hash=existing.phone_hash).count(), 2)
+        self._assert_retired(response, before)
+        # 不合并也不新建：同号档案仍只有既有一条
+        self.assertEqual(Guest.objects.filter(phone_hash=existing.phone_hash).count(), 1)
 
-    def test_walk_in_no_vacant_room_returns_400(self):
-        """无净房（占用中）时拒绝，不留下孤儿记录。"""
+    def test_walk_in_retired_no_vacant_room_returns_410(self):
+        """原"无净房 400"场景：房态占用也一律 410，无孤儿记录。"""
         self.room.occupancy_status = Room.OccupancyStatus.OCCUPIED
         self.room.save(update_fields=("occupancy_status",))
         self._auth()
+        before = self._snapshot_counts()
         response = _post_json(
             self.client, self.url, self._payload(), HTTP_IDEMPOTENCY_KEY="wbi-novacant-001"
         )
-        self.assertEqual(response.status_code, 400, response.content)
-        self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
-        # 原子回滚：无新增预订/Stay
+        self._assert_retired(response, before)
         self.assertEqual(Reservation.objects.filter(source="WALK_IN").count(), 0)
         self.assertEqual(Stay.objects.count(), 0)
 
-    def test_walk_in_requires_authentication_returns_401(self):
+    def test_walk_in_retired_anonymous_returns_410(self):
+        """原"匿名 401"场景：退役端点不设认证分支，匿名调用也 410。
+
+        （Django 测试客户端默认不强制 CSRF，与生产 CSRF 中间件口径无关；
+        携带合法会话与 CSRF 的旧调用方同样收到 410。）
+        """
+        before = self._snapshot_counts()
         response = _post_json(
             self.client, self.url, self._payload(), HTTP_IDEMPOTENCY_KEY="wbi-anon-001"
         )
-        self.assertEqual(response.status_code, 401, response.content)
+        self._assert_retired(response, before)
 
-    def test_walk_in_requires_change_permission_returns_403(self):
-        """仅有入住查看权、无修改权 → 403。"""
+    def test_walk_in_retired_view_only_permission_returns_410(self):
+        """原"仅查看权 403"场景：退役端点不设权限分支，仅查看权也 410。"""
         self._auth(codenames=("view_accommodation",))
+        before = self._snapshot_counts()
         response = _post_json(
             self.client, self.url, self._payload(), HTTP_IDEMPOTENCY_KEY="wbi-noperm-001"
         )
-        self.assertEqual(response.status_code, 403, response.content)
+        self._assert_retired(response, before)

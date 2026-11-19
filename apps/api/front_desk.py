@@ -3,6 +3,7 @@
 查询接口组装预订、Stay、客房和 Folio DTO；写接口只负责认证/权限/参数边界，
 具体事务和状态迁移由 apps.reservations.front_desk_services 负责。
 """
+
 import logging
 import uuid
 from datetime import date
@@ -25,7 +26,6 @@ from apps.billing.models import Folio, Payment, PaymentIntent, Refund
 from apps.billing.payment_intents import extend_intent_window, get_channel_window
 from apps.core import labels as L
 from apps.core.api_contract import ApiError, api_response, api_view, idempotent, parse_page_args
-from apps.core.models import AuditEvent
 from apps.guests.services import guest_phone_plain, phone_hash
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import Room, RoomType
@@ -86,47 +86,97 @@ def _response(data, status=200):
 
 def _front_desk_required(view):
     """员工门禁 + DEFAULT 物业 + 入住管理查看权限，统一返回 JSON 错误。"""
+
     @wraps(view)
     def wrapped(request, *args, **kwargs):
         user = request.user
         if not user.is_authenticated or not user.is_active:
-            return _response({"error": {"code": "AUTHENTICATION_REQUIRED", "message": "请先登录员工账号。"}}, 401)
+            return _response(
+                {"error": {"code": "AUTHENTICATION_REQUIRED", "message": "请先登录员工账号。"}}, 401
+            )
         property_obj = getattr(request, "property", None)
         membership = getattr(request, "staff_membership", None)
-        if property_obj is None or property_obj.code != getattr(settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"):
-            return _response({"error": {"code": "PROPERTY_UNAVAILABLE", "message": "当前酒店物业不可用。"}}, 503)
+        if property_obj is None or property_obj.code != getattr(
+            settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"
+        ):
+            return _response(
+                {"error": {"code": "PROPERTY_UNAVAILABLE", "message": "当前酒店物业不可用。"}}, 503
+            )
         if membership is None or membership.property_id != property_obj.pk:
-            return _response({"error": {"code": "EMPLOYEE_MEMBERSHIP_REQUIRED", "message": "当前账号没有该酒店的有效任职关系。"}}, 403)
-        if not AuthorizationService.has_permission(user, property_obj, "hotelapp.view_accommodation"):
-            return _response({"error": {"code": "PERMISSION_DENIED", "message": "当前岗位没有入住管理查看权限。"}}, 403)
+            return _response(
+                {
+                    "error": {
+                        "code": "EMPLOYEE_MEMBERSHIP_REQUIRED",
+                        "message": "当前账号没有该酒店的有效任职关系。",
+                    }
+                },
+                403,
+            )
+        if not AuthorizationService.has_permission(
+            user, property_obj, "hotelapp.view_accommodation"
+        ):
+            return _response(
+                {
+                    "error": {
+                        "code": "PERMISSION_DENIED",
+                        "message": "当前岗位没有入住管理查看权限。",
+                    }
+                },
+                403,
+            )
         request.front_desk_property = property_obj
         return view(request, *args, **kwargs)
-    return wrapped
 
+    return wrapped
 
 
 def _front_desk_write_required(view):
     """写操作要求当前物业任职同时具备入住查看与修改权限。"""
+
     @wraps(view)
     def wrapped(request, *args, **kwargs):
         user = request.user
         if not user.is_authenticated or not user.is_active:
-            return _response({"error": {"code": "AUTHENTICATION_REQUIRED", "message": "请先登录员工账号。"}}, 401)
+            return _response(
+                {"error": {"code": "AUTHENTICATION_REQUIRED", "message": "请先登录员工账号。"}}, 401
+            )
         property_obj = getattr(request, "property", None)
         membership = getattr(request, "staff_membership", None)
-        if property_obj is None or property_obj.code != getattr(settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"):
-            return _response({"error": {"code": "PROPERTY_UNAVAILABLE", "message": "当前酒店物业不可用。"}}, 503)
+        if property_obj is None or property_obj.code != getattr(
+            settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"
+        ):
+            return _response(
+                {"error": {"code": "PROPERTY_UNAVAILABLE", "message": "当前酒店物业不可用。"}}, 503
+            )
         if membership is None or membership.property_id != property_obj.pk:
-            return _response({"error": {"code": "EMPLOYEE_MEMBERSHIP_REQUIRED", "message": "当前账号没有该酒店的有效任职关系。"}}, 403)
+            return _response(
+                {
+                    "error": {
+                        "code": "EMPLOYEE_MEMBERSHIP_REQUIRED",
+                        "message": "当前账号没有该酒店的有效任职关系。",
+                    }
+                },
+                403,
+            )
         if not (
             AuthorizationService.has_permission(user, property_obj, "hotelapp.view_accommodation")
-            and AuthorizationService.has_permission(user, property_obj, "hotelapp.change_accommodation")
+            and AuthorizationService.has_permission(
+                user, property_obj, "hotelapp.change_accommodation"
+            )
         ):
-            return _response({"error": {"code": "PERMISSION_DENIED", "message": "当前岗位没有入住管理操作权限。"}}, 403)
+            return _response(
+                {
+                    "error": {
+                        "code": "PERMISSION_DENIED",
+                        "message": "当前岗位没有入住管理操作权限。",
+                    }
+                },
+                403,
+            )
         request.front_desk_property = property_obj
         return view(request, *args, **kwargs)
-    return wrapped
 
+    return wrapped
 
 
 def _parse_date(value, label, fallback):
@@ -135,7 +185,7 @@ def _parse_date(value, label, fallback):
     try:
         return date.fromisoformat(value)
     except (TypeError, ValueError):
-        raise ValueError(f"{label}必须使用 YYYY-MM-DD 格式。")
+        raise ValueError(f"{label}必须使用 YYYY-MM-DD 格式。") from None
 
 
 def _page_args(request):
@@ -149,7 +199,7 @@ def _page_args(request):
 
 def _paginate(queryset, page, page_size):
     total = queryset.count()
-    rows = list(queryset[(page - 1) * page_size: page * page_size])
+    rows = list(queryset[(page - 1) * page_size : page * page_size])
     return rows, {
         "page": page,
         "page_size": page_size,
@@ -181,8 +231,12 @@ def _status_label(status):
 
 
 def _source_label(source):
-    return {"WEBSITE": "官网预订", "WALK_IN": "散客直入", "OTA": "渠道预订",
-                "PHONE": "电话预订"}.get(source, source or "其他")
+    return {
+        "WEBSITE": "官网预订",
+        "WALK_IN": "散客直入",
+        "OTA": "渠道预订",
+        "PHONE": "电话预订",
+    }.get(source, source or "其他")
 
 
 def _folio_summaries(property_obj, reservation_ids):
@@ -203,19 +257,22 @@ def _folio_summaries(property_obj, reservation_ids):
         .order_by("reservation_id", "folio_type", "id")
     )
     for folio in folios:
-        summary = result.setdefault(folio.reservation_id, {
-            "folio_id": None,
-            "status": "NOT_OPENED",
-            "status_label": L.folio_summary_status_label("NOT_OPENED"),
-            "charges": Decimal("0.00"),
-            "credits": Decimal("0.00"),
-            "balance": Decimal("0.00"),
-            "pending_payment_count": 0,
-            "currency": folio.reservation.currency,
-            "currency_label": L.currency_label(folio.reservation.currency),
-            "folio_count": 0,
-            "open_folio_count": 0,
-        })
+        summary = result.setdefault(
+            folio.reservation_id,
+            {
+                "folio_id": None,
+                "status": "NOT_OPENED",
+                "status_label": L.folio_summary_status_label("NOT_OPENED"),
+                "charges": Decimal("0.00"),
+                "credits": Decimal("0.00"),
+                "balance": Decimal("0.00"),
+                "pending_payment_count": 0,
+                "currency": folio.reservation.currency,
+                "currency_label": L.currency_label(folio.reservation.currency),
+                "folio_count": 0,
+                "open_folio_count": 0,
+            },
+        )
         summary["folio_count"] += 1
         # 收款/押金表单只写入主账单，因此状态与 folio_id 明确取 MASTER。
         if folio.folio_type == Folio.FolioType.MASTER:
@@ -232,18 +289,17 @@ def _folio_summaries(property_obj, reservation_ids):
             continue
         entries = list(folio.entries.all())
         summary["charges"] += sum(
-            (entry.amount for entry in entries if entry.amount > 0),
-            Decimal("0.00"))
+            (entry.amount for entry in entries if entry.amount > 0), Decimal("0.00")
+        )
         summary["credits"] += sum(
-            (-entry.amount for entry in entries if entry.amount < 0),
-            Decimal("0.00"))
-        summary["balance"] += sum(
-            (entry.amount for entry in entries), Decimal("0.00"))
+            (-entry.amount for entry in entries if entry.amount < 0), Decimal("0.00")
+        )
+        summary["balance"] += sum((entry.amount for entry in entries), Decimal("0.00"))
         summary["pending_payment_count"] += sum(
-            1 for item in folio.payments.all()
-            if item.status in (
-                Payment.Status.CREATED, Payment.Status.PENDING,
-                Payment.Status.REFUND_PENDING)
+            1
+            for item in folio.payments.all()
+            if item.status
+            in (Payment.Status.CREATED, Payment.Status.PENDING, Payment.Status.REFUND_PENDING)
         )
         summary["open_folio_count"] += 1
 
@@ -251,18 +307,23 @@ def _folio_summaries(property_obj, reservation_ids):
         summary.setdefault("currency_mismatch", False)
         for key in ("charges", "credits", "balance"):
             summary[key] = (
-                None if summary["currency_mismatch"] else
-                str(summary[key].quantize(Decimal("0.01")))
+                None
+                if summary["currency_mismatch"]
+                else str(summary[key].quantize(Decimal("0.01")))
             )
     return result
 
 
 def _empty_folio_summary(currency="CNY"):
     return {
-        "folio_id": None, "status": "NOT_OPENED",
+        "folio_id": None,
+        "status": "NOT_OPENED",
         "status_label": L.folio_summary_status_label("NOT_OPENED"),
-        "charges": "0.00", "credits": "0.00", "balance": "0.00",
-        "pending_payment_count": 0, "currency": currency,
+        "charges": "0.00",
+        "credits": "0.00",
+        "balance": "0.00",
+        "pending_payment_count": 0,
+        "currency": currency,
         "currency_label": L.currency_label(currency),
     }
 
@@ -292,38 +353,63 @@ def _reservation_room_dto(line, folio_map=None, stay_map=None):
             "phone_masked": _mask_phone(guest_phone_plain(reservation.guest)),
         },
         "room_type": {"id": line.room_type_id, "name": line.room_type.name},
-        "assigned_room": ({"id": room.pk, "number": room.number, "floor": room.floor} if room else None),
+        "assigned_room": (
+            {"id": room.pk, "number": room.number, "floor": room.floor} if room else None
+        ),
         "check_in": line.check_in.isoformat(),
         "check_out": line.check_out.isoformat(),
         "nights": (line.check_out - line.check_in).days,
         "adults": reservation.adult_count,
         "children": reservation.child_count,
         "amount": str(line.amount),
-        "folio_summary": (folio_map or {}).get(reservation.pk, _empty_folio_summary(reservation.currency)),
-        "stay_status_label": (
-            L.stay_status_labels().get(stay.status, stay.status) if stay else
-            ("待办理入住" if reservation.status in (
-                Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN
-            ) else ("待确认" if reservation.status == Reservation.Status.PENDING
-                   else "无实际入住记录"))
+        "folio_summary": (folio_map or {}).get(
+            reservation.pk, _empty_folio_summary(reservation.currency)
         ),
-        "stay": ({
-            "id": stay.pk,
-            "status": stay.status,
-            "status_label": L.stay_status_labels().get(stay.status, stay.status),
-            "actual_check_in": stay.actual_check_in.isoformat() if stay.actual_check_in else None,
-            "room_segments": [{
-                "room_number": segment.room.number,
-                "started_at": segment.started_at.isoformat(),
-                "ended_at": segment.ended_at.isoformat() if segment.ended_at else None,
-                "reason": segment.move_reason,
-            } for segment in room_segments],
-        } if stay else None),
-        "no_show": ({
-            "id": no_show.pk, "reason": no_show.reason,
-            "processed_at": no_show.processed_at.isoformat(),
-            "released_nights": no_show.released_nights,
-        } if no_show else None),
+        "stay_status_label": (
+            L.stay_status_labels().get(stay.status, stay.status)
+            if stay
+            else (
+                "待办理入住"
+                if reservation.status
+                in (Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN)
+                else (
+                    "待确认"
+                    if reservation.status == Reservation.Status.PENDING
+                    else "无实际入住记录"
+                )
+            )
+        ),
+        "stay": (
+            {
+                "id": stay.pk,
+                "status": stay.status,
+                "status_label": L.stay_status_labels().get(stay.status, stay.status),
+                "actual_check_in": (
+                    stay.actual_check_in.isoformat() if stay.actual_check_in else None
+                ),
+                "room_segments": [
+                    {
+                        "room_number": segment.room.number,
+                        "started_at": segment.started_at.isoformat(),
+                        "ended_at": segment.ended_at.isoformat() if segment.ended_at else None,
+                        "reason": segment.move_reason,
+                    }
+                    for segment in room_segments
+                ],
+            }
+            if stay
+            else None
+        ),
+        "no_show": (
+            {
+                "id": no_show.pk,
+                "reason": no_show.reason,
+                "processed_at": no_show.processed_at.isoformat(),
+                "released_nights": no_show.released_nights,
+            }
+            if no_show
+            else None
+        ),
         "source_system": "PMS2",
     }
 
@@ -343,8 +429,7 @@ def _apply_search(queryset, value):
     # WB-103：电话检索改为 phone_hash 精确匹配（HMAC 不可逆，不支持部分
     # 匹配）；不再查询 guest.phone / phone_normalized 明文列。
     if digits:
-        conditions = conditions | Q(
-            reservation__guest__phone_hash=phone_hash(digits))
+        conditions = conditions | Q(reservation__guest__phone_hash=phone_hash(digits))
     return queryset.filter(conditions)
 
 
@@ -354,13 +439,9 @@ def _apply_search(queryset, value):
 def overview(request):
     property_obj = request.front_desk_property
     try:
-        day = _parse_date(
-            request.GET.get("date"), "业务日期", _property_today(property_obj)
-        )
+        day = _parse_date(request.GET.get("date"), "业务日期", _property_today(property_obj))
     except ValueError as exc:
-        return _response(
-            {"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400
-        )
+        return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
     arrivals = ReservationRoom.objects.filter(
         property=property_obj, check_in=day, reservation__status__in=ARRIVAL_STATUSES
     )
@@ -373,25 +454,33 @@ def overview(request):
         housekeeping_status=Room.HousekeepingStatus.CLEAN,
         maintenance_status=Room.MaintenanceStatus.NORMAL,
     ).count()
-    waiting_release = rooms_qs.filter(housekeeping_status=Room.HousekeepingStatus.INSPECTING).count()
+    waiting_release = rooms_qs.filter(
+        housekeeping_status=Room.HousekeepingStatus.INSPECTING
+    ).count()
     maintenance = rooms_qs.exclude(maintenance_status=Room.MaintenanceStatus.NORMAL).count()
-    return _response({"data": {
-        "property": {"code": property_obj.code, "name": property_obj.name},
-        "business_date": day.isoformat(),
-        "arrivals_count": arrivals.count(),
-        "unassigned_count": arrivals.filter(assigned_room__isnull=True).count(),
-        "departures_count": departures_qs.count(),
-        "in_house_count": Stay.objects.filter(property=property_obj, status=Stay.Status.IN_HOUSE).count(),
-        "clean_available_count": clean_available,
-        "waiting_release_count": waiting_release,
-        "maintenance_count": maintenance,
-        "exception_counts": {
-            "waiting_room_assignment": arrivals.filter(assigned_room__isnull=True).count(),
-            "waiting_manager_release": waiting_release,
-            "maintenance_rooms": maintenance,
-        },
-        "data_updated_at": timezone.now().isoformat(),
-    }})
+    return _response(
+        {
+            "data": {
+                "property": {"code": property_obj.code, "name": property_obj.name},
+                "business_date": day.isoformat(),
+                "arrivals_count": arrivals.count(),
+                "unassigned_count": arrivals.filter(assigned_room__isnull=True).count(),
+                "departures_count": departures_qs.count(),
+                "in_house_count": Stay.objects.filter(
+                    property=property_obj, status=Stay.Status.IN_HOUSE
+                ).count(),
+                "clean_available_count": clean_available,
+                "waiting_release_count": waiting_release,
+                "maintenance_count": maintenance,
+                "exception_counts": {
+                    "waiting_room_assignment": arrivals.filter(assigned_room__isnull=True).count(),
+                    "waiting_manager_release": waiting_release,
+                    "maintenance_rooms": maintenance,
+                },
+                "data_updated_at": timezone.now().isoformat(),
+            }
+        }
+    )
 
 
 @require_GET
@@ -402,11 +491,14 @@ def arrivals(request):
     try:
         day = _parse_date(request.GET.get("date"), "抵店日期", _property_today(property_obj))
         page, page_size = _page_args(request)
-        queryset = ReservationRoom.objects.filter(
-            property=property_obj, check_in=day, reservation__status__in=ARRIVAL_STATUSES
-        ).select_related("reservation__guest", "room_type", "assigned_room").order_by(
-            "reservation__created_at", "id"
-        ).prefetch_related("no_show_record")
+        queryset = (
+            ReservationRoom.objects.filter(
+                property=property_obj, check_in=day, reservation__status__in=ARRIVAL_STATUSES
+            )
+            .select_related("reservation__guest", "room_type", "assigned_room")
+            .order_by("reservation__created_at", "id")
+            .prefetch_related("no_show_record")
+        )
         queryset = _apply_search(queryset, request.GET.get("q"))
     except (ValueError, ApiError) as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
@@ -416,12 +508,16 @@ def arrivals(request):
     elif assigned == "no":
         queryset = queryset.filter(assigned_room__isnull=True)
     elif assigned != "all":
-        return _response({"error": {"code": "VALIDATION_ERROR", "message": "assigned 只能是 all/yes/no。"}}, 400)
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": "assigned 只能是 all/yes/no。"}}, 400
+        )
     rows, meta = _paginate(queryset, page, page_size)
     reservation_ids = {line.reservation_id for line in rows}
     folio_map = _folio_summaries(property_obj, reservation_ids)
     data = [_reservation_room_dto(line, folio_map) for line in rows]
-    return _response({"data": data, "meta": {**meta, "date": day.isoformat(), "source_system": "PMS2"}})
+    return _response(
+        {"data": data, "meta": {**meta, "date": day.isoformat(), "source_system": "PMS2"}}
+    )
 
 
 @require_GET
@@ -434,18 +530,26 @@ def departures(request):
         page, page_size = _page_args(request)
     except (ValueError, ApiError) as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
-    queryset = Stay.objects.filter(
-        property=property_obj, status=Stay.Status.IN_HOUSE, reservation_room__check_out=day
-    ).select_related(
-        "reservation_room__reservation__guest", "reservation_room__room_type", "room"
-    ).order_by("reservation_room__check_out", "id").prefetch_related(
-        Prefetch("room_segments", queryset=StayRoomSegment.objects.select_related("room")),
-        "reservation_room__no_show_record",
+    queryset = (
+        Stay.objects.filter(
+            property=property_obj, status=Stay.Status.IN_HOUSE, reservation_room__check_out=day
+        )
+        .select_related(
+            "reservation_room__reservation__guest", "reservation_room__room_type", "room"
+        )
+        .order_by("reservation_room__check_out", "id")
+        .prefetch_related(
+            Prefetch("room_segments", queryset=StayRoomSegment.objects.select_related("room")),
+            "reservation_room__no_show_record",
+        )
     )
     value = (request.GET.get("q") or "").strip()
     if value:
         if len(value) > 80:
-            return _response({"error": {"code": "VALIDATION_ERROR", "message": "搜索内容不能超过 80 个字符。"}}, 400)
+            return _response(
+                {"error": {"code": "VALIDATION_ERROR", "message": "搜索内容不能超过 80 个字符。"}},
+                400,
+            )
         queryset = queryset.filter(
             Q(reservation_room__reservation__booking_no__icontains=value)
             | Q(reservation_room__reservation__guest__full_name__icontains=value)
@@ -457,7 +561,9 @@ def departures(request):
     folio_map = _folio_summaries(property_obj, reservation_ids)
     stay_map = {stay.reservation_room_id: stay for stay in rows}
     data = [_reservation_room_dto(stay.reservation_room, folio_map, stay_map) for stay in rows]
-    return _response({"data": data, "meta": {**meta, "date": day.isoformat(), "source_system": "PMS2"}})
+    return _response(
+        {"data": data, "meta": {**meta, "date": day.isoformat(), "source_system": "PMS2"}}
+    )
 
 
 @require_GET
@@ -469,18 +575,24 @@ def in_house(request):
         page, page_size = _page_args(request)
     except (ValueError, ApiError) as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
-    queryset = Stay.objects.filter(
-        property=property_obj, status=Stay.Status.IN_HOUSE
-    ).select_related(
-        "reservation_room__reservation__guest", "reservation_room__room_type", "room"
-    ).order_by("room__number", "id").prefetch_related(
-        Prefetch("room_segments", queryset=StayRoomSegment.objects.select_related("room")),
-        "reservation_room__no_show_record",
+    queryset = (
+        Stay.objects.filter(property=property_obj, status=Stay.Status.IN_HOUSE)
+        .select_related(
+            "reservation_room__reservation__guest", "reservation_room__room_type", "room"
+        )
+        .order_by("room__number", "id")
+        .prefetch_related(
+            Prefetch("room_segments", queryset=StayRoomSegment.objects.select_related("room")),
+            "reservation_room__no_show_record",
+        )
     )
     value = (request.GET.get("q") or "").strip()
     if value:
         if len(value) > 80:
-            return _response({"error": {"code": "VALIDATION_ERROR", "message": "搜索内容不能超过 80 个字符。"}}, 400)
+            return _response(
+                {"error": {"code": "VALIDATION_ERROR", "message": "搜索内容不能超过 80 个字符。"}},
+                400,
+            )
         queryset = queryset.filter(
             Q(reservation_room__reservation__booking_no__icontains=value)
             | Q(reservation_room__reservation__guest__full_name__icontains=value)
@@ -492,7 +604,9 @@ def in_house(request):
         try:
             queryset = queryset.filter(reservation_room__room_type_id=int(room_type_id))
         except ValueError:
-            return _response({"error": {"code": "VALIDATION_ERROR", "message": "room_type_id 必须是整数。"}}, 400)
+            return _response(
+                {"error": {"code": "VALIDATION_ERROR", "message": "room_type_id 必须是整数。"}}, 400
+            )
     floor = (request.GET.get("floor") or "").strip()
     if floor:
         queryset = queryset.filter(room__floor=floor)
@@ -513,21 +627,29 @@ def reservations(request):
         page, page_size = _page_args(request)
     except (ValueError, ApiError) as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
-    queryset = Reservation.objects.filter(
-        property=property_obj
-    ).select_related("guest").order_by("-created_at", "-id").prefetch_related(
-        Prefetch("reservation_rooms",
-                 queryset=ReservationRoom.objects.select_related(
-                     "room_type", "assigned_room", "stay")),
+    queryset = (
+        Reservation.objects.filter(property=property_obj)
+        .select_related("guest")
+        .order_by("-created_at", "-id")
+        .prefetch_related(
+            Prefetch(
+                "reservation_rooms",
+                queryset=ReservationRoom.objects.select_related(
+                    "room_type", "assigned_room", "stay"
+                ),
+            ),
+        )
     )
     value = (request.GET.get("q") or "").strip()
     if value:
         if len(value) > 80:
-            return _response({"error": {"code": "VALIDATION_ERROR", "message": "搜索内容不能超过 80 个字符。"}}, 400)
+            return _response(
+                {"error": {"code": "VALIDATION_ERROR", "message": "搜索内容不能超过 80 个字符。"}},
+                400,
+            )
         digits = "".join(ch for ch in value if ch.isdigit()) or value
         # WB-103：电话检索改为 guest.phone_hash 精确匹配（HMAC 不可逆）。
-        conditions = Q(booking_no__icontains=value) | Q(
-            guest__full_name__icontains=value)
+        conditions = Q(booking_no__icontains=value) | Q(guest__full_name__icontains=value)
         if digits:
             conditions = conditions | Q(guest__phone_hash=phone_hash(digits))
         queryset = queryset.filter(conditions)
@@ -535,7 +657,9 @@ def reservations(request):
     valid_statuses = {choice[0] for choice in Reservation.Status.choices}
     if status:
         if status not in valid_statuses:
-            return _response({"error": {"code": "VALIDATION_ERROR", "message": "订单状态无效。"}}, 400)
+            return _response(
+                {"error": {"code": "VALIDATION_ERROR", "message": "订单状态无效。"}}, 400
+            )
         queryset = queryset.filter(status=status)
     source = (request.GET.get("source") or "").strip().upper()
     if source:
@@ -551,33 +675,47 @@ def reservations(request):
         # 在住订单在订单查询里被误标为待排房，误导前台。此处补齐：
         # assigned_room=首间已分配房号（None=未排房）、reservation_status
         # 别名（前端既有读取路径）、stay_status=明细行 Stay 状态。
-        assigned = next(
-            (line.assigned_room for line in lines if line.assigned_room), None)
+        assigned = next((line.assigned_room for line in lines if line.assigned_room), None)
         stay_status = next(
-            (line.stay.status for line in lines if getattr(line, "stay", None)),
-            None)
-        data.append({
-            "booking_no": reservation.booking_no,
-            "status": reservation.status,
-            "status_label": _status_label(reservation.status),
-            "reservation_status": reservation.status,
-            "assigned_room": assigned.number if assigned else None,
-            "stay_status": stay_status,
-            "source": reservation.source,
-            "source_label": _source_label(reservation.source),
-            "guest": {"id": reservation.guest_id, "full_name": reservation.guest.full_name, "phone_masked": _mask_phone(guest_phone_plain(reservation.guest))},
-            "check_in": reservation.check_in.isoformat(),
-            "check_out": reservation.check_out.isoformat(),
-            "nights": (reservation.check_out - reservation.check_in).days,
-            "room_count": reservation.room_count,
-            "adult_count": reservation.adult_count,
-            "child_count": reservation.child_count,
-            "total_amount": str(reservation.total_amount),
-            "currency": reservation.currency,
-            "rooms": [{"id": line.pk, "room_type": line.room_type.name, "assigned_room": line.assigned_room.number if line.assigned_room else None} for line in lines],
-            "folio_summary": folio_map.get(reservation.pk, _empty_folio_summary(reservation.currency)),
-            "source_system": "PMS2",
-        })
+            (line.stay.status for line in lines if getattr(line, "stay", None)), None
+        )
+        data.append(
+            {
+                "booking_no": reservation.booking_no,
+                "status": reservation.status,
+                "status_label": _status_label(reservation.status),
+                "reservation_status": reservation.status,
+                "assigned_room": assigned.number if assigned else None,
+                "stay_status": stay_status,
+                "source": reservation.source,
+                "source_label": _source_label(reservation.source),
+                "guest": {
+                    "id": reservation.guest_id,
+                    "full_name": reservation.guest.full_name,
+                    "phone_masked": _mask_phone(guest_phone_plain(reservation.guest)),
+                },
+                "check_in": reservation.check_in.isoformat(),
+                "check_out": reservation.check_out.isoformat(),
+                "nights": (reservation.check_out - reservation.check_in).days,
+                "room_count": reservation.room_count,
+                "adult_count": reservation.adult_count,
+                "child_count": reservation.child_count,
+                "total_amount": str(reservation.total_amount),
+                "currency": reservation.currency,
+                "rooms": [
+                    {
+                        "id": line.pk,
+                        "room_type": line.room_type.name,
+                        "assigned_room": line.assigned_room.number if line.assigned_room else None,
+                    }
+                    for line in lines
+                ],
+                "folio_summary": folio_map.get(
+                    reservation.pk, _empty_folio_summary(reservation.currency)
+                ),
+                "source_system": "PMS2",
+            }
+        )
     return _response({"data": data, "meta": meta})
 
 
@@ -586,56 +724,110 @@ def reservations(request):
 @_front_desk_required
 def reservation_detail(request, booking_no):
     property_obj = request.front_desk_property
-    reservation = Reservation.objects.select_related("guest").filter(
-        property=property_obj, booking_no=booking_no
-    ).first()
+    reservation = (
+        Reservation.objects.select_related("guest")
+        .filter(property=property_obj, booking_no=booking_no)
+        .first()
+    )
     if reservation is None:
-        return _response({"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该预订。"}}, 404)
-    lines = list(reservation.reservation_rooms.select_related(
-        "room_type", "assigned_room").order_by("id").prefetch_related("no_show_record"))
+        return _response(
+            {"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该预订。"}}, 404
+        )
+    lines = list(
+        reservation.reservation_rooms.select_related("room_type", "assigned_room")
+        .order_by("id")
+        .prefetch_related("no_show_record")
+    )
     folio_map = _folio_summaries(property_obj, {reservation.pk})
     # 保持既有 Meta("-created_at") 最新在前的展示顺序，仅补主键兜底（P0-07）。
-    stays = list(Stay.objects.filter(
-        property=property_obj, reservation_room__reservation=reservation
-    ).select_related("room").order_by("-created_at", "-id").prefetch_related(
-        Prefetch("room_segments", queryset=StayRoomSegment.objects.select_related("room")),
-    ))
+    stays = list(
+        Stay.objects.filter(property=property_obj, reservation_room__reservation=reservation)
+        .select_related("room")
+        .order_by("-created_at", "-id")
+        .prefetch_related(
+            Prefetch("room_segments", queryset=StayRoomSegment.objects.select_related("room")),
+        )
+    )
     stay_map = {stay.reservation_room_id: stay for stay in stays}
     folio_summary = folio_map.get(reservation.pk, _empty_folio_summary(reservation.currency))
-    return _response({"data": {
-        "booking_no": reservation.booking_no,
-        "status": reservation.status,
-        "status_label": _status_label(reservation.status),
-        "source": reservation.source,
-        "source_label": _source_label(reservation.source),
-        "guest": {
-            "id": reservation.guest_id,
-            "full_name": reservation.guest.full_name,
-            "phone_masked": _mask_phone(guest_phone_plain(reservation.guest)),
-        },
-        "check_in": reservation.check_in.isoformat(),
-        "check_out": reservation.check_out.isoformat(),
-        "nights": (reservation.check_out - reservation.check_in).days,
-        "room_count": reservation.room_count,
-        "adult_count": reservation.adult_count,
-        "child_count": reservation.child_count,
-        "total_amount": str(reservation.total_amount),
-        "currency": reservation.currency,
-        "currency_label": L.currency_label(reservation.currency),
-        "rooms": [_reservation_room_dto(line, folio_map, stay_map) for line in lines],
-        "folio_summary": folio_summary,
-        "timeline": {
-            "created_at": reservation.created_at.isoformat(),
-            "updated_at": reservation.updated_at.isoformat(),
-            "stays": [{"id": stay.pk, "status": stay.status, "status_label": L.stay_status_labels().get(stay.status, stay.status), "created_at": stay.created_at.isoformat(), "actual_check_in": stay.actual_check_in.isoformat() if stay.actual_check_in else None, "actual_check_out": stay.actual_check_out.isoformat() if stay.actual_check_out else None} for stay in stays],
-        },
-        "source_system": "PMS2",
-        "allowed_actions": (["view_detail"]
-            + (["operate"] if AuthorizationService.has_permission(request.user, property_obj, "hotelapp.change_accommodation") else [])
-            + (["mark_no_show"] if AuthorizationService.has_permission(request.user, property_obj, "hotelapp.no_show_handle") else [])
-            + (["request_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_request") else [])
-            + (["approve_refund", "reject_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve") else [])),
-    }})
+    return _response(
+        {
+            "data": {
+                "booking_no": reservation.booking_no,
+                "status": reservation.status,
+                "status_label": _status_label(reservation.status),
+                "source": reservation.source,
+                "source_label": _source_label(reservation.source),
+                "guest": {
+                    "id": reservation.guest_id,
+                    "full_name": reservation.guest.full_name,
+                    "phone_masked": _mask_phone(guest_phone_plain(reservation.guest)),
+                },
+                "check_in": reservation.check_in.isoformat(),
+                "check_out": reservation.check_out.isoformat(),
+                "nights": (reservation.check_out - reservation.check_in).days,
+                "room_count": reservation.room_count,
+                "adult_count": reservation.adult_count,
+                "child_count": reservation.child_count,
+                "total_amount": str(reservation.total_amount),
+                "currency": reservation.currency,
+                "currency_label": L.currency_label(reservation.currency),
+                "rooms": [_reservation_room_dto(line, folio_map, stay_map) for line in lines],
+                "folio_summary": folio_summary,
+                "timeline": {
+                    "created_at": reservation.created_at.isoformat(),
+                    "updated_at": reservation.updated_at.isoformat(),
+                    "stays": [
+                        {
+                            "id": stay.pk,
+                            "status": stay.status,
+                            "status_label": L.stay_status_labels().get(stay.status, stay.status),
+                            "created_at": stay.created_at.isoformat(),
+                            "actual_check_in": (
+                                stay.actual_check_in.isoformat() if stay.actual_check_in else None
+                            ),
+                            "actual_check_out": (
+                                stay.actual_check_out.isoformat() if stay.actual_check_out else None
+                            ),
+                        }
+                        for stay in stays
+                    ],
+                },
+                "source_system": "PMS2",
+                "allowed_actions": (
+                    ["view_detail"]
+                    + (
+                        ["operate"]
+                        if AuthorizationService.has_permission(
+                            request.user, property_obj, "hotelapp.change_accommodation"
+                        )
+                        else []
+                    )
+                    + (
+                        ["mark_no_show"]
+                        if AuthorizationService.has_permission(
+                            request.user, property_obj, "hotelapp.no_show_handle"
+                        )
+                        else []
+                    )
+                    + (
+                        ["request_refund"]
+                        if AuthorizationService.has_permission(
+                            request.user, property_obj, "billing.refund_request"
+                        )
+                        else []
+                    )
+                    + (
+                        ["approve_refund", "reject_refund"]
+                        if AuthorizationService.has_permission(
+                            request.user, property_obj, "billing.refund_approve"
+                        )
+                        else []
+                    )
+                ),
+            }
+        }
+    )
 
 
 @require_GET
@@ -643,32 +835,51 @@ def reservation_detail(request, booking_no):
 @_front_desk_required
 def rooms(request):
     property_obj = request.front_desk_property
-    queryset = Room.objects.filter(property=property_obj, is_active=True).select_related("room_type").order_by("floor", "number")
+    queryset = (
+        Room.objects.filter(property=property_obj, is_active=True)
+        .select_related("room_type")
+        .order_by("floor", "number")
+    )
     floor = (request.GET.get("floor") or "").strip()
     if floor:
         queryset = queryset.filter(floor=floor)
     readiness = (request.GET.get("readiness") or "").strip().upper()
     if readiness == "READY":
-        queryset = queryset.filter(occupancy_status=Room.OccupancyStatus.VACANT, housekeeping_status=Room.HousekeepingStatus.CLEAN, maintenance_status=Room.MaintenanceStatus.NORMAL)
+        queryset = queryset.filter(
+            occupancy_status=Room.OccupancyStatus.VACANT,
+            housekeeping_status=Room.HousekeepingStatus.CLEAN,
+            maintenance_status=Room.MaintenanceStatus.NORMAL,
+        )
     elif readiness == "INSPECTING":
         queryset = queryset.filter(housekeeping_status=Room.HousekeepingStatus.INSPECTING)
     elif readiness == "MAINTENANCE":
         queryset = queryset.exclude(maintenance_status=Room.MaintenanceStatus.NORMAL)
     elif readiness not in ("", "ALL"):
-        return _response({"error": {"code": "VALIDATION_ERROR", "message": "readiness 参数无效。"}}, 400)
-    data = [{
-        "id": room.pk,
-        "number": room.number,
-        "floor": room.floor,
-        "room_type": {"id": room.room_type_id, "name": room.room_type.name},
-        "occupancy_status": room.occupancy_status,
-        "occupancy_label": L.room_label_maps()["occupancy"].get(room.occupancy_status, room.occupancy_status),
-        "housekeeping_status": room.housekeeping_status,
-        "housekeeping_label": L.room_label_maps()["housekeeping"].get(room.housekeeping_status, room.housekeeping_status),
-        "maintenance_status": room.maintenance_status,
-        "maintenance_label": L.room_label_maps()["maintenance"].get(room.maintenance_status, room.maintenance_status),
-        "is_ready": room.is_sellable_now,
-    } for room in queryset]
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": "readiness 参数无效。"}}, 400
+        )
+    data = [
+        {
+            "id": room.pk,
+            "number": room.number,
+            "floor": room.floor,
+            "room_type": {"id": room.room_type_id, "name": room.room_type.name},
+            "occupancy_status": room.occupancy_status,
+            "occupancy_label": L.room_label_maps()["occupancy"].get(
+                room.occupancy_status, room.occupancy_status
+            ),
+            "housekeeping_status": room.housekeeping_status,
+            "housekeeping_label": L.room_label_maps()["housekeeping"].get(
+                room.housekeeping_status, room.housekeeping_status
+            ),
+            "maintenance_status": room.maintenance_status,
+            "maintenance_label": L.room_label_maps()["maintenance"].get(
+                room.maintenance_status, room.maintenance_status
+            ),
+            "is_ready": room.is_sellable_now,
+        }
+        for room in queryset
+    ]
     return _response({"data": data, "meta": {"total": len(data)}})
 
 
@@ -680,30 +891,54 @@ def assignable_rooms(request):
     try:
         line_id = int(request.GET.get("reservation_room_id", ""))
     except (TypeError, ValueError):
-        return _response({"error": {"code": "VALIDATION_ERROR", "message": "reservation_room_id 必须是整数。"}}, 400)
-    line = ReservationRoom.objects.select_related("reservation", "room_type").filter(
-        pk=line_id, property=property_obj, reservation__property=property_obj
-    ).first()
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": "reservation_room_id 必须是整数。"}},
+            400,
+        )
+    line = (
+        ReservationRoom.objects.select_related("reservation", "room_type")
+        .filter(pk=line_id, property=property_obj, reservation__property=property_obj)
+        .first()
+    )
     if line is None:
-        return _response({"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该预订房间明细。"}}, 404)
+        return _response(
+            {"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该预订房间明细。"}}, 404
+        )
     if line.assigned_room_id:
         return _response({"data": [], "meta": {"reason": "该房间明细已经分配房间。"}})
-    if line.reservation.status not in (
-        Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN
-    ):
+    if line.reservation.status not in (Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN):
         return _response({"data": [], "meta": {"reason": "仅已确认预订可以排房。"}})
-    candidates = Room.objects.filter(
-        property=property_obj, room_type=line.room_type, is_active=True,
-        occupancy_status=Room.OccupancyStatus.VACANT,
-        housekeeping_status=Room.HousekeepingStatus.CLEAN,
-        maintenance_status=Room.MaintenanceStatus.NORMAL,
-    ).exclude(
-        reservation_rooms__property=property_obj,
-        reservation_rooms__check_in__lt=line.check_out,
-        reservation_rooms__check_out__gt=line.check_in,
-        reservation_rooms__reservation__status__in=(Reservation.Status.PENDING, Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN),
-    ).order_by("floor", "number").distinct()
-    data = [{"id": room.pk, "number": room.number, "floor": room.floor, "room_type": room.room_type.name} for room in candidates]
+    candidates = (
+        Room.objects.filter(
+            property=property_obj,
+            room_type=line.room_type,
+            is_active=True,
+            occupancy_status=Room.OccupancyStatus.VACANT,
+            housekeeping_status=Room.HousekeepingStatus.CLEAN,
+            maintenance_status=Room.MaintenanceStatus.NORMAL,
+        )
+        .exclude(
+            reservation_rooms__property=property_obj,
+            reservation_rooms__check_in__lt=line.check_out,
+            reservation_rooms__check_out__gt=line.check_in,
+            reservation_rooms__reservation__status__in=(
+                Reservation.Status.PENDING,
+                Reservation.Status.CONFIRMED,
+                Reservation.Status.CHECKED_IN,
+            ),
+        )
+        .order_by("floor", "number")
+        .distinct()
+    )
+    data = [
+        {
+            "id": room.pk,
+            "number": room.number,
+            "floor": room.floor,
+            "room_type": room.room_type.name,
+        }
+        for room in candidates
+    ]
     return _response({"data": data, "meta": {"total": len(data), "reservation_room_id": line.pk}})
 
 
@@ -714,48 +949,117 @@ def folio_detail(request, booking_no):
     property_obj = request.front_desk_property
     reservation = Reservation.objects.filter(property=property_obj, booking_no=booking_no).first()
     if reservation is None:
-        return _response({"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该预订。"}}, 404)
+        return _response(
+            {"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该预订。"}}, 404
+        )
     # MAINT-02b：显式锁定主账单并固定顺序，避免多账单时取到非 MASTER 行。
-    folio = (Folio.objects
-             .filter(property=property_obj, reservation=reservation,
-                     folio_type=Folio.FolioType.MASTER)
-             .order_by("pk")
-             .prefetch_related("entries", "payments").first())
+    folio = (
+        Folio.objects.filter(
+            property=property_obj, reservation=reservation, folio_type=Folio.FolioType.MASTER
+        )
+        .order_by("pk")
+        .prefetch_related("entries", "payments")
+        .first()
+    )
     if folio is None:
-        return _response({"data": {
-            "folio": None, "summary": _empty_folio_summary(reservation.currency),
-            "entries": [], "payments": [],
-            "allowed_actions": (["request_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_request") else [])
-                + (["approve_refund", "reject_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve") else []),
-        }})
+        return _response(
+            {
+                "data": {
+                    "folio": None,
+                    "summary": _empty_folio_summary(reservation.currency),
+                    "entries": [],
+                    "payments": [],
+                    "allowed_actions": (
+                        ["request_refund"]
+                        if AuthorizationService.has_permission(
+                            request.user, property_obj, "billing.refund_request"
+                        )
+                        else []
+                    )
+                    + (
+                        ["approve_refund", "reject_refund"]
+                        if AuthorizationService.has_permission(
+                            request.user, property_obj, "billing.refund_approve"
+                        )
+                        else []
+                    ),
+                }
+            }
+        )
     entries = list(folio.entries.order_by("created_at", "id"))
     charges = sum((item.amount for item in entries if item.amount > 0), Decimal("0.00"))
     credits = sum((-item.amount for item in entries if item.amount < 0), Decimal("0.00"))
     balance = sum((item.amount for item in entries), Decimal("0.00"))
-    summary = {"folio_id": folio.pk, "status": folio.status,
-               "status_label": L.folio_summary_status_label(folio.status),
-               "charges": str(charges), "credits": str(credits), "balance": str(balance), "currency": folio.currency,
-               "currency_label": L.currency_label(folio.currency)}
-    return _response({
-        "data": {
-            "summary": summary,
-            "entries": [{"id": item.pk, "entry_type": item.entry_type, "amount": str(item.amount), "currency": item.currency, "business_date": item.business_date.isoformat(), "reference": item.reference, "description": item.description, "created_at": item.created_at.isoformat()} for item in entries],
-            "payments": [{
-                "id": item.pk, "provider": item.provider, "provider_ref": item.provider_ref,
-                "method": item.method, "amount": str(item.amount), "status": item.status,
-                "status_label": L.payment_status_labels().get(item.status, item.status),
-                "paid_at": item.paid_at.isoformat() if item.paid_at else None,
-                "refunds": [{
-                    "id": refund.pk, "amount": str(refund.amount), "reason": refund.reason,
-                    "status": refund.status,
-                    "status_label": L.refund_status_labels().get(refund.status, refund.status),
-                    "provider_ref": refund.provider_ref,
-                } for refund in item.refunds.order_by("-created_at", "-id")],
-            } for item in folio.payments.order_by("-created_at", "-id")],
-            "allowed_actions": (["request_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_request") else [])
-                + (["approve_refund", "reject_refund"] if AuthorizationService.has_permission(request.user, property_obj, "billing.refund_approve") else []),
+    summary = {
+        "folio_id": folio.pk,
+        "status": folio.status,
+        "status_label": L.folio_summary_status_label(folio.status),
+        "charges": str(charges),
+        "credits": str(credits),
+        "balance": str(balance),
+        "currency": folio.currency,
+        "currency_label": L.currency_label(folio.currency),
+    }
+    return _response(
+        {
+            "data": {
+                "summary": summary,
+                "entries": [
+                    {
+                        "id": item.pk,
+                        "entry_type": item.entry_type,
+                        "amount": str(item.amount),
+                        "currency": item.currency,
+                        "business_date": item.business_date.isoformat(),
+                        "reference": item.reference,
+                        "description": item.description,
+                        "created_at": item.created_at.isoformat(),
+                    }
+                    for item in entries
+                ],
+                "payments": [
+                    {
+                        "id": item.pk,
+                        "provider": item.provider,
+                        "provider_ref": item.provider_ref,
+                        "method": item.method,
+                        "amount": str(item.amount),
+                        "status": item.status,
+                        "status_label": L.payment_status_labels().get(item.status, item.status),
+                        "paid_at": item.paid_at.isoformat() if item.paid_at else None,
+                        "refunds": [
+                            {
+                                "id": refund.pk,
+                                "amount": str(refund.amount),
+                                "reason": refund.reason,
+                                "status": refund.status,
+                                "status_label": L.refund_status_labels().get(
+                                    refund.status, refund.status
+                                ),
+                                "provider_ref": refund.provider_ref,
+                            }
+                            for refund in item.refunds.order_by("-created_at", "-id")
+                        ],
+                    }
+                    for item in folio.payments.order_by("-created_at", "-id")
+                ],
+                "allowed_actions": (
+                    ["request_refund"]
+                    if AuthorizationService.has_permission(
+                        request.user, property_obj, "billing.refund_request"
+                    )
+                    else []
+                )
+                + (
+                    ["approve_refund", "reject_refund"]
+                    if AuthorizationService.has_permission(
+                        request.user, property_obj, "billing.refund_approve"
+                    )
+                    else []
+                ),
+            }
         }
-    })
+    )
 
 
 @api_guard
@@ -774,20 +1078,25 @@ def assign_room(request, reservation_room_id):
             assigned_by=request.user,
         )
     except (ValueError, TypeError):
-        return _response({"error": {"code": "VALIDATION_ERROR", "message": "room_id 必须是整数。"}}, 400)
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": "room_id 必须是整数。"}}, 400
+        )
     except FrontDeskOperationError as exc:
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
-    return _response({
-        "data": {
-            "reservation_room_id": line.pk,
-            "assigned_room": {
-                "id": line.assigned_room_id,
-                "number": line.assigned_room.number,
-                "floor": line.assigned_room.floor,
+    return _response(
+        {
+            "data": {
+                "reservation_room_id": line.pk,
+                "assigned_room": {
+                    "id": line.assigned_room_id,
+                    "number": line.assigned_room.number,
+                    "floor": line.assigned_room.floor,
+                },
             },
+            "changed": changed,
         },
-        "changed": changed,
-    }, 201 if changed else 200)
+        201 if changed else 200,
+    )
 
 
 @api_guard
@@ -802,17 +1111,22 @@ def check_in(request, reservation_room_id):
         )
     except FrontDeskOperationError as exc:
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
-    return _response({
-        "data": {
-            "stay_id": stay.pk,
-            "reservation_room_id": stay.reservation_room_id,
-            "room_id": stay.room_id,
-            "room_number": stay.room.number,
-            "status": stay.status,
-            "actual_check_in": stay.actual_check_in.isoformat() if stay.actual_check_in else None,
+    return _response(
+        {
+            "data": {
+                "stay_id": stay.pk,
+                "reservation_room_id": stay.reservation_room_id,
+                "room_id": stay.room_id,
+                "room_number": stay.room.number,
+                "status": stay.status,
+                "actual_check_in": (
+                    stay.actual_check_in.isoformat() if stay.actual_check_in else None
+                ),
+            },
+            "created": created,
         },
-        "created": created,
-    }, 201 if created else 200)
+        201 if created else 200,
+    )
 
 
 @api_guard
@@ -836,17 +1150,20 @@ def collect_payment(request, booking_no):
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
     except FrontDeskOperationError as exc:
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
-    return _response({
-        "data": {
-            "payment_id": payment.pk,
-            "provider_ref": payment.provider_ref,
-            "method": payment.method,
-            "amount": str(payment.amount),
-            "currency": payment.currency,
-            "status": payment.status,
+    return _response(
+        {
+            "data": {
+                "payment_id": payment.pk,
+                "provider_ref": payment.provider_ref,
+                "method": payment.method,
+                "amount": str(payment.amount),
+                "currency": payment.currency,
+                "status": payment.status,
+            },
+            "created": created,
         },
-        "created": created,
-    }, 201 if created else 200)
+        201 if created else 200,
+    )
 
 
 @api_guard
@@ -861,38 +1178,68 @@ def check_out(request, stay_id):
         )
     except FrontDeskOperationError as exc:
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
-    return _response({
-        "data": {
-            "stay_id": stay.pk,
-            "status": stay.status,
-            "actual_check_out": stay.actual_check_out.isoformat() if stay.actual_check_out else None,
-            "room_id": stay.room_id,
-            "room_number": stay.room.number,
-        },
-        "changed": changed,
-    })
-
+    return _response(
+        {
+            "data": {
+                "stay_id": stay.pk,
+                "status": stay.status,
+                "actual_check_out": (
+                    stay.actual_check_out.isoformat() if stay.actual_check_out else None
+                ),
+                "room_id": stay.room_id,
+                "room_number": stay.room.number,
+            },
+            "changed": changed,
+        }
+    )
 
 
 def _front_desk_action_required(permission_code):
     """要求当前物业员工具有指定的独立业务权限，不隐式继承入住修改权。"""
+
     def decorator(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
             user = request.user
             if not user.is_authenticated or not user.is_active:
-                return _response({"error": {"code": "AUTHENTICATION_REQUIRED", "message": "请先登录员工账号。"}}, 401)
+                return _response(
+                    {"error": {"code": "AUTHENTICATION_REQUIRED", "message": "请先登录员工账号。"}},
+                    401,
+                )
             property_obj = getattr(request, "property", None)
             membership = getattr(request, "staff_membership", None)
-            if property_obj is None or property_obj.code != getattr(settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"):
-                return _response({"error": {"code": "PROPERTY_UNAVAILABLE", "message": "当前酒店物业不可用。"}}, 503)
+            if property_obj is None or property_obj.code != getattr(
+                settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"
+            ):
+                return _response(
+                    {"error": {"code": "PROPERTY_UNAVAILABLE", "message": "当前酒店物业不可用。"}},
+                    503,
+                )
             if membership is None or membership.property_id != property_obj.pk:
-                return _response({"error": {"code": "EMPLOYEE_MEMBERSHIP_REQUIRED", "message": "当前账号没有该酒店的有效任职关系。"}}, 403)
+                return _response(
+                    {
+                        "error": {
+                            "code": "EMPLOYEE_MEMBERSHIP_REQUIRED",
+                            "message": "当前账号没有该酒店的有效任职关系。",
+                        }
+                    },
+                    403,
+                )
             if not AuthorizationService.has_permission(user, property_obj, permission_code):
-                return _response({"error": {"code": "PERMISSION_DENIED", "message": "当前岗位没有该项业务操作权限。"}}, 403)
+                return _response(
+                    {
+                        "error": {
+                            "code": "PERMISSION_DENIED",
+                            "message": "当前岗位没有该项业务操作权限。",
+                        }
+                    },
+                    403,
+                )
             request.front_desk_property = property_obj
             return view(request, *args, **kwargs)
+
         return wrapped
+
     return decorator
 
 
@@ -1064,7 +1411,9 @@ def legacy_reservation_detail(request, legacy_id):
         )
     data = _legacy_reservation_dto_from_archive(row)
     data["legacy_entries"] = entries
-    data["legacy_note"] = "历史账单来自旧 hotelapp.Folio，仅按原始凭证展示，不与 PMS2 Folio 汇总或对账。"
+    data["legacy_note"] = (
+        "历史账单来自旧 hotelapp.Folio，仅按原始凭证展示，不与 PMS2 Folio 汇总或对账。"
+    )
     data["timeline"] = {"created_at": None, "updated_at": None, "stays": []}
     return _response({"data": data})
 
@@ -1074,23 +1423,39 @@ def legacy_reservation_detail(request, legacy_id):
 @_front_desk_required
 def available_stay_rooms(request, stay_id):
     property_obj = request.front_desk_property
-    stay = Stay.objects.filter(pk=stay_id, property=property_obj, status=Stay.Status.IN_HOUSE).select_related("reservation_room").first()
+    stay = (
+        Stay.objects.filter(pk=stay_id, property=property_obj, status=Stay.Status.IN_HOUSE)
+        .select_related("reservation_room")
+        .first()
+    )
     if stay is None:
-        return _response({"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到在住记录。"}}, 404)
+        return _response(
+            {"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到在住记录。"}}, 404
+        )
     line = stay.reservation_room
-    candidates = Room.objects.filter(
-        property=property_obj, room_type_id=line.room_type_id, is_active=True,
-        occupancy_status=Room.OccupancyStatus.VACANT,
-        housekeeping_status=Room.HousekeepingStatus.CLEAN,
-        maintenance_status=Room.MaintenanceStatus.NORMAL,
-    ).exclude(pk=stay.room_id).exclude(
-        reservation_rooms__property=property_obj,
-        reservation_rooms__check_in__lt=line.check_out,
-        reservation_rooms__check_out__gt=_property_today(property_obj),
-        reservation_rooms__reservation__status__in=(
-            Reservation.Status.PENDING, Reservation.Status.CONFIRMED, Reservation.Status.CHECKED_IN
-        ),
-    ).order_by("floor", "number").distinct()
+    candidates = (
+        Room.objects.filter(
+            property=property_obj,
+            room_type_id=line.room_type_id,
+            is_active=True,
+            occupancy_status=Room.OccupancyStatus.VACANT,
+            housekeeping_status=Room.HousekeepingStatus.CLEAN,
+            maintenance_status=Room.MaintenanceStatus.NORMAL,
+        )
+        .exclude(pk=stay.room_id)
+        .exclude(
+            reservation_rooms__property=property_obj,
+            reservation_rooms__check_in__lt=line.check_out,
+            reservation_rooms__check_out__gt=_property_today(property_obj),
+            reservation_rooms__reservation__status__in=(
+                Reservation.Status.PENDING,
+                Reservation.Status.CONFIRMED,
+                Reservation.Status.CHECKED_IN,
+            ),
+        )
+        .order_by("floor", "number")
+        .distinct()
+    )
     data = [{"id": room.pk, "number": room.number, "floor": room.floor} for room in candidates]
     return _response({"data": data, "meta": {"total": len(data), "stay_id": stay.pk}})
 
@@ -1105,18 +1470,26 @@ def extend_stay_api(request, stay_id):
         if new_check_out is None:
             raise ValueError("必须提供 new_check_out。")
         stay, line, amount = extend_stay(
-            property_obj=request.front_desk_property, stay_id=stay_id,
-            new_check_out=new_check_out, reason=body.get("reason"),
+            property_obj=request.front_desk_property,
+            stay_id=stay_id,
+            new_check_out=new_check_out,
+            reason=body.get("reason"),
             extended_by=request.user,
         )
     except ValueError as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
     except LifecycleOperationError as exc:
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
-    return _response({"data": {
-        "stay_id": stay.pk, "check_out": line.check_out.isoformat(),
-        "extension_amount": str(amount), "new_room_amount": str(line.amount),
-    }})
+    return _response(
+        {
+            "data": {
+                "stay_id": stay.pk,
+                "check_out": line.check_out.isoformat(),
+                "extension_amount": str(amount),
+                "new_room_amount": str(line.amount),
+            }
+        }
+    )
 
 
 @api_guard
@@ -1127,22 +1500,39 @@ def change_stay_room_api(request, stay_id):
         body = _body(request)
         room_id = int(body.get("room_id"))
         stay, changed = change_stay_room(
-            property_obj=request.front_desk_property, stay_id=stay_id,
-            new_room_id=room_id, reason=body.get("reason"), moved_by=request.user,
+            property_obj=request.front_desk_property,
+            stay_id=stay_id,
+            new_room_id=room_id,
+            reason=body.get("reason"),
+            moved_by=request.user,
         )
     except (ValueError, TypeError):
-        return _response({"error": {"code": "VALIDATION_ERROR", "message": "room_id 必须是整数。"}}, 400)
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": "room_id 必须是整数。"}}, 400
+        )
     except LifecycleOperationError as exc:
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
-    return _response({"data": {
-        "stay_id": stay.pk, "room_id": stay.room_id, "room_number": stay.room.number,
-        "room_segments": [{
-            "room_number": segment.room.number,
-            "started_at": segment.started_at.isoformat(),
-            "ended_at": segment.ended_at.isoformat() if segment.ended_at else None,
-            "reason": segment.move_reason,
-        } for segment in stay.room_segments.select_related("room").order_by("started_at", "id")],
-    }, "changed": changed})
+    return _response(
+        {
+            "data": {
+                "stay_id": stay.pk,
+                "room_id": stay.room_id,
+                "room_number": stay.room.number,
+                "room_segments": [
+                    {
+                        "room_number": segment.room.number,
+                        "started_at": segment.started_at.isoformat(),
+                        "ended_at": segment.ended_at.isoformat() if segment.ended_at else None,
+                        "reason": segment.move_reason,
+                    }
+                    for segment in stay.room_segments.select_related("room").order_by(
+                        "started_at", "id"
+                    )
+                ],
+            },
+            "changed": changed,
+        }
+    )
 
 
 @api_guard
@@ -1152,15 +1542,25 @@ def mark_no_show_api(request, reservation_room_id):
     try:
         body = _body(request)
         record, created = mark_reservation_room_no_show(
-            property_obj=request.front_desk_property, reservation_room_id=reservation_room_id,
-            reason=body.get("reason"), processed_by=request.user,
+            property_obj=request.front_desk_property,
+            reservation_room_id=reservation_room_id,
+            reason=body.get("reason"),
+            processed_by=request.user,
         )
     except LifecycleOperationError as exc:
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
-    return _response({"data": {
-        "no_show_id": record.pk, "reservation_room_id": record.reservation_room_id,
-        "released_nights": record.released_nights, "status": "NO_SHOW",
-    }, "created": created}, 201 if created else 200)
+    return _response(
+        {
+            "data": {
+                "no_show_id": record.pk,
+                "reservation_room_id": record.reservation_room_id,
+                "released_nights": record.released_nights,
+                "status": "NO_SHOW",
+            },
+            "created": created,
+        },
+        201 if created else 200,
+    )
 
 
 @api_guard
@@ -1173,8 +1573,10 @@ def receive_deposit_api(request, booking_no):
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
     try:
         payment, created = receive_manual_deposit(
-            property_obj=request.front_desk_property, booking_no=booking_no,
-            amount=body.get("amount"), method=body.get("method"),
+            property_obj=request.front_desk_property,
+            booking_no=booking_no,
+            amount=body.get("amount"),
+            method=body.get("method"),
             idempotency_key=request.headers.get("Idempotency-Key", ""),
             received_by=request.user,
         )
@@ -1184,11 +1586,20 @@ def receive_deposit_api(request, booking_no):
     except LifecycleOperationError as exc:
         # 累计押金超额等业务状态冲突 → 409。
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
-    return _response({"data": {
-        "payment_id": payment.pk, "provider_ref": payment.provider_ref,
-        "amount": str(payment.amount), "method": payment.method,
-        "status": payment.status, "payment_kind": "DEPOSIT",
-    }, "created": created}, 201 if created else 200)
+    return _response(
+        {
+            "data": {
+                "payment_id": payment.pk,
+                "provider_ref": payment.provider_ref,
+                "amount": str(payment.amount),
+                "method": payment.method,
+                "status": payment.status,
+                "payment_kind": "DEPOSIT",
+            },
+            "created": created,
+        },
+        201 if created else 200,
+    )
 
 
 @api_guard
@@ -1198,18 +1609,28 @@ def request_refund_api(request, payment_id):
     try:
         body = _body(request)
         refund, created = request_refund_service(
-            property_obj=request.front_desk_property, payment_id=payment_id,
-            amount=body.get("amount"), reason=body.get("reason"),
+            property_obj=request.front_desk_property,
+            payment_id=payment_id,
+            amount=body.get("amount"),
+            reason=body.get("reason"),
             idempotency_key=request.headers.get("Idempotency-Key", ""),
             requested_by=request.user,
         )
     except LifecycleOperationError as exc:
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
-    return _response({"data": {
-        "refund_id": refund.pk, "provider_ref": refund.provider_ref,
-        "payment_id": refund.payment_id, "amount": str(refund.amount),
-        "status": refund.status,
-    }, "created": created}, 201 if created else 200)
+    return _response(
+        {
+            "data": {
+                "refund_id": refund.pk,
+                "provider_ref": refund.provider_ref,
+                "payment_id": refund.payment_id,
+                "amount": str(refund.amount),
+                "status": refund.status,
+            },
+            "created": created,
+        },
+        201 if created else 200,
+    )
 
 
 @api_guard
@@ -1220,18 +1641,25 @@ def approve_refund_api(request, refund_id):
     try:
         _body(request)  # 校验请求体格式；不再接受“审批即确认付款”的语义
         refund, changed = approve_refund_service(
-            property_obj=request.front_desk_property, refund_id=refund_id,
+            property_obj=request.front_desk_property,
+            refund_id=refund_id,
             approved_by=request.user,
         )
     except ValueError as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
     except LifecycleOperationError as exc:
         return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
-    return _response({"data": {
-        "refund_id": refund.pk, "status": refund.status,
-        "approved_by": refund.approved_by_id,
-        "execution_required": refund.status == Refund.Status.APPROVED,
-    }, "changed": changed})
+    return _response(
+        {
+            "data": {
+                "refund_id": refund.pk,
+                "status": refund.status,
+                "approved_by": refund.approved_by_id,
+                "execution_required": refund.status == Refund.Status.APPROVED,
+            },
+            "changed": changed,
+        }
+    )
 
 
 @api_guard
@@ -1245,23 +1673,35 @@ def reject_refund_api(request, refund_id):
     """
     key = request.headers.get("Idempotency-Key", "").strip()
     if not key:
-        return _response({"error": {
-            "code": "VALIDATION_ERROR",
-            "message": "驳回退款必须提供 Idempotency-Key。",
-        }}, 400)
+        return _response(
+            {
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "驳回退款必须提供 Idempotency-Key。",
+                }
+            },
+            400,
+        )
     try:
         body = _body(request)
         refund, changed = reject_refund_service(
-            property_obj=request.front_desk_property, refund_id=refund_id,
-            rejected_by=request.user, reason=body.get("reason"))
+            property_obj=request.front_desk_property,
+            refund_id=refund_id,
+            rejected_by=request.user,
+            reason=body.get("reason"),
+        )
     except LifecycleOperationError as exc:
-        return _response({"error": {
-            "code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
-    return _response({"data": {
-        "refund_id": refund.pk, "status": refund.status,
-        "approved_by": refund.approved_by_id,
-        "changed": changed,
-    }})
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    return _response(
+        {
+            "data": {
+                "refund_id": refund.pk,
+                "status": refund.status,
+                "approved_by": refund.approved_by_id,
+                "changed": changed,
+            }
+        }
+    )
 
 
 @api_guard
@@ -1277,138 +1717,95 @@ def exception_release_request(request, booking_no):
         # 因此只有真实 MySQL 请求才能暴露）。与服务层 atomic 嵌套为同一事务，
         # 保证「锁 Reservation → 锁 Folio → 建申请」与业务写入原子提交。
         with transaction.atomic():
-            reservation = Reservation.objects.select_for_update().filter(
-                property=request.front_desk_property, booking_no=booking_no).first()
+            reservation = (
+                Reservation.objects.select_for_update()
+                .filter(property=request.front_desk_property, booking_no=booking_no)
+                .first()
+            )
             if reservation is None:
-                return _response({"error": {"code": "RESOURCE_NOT_FOUND",
-                                            "message": "未找到该物业下的预订。"}}, 404)
+                return _response(
+                    {"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该物业下的预订。"}},
+                    404,
+                )
             from apps.billing.models import Folio
-            folio = Folio.objects.filter(
-                property=request.front_desk_property, reservation=reservation,
-                folio_type=Folio.FolioType.MASTER).order_by("pk").first()
+
+            folio = (
+                Folio.objects.filter(
+                    property=request.front_desk_property,
+                    reservation=reservation,
+                    folio_type=Folio.FolioType.MASTER,
+                )
+                .order_by("pk")
+                .first()
+            )
             if folio is None:
-                return _response({"error": {"code": "RESOURCE_NOT_FOUND",
-                                            "message": "未找到该预订的主账单。"}}, 404)
+                return _response(
+                    {"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该预订的主账单。"}},
+                    404,
+                )
             from apps.billing.dec02 import request_exception_release
+
             release, created = request_exception_release(
                 property_obj=request.front_desk_property,
-                reservation=reservation, folio=folio,
+                reservation=reservation,
+                folio=folio,
                 amount=body.get("amount", "0"),
                 reason_code=str(body.get("reason_code") or ""),
                 reason_text=str(body.get("reason_text") or ""),
                 requested_by=request.user,
-                idempotency_key=request.headers.get("Idempotency-Key", ""))
+                idempotency_key=request.headers.get("Idempotency-Key", ""),
+            )
     except LifecycleOperationError as exc:
-        return _response({"error": {"code": "BUSINESS_CONFLICT",
-                                    "message": str(exc)}}, 409)
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
     except ValueError as exc:
-        return _response({"error": {"code": "VALIDATION_ERROR",
-                                    "message": str(exc)}}, 400)
-    return _response({"data": {
-        "release_id": release.pk, "status": release.status,
-        "status_label": release.get_status_display(),
-        "reason_code": release.reason_code,
-        "amount": str(release.amount),
-    }, "created": created}, 201 if created else 200)
+        return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
+    return _response(
+        {
+            "data": {
+                "release_id": release.pk,
+                "status": release.status,
+                "status_label": release.get_status_display(),
+                "reason_code": release.reason_code,
+                "amount": str(release.amount),
+            },
+            "created": created,
+        },
+        201 if created else 200,
+    )
 
 
 @api_guard
 @require_POST
-@idempotent
-@_front_desk_write_required
 def walk_in_create(request):
-    """POST /api/v1/front-desk/walk-in — 散客直入（DEC-WALKIN-01）。
+    """POST /api/v1/front-desk/walk-in — 已退役，恒返 410 Gone（R2-04，DEC-WI-01）。
 
-    .. deprecated:: 2026-11-14
-        兼容期端点（R2-02，DEC-WI-01 双端点收敛）：新调用一律走
-        POST /api/v1/front-desk/walk-ins（A1 契约口径：重放 200 created=false、
-        响应含服务端 30% 押金、入参校验更严）。本端点兼容期仍可用
-        （x-contract-status 保持 verified），仅作纯观测——入口记
-        frontdesk.legacy_walk_in_called 审计 + hotel.api 日志（R2-03，
-        不参与业务分支）；调用方=0 且观察期 ≥1 个营业日后改为返回 410
-        退役（触发条件与步骤清单见 docs/PMS2.0_当前版本/04_开发实施记录/
-        Walk-in双端点统一与观察统计R2实施记录_2026-11-19.md）。
+    已按 DEC-WI-01 双端点收敛决策退役（观察期结束，2026-11-19 执行）：任意 POST
+    一律 410 Gone——不再区分认证/权限/入参，不读取请求体，不做任何业务写入，
+    也不再记 frontdesk.legacy_walk_in_called 观测审计（观察期随退役一并结束）。
+    标准入口：POST /api/v1/front-desk/walk-ins（A1 契约口径）。
 
-    与 walk_ins_create 同服务层事实源：复用
-    apps.reservations.walkin.create_walk_in，同一事务内完成
-    Guest→Reservation(source=WALK_IN)→ReservationRoom→Folio→Hold→确认→排房→入住→Stay。
-    无手机号时由服务层生成确定性占位号；住客档案不按手机号自动合并
-    （共享号码仅标记人工核验）。Idempotency-Key 必填，业务层幂等重放
-    返回同一 Stay，无重复写入。
+    业务事实源 apps.reservations.walkin.create_walk_in 保留于服务层，仅由
+    walk_ins_create（/front-desk/walk-ins）继续使用；本路由仅作 410 载体保留，
+    登记至僵尸路由清单随下一批次清理（R2 实施记录 §2.3 步骤 4）。
     """
-    # R2-03（DEC-WI-01 旧接口观察统计）：兼容期纯观测——只落事实，不影响业务分支。
-    _user = getattr(request, "user", None)
-    _property_obj = getattr(request, "front_desk_property", None)
-    AuditEvent.record(
-        action="frontdesk.legacy_walk_in_called",
-        entity_type="FrontDeskEndpoint",
-        entity_id="front-desk/walk-in",
-        actor=_user if _user is not None and _user.is_authenticated else None,
-        property_obj=_property_obj,
-        reason="DEC-WI-01 兼容期旧端点观察统计；迁移目标 POST /front-desk/walk-ins。",
-        request=request,
+    # R2-04（DEC-WI-01 收敛收口）：旧散客直入端点永久 410，写能力已由 /walk-ins 承接。
+    return _response(
+        {
+            "error": {
+                "code": "GONE",
+                "message": "该端点已按 DEC-WI-01 退役（410 Gone），"
+                "标准入口：POST /api/v1/front-desk/walk-ins。",
+            }
+        },
+        410,
     )
-    logger.info(
-        "frontdesk.legacy_walk_in_called: legacy walk-in endpoint called "
-        "(property=%s, user=%s, request_id=%s)",
-        getattr(_property_obj, "code", "") or "",
-        getattr(_user, "pk", None),
-        getattr(request, "request_id", "") or "",
-    )
-    key = (request.headers.get("Idempotency-Key") or "").strip()
-    if not key:
-        return _response({"error": {"code": "VALIDATION_ERROR",
-                                    "message": "Walk-in 必须提供 Idempotency-Key 请求头。"}}, 400)
-    try:
-        body = _body(request)
-        full_name = str(body.get("full_name") or "").strip()
-        if not full_name:
-            raise ValueError("住客姓名必填。")
-        # 允许空：无手机号散客（服务层生成确定性占位号）。
-        phone = str(body.get("phone") or "").strip()
-        room_type_id = int(body.get("room_type_id"))
-        rate_plan_id = body.get("rate_plan_id")
-        if rate_plan_id is not None:
-            rate_plan_id = int(rate_plan_id)
-        nights = int(body.get("nights") or 1)
-        adults = int(body.get("adults") or 1)
-        children = int(body.get("children") or 0)
-        deposit_raw = body.get("deposit_amount")
-        deposit_amount = None if deposit_raw in (None, "") else Decimal(str(deposit_raw))
-    except (ValueError, TypeError, InvalidOperation):
-        return _response({"error": {"code": "VALIDATION_ERROR",
-                                    "message": "请求参数格式不正确（姓名/房型/晚数/押金等）。"}}, 400)
-    try:
-        result = create_walk_in(
-            property_obj=request.front_desk_property,
-            full_name=full_name, phone=phone,
-            room_type_id=room_type_id, rate_plan_id=rate_plan_id,
-            nights=nights, adults=adults, children=children,
-            deposit_amount=deposit_amount, created_by=request.user,
-            idempotency_key=key,
-        )
-    except ValueError as exc:
-        # create_walk_in 对入参校验、库存不足、无净房等统一抛 ValueError；
-        # 该链路原子回滚、无部分写入，按 400 可重试/可改参处理。
-        return _response({"error": {"code": "VALIDATION_ERROR",
-                                    "message": str(exc)}}, 400)
-    return _response({"data": {
-        "booking_no": result["booking_no"],
-        "reservation_id": result["reservation"].pk,
-        "stay_id": result["stay"].pk,
-        "room_id": result["room"].pk,
-        "room_number": result["room"].number,
-        "source": result["reservation"].source,
-        "guest_name": full_name,
-        "phone_provided": bool(phone),
-    }}, 201)
 
 
 # ---------------------------------------------------------------------------
 # A1/A2 新端点（PMS2.0 接口规范口径；与既有端点并存，契约差异见各 docstring）
 # ---------------------------------------------------------------------------
-WALK_IN_MAX_NIGHTS = 30    # 与公开预订 MAX_NIGHTS（apps.api.views）同口径
-WALK_IN_MAX_GUESTS = 10    # 与公开预订 MAX_GUESTS 同口径
+WALK_IN_MAX_NIGHTS = 30  # 与公开预订 MAX_NIGHTS（apps.api.views）同口径
+WALK_IN_MAX_GUESTS = 10  # 与公开预订 MAX_GUESTS 同口径
 
 
 def _request_meta(request):
@@ -1444,9 +1841,15 @@ def walk_ins_create(request):
     property_obj = request.front_desk_property
     key = (request.headers.get("Idempotency-Key") or "").strip()
     if not key or len(key) > 128:
-        return _response({"error": {
-            "code": "VALIDATION_ERROR",
-            "message": "Walk-in 必须提供 1 至 128 字符的 Idempotency-Key 请求头。"}}, 400)
+        return _response(
+            {
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Walk-in 必须提供 1 至 128 字符的 Idempotency-Key 请求头。",
+                }
+            },
+            400,
+        )
     try:
         body = _body(request)
         full_name = str(body.get("full_name") or "").strip()
@@ -1468,10 +1871,16 @@ def walk_ins_create(request):
         if not 0 <= children <= WALK_IN_MAX_GUESTS:
             raise ValueError(f"儿童数必须在 0 至 {WALK_IN_MAX_GUESTS} 人之间。")
     except (ValueError, TypeError, InvalidOperation):
-        return _response({"error": {
-            "code": "VALIDATION_ERROR",
-            "message": "请求参数格式或取值范围不正确"
-                       "（姓名/房型/价格计划/晚数 1-30/人数/押金格式）。"}}, 400)
+        return _response(
+            {
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "请求参数格式或取值范围不正确"
+                    "（姓名/房型/价格计划/晚数 1-30/人数/押金格式）。",
+                }
+            },
+            400,
+        )
 
     # 幂等语义（A1：重放 200 + created=false）。R1-01：是否首次创建由
     # 服务层 create_reservation 的最终幂等仲裁给出（result["created"]），
@@ -1481,36 +1890,37 @@ def walk_ins_create(request):
     try:
         result = create_walk_in(
             property_obj=property_obj,
-            full_name=full_name, phone=phone,
-            room_type_id=room_type_id, rate_plan_id=rate_plan_id,
-            nights=nights, adults=adults, children=children,
-            deposit_amount=deposit_amount, created_by=request.user,
+            full_name=full_name,
+            phone=phone,
+            room_type_id=room_type_id,
+            rate_plan_id=rate_plan_id,
+            nights=nights,
+            adults=adults,
+            children=children,
+            deposit_amount=deposit_amount,
+            created_by=request.user,
             idempotency_key=key,
         )
     except FrontDeskValidationError as exc:
         # RSV-10：入参校验失败（金额格式等）必须与业务状态冲突区分，
         # 子类在前单独捕获返回 400。
-        return _response({"error": {"code": "VALIDATION_ERROR",
-                                    "message": str(exc)}}, 400)
+        return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
     except RoomType.DoesNotExist:
-        return _response({"error": {"code": "VALIDATION_ERROR",
-                                    "message": "房型不存在或未启用。"}}, 400)
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": "房型不存在或未启用。"}}, 400
+        )
     except InventoryUnavailable as exc:
         # 库存不可售（Hold 创建失败/售罄）：409，消息透传。
-        return _response({"error": {"code": "BUSINESS_CONFLICT",
-                                    "message": str(exc)}}, 409)
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
     except ReservationConflict as exc:
         # 同 Idempotency-Key 不同预订内容（create_reservation 指纹校验）。
-        return _response({"error": {"code": "BUSINESS_CONFLICT",
-                                    "message": str(exc)}}, 409)
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
     except FrontDeskOperationError as exc:
-        return _response({"error": {"code": "BUSINESS_CONFLICT",
-                                    "message": str(exc)}}, 409)
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
     except ValueError as exc:
         # create_walk_in 对无净房/库存确认失败/押金约束等业务冲突统一抛
         # ValueError（RSV-05）；链路原子回滚无部分写入，409 消息透传。
-        return _response({"error": {"code": "BUSINESS_CONFLICT",
-                                    "message": str(exc)}}, 409)
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
 
     reservation = result["reservation"]
     # R1-01：created 标志来自服务层 create_reservation 的最终幂等仲裁
@@ -1520,19 +1930,21 @@ def walk_ins_create(request):
     # record_deposit 在行锁下重取预订行并回写 deposit_amount（30% 服务端
     # 强制计得），create_walk_in 持有的实例不含该写入，需刷新后对外输出。
     reservation.refresh_from_db(fields=["deposit_amount"])
-    return _response({
-        "data": {
-            "booking_no": result["booking_no"],
-            "reservation_id": reservation.pk,
-            "stay_id": result["stay"].pk,
-            "room_number": result["room"].number,
-            "deposit_amount": str(
-                reservation.deposit_amount.quantize(Decimal("0.01"))),
-            "source": "WALK_IN",
-            "created": walk_in_created,
+    return _response(
+        {
+            "data": {
+                "booking_no": result["booking_no"],
+                "reservation_id": reservation.pk,
+                "stay_id": result["stay"].pk,
+                "room_number": result["room"].number,
+                "deposit_amount": str(reservation.deposit_amount.quantize(Decimal("0.01"))),
+                "source": "WALK_IN",
+                "created": walk_in_created,
+            },
+            "meta": _request_meta(request),
         },
-        "meta": _request_meta(request),
-    }, 200 if not walk_in_created else 201)
+        200 if not walk_in_created else 201,
+    )
 
 
 @require_POST
@@ -1553,34 +1965,35 @@ def payment_intent_window_extension(request, intent_id):
     BUSINESS_CONFLICT（extend_intent_window 的 ValueError 消息透传）。
     """
     property_obj = _require_finance_access(request)
-    intent = PaymentIntent.objects.filter(
-        pk=intent_id, property=property_obj).first()
+    intent = PaymentIntent.objects.filter(pk=intent_id, property=property_obj).first()
     if intent is None:
         raise ApiError("RESOURCE_NOT_FOUND", "支付意图不存在或不属于当前物业。")
     try:
         intent = extend_intent_window(
-            intent_id=intent.pk, property_obj=property_obj,
-            extended_by=request.user)
+            intent_id=intent.pk, property_obj=property_obj, extended_by=request.user
+        )
     except ValueError as exc:
         # 终态不可延长 / 已达最大延长次数 / 已达最大累计等待时长：
         # 服务端策略冲突，消息透传（D2）。
         raise ApiError("BUSINESS_CONFLICT", str(exc)) from exc
     window = get_channel_window(intent.provider_code)
-    return api_response(request, {
-        "intent_id": intent.pk,
-        "status": intent.status,
-        "extension_count": intent.extension_count,
-        "expires_at": (intent.expires_at.isoformat()
-                       if intent.expires_at else None),
-        "max_extensions": window["max_extensions"],
-        "channel_window": {
-            "provider_code": intent.provider_code,
-            "initial_wait_seconds": window["initial_wait_seconds"],
-            "max_total_wait_seconds": window["max_total_wait_seconds"],
+    return api_response(
+        request,
+        {
+            "intent_id": intent.pk,
+            "status": intent.status,
+            "extension_count": intent.extension_count,
+            "expires_at": (intent.expires_at.isoformat() if intent.expires_at else None),
             "max_extensions": window["max_extensions"],
-            "extension_seconds": window["extension_seconds"],
+            "channel_window": {
+                "provider_code": intent.provider_code,
+                "initial_wait_seconds": window["initial_wait_seconds"],
+                "max_total_wait_seconds": window["max_total_wait_seconds"],
+                "max_extensions": window["max_extensions"],
+                "extension_seconds": window["extension_seconds"],
+            },
         },
-    })
+    )
 
 
 def _int_or_default(value, default):
