@@ -670,8 +670,10 @@
             } else if (stay && stay.status === "CHECKED_OUT") {
                 actionRow.appendChild(element("span", "fd-operation-complete", "该房间已退房"));
             } else if (roomLine.reservation_status === "PENDING") {
+                /* D-R4-10：库存保留（Hold）有时效；过期订单提交确认会被
+                   服务端拒绝（toast 提示重新预订），文案如实告知避免误导。 */
                 actionRow.appendChild(element("span", "fd-operation-note",
-                    "待支付订单：请先在下方登记收款或押金（收款/押金成功即确认订单），确认后即可排房并办理入住"));
+                    "待支付订单：请先在下方登记收款或押金（收款/押金成功即确认订单，须在库存保留期内），确认后即可排房并办理入住；若保留已过期将无法确认，需客人重新预订"));
             }
             if (actionRow.children.length) roomNode.appendChild(actionRow);
             content.appendChild(roomNode);
@@ -744,6 +746,10 @@
             $("detail-updated").textContent = item.timeline && item.timeline.updated_at ? new Date(item.timeline.updated_at).toLocaleString() : "—";
 
             var roomList = $("detail-rooms");
+            /* D-R4-07：openDrawer 才清空房间明细，refreshAfterOperation 直接
+               复用 loadDetail，缺 replaceChildren 会让每次操作后的详情刷新
+               把房行重复追加（房间数=1 但明细显示 2-4 条）。 */
+            roomList.replaceChildren();
             (item.rooms || []).forEach(function (room) {
                 var node = element("div", "fd-detail-room");
                 var number = room.assigned_room ? room.assigned_room.number : "待分配";

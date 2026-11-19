@@ -282,6 +282,10 @@ def _folio_summaries(property_obj, reservation_ids):
             summary["status_label"] = L.folio_summary_status_label(folio.status)
 
         # 预订当前余额只统计未结账单；已结/作废凭证仍保留在账单详情中。
+        # （D-R4-08 复核：CLOSED 不计入 charges/credits/balance 是
+        # test_e2e_flows 固化的已评审口径；摘要显示"已结清"+账单明细
+        # 可查历史事实，不改聚合契约。退房后多收款由 DEC-02 转
+        # RefundLiability，资金完整性不受此显示口径影响。）
         if folio.status != Folio.Status.OPEN:
             continue
         if folio.currency != summary["currency"]:

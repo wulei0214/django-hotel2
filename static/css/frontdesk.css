@@ -64,6 +64,12 @@
 .fd-table tbody td { text-align:left!important; padding:14px 13px!important; border-bottom:1px solid #f0f2f6!important; color:#46566d!important; vertical-align:middle; }
 .fd-table tbody tr:hover td { background:#fbfcfe!important; }
 .fd-table tbody tr:last-child td { border-bottom:0!important; }
+/* D-R4-06：窄视口（<1500px 内容列约 700px < 表格 min-width 760px）横向
+   滚动时"详情"列会被右侧面板视野吞掉，sticky 固定最后一列保证操作
+   入口始终可见可点。 */
+.fd-table thead th:last-child, .fd-table tbody td:last-child { position:sticky; right:0; background:#fff; box-shadow:-6px 0 8px -6px rgba(38,57,81,.18); }
+.fd-table thead th:last-child { background:#f8fafc; }
+.fd-table tbody tr:hover td:last-child { background:#fbfcfe; }
 .fd-cell-primary { display:block; color:#263951; font-weight:700; font-size:12px; }
 .fd-cell-secondary { display:block; color:#8c98a9; font-size:10px; margin-top:5px; }
 .fd-status { display:inline-flex; align-items:center; border-radius:5px; padding:4px 7px; font-size:10px; font-weight:700; white-space:nowrap; }
