@@ -30,6 +30,8 @@ M4-4（架构治理模块④批次，2026-11-19）补充（D4-2 B / D2-B 排房�
   冲突消除才关闭，永不改写排房明细。
 """
 
+from datetime import timedelta
+
 from django.db import transaction
 from django.db.models import Count
 from django.utils import timezone
@@ -151,8 +153,8 @@ def _room_occupancy_counts(*, property_obj, start, end):
         .exclude(no_show_record__isnull=False)
         .values_list("pk", "assigned_room_id", "check_in", "check_out", "inventory_released_from")
     )
-    occupancy = {}
-    one_day = timezone.timedelta(days=1)
+    occupancy: dict = {}
+    one_day = timedelta(days=1)
     for line_id, room_id, check_in, check_out, released_from in lines:
         day = max(check_in, start)
         window_end = min(check_out, end)
@@ -221,7 +223,7 @@ def _scan_room_assignment_conflicts(*, property_obj, run, start, end):
         details = _conflict_details_snapshot(conflicts[(room_id, stay_date)]["line_ids"])
         # M4-4 调度幂等：同（物业, 物理房, 住宿日）只一条 OPEN 报告，原位更新。
         conflict = (
-            RoomAssignmentConflict.objects.filter(
+            RoomAssignmentConflict.objects.filter(  # type: ignore[has-type]
                 property=property_obj,
                 room_id=room_id,
                 stay_date=stay_date,
@@ -231,7 +233,7 @@ def _scan_room_assignment_conflicts(*, property_obj, run, start, end):
             .first()
         )
         if conflict is None:
-            RoomAssignmentConflict.objects.create(
+            RoomAssignmentConflict.objects.create(  # type: ignore[has-type]
                 run=run,
                 property=property_obj,
                 room=room,
@@ -270,10 +272,10 @@ def scan_inventory_discrepancies(*, property_obj, days_back=30, checked_by=None)
     结果记 ``run.room_conflict_count``；只报告、不自动改派）。
     """
     today = _property_today(property_obj)
-    start = today - timezone.timedelta(days=days_back)
-    end = today + timezone.timedelta(days=30)
+    start = today - timedelta(days=days_back)
+    end = today + timedelta(days=30)
 
-    run = InventoryReconciliationRun.objects.create(
+    run = InventoryReconciliationRun.objects.create(  # type: ignore[has-type]
         property=property_obj,
         status=InventoryReconciliationRun.Status.COMPLETED,
         checked_by=checked_by,
@@ -320,7 +322,7 @@ def scan_inventory_discrepancies(*, property_obj, days_back=30, checked_by=None)
                 # OPEN 差异报告；重算值变化时原位更新（首报运行归属不变），
                 # 重复调度不再堆积重复差异行与重复待办。
                 disc = (
-                    InventoryDiscrepancy.objects.filter(
+                    InventoryDiscrepancy.objects.filter(  # type: ignore[has-type]
                         property=property_obj,
                         room_type=rt,
                         stay_date=row.stay_date,
@@ -330,7 +332,7 @@ def scan_inventory_discrepancies(*, property_obj, days_back=30, checked_by=None)
                     .first()
                 )
                 if disc is None:
-                    InventoryDiscrepancy.objects.create(
+                    InventoryDiscrepancy.objects.create(  # type: ignore[has-type]
                         run=run,
                         property=property_obj,
                         room_type=rt,
@@ -403,7 +405,7 @@ def scan_inventory_discrepancies(*, property_obj, days_back=30, checked_by=None)
 def request_inventory_fix(*, property_obj, discrepancy_id, fix_reason, fix_evidence, requested_by):
     """D4：授权人员发起库存修复申请（不自动覆盖权威计数）。"""
     disc = (
-        InventoryDiscrepancy.objects.select_for_update()
+        InventoryDiscrepancy.objects.select_for_update()  # type: ignore[has-type]
         .filter(pk=discrepancy_id, property=property_obj)
         .first()
     )
@@ -445,7 +447,7 @@ def request_inventory_fix(*, property_obj, discrepancy_id, fix_reason, fix_evide
 def approve_inventory_fix(*, property_obj, discrepancy_id, approved_by):
     """D4：独立审批；申请人不得自批。"""
     disc = (
-        InventoryDiscrepancy.objects.select_for_update()
+        InventoryDiscrepancy.objects.select_for_update()  # type: ignore[has-type]
         .filter(pk=discrepancy_id, property=property_obj)
         .first()
     )
@@ -484,7 +486,7 @@ class _MissingHoldDetails(Exception):
 def _execute_inventory_fix_atomic(*, property_obj, discrepancy_id, executed_by):
     """D4：执行已批准修复（事务内修正 held/sold；修复后立即再次核对）。"""
     disc = (
-        InventoryDiscrepancy.objects.select_for_update()
+        InventoryDiscrepancy.objects.select_for_update()  # type: ignore[has-type]
         .filter(pk=discrepancy_id, property=property_obj)
         .first()
     )
@@ -606,7 +608,7 @@ def execute_inventory_fix(*, property_obj, discrepancy_id, executed_by):
 def dismiss_discrepancy(*, property_obj, discrepancy_id, dismissed_by, reason=""):
     """关闭差异（无差异/误报）。"""
     disc = (
-        InventoryDiscrepancy.objects.select_for_update()
+        InventoryDiscrepancy.objects.select_for_update()  # type: ignore[has-type]
         .filter(pk=discrepancy_id, property=property_obj)
         .first()
     )
@@ -641,7 +643,7 @@ def review_discrepancy(*, property_obj, discrepancy_id, reviewed_by):
         排房明细——排房冲突维度后续只报告、不自动改派（负责人约束）。
     """
     disc = (
-        InventoryDiscrepancy.objects.select_for_update()
+        InventoryDiscrepancy.objects.select_for_update()  # type: ignore[has-type]
         .filter(pk=discrepancy_id, property=property_obj)
         .first()
     )
@@ -719,7 +721,7 @@ def dismiss_room_conflict(*, property_obj, conflict_id, dismissed_by, reason="")
     不是库存计数改写）；关闭即终态，重复扫描按判定式重判。
     """
     conflict = (
-        RoomAssignmentConflict.objects.select_for_update()
+        RoomAssignmentConflict.objects.select_for_update()  # type: ignore[has-type]
         .filter(pk=conflict_id, property=property_obj)
         .first()
     )
@@ -759,7 +761,7 @@ def review_room_conflict(*, property_obj, conflict_id, reviewed_by):
         排房明细，也不改预订状态——改派只能经唯一前台履约工作流执行。
     """
     conflict = (
-        RoomAssignmentConflict.objects.select_for_update()
+        RoomAssignmentConflict.objects.select_for_update()  # type: ignore[has-type]
         .filter(pk=conflict_id, property=property_obj)
         .first()
     )
@@ -771,7 +773,7 @@ def review_room_conflict(*, property_obj, conflict_id, reviewed_by):
     occupancy = _room_occupancy_counts(
         property_obj=property_obj,
         start=conflict.stay_date,
-        end=conflict.stay_date + timezone.timedelta(days=1),
+        end=conflict.stay_date + timedelta(days=1),
     )
     bucket = occupancy.get((conflict.room_id, conflict.stay_date))
     current_count = bucket["count"] if bucket else 0

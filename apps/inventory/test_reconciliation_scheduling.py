@@ -223,7 +223,7 @@ class ReconciliationSchedulingTests(NotificationCenterTestBase):
         return out.getvalue()
 
     def _open_discrepancy(self):
-        return InventoryDiscrepancy.objects.get(
+        return InventoryDiscrepancy.objects.get(  # type: ignore[has-type]
             property=self.property, status=InventoryDiscrepancy.Status.OPEN
         )
 
@@ -232,7 +232,7 @@ class ReconciliationSchedulingTests(NotificationCenterTestBase):
         self._dirty_hold(row)
         output = self._scan()
         self.assertIn("待办 inventory.discrepancy_open", output)
-        run = InventoryReconciliationRun.objects.order_by("-pk").first()
+        run = InventoryReconciliationRun.objects.order_by("-pk").first()  # type: ignore[has-type]
         self.assertEqual(run.diff_count, 1)
         disc = self._open_discrepancy()
         self.assertEqual(disc.room_type, self.room_type)
@@ -254,7 +254,7 @@ class ReconciliationSchedulingTests(NotificationCenterTestBase):
         self._scan()
         self._scan()
         self.assertEqual(
-            InventoryDiscrepancy.objects.filter(
+            InventoryDiscrepancy.objects.filter(  # type: ignore[has-type]
                 property=self.property,
                 status=InventoryDiscrepancy.Status.OPEN,
             ).count(),
@@ -268,7 +268,7 @@ class ReconciliationSchedulingTests(NotificationCenterTestBase):
             1,
             "重复调度不得重复建单（MC-007 dedupe_key 一个源事实一条）",
         )
-        second_run = InventoryReconciliationRun.objects.order_by("-pk").first()
+        second_run = InventoryReconciliationRun.objects.order_by("-pk").first()  # type: ignore[has-type]
         self.assertEqual(second_run.diff_count, 1, "差异仍在时仍应计入当批扫描")
 
     def test_repeated_scan_updates_existing_report_in_place(self):
@@ -281,7 +281,7 @@ class ReconciliationSchedulingTests(NotificationCenterTestBase):
         self._dirty_hold(row)
         self._scan()
         self.assertEqual(
-            InventoryDiscrepancy.objects.filter(
+            InventoryDiscrepancy.objects.filter(  # type: ignore[has-type]
                 property=self.property,
                 status=InventoryDiscrepancy.Status.OPEN,
             ).count(),
@@ -366,7 +366,7 @@ class ReconciliationSchedulingTests(NotificationCenterTestBase):
         self.assertEqual(ReservationRoom.objects.filter(reservation=reservation).count(), 1)
         room_line = ReservationRoom.objects.get(reservation=reservation)
         self.assertIsNone(
-            room_line.assigned_room_id,
+            room_line.assigned_room_id,  # type: ignore[attr-defined]
             "排房冲突只报告、不自动改派：待办复核不得触碰排房明细",
         )
         self.assertEqual(

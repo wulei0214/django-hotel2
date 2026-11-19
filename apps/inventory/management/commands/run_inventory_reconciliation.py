@@ -40,7 +40,7 @@ class Command(BaseCommand):
         run = scan_inventory_discrepancies(property_obj=property_obj, days_back=days_back)
 
         open_discs = list(
-            InventoryDiscrepancy.objects.filter(
+            InventoryDiscrepancy.objects.filter(  # type: ignore[has-type]
                 property=property_obj, status=InventoryDiscrepancy.Status.OPEN
             )
             .select_related("room_type")
@@ -57,7 +57,7 @@ class Command(BaseCommand):
 
         # M4-4/D4-2：排房冲突日 OPEN 报告清单（只报告；修复=人工换房/取消）。
         room_conflicts = list(
-            RoomAssignmentConflict.objects.filter(
+            RoomAssignmentConflict.objects.filter(  # type: ignore[has-type]
                 property=property_obj, status=RoomAssignmentConflict.Status.OPEN
             )
             .select_related("room", "room_type")
@@ -69,7 +69,7 @@ class Command(BaseCommand):
                 for detail in (conflict.details or [])[:6]
             )
             self.stdout.write(
-                f"排房冲突 #{conflict.pk} {conflict.room.number}（{conflict.room_type.code}）"
+                f"排房冲突 #{conflict.pk} {conflict.room.number}（{conflict.room_type.code}）"  # type: ignore[attr-defined]
                 f"{conflict.stay_date:%Y-%m-%d}：{conflict.conflict_count} 条活跃明细"
                 f"（{bookings}）→ 待办 inventory.room_conflict_open（只报告，不自动改派）"
             )

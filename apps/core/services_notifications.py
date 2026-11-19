@@ -275,7 +275,7 @@ def _collect_active_items(property_obj, today):
     # 9. 库存对账差异：OPEN 逐条（M4-3/D4-4：调度扫描只报告；复核走 WorkItem
     #    → review_discrepancy，修复走唯一工作流；源差异关闭后随刷新自动销项）
     discrepancies = (
-        InventoryDiscrepancy.objects.filter(
+        InventoryDiscrepancy.objects.filter(  # type: ignore[has-type]
             property=property_obj, status=InventoryDiscrepancy.Status.OPEN
         )
         .select_related("room_type")
@@ -320,7 +320,7 @@ def _collect_active_items(property_obj, today):
     # 11. 排房冲突日：OPEN 逐条（M4-4/D4-2：只报告不自动改派；复核走
     #     WorkItem → review_room_conflict，修复=人工换房/取消多余明细）
     conflicts = (
-        RoomAssignmentConflict.objects.filter(
+        RoomAssignmentConflict.objects.filter(  # type: ignore[has-type]
             property=property_obj, status=RoomAssignmentConflict.Status.OPEN
         )
         .select_related("room", "room_type")
@@ -337,8 +337,8 @@ def _collect_active_items(property_obj, today):
                 str(conflict.pk),
                 Notification.Category.AUDIT,
                 Notification.Severity.WARNING,
-                f"排房冲突待复核 {conflict.room.number} {conflict.stay_date:%Y-%m-%d}",
-                f"{conflict.room.number}（{conflict.room_type.code}）{conflict.stay_date:%Y-%m-%d} "
+                f"排房冲突待复核 {conflict.room.number} {conflict.stay_date:%Y-%m-%d}",  # type: ignore[attr-defined]
+                f"{conflict.room.number}（{conflict.room_type.code}）{conflict.stay_date:%Y-%m-%d} "  # type: ignore[attr-defined]
                 f"排入 {conflict.conflict_count} 条有效明细（单房每晚容量 1 间）：{bookings}；"
                 "请前台换房或取消多余明细后复核。",
                 LINK_ROOMS,
