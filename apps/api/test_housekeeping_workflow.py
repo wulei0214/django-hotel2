@@ -7,6 +7,7 @@ from django.test import override_settings
 
 from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.api.test_housekeeping_center import HousekeepingCenterTestBase
+from apps.identity.models import StaffProfile
 from apps.inventory.models import HousekeepingTask, MaintenanceTicket, Room, RoomInspection
 from apps.inventory.services import get_room_type_availability
 
@@ -168,7 +169,10 @@ class MaintenanceTicketWorkflowTests(E2EFlowTestBase):
         self.assertEqual(
             self._post(
                 f"/api/v1/maintenance/tickets/{ticket_id}/assign",
-                {"assigned_to": self.dm.pk},
+                # API 契约：assigned_to=StaffProfile 主键（端点按档案表解析被指派
+                # 人再映射到其 User）；此前误传 User 主键——隔离跑时两表自增序列
+                # 恰好对齐掩盖了错位，包序下序列错位即 400（MC-006-R1 根因）。
+                {"assigned_to": StaffProfile.objects.get(user=self.dm).pk},
                 user=self.dm,
             ).status_code,
             200,

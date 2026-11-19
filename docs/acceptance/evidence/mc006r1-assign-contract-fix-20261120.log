@@ -1,0 +1,34 @@
+# 证据：MC-006-R1 / DEF-M3-2-ISO-01 隔离缺陷根因修复（assign 契约错位）
+SHA: f0109aa9（main@f0109aa 基础上修复；工作区仅本批触碰 apps/api/test_housekeeping_workflow.py 与 R5 报告状态行，证据树以本行为准）
+date: 2026-11-20 01:2x +0800
+env: MySQL 8.0.33 test_hotel（set -a && source .env 透传 + DJANGO_PLATFORM_ADMIN_* unset）；python 3.9.0 / django 4.1.13
+
+== 缺陷画像（继承 M3-2/M4-3/R5 三份在库证据的一致结论） ==
+test_full_maintenance_chain_restores_inventory_only_after_acceptance（apps/api/test_housekeeping_workflow.py）MySQL 包序下 assign 步骤 400≠200；隔离复跑 OK；多个不相关前置模块均可触发。
+
+== 二分复现（本轮新增证据） ==
+command: manage.py test apps.api.test_approval apps.api.test_housekeeping_workflow.MaintenanceTicketWorkflowTests --noinput（MySQL）
+Ran 38 tests, FAILED (failures=1) —— apps.api.test_approval 一个前置模块即可稳定触发。
+command: manage.py test apps.api.test_e2e_flows apps.api.test_housekeeping_workflow.MaintenanceTicketWorkflowTests
+Ran 25 tests, OK —— e2e_flows 前置不触发（前置模块的用户/档案创建量决定两序列是否错位）。
+
+== 根因取证（临时探针，交付前已删除） ==
+探针：apps/api/test_wbi_probe.py 以同包序复现并打印响应体（已按临时产物纪律删除）。
+ASSIGN_STATUS= 400
+ASSIGN_BODY= {"error": {"code": "VALIDATION_ERROR", "message": "被指派员工档案不存在。", ...}}
+根因：端点契约 assigned_to=**StaffProfile 主键**（apps/api/housekeeping_workflow_center.py:413 按档案表解析后再映射 assignee.user）；测试误传 `self.dm.pk`——`E2EFlowTestBase._make_staff` 返回 **User**，User 主键与 StaffProfile 主键分属两表自增序列。隔离跑/SQLite 下两序列恰好逐行对齐掩盖错位；包序下前置模块改变两序列步调，User 主键命中他人档案或空档 → 400（若命中他人档案则错误指派成功，属正确性隐患而不仅是测试抖动）。
+
+== 修复 ==
+apps/api/test_housekeeping_workflow.py:171：`{"assigned_to": StaffProfile.objects.get(user=self.dm).pk}`（按契约传档案主键），并留注记说明根因；全仓 grep `{"assigned_to": self.*.pk}` 仅此一处误用（task_center 同参数位传 profile.pk 口径正确）。
+
+== 修复后验证 ==
+command: manage.py test apps.api.test_approval apps.api.test_housekeeping_workflow --noinput（触发组合）
+Ran 43 tests, OK, exit 0
+command: manage.py test apps.api --noinput（全 apps.api 包，MySQL）
+Ran 670 tests in 341.831s
+
+OK
+exit=0
+
+== 结论 ==
+CI tests 工作流红灯根因（MC-006-R1）闭环：非并发缺陷、非 fixture 顺序污染，而是测试侧 API 契约错位+序列巧合掩盖。修复=改测试对齐契约，不删测试、不改端点、不动基线。
