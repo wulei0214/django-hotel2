@@ -11,11 +11,13 @@ R4 浏览器验收回归（docs/acceptance/evidence/r4-browser-report-20261119.m
 """
 
 import re
+from typing import Any, cast
+
+from django.test import override_settings
 
 from apps.api.pages import MANAGEMENT_CENTERS
 from apps.api.test_e2e_flows import E2EFlowTestBase
 from apps.inventory.models import DailyRate, RoomTypeInventory
-from django.test import override_settings
 
 
 @override_settings(DEBUG=True, DJANGO_ENV="test")
@@ -61,8 +63,10 @@ class ManagementCenterActionsTests(E2EFlowTestBase):
         覆盖（前端 resolveEndpoint 提交时按同名字段解析 URL；缺字段则必然
         打到字面 {xxx} 路径 404）。row 级动作的 {id} 由详情行上下文注入，
         其余占位符同样必须有字段覆盖。"""
-        for center_key, config in MANAGEMENT_CENTERS.items():
-            for action in config.get("actions", ()):
+        centers_cfg: dict = MANAGEMENT_CENTERS
+        for center_key, config in centers_cfg.items():
+            actions: tuple = config.get("actions", ())
+            for action in actions:
                 placeholders = set(re.findall(r"\{(\w+)\}", action["endpoint"]))
                 if action["scope"] == "row":
                     placeholders.discard("id")
@@ -73,29 +77,29 @@ class ManagementCenterActionsTests(E2EFlowTestBase):
                     f"{sorted(placeholders)} 未被表单字段 {sorted(field_names)} 覆盖",
                 )
         # 房态中心三个页面级写操作的占位符逐一核对（R4 实测 404 场景）
-        room_actions = {
-            action["key"]: action for action in MANAGEMENT_CENTERS["rooms"]["actions"]
-        }
+        rooms_config = cast(dict[str, Any], MANAGEMENT_CENTERS["rooms"])
+        room_actions = {action["key"]: action for action in rooms_config["actions"]}
         self.assertEqual(
-            re.findall(r"\{(\w+)\}", room_actions["rate_adjust"]["endpoint"]), ["rate_id"])
+            re.findall(r"\{(\w+)\}", room_actions["rate_adjust"]["endpoint"]), ["rate_id"]
+        )
         self.assertEqual(
-            re.findall(r"\{(\w+)\}", room_actions["rate_close"]["endpoint"]), ["rate_id"])
+            re.findall(r"\{(\w+)\}", room_actions["rate_close"]["endpoint"]), ["rate_id"]
+        )
         self.assertEqual(
-            re.findall(r"\{(\w+)\}", room_actions["stop_sell"]["endpoint"]), ["inventory_id"])
+            re.findall(r"\{(\w+)\}", room_actions["stop_sell"]["endpoint"]), ["inventory_id"]
+        )
         for key in ("rate_adjust", "rate_close"):
-            self.assertIn("rate_id",
-                          {f["name"] for f in room_actions[key]["fields"]})
-        self.assertIn("inventory_id",
-                      {f["name"] for f in room_actions["stop_sell"]["fields"]})
+            self.assertIn("rate_id", {f["name"] for f in room_actions[key]["fields"]})
+        self.assertIn("inventory_id", {f["name"] for f in room_actions["stop_sell"]["fields"]})
 
     def test_room_center_write_operations_return_200(self):
         """房态中心三个写操作按注册表声明的载荷直连真实端点必须 200
         （D-R4-04 回归：此前 URL 占位符不替换导致前端提交 404）。"""
         self.client.force_login(self.manager)
         rate = DailyRate.objects.filter(property=self.property).order_by("id").first()
-        inventory = (
-            RoomTypeInventory.objects.filter(property=self.property).order_by("id").first()
-        )
+        assert rate is not None
+        inventory = RoomTypeInventory.objects.filter(property=self.property).order_by("id").first()
+        assert inventory is not None
         adjust = self._post_json(
             f"/api/v1/daily-rates/{rate.pk}/adjust",
             {"price": "588.00", "reason": "R4 回归：房态中心调价"},
@@ -130,21 +134,15 @@ class ManagementCenterActionsTests(E2EFlowTestBase):
         → GuestMembershipService.create_membership 必填，缺失则 UI 提交必 400）；
         等级字段名对齐后端读取的 level_code（membership_change_level 读
         body.level_code，旧字段 level 会被忽略并必回 400）。"""
-        actions = {
-            action["key"]: action
-            for action in MANAGEMENT_CENTERS["memberships"]["actions"]
-        }
-        create_fields = {
-            field["name"]: field for field in actions["membership_create"]["fields"]
-        }
+        membership_config = cast(dict[str, Any], MANAGEMENT_CENTERS["memberships"])
+        actions = {action["key"]: action for action in membership_config["actions"]}
+        create_fields = {field["name"]: field for field in actions["membership_create"]["fields"]}
         self.assertIn("member_no", create_fields)
         self.assertTrue(create_fields["member_no"]["required"])
         self.assertIn("level_code", create_fields)
         self.assertNotIn("level", create_fields)
 
-        level_fields = {
-            field["name"]: field for field in actions["membership_level"]["fields"]
-        }
+        level_fields = {field["name"]: field for field in actions["membership_level"]["fields"]}
         self.assertIn("level_code", level_fields)
         self.assertNotIn("level", level_fields)
 
@@ -178,10 +176,9 @@ class ManagementCenterActionsTests(E2EFlowTestBase):
         self.assertTrue(data["inventory"])
         rate_ids = {row["id"] for row in data["rates"]}
         inventory_ids = {row["id"] for row in data["inventory"]}
-        self.assertIn(
-            DailyRate.objects.filter(property=self.property).order_by("id").first().pk,
-            rate_ids)
-        self.assertIn(
-            RoomTypeInventory.objects.filter(property=self.property)
-            .order_by("id").first().pk,
-            inventory_ids)
+        rate = DailyRate.objects.filter(property=self.property).order_by("id").first()
+        assert rate is not None
+        inventory = RoomTypeInventory.objects.filter(property=self.property).order_by("id").first()
+        assert inventory is not None
+        self.assertIn(rate.pk, rate_ids)
+        self.assertIn(inventory.pk, inventory_ids)

@@ -579,8 +579,7 @@ class ReservationListStatusTests(WalkInApiTestBase):
             {"q": booking_no},
         )
         self.assertEqual(response.status_code, 200, response.content)
-        rows = [r for r in response.json()["data"]
-                if r["booking_no"] == booking_no]
+        rows = [r for r in response.json()["data"] if r["booking_no"] == booking_no]
         self.assertEqual(len(rows), 1, f"应恰有一行 {booking_no}")
         return rows[0]
 
@@ -590,8 +589,8 @@ class ReservationListStatusTests(WalkInApiTestBase):
             property_obj=self.property, cashier=user, opening_cash=Decimal("0.00")
         )
         create = _post_json(
-            self.client, self.url, self._payload(),
-            HTTP_IDEMPOTENCY_KEY="list-status-001")
+            self.client, self.url, self._payload(), HTTP_IDEMPOTENCY_KEY="list-status-001"
+        )
         self.assertEqual(create.status_code, 201, create.content)
         booking_no = create.json()["data"]["booking_no"]
         # 在住：列表必须带 stay_status=IN_HOUSE 与已分配房号
@@ -603,11 +602,16 @@ class ReservationListStatusTests(WalkInApiTestBase):
         stay = Stay.objects.get(reservation_room__reservation__booking_no=booking_no)
         checkout = self.client.post(
             f"/api/v1/front-desk/stays/{stay.pk}/check-out",
-            data=json.dumps({}), content_type="application/json")
+            data=json.dumps({}),
+            content_type="application/json",
+        )
         self.assertEqual(checkout.status_code, 200, checkout.content)
         row = self._list_rows(booking_no)
-        self.assertEqual(row["reservation_status"], "CHECKED_OUT",
-                         "单间预订退房后整单迁移为 CHECKED_OUT（列表直接显示已退房）")
+        self.assertEqual(
+            row["reservation_status"],
+            "CHECKED_OUT",
+            "单间预订退房后整单迁移为 CHECKED_OUT（列表直接显示已退房）",
+        )
         self.assertEqual(row["stay_status"], "CHECKED_OUT")
         self.assertTrue(row["assigned_room"])
 
@@ -638,9 +642,7 @@ class PendingConfirmationFlowTests(WalkInApiTestBase):
             "adults": 1,
             "children": 0,
         }
-        response = _post_json(
-            self.client, self.public_url, payload, HTTP_IDEMPOTENCY_KEY=idem_key
-        )
+        response = _post_json(self.client, self.public_url, payload, HTTP_IDEMPOTENCY_KEY=idem_key)
         self.assertEqual(response.status_code, 201, response.content)
         body = response.json()
         booking_no = body["booking_no"]
@@ -648,14 +650,18 @@ class PendingConfirmationFlowTests(WalkInApiTestBase):
         self.assertEqual(reservation.status, Reservation.Status.PENDING)
         self.assertEqual(reservation.source, "WEBSITE")
         # PENDING 引导前提：未排房、无 Stay、无押金
-        self.assertFalse(reservation.reservation_rooms.first().assigned_room_id)
-        self.assertFalse(Stay.objects.filter(
-            reservation_room__reservation=reservation).exists())
+        from apps.reservations.models import ReservationRoom
+
+        self.assertFalse(
+            ReservationRoom.objects.filter(
+                reservation=reservation, assigned_room__isnull=False
+            ).exists()
+        )
+        self.assertFalse(Stay.objects.filter(reservation_room__reservation=reservation).exists())
         return reservation
 
     def _front_desk_row(self, booking_no):
-        response = self.client.get(
-            "/api/v1/front-desk/reservations", {"q": booking_no})
+        response = self.client.get("/api/v1/front-desk/reservations", {"q": booking_no})
         self.assertEqual(response.status_code, 200, response.content)
         rows = [r for r in response.json()["data"] if r["booking_no"] == booking_no]
         self.assertEqual(len(rows), 1, f"应恰有一行 {booking_no}")
@@ -680,12 +686,16 @@ class PendingConfirmationFlowTests(WalkInApiTestBase):
         payment_data = collect.json()["data"]
         self.assertEqual(payment_data["status"], Payment.Status.SUCCEEDED)
         reservation.refresh_from_db()
-        self.assertEqual(reservation.status, Reservation.Status.CONFIRMED,
-                         "前台收款成功即确认（与在线支付回调同口径）")
-        self.assertTrue(Payment.objects.filter(
-            pk=payment_data["payment_id"],
-            reservation=reservation,
-            provider="frontdesk_manual").exists())
+        self.assertEqual(
+            reservation.status,
+            Reservation.Status.CONFIRMED,
+            "前台收款成功即确认（与在线支付回调同口径）",
+        )
+        self.assertTrue(
+            Payment.objects.filter(
+                pk=payment_data["payment_id"], reservation=reservation, provider="frontdesk_manual"
+            ).exists()
+        )
 
         # ② 排房
         line = reservation.reservation_rooms.first()
@@ -695,8 +705,7 @@ class PendingConfirmationFlowTests(WalkInApiTestBase):
             {"room_id": self.room.pk},
         )
         self.assertEqual(assign.status_code, 201, assign.content)
-        self.assertEqual(
-            assign.json()["data"]["assigned_room"]["number"], "WBI-8101")
+        self.assertEqual(assign.json()["data"]["assigned_room"]["number"], "WBI-8101")
 
         # ③ 办理入住 → IN_HOUSE
         check_in = _post_json(
@@ -735,11 +744,15 @@ class PendingConfirmationFlowTests(WalkInApiTestBase):
         deposit_data = deposit.json()["data"]
         self.assertEqual(deposit_data["payment_kind"], "DEPOSIT")
         reservation.refresh_from_db()
-        self.assertEqual(reservation.status, Reservation.Status.CONFIRMED,
-                         "押金登记成功即确认（PENDING → CONFIRMED）")
+        self.assertEqual(
+            reservation.status,
+            Reservation.Status.CONFIRMED,
+            "押金登记成功即确认（PENDING → CONFIRMED）",
+        )
         self.assertEqual(reservation.deposit_amount, Decimal("90.00"))
         deposit_payment = Payment.objects.get(
-            pk=deposit_data["payment_id"], reservation=reservation)
+            pk=deposit_data["payment_id"], reservation=reservation
+        )
         self.assertEqual(deposit_payment.provider, "frontdesk_deposit")
         self.assertEqual(deposit_payment.amount, Decimal("90.00"))
 
@@ -769,12 +782,12 @@ class PendingConfirmationFlowTests(WalkInApiTestBase):
         self._auth()
         row = self._front_desk_row(reservation.booking_no)
         self.assertEqual(row["reservation_status"], "PENDING")
-        self.assertIsNone(row["stay_status"],
-                          "PENDING 单无 Stay，列表 stay_status 必须为 None")
-        self.assertIsNone(row["assigned_room"],
-                          "PENDING 单未排房，列表 assigned_room 必须为 None")
-        self.assertFalse(any(room["assigned_room"] for room in row["rooms"]),
-                         "明细行同样未排房（前端待确认引导文案的数据前提）")
+        self.assertIsNone(row["stay_status"], "PENDING 单无 Stay，列表 stay_status 必须为 None")
+        self.assertIsNone(row["assigned_room"], "PENDING 单未排房，列表 assigned_room 必须为 None")
+        self.assertFalse(
+            any(room["assigned_room"] for room in row["rooms"]),
+            "明细行同样未排房（前端待确认引导文案的数据前提）",
+        )
 
     # ------------------------------------------------------------------
     # R3-01 权限防线：无 change_accommodation 账号收款 403、确认不可达
@@ -805,7 +818,16 @@ class PendingConfirmationFlowTests(WalkInApiTestBase):
 
         # 确认不可达：两条资金路径均被拦，订单保持 PENDING、无支付事实
         reservation.refresh_from_db()
-        self.assertEqual(reservation.status, Reservation.Status.PENDING,
-                         "后端权限不因前端修复放松：无操作权账号不得触发确认")
+        self.assertEqual(
+            reservation.status,
+            Reservation.Status.PENDING,
+            "后端权限不因前端修复放松：无操作权账号不得触发确认",
+        )
         self.assertFalse(Payment.objects.filter(reservation=reservation).exists())
-        self.assertFalse(reservation.reservation_rooms.first().assigned_room_id)
+        from apps.reservations.models import ReservationRoom
+
+        self.assertFalse(
+            ReservationRoom.objects.filter(
+                reservation=reservation, assigned_room__isnull=False
+            ).exists()
+        )
