@@ -79,6 +79,22 @@ def _inventory_discrepancy_review_executor(*, work_item, actor, payload, request
     )
 
 
+def _room_conflict_review_executor(*, work_item, actor, payload, request):
+    """排房冲突复核（M4-4/D4-2）：调用对账服务按同一判定式重算核对。
+
+    冲突已消除/误报 → 经 dismiss_room_conflict 关闭（源领域服务成功后才关
+    WorkItem）；冲突仍在 → 拒绝闭环并指向人工修复（前台换房/取消多余明细）。
+    复核服务永不改写排房明细——排房冲突只报告、不自动改派（负责人约束）。
+    """
+    from apps.inventory.reconciliation import review_room_conflict
+
+    return review_room_conflict(
+        property_obj=work_item.property,
+        conflict_id=int(work_item.source_id),
+        reviewed_by=actor,
+    )
+
+
 TASK_SPECS = {
     "approval.pending": TaskSpec(
         task_code="approval.pending",
@@ -169,6 +185,15 @@ TASK_SPECS = {
         executor=None,
         link="/manage/rooms/",
         note="日历滚动补齐走唯一同步命令 sync_inventory_calendar（调度每日 02:30）；待办随覆盖恢复自动销项。",
+    ),
+    "inventory.room_conflict_open": TaskSpec(
+        task_code="inventory.room_conflict_open",
+        source_type="RoomAssignmentConflict",
+        title="排房冲突待复核",
+        permission="inventory.maintenance_manage",
+        executor=_room_conflict_review_executor,
+        link="/manage/rooms/",
+        note="完成调用 reconciliation.review_room_conflict 按同一判定式重算；冲突仍在须人工修复（前台换房/取消多余明细），系统只报告不自动改派。",
     ),
 }
 

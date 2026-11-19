@@ -1,0 +1,42 @@
+# 证据：M4-4 首次一致性扫描（dev 库 MySQL，迁移 0010 应用 + run_inventory_reconciliation 真实执行）
+SHA: 8ebf918eee581f574d7953f2f8cb25b962b940a4（main；证据生成时工作区含 M4-4 未提交变更 7 项与并行会话在途产物，证据树不等于该提交，需以本行为准。M4-4 触碰文件=apps/inventory/{models.py,reconciliation.py,management/commands/run_inventory_reconciliation.py,migrations/0010_*.py,test_room_conflict_detection.py}、apps/core/{task_registry.py,services_notifications.py}、部署文档补遗段、实施记录 GOV-025 与本证据；并行在途=waitress-deploy-20261117.log 追加/r4-browser-20261119//_selftest//mc-selftest-20261118//test-mysql-r5-gate-20261119.log（非本批产物，pathspec 提交不夹带））
+date: 2026-11-19 23:37:49 +0800
+env: DJANGO_ENV 未设（运行期命令，dev 库直连）；连接参数经 set -a && source .env 透传（MySQL 8.0.33 @ localhost:3306，库=hotel，用户=hotelhotel）；manage.py check 0 issues
+python: 3.9.0  django: 4.1.13（.venv）
+
+== 步骤 1：迁移 0010 应用到 dev 库（前向迁移演练，批次回滚演练要求） ==
+command: python manage.py migrate inventory --plan && python manage.py migrate inventory
+  inventory.0010_inventoryreconciliationrun_room_conflict_count_and_more
+    Add field room_conflict_count to inventoryreconciliationrun
+    Create model RoomAssignmentConflict
+    Create index idx_rac_prop_status_date on field(s) property, status, stay_date of model roomassignmentconflict
+    Create constraint uq_room_conflict_run_room_date on model roomassignmentconflict
+  Applying inventory.0010_inventoryreconciliationrun_room_conflict_count_and_more... OK
+exit_code=0
+（0010 为纯新增模型/字段/索引/约束，无数据改写无删列；逆向回滚=git revert 零数据损失。）
+
+== 步骤 2：首次一致性扫描（M4-4 检测并入同一运行） ==
+command: python manage.py run_inventory_reconciliation --property-code DEFAULT
+（输出节选，完整 21 条差异清单见命令输出——与 M4-3 首扫 Run #1 相同的 U-03 演示清库遗留漂移，仍 OPEN 等待唯一修复工作流）
+差异 #1 BUS 2026-11-18：账面 4 / 重算 1（差 3），held=0 sold=1 oos=0 → 待办 inventory.discrepancy_open
+……（差异 #2~#21 BUS/DLX/STD/SUP 2026-11-18~12-01，略）
+对账运行 #4：扫描 5 房型 / 31 住宿日（回看 30 天），差异 21 条，排房冲突日 0 天；待办对账 active=58 created=0 updated=32 resolved=0。
+exit_code=0
+
+批次验收要点：
+  * 排房冲突日检出 0 天——dev 库无双排房（WB-085 写入闸门在岗，无直线写库漂移）；检测能力由专项 7 用例（MySQL 真锁）证明，首扫 0 冲突即真实基线，不作美化。
+  * 幂等实证：差异 21 条 created=0（M4-3 Run #1~#3 已报，本次原位更新不重复建行）；待办 active=58 与既有对账无重复堆积。
+  * Run #4 落库字段：diff_count=21 room_conflict_count=0 scanned_dates=31 scanned_types=5。
+
+== 步骤 3：独立 SQL 交叉核验（判定式第二路径，排除 NoShow/释放夜细化前的超集口径） ==
+command: 原生 SQL——活跃状态（PENDING/CONFIRMED/CHECKED_IN）已排房明细按（assigned_room_id, stay_date）分组计数，窗口 CURDATE()-30 ~ CURDATE()+29，HAVING cnt>=2
+结果：>=2 活跃明细的 物理房x住宿日 组合：0 组
+RoomAssignmentConflict 行数：0
+Run #4 回读：diff_count=21 room_conflict_count=0 scanned_dates=31 scanned_types=5
+exit_code=0
+（超集口径为 0 则细化口径必为 0——与扫描结论独立一致。）
+
+== 步骤 4：dev 库开放待办对账现状（移交负责人复核用） ==
+RoomAssignmentConflict 总行数=0（无可处置样例）；InventoryDiscrepancy OPEN 21 条（M4-3 遗留，处置口径见 GOV-024 §七 第 1 条）。
+
+证据链：GOV-025 实施记录 §三（首扫行）；专项测试证据 docgate-m4-4-room-conflict-20261119.log。

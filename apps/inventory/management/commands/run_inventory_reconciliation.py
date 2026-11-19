@@ -1,4 +1,4 @@
-"""D4-4/M4-3：库存对账扫描调度入口（每小时）。
+"""D4-4/M4-3+M4-4：库存对账扫描调度入口（每小时）。
 
 复用 reconciliation.scan_inventory_discrepancies 唯一扫描口径：
   * 扫描只报告差异，不自动覆盖库存权威计数（held/sold 只读重算核对）；
@@ -7,13 +7,17 @@
   * OPEN 差异经 MC-007 任务源 inventory.discrepancy_open 派生 WorkItem
     待办（refresh_operational_todos，不新增第二套待办/通知表）；
   * 排房维度只报告不改派：本命令不触碰 ReservationRoom/排房明细。
+
+M4-4/D4-2：同一运行并入排房冲突日检测（run.room_conflict_count；冲突
+记录经 MC-007 任务源 inventory.room_conflict_open 派生待办；修复只能
+人工执行——前台换房/取消多余明细，系统不自动改派）。
 """
 
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.core.models import Property
 from apps.core.services_notifications import refresh_operational_todos
-from apps.inventory.models import InventoryDiscrepancy
+from apps.inventory.models import InventoryDiscrepancy, RoomAssignmentConflict
 from apps.inventory.reconciliation import scan_inventory_discrepancies
 
 
@@ -51,6 +55,25 @@ class Command(BaseCommand):
                 f"oos={disc.oos_count} → 待办 inventory.discrepancy_open"
             )
 
+        # M4-4/D4-2：排房冲突日 OPEN 报告清单（只报告；修复=人工换房/取消）。
+        room_conflicts = list(
+            RoomAssignmentConflict.objects.filter(
+                property=property_obj, status=RoomAssignmentConflict.Status.OPEN
+            )
+            .select_related("room", "room_type")
+            .order_by("stay_date", "id")
+        )
+        for conflict in room_conflicts:
+            bookings = "、".join(
+                str(detail.get("booking_no") or f"明细#{detail.get('line_id')}")
+                for detail in (conflict.details or [])[:6]
+            )
+            self.stdout.write(
+                f"排房冲突 #{conflict.pk} {conflict.room.number}（{conflict.room_type.code}）"
+                f"{conflict.stay_date:%Y-%m-%d}：{conflict.conflict_count} 条活跃明细"
+                f"（{bookings}）→ 待办 inventory.room_conflict_open（只报告，不自动改派）"
+            )
+
         # OPEN 差异经 task_registry 任务源对账为 WorkItem/通知（MC-007 机制，
         # 同一事务 upsert；源差异关闭后待办随刷新自动销项）。
         summary = refresh_operational_todos(property_obj)
@@ -59,7 +82,8 @@ class Command(BaseCommand):
             self.style.SUCCESS(
                 f"对账运行 #{run.pk}：扫描 {run.scanned_types} 房型 / "
                 f"{run.scanned_dates} 住宿日（回看 {days_back} 天），"
-                f"差异 {run.diff_count} 条；待办对账 "
+                f"差异 {run.diff_count} 条，排房冲突日 {run.room_conflict_count} 天；"
+                f"待办对账 "
                 f"active={summary['active']} created={summary['created']} "
                 f"updated={summary['updated']} resolved={summary['resolved']}。"
             )

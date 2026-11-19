@@ -28,7 +28,9 @@
   * inventory.discrepancy_open    库存对账差异（OPEN 逐条；M4-3/D4-4 调度扫描
     只报告，复核走 WorkItem→review_discrepancy，修复走唯一工作流）；
   * inventory.calendar_coverage   库存日历覆盖不足（启用房型 MAX(stay_date)<
-    今天+7，逐房型；M4-3/D4-3，补齐走唯一同步命令）。
+    今天+7，逐房型；M4-3/D4-3，补齐走唯一同步命令）；
+  * inventory.room_conflict_open  排房冲突日（OPEN 逐条；M4-4/D4-2 只报告
+    不自动改派，复核走 WorkItem→review_room_conflict，修复=人工换房/取消）。
 
   文档清单中"夜审阻挡项 / 维修超时待验收 / 预订资料待补充 / 收银班次未关班 /
   邀请待激活"首期不派生（对应源模型/工作台尚未提供可执行闭环），后续按需扩展。
@@ -44,7 +46,7 @@ from apps.core.models import BreakGlassRecord, Notification
 from apps.core.services_work_items import sync_work_items, work_item_dedupe_key
 from apps.core.task_registry import get_spec
 from apps.identity.models import Group
-from apps.inventory.models import InventoryDiscrepancy, Room
+from apps.inventory.models import InventoryDiscrepancy, Room, RoomAssignmentConflict
 from apps.inventory.services import calendar_coverage_gaps
 from apps.reservations.models import Reservation
 
@@ -310,6 +312,35 @@ def _collect_active_items(property_obj, today):
                 f"库存日历覆盖不足 {room_type.name}",
                 f"{room_type.code} 日历最远 {covered}，要求 ≥ "
                 f"{gap['horizon']:%Y-%m-%d}；请核查滚动同步任务。",
+                LINK_ROOMS,
+                AUDIENCE_INVENTORY,
+            )
+        )
+
+    # 11. 排房冲突日：OPEN 逐条（M4-4/D4-2：只报告不自动改派；复核走
+    #     WorkItem → review_room_conflict，修复=人工换房/取消多余明细）
+    conflicts = (
+        RoomAssignmentConflict.objects.filter(
+            property=property_obj, status=RoomAssignmentConflict.Status.OPEN
+        )
+        .select_related("room", "room_type")
+        .order_by("stay_date", "id")
+    )
+    for conflict in conflicts:
+        bookings = "、".join(
+            str(detail.get("booking_no") or f"明细#{detail.get('line_id')}")
+            for detail in (conflict.details or [])[:6]
+        )
+        items.append(
+            _item(
+                "inventory.room_conflict_open",
+                str(conflict.pk),
+                Notification.Category.AUDIT,
+                Notification.Severity.WARNING,
+                f"排房冲突待复核 {conflict.room.number} {conflict.stay_date:%Y-%m-%d}",
+                f"{conflict.room.number}（{conflict.room_type.code}）{conflict.stay_date:%Y-%m-%d} "
+                f"排入 {conflict.conflict_count} 条有效明细（单房每晚容量 1 间）：{bookings}；"
+                "请前台换房或取消多余明细后复核。",
                 LINK_ROOMS,
                 AUDIENCE_INVENTORY,
             )

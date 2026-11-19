@@ -593,6 +593,11 @@ class InventoryReconciliationRun(models.Model):
     scanned_dates = models.PositiveIntegerField(default=0, verbose_name="扫描天数")
     scanned_types = models.PositiveIntegerField(default=0, verbose_name="扫描房型数")
     diff_count = models.PositiveIntegerField(default=0, verbose_name="差异数")
+    room_conflict_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name="排房冲突日数",
+        help_text="本批扫描检出的（物理房, 住宿日）排房冲突数（M4-4/D4-2）",
+    )
     checked_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -701,3 +706,94 @@ class InventoryDiscrepancy(models.Model):
             f"{self.room_type_id}/{self.stay_date} "
             f"当前 {self.current_total} vs 重算 {self.recomputed_total}"
         )
+
+
+class RoomAssignmentConflict(models.Model):
+    """M4-4/D4-2 单条排房冲突日记录（只报告、不自动改派）。
+
+    冲突判定式：某（物理房, 住宿日）存在 ≥2 条活跃排房明细（ReservationRoom
+    已排房、合同区间覆盖该日、预订状态 PENDING/CONFIRMED/CHECKED_IN、排除
+    No-Show 与提前离店已释放夜晚）即冲突日——物理房可售容量=1 间/晚。
+    判定口径与事务内排房闸门（front_desk_services._check_room_assignment_conflict，
+    WB-085）同款，释放语义与库存 sold 重算（RSV-03）一致。
+
+    修复只能人工执行（前台换房/取消多余明细）；对账扫描永不改写排房明细。
+    待办完成经 reconciliation.review_room_conflict 同口径复核，冲突消除才关闭。
+    """
+
+    objects = models.Manager.from_queryset(models.QuerySet)
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "待处理"
+        DISMISSED = "DISMISSED", "已关闭（冲突消除/误报）"
+
+    run = models.ForeignKey(
+        InventoryReconciliationRun,
+        on_delete=models.PROTECT,
+        related_name="room_conflicts",
+        verbose_name="对账运行",
+        help_text="首报运行；重扫描原位更新时归属不变（M4-3 幂等化同款）",
+    )
+    property = models.ForeignKey(
+        "core.Property",
+        on_delete=models.PROTECT,
+        related_name="room_assignment_conflicts",
+        verbose_name="所属酒店",
+    )
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.PROTECT,
+        related_name="assignment_conflicts",
+        verbose_name="冲突物理房",
+    )
+    room_type = models.ForeignKey(
+        RoomType,
+        on_delete=models.PROTECT,
+        related_name="assignment_conflicts",
+        verbose_name="房型",
+    )
+    stay_date = models.DateField(verbose_name="冲突住宿日")
+    conflict_count = models.PositiveSmallIntegerField(
+        verbose_name="当日活跃排房明细数",
+        help_text="按判定式统计的占用计数；≥2 即冲突",
+    )
+    details = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="冲突明细快照",
+        help_text="JSON 数组：[{line_id, booking_no, check_in, check_out}]，供人工修复定位",
+    )
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.OPEN, verbose_name="状态"
+    )
+    dismiss_reason = models.CharField(
+        max_length=240, blank=True, default="", verbose_name="关闭原因"
+    )
+    dismissed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="dismissed_room_conflicts",
+        verbose_name="关闭人",
+    )
+    dismissed_at = models.DateTimeField(null=True, blank=True, verbose_name="关闭时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "排房冲突日记录"
+        verbose_name_plural = "排房冲突日记录"
+        ordering = ("-stay_date",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=("run", "room", "stay_date"), name="uq_room_conflict_run_room_date"
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=("property", "status", "stay_date"), name="idx_rac_prop_status_date"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.room_id}/{self.stay_date} 冲突 {self.conflict_count} 条明细 {self.status}"

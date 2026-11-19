@@ -1,0 +1,85 @@
+# 证据：M4-4 排房冲突日检测（模块④批次 M4-4）——专项双引擎 + 组合 + 全量回归
+SHA: 9c13668b839ce6bff2c557254accdc387071848a（main；批次开工基线 8ebf918，全量回归阶段并行会话推进至 9c13668（R4/R5 验收批次，与本批零文件交集）。工作区含未提交变更 12 项：证据树不等于该提交，需以本行为准。M4-4 触碰文件=apps/inventory/{models.py,reconciliation.py,management/commands/run_inventory_reconciliation.py,migrations/0010_inventoryreconciliationrun_room_conflict_count_and_more.py,test_room_conflict_detection.py}、apps/core/{task_registry.py,services_notifications.py}、部署文档补遗段（M4-3 遗留+M4-4 语义）、实施记录 GOV-025/GOV-026 与本证据；并行在途=apps/api/{test_management_center_actions,test_walkin_window}.py、apps/billing/test_refund_business_day.py（并行会话编辑，本批全量运行时已在盘上、不属本批交付）、waitress-deploy-20261117.log 追加、_selftest//mc-selftest-20261118//r4-browser-20261119//test-mysql-r5-gate-20261119.log（非本批产物，pathspec 提交不夹带））
+date: 2026-11-20 00:18:15 +0800
+env: MySQL 权威口径=DJANGO_ENV=test + set -a && source .env 透传连接参数 + **DJANGO_PLATFORM_ADMIN_USERNAME/PASSWORD 显式 unset**（.env 白名单变量致 identity 用例假失败，M4-3 证据 §六.1 同款纪律，本批 §步骤8 实证重申）；SQLite 第二引擎=CI-同款变量集（DJANGO_DB_ENGINE=sqlite DJANGO_DB_NAME=:memory: 等，不经 .env）
+python: 3.9.0  django: 4.1.13（.venv）；ruff 0.6.9 / black 24.8.0（与 django-ci.yml 一致）
+
+== 步骤 1：manage.py check（engine=mysql） ==
+command: python manage.py check
+System check identified no issues (0 silenced).
+exit_code=0
+
+== 步骤 2：迁移一致性 ==
+command: python manage.py makemigrations --check --dry-run
+No changes detected
+exit_code=0
+（0010 已登记；dev 库前向迁移演练见 docgate-m4-4-firstscan-20261119.log 步骤1。）
+
+== 步骤 3：触碰文件静态门禁（7 个 py 文件） ==
+command: ruff check <7 文件> → All checks passed!（--fix 修正：migration/测试文件 import 排序、RoomTypeInventory 未用导入移除）
+command: black --check <7 文件> → 7 files would be left unchanged.（存量 models.py/reconciliation.py 触碰即全文件重排，重排后专项两引擎复跑全绿）
+exit_code=0
+
+== 步骤 4：M4-4 专项测试（MySQL 测试库全新创建，select_for_update 真锁） ==
+command: python manage.py test apps.inventory.test_room_conflict_detection --noinput -v 2
+Found 7 test(s).
+覆盖：双排房检出+待办派生/取消预订不计入/跨日不误报/重复扫描幂等（OPEN 单条+总行数不增）/冲突仍在双入口拒绝闭环（直接复核 ValueError + MC-007 complete_work_item 拒绝+SOURCE_SERVICE_FAILED 留痕+明细不被触碰）/人工修复后 MC-007 闭环（冲突 DISMISSED+WorkItem DONE/COMPLETED+审计 reviewed+存留明细不动+刷新无残留待办）/他处消除后 dismiss 终态+重复扫描不再报
+Ran 7 tests in 5.476s
+
+OK
+exit_code=0
+
+== 步骤 5：M4-4 专项 7 用例（SQLite 第二引擎） ==
+command: pytest apps/inventory/test_room_conflict_detection.py（CI-同款变量集）→ 7 passed
+exit_code=0
+
+== 步骤 6：M4-4+M4-3 相关组合（SQLite 双引擎第二跑） ==
+command: python manage.py test apps.inventory.test_room_conflict_detection apps.inventory.test_reconciliation_scheduling apps.core apps.api.test_notification_center apps.api.test_task_center --noinput（DJANGO_DB_ENGINE=sqlite）
+Ran 90 tests in 40.265s
+
+OK
+exit_code=0
+
+== 步骤 7：触碰域组合（MySQL） ==
+command: python manage.py test apps.inventory apps.core apps.api.test_notification_center apps.api.test_task_center apps.api.test_e2e_flows --noinput
+首跑：建库阶段（Found 1747 → Creating test database）遭 MySQL 1213 Deadlock 中断——同时段并行 AI 会话亦在跑全量 MySQL（其证据 test-mysql-r5-gate-20261119.log 头记录同形态死锁 exit 1；进程表实证两个 manage.py test 并发）→ 判定多会话争抢 test_hotel 建库互锁，非代码缺陷。
+错峰复跑：Ran 135 tests in 69.737s
+
+OK
+exit_code=0
+
+== 步骤 8：全量回归（MySQL 权威口径） ==
+command: python manage.py test --noinput（.env 透传 + 平台后台变量 unset）
+全量第一跑（未 unset 平台后台变量，过程口径留证）：Ran 1747 tests, FAILED (failures=64, errors=21, skipped=3)——82/85 集中 apps.identity（permission_center/cookie/session 假失败签名）+ apps.api 1；**apps.inventory/apps.core/apps.reservations 零失败**；根因=.env DJANGO_PLATFORM_ADMIN_USERNAME/PASSWORD 白名单变量污染（M4-3 证据 §六.1 同款；教训重申：全量 MySQL 必须剥离该变量组）。
+全量正式跑（unset 后）：Ran 1753 tests in 521.488s
+FAILED (failures=1, skipped=3)
+唯一失败=MC-006-R1 已登记存量隔离缺陷：test_full_maintenance_chain_restores_inventory_only_after_acceptance（apps/api/test_housekeeping_workflow.py:168，400≠200 @ assign）——与 M3-2 全量证据（docgate-m3-2-regression-20261119.log）及 M4-3 全量证据（docgate-m4-3-scheduling-20261119.log §三步骤7）完全一致。
+隔离复跑：manage.py test apps.api.test_housekeeping_workflow.MaintenanceTicketWorkflowTests.test_full_maintenance_chain_restores_inventory_only_after_acceptance --noinput → Ran 1 test in 0.706s
+
+OK
+exit_code=0
+判定：M4-4 触碰域（inventory/core/reservations/housekeeping）全量零失败；唯一失败为已登记存量缺陷非本批引入。测试总数 1747→1753 漂移=并行批次（M5-2 c18c05a 等）新增测试，非本批。
+
+== 步骤 8b：全量回归（SQLite 第二引擎） ==
+command: python manage.py test --noinput（CI-同款变量集，DJANGO_DB_ENGINE=sqlite DJANGO_DB_NAME=:memory:）
+Ran 1747 tests in 467.570s
+
+OK (skipped=26)
+exit_code=0
+（SQLite 全量零失败——含 identity 域，交叉印证步骤8 第一跑为环境变量污染而非代码回归。）
+
+== 步骤 9：OpenAPI 双快照 ==
+git status 交集核对：M4-4 触碰文件与 openapi 快照零交集（零 API 契约变更；新增面=管理命令/服务/待办层/模型）。
+
+== 步骤 10：文档门禁 ==
+command: python scripts/docs_link_check.py check
+摘要：扫描文件数=166 断链对=152 重复组=0 不可解析SHA=0 受保护变更=1 新增缺元数据=0 重复标题=0 新增违规数=0
+exit_code=0
+（受保护变更=1=并行会话对 waitress-deploy-20261117.log 的追加，非本批；新增违规=0=门禁通过。）
+
+== 过程口径登记 ==
+1. 两次建库阶段 1213 死锁（触碰域首跑+并行会话全量各自发生）=多会话并发 manage.py test 争抢 test_hotel；多代理共享工作树期 MySQL 全量须错峰或申请独立测试库授权（hotelhotel 用户仅授 test_hotel，独立库名实测 1044 Access denied）。
+2. 全量第一跑 identity 假失败 64+21=.env 平台后台变量污染；正式跑前 unset——纪律与本批证据 §头记录固化。
+3. 证据生成期间并行在途（9c13668 提交 + 3 个测试文件在途编辑）与本批零文件交集；本批以 pathspec 单独提交。
+
+证据链：实施记录 GOV-025（docs/PMS2.0_当前版本/04_开发实施记录/架构治理模块四批次M4-4实施记录_2026-11-19.md）§三验证表逐行指向本日志；首扫单独 docgate-m4-4-firstscan-20261119.log。
