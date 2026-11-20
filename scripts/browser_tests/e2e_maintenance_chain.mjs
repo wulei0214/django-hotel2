@@ -73,7 +73,9 @@ async function login(browser, username) {
 
 async function availabilityCount(page, roomTypeId) {
   const today = new Date();
-  const fmt = (d) => d.toISOString().slice(0, 10);
+  // 本地日期（ISO 是 UTC，跨时区会在日切边界拿到"昨天"）
+  const fmt = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const checkIn = fmt(today);
   const checkOut = fmt(new Date(today.getTime() + 86400000));
   const res = await apiGet(

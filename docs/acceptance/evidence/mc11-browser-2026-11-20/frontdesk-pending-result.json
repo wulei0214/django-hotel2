@@ -1,6 +1,6 @@
 {
   "base": "http://127.0.0.1:8100",
-  "booking_no": "R36FDAA78CD8322E7B340",
+  "booking_no": "RC8D34E2577A0E5FE527B",
   "results": [
     {
       "name": "availability",
@@ -10,7 +10,7 @@
     {
       "name": "public_create_pending",
       "pass": true,
-      "detail": "R36FDAA78CD8322E7B340"
+      "detail": "RC8D34E2577A0E5FE527B"
     },
     {
       "name": "login",
@@ -20,7 +20,7 @@
     {
       "name": "drawer_row_visible",
       "pass": true,
-      "detail": "R36FDAA78CD8322E7B340"
+      "detail": "RC8D34E2577A0E5FE527B"
     },
     {
       "name": "drawer_open",

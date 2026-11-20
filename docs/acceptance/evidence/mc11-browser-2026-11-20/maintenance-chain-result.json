@@ -1,10 +1,10 @@
 {
   "base": "http://127.0.0.1:8100",
-  "ticket_no": "MT-DEFAULT-20261120-88E95070",
+  "ticket_no": "MT-DEFAULT-20261120-80B85CE8",
   "room": "1410",
-  "avail_before": 1,
-  "avail_stopped": 0,
-  "avail_after": 1,
+  "avail_before": 5,
+  "avail_stopped": 4,
+  "avail_after": 5,
   "results": [
     {
       "name": "staff_profile_id",
@@ -19,17 +19,17 @@
     {
       "name": "availability_before",
       "pass": true,
-      "detail": "available_count=1"
+      "detail": "available_count=5"
     },
     {
       "name": "ticket_created",
       "pass": true,
-      "detail": "维修工单 MT-DEFAULT-20261120-88E95070 已登记。"
+      "detail": "维修工单 MT-DEFAULT-20261120-80B85CE8 已登记。"
     },
     {
       "name": "inventory_stopped_on_report",
       "pass": true,
-      "detail": "报修后 available_count=0（基线 1）"
+      "detail": "报修后 available_count=4（基线 5）"
     },
     {
       "name": "resolve_leaves_pending_verify",
@@ -39,7 +39,7 @@
     {
       "name": "resolve_does_not_restore_inventory",
       "pass": true,
-      "detail": "完成维修后 available_count=0（应仍为 0）"
+      "detail": "完成维修后 available_count=4（应仍为 4）"
     },
     {
       "name": "verify_pass",
@@ -49,7 +49,7 @@
     {
       "name": "inventory_restored_after_acceptance",
       "pass": true,
-      "detail": "验收后 available_count=1（基线 1）"
+      "detail": "验收后 available_count=5（基线 5）"
     }
   ]
 }
