@@ -182,7 +182,7 @@ def room_type_create(request):
     except ValueError as exc:
         # MC11-INV-03：capacity 非整数等入参错误 → 400（对齐 room_create 口径）
         raise ApiError("VALIDATION_ERROR", str(exc)) from None
-    except IntegrityError as exc:
+    except IntegrityError:
         # MC11-INV-03：房型 code 物业内唯一约束违反 → 409 业务冲突
         raise ApiError("BUSINESS_CONFLICT", "房型代码在该物业已存在。") from None
     return api_response(request, _room_type_dto(room_type), 201)
@@ -228,7 +228,7 @@ def room_create(request):
         )
     except (HousekeepingOperationError, ValueError) as exc:
         _map_error(exc)
-    except IntegrityError as exc:
+    except IntegrityError:
         # MC11-INV-03：房间号物业内唯一约束违反 → 409 业务冲突
         raise ApiError("BUSINESS_CONFLICT", "房间号在该物业已存在。") from None
     return api_response(request, _room_dto(room), 201)

@@ -193,7 +193,7 @@ def staff_detail(request, profile_id):
             .get(pk=profile_id)
         )
     except StaffProfile.DoesNotExist:
-        raise _api_error("RESOURCE_NOT_FOUND", "员工不存在。")
+        raise _api_error("RESOURCE_NOT_FOUND", "员工不存在。") from None
     data = _staff_dto(profile, property_obj)
     return api_response(request, data)
 
@@ -260,7 +260,7 @@ def membership_detail(request, membership_id):
             pk=membership_id, property=property_obj
         )
     except GuestMembership.DoesNotExist:
-        raise _api_error("RESOURCE_NOT_FOUND", "会员关系不存在。")
+        raise _api_error("RESOURCE_NOT_FOUND", "会员关系不存在。") from None
     history = MembershipLevelHistory.objects.filter(membership=m).order_by("-created_at", "-id")
     data = {
         "id": m.pk,
@@ -292,7 +292,7 @@ def _membership_body(request):
     try:
         payload = json.loads(request.body.decode("utf-8") or "{}")
     except (UnicodeDecodeError, json.JSONDecodeError):
-        raise ApiError("VALIDATION_ERROR", "请求体必须是有效 JSON。")
+        raise ApiError("VALIDATION_ERROR", "请求体必须是有效 JSON。") from None
     if not isinstance(payload, dict):
         # WB-46-02：非对象 JSON（数组/字符串）此前带出 body.get 的
         # AttributeError → 500；统一 400。
@@ -317,7 +317,7 @@ def membership_create(request):
     try:
         guest_id = int(str(raw_guest_id))
     except (TypeError, ValueError):
-        raise ApiError("VALIDATION_ERROR", "guest_id 必须是整数。")
+        raise ApiError("VALIDATION_ERROR", "guest_id 必须是整数。") from None
     guest = Guest.objects.filter(pk=guest_id, property=property_obj).first()
     if guest is None:
         raise ApiError("RESOURCE_NOT_FOUND", "当前物业下不存在该客人档案。")
@@ -328,7 +328,7 @@ def membership_create(request):
         try:
             joined_at = date.fromisoformat(str(body["joined_at"]))
         except ValueError:
-            raise ApiError("VALIDATION_ERROR", "joined_at 必须使用 YYYY-MM-DD 格式。")
+            raise ApiError("VALIDATION_ERROR", "joined_at 必须使用 YYYY-MM-DD 格式。") from None
     expires_at = None
     if body.get("expires_at"):
         from datetime import date
@@ -336,7 +336,7 @@ def membership_create(request):
         try:
             expires_at = date.fromisoformat(str(body["expires_at"]))
         except ValueError:
-            raise ApiError("VALIDATION_ERROR", "expires_at 必须使用 YYYY-MM-DD 格式。")
+            raise ApiError("VALIDATION_ERROR", "expires_at 必须使用 YYYY-MM-DD 格式。") from None
     try:
         membership = GuestMembershipService.create_membership(
             property_obj=property_obj,
@@ -350,7 +350,7 @@ def membership_create(request):
             request=request,
         )
     except GuestServiceError as exc:
-        raise ApiError("BUSINESS_CONFLICT", str(exc))
+        raise ApiError("BUSINESS_CONFLICT", str(exc)) from exc
     return api_response(
         request,
         {
@@ -387,7 +387,7 @@ def membership_change_level(request, membership_id):
             request=request,
         )
     except GuestServiceError as exc:
-        raise ApiError("VALIDATION_ERROR", str(exc))
+        raise ApiError("VALIDATION_ERROR", str(exc)) from exc
     return api_response(
         request,
         {
@@ -435,7 +435,7 @@ def membership_change_status(request, membership_id):
         else:
             raise ApiError("VALIDATION_ERROR", "action 只支持 suspend（暂停）或 restore（恢复）。")
     except GuestServiceError as exc:
-        raise ApiError("BUSINESS_CONFLICT", str(exc))
+        raise ApiError("BUSINESS_CONFLICT", str(exc)) from exc
     return api_response(
         request,
         {
