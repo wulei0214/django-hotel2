@@ -40,7 +40,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 logger = logging.getLogger(__name__)
 
 from .models import (Staff, Room, Client, Food, Vip, Park, Order, Accommodation,
-                     FinanceRecord, Folio)
+                     Folio)
 
 # M3-2（D6 读路径切换）：show_accomodation 数据源改归档查询通道（只读）。
 from apps.billing.legacy_archive_query import legacy_accommodation_queryset
@@ -1286,57 +1286,7 @@ def uncheckout(request):
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
 
 
-# ---------- 财务管理 ----------
-def _finance_context():
-    """财务页公共上下文：流水列表 + 冲账排除 + 收支统计（finance_manage / finance_add 共用）"""
-    records = list(FinanceRecord.objects.order_by("-id"))
-    voided = {str(o["id"]) for o in Order.objects.filter(状态="已冲账").values("id")}
-    voided |= {str(a["id"]) for a in Accommodation.objects.filter(状态="已冲账").values("id")}
-    days = {}
-    total_in = total_out = room_rev = food_rev = 0.0
-    for r in records:
-        if r.关联订单 and r.关联订单 in voided:
-            continue
-        try:
-            amt = float(r.金额)
-        except (TypeError, ValueError):
-            continue
-        day = days.setdefault(r.日期, {"收入": 0.0, "支出": 0.0})
-        day[r.类型 if r.类型 in ("收入", "支出") else "支出"] += amt
-        if r.类型 == "收入":
-            total_in += amt
-            if (r.事由 or "").startswith("客房"):
-                room_rev += amt
-            elif (r.事由 or "").startswith("餐饮"):
-                food_rev += amt
-        else:
-            total_out += amt
-    day_rows = [{"日期": k, "收入": f"{d['收入']:.2f}", "支出": f"{d['支出']:.2f}",
-                 "结余": f"{d['收入'] - d['支出']:.2f}"} for k, d in sorted(days.items(), reverse=True)]
-    total = round(total_in - total_out, 2)
-    rooms_total = Room.objects.count()
-    living_now = Accommodation.objects.filter(状态="已入住").count()
-    occupancy = f"{(living_now / rooms_total * 100):.0f}%" if rooms_total else "0%"
-    revpar = f"{(room_rev / rooms_total):.2f}" if rooms_total else "0.00"
-    return {
-        "records": records, "day_rows": day_rows,
-        "total_in": f"{total_in:.2f}", "total_out": f"{total_out:.2f}", "total": f"{total:.2f}",
-        "room_rev": f"{room_rev:.2f}", "food_rev": f"{food_rev:.2f}",
-        "occupancy": occupancy, "revpar": revpar,
-    }
-
-
-@staff_required
-def finance_manage(request):
-    """财务管理：流水列表 + 新增收支 + 报表分析（需「财务管理」权限）"""
-    if not _has_permission(request, "hotelapp.finance_access"):
-        raise PermissionDenied
-    ctx = _finance_context()
-    ctx["can_add"] = _has_role(request.user, "财务")
-    ctx["today"] = _today()
-    return render(request, "finance.html", ctx)
-
-
+# ---------- 财务管理（旧入口仅保留 410 桩） ----------
 @staff_required
 def finance_add(request):
     """旧财务写入口永久退役；新收款/退款/冲销只允许走 PMS2 BillingService。"""
