@@ -1002,6 +1002,14 @@ class BillingService:
             return existing, False
         if reservation.status not in ("PENDING", "CONFIRMED", "CHECKED_IN"):
             raise ValueError("只有待支付/已确认或在住预订可以收取押金。")
+        # MC11-RES-02：过期 PENDING 单不得再经押金确认（与在线入口过期
+        # 拒绝口径对齐）；押金成功即确认链路同样不复活过期单。
+        if (
+            reservation.status == "PENDING"
+            and reservation.expires_at is not None
+            and reservation.expires_at < timezone.now()
+        ):
+            raise ValueError("该订单已超过支付保留期，库存已释放，请重新创建预订。")
         folio = (
             Folio.objects.select_for_update()
             .filter(

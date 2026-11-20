@@ -20,6 +20,7 @@
 
 口径：站内通知（无第三方渠道）；refresh 为实时派生 + upsert（无 celery）。
 """
+
 import json
 import uuid
 from datetime import timedelta
@@ -55,8 +56,6 @@ _TEST_PW_EA5E4F64 = get_random_string(24)
 _TEST_PW_5A092416 = get_random_string(24)
 
 
-
-
 class NotificationCenterTestBase(E2EFlowTestBase):
     """DEFAULT 物业 + 前台/值班经理/客房服务员三岗位 + 业务工厂。"""
 
@@ -75,60 +74,90 @@ class NotificationCenterTestBase(E2EFlowTestBase):
     def _new_property(self, code="NT-OTHER"):
         """他物业工厂（物业隔离测试用）。"""
         property_obj, _ = Property.objects.get_or_create(
-            code=code, defaults={"name": "通知测试他物业"})
+            code=code, defaults={"name": "通知测试他物业"}
+        )
         return property_obj
 
-    def _reservation(self, status=Reservation.Status.PENDING,
-                     check_in_offset=2, nights=1, booking_no=None):
+    def _reservation(
+        self, status=Reservation.Status.PENDING, check_in_offset=2, nights=1, booking_no=None
+    ):
         """预订工厂：默认后天抵店（不落入任何待办来源，按需覆写）。"""
         check_in = self.today + timedelta(days=check_in_offset)
         booking_no = booking_no or f"NT-{uuid.uuid4().hex[:10].upper()}"
         guest = Guest.objects.create(
-            property=self.property, full_name="通知测试住客",
-            phone=f"138{uuid.uuid4().int % 10**8:08d}")
+            property=self.property,
+            full_name="通知测试住客",
+            phone=f"138{uuid.uuid4().int % 10**8:08d}",
+        )
         reservation = Reservation.objects.create(
-            property=self.property, booking_no=booking_no, guest=guest,
-            source="WEBSITE", status=status, check_in=check_in,
+            property=self.property,
+            booking_no=booking_no,
+            guest=guest,
+            source="WEBSITE",
+            status=status,
+            check_in=check_in,
             check_out=check_in + timedelta(days=nights),
-            total_amount=Decimal("288.00"))
+            total_amount=Decimal("288.00"),
+        )
         ReservationRoom.objects.create(
-            property=self.property, reservation=reservation,
-            room_type=self.room_type, rate_plan=self.rate_plan,
-            check_in=check_in, check_out=check_in + timedelta(days=nights),
-            amount=Decimal("288.00"), nightly_rates=[])
+            property=self.property,
+            reservation=reservation,
+            room_type=self.room_type,
+            rate_plan=self.rate_plan,
+            check_in=check_in,
+            check_out=check_in + timedelta(days=nights),
+            amount=Decimal("288.00"),
+            nightly_rates=[],
+        )
         return reservation
 
     def _approval(self, action_code="billing.refund_approve"):
         return ApprovalRecord.objects.create(
-            property=self.property, action_code=action_code,
-            entity_type="Refund", entity_id=str(uuid.uuid4().int % 10000),
-            requested_by=self.fd, reason="通知中心测试审批",
-            idempotency_key=f"nt-appr-{uuid.uuid4().hex[:16]}")
+            property=self.property,
+            action_code=action_code,
+            entity_type="Refund",
+            entity_id=str(uuid.uuid4().int % 10000),
+            requested_by=self.fd,
+            reason="通知中心测试审批",
+            idempotency_key=f"nt-appr-{uuid.uuid4().hex[:16]}",
+        )
 
     def _set_room(self, room, housekeeping_status):
-        Room.objects.filter(pk=room.pk).update(
-            housekeeping_status=housekeeping_status)
+        Room.objects.filter(pk=room.pk).update(housekeeping_status=housekeeping_status)
         room.refresh_from_db()
 
     def _breakglass_used(self):
         business_date = BusinessDate.objects.create(
-            property=self.property, business_date=self.today,
-            status=BusinessDate.Status.CLOSED)
+            property=self.property, business_date=self.today, status=BusinessDate.Status.CLOSED
+        )
         return BreakGlassRecord.objects.create(
-            property=self.property, business_date=business_date,
-            requested_by=self.dm, reason="通知中心测试紧急重开",
+            property=self.property,
+            business_date=business_date,
+            requested_by=self.dm,
+            reason="通知中心测试紧急重开",
             password_verified_at=timezone.now(),
             expires_at=timezone.now() + timedelta(hours=1),
-            status=BreakGlassRecord.Status.USED, used_at=timezone.now())
+            status=BreakGlassRecord.Status.USED,
+            used_at=timezone.now(),
+        )
 
-    def _direct_notification(self, staff_user, title="定向通知",
-                             category=Notification.Category.SYSTEM,
-                             severity=Notification.Severity.INFO):
+    def _direct_notification(
+        self,
+        staff_user,
+        title="定向通知",
+        category=Notification.Category.SYSTEM,
+        severity=Notification.Severity.INFO,
+    ):
         """定向通知工厂（recipient 非空，不参与自动销项）。"""
         profile = StaffProfile.objects.get(user=staff_user)
         return Notification.objects.create(
-            property=self.property, recipient=profile, category=category,
-            title=title, body="定向通知内容", link="/home/")
+            property=self.property,
+            recipient=profile,
+            category=category,
+            title=title,
+            body="定向通知内容",
+            link="/home/",
+        )
 
     def _rows(self, **filters):
         return list(Notification.objects.filter(**filters).order_by("id"))
@@ -152,12 +181,10 @@ class RefreshDerivationTests(NotificationCenterTestBase):
             self.assertIsNotNone(row.role_group_id)
             self.assertIsNone(row.recipient_id)
             self.assertTrue(row.dedupe_key)
-        self.assertEqual(
-            {row.role_group.name for row in rows}, {"前台", "值班经理"})
+        self.assertEqual({row.role_group.name for row in rows}, {"前台", "值班经理"})
 
     def test_arrival_today_creates_todo(self):
-        reservation = self._reservation(
-            status=Reservation.Status.CONFIRMED, check_in_offset=0)
+        reservation = self._reservation(status=Reservation.Status.CONFIRMED, check_in_offset=0)
         refresh_operational_todos(self.property)
         rows = self._rows(category=Notification.Category.RESERVATION)
         self.assertEqual(len(rows), 2)
@@ -168,8 +195,7 @@ class RefreshDerivationTests(NotificationCenterTestBase):
             self.assertEqual(row.link, "/checkin/")
 
     def test_departure_today_creates_todo(self):
-        reservation = self._reservation(
-            status=Reservation.Status.CHECKED_IN, check_in_offset=-1)
+        reservation = self._reservation(status=Reservation.Status.CHECKED_IN, check_in_offset=-1)
         # 已入住主单 check_out=今天（工厂默认 1 晚 → 今天离店）
         refresh_operational_todos(self.property)
         rows = self._rows(category=Notification.Category.RESERVATION)
@@ -182,8 +208,8 @@ class RefreshDerivationTests(NotificationCenterTestBase):
 
     def test_overdue_reservation_creates_critical_todo(self):
         reservation = self._reservation(
-            status=Reservation.Status.CONFIRMED,
-            check_in_offset=-3, nights=2)  # check_in 已过 3 天仍未入住
+            status=Reservation.Status.CONFIRMED, check_in_offset=-3, nights=2
+        )  # check_in 已过 3 天仍未入住
         refresh_operational_todos(self.property)
         rows = self._rows(category=Notification.Category.RESERVATION)
         self.assertEqual(len(rows), 2)
@@ -203,8 +229,7 @@ class RefreshDerivationTests(NotificationCenterTestBase):
             self.assertEqual(row.severity, "warning")
             self.assertIn("待清洁房 1 间", row.title)
             self.assertEqual(row.link, "/manage/housekeeping/")
-        self.assertEqual(
-            {row.role_group.name for row in rows}, {"客房服务员", "值班经理"})
+        self.assertEqual({row.role_group.name for row in rows}, {"客房服务员", "值班经理"})
 
     def test_inspecting_room_creates_release_todo_for_managers(self):
         self._set_room(self.room2, Room.HousekeepingStatus.INSPECTING)
@@ -229,8 +254,7 @@ class RefreshDerivationTests(NotificationCenterTestBase):
             self.assertEqual(row.link, "/manage/finance/")
         for row in reopen_rows:
             self.assertEqual(row.link, "/manage/night-audit/")
-        self.assertEqual(
-            {row.role_group.name for row in rows}, {"值班经理", "店长"})
+        self.assertEqual({row.role_group.name for row in rows}, {"值班经理", "店长"})
         self.assertTrue(all(row.severity == "warning" for row in rows))
         self.assertTrue(all(record.entity_type in row.body for row in refund_rows))
 
@@ -267,26 +291,25 @@ class RefreshIdempotencyAndResolveTests(NotificationCenterTestBase):
         self.assertEqual(first["active"], second["active"])
 
     def test_resolved_source_marks_todo_read(self):
-        reservation = self._reservation(status=Reservation.Status.PENDING,
-                                        check_in_offset=5)
+        reservation = self._reservation(status=Reservation.Status.PENDING, check_in_offset=5)
         refresh_operational_todos(self.property)
         self.assertEqual(len(self._rows(resolved_at__isnull=True)), 2)
         # 源业务解决：预订确认（状态权威仍是 Reservation，通知只是投影）
-        Reservation.objects.filter(pk=reservation.pk).update(
-            status=Reservation.Status.CONFIRMED)
+        Reservation.objects.filter(pk=reservation.pk).update(status=Reservation.Status.CONFIRMED)
         summary = refresh_operational_todos(self.property)
         self.assertEqual(summary["resolved"], 2)
-        self.assertFalse(Notification.objects.filter(
-            dedupe_key__isnull=False, resolved_at__isnull=True
-        ).exclude(dedupe_key="").exists())
+        self.assertFalse(
+            Notification.objects.filter(dedupe_key__isnull=False, resolved_at__isnull=True)
+            .exclude(dedupe_key="")
+            .exists()
+        )
         resolved_at_values = [row.resolved_at for row in self._rows()]
         self.assertTrue(all(resolved_at_values))
 
     def test_count_change_updates_body_without_new_rows(self):
         self._set_room(self.room1, Room.HousekeepingStatus.DIRTY)
         refresh_operational_todos(self.property)
-        before_pks = {row.pk for row in self._rows(
-            category=Notification.Category.HOUSEKEEPING)}
+        before_pks = {row.pk for row in self._rows(category=Notification.Category.HOUSEKEEPING)}
         self._set_room(self.room2, Room.HousekeepingStatus.CLEANING)
         summary = refresh_operational_todos(self.property)
         self.assertEqual(summary["created"], 0)
@@ -315,8 +338,8 @@ class RefreshIdempotencyAndResolveTests(NotificationCenterTestBase):
     def test_notification_requires_audience(self):
         """recipient 与 role_group 都为空 → 模型约束拒绝（4.1 full_clean）。"""
         orphan = Notification(
-            property=self.property, category=Notification.Category.SYSTEM,
-            title="无接收人", body="")
+            property=self.property, category=Notification.Category.SYSTEM, title="无接收人", body=""
+        )
         with self.assertRaises(ValidationError):
             orphan.full_clean()
 
@@ -332,31 +355,29 @@ class NotificationApiTests(NotificationCenterTestBase):
         self.client.logout()
         response = self.client.get("/api/v1/notifications")
         self.assertEqual(response.status_code, 401)
-        self.assertEqual(
-            response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
+        self.assertEqual(response.json()["error"]["code"], "AUTHENTICATION_REQUIRED")
 
     def test_endpoints_require_property_membership(self):
-        outsider = User.objects.create_user(
-            username="nt_outsider", password=_TEST_PW_EA5E4F64)
+        outsider = User.objects.create_user(username="nt_outsider", password=_TEST_PW_EA5E4F64)
         self._login(outsider)
-        for method, url in (("get", "/api/v1/notifications"),
-                            ("get", "/api/v1/notifications/unread-count"),
-                            ("post", "/api/v1/notifications/read-all"),
-                            ("post", "/api/v1/notifications/refresh")):
+        for method, url in (
+            ("get", "/api/v1/notifications"),
+            ("get", "/api/v1/notifications/unread-count"),
+            ("post", "/api/v1/notifications/read-all"),
+            ("post", "/api/v1/notifications/refresh"),
+        ):
             response = getattr(self.client, method)(url)
             self.assertEqual(response.status_code, 404, url)
-            self.assertEqual(
-                response.json()["error"]["code"], "RESOURCE_NOT_FOUND", url)
+            self.assertEqual(response.json()["error"]["code"], "RESOURCE_NOT_FOUND", url)
 
     def test_endpoints_reject_stale_membership_at_middleware_layer(self):
         """任职被停用：中间件不再提供物业上下文 → 404（与无任职同口径）。"""
-        PropertyStaffMembership.objects.filter(
-            staff_profile__user=self.fd).update(
-            status=PropertyStaffMembership.Status.SUSPENDED)
+        PropertyStaffMembership.objects.filter(staff_profile__user=self.fd).update(
+            status=PropertyStaffMembership.Status.SUSPENDED
+        )
         response = self.client.get("/api/v1/notifications")
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(
-            response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
+        self.assertEqual(response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
 
     def test_stale_membership_403_view_layer_defense(self):
         """视图层兜底：物业上下文存在但 get_active_membership 失效 → 403。
@@ -364,16 +385,16 @@ class NotificationApiTests(NotificationCenterTestBase):
         （HTTP 链路上中间件先行拒绝；此处直调视图锁住防御分支行为。）
         """
         from django.test import RequestFactory
-        PropertyStaffMembership.objects.filter(
-            staff_profile__user=self.fd).update(
-            status=PropertyStaffMembership.Status.SUSPENDED)
+
+        PropertyStaffMembership.objects.filter(staff_profile__user=self.fd).update(
+            status=PropertyStaffMembership.Status.SUSPENDED
+        )
         request = RequestFactory().get("/api/v1/notifications")
         request.user = self.fd
         request.property = self.property
         response = notification_center.notification_list(request)
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(
-            json.loads(response.content)["error"]["code"], "PERMISSION_DENIED")
+        self.assertEqual(json.loads(response.content)["error"]["code"], "PERMISSION_DENIED")
 
     # -- 列表与范围 -----------------------------------------------------
     def test_list_shows_role_broadcast_and_direct_only(self):
@@ -387,9 +408,7 @@ class NotificationApiTests(NotificationCenterTestBase):
         rows = response.json()["data"]
         # 前台广播 1 条 + 定向 1 条；值班经理广播不可见
         self.assertEqual(len(rows), 2)
-        self.assertEqual(
-            {row["audience"]["type"] for row in rows},
-            {"role_group", "staff"})
+        self.assertEqual({row["audience"]["type"] for row in rows}, {"role_group", "staff"})
         self.assertIn("给我的定向", [row["title"] for row in rows])
 
         self._login(self.housekeeper)
@@ -401,27 +420,27 @@ class NotificationApiTests(NotificationCenterTestBase):
         self._set_room(self.room1, Room.HousekeepingStatus.DIRTY)
         refresh_operational_todos(self.property)
         self._login(self.dm)
-        by_category = self.client.get(
-            "/api/v1/notifications?category=housekeeping").json()["data"]
-        self.assertTrue(
-            all(row["category"] == "housekeeping" for row in by_category))
+        by_category = self.client.get("/api/v1/notifications?category=housekeeping").json()["data"]
+        self.assertTrue(all(row["category"] == "housekeeping" for row in by_category))
         # 值班经理只看到广播给本组的 1 条清洁待办（客房服务员行不可见）
         self.assertEqual(len(by_category), 1)
-        marked = self.client.post(
-            f"/api/v1/notifications/{by_category[0]['id']}/read")
+        marked = self.client.post(f"/api/v1/notifications/{by_category[0]['id']}/read")
         self.assertEqual(marked.status_code, 200)
-        unread = self.client.get(
-            "/api/v1/notifications?is_read=false").json()["data"]
-        self.assertNotIn(
-            by_category[0]["id"], [row["id"] for row in unread])
+        unread = self.client.get("/api/v1/notifications?is_read=false").json()["data"]
+        self.assertNotIn(by_category[0]["id"], [row["id"] for row in unread])
 
     def test_list_rejects_invalid_filters_and_pagination(self):
-        for query in ("page=0", "page=abc", "page_size=0", "page_size=101",
-                      "category=nonsense", "is_read=maybe"):
+        for query in (
+            "page=0",
+            "page=abc",
+            "page_size=0",
+            "page_size=101",
+            "category=nonsense",
+            "is_read=maybe",
+        ):
             response = self.client.get(f"/api/v1/notifications?{query}")
             self.assertEqual(response.status_code, 400, query)
-            self.assertEqual(
-                response.json()["error"]["code"], "VALIDATION_ERROR", query)
+            self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR", query)
 
     def test_list_stable_ordering_newest_first(self):
         first = self._direct_notification(self.fd, title="第一条")
@@ -436,8 +455,7 @@ class NotificationApiTests(NotificationCenterTestBase):
         self._direct_notification(self.fd, title="定向未读")
         data = self.client.get("/api/v1/notifications/unread-count").json()["data"]
         self.assertEqual(data["unread_count"], 2)
-        self.assertEqual(data["by_category"],
-                         {"reservation": 1, "system": 1})
+        self.assertEqual(data["by_category"], {"reservation": 1, "system": 1})
         # 岗位广播之外：客房服务员计数为 0
         self._login(self.housekeeper)
         empty = self.client.get("/api/v1/notifications/unread-count").json()["data"]
@@ -455,42 +473,44 @@ class NotificationApiTests(NotificationCenterTestBase):
         self.assertEqual(second.json()["data"]["read_at"], first_read_at)
         notification.refresh_from_db()
         self.assertFalse(notification.is_read)
-        self.assertEqual(NotificationRead.objects.filter(
-            notification=notification,
-            staff_profile__user=self.fd).count(), 1)
+        self.assertEqual(
+            NotificationRead.objects.filter(
+                notification=notification, staff_profile__user=self.fd
+            ).count(),
+            1,
+        )
 
     def test_broadcast_read_receipt_is_personal_per_employee(self):
         """同岗位广播由一名员工读过，不得影响同岗位其他员工的未读状态。"""
         profile = self.housekeeper.staff_profile
-        group = profile.property_memberships.get(
-            property=self.property).role_assignments.get(
-                group__name="客房服务员").group
+        group = (
+            profile.property_memberships.get(property=self.property)
+            .role_assignments.get(group__name="客房服务员")
+            .group
+        )
         broadcast = Notification.objects.create(
-            property=self.property, role_group=group,
-            category=Notification.Category.SYSTEM, title="岗位广播")
+            property=self.property,
+            role_group=group,
+            category=Notification.Category.SYSTEM,
+            title="岗位广播",
+        )
         self.client.force_login(self.housekeeper)
-        first = self.client.post(
-            f"/api/v1/notifications/{broadcast.pk}/read")
+        first = self.client.post(f"/api/v1/notifications/{broadcast.pk}/read")
         self.assertEqual(first.status_code, 200, first.content)
         self.assertEqual(first.json()["data"]["is_read"], True)
 
-        second_housekeeper = self._make_staff(
-            "nt_housekeeper_second", "客房服务员")
+        second_housekeeper = self._make_staff("nt_housekeeper_second", "客房服务员")
         self.client.force_login(second_housekeeper)
-        unread = self.client.get(
-            "/api/v1/notifications?is_read=false").json()["data"]
+        unread = self.client.get("/api/v1/notifications?is_read=false").json()["data"]
         self.assertIn(broadcast.pk, {item["id"] for item in unread})
 
     def test_mark_read_out_of_scope_is_404(self):
         self._set_room(self.room1, Room.HousekeepingStatus.DIRTY)
         refresh_operational_todos(self.property)
-        housekeeper_row = Notification.objects.get(
-            role_group__name="客房服务员")
-        response = self.client.post(
-            f"/api/v1/notifications/{housekeeper_row.pk}/read")
+        housekeeper_row = Notification.objects.get(role_group__name="客房服务员")
+        response = self.client.post(f"/api/v1/notifications/{housekeeper_row.pk}/read")
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(
-            response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
+        self.assertEqual(response.json()["error"]["code"], "RESOURCE_NOT_FOUND")
 
     def test_read_all_scoped_to_my_audience(self):
         mine = self._direct_notification(self.fd, title="我的定向")
@@ -498,43 +518,48 @@ class NotificationApiTests(NotificationCenterTestBase):
         response = self.client.post("/api/v1/notifications/read-all")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["marked_read"], 1)
-        self.assertTrue(NotificationRead.objects.filter(
-            notification=mine, staff_profile__user=self.fd).exists())
-        self.assertFalse(NotificationRead.objects.filter(
-            notification=other, staff_profile__user=self.fd).exists())
-        self.assertFalse(NotificationRead.objects.filter(
-            notification=other).exists())
+        self.assertTrue(
+            NotificationRead.objects.filter(notification=mine, staff_profile__user=self.fd).exists()
+        )
+        self.assertFalse(
+            NotificationRead.objects.filter(
+                notification=other, staff_profile__user=self.fd
+            ).exists()
+        )
+        self.assertFalse(NotificationRead.objects.filter(notification=other).exists())
         # 旧全局字段不再被 API 修改，避免一个员工改变广播通知的全员状态。
         mine.refresh_from_db()
         self.assertFalse(mine.is_read)
 
     # -- refresh 端点 ---------------------------------------------------
     def test_refresh_endpoint_creates_and_resolves(self):
-        reservation = self._reservation(status=Reservation.Status.PENDING,
-                                        check_in_offset=5)
+        reservation = self._reservation(status=Reservation.Status.PENDING, check_in_offset=5)
         response = self.client.post("/api/v1/notifications/refresh")
         self.assertEqual(response.status_code, 200)
         summary = response.json()["data"]
         self.assertEqual(summary["created"], 2)
         self.assertIn("refresh_note", response.json()["meta"])
-        Reservation.objects.filter(pk=reservation.pk).update(
-            status=Reservation.Status.CONFIRMED)
+        Reservation.objects.filter(pk=reservation.pk).update(status=Reservation.Status.CONFIRMED)
         second = self.client.post("/api/v1/notifications/refresh")
         self.assertEqual(second.status_code, 200)
         self.assertEqual(second.json()["data"]["resolved"], 2)
-        self.assertFalse(Notification.objects.filter(
-            dedupe_key__isnull=False, resolved_at__isnull=True
-        ).exclude(dedupe_key="").exists())
+        self.assertFalse(
+            Notification.objects.filter(dedupe_key__isnull=False, resolved_at__isnull=True)
+            .exclude(dedupe_key="")
+            .exists()
+        )
 
-    @override_settings(PUBLIC_RATE_LIMITS={
-        "pms.notification_refresh": [(("ip", "username"), 1, 60)],
-    })
+    @override_settings(
+        PUBLIC_RATE_LIMITS={
+            "pms.notification_refresh": [(("ip", "username"), 1, 60)],
+        }
+    )
     def test_refresh_endpoint_is_rate_limited_and_audited(self):
         first = self.client.post("/api/v1/notifications/refresh")
         self.assertEqual(first.status_code, 200, first.content)
         event = AuditEvent.objects.filter(
-            action="notification.refresh", property=self.property,
-            actor=self.fd).first()
+            action="notification.refresh", property=self.property, actor=self.fd
+        ).first()
         self.assertIsNotNone(event)
         self.assertEqual(event.entity_type, "Property")
         self.assertEqual(str(event.entity_id), str(self.property.pk))
@@ -542,9 +567,12 @@ class NotificationApiTests(NotificationCenterTestBase):
         second = self.client.post("/api/v1/notifications/refresh")
         self.assertEqual(second.status_code, 429, second.content)
         self.assertEqual(second.json()["error"]["code"], "RATE_LIMITED")
-        self.assertEqual(AuditEvent.objects.filter(
-            action="notification.refresh", property=self.property,
-            actor=self.fd).count(), 1)
+        self.assertEqual(
+            AuditEvent.objects.filter(
+                action="notification.refresh", property=self.property, actor=self.fd
+            ).count(),
+            1,
+        )
 
     def test_refresh_endpoint_requires_authentication(self):
         self.client.logout()
@@ -555,30 +583,36 @@ class NotificationApiTests(NotificationCenterTestBase):
     def test_property_isolation(self):
         other_property = self._new_property()
         other_room_type = RoomType.objects.create(
-            property=other_property, code="NT-OTHER-KING",
-            name="他物业测试房型", capacity=2)
+            property=other_property, code="NT-OTHER-KING", name="他物业测试房型", capacity=2
+        )
         Room.objects.create(
-            property=other_property, room_type=other_room_type,
-            number="NT-9001", floor="9",
-            housekeeping_status=Room.HousekeepingStatus.DIRTY)
+            property=other_property,
+            room_type=other_room_type,
+            number="NT-9001",
+            floor="9",
+            housekeeping_status=Room.HousekeepingStatus.DIRTY,
+        )
         refresh_operational_todos(other_property)
         # 他物业待办对本物业员工不可见
+        self.assertEqual(self.client.get("/api/v1/notifications").json()["data"], [])
         self.assertEqual(
-            self.client.get("/api/v1/notifications").json()["data"], [])
-        self.assertEqual(
-            self.client.get("/api/v1/notifications/unread-count")
-            .json()["data"]["unread_count"], 0)
+            self.client.get("/api/v1/notifications/unread-count").json()["data"]["unread_count"], 0
+        )
         # 本物业 refresh 不销项他物业的待办（按 property 隔离）
         before = Notification.objects.filter(
-            property=other_property, resolved_at__isnull=True).count()
+            property=other_property, resolved_at__isnull=True
+        ).count()
         self.client.post("/api/v1/notifications/refresh")
         self.assertEqual(
-            Notification.objects.filter(
-                property=other_property, resolved_at__isnull=True).count(), before)
+            Notification.objects.filter(property=other_property, resolved_at__isnull=True).count(),
+            before,
+        )
         # 他物业的待办行仍存在且未读
-        self.assertTrue(Notification.objects.filter(
-            property=other_property, role_group__name="客房服务员",
-            resolved_at__isnull=True).exists())
+        self.assertTrue(
+            Notification.objects.filter(
+                property=other_property, role_group__name="客房服务员", resolved_at__isnull=True
+            ).exists()
+        )
 
 
 class NotificationCenterPageTests(NotificationCenterTestBase):
@@ -586,6 +620,7 @@ class NotificationCenterPageTests(NotificationCenterTestBase):
 
     def test_management_centers_registration(self):
         from apps.api.pages import MANAGEMENT_CENTERS
+
         config = MANAGEMENT_CENTERS["notifications"]
         self.assertEqual(config["permission"], "")
         self.assertEqual(config["template"], "pms/notification_center.html")
@@ -597,8 +632,7 @@ class NotificationCenterPageTests(NotificationCenterTestBase):
         self.assertEqual(anonymous.status_code, 302)
         self.assertIn("/login/", anonymous.url)
 
-        outsider = User.objects.create_user(
-            username="nt_page_outsider", password=_TEST_PW_EA5E4F64)
+        outsider = User.objects.create_user(username="nt_page_outsider", password=_TEST_PW_EA5E4F64)
         self.client.force_login(outsider)
         forbidden = self.client.get("/manage/notifications/")
         self.assertEqual(forbidden.status_code, 403)
@@ -616,6 +650,7 @@ class NotificationCenterPageTests(NotificationCenterTestBase):
         self.assertIn('id="nt-goto-btn"', content)
 
     def test_sidebar_badge_injection(self):
+        """徽标=未读通知+我可执行待办合并计数（MC11-NTF-03）。"""
         self._reservation(status=Reservation.Status.PENDING)
         refresh_operational_todos(self.property)
         self.client.force_login(self.fd)
@@ -624,39 +659,66 @@ class NotificationCenterPageTests(NotificationCenterTestBase):
         content = page.content.decode("utf-8")
         self.assertIn('href="/manage/notifications/"', content)
         self.assertIn("side-badge", content)
-        self.assertIn(">1</span>", content)  # 前台岗位广播 1 条未读
+        # 前台岗位广播 1 条未读 + 1 项开放待办（reservation.pending_confirm）
+        self.assertIn(">2</span>", content)
 
-        # 全部已读后徽标归零消失（0 不渲染徽标）
+        # 全部已读后徽标不归零：仍剩 1 项开放待办任务
         self.client.post("/api/v1/notifications/read-all")
         content_after = self.client.get("/home/").content.decode("utf-8")
         self.assertIn('href="/manage/notifications/"', content_after)
-        self.assertNotIn("side-badge", content_after)
+        self.assertIn("side-badge", content_after)
+        self.assertIn(">1</span>", content_after)
+
+    def test_tasks_section_rendered_with_assign_flag(self):
+        """MC11-NTF-01：页面渲染我的待办区块；指派按钮标志按 identity.staff_manage 注入。"""
+        self._reservation(status=Reservation.Status.PENDING)
+        refresh_operational_todos(self.property)
+
+        owner = self._make_staff("nt_owner_mc11", "店长")
+        self.client.force_login(owner)
+        content = self.client.get("/manage/notifications/").content.decode("utf-8")
+        self.assertIn('id="wt-rows"', content)
+        self.assertIn('id="wt-permissions"', content)
+        self.assertIn("我的待办", content)
+        self.assertIn('"can_assign": true', content)
+
+        self.client.force_login(self.housekeeper)
+        content_housekeeper = self.client.get("/manage/notifications/").content.decode("utf-8")
+        self.assertIn('id="wt-rows"', content_housekeeper)
+        self.assertIn('"can_assign": false', content_housekeeper)
+
+    def test_page_load_does_not_auto_refresh(self):
+        """MC11-NTF-02：首屏只读；refresh 仅由「立即刷新待办」按钮触发。"""
+        self.client.force_login(self.fd)
+        content = self.client.get("/manage/notifications/").content.decode("utf-8")
+        # 自动刷新链（页面加载即 POST refresh）已移除；refresh 仅存于按钮处理器
+        self.assertNotIn('postJSON(api + "/refresh").catch', content)
+        self.assertIn("loadTasks(1)", content)
+        self.assertIn('id="nt-refresh-btn"', content)
 
     def test_member_without_role_assignment_gets_direct_notifications(self):
         """无任何岗位授权的在职员工：入口可见（pms_is_staff）、定向通知可达，
         岗位广播不可见（§4.6：按当前有效任职动态授权）。"""
-        user = User.objects.create_user(
-            username="nt_norole", password=_TEST_PW_5A092416)
+        user = User.objects.create_user(username="nt_norole", password=_TEST_PW_5A092416)
         profile = StaffProfile.objects.create(
-            user=user, full_name="无岗员工",
-            employment_status=StaffProfile.EmploymentStatus.ACTIVE)
+            user=user, full_name="无岗员工", employment_status=StaffProfile.EmploymentStatus.ACTIVE
+        )
         PropertyStaffMembership.objects.create(
-            staff_profile=profile, property=self.property,
+            staff_profile=profile,
+            property=self.property,
             employee_no="NT-NOROLE",
-            status=PropertyStaffMembership.Status.ACTIVE)
+            status=PropertyStaffMembership.Status.ACTIVE,
+        )
         self._direct_notification(user, title="给无岗员工的定向")
         self.client.force_login(user)
         page = self.client.get("/manage/notifications/")
         self.assertEqual(page.status_code, 200)
-        self.assertIn(
-            'href="/manage/notifications/"', page.content.decode("utf-8"))
+        self.assertIn('href="/manage/notifications/"', page.content.decode("utf-8"))
         rows = self.client.get("/api/v1/notifications").json()["data"]
-        self.assertEqual(
-            [row["title"] for row in rows], ["给无岗员工的定向"])
+        self.assertEqual([row["title"] for row in rows], ["给无岗员工的定向"])
 
     def test_severity_and_category_labels_in_api_payload(self):
-        self._reservation(status=Reservation.Status.PENDING,
-                          check_in_offset=-3, nights=2)
+        self._reservation(status=Reservation.Status.PENDING, check_in_offset=-3, nights=2)
         self._set_room(self.room1, Room.HousekeepingStatus.INSPECTING)
         refresh_operational_todos(self.property)
         self.client.force_login(self.dm)

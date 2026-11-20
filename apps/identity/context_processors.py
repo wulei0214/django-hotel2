@@ -15,8 +15,13 @@ def pms_context(request):
     user = getattr(request, "user", None)
     membership = getattr(request, "staff_membership", None)
     if not user or not user.is_authenticated or not user.is_active or membership is None:
-        return {"pms_perms": permissions, "pms_role_names": role_names,
-                "pms_is_staff": False, "pms_unread_notifications": 0}
+        return {
+            "pms_perms": permissions,
+            "pms_role_names": role_names,
+            "pms_is_staff": False,
+            "pms_unread_notifications": 0,
+            "pms_open_work_items": 0,
+        }
 
     now = timezone.now()
     assignments = (
@@ -33,19 +38,40 @@ def pms_context(request):
             permissions.setdefault(app_label, {})[permission.codename] = True
 
     # §4.6 通知与待办中心：侧边栏未读徽标——与通知 API 同一"我的范围"口径
-    #（当前物业 + 定向本人 或 岗位广播组∈当前有效任职组），单条 COUNT 查询。
+    # （当前物业 + 定向本人 或 岗位广播组∈当前有效任职组），单条 COUNT 查询。
     active_group_ids = [assignment.group_id for assignment in assignments]
     personal_receipts = NotificationRead.objects.filter(
-        notification_id=OuterRef("pk"),
-        staff_profile_id=membership.staff_profile_id)
+        notification_id=OuterRef("pk"), staff_profile_id=membership.staff_profile_id
+    )
     unread_notifications = (
-        Notification.objects.filter(
-            property_id=membership.property_id, resolved_at__isnull=True)
-        .filter(Q(recipient_id=membership.staff_profile_id)
-                | Q(role_group_id__in=active_group_ids))
+        Notification.objects.filter(property_id=membership.property_id, resolved_at__isnull=True)
+        .filter(Q(recipient_id=membership.staff_profile_id) | Q(role_group_id__in=active_group_ids))
         .annotate(personally_read=Exists(personal_receipts))
         .filter(personally_read=False)
-        .count())
+        .count()
+    )
 
-    return {"pms_perms": permissions, "pms_role_names": role_names,
-            "pms_is_staff": True, "pms_unread_notifications": unread_notifications}
+    # MC11-NTF-03：侧栏徽标并入我可执行待办数——与 task_center 同一可见
+    # 范围口径（指派本人 / 本人认领 / 岗位组），开放状态（PENDING/CLAIMED）。
+    from apps.core.models import WorkItem
+
+    open_work_items = (
+        WorkItem.objects.filter(
+            property_id=membership.property_id,
+            status__in=(WorkItem.Status.PENDING, WorkItem.Status.CLAIMED),
+        )
+        .filter(
+            Q(assigned_profile_id=membership.staff_profile_id)
+            | Q(claimed_by_id=membership.staff_profile_id)
+            | Q(assigned_group_id__in=active_group_ids)
+        )
+        .count()
+    )
+
+    return {
+        "pms_perms": permissions,
+        "pms_role_names": role_names,
+        "pms_is_staff": True,
+        "pms_unread_notifications": unread_notifications,
+        "pms_open_work_items": open_work_items,
+    }

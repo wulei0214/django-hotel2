@@ -62,6 +62,44 @@
       <a href="/home/">返回主界面</a>
     </div>
 
+    {# ── 我的待办（MC11-NTF-01）：可执行 WorkItem；完成动作调用源领域服务 ── #}
+    <section class="pms-panel" aria-label="我的待办">
+      <div class="pms-tools">
+        <select id="wt-status" aria-label="任务状态筛选">
+          <option value="">开放中（待处理+处理中）</option>
+          <option value="PENDING">待处理</option>
+          <option value="CLAIMED">处理中</option>
+          <option value="DONE">已完成</option>
+        </select>
+        <select id="wt-assigned" aria-label="任务范围筛选">
+          <option value="all">全部可见</option>
+          <option value="me">指派给我</option>
+          <option value="group">我的岗位组</option>
+        </select>
+        <button id="wt-search-btn" type="button">查询</button>
+        <span class="pms-meta" id="wt-list-meta"></span>
+      </div>
+      <div class="pms-table-wrap">
+        <table class="pms-table" aria-describedby="wt-list-meta">
+          <thead>
+            <tr>
+              <th scope="col">任务</th><th scope="col">级别</th><th scope="col">状态</th>
+              <th scope="col">负责人</th><th scope="col">操作</th>
+            </tr>
+          </thead>
+          <tbody id="wt-rows"><tr><td colspan="5" class="pms-state">读取中…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pms-pager">
+        <span class="pms-pager-controls">
+          <button id="wt-prev" type="button" class="au-ghost">上一页</button>
+          <span id="wt-page-info">—</span>
+          <button id="wt-next" type="button" class="au-ghost">下一页</button>
+        </span>
+      </div>
+      <div class="pms-error" id="wt-error" hidden></div>
+    </section>
+
     {# ── 通知列表：类别/级别徽标、时间、已读状态；点击标记已读 ── #}
     <section class="pms-panel" aria-label="我的通知">
       <div class="pms-tools">
@@ -114,7 +152,46 @@
     </section>
   </div>
 </div>
+<div id="wt-modal" class="wt-modal" hidden>
+  <div class="wt-modal-card">
+    <h2 id="wt-modal-title">完成任务</h2>
+    <div class="wt-modal-field" id="wt-modal-decision-row" hidden>
+      <label for="wt-modal-decision">复核结论</label>
+      <select id="wt-modal-decision">
+        <option value="CONFIRMED">确认执行</option>
+        <option value="REJECTED">驳回</option>
+      </select>
+    </div>
+    <div class="wt-modal-field" id="wt-modal-reason-row">
+      <label for="wt-modal-reason">处理说明</label>
+      <textarea id="wt-modal-reason" rows="3" maxlength="240" placeholder="2-240 字，说明处理依据"></textarea>
+    </div>
+    <div class="wt-modal-field" id="wt-modal-assign-row" hidden>
+      <label for="wt-modal-assign">员工档案 ID</label>
+      <input id="wt-modal-assign" type="number" min="1" step="1" />
+    </div>
+    <div class="pms-error" id="wt-modal-error" hidden></div>
+    <div class="wt-modal-actions">
+      <button type="button" class="au-ghost" id="wt-modal-cancel">取消</button>
+      <button type="button" id="wt-modal-confirm">确认</button>
+    </div>
+  </div>
+</div>
+<style>
+.wt-modal{position:fixed;inset:0;background:rgba(15,24,40,.45);display:flex;align-items:center;justify-content:center;z-index:60}
+.wt-modal[hidden]{display:none}
+.wt-modal-card{background:var(--color-bg-surface,#fff);border-radius:var(--radius-lg,12px);padding:20px;width:min(440px,92vw);box-shadow:0 12px 40px rgba(15,24,40,.18)}
+.wt-modal-card h2{margin:0 0 14px;font-size:17px;color:var(--color-text-primary,#243247)}
+.wt-modal-field{margin-bottom:12px}
+.wt-modal-field label{display:block;font-size:12px;color:var(--color-text-secondary,#637188);margin-bottom:6px}
+.wt-modal-field textarea,.wt-modal-field select,.wt-modal-field input{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--color-border-default,#d9e0e9);border-radius:var(--radius-md,8px);font-size:13px}
+.wt-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+.wt-modal-actions button{padding:9px 18px;border:0;border-radius:var(--radius-md,8px);background:var(--color-accent-solid,#263a55);color:#fff;cursor:pointer}
+.wt-modal-actions .au-ghost{background:transparent;color:var(--color-text-secondary,#606266);border:1px solid var(--color-border-default,#dcdfe6)}
+.wt-last-error{display:block;color:var(--color-danger-text,#b34a4a);font-size:12px;margin-top:4px;white-space:normal}
+</style>
 <form id="pms-csrf-token" hidden>{% csrf_token %}</form>
+{{ task_permissions|json_script:"wt-permissions" }}
 <script>
 (function () {
   "use strict";
@@ -272,8 +349,9 @@
     return postJSON(api + "/refresh").then(function (body) {
       var data = body.data || {};
       $("nt-list-meta").textContent = "待办已重算：新增 " + (data.created || 0) +
-        " 条 / 更新 " + (data.updated || 0) + " 条 / 自动销项 " + (data.resolved || 0) + " 条";
-      loadList(1); loadUnread();
+        " 条 / 更新 " + (data.updated || 0) + " 条 / 自动销项 " + (data.resolved || 0) +
+        " 条 · 任务同步 " + (data.work_items || 0) + " 项";
+      loadList(1); loadTasks(1); loadUnread();
     }).catch(function (err) {
       showError("待办刷新失败：" + err.message);
     }).then(function () { button.disabled = false; });
@@ -317,12 +395,200 @@
     if (button && !button.disabled) markRead(button.getAttribute("data-notification-id"));
   });
 
-  // 页面加载即重算待办：待办由业务派生且无定时任务，不主动刷新会一直显示旧数据/空列表。
-  // 刷新失败（如无权限/限流）不阻断首屏，仍按现有数据渲染一次。
-  postJSON(api + "/refresh").catch(function () {}).then(function () {
-    loadUnread();
-    loadList(1);
+  // ── 我的待办（MC11-NTF-01）：/api/v1/tasks 全套编排 ──
+  var tasksApi = "/api/v1/tasks";
+  var taskState = { page: 1, hasNext: false, hasPrev: false, totalPages: 1 };
+  var taskPermissions = {};
+  try { taskPermissions = JSON.parse(document.getElementById("wt-permissions").textContent); } catch (e) { taskPermissions = {}; }
+  var TASK_STATUS_BADGE = {
+    PENDING: '<span class="nt-badge b-info">待处理</span>',
+    CLAIMED: '<span class="nt-badge b-warning">处理中</span>',
+    DONE: '<span class="nt-badge b-muted">已完成</span>',
+    CANCELLED: '<span class="nt-badge b-muted">已取消</span>'
+  };
+  var SEVERITY_BADGE_TASK = {
+    critical: "b-critical", warning: "b-warning", info: "b-info"
+  };
+  var activeWorkItem = null; // {id, taskCode, mode: "complete"|"assign"}
+
+  function postTaskJSON(url, payload) {
+    return fetch(url, {
+      method: "POST", credentials: "same-origin",
+      headers: {
+        "Accept": "application/json", "Content-Type": "application/json",
+        "X-CSRFToken": CSRF,
+        "Idempotency-Key": (crypto.randomUUID ? crypto.randomUUID() : "wt-" + Date.now() + "-" + Math.random().toString(36).slice(2))
+      },
+      body: JSON.stringify(payload || {})
+    }).then(parseResponse);
+  }
+
+  function showTaskError(message) {
+    var el = $("wt-error");
+    el.hidden = false; el.textContent = message;
+  }
+  function hideTaskError() { $("wt-error").hidden = true; $("wt-error").textContent = ""; }
+
+  function renderTaskRows(rows) {
+    lastTaskRows = rows.slice();
+    var tbody = $("wt-rows");
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="pms-state">当前筛选下暂无待办任务</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(function (row) {
+      var owner = row.assigned_to
+        ? "档案 #" + row.assigned_to
+        : (row.claimed_by ? "认领人 #" + row.claimed_by : "岗位组待认领");
+      var errorNote = row.last_error_code
+        ? '<span class="wt-last-error">上次失败：' + escapeHtml(row.last_error_summary || row.last_error_code) + '（可重试）</span>'
+        : "";
+      var safeLink = safeNotificationLink(row.link);
+      var buttons = [];
+      if (row.status === "PENDING" && !row.assigned_to) {
+        buttons.push('<button type="button" class="pms-row-btn" data-wt-action="claim" data-wt-id="' + row.id + '">认领</button>');
+      }
+      if (row.status !== "DONE" && row.status !== "CANCELLED" && row.can_complete) {
+        buttons.push('<button type="button" class="pms-row-btn" data-wt-action="complete" data-wt-id="' + row.id + '">' +
+          (row.last_error_code ? "重试完成" : "完成") + '</button>');
+      }
+      if (row.status === "PENDING" && taskPermissions.can_assign) {
+        buttons.push('<button type="button" class="pms-row-btn" data-wt-action="assign" data-wt-id="' + row.id + '">指派</button>');
+      }
+      if (safeLink) {
+        buttons.push('<a class="pms-row-btn" style="text-decoration:none" href="' + escapeHtml(safeLink) + '">前往处理</a>');
+      }
+      var severityCls = SEVERITY_BADGE_TASK[row.severity] || "b-info";
+      return "<tr>" +
+        '<td class="nt-title-cell">' + escapeHtml(row.title) +
+          (row.body ? '<span class="nt-body">' + escapeHtml(row.body) + '</span>' : "") + errorNote + "</td>" +
+        '<td><span class="nt-badge ' + severityCls + '">' + escapeHtml(row.severity_label || row.severity) + '</span></td>' +
+        "<td>" + (TASK_STATUS_BADGE[row.status] || escapeHtml(row.status_label || row.status)) + "</td>" +
+        "<td>" + escapeHtml(owner) + "</td>" +
+        "<td>" + (buttons.join(" ") || "—") + "</td>" +
+        "</tr>";
+    }).join("");
+  }
+
+  function loadTasks(page) {
+    taskState.page = page || 1;
+    hideTaskError();
+    $("wt-rows").innerHTML = '<tr><td colspan="5" class="pms-state">读取中…</td></tr>';
+    var params = ["page=" + taskState.page, "page_size=20"];
+    var status = $("wt-status").value;
+    var assigned = $("wt-assigned").value;
+    if (status) params.push("status=" + encodeURIComponent(status));
+    if (assigned) params.push("assigned=" + encodeURIComponent(assigned));
+    getJSON(tasksApi + "?" + params.join("&")).then(function (body) {
+      var pagination = body.meta.pagination;
+      taskState.totalPages = Math.max(1, Math.ceil(pagination.total / pagination.page_size));
+      taskState.hasNext = pagination.has_next;
+      taskState.hasPrev = pagination.has_previous;
+      $("wt-prev").disabled = !pagination.has_previous;
+      $("wt-next").disabled = !pagination.has_next;
+      $("wt-page-info").textContent =
+        "第 " + pagination.page + " / " + taskState.totalPages + " 页 · 共 " + pagination.total + " 项";
+      $("wt-list-meta").textContent = "范围：当前物业 · 指派本人 + 本人认领 + 有效岗位组";
+      renderTaskRows(body.data.items || []);
+    }).catch(function (err) {
+      $("wt-page-info").textContent = "—";
+      $("wt-rows").innerHTML = '<tr><td colspan="5" class="pms-state">读取失败</td></tr>';
+      showTaskError("待办读取失败：" + err.message);
+    });
+  }
+
+  function openTaskModal(mode, row) {
+    activeWorkItem = { id: row.id, taskCode: row.task_code, mode: mode };
+    $("wt-modal-error").hidden = true; $("wt-modal-error").textContent = "";
+    $("wt-modal-decision-row").hidden = !(mode === "complete" && row.task_code === "audit.breakglass_review");
+    $("wt-modal-reason-row").hidden = mode === "assign";
+    $("wt-modal-assign-row").hidden = mode !== "assign";
+    $("wt-modal-title").textContent = mode === "complete" ? ("完成任务：" + row.title) : ("指派任务：" + row.title);
+    $("wt-modal-reason").value = "";
+    $("wt-modal-decision").value = "CONFIRMED";
+    $("wt-modal-assign").value = "";
+    $("wt-modal").hidden = false;
+  }
+  function closeTaskModal() {
+    $("wt-modal").hidden = true;
+    activeWorkItem = null;
+  }
+
+  $("wt-modal-cancel").addEventListener("click", closeTaskModal);
+  $("wt-modal").addEventListener("click", function (event) {
+    if (event.target === this) closeTaskModal();
   });
+  $("wt-modal-confirm").addEventListener("click", function () {
+    if (!activeWorkItem) return;
+    var mode = activeWorkItem.mode;
+    var payload = {};
+    if (mode === "complete") {
+      if (activeWorkItem.taskCode === "audit.breakglass_review") {
+        payload.decision = $("wt-modal-decision").value;
+      }
+      var reason = $("wt-modal-reason").value.trim();
+      if (activeWorkItem.taskCode === "approval.pending" && (reason.length < 2 || reason.length > 240)) {
+        var errEl = $("wt-modal-error");
+        errEl.hidden = false; errEl.textContent = "审批说明需为 2 至 240 个字符。";
+        return;
+      }
+      if (reason) payload.reason = reason;
+    } else {
+      var target = Number.parseInt($("wt-modal-assign").value, 10);
+      if (!Number.isInteger(target) || target < 1) {
+        var errEl2 = $("wt-modal-error");
+        errEl2.hidden = false; errEl2.textContent = "请输入有效的员工档案 ID。";
+        return;
+      }
+      payload.assigned_to = target;
+    }
+    var url = tasksApi + "/" + activeWorkItem.id + "/" + (mode === "complete" ? "complete" : "assign");
+    $("wt-modal-confirm").disabled = true;
+    postTaskJSON(url, payload).then(function () {
+      closeTaskModal();
+      loadTasks(taskState.page);
+    }).catch(function (err) {
+      var errEl3 = $("wt-modal-error");
+      errEl3.hidden = false; errEl3.textContent = err.message;
+    }).then(function () { $("wt-modal-confirm").disabled = false; });
+  });
+
+  $("wt-rows").addEventListener("click", function (event) {
+    var button = event.target.closest("button[data-wt-action]");
+    if (!button || button.disabled) return;
+    var rowEl = button.closest("tr");
+    var rowIndex = Array.prototype.indexOf.call($("wt-rows").children, rowEl);
+    if (rowIndex < 0 || !lastTaskRows[rowIndex]) return;
+    var action = button.getAttribute("data-wt-action");
+    var row = lastTaskRows[rowIndex];
+    hideTaskError();
+    if (action === "claim") {
+      button.disabled = true;
+      postTaskJSON(tasksApi + "/" + row.id + "/claim", {}).then(function () {
+        loadTasks(taskState.page);
+      }).catch(function (err) {
+        showTaskError("认领失败：" + err.message);
+        button.disabled = false;
+      });
+    } else if (action === "complete") {
+      openTaskModal("complete", row);
+    } else if (action === "assign") {
+      openTaskModal("assign", row);
+    }
+  });
+  var lastTaskRows = [];
+
+  $("wt-search-btn").addEventListener("click", function () { loadTasks(1); });
+  $("wt-status").addEventListener("change", function () { loadTasks(1); });
+  $("wt-assigned").addEventListener("change", function () { loadTasks(1); });
+  $("wt-prev").addEventListener("click", function () { if (taskState.hasPrev) loadTasks(taskState.page - 1); });
+  $("wt-next").addEventListener("click", function () { if (taskState.hasNext) loadTasks(taskState.page + 1); });
+
+  // 首屏只读加载（MC11-NTF-02）：不再自动触发写端点 refresh；
+  // 重算待办保持为「立即刷新待办」显式动作（限流 10 次/60s）。
+  loadUnread();
+  loadTasks(1);
+  loadList(1);
 })();
 </script>
 </body>

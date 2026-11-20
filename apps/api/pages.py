@@ -735,5 +735,16 @@ def management_center_page(request, center):
                 if center == "reports"
                 else {}
             ),
+            # MC11-NTF-01：通知与待办中心的任务编排按钮显隐（服务端逐请求
+            # 复核同一权限码；指派按 MC-007-R1 属 identity.staff_manage 管理路径）。
+            "task_permissions": (
+                {
+                    "can_assign": AuthorizationService.has_permission(
+                        user, property_obj, "identity.staff_manage"
+                    ),
+                }
+                if center == "notifications"
+                else {}
+            ),
         },
     )

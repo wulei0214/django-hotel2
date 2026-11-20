@@ -464,6 +464,10 @@ def verify_maintenance_ticket(
         raise HousekeepingOperationError("只有待验收工单可以验收。")
     if ticket.reported_by_id == actor.pk and result == "PASS":
         raise HousekeepingOperationError("报修人不得验收自己报修的工单。")
+    # MC11-HK-05：维修执行人（派工/开始维修的承担者）不得自行验收，
+    # 与清洁链"完成人不得自检放行"同口径（services_housekeeping_tasks.py SoD）。
+    if ticket.assigned_to_id == actor.pk and result == "PASS":
+        raise HousekeepingOperationError("维修执行人不得自行验收，需他人复核。")
     before = {"status": ticket.status}
     if result == "PASS":
         ticket.status = MaintenanceTicket.TicketStatus.VERIFIED
@@ -477,6 +481,7 @@ def verify_maintenance_ticket(
             target_status=Room.MaintenanceStatus.NORMAL,
             reason=f"维修工单 {ticket.ticket_no} 验收通过，恢复可售",
             changed_by=actor,
+            allow_ticket_id=ticket.pk,
         )
     else:
         ticket.status = MaintenanceTicket.TicketStatus.IN_PROGRESS

@@ -67,6 +67,11 @@ urlpatterns = [
         name="staff_center_set_status",
     ),
     path(
+        "manage/staff/actions/<int:pk>/rehire/",
+        staff_center_views.staff_action_rehire,
+        name="staff_center_rehire",
+    ),
+    path(
         "manage/staff/actions/<int:pk>/update_profile/",
         staff_center_views.staff_action_update_profile,
         name="staff_center_update_profile",

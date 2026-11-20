@@ -128,6 +128,46 @@ class HousekeepingTaskWorkflowTests(HousekeepingCenterTestBase):
                 self.client.get(f"/api/v1/housekeeping/tasks/{foreign.pk}").status_code, 404
             )
 
+    def test_cross_property_task_isolation_is_real(self):
+        """MC11-HK-06：任务级跨物业隔离断言此前是死分支（hasattr 恒 False）；
+        现以真实他物业夹具执行 404 断言。"""
+        from apps.core.models import Property as PropertyModel
+        from apps.inventory.models import RoomType
+
+        other_property, _ = PropertyModel.objects.get_or_create(
+            code="HK-XPROP", defaults={"name": "任务隔离他物业"}
+        )
+        other_type = RoomType.objects.create(
+            property=other_property, code="STD-X", name="标准房-他店", capacity=2
+        )
+        other_room = Room.objects.create(
+            property=other_property, room_type=other_type, number="X-0001", floor=1
+        )
+        foreign = HousekeepingTask.objects.create(
+            property=other_property, room=other_room, task_type=HousekeepingTask.TaskType.DEPARTURE
+        )
+        self.client.force_login(self.hk)
+        response = self.client.get(f"/api/v1/housekeeping/tasks/{foreign.pk}")
+        self.assertEqual(response.status_code, 404, response.content)
+
+    def test_cleaning_task_cancel_endpoint(self):
+        """MC11-HK-04：清洁任务取消端点此前零测试零页面入口。"""
+        room = self._make_dirty_room("HK-CANCEL-01")
+        task = self._task(room)
+        self.client.force_login(self.dm)
+        response = self._post(
+            f"/api/v1/housekeeping/tasks/{task.pk}/cancel", {"reason": "重复任务撤销"}
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        task.refresh_from_db()
+        self.assertEqual(task.status, HousekeepingTask.TaskStatus.CANCELLED)
+        room.refresh_from_db()
+        self.assertEqual(
+            room.housekeeping_status,
+            Room.HousekeepingStatus.DIRTY,
+            "取消待清洁任务不影响房态",
+        )
+
 
 @override_settings(DEBUG=True, DJANGO_ENV="test")
 class MaintenanceTicketWorkflowTests(E2EFlowTestBase):
@@ -231,3 +271,141 @@ class MaintenanceTicketWorkflowTests(E2EFlowTestBase):
             user=self.hk,
         )
         self.assertEqual(response.status_code, 403)
+
+    # ------------------------------------------------------------------
+    # MC11-HK-02/03/04/05（11C 盘点整改）：恢复守卫 / 验收驳回 / 取消 / 执行人 SoD
+    # ------------------------------------------------------------------
+    def test_room_level_restore_blocked_while_ticket_active(self):
+        """MC11-HK-02：房间级维修登记不得绕过未完结工单直接恢复可售。"""
+        room = self._make_room("MT-GUARD-01")
+        create = self._post(
+            "/api/v1/maintenance/tickets/create",
+            {"room_id": room.pk, "reason": "空调故障"},
+            user=self.dm,
+        )
+        ticket_id = create.json()["data"]["id"]
+        room.refresh_from_db()
+        self.assertEqual(room.maintenance_status, Room.MaintenanceStatus.OUT_OF_ORDER)
+
+        blocked = self._post(
+            f"/api/v1/housekeeping/rooms/{room.pk}/maintenance",
+            {"status": "NORMAL", "reason": "绕过验收直接恢复"},
+            user=self.manager,
+        )
+        self.assertEqual(blocked.status_code, 409, blocked.content)
+        self.assertIn("未完结维修工单", blocked.json()["error"]["message"])
+        room.refresh_from_db()
+        self.assertEqual(room.maintenance_status, Room.MaintenanceStatus.OUT_OF_ORDER)
+
+        # 工单取消后（不再活跃）：房间级恢复放行
+        self.assertEqual(
+            self._post(
+                f"/api/v1/maintenance/tickets/{ticket_id}/cancel",
+                {"reason": "重复报修，撤销工单"},
+                user=self.dm,
+            ).status_code,
+            200,
+        )
+        restored = self._post(
+            f"/api/v1/housekeeping/rooms/{room.pk}/maintenance",
+            {"status": "NORMAL", "reason": "工单已撤销，恢复可售"},
+            user=self.manager,
+        )
+        self.assertEqual(restored.status_code, 200, restored.content)
+        room.refresh_from_db()
+        self.assertEqual(room.maintenance_status, Room.MaintenanceStatus.NORMAL)
+
+    def test_verify_fail_returns_ticket_to_in_progress(self):
+        """MC11-HK-03：验收驳回 → 工单回维修中，房态与库存均不恢复。"""
+        room = self._make_room("MT-GUARD-02")
+        available_before = get_room_type_availability(
+            self.property, self.room_type, self.today, self.today + timedelta(days=1), rooms=1
+        )["available_count"]
+        create = self._post(
+            "/api/v1/maintenance/tickets/create",
+            {"room_id": room.pk, "reason": "电视黑屏"},
+            user=self.dm,
+        )
+        ticket_id = create.json()["data"]["id"]
+        self._post(f"/api/v1/maintenance/tickets/{ticket_id}/start", user=self.dm)
+        self._post(
+            f"/api/v1/maintenance/tickets/{ticket_id}/resolve", {"notes": "换了线"}, user=self.dm
+        )
+
+        response = self._post(
+            f"/api/v1/maintenance/tickets/{ticket_id}/verify",
+            {"result": "FAIL", "notes": "仍然黑屏，驳回重修"},
+            user=self.manager,
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        ticket = MaintenanceTicket.objects.get(pk=ticket_id)
+        room.refresh_from_db()
+        self.assertEqual(ticket.status, MaintenanceTicket.TicketStatus.IN_PROGRESS)
+        self.assertEqual(room.maintenance_status, Room.MaintenanceStatus.OUT_OF_ORDER)
+        available_after_fail = get_room_type_availability(
+            self.property, self.room_type, self.today, self.today + timedelta(days=1), rooms=1
+        )["available_count"]
+        self.assertEqual(available_after_fail, available_before - 1)
+
+    def test_executor_cannot_self_verify(self):
+        """MC11-HK-05：维修执行人不得自行验收（对齐清洁链自检禁令）。"""
+        room = self._make_room("MT-GUARD-03")
+        create = self._post(
+            "/api/v1/maintenance/tickets/create",
+            {"room_id": room.pk, "reason": "冰箱不制冷"},
+            user=self.dm,
+        )
+        ticket_id = create.json()["data"]["id"]
+        # 执行人=duty2（第二值班经理）：报修人=dm，验收人=manager，三方分离
+        duty2 = self._make_staff("mt_guard_duty2", "值班经理")
+        self._post(
+            f"/api/v1/maintenance/tickets/{ticket_id}/assign",
+            {"assigned_to": StaffProfile.objects.get(user=duty2).pk},
+            user=self.dm,
+        )
+        self._post(f"/api/v1/maintenance/tickets/{ticket_id}/start", user=duty2)
+        self._post(f"/api/v1/maintenance/tickets/{ticket_id}/resolve", user=duty2)
+
+        denied = self._post(
+            f"/api/v1/maintenance/tickets/{ticket_id}/verify", {"result": "PASS"}, user=duty2
+        )
+        self.assertEqual(denied.status_code, 409, denied.content)
+        self.assertIn("维修执行人不得自行验收", denied.json()["error"]["message"])
+        ticket = MaintenanceTicket.objects.get(pk=ticket_id)
+        self.assertEqual(ticket.status, MaintenanceTicket.TicketStatus.PENDING_VERIFY)
+
+        # 第三人（店长，非报修人非执行人）验收通过 → 恢复
+        approved = self._post(
+            f"/api/v1/maintenance/tickets/{ticket_id}/verify", {"result": "PASS"}, user=self.manager
+        )
+        self.assertEqual(approved.status_code, 200, approved.content)
+        room.refresh_from_db()
+        self.assertEqual(room.maintenance_status, Room.MaintenanceStatus.NORMAL)
+
+    def test_ticket_cancel_endpoint_and_room_release(self):
+        """MC11-HK-04：工单取消端点此前零测试；取消后房间级恢复放行（工单不再活跃）。"""
+        room = self._make_room("MT-CANCEL-01")
+        create = self._post(
+            "/api/v1/maintenance/tickets/create",
+            {"room_id": room.pk, "reason": "误报维修"},
+            user=self.dm,
+        )
+        ticket_id = create.json()["data"]["id"]
+        room.refresh_from_db()
+        self.assertEqual(room.maintenance_status, Room.MaintenanceStatus.OUT_OF_ORDER)
+
+        response = self._post(
+            f"/api/v1/maintenance/tickets/{ticket_id}/cancel", {"reason": "误报撤销"}
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        ticket = MaintenanceTicket.objects.get(pk=ticket_id)
+        self.assertEqual(ticket.status, MaintenanceTicket.TicketStatus.CANCELLED)
+
+        restored = self._post(
+            f"/api/v1/housekeeping/rooms/{room.pk}/maintenance",
+            {"status": "NORMAL", "reason": "工单已撤销，恢复可售"},
+            user=self.manager,
+        )
+        self.assertEqual(restored.status_code, 200, restored.content)
+        room.refresh_from_db()
+        self.assertEqual(room.maintenance_status, Room.MaintenanceStatus.NORMAL)

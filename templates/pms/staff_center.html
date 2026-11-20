@@ -795,7 +795,7 @@
       resetHead.className = "sc-zone-hint";
       if (invitation && invitation.status !== "ACCEPTED") resetHead.style.marginTop = "12px";
       if (employeeTerminated || accountDeactivated) {
-        resetHead.textContent = "该员工已离职（账号已停用），不能重置密码；如需重新入职请先在分区⑤恢复在职状态。";
+        resetHead.textContent = "该员工已离职（账号已停用），不能重置密码；可在分区⑤办理重新入职。";
         resetHead.style.color = "var(--color-text-muted, #909399)";
         secAccount.appendChild(resetHead);
       } else {
@@ -933,6 +933,27 @@
       statusRow.appendChild(terminateBtn);
       armDanger(terminateBtn, "确认办理离职？",
           "离职后：全部角色授权终止、登录账号停用，历史保留不可删除。请再次点击确认。");
+    } else if (item.employment_status === "TERMINATED") {
+      /* MC11-ST-01：离职员工唯一恢复路径是重新入职（WB-041 禁止 set_status
+         直恢复）；本表单是 rehire_employee 的页面入口。 */
+      statusRow.remove();
+      const rehireForm = document.createElement("form");
+      rehireForm.className = "sc-form";
+      rehireForm.appendChild(csrfHidden());
+      rehireForm.appendChild(labeledInput("部门编码",
+          {name: "department_code", maxlength: "32", placeholder: "如 FO"}));
+      rehireForm.appendChild(labeledInput("岗位编码",
+          {name: "position_code", maxlength: "32", placeholder: "如 FO_FRONT"}));
+      const rehireBtn = document.createElement("button");
+      rehireBtn.type = "submit"; rehireBtn.className = "sc-btn";
+      rehireBtn.textContent = "办理重新入职";
+      rehireForm.appendChild(rehireBtn);
+      const rehireResult = resultDiv();
+      rehireForm.appendChild(rehireResult);
+      bindActionForm(rehireForm,
+          "/manage/staff/actions/" + profileId + "/rehire/",
+          function () { openPanel(profileId); loadList(currentPage); });
+      secStatus.appendChild(rehireForm);
     } else {
       statusRow.appendChild(statusButton("ACTIVE", "恢复在职", false));
     }

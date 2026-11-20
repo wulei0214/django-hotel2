@@ -319,7 +319,14 @@ def _sync_inventory_out_of_service(room, delta, *, property_obj):
 
 @transaction.atomic
 def change_maintenance_status(
-    *, property_obj, room_id, target_status, reason, changed_by=None, request=None
+    *,
+    property_obj,
+    room_id,
+    target_status,
+    reason,
+    changed_by=None,
+    request=None,
+    allow_ticket_id=None,
 ):
     """维修状态登记唯一写入口（§4.3 维修停用/恢复 + 审计）。
 
@@ -378,6 +385,32 @@ def change_maintenance_status(
         delta = 1
     elif leaving and not entering:
         delta = -1
+
+    # MC11-HK-02：恢复可售（delta=-1）前校验该房间无活跃维修工单
+    # （OPEN/IN_PROGRESS/PENDING_VERIFY）——任务书口径：维修完成必须经验收
+    # 通过才恢复可售，房间级维修登记不得绕过工单验收直接恢复库存。
+    # 工单验收自身的恢复路径经 allow_ticket_id 豁免（同一事务，先置 VERIFIED）。
+    from .models import MaintenanceTicket
+
+    if delta == -1:
+        active_ticket = (
+            MaintenanceTicket.objects.filter(
+                room=room,
+                status__in=(
+                    MaintenanceTicket.TicketStatus.OPEN,
+                    MaintenanceTicket.TicketStatus.IN_PROGRESS,
+                    MaintenanceTicket.TicketStatus.PENDING_VERIFY,
+                ),
+            )
+            .exclude(pk=allow_ticket_id)
+            .order_by("-id")
+            .first()
+        )
+        if active_ticket is not None:
+            raise HousekeepingOperationError(
+                f"该房间仍有未完结维修工单 {active_ticket.ticket_no}"
+                "（维修中/待验收），请先走工单验收通过后再恢复可售。"
+            )
 
     # 先同步库存（可能因容量不足抛错回滚），再落房间状态，保证原子一致
     synced_rows = _sync_inventory_out_of_service(room, delta, property_obj=property_obj)

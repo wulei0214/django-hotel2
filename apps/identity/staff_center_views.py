@@ -294,6 +294,42 @@ def _action_set_status(request, pk):
     )
 
 
+def _action_rehire(request, pk):
+    """MC11-ST-01：离职员工重新入职（WB-099/DEC-EMP-01 唯一合法恢复路径）。
+
+    set_status=ACTIVE 对 TERMINATED 被 WB-041 守卫拒绝并指向本流程；
+    此前 rehire_employee 只有服务与测试入口、无任何页面/路由（盘点缺口）。
+    必填部门/岗位编码，新任职由编号服务分配新工号，旧授权统一 end_assignment。
+    """
+    from .employee_number import rehire_employee
+
+    property_obj = getattr(request, "property", None)
+    profile = _get_profile_or_error(pk, property_obj)
+    department_code = (request.POST.get("department_code") or "").strip()
+    position_code = (request.POST.get("position_code") or "").strip()
+    if not department_code or not position_code:
+        raise ApiError("VALIDATION_ERROR", "请填写重新入职的部门与岗位编码。")
+    membership = None
+    try:
+        membership = rehire_employee(
+            property_obj=property_obj,
+            staff_profile=profile,
+            department_code=department_code,
+            position_code=position_code,
+            granted_by=request.user,
+        )
+    except ValueError as exc:
+        raise ApiError("VALIDATION_ERROR", str(exc)) from exc
+    return api_response(
+        request,
+        {
+            "message": "已重新入职，新任职已生效",
+            "membership_id": membership.pk,
+            "employee_no": membership.employee_no,
+        },
+    )
+
+
 def _action_update_profile(request, pk):
     """MC-005：维护姓名/联系电话/岗位编码；不动工号、任职与角色事实。"""
     property_obj = getattr(request, "property", None)
@@ -469,6 +505,10 @@ staff_action_end_assignment = staff_required(
 
 staff_action_set_status = staff_required(
     pms_permission_required("identity.staff_manage")(api_view(_action_set_status))
+)
+
+staff_action_rehire = staff_required(
+    pms_permission_required("identity.staff_manage")(api_view(_action_rehire))
 )
 
 staff_action_update_profile = staff_required(

@@ -554,6 +554,16 @@ def collect_manual_payment(
             or existing.status != Payment.Status.SUCCEEDED
         ):
             raise FrontDeskOperationError("该 Idempotency-Key 已用于其他收款请求，不能重复使用。")
+    # MC11-RES-02：过期 PENDING 单不得再经前台收款确认（与在线入口
+    # create_mock_payment_intent 的过期拒绝口径对齐，D-R4-10 文案承诺守卫）。
+    # 已存在的收款事实重放（existing 非空）不受影响。
+    if (
+        existing is None
+        and reservation.status == Reservation.Status.PENDING
+        and reservation.expires_at is not None
+        and reservation.expires_at < timezone.now()
+    ):
+        raise FrontDeskOperationError("该订单已超过支付保留期，库存已释放，请重新创建预订。")
     from apps.billing.services_v2 import BillingInputError, BillingService
 
     try:
