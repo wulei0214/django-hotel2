@@ -16,6 +16,7 @@
 
 - Django 测试必须 `DJANGO_ENV=test`；`.env` 不被 settings 自动加载，连 dev MySQL 前 `set -a && source .env && set +a`。
 - 涉及锁/约束/并发的交付以 MySQL 结果为准（SQLite 下 `select_for_update` 为 no-op），只跑 SQLite 全绿不算数。
+- MySQL 全量回归纪律（负责人 V1.1 §3.3 正式裁定）：同一共享测试环境同一时刻只允许一个 MySQL 全量测试进程执行建库/迁移/销毁，全量测试串行；MySQL 触碰域组合测试与全量错峰；专项并发测试按设计执行但不得争抢同一测试库；SQLite 可并行但不替代 MySQL 权威。不追加 `test_%` 授权（hotelhotel 仅授 `hotel`/`test_hotel`，独立库名 1044 实证）；不得通过删减测试、降低断言或仅跑 SQLite 绕过 MySQL 失败。每次 MySQL 全量须登记执行人/起止时间/测试库名/命令/退出码/报告路径；出现 1213 须区分建库、迁移、夹具准备、真实业务事务四阶段，不笼统归因。新派发模板必须包含本条错峰要求。
 - 任何源码不得出现可用凭据字面量，测试密码一律 `get_random_string` 模块级常量（字典 `"password":`、`check_password(...)`、断言中的值与创建处必须同步替换）。
 - 同一文件的多次编辑串行执行，批量编辑后 grep 校验落盘。
 - 财务/审计事实引用与基线核对：现取现核（`git show <SHA>:<path>`），不凭会话早期读取版本下结论。
