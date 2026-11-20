@@ -244,8 +244,180 @@ def post_overtime_charge(
     return entry
 
 
+def convert_day_use_to_overnight(
+    *, property_obj, reservation_room_id, new_check_out, actor=None, reason=""
+):
+    """DU-11（负责人裁定 2.5）：day-use 转过夜住宿的正式业务操作。
+
+    重新校验库存/房价/排房/账单后再调整计费类型与住宿日期，**不得只改
+    Folio 金额**：
+
+    * 校验：仅 day-use 订单（显式类型，非同日推断）；状态限 CONFIRMED /
+      CHECKED_IN（已退房不可转）；新离店日必须晚于今天（过夜至少住当晚）；
+      理由必填（1-240 字符，审计追溯）。
+    * 房价（WB-075 同口径 fail-closed）：为 [check_in, new_check_out) 每个
+      夜晚取 DailyRate 快照生成 ``nightly_rates``——缺任一晚价格直接拒绝，
+      不静默 0 元、不套用日租政策价。转换当晚的房费由**下一次夜审过租**
+      按快照正常生成（day-use 政策价只覆盖日间时段，两者是独立计费事实）。
+    * 库存：首日房量已由 day-use 占用（sold 已计），新增住宿日
+      ``[tomorrow, new_check_out)`` 逐日行锁 ``sold += 1``（缺行/停售/满房
+      拒绝），并重同步 CONFIRMED 冻结明细（RSV-01）。
+    * 账单：Folio 保持 OPEN 不动——已入账的日租房费是独立事实；新增夜晚
+      的房费凭证由夜审产生，余额守卫与退款负债逻辑沿用既有链路。
+    * 排房：沿用已分配房间（在住延续），不做换房。
+    * 审计：前后状态与理由写入 AuditEvent。
+    """
+    from django.db import transaction
+
+    from apps.core.models import AuditEvent
+    from apps.inventory.models import DailyRate, RoomTypeInventory
+    from apps.inventory.services import (
+        InventoryUnavailable,
+        _property_today,
+        sync_inventory_hold_details,
+    )
+    from apps.reservations.models import (
+        InventoryHold,
+        Reservation,
+        ReservationRoom,
+    )
+
+    if not str(reason or "").strip() or len(reason.strip()) > 240:
+        raise DayUseError("转换原因必填（1-240 字符）。")
+
+    with transaction.atomic():
+        line = (
+            ReservationRoom.objects.select_for_update()
+            .filter(pk=reservation_room_id, property=property_obj)
+            .first()
+        )
+        if line is None:
+            raise DayUseError("未找到该物业下的预订房间明细。")
+        reservation = Reservation.objects.select_for_update().get(
+            pk=line.reservation_id  # type: ignore[attr-defined]
+        )
+        if reservation.billing_type != Reservation.BillingType.DAY_USE:
+            raise DayUseError(
+                "仅 day-use 订单可转换为过夜住宿；过夜订单的提前离店走"
+                "提前离店政策链路（裁定 2.4，不得反向转换）。"
+            )
+        if reservation.status not in (
+            Reservation.Status.CONFIRMED,
+            Reservation.Status.CHECKED_IN,
+        ):
+            raise DayUseError("当前订单状态不允许转换（已退房/已取消不可转）。")
+
+        today = _property_today(property_obj)
+        if not hasattr(new_check_out, "year"):
+            raise DayUseError("new_check_out 必须是日期。")
+        if new_check_out <= today:
+            raise DayUseError("转换后的离店日期必须晚于今天（过夜至少住当晚）。")
+
+        nights = []
+        current = line.check_in
+        line_room_type_id = line.room_type_id  # type: ignore[attr-defined]
+        while current < new_check_out:
+            rate_row = (
+                DailyRate.objects.filter(
+                    property=property_obj,
+                    room_type_id=line_room_type_id,
+                    stay_date=current,
+                )
+                .order_by("-id")
+                .first()
+            )
+            if rate_row is None or rate_row.price is None:
+                raise DayUseError(
+                    f"缺少 {current.isoformat()} 的过夜房价快照，不能转换（WB-075 同口径 fail-closed）。"
+                )
+            nights.append({"date": current.isoformat(), "price": str(rate_row.price)})
+            current += timedelta(days=1)
+        nightly_sum = sum((Decimal(n["price"]) for n in nights), Decimal("0.00"))
+
+        before = {
+            "billing_type": reservation.billing_type,
+            "check_out": line.check_out.isoformat(),
+            "amount": str(line.amount),
+            "total_amount": str(reservation.total_amount),
+        }
+
+        # 库存：新增住宿日 [check_in+1, new_check_out) 逐日 sold += 1。
+        # 首日房量已由 day-use 占用（occupancy_dates 单日口径），不得重复计。
+        added_dates = []
+        probe = line.check_in + timedelta(days=1)
+        while probe < new_check_out:
+            added_dates.append(probe)
+            probe += timedelta(days=1)
+        if added_dates:
+            inv_rows = list(
+                RoomTypeInventory.objects.select_for_update()
+                .filter(
+                    property=property_obj,
+                    room_type_id=line_room_type_id,
+                    stay_date__in=added_dates,
+                )
+                .order_by("stay_date")
+            )
+            if len(inv_rows) != len(added_dates):
+                raise InventoryUnavailable("库存日历不完整，不能转换为过夜住宿。")
+            for inv_row in inv_rows:
+                if inv_row.stop_sell or inv_row.sold >= inv_row.total_rooms:
+                    raise InventoryUnavailable(
+                        f"{inv_row.stay_date} 房量不足或已停售，不能转换为过夜住宿。"
+                    )
+            for inv_row in inv_rows:
+                inv_row.sold += 1
+                inv_row.version += 1
+                inv_row.save(update_fields=("sold", "version", "updated_at"))
+
+        line.check_out = new_check_out
+        line.nightly_rates = nights
+        line.amount = nightly_sum
+        line.day_use_end_override = None
+        line.save(
+            update_fields=(
+                "check_out",
+                "nightly_rates",
+                "amount",
+                "day_use_end_override",
+            )
+        )
+        reservation.billing_type = Reservation.BillingType.NIGHT_STAY
+        reservation.check_out = new_check_out
+        reservation.total_amount = reservation.total_amount + nightly_sum
+        reservation.save(update_fields=("billing_type", "check_out", "total_amount", "updated_at"))
+
+        # RSV-01：按新占用区间重同步 CONFIRMED 冻结明细（新日期建 CONFIRMED
+        # 明细行，使库存对账的真值与计数一致）。
+        sync_inventory_hold_details(
+            property_obj=property_obj,
+            lines=[line],
+            target_status=InventoryHold.HoldStatus.CONFIRMED,
+        )
+
+        after = {
+            "billing_type": reservation.billing_type,
+            "check_out": line.check_out.isoformat(),
+            "amount": str(line.amount),
+            "total_amount": str(reservation.total_amount),
+            "added_inventory_dates": [d.isoformat() for d in added_dates],
+        }
+        AuditEvent.record(
+            action="reservations.day_use_converted_to_overnight",
+            entity_type="ReservationRoom",
+            entity_id=str(line.pk),
+            actor=actor,
+            property_obj=property_obj,
+            before=before,
+            after=after,
+            reason=reason.strip(),
+        )
+        return line, reservation
+
+
 __all__ = [
     "DayUseError",
+    "convert_day_use_to_overnight",
     "day_use_window",
     "occupancy_dates",
     "overtime_charge",

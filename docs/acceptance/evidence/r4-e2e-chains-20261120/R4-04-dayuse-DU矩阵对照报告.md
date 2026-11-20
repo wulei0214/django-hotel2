@@ -19,10 +19,10 @@
 | DU-08 | 超时但在宽限期 | `test_overtime_charge_posted_once_as_separate_adjustment`（宽限内不计费断言）+ `test_policy_window_and_end_override` | PASS |
 | DU-09 | 超过宽限期 | 同上（超时费率×向上取整小时） | PASS |
 | DU-10 | 延长使用时间 | `test_policy_window_and_end_override`（end_override 更新时段+审计） | PASS |
-| **DU-11** | **day-use 转过夜住宿** | **无**——day_use.py 无 convert 服务；涉及库存/房价/日期重校验 | **未实现（缺口，P1）** |
+| **DU-11** | **day-use 转过夜住宿** | `DayUseConvertTests`×4（convert_day_use_to_overnight：正常转/库存获取/缺快照 fail-closed/守卫拒绝） | PASS（本会话补齐实现） |
 | DU-12 | 退房后退款 | `test_overpayment_becomes_liability_not_revenue_reversal` + 退款三方链（链 B 实测 RF7） | PASS |
 | DU-13 | 收款/退房/对账一致 | Folio/LedgerEntry 断言 + B4-finance-reconciled.png | PASS |
-| **DU-14** | **营业日关账后调整** | **无显式 day-use 标注测试**——day-use 凭证走同一 post_entry → WB-079 关账守卫全局生效（链 B 实测：关账后 movement/execute 均被拒） | 行为受覆盖；测试标注缺失（P2） |
+| **DU-14** | **营业日关账后调整** | `DayUseClosedDayGuardTests.test_day_use_overtime_rejected_on_closed_business_day` | PASS（本会话补锚点） |
 | DU-15 | 并发生成不重复收入 | `test_concurrent_room_charge_confirmation_posts_once` | PASS |
 | DU-16 | MySQL/SQLite 一致 | SQLite 本轮实测；MySQL round32-final.log（双引擎历史证据） | PASS（对照报告见双引擎章节） |
 

@@ -23,6 +23,7 @@ from django.utils import timezone
 
 from apps.billing.models import DayUsePolicy, Folio, LedgerEntry, RefundLiability
 from apps.billing.night_audit import NightAuditService, property_date
+from apps.core.models import AuditEvent, BusinessDate
 from apps.inventory.models import (
     DailyRate,
     RatePlan,
@@ -33,7 +34,9 @@ from apps.inventory.models import (
 from apps.inventory.services import InventoryUnavailable
 from apps.reservations.day_use import (
     DayUseError,
+    convert_day_use_to_overnight,
     post_day_use_room_charge,
+    post_overtime_charge,
     resolve_day_use_policy,
 )
 from apps.reservations.front_desk_services import (
@@ -65,7 +68,7 @@ class DayUseFixtureMixin:
         )
         clock = mock.patch.object(timezone, "now", return_value=frozen)
         clock.start()
-        self.addCleanup(clock.stop)
+        self.addCleanup(clock.stop)  # type: ignore[attr-defined]  # 混入类与 TestCase 同用
         self.operator = User.objects.create_user(username="du-operator")
         # 现金押金/收款要求操作员先开立本人收银班次（BillingService 强制）。
         from apps.billing.services_v2 import BillingService
@@ -491,3 +494,183 @@ class DayUseWindowTests(DayUseFixtureMixin, TestCase):
             end_override=override,
         )
         self.assertEqual(timezone.localtime(end2).hour, 20)
+
+
+class DayUseConvertTests(DayUseFixtureMixin, TestCase):
+    """GAP-DU-11：day-use 转过夜住宿（负责人裁定 2.5 正式业务操作）。"""
+
+    def _checked_in_day_use(self, key="du-conv", phone="13900000901"):
+        result = self._walk_in(key=key, phone=phone)
+        return result
+
+    def test_convert_to_next_night_updates_dates_rates_type_and_audits(self):
+        result = self._checked_in_day_use()
+        reservation = result["reservation"]
+        line = reservation.reservation_rooms.get()
+
+        new_out = self.today + timedelta(days=1)
+        line2, reservation2 = convert_day_use_to_overnight(
+            property_obj=self.property,
+            reservation_room_id=line.pk,
+            new_check_out=new_out,
+            actor=self.operator,
+            reason="客人申请续住一夜（DU-11）",
+        )
+        reservation.refresh_from_db()
+        line.refresh_from_db()
+        self.assertEqual(reservation.billing_type, Reservation.BillingType.NIGHT_STAY)
+        self.assertEqual(line.check_out, new_out)
+        self.assertEqual(
+            line.nightly_rates,
+            [{"date": self.today.isoformat(), "price": "400.00"}],
+        )
+        self.assertEqual(line.amount, Decimal("400.00"))
+        self.assertEqual(reservation.total_amount, Decimal("600.00"))
+        # 账单不动：日租房费已入账，新增夜晚由夜审过租生成
+        folio = Folio.objects.get(reservation=reservation)
+        self.assertEqual(self._room_charge_entries(folio).count(), 1)
+        self.assertEqual(self._room_charge_entries(folio).get().amount, Decimal("200.00"))
+        self.assertIsNone(line.day_use_end_override)
+        # 审计留痕
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="reservations.day_use_converted_to_overnight",
+                entity_id=str(line.pk),
+            ).exists()
+        )
+
+    def test_convert_beyond_one_night_acquires_added_inventory(self):
+        tomorrow = self.today + timedelta(days=1)
+        RoomTypeInventory.objects.create(
+            property=self.property,
+            room_type=self.room_type,
+            stay_date=tomorrow,
+            total_rooms=2,
+        )
+        DailyRate.objects.create(
+            property=self.property,
+            rate_plan=self.rate_plan,
+            room_type=self.room_type,
+            stay_date=tomorrow,
+            price=Decimal("420.00"),
+        )
+        result = self._checked_in_day_use(key="du-conv2", phone="13900000902")
+        line = result["reservation"].reservation_rooms.get()
+
+        convert_day_use_to_overnight(
+            property_obj=self.property,
+            reservation_room_id=line.pk,
+            new_check_out=self.today + timedelta(days=2),
+            actor=self.operator,
+            reason="连住两晚",
+        )
+        inv_tomorrow = RoomTypeInventory.objects.get(
+            property=self.property, room_type=self.room_type, stay_date=tomorrow
+        )
+        self.assertEqual(inv_tomorrow.sold, 1)
+        # 新占用日的 CONFIRMED 冻结明细已建（RSV-01）
+        self.assertTrue(
+            __import__("apps.reservations.models", fromlist=["InventoryHold"])
+            .InventoryHold.objects.filter(
+                property=self.property,
+                room_type=self.room_type,
+                stay_date=tomorrow,
+                reservation_room=line,
+                status="CONFIRMED",
+            )
+            .exists()
+        )
+
+    def test_convert_fails_closed_on_missing_nightly_rate(self):
+        result = self._checked_in_day_use(key="du-conv3", phone="13900000903")
+        line = result["reservation"].reservation_rooms.get()
+        DailyRate.objects.all().delete()
+
+        with self.assertRaisesMessage(DayUseError, "缺少"):
+            convert_day_use_to_overnight(
+                property_obj=self.property,
+                reservation_room_id=line.pk,
+                new_check_out=self.today + timedelta(days=1),
+                actor=self.operator,
+                reason="缺价格快照",
+            )
+        line.refresh_from_db()
+        result["reservation"].refresh_from_db()
+        self.assertEqual(result["reservation"].billing_type, Reservation.BillingType.DAY_USE)
+        self.assertEqual(line.check_out, self.today)
+
+    def test_convert_rejects_overnight_orders_blank_reason_and_past_dates(self):
+        # 过夜订单不可转（裁定 2.4 反向禁止）
+        payload = {
+            "full_name": "过夜客人",
+            "phone": "13900000904",
+            "room_type_id": self.room_type.pk,
+            "rate_plan_id": self.rate_plan.pk,
+            "check_in": self.today,
+            "check_out": self.today + timedelta(days=1),
+            "rooms": 1,
+            "adults": 1,
+            "children": 0,
+        }
+        reservation, _created, _token = create_reservation(
+            property_obj=self.property, payload=payload, idempotency_key="du-ovn-1"
+        )
+        line = reservation.reservation_rooms.get()
+        with self.assertRaisesMessage(DayUseError, "仅 day-use"):
+            convert_day_use_to_overnight(
+                property_obj=self.property,
+                reservation_room_id=line.pk,
+                new_check_out=self.today + timedelta(days=2),
+                actor=self.operator,
+                reason="过夜订单",
+            )
+        # day-use 订单：理由必填 / 新离店日必须晚于今天
+        result = self._checked_in_day_use(key="du-conv5", phone="13900000905")
+        line5 = result["reservation"].reservation_rooms.get()
+        with self.assertRaisesMessage(DayUseError, "原因必填"):
+            convert_day_use_to_overnight(
+                property_obj=self.property,
+                reservation_room_id=line5.pk,
+                new_check_out=self.today + timedelta(days=1),
+                actor=self.operator,
+                reason="  ",
+            )
+        with self.assertRaisesMessage(DayUseError, "晚于今天"):
+            convert_day_use_to_overnight(
+                property_obj=self.property,
+                reservation_room_id=line5.pk,
+                new_check_out=self.today,
+                actor=self.operator,
+                reason="同日",
+            )
+
+
+class DayUseClosedDayGuardTests(DayUseFixtureMixin, TestCase):
+    """GAP-DU-14：营业日关账守卫对 day-use 超时凭证同样生效。"""
+
+    def test_day_use_overtime_rejected_on_closed_business_day(self):
+        result = self._walk_in(key="du-closed", phone="13900000906")
+        stay = result["stay"]
+        folio = Folio.objects.get(reservation=result["reservation"])
+        BusinessDate.objects.create(
+            property=self.property,
+            business_date=self.today,
+            status=BusinessDate.Status.CLOSED,
+        )
+        late_out = timezone.make_aware(
+            datetime.combine(self.today, time(21, 0)), timezone.get_current_timezone()
+        )
+        with self.assertRaisesMessage(ValueError, "已关账"):
+            post_overtime_charge(
+                property_obj=self.property,
+                stay=stay,
+                folio=folio,
+                actual_out=late_out,
+            )
+        # 超时费是 ADJUSTMENT 凭证；关账后不得产生（押金/房费为既有事实）
+        self.assertEqual(
+            LedgerEntry.objects.filter(
+                folio=folio, entry_type=LedgerEntry.EntryType.ADJUSTMENT
+            ).count(),
+            0,
+        )
