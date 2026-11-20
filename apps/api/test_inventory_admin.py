@@ -125,3 +125,60 @@ class InventoryAdminTests(E2EFlowTestBase):
         self.assertEqual(response.status_code, 200, response.content)
         disc.refresh_from_db()
         self.assertEqual(disc.status, InventoryDiscrepancy.Status.FIX_APPROVED)
+
+    # ------------------------------------------------------------------
+    # MC11-INV-03/04（11C 盘点整改）：主数据写契约与库存日历即时联动
+    # ------------------------------------------------------------------
+    def test_room_type_create_invalid_capacity_returns_400(self):
+        """MC11-INV-03：capacity 非整数此前穿透 500；契约口径为 400。"""
+        response = self._post(
+            "/api/v1/inventory/room-types/create",
+            {"code": "INV03A", "name": "非法容量房型", "capacity": "abc"},
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
+        self.assertFalse(RoomType.objects.filter(code="INV03A").exists())
+
+    def test_room_type_create_duplicate_code_returns_409(self):
+        """MC11-INV-03：房型 code 物业内唯一约束违反此前穿透 500；口径为 409。"""
+        first = self._post(
+            "/api/v1/inventory/room-types/create",
+            {"code": "INV03B", "name": "首建房型", "capacity": 2},
+        )
+        self.assertEqual(first.status_code, 201, first.content)
+        duplicate = self._post(
+            "/api/v1/inventory/room-types/create",
+            {"code": "INV03B", "name": "重复房型", "capacity": 2},
+        )
+        self.assertEqual(duplicate.status_code, 409, duplicate.content)
+        self.assertEqual(duplicate.json()["error"]["code"], "BUSINESS_CONFLICT")
+        self.assertEqual(RoomType.objects.filter(code="INV03B").count(), 1)
+
+    def test_room_create_syncs_inventory_calendar_immediately(self):
+        """MC11-INV-04：新增房间即时进入库存日历（此前最迟次日 02:30 才生效）。"""
+        response = self._post(
+            "/api/v1/inventory/rooms/create",
+            {"room_type_id": self.room_type.pk, "number": "MC11-INV04", "floor": "3"},
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        room_id = response.json()["data"]["id"]
+        from apps.inventory.models import RoomTypeInventory
+
+        row = RoomTypeInventory.objects.filter(
+            property=self.property, room_type=self.room_type, stay_date=self.today
+        ).first()
+        self.assertIsNotNone(row, "主数据写后今日库存行必须存在")
+        self.assertGreaterEqual(row.total_rooms, 1)
+        total_after_create = row.total_rooms
+
+        # 停用该房间同样即时反映（total_rooms 相对回落 1）
+        deactivate = self._post(
+            f"/api/v1/inventory/rooms/{room_id}/update", {"is_active": False, "reason": "MC11 回归"}
+        )
+        self.assertEqual(deactivate.status_code, 200, deactivate.content)
+        row.refresh_from_db()
+        self.assertEqual(
+            row.total_rooms,
+            total_after_create - 1,
+            "停用后当日 total_rooms 应相对回落 1（即时联动）",
+        )

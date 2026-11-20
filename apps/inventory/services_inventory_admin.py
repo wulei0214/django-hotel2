@@ -6,13 +6,31 @@
     available_count；维修停用/恢复继续走 change_maintenance_status。
 """
 
+from datetime import timedelta
+
 from django.db import transaction
+from django.utils import timezone
 
 from apps.core.models import AuditEvent
 from apps.identity.authorization import AuthorizationService
 
 from .models import DailyRate, Room, RoomType, RoomTypeInventory
 from .services import HousekeepingOperationError, _property_today
+
+
+def _sync_calendar_for_room_type(room_type):
+    """MC11-INV-04：主数据写后即时联动库存日历（今日起 30 天窗口）。
+
+    复用滚动生成的唯一实现（sync_inventory_calendar._sync_room_type_calendar，
+    单房型与 --all-room-types 共用）；新建/停用/换房型不再等到次日 02:30
+    调度才反映到可售量。
+    """
+    from apps.inventory.management.commands.sync_inventory_calendar import (
+        _sync_room_type_calendar,
+    )
+
+    start = timezone.localdate()
+    _sync_room_type_calendar(room_type.property, room_type, start, start + timedelta(days=30))
 
 
 def _require(user, property_obj, permission, message):
@@ -114,6 +132,12 @@ def create_room_type(
     _require(actor, property_obj, "hotelapp.change_room", "缺少房型资料维护权限。")
     code = str(code or "").strip().upper()
     name = str(name or "").strip()
+    # MC11-INV-03：capacity 统一在此转换——非整数入参抛 ValueError
+    # （视图层映射 400），不再让 str/int 比较穿透 TypeError → 500。
+    try:
+        capacity = int(capacity)
+    except (TypeError, ValueError):
+        raise ValueError("核定人数必须是正整数。") from None
     if not code or not name or len(name) > 80 or capacity < 1:
         raise HousekeepingOperationError("房型代码/名称/核定人数不合法。")
     room_type = RoomType.objects.create(
@@ -200,6 +224,8 @@ def create_room(*, property_obj, room_type_id, number, floor="", actor, reason="
         {"number": number, "room_type": room_type.pk},
         reason or "新增房间",
     )
+    # MC11-INV-04：新房间即时进入库存日历（可售量即时生效）
+    _sync_calendar_for_room_type(room_type)
     return room
 
 
@@ -238,4 +264,12 @@ def update_room(*, property_obj, room_id, actor, reason="", **fields):
         {key: getattr(room, key) for key in before},
         reason,
     )
+    # MC11-INV-04：房型迁移/停用即时反映到库存日历（换房型/停用影响
+    # 新旧两个房型的可售量）
+    if "room_type_id" in before or "is_active" in before:
+        _sync_calendar_for_room_type(RoomType.objects.get(pk=room.room_type_id))
+        if "room_type_id" in before and before["room_type_id"]:
+            old_type = RoomType.objects.filter(pk=before["room_type_id"]).first()
+            if old_type is not None:
+                _sync_calendar_for_room_type(old_type)
     return room, True

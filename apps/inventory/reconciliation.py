@@ -270,6 +270,7 @@ def _scan_room_assignment_conflicts(*, property_obj, run, start, end):
     return detected, created
 
 
+@transaction.atomic
 def scan_inventory_discrepancies(*, property_obj, days_back=30, checked_by=None):
     """D4：扫描库存差异并生成报告（不自动覆盖库存权威计数）。
 
@@ -292,6 +293,13 @@ def scan_inventory_discrepancies(*, property_obj, days_back=30, checked_by=None)
     today = _property_today(property_obj)
     start = today - timedelta(days=days_back)
     end = today + timedelta(days=30)
+
+    # MC11-INV-05：物业行锁串行化并发扫描（手动 POST 与每小时调度同口径），
+    # 消除"先查后建"竞态产生的重复 OPEN 差异/冲突行。本函数整体在
+    # @transaction.atomic 内执行，锁持有至扫描结束。
+    from apps.core.models import Property
+
+    Property.objects.select_for_update().get(pk=property_obj.pk)
 
     run = InventoryReconciliationRun.objects.create(  # type: ignore[has-type]
         property=property_obj,
