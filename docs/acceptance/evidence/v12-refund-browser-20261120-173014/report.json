@@ -1,0 +1,27 @@
+{
+  "run_id": "20261120-173014",
+  "booking_no": "RBB7E03773181A1CDF2B5",
+  "executor": {
+    "username": "v12_fin2",
+    "group": "财务"
+  },
+  "steps": [
+    {
+      "step": "login",
+      "detail": "v12_fin2（财务二）登录落地 http://127.0.0.1:8010/home/"
+    },
+    {
+      "step": "execute",
+      "detail": "已点击执行退款；页面出现退款出账凭证"
+    },
+    {
+      "step": "reload",
+      "detail": "刷新页面并重新打开账单抽屉复核退款状态"
+    }
+  ],
+  "screenshots": [
+    "6-before-execute.png",
+    "7-executed.png",
+    "8-reload-status.png"
+  ]
+}

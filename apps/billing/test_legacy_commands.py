@@ -20,6 +20,7 @@ from django.core.management import CommandError, call_command
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from django.utils.crypto import get_random_string
 
 from apps.billing.legacy_batches import (
     LegacyBatchError,
@@ -33,6 +34,12 @@ from apps.billing.models import Folio, LedgerEntry, LegacyMigrationBatch
 from apps.core.models import AuditEvent, LegacyRecordLink, Property
 from apps.guests.models import Guest
 from apps.reservations.models import Reservation
+
+# --- test-only generated passwords (no literals in source) ---
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+_TEST_PW_APPROVER = get_random_string(24)
+_TEST_PW_EXECUTOR = get_random_string(24)
+_TEST_PW_INTRUDER = get_random_string(24)
 
 
 def _legacy_rows():
@@ -223,13 +230,13 @@ class LegacyMigrationCommandTests(TestCase):
     def setUpTestData(cls):
         cls.prop = Property.objects.get(code="DEFAULT")
         cls.approver = User.objects.create_user(
-            username="mig-owner", password="pw-owner", is_staff=True
+            username="mig-owner", password=_TEST_PW_APPROVER, is_staff=True
         )
         cls.executor = User.objects.create_user(
-            username="mig-ops", password="pw-ops", is_staff=True
+            username="mig-ops", password=_TEST_PW_EXECUTOR, is_staff=True
         )
         cls.intruder = User.objects.create_user(
-            username="mig-intruder", password="pw-intruder", is_staff=True
+            username="mig-intruder", password=_TEST_PW_INTRUDER, is_staff=True
         )
         guest = Guest.objects.create(property=cls.prop, full_name="迁移命令测试客")
         cls.reservation = Reservation.objects.create(
@@ -278,7 +285,7 @@ class LegacyMigrationCommandTests(TestCase):
             encoding="utf-8",
         )
 
-    def _call(self, *extra, password="pw-ops"):
+    def _call(self, *extra, password=_TEST_PW_EXECUTOR):
         out = StringIO()
         with mock.patch(
             "apps.billing.management.commands.migrate_legacy_finance.getpass.getpass",
@@ -339,7 +346,7 @@ class LegacyMigrationCommandTests(TestCase):
         with (
             mock.patch(
                 "apps.billing.management.commands.migrate_legacy_finance.getpass.getpass",
-                return_value="pw-intruder",
+                return_value=_TEST_PW_INTRUDER,
             ),
             self.assertRaises(CommandError),
         ):

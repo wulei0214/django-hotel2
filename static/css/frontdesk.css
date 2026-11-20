@@ -132,6 +132,8 @@
 .fd-folio-summary b { color:#31455f; font-size:14px; font-variant-numeric:tabular-nums; }
 .fd-folio-summary .is-balance b { color:#bb4d4d; }
 .fd-folio-entries { margin-top:11px; display:grid; gap:6px; }
+/* V12-10：已结账单历史说明（当前未结应收为 0 时说明历史账务仍在） */
+.fd-folio-history { margin:9px 0 0; padding:8px 10px; border-radius:8px; background:#f4f7fb; color:#5b6b82; font-size:10px; line-height:1.6; }
 .fd-folio-entry { display:flex; justify-content:space-between; gap:12px; padding:8px 2px; border-bottom:1px solid #f0f2f5; color:#758298; font-size:10px; }
 /* 记录时间行：时间线圆点+标签贴左，值靠右（用户报告：标签被 space-between 挤到中部） */
 .fd-timeline-item { position:relative; display:flex; align-items:center; gap:8px; padding:7px 0; color:#78869a; font-size:10px; }

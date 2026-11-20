@@ -11,9 +11,12 @@ on:
 
 jobs:
   secret-scan:
-    # TASK-04 凭据泄露整改：凭据治理门禁接入 CI（任务书 V1.1 §2.2/§3、R6-10）。
-    # 复用 scripts/scan_secrets.py（历史失效口令字面量 + 通用密钥赋值形态扫描），
-    # 命中即退出码 1 阻断——防止可用明文凭据再次进入文档/代码。
+    # TASK-04 凭据泄露整改 + V12-06 范围增强：凭据治理门禁接入 CI。
+    # 扫描范围自 V12-06 起扩至全仓受控文本（业务源码/前端/配置/settings/
+    # 数据库配置/CI 工作流/部署脚本/文档与脚本），不再只扫 docs/ 与 scripts/；
+    # `.env`/私钥/二进制/依赖与构建产物/Git 历史按独立策略处理（见脚本内
+    # EXCLUDED_DIRS 与 tracked-* 规则，理由随代码留档）。
+    # 命中即退出码 1 阻断；白名单仅允许（文件, 规则）精确豁免且必须写明复核理由。
     # 口径：口令只允许存在于 gitignore 的 scripts/r6_env.txt 与环境变量。
     runs-on: ubuntu-24.04
     steps:
@@ -23,8 +26,30 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.9"
-      - name: Secret literal scan (docs/ scripts/)
-        run: python scripts/scan_secrets.py
+      - name: Secret literal scan (whole repository)
+        run: python scripts/scan_secrets.py --json | tee secret-scan-report.json
+      - name: Scan self-test (mock credential must block)
+        # 反向验证：扫描器必须对模拟密钥返回退出码 1，防止"永远通过"的空转门禁。
+        # 样例密钥在运行时拼装，避免本工作流自身被扫描器命中（自伤式误报）。
+        run: |
+          mkdir -p "$RUNNER_TEMP/secret-selftest"
+          printf 'aws_access_key_id = "%s%s"\n' "AKIA" "ABCDEFGHIJKLMNOP" \
+            > "$RUNNER_TEMP/secret-selftest/mock_credential.py"
+          set +e
+          python scripts/scan_secrets.py "$RUNNER_TEMP/secret-selftest"
+          code=$?
+          set -e
+          if [ "$code" -ne 1 ]; then
+            echo "扫描器未拦截模拟密钥（退出码 $code）：门禁失效"
+            exit 1
+          fi
+          echo "反向验证通过：模拟密钥被拦截（退出码 1）"
+      - name: Upload scan evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secret-scan-report
+          path: secret-scan-report.json
 
   lint:
     # 多 AI 协作治理方案 附录#9：lint 门禁。

@@ -612,12 +612,43 @@ def get_room_type_availability(
     }
 
 
+def get_day_use_availability(property_obj, room_type, day, rooms=1):
+    """日租可售量（V12-01）：只占用 `day` 当日一行库存。
+
+    日租不走过夜房价计划（`DailyRate`/`RatePlan`）——价格来自
+    `billing.DayUsePolicy`。库存口径与过夜一致：当日 `stop_sell` 或
+    `available_count < rooms` 即不可售，避免"日租 + 过夜"同日重复售卖
+    同一房量。
+    """
+    if room_type.property_id != property_obj.pk or not room_type.is_active:
+        raise ValueError("房型不存在或未启用。")
+    row = RoomTypeInventory.objects.filter(
+        property=property_obj, room_type=room_type, stay_date=day
+    ).first()
+    if row is None:
+        raise InventoryUnavailable("所选日期暂不可预订。")
+    if row.stop_sell:
+        raise InventoryUnavailable("所选日期暂不可预订。")
+    if row.available_count < rooms:
+        raise InventoryUnavailable("所选日期房量不足，请重新查询。")
+    return {"available_count": row.available_count, "stay_date": day, "stop_sell": False}
+
+
 def _group_reservation_room_quantities(reservation):
     quantities = {}
+    # 键保持 (房型, 入住, 离店) 三元组（payment_intents 等调用方按此解包）；
+    # 计费类型是预订级属性，由调用方用 reservation.billing_type 统一展开
+    # 占用日，不得在这里隐式改写键结构。
     for line in reservation.reservation_rooms.values("room_type_id", "check_in", "check_out"):
         key = (line["room_type_id"], line["check_in"], line["check_out"])
         quantities[key] = quantities.get(key, 0) + 1
     return quantities
+
+
+def _occupied_dates(check_in, check_out, billing_type):
+    from apps.reservations.day_use import occupancy_dates
+
+    return occupancy_dates(check_in=check_in, check_out=check_out, billing_type=billing_type)
 
 
 def sync_inventory_hold_details(
@@ -642,7 +673,8 @@ def sync_inventory_hold_details(
     released = target_status == InventoryHold.HoldStatus.RELEASED
     now = timezone.now()
     for line in lines:
-        for stay_date in stay_dates(line.check_in, line.check_out):
+        billing_type = getattr(line.reservation, "billing_type", "NIGHT_STAY")
+        for stay_date in _occupied_dates(line.check_in, line.check_out, billing_type):
             if only_dates is not None and stay_date not in only_dates:
                 continue
             hold = (
@@ -681,11 +713,12 @@ def sync_inventory_hold_details(
 def hold_inventory_for_reservation(reservation):
     """在同一事务中锁定每晚库存并增加 held。"""
     quantities = _group_reservation_room_quantities(reservation)
+    billing_type = getattr(reservation, "billing_type", "NIGHT_STAY")
 
     for (room_type_id, check_in, check_out), quantity in sorted(
         quantities.items(), key=lambda item: (item[0][0], item[0][1])
     ):
-        dates = list(stay_dates(check_in, check_out))
+        dates = _occupied_dates(check_in, check_out, billing_type)
         rows = list(
             RoomTypeInventory.objects.select_for_update()
             .filter(
@@ -738,11 +771,12 @@ def confirm_inventory_for_reservation(reservation):
         raise InventoryUnavailable("当前预订状态不允许确认库存。")
 
     quantities = _group_reservation_room_quantities(reservation)
+    billing_type = getattr(reservation, "billing_type", "NIGHT_STAY")
 
     for (room_type_id, check_in, check_out), quantity in sorted(
         quantities.items(), key=lambda item: (item[0][0], item[0][1])
     ):
-        dates = list(stay_dates(check_in, check_out))
+        dates = _occupied_dates(check_in, check_out, billing_type)
         rows = list(
             RoomTypeInventory.objects.select_for_update()
             .filter(
@@ -775,11 +809,12 @@ def confirm_inventory_for_reservation(reservation):
 def release_inventory_hold(reservation):
     """取消/过期时释放 Hold；重复调用由 Reservation 状态机保证幂等。"""
     quantities = _group_reservation_room_quantities(reservation)
+    billing_type = getattr(reservation, "billing_type", "NIGHT_STAY")
 
     for (room_type_id, check_in, check_out), quantity in sorted(
         quantities.items(), key=lambda item: (item[0][0], item[0][1])
     ):
-        dates = list(stay_dates(check_in, check_out))
+        dates = _occupied_dates(check_in, check_out, billing_type)
         rows = list(
             RoomTypeInventory.objects.select_for_update()
             .filter(
@@ -810,7 +845,12 @@ def release_inventory_hold(reservation):
 @transaction.atomic
 def release_sold_inventory_for_room_line(line, *, from_date):
     """No-Show 按房间明细释放尚未消耗的未来已售库存。"""
-    dates = list(stay_dates(max(line.check_in, from_date), line.check_out))
+    billing_type = getattr(line.reservation, "billing_type", "NIGHT_STAY")
+    if billing_type == "DAY_USE":
+        # day-use 只占用 check_in 一天：from_date 晚于该日即无未消耗库存。
+        dates = [line.check_in] if from_date <= line.check_in else []
+    else:
+        dates = list(stay_dates(max(line.check_in, from_date), line.check_out))
     if not dates:
         return 0
     rows = list(

@@ -33,6 +33,9 @@ from django.db import close_old_connections, connection
 from django.test import TransactionTestCase
 from django.utils import timezone
 
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.billing.models import Folio, Payment, PaymentIntent
 from apps.billing.services_v2 import BillingService
 from apps.core.models import Property
@@ -498,7 +501,9 @@ class WalkInsConcurrentIdempotencyTests(TransactionTestCase):
         RoomTypeInventory.objects.create(
             property=self.property, room_type=self.room_type, stay_date=today, total_rooms=3
         )
-        self.cashier = User.objects.create_user(username="r101-cashier", password="r101-pass123")
+        self.cashier = User.objects.create_user(
+            username="r101-cashier", password=get_random_string(24)
+        )
         BillingService.open_shift(
             property_obj=self.property, cashier=self.cashier, opening_cash=Decimal("0.00")
         )

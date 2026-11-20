@@ -51,10 +51,25 @@ class Reservation(models.Model):
         default=Status.PENDING,
         verbose_name="订单状态",
     )
+
+    # TASK-01（负责人裁定 2.1）：day-use 是独立计费类型，只能显式选择，
+    # 不得由"入住日=离店日"推断；NIGHT_STAY 保持全部既有行为。
+    class BillingType(models.TextChoices):
+        NIGHT_STAY = "NIGHT_STAY", "过夜住宿"
+        DAY_USE = "DAY_USE", "日租/日间使用"
+
+    billing_type: models.CharField = models.CharField(
+        max_length=16,
+        choices=BillingType.choices,
+        default=BillingType.NIGHT_STAY,
+        db_index=True,
+        verbose_name="计费类型",
+        help_text="DAY_USE 按日租政策价在入住时一次入账；不进夜审过租。",
+    )
     check_in = models.DateField(verbose_name="入住日期")
     check_out = models.DateField(
         verbose_name="离店日期",
-        help_text="必须晚于入住日期",
+        help_text="过夜订单必须晚于入住日期；day-use 订单等于入住日期（当日使用当日退）",
     )
     room_count = models.PositiveSmallIntegerField(default=1, verbose_name="房间数")
     adult_count = models.PositiveSmallIntegerField(default=1, verbose_name="成人数")
@@ -104,8 +119,14 @@ class Reservation(models.Model):
                 fields=("property", "idempotency_key"),
                 name="uq_reservation_property_idempotency",
             ),
+            # TASK-01（V12-01）：过夜订单仍必须 check_out > check_in；
+            # DAY_USE 是唯一允许 check_in == check_out 的合法形态，且不得
+            # 反过来用"日期相等"隐式推断计费类型（类型必须显式落库）。
             models.CheckConstraint(
-                check=Q(check_out__gt=F("check_in")),
+                check=(
+                    Q(check_out__gt=F("check_in"))
+                    | (Q(billing_type="DAY_USE") & Q(check_out=F("check_in")))
+                ),
                 name="ck_reservation_checkout_after_checkin",
             ),
             models.CheckConstraint(
@@ -181,6 +202,23 @@ class ReservationRoom(models.Model):
         verbose_name="该间房小计",
         help_text="不得为负数",
     )
+    # TASK-01（负责人裁定 2.2/2.3）：day-use 明细的价格快照与约定结束时间
+    # 覆盖。价格在创建/确认时从 DayUsePolicy 快照到行上（审计可追溯价格
+    # 来源）；不依赖逐晚房价快照，也不得静默 0 元。
+    day_use_price: models.DecimalField = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="日租房费快照",
+        help_text="创建时从 DayUsePolicy 快照；NIGHT_STAY 行恒为空",
+    )
+    day_use_end_override: models.DateTimeField = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="日租约定结束时间覆盖",
+        help_text="延长使用时间（DU-10）时写入；为空则用政策默认结束时间",
+    )
     # WB-098（DEC-ED-01 §2.1/§11.3-A）：预订确认时保存的提前离店政策版本
     # 快照；历史事实不可覆盖（§11.1-5），legacy 无快照行按 NONE 兜底并审计。
     early_departure_snapshot = models.JSONField(
@@ -206,8 +244,12 @@ class ReservationRoom(models.Model):
         verbose_name_plural = "预订房间明细"
         ordering = ("id",)
         constraints = [
+            # V12-01：明细行不持有计费类型（计费类型是预订级事实），因此这里
+            # 只保证"离店不早于入住"这一下限；"过夜必须严格大于 / 日租必须
+            # 相等"由 Reservation 的 ck_reservation_checkout_after_checkin
+            # 在数据库层强制，二者分工明确，不做重复的弱化推断。
             models.CheckConstraint(
-                check=Q(check_out__gt=F("check_in")),
+                check=Q(check_out__gte=F("check_in")),
                 name="ck_reservation_room_checkout_after_checkin",
             ),
             models.CheckConstraint(

@@ -13,6 +13,9 @@ from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.billing.legacy_credentials import (
     LegacyMigrationDenied,
     mint_credential,
@@ -37,10 +40,10 @@ class ControlledLegacyEntryTests(TestCase):
     def setUpTestData(cls):
         cls.prop = Property.objects.get(code="DEFAULT")
         cls.approver = User.objects.create_user(
-            username="entry-approver", password="pw-entry", is_staff=True
+            username="entry-approver", password=get_random_string(24), is_staff=True
         )
         cls.executor = User.objects.create_user(
-            username="entry-executor", password="pw-entry", is_staff=True
+            username="entry-executor", password=get_random_string(24), is_staff=True
         )
         guest = Guest.objects.create(property=cls.prop, full_name="迁移入口测试客")
         reservation = Reservation.objects.create(

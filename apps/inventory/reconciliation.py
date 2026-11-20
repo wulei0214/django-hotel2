@@ -32,7 +32,7 @@ M4-4（架构治理模块④批次，2026-11-19）补充（D4-2 B / D2-B 排房�
 
 from datetime import timedelta
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count
 from django.utils import timezone
 
@@ -221,6 +221,7 @@ def _scan_room_assignment_conflicts(*, property_obj, run, start, end):
             continue
         detected += 1
         details = _conflict_details_snapshot(conflicts[(room_id, stay_date)]["line_ids"])
+        count = conflicts[(room_id, stay_date)]["count"]
         # M4-4 调度幂等：同（物业, 物理房, 住宿日）只一条 OPEN 报告，原位更新。
         conflict = (
             RoomAssignmentConflict.objects.filter(  # type: ignore[has-type]
@@ -233,20 +234,37 @@ def _scan_room_assignment_conflicts(*, property_obj, run, start, end):
             .first()
         )
         if conflict is None:
-            RoomAssignmentConflict.objects.create(  # type: ignore[has-type]
-                run=run,
-                property=property_obj,
-                room=room,
-                room_type=room.room_type,
-                stay_date=stay_date,
-                conflict_count=conflicts[(room_id, stay_date)]["count"],
-                details=details,
-            )
-            created += 1
-        elif conflict.conflict_count != conflicts[(room_id, stay_date)]["count"] or (
-            conflict.details != details
-        ):
-            conflict.conflict_count = conflicts[(room_id, stay_date)]["count"]
+            # V12-07：并发扫描保护由数据库唯一键（open_key）仲裁，不是进程内锁。
+            # 两个运行同时判定"无 OPEN 行"时，只有一个能插入，另一个撞唯一键
+            # 后回落到"原位更新该行"，因此不会产生两条有效差异。
+            try:
+                with transaction.atomic():
+                    RoomAssignmentConflict.objects.create(  # type: ignore[has-type]
+                        run=run,
+                        property=property_obj,
+                        room=room,
+                        room_type=room.room_type,
+                        stay_date=stay_date,
+                        conflict_count=count,
+                        details=details,
+                    )
+                created += 1
+                continue
+            except IntegrityError:
+                conflict = (
+                    RoomAssignmentConflict.objects.filter(  # type: ignore[has-type]
+                        property=property_obj,
+                        room_id=room_id,
+                        stay_date=stay_date,
+                        status=RoomAssignmentConflict.Status.OPEN,
+                    )
+                    .order_by("pk")
+                    .first()
+                )
+                if conflict is None:  # pragma: no cover - 防御：键冲突必对应一行 OPEN
+                    raise
+        if conflict.conflict_count != count or conflict.details != details:
+            conflict.conflict_count = count
             conflict.details = details
             conflict.save(update_fields=("conflict_count", "details", "updated_at"))
     return detected, created

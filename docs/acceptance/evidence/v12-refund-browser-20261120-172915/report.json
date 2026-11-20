@@ -1,0 +1,45 @@
+{
+  "run_id": "20261120-172915",
+  "booking_no": "RBB7E03773181A1CDF2B5",
+  "account_roles": {
+    "v12_gm": "店长",
+    "v12_fin": "财务"
+  },
+  "steps": [
+    {
+      "step": "login",
+      "detail": "v12_gm 登录后落地 http://127.0.0.1:8010/home/"
+    },
+    {
+      "step": "approve",
+      "detail": "店长页面出现「审批通过」按钮，说明申请已进入待审批态"
+    },
+    {
+      "step": "approve-done",
+      "detail": "已点击审批通过"
+    },
+    {
+      "step": "login",
+      "detail": "v12_fin 登录后落地 http://127.0.0.1:8010/home/"
+    },
+    {
+      "step": "execute",
+      "detail": "财务页面出现「执行退款」按钮，说明审批已生效"
+    },
+    {
+      "step": "execute-done",
+      "detail": "已确认实际付款并执行退款"
+    },
+    {
+      "step": "reload",
+      "detail": "刷新页面后重新打开账单抽屉复核状态"
+    }
+  ],
+  "screenshots": [
+    "4-gm-drawer-pending.png",
+    "5-approved.png",
+    "6-before-execute.png",
+    "7-executed.png",
+    "8-reload-status.png"
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "run_id": "20261120-174440",
+  "booking_no": "RB77A430D67170C6CCB44",
+  "expected": {
+    "folio_status": "CLOSED",
+    "charges": "200.00",
+    "credits": "200.00"
+  },
+  "steps": [
+    {
+      "step": "login",
+      "detail": "前台账号登录落地 http://127.0.0.1:8010/home/"
+    },
+    {
+      "step": "summary",
+      "detail": "预订摘要 消费块='应收 / 消费\\nCNY 0.00' 收款块='已收 / 抵扣\\nCNY 0.00' 余额块='已结清\\nCNY 0.00'"
+    },
+    {
+      "step": "history",
+      "detail": "历史说明可见=True 文案='当前未结应收为 0（账单已结清）；已结账单 1 张：历史消费 CNY 200.00 / 历史已收（含抵扣冲减）CNY 200.00。历史明细可在「查看账单明细」逐笔查看。'"
+    },
+    {
+      "step": "folio-summary",
+      "detail": "账单明细 消费块='账单累计消费\\nCNY 200.00' 收款块='账单累计已收\\nCNY 200.00'"
+    },
+    {
+      "step": "entries",
+      "detail": "账单明细包含房费=True 包含收款/押金=True"
+    },
+    {
+      "step": "entries_text",
+      "detail": "房费 · 2026-11-20 · 日租房费 2026-11-20（政策价快照，单次使用） | CNY 200.00 | 押金 · 2026-11-20 · 前台登记押金（CASH） | CNY -60.00 | 收款 · 2026-11-20 · 前台登记收款（CASH） | CNY -140.00 | 支付 · CASH · 成功 | CNY 140.00 | 申请退款 | 押金 · CASH · 成功 | CNY 60.00 | 申请退款"
+    },
+    {
+      "step": "console",
+      "detail": "[]"
+    }
+  ],
+  "observed": {
+    "charges": "CNY 0.00",
+    "credits": "CNY 0.00",
+    "balance_value": "CNY 0.00",
+    "balance_block": "已结清\nCNY 0.00",
+    "charges_block": "应收 / 消费\nCNY 0.00",
+    "credits_block": "已收 / 抵扣\nCNY 0.00",
+    "charges_block_after_folio": "账单累计消费\nCNY 200.00",
+    "credits_block_after_folio": "账单累计已收\nCNY 200.00",
+    "history_visible": true,
+    "history_text": "当前未结应收为 0（账单已结清）；已结账单 1 张：历史消费 CNY 200.00 / 历史已收（含抵扣冲减）CNY 200.00。历史明细可在「查看账单明细」逐笔查看。",
+    "entries_text_excerpt": "房费 · 2026-11-20 · 日租房费 2026-11-20（政策价快照，单次使用）\nCNY 200.00\n押金 · 2026-11-20 · 前台登记押金（CASH）\nCNY -60.00\n收款 · 2026-11-20 · 前台登记收款（CASH）\nCNY -140.00\n支付 · CASH · 成功\nCNY 140.00\n申请退款\n押金 · CASH · 成功\nCNY 60.00\n申请退款",
+    "console_errors": []
+  },
+  "checks": {
+    "balance_zero_copy": true,
+    "history_explained": true,
+    "entries_keep_history": true,
+    "folio_view_relabelled": true,
+    "no_console_error": true
+  },
+  "screenshots": [
+    "a1-drawer-closed-folio.png",
+    "a2-folio-entries.png"
+  ]
+}

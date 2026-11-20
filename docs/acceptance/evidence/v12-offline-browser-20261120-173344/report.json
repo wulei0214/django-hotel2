@@ -1,0 +1,47 @@
+{
+  "run_id": "20261120-173344",
+  "booking_no": "R2C85D8ADE10A9B68CC99",
+  "steps": [
+    {
+      "step": "login",
+      "detail": "前台账号登录落地 http://127.0.0.1:8010/home/"
+    },
+    {
+      "step": "A-abort",
+      "detail": "中断次数=1；提示文案='网络连接失败，请检查服务器后重试。'"
+    },
+    {
+      "step": "B-retry",
+      "detail": "重试后提示文案='已登记本次实收款项'"
+    },
+    {
+      "step": "B-replay",
+      "detail": "重复提交后提示文案='已登记本次实收款项'"
+    },
+    {
+      "step": "C-offline",
+      "detail": "断网点击刷新后提示='网络连接失败，请检查服务器后重试。'"
+    },
+    {
+      "step": "C-reload-offline",
+      "detail": "断网刷新失败（预期）：Error"
+    },
+    {
+      "step": "C-online",
+      "detail": "恢复网络后重新查询，命中行数=0"
+    },
+    {
+      "step": "C-folio",
+      "detail": "账单明细条目数≈2 条支付/凭证包含 CARD"
+    }
+  ],
+  "screenshots": [
+    "a1-drawer.png",
+    "a2-payment-aborted.png",
+    "b1-payment-retry.png",
+    "c1-offline-refresh.png",
+    "c2-offline-reload.png",
+    "c3-online-reload.png",
+    "c4-folio-entries.png"
+  ]
+}

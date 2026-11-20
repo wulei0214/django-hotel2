@@ -1932,7 +1932,21 @@ fd_write = [
                 ),
                 "room_type_id": s_int("房型 ID（必填；须属 DEFAULT 物业且当天可售）。"),
                 "rate_plan_id": s_int("价格计划 ID（必填）。"),
-                "nights": s_int("住宿晚数，默认 1，取值 1-30。", minimum=1, maximum=30, default=1),
+                # V12-01：计费类型决定离店日与房费来源，不是前端展示选项。
+                "billing_type": s_str(
+                    "计费类型：NIGHT_STAY（过夜，默认）或 DAY_USE（日租，当日入住当日退）。"
+                    "日租的房费按物业×房型×当日生效的 DayUsePolicy 政策价一次性入账，"
+                    "不使用逐晚房价；无覆盖当日的启用政策时拒绝下单（不回落过夜价、不按 0 元）。",
+                    enum=["NIGHT_STAY", "DAY_USE"],
+                    default="NIGHT_STAY",
+                ),
+                "nights": s_int(
+                    "住宿晚数：NIGHT_STAY 时默认 1，取值 1-30；DAY_USE 时由服务端固定为 0，"
+                    "客户端传值不参与计费。",
+                    minimum=0,
+                    maximum=30,
+                    default=1,
+                ),
                 "adults": s_int("成人数，默认 1，取值 1-10。", minimum=1, maximum=10, default=1),
                 "children": s_int("儿童数，默认 0，取值 0-10。", minimum=0, maximum=10, default=0),
                 "deposit_amount": s_nullable(

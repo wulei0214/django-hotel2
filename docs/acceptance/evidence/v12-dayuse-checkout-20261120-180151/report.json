@@ -1,0 +1,81 @@
+{
+  "run_id": "20261120-180151",
+  "booking_no": "RB5F36AF00961570EBF57",
+  "seed": {
+    "booking_no": "RB5F36AF00961570EBF57",
+    "reservation_id": 66,
+    "folio_id": 36,
+    "stay_id": 25,
+    "stay_status": "IN_HOUSE",
+    "billing_type": "DAY_USE",
+    "entries_before": [
+      {
+        "type": "ROOM_CHARGE",
+        "amount": "200.00",
+        "reference": "day-use:25"
+      },
+      {
+        "type": "DEPOSIT",
+        "amount": "-60.00",
+        "reference": "deposit:FDDEP-1-v12-dayuse-live-0XjUVMcz-dep"
+      },
+      {
+        "type": "PAYMENT",
+        "amount": "-140.00",
+        "reference": "payment:FD1-v12-dayuse-live-pay-JgMugc7A"
+      }
+    ],
+    "balance_before": "0.00"
+  },
+  "steps": [
+    {
+      "step": "login",
+      "detail": "前台登录落地 http://127.0.0.1:8010/home/"
+    },
+    {
+      "step": "ops",
+      "detail": "「办理退房」按钮可见=True"
+    },
+    {
+      "step": "checkout",
+      "detail": "提示文案='退房办理成功，房间已转为待清洁'"
+    },
+    {
+      "step": "status",
+      "detail": "订单状态='已退房'"
+    },
+    {
+      "step": "history",
+      "detail": "历史说明可见=True 文案='当前未结应收为 0（账单已结清）；已结账单 1 张：历史消费 CNY 200.00 / 历史已收（含抵扣冲减）CNY 200.00。历史明细可在「查看账单明细」逐笔查看。'"
+    },
+    {
+      "step": "entries",
+      "detail": "房费 · 2026-11-20 · 日租房费 2026-11-20（政策价快照，单次使用） | CNY 200.00 | 押金 · 2026-11-20 · 前台登记押金（CASH） | CNY -60.00 | 收款 · 2026-11-20 · 前台登记收款（CASH） | CNY -140.00 | 支付 · CASH · 成功 | CNY 140.00 | 申请退款 | 押金 · CASH · 成功 | CNY 60.00 | 申请退款"
+    },
+    {
+      "step": "console",
+      "detail": "[]"
+    }
+  ],
+  "observed": {
+    "checkout_button_visible": true,
+    "toast": "退房办理成功，房间已转为待清洁",
+    "status_text": "已退房",
+    "history_visible": true,
+    "history_text": "当前未结应收为 0（账单已结清）；已结账单 1 张：历史消费 CNY 200.00 / 历史已收（含抵扣冲减）CNY 200.00。历史明细可在「查看账单明细」逐笔查看。",
+    "entries_text_excerpt": "房费 · 2026-11-20 · 日租房费 2026-11-20（政策价快照，单次使用）\nCNY 200.00\n押金 · 2026-11-20 · 前台登记押金（CASH）\nCNY -60.00\n收款 · 2026-11-20 · 前台登记收款（CASH）\nCNY -140.00\n支付 · CASH · 成功\nCNY 140.00\n申请退款\n押金 · CASH · 成功\nCNY 60.00\n申请退款",
+    "console_errors": []
+  },
+  "checks": {
+    "checkout_clicked": true,
+    "status_checked_out": true,
+    "history_explained": true,
+    "single_day_use_charge": true,
+    "no_console_error": true
+  },
+  "screenshots": [
+    "a1-in-house-dayuse.png",
+    "a2-checkout-done.png",
+    "a3-folio-entries.png"
+  ]
+}

@@ -42,9 +42,7 @@ class BreakGlassServiceTests(TestCase):
             codename="business_date_reopen",
         )
         self.actor_group.permissions.add(reopen_permission)
-        self.actor_membership = self._add_staff(
-            self.actor, "BG-001", self.actor_group
-        )
+        self.actor_membership = self._add_staff(self.actor, "BG-001", self.actor_group)
 
     def _add_staff(self, user, employee_no, group):
         profile = StaffProfile.objects.create(
@@ -80,7 +78,7 @@ class BreakGlassServiceTests(TestCase):
                 property_obj=self.property,
                 business_date_id=self.business_date.pk,
                 requested_by=self.actor,
-                password="wrong-password",
+                password=get_random_string(24),
                 reason="夜审发现紧急账务差错，需要修正营业日",
             )
         self.assertEqual(BreakGlassRecord.objects.count(), 0)
@@ -97,8 +95,7 @@ class BreakGlassServiceTests(TestCase):
     def test_authorization_is_time_limited_bound_to_actor_and_single_use(self):
         record = self._request()
         self.assertEqual(record.status, BreakGlassRecord.Status.GRANTED)
-        self.assertEqual(record.expires_at - record.password_verified_at,
-                         timedelta(minutes=10))
+        self.assertEqual(record.expires_at - record.password_verified_at, timedelta(minutes=10))
 
         wrong_actor = User.objects.create_user(
             username="breakglass-wrong-actor", password=_TEST_PW_E910C033

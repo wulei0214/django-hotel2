@@ -1718,7 +1718,7 @@ class HomeDisplayFallbackTests(TestCase):
         other_prop, _ = Property.objects.get_or_create(
             code="OTHER-BRANCH", defaults={"name": "分店酒店"})
         user = User.objects.create_user(
-            username="branch-staff", password="branch-staff-pass123")
+            username="branch-staff", password=get_random_string(24))
         profile = StaffProfile.objects.create(
             user=user, full_name="分店员工", employment_status="ACTIVE")
         membership = PropertyStaffMembership.objects.create(
@@ -1742,7 +1742,7 @@ class HomeDisplayFallbackTests(TestCase):
     def test_home_with_default_membership_uses_own_property(self):
         from apps.identity.models import PropertyStaffMembership, StaffProfile
         user = User.objects.create_user(
-            username="hq-staff", password="hq-staff-pass123")
+            username="hq-staff", password=get_random_string(24))
         profile = StaffProfile.objects.create(
             user=user, full_name="总部员工", employment_status="ACTIVE")
         membership = PropertyStaffMembership.objects.create(

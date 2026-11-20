@@ -45,6 +45,23 @@
         return (currency || "CNY") + " " + amount.toFixed(2);
     }
 
+    /* 账本凭证类型的中文标签（与 LedgerEntry.EntryType 的 choices 对齐）。
+       V12-10：明细行此前直接输出英文枚举（ROOM_CHARGE/DEPOSIT/PAYMENT），
+       中文界面上「历史明细可逐笔查看」等于让人读枚举码。 */
+    var ENTRY_TYPE_LABELS = {
+        ROOM_CHARGE: "房费",
+        DEPOSIT: "押金",
+        PAYMENT: "收款",
+        REFUND: "退款",
+        ADJUSTMENT: "调整",
+        REVERSAL: "红字冲销"
+    };
+
+    function entryTypeLabel(value) {
+        if (!value) return "凭证";
+        return ENTRY_TYPE_LABELS[value] || value;
+    }
+
     function renderFolioBalance(value, currency) {
         var balanceNode = $("detail-balance");
         var labelNode = balanceNode.parentElement.querySelector("span");
@@ -68,6 +85,31 @@
             labelNode.textContent = "已结清";
             balanceNode.textContent = money(0, currency);
         }
+    }
+
+    /* V12-10：退房/关账后当前未结应收为 0 是账务口径，不是历史账务消失。
+       摘要区单独说明"已结账单 N 张 · 历史消费 X · 历史已收 Y"，历史明细
+       仍可从「查看账单明细」查看（CLOSED 账单不参与当前应收聚合）。 */
+    function renderFolioHistory(summary) {
+        var node = $("detail-folio-history");
+        if (!node) return;
+        var closedCount = Number(summary.closed_folio_count || 0);
+        if (!closedCount) {
+            node.textContent = "";
+            node.hidden = true;
+            return;
+        }
+        var currency = summary.currency;
+        var outstanding = summary.balance === null || typeof summary.balance === "undefined"
+            ? null : Number(summary.balance || 0);
+        var head = outstanding === 0
+            ? "当前未结应收为 0（账单已结清）"
+            : "当前未结应收 " + money(outstanding, currency);
+        node.textContent = head + "；已结账单 " + closedCount + " 张：历史消费 " +
+            money(summary.closed_charges, currency) + " / 历史已收（含抵扣冲减）" +
+            money(summary.closed_credits, currency) +
+            "。历史明细可在「查看账单明细」逐笔查看。";
+        node.hidden = false;
     }
 
     function showToast(message, isError) {
@@ -300,6 +342,11 @@
         ].forEach(function (id) { $(id).textContent = "加载中…"; });
         $("detail-balance").parentElement.classList.remove("is-credit");
         $("detail-balance").parentElement.querySelector("span").textContent = "当前余额";
+        // V12-10：上一次抽屉可能停在"账单累计"口径，重开必须回到预订摘要口径标签。
+        $("detail-charges").parentElement.querySelector("span").textContent = "应收 / 消费";
+        $("detail-credits").parentElement.querySelector("span").textContent = "已收 / 抵扣";
+        $("detail-folio-history").textContent = "";
+        $("detail-folio-history").hidden = true;
         $("detail-rooms").replaceChildren();
         $("detail-operations").replaceChildren();
         $("fd-operations-section").hidden = true;
@@ -742,6 +789,7 @@
             $("detail-charges").textContent = money(summary.charges, summary.currency);
             $("detail-credits").textContent = money(summary.credits, summary.currency);
             renderFolioBalance(summary.balance, summary.currency);
+            renderFolioHistory(summary);
             $("detail-created").textContent = item.timeline && item.timeline.created_at ? new Date(item.timeline.created_at).toLocaleString() : "—";
             $("detail-updated").textContent = item.timeline && item.timeline.updated_at ? new Date(item.timeline.updated_at).toLocaleString() : "—";
 
@@ -781,14 +829,24 @@
             var payload = await api("folios/" + encodeURIComponent(bookingNo));
             var data = payload.data || {};
             var summary = data.summary || {};
+            /* V12-10：本区展示的是"账单全量流水"（含已结账单），与上方预订摘要
+               的"当前未结应收"口径不同。已结账单必须换标签，否则点开明细时
+               数字从 0.00 跳到累计值，会被读成账务被改写。 */
+            var closedFolio = summary.status && summary.status !== "OPEN";
+            $("detail-charges").parentElement.querySelector("span").textContent =
+                closedFolio ? "账单累计消费" : "应收 / 消费";
+            $("detail-credits").parentElement.querySelector("span").textContent =
+                closedFolio ? "账单累计已收" : "已收 / 抵扣";
             $("detail-charges").textContent = money(summary.charges, summary.currency);
             $("detail-credits").textContent = money(summary.credits, summary.currency);
-            $("detail-balance").textContent = money(summary.balance, summary.currency);
+            renderFolioBalance(summary.balance, summary.currency);
             var box = $("detail-folio-entries");
             box.replaceChildren();
             (data.entries || []).forEach(function (entry) {
                 var line = element("div", "fd-folio-entry");
-                line.appendChild(element("span", "", (entry.entry_type || "") + " · " + (entry.business_date || "")));
+                var typeText = entryTypeLabel(entry.entry_type) + " · " + (entry.business_date || "");
+                if (entry.description) typeText += " · " + entry.description;
+                line.appendChild(element("span", "", typeText));
                 line.appendChild(element("b", "", money(entry.amount, entry.currency)));
                 box.appendChild(line);
             });

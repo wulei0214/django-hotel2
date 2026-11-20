@@ -110,6 +110,7 @@ def _create_reservation(
     check_in = payload["check_in"]
     check_out = payload["check_out"]
     rooms = payload["rooms"]
+    billing_type = str(payload.get("billing_type") or Reservation.BillingType.NIGHT_STAY)
     room_type = RoomType.objects.select_for_update().get(
         pk=payload["room_type_id"],
         property=property_obj,
@@ -117,19 +118,50 @@ def _create_reservation(
     )
     if payload["adults"] + payload["children"] > room_type.capacity * rooms:
         raise ValueError("入住人数超过所选房型的最大容纳人数。")
-    rate_plan = _get_rate_plan(
-        property_obj, room_type, check_in, check_out, payload.get("rate_plan_id")
-    )
-    availability = get_room_type_availability(
-        property_obj, room_type, check_in, check_out, rooms=rooms, rate_plan=rate_plan
-    )
-    # 顺序有意：total_amount 为 None 表示"该日期区间没有价格行/已关房/
-    # 停售/库存日历缺失"，与"确有价格但房量售罄"是两类不同原因；
-    # 先判房量会把前者误报成"房量不足"，误导排查方向。
-    if availability["total_amount"] is None:
-        raise InventoryUnavailable("所选日期暂不可预订。")
-    if availability["available_count"] < rooms:
-        raise InventoryUnavailable("所选日期房量不足，请重新查询。")
+    if billing_type == Reservation.BillingType.DAY_USE:
+        # V12-01：日租价格唯一来源是 DayUsePolicy（经营配置，不硬编码）。
+        # rate_plan 仍保留外键——它只声明"该房型在当日处于可售计划区间"，
+        # 不参与取价，避免日租价格被过夜房价计划污染。
+        from apps.inventory.services import get_day_use_availability
+        from apps.reservations.day_use import resolve_day_use_policy
+
+        rate_plan = _get_rate_plan(
+            property_obj,
+            room_type,
+            check_in,
+            check_in + timedelta(days=1),
+            payload.get("rate_plan_id"),
+        )
+        day_use_policy = resolve_day_use_policy(
+            property_obj=property_obj, room_type=room_type, day=check_in
+        )
+        get_day_use_availability(property_obj, room_type, check_in, rooms=rooms)
+        per_room_amount = Decimal(day_use_policy.day_use_price)
+        amount = per_room_amount * rooms
+        nightly_rates = []
+        currency = property_obj.currency
+    else:
+        day_use_policy = None
+        rate_plan = _get_rate_plan(
+            property_obj, room_type, check_in, check_out, payload.get("rate_plan_id")
+        )
+        availability = get_room_type_availability(
+            property_obj, room_type, check_in, check_out, rooms=rooms, rate_plan=rate_plan
+        )
+        # 顺序有意：total_amount 为 None 表示"该日期区间没有价格行/已关房/
+        # 停售/库存日历缺失"，与"确有价格但房量售罄"是两类不同原因；
+        # 先判房量会把前者误报成"房量不足"，误导排查方向。
+        if availability["total_amount"] is None:
+            raise InventoryUnavailable("所选日期暂不可预订。")
+        if availability["available_count"] < rooms:
+            raise InventoryUnavailable("所选日期房量不足，请重新查询。")
+        amount = Decimal(availability["total_amount"])
+        nightly_rates = availability["nightly_details"]
+        currency = availability["nightly_details"][0]["currency"]
+        per_room_amount = sum(
+            (Decimal(item["price"]) for item in nightly_rates),
+            start=Decimal("0.00"),
+        )
 
     phone = normalize_phone(payload["phone"])
     # 手机号只用于检索，不把两个使用共享号码的人自动合并为同一自然人。
@@ -149,7 +181,6 @@ def _create_reservation(
         source="官网预订",
     )
     booking_no = "R" + secrets.token_hex(10).upper()
-    amount = Decimal(availability["total_amount"])
     # RSV-07：与支付意图窗口共用同一时限常量，避免两处硬编码漂移。
     from apps.core.booking_constants import PENDING_RESERVATION_TTL_MINUTES
 
@@ -161,22 +192,21 @@ def _create_reservation(
         guest=guest,
         source="WEBSITE",
         status=Reservation.Status.PENDING,
+        billing_type=billing_type,
         check_in=check_in,
         check_out=check_out,
         room_count=rooms,
         adult_count=payload["adults"],
         child_count=payload["children"],
         total_amount=amount,
-        currency=availability["nightly_details"][0]["currency"],
+        currency=currency,
         idempotency_key=idempotency_key,
         request_fingerprint=fingerprint,
         expires_at=expires_at,
     )
 
-    nightly_rates = availability["nightly_details"]
-    per_room_amount = sum(
-        (Decimal(item["price"]) for item in nightly_rates),
-        start=Decimal("0.00"),
+    day_use_price_snapshot = (
+        Decimal(day_use_policy.day_use_price) if day_use_policy is not None else None
     )
     for _ in range(rooms):
         ReservationRoom.objects.create(
@@ -188,6 +218,7 @@ def _create_reservation(
             check_out=check_out,
             nightly_rates=nightly_rates,
             amount=per_room_amount,
+            day_use_price=day_use_price_snapshot,
         )
 
     Folio.objects.create(
@@ -216,7 +247,15 @@ def create_reservation(
 
     check_in = payload["check_in"]
     check_out = payload["check_out"]
-    if check_out <= check_in:
+    billing_type = str(payload.get("billing_type") or Reservation.BillingType.NIGHT_STAY)
+    if billing_type not in dict(Reservation.BillingType.choices):
+        raise ValueError("计费类型不正确。")
+    if billing_type == Reservation.BillingType.DAY_USE:
+        # V12-01：日租是"当日使用当日退"，日期必须相等；反向也成立——
+        # 日期相等只能来自显式 DAY_USE，不允许隐式推断。
+        if check_out != check_in:
+            raise ValueError("日租订单的离店日期必须等于入住日期。")
+    elif check_out <= check_in:
         raise ValueError("离店日期必须晚于入住日期。")
     property_today = timezone.localdate(timezone.now(), ZoneInfo(property_obj.timezone))
     if check_in < property_today:
@@ -237,6 +276,7 @@ def create_reservation(
             "rate_plan_id": payload.get("rate_plan_id"),
             "check_in": check_in.isoformat(),
             "check_out": check_out.isoformat(),
+            "billing_type": billing_type,
             "rooms": payload["rooms"],
             "adults": payload["adults"],
             "children": payload["children"],

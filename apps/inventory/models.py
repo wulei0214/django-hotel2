@@ -766,6 +766,18 @@ class RoomAssignmentConflict(models.Model):
     status: models.CharField = models.CharField(
         max_length=16, choices=Status.choices, default=Status.OPEN, verbose_name="状态"
     )
+    # V12-07：并发扫描互斥键。MySQL 8 不支持条件唯一约束（本仓库既有口径），
+    # 用"可空唯一键"表达"同一（物理房, 住宿日）只允许一条 OPEN"——OPEN 时写
+    # f"{room_id}:{stay_date}"，DISMISSED 置 NULL 释放键位（NULL 不参与唯一性）。
+    # 由 save() 维护，多进程/多实例下由数据库而非 Python 进程内锁兜底。
+    open_key: models.CharField = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="待处理唯一键",
+        help_text="OPEN 时=房/日复合键，其余为 NULL；并发扫描的唯一性仲裁依据",
+    )
     dismiss_reason: models.CharField = models.CharField(
         max_length=240, blank=True, default="", verbose_name="关闭原因"
     )
@@ -790,12 +802,31 @@ class RoomAssignmentConflict(models.Model):
             models.UniqueConstraint(
                 fields=("run", "room", "stay_date"), name="uq_room_conflict_run_room_date"
             ),
+            # V12-07：跨运行唯一性——并发/重复扫描不得对同一（房, 日）产生两条
+            # 有效（OPEN）差异；DISMISSED 行为 NULL，可保留多条历史。
+            models.UniqueConstraint(fields=("open_key",), name="uq_room_conflict_open_key"),
         ]
         indexes = [
             models.Index(
                 fields=("property", "status", "stay_date"), name="idx_rac_prop_status_date"
             ),
         ]
+
+    def save(self, *args, **kwargs):
+        """维护 open_key：OPEN → 复合键；其他状态 → NULL。
+
+        键位由模型统一维护，避免调用方（扫描、复核、关闭）各写一份而漏同步；
+        `update_fields` 显式指定时补齐 open_key，防止状态变更后键位残留。
+        """
+        self.open_key = (
+            f"{self.room_id}:{self.stay_date.isoformat()}"
+            if self.status == self.Status.OPEN and self.room_id and self.stay_date
+            else None
+        )
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {"open_key"}
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.room_id}/{self.stay_date} 冲突 {self.conflict_count} 条明细 {self.status}"

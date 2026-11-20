@@ -171,6 +171,7 @@ def create_walk_in(
     deposit_amount=None,
     created_by=None,
     idempotency_key="",
+    billing_type=Reservation.BillingType.NIGHT_STAY,
 ):
     """Walk-in 散客创建入口（R1-01：MySQL 1213 死锁瞬态重试包装）。
 
@@ -195,6 +196,7 @@ def create_walk_in(
                 deposit_amount=deposit_amount,
                 created_by=created_by,
                 idempotency_key=idempotency_key,
+                billing_type=billing_type,
             )
         except OperationalError as exc:
             # 末次仍死锁则原样抛出（不再兜第二次重试，也不留 Optional 哨兵）。
@@ -216,6 +218,7 @@ def _create_walk_in_once(
     deposit_amount=None,
     created_by=None,
     idempotency_key="",
+    billing_type=Reservation.BillingType.NIGHT_STAY,
 ):
     """Walk-in 散客原子化创建（同一事务内全链路）。
 
@@ -260,13 +263,22 @@ def _create_walk_in_once(
     # RSV-05：入住/离店日期按物业时区业务日计算（与夜审/提前离店同口径），
     # 不用部署时区——跨时区物业在日界附近会错一天。
     walkin_today = _property_today(property_obj)
+    billing_type = str(billing_type or Reservation.BillingType.NIGHT_STAY)
+    if billing_type == Reservation.BillingType.DAY_USE:
+        # V12-01：日租是"当日使用当日退"——离店日=入住日，晚数恒为 0；
+        # 入参 nights 对日租无意义，不参与计费也不占用多日库存。
+        check_out = walkin_today
+        nights = 0
+    else:
+        check_out = walkin_today + timedelta(days=nights)
     payload = {
         "full_name": full_name.strip(),
         "phone": phone_normalized,
         "room_type_id": room_type_id,
         "rate_plan_id": rate_plan_id,
         "check_in": walkin_today,
-        "check_out": walkin_today + timedelta(days=nights),
+        "check_out": check_out,
+        "billing_type": billing_type,
         "rooms": 1,
         "adults": adults,
         "children": children,

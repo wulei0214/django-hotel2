@@ -53,7 +53,7 @@ $env:DJANGO_DB_NAME="_pytest_smoke.sqlite3"
 #   >>> from apps.inventory.models import RoomType, RatePlan, DailyRate, RoomTypeInventory
 #   >>> from django.utils import timezone; from datetime import timedelta; from decimal import Decimal
 #   >>> p = Property.objects.get(code="DEFAULT")
-#   >>> u = User.objects.create_user("demo_owner", password="Demo@Owner2026")
+#   >>> u = User.objects.create_user("demo_owner", password="<自定口令，与 PMS_STAFF_PASSWORD 一致>")
 #   >>> prof = StaffProfile.objects.create(user=u, full_name="演示店长", employment_status="ACTIVE")
 #   >>> m = PropertyStaffMembership.objects.create(staff_profile=prof, property=p, employee_no="SMOKE-001", status="ACTIVE")
 #   >>> StaffRoleAssignment.objects.create(membership=m, group=Group.objects.get(name="店长"), starts_at=timezone.now()-timedelta(minutes=1))
@@ -86,7 +86,7 @@ $env:DJANGO_DB_NAME="_pytest_smoke.sqlite3"
 # 指定其它实例
 $env:PMS_BASE_URL="http://127.0.0.1:8001"; .venv\Scripts\python.exe -m pytest apps/api/tests_p0 -m p0
 
-# 指定员工测试账号（缺省 demo_owner / Demo@Owner2026，仅本机演示凭据）
+# 指定员工测试账号（账号名缺省 demo_owner；口令无缺省值，必须显式注入）
 $env:PMS_STAFF_USER="demo_owner"; $env:PMS_STAFF_PASSWORD="你的口令"
 ```
 
@@ -99,7 +99,7 @@ $env:PMS_STAFF_USER="demo_owner"; $env:PMS_STAFF_PASSWORD="你的口令"
 |------|------|------|
 | `PMS_BASE_URL` | `http://127.0.0.1:8000` | 被测实例地址 |
 | `PMS_STAFF_USER` | `demo_owner` | 员工登录测试账号（需有 DEFAULT 有效任职 + 角色授权） |
-| `PMS_STAFF_PASSWORD` | `Demo@Owner2026` | 上述账号口令（缺省为本机演示凭据，正式环境必须覆盖） |
+| `PMS_STAFF_PASSWORD` | 无（必填） | 上述账号口令；仓库不保留固定演示口令，未注入时套件直接报错退出 |
 
 ## 环境代理隔离（务必知悉）
 

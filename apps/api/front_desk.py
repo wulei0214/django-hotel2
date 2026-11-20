@@ -272,6 +272,12 @@ def _folio_summaries(property_obj, reservation_ids):
                 "currency_label": L.currency_label(folio.reservation.currency),
                 "folio_count": 0,
                 "open_folio_count": 0,
+                # V12-10：历史（含已结/已关账单）口径。只用于在"当前未结应收
+                # 为 0"时说明历史账单仍然存在，不参与应收聚合契约——CLOSED
+                # Folio 依旧不计入 charges/credits/balance。
+                "closed_folio_count": 0,
+                "closed_charges": Decimal("0.00"),
+                "closed_credits": Decimal("0.00"),
             },
         )
         summary["folio_count"] += 1
@@ -287,6 +293,19 @@ def _folio_summaries(property_obj, reservation_ids):
         # 可查历史事实，不改聚合契约。退房后多收款由 DEC-02 转
         # RefundLiability，资金完整性不受此显示口径影响。）
         if folio.status != Folio.Status.OPEN:
+            # V12-10：已结账单单独聚合历史金额，避免页面上"全部归零"被读成
+            # 账务记录消失；CLOSED 仍然不进当前应收。
+            if folio.currency == summary["currency"]:
+                closed_entries = list(folio.entries.all())
+                summary["closed_folio_count"] += 1
+                summary["closed_charges"] += sum(
+                    (entry.amount for entry in closed_entries if entry.amount > 0),
+                    Decimal("0.00"),
+                )
+                summary["closed_credits"] += sum(
+                    (-entry.amount for entry in closed_entries if entry.amount < 0),
+                    Decimal("0.00"),
+                )
             continue
         if folio.currency != summary["currency"]:
             # 不允许把不同币种金额直接相加；保留冲突标记，提示必须人工核对。
@@ -310,7 +329,7 @@ def _folio_summaries(property_obj, reservation_ids):
 
     for summary in result.values():
         summary.setdefault("currency_mismatch", False)
-        for key in ("charges", "credits", "balance"):
+        for key in ("charges", "credits", "balance", "closed_charges", "closed_credits"):
             summary[key] = (
                 None
                 if summary["currency_mismatch"]
@@ -330,6 +349,9 @@ def _empty_folio_summary(currency="CNY"):
         "pending_payment_count": 0,
         "currency": currency,
         "currency_label": L.currency_label(currency),
+        "closed_folio_count": 0,
+        "closed_charges": "0.00",
+        "closed_credits": "0.00",
     }
 
 
@@ -1785,15 +1807,14 @@ def exception_release_request(request, booking_no):
 def walk_in_create(request):
     """POST /api/v1/front-desk/walk-in — 已退役，恒返 410 Gone（R2-04，DEC-WI-01）。
 
-    csrf_exempt 说明：退役端点无任何写操作与会话依赖，CSRF 校验对它没有
-    保护意义；豁免后旧客户端（无 CSRF cookie 的残留调用方）也能收到
-    明确的 410 Gone 退役通知，而不是难解的 403。"""
-    """POST /api/v1/front-desk/walk-in — 已退役，恒返 410 Gone（R2-04，DEC-WI-01）。
-
     已按 DEC-WI-01 双端点收敛决策退役（观察期结束，2026-11-19 执行）：任意 POST
     一律 410 Gone——不再区分认证/权限/入参，不读取请求体，不做任何业务写入，
     也不再记 frontdesk.legacy_walk_in_called 观测审计（观察期随退役一并结束）。
     标准入口：POST /api/v1/front-desk/walk-ins（A1 契约口径）。
+
+    csrf_exempt 说明：退役端点无任何写操作与会话依赖，CSRF 校验对它没有
+    保护意义；豁免后旧客户端（无 CSRF cookie 的残留调用方）也能收到
+    明确的 410 Gone 退役通知，而不是难解的 403。
 
     业务事实源 apps.reservations.walkin.create_walk_in 保留于服务层，仅由
     walk_ins_create（/front-desk/walk-ins）继续使用；本路由仅作 410 载体保留，
@@ -1871,11 +1892,18 @@ def walk_ins_create(request):
         nights = _int_or_default(body.get("nights"), 1)
         adults = _int_or_default(body.get("adults"), 1)
         children = _int_or_default(body.get("children"), 0)
+        # V12-01：日租（DAY_USE）与过夜（NIGHT_STAY）是显式计费类型。
+        # 日租的离店日=入住日，晚数由服务层固定为 0，客户端传值不参与计费。
+        billing_type = str(body.get("billing_type") or "NIGHT_STAY").strip().upper()
         deposit_raw = body.get("deposit_amount")
         deposit_amount = None if deposit_raw in (None, "") else Decimal(str(deposit_raw))
         if not full_name:
             raise ValueError("住客姓名必填。")
-        if not 1 <= nights <= WALK_IN_MAX_NIGHTS:
+        if billing_type not in ("NIGHT_STAY", "DAY_USE"):
+            raise ValueError("计费类型必须是 NIGHT_STAY 或 DAY_USE。")
+        if billing_type == "DAY_USE":
+            nights = 0
+        elif not 1 <= nights <= WALK_IN_MAX_NIGHTS:
             raise ValueError(f"住宿晚数必须在 1 至 {WALK_IN_MAX_NIGHTS} 晚之间。")
         if not 1 <= adults <= WALK_IN_MAX_GUESTS:
             raise ValueError(f"成人数必须在 1 至 {WALK_IN_MAX_GUESTS} 人之间。")
@@ -1911,6 +1939,7 @@ def walk_ins_create(request):
             deposit_amount=deposit_amount,
             created_by=request.user,
             idempotency_key=key,
+            billing_type=billing_type,
         )
     except FrontDeskValidationError as exc:
         # RSV-10：入参校验失败（金额格式等）必须与业务状态冲突区分，

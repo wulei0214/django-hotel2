@@ -16,7 +16,7 @@
   * 匿名住客客户端与员工客户端是两个独立的 requests.Session——
     员工登录不得污染匿名公开面用例。
   * 测试账号一律从环境变量读取：PMS_STAFF_USER / PMS_STAFF_PASSWORD；
-    缺省值仅为本机演示账号（demo_owner / Demo@Owner2026），可被完全覆盖，
+    账号名可缺省为 demo_owner，口令无缺省值（仓库不保存可用凭据），
     不在代码/日志/断言中记录任何真实口令或令牌明文。
   * 公开面限流（§6.3）：预订创建 IP 10 次/10 分钟、同手机号 3 次/10 分钟、
     登录 IP+用户名 5 次/5 分钟——本套件每轮运行最多创建 1 笔预订（含幂等
@@ -145,11 +145,21 @@ def api(base_url):
 
 @pytest.fixture(scope="session")
 def staff_credentials():
-    """员工测试账号（环境变量注入，缺省为本机演示账号）。"""
-    return {
-        "username": _env("PMS_STAFF_USER", "demo_owner"),
-        "password": _env("PMS_STAFF_PASSWORD", "Demo@Owner2026"),
-    }
+    """员工测试账号（账号名可缺省，口令必须由环境变量显式注入）。
+
+    V12-06：不再提供内置缺省口令——源码里保留一个"缺省即可登录"的口令，
+    等同于把凭据随仓库发布。缺失时直接给出可操作报错，而不是静默回落到
+    任何固定口令。
+    """
+    username = _env("PMS_STAFF_USER", "demo_owner")
+    password = (environ.get("PMS_STAFF_PASSWORD") or "").strip()
+    if not password:
+        pytest.fail(
+            "p0 冒烟需要真实员工口令：请先设置环境变量 PMS_STAFF_PASSWORD"
+            "（该账号需在 DEFAULT 物业有有效任职与角色授权），"
+            "并配合 PMS_STAFF_USER 指定账号名。"
+        )
+    return {"username": username, "password": password}
 
 
 def _form_login(api: HttpApi, username: str, password: str):

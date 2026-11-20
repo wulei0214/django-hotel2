@@ -1,4 +1,5 @@
 """事务化前台排房、入住、收款与退房服务。"""
+
 import logging
 from decimal import Decimal, InvalidOperation
 
@@ -34,15 +35,23 @@ def _compute_early_departure_snapshot(line, *, now_iso):
     """WB-098（DEC-ED-01 §2.1）：计算单条 ReservationRoom 应写入的提前离店
     政策快照字典（不含 backfilled 标记）。确认与回填共用同一查询口径，避免
     两套逻辑漂移。"""
-    policy = EarlyDeparturePolicy.objects.filter(
-        rate_plan_id=line.rate_plan_id, is_active=True,
-    ).order_by("-created_at", "-pk").first()
+    policy = (
+        EarlyDeparturePolicy.objects.filter(
+            rate_plan_id=line.rate_plan_id,
+            is_active=True,
+        )
+        .order_by("-created_at", "-pk")
+        .first()
+    )
     return {
-        "policy_type": (policy.policy_type if policy is not None
-                        else EarlyDeparturePolicy.PolicyType.NONE),
-        "policy_value": (str(policy.policy_value)
-                         if policy is not None
-                         and policy.policy_value is not None else None),
+        "policy_type": (
+            policy.policy_type if policy is not None else EarlyDeparturePolicy.PolicyType.NONE
+        ),
+        "policy_value": (
+            str(policy.policy_value)
+            if policy is not None and policy.policy_value is not None
+            else None
+        ),
         "rate_plan_id": line.rate_plan_id,
         "snapshot_at": now_iso,
     }
@@ -99,16 +108,19 @@ def snapshot_early_departure_policy(
     if snapshotted and not dry_run:
         AuditEvent.record(
             action=audit_action,
-            entity_type="Reservation", entity_id=reservation.pk,
+            entity_type="Reservation",
+            entity_id=reservation.pk,
             property_obj=reservation.property,
             after={
                 "lines": [line.pk for line in snapshotted],
                 "policy_types": {
                     str(line.pk): line.early_departure_snapshot["policy_type"]
-                    for line in snapshotted},
+                    for line in snapshotted
+                },
                 "backfilled": backfilled,
             },
-            reason=audit_reason)
+            reason=audit_reason,
+        )
     return snapshotted
 
 
@@ -149,15 +161,39 @@ def _folio_balance(folio):
 
 
 def _check_room_assignment_conflict(line, room):
-    conflict = ReservationRoom.objects.filter(
-        property=line.property,
-        assigned_room=room,
-        check_in__lt=line.check_out,
-        check_out__gt=line.check_in,
-        reservation__status__in=ACTIVE_RESERVATION_STATUSES,
-    ).exclude(pk=line.pk).exists()
+    """同一物理房间在占用区间内不得重复排房。
+
+    V12-01：日租的占用区间是 [check_in, check_in + 1 天)（当日使用当日退），
+    若仍按 `check_in < check_out` 判重叠，日租行自身区间为空，两条日租
+    预订会被排到同一间房。这里把日租展开为一天，并额外用计费类型显式
+    匹配"同一天的日租"，与过夜区间重叠合并为同一条冲突判定。
+    """
+    from datetime import timedelta
+
+    from django.db.models import Q
+
+    occupancy_end = (
+        line.check_out if line.check_out > line.check_in else line.check_in + timedelta(days=1)
+    )
+    conflict = (
+        ReservationRoom.objects.filter(
+            property=line.property,
+            assigned_room=room,
+            reservation__status__in=ACTIVE_RESERVATION_STATUSES,
+        )
+        .exclude(pk=line.pk)
+        .filter(
+            Q(check_in__lt=occupancy_end, check_out__gt=line.check_in)
+            | Q(
+                reservation__billing_type=Reservation.BillingType.DAY_USE,
+                check_in__gte=line.check_in,
+                check_in__lt=occupancy_end,
+            )
+        )
+        .exists()
+    )
     if conflict:
-        raise FrontDeskOperationError("该房间在预订住宿日期内已有其他有效预订占用。")
+        raise FrontDeskOperationError("该房间在预订占用日期内已有其他有效预订占用。")
 
 
 def _ledger_reference_for_amount(folio, *, base_reference, amount):
@@ -170,7 +206,9 @@ def _ledger_reference_for_amount(folio, *, base_reference, amount):
     """
     existing = list(
         folio.entries.filter(reference__startswith=base_reference)
-        .order_by("pk").values_list("reference", "amount"))
+        .order_by("pk")
+        .values_list("reference", "amount")
+    )
     if any(entry_amount == amount for _, entry_amount in existing):
         return None
     used = {ref for ref, _ in existing}
@@ -196,16 +234,19 @@ def _release_sold_inventory_for_early_departure(line, *, from_date):
     """
     from apps.inventory.models import RoomTypeInventory
     from apps.inventory.services import stay_dates
+
     if line.check_out <= from_date:
         return 0
     dates = list(stay_dates(from_date, line.check_out))
     rows = {
         row.stay_date: row
-        for row in RoomTypeInventory.objects.select_for_update().filter(
+        for row in RoomTypeInventory.objects.select_for_update()
+        .filter(
             property=line.property,
             room_type_id=line.room_type_id,
             stay_date__in=dates,
-        ).order_by("stay_date")
+        )
+        .order_by("stay_date")
     }
     released = 0
     for stay_date in dates:
@@ -231,10 +272,13 @@ def _release_sold_inventory_for_early_departure(line, *, from_date):
     # RSV-01：冻结明细同步释放，保证对账 held/sold 真值可独立重建。
     from apps.inventory.services import sync_inventory_hold_details
     from apps.reservations.models import InventoryHold
+
     sync_inventory_hold_details(
-        property_obj=line.property, lines=[line],
+        property_obj=line.property,
+        lines=[line],
         target_status=InventoryHold.HoldStatus.RELEASED,
-        only_dates=set(dates))
+        only_dates=set(dates),
+    )
     return released
 
 
@@ -247,16 +291,19 @@ def assign_room(*, property_obj, reservation_room_id, room_id, assigned_by=None)
     占用。整个事务必须在 READ COMMITTED 下执行。
     """
     from apps.reservations.isolation import use_read_committed
+
     use_read_committed()
     with transaction.atomic():
         return _assign_room_locked(
-            property_obj=property_obj, reservation_room_id=reservation_room_id,
-            room_id=room_id, assigned_by=assigned_by)
+            property_obj=property_obj,
+            reservation_room_id=reservation_room_id,
+            room_id=room_id,
+            assigned_by=assigned_by,
+        )
 
 
 @transaction.atomic
-def _assign_room_locked(*, property_obj, reservation_room_id, room_id,
-                        assigned_by=None):
+def _assign_room_locked(*, property_obj, reservation_room_id, room_id, assigned_by=None):
     line = (
         ReservationRoom.objects.select_for_update()
         .filter(
@@ -277,7 +324,12 @@ def _assign_room_locked(*, property_obj, reservation_room_id, room_id,
         Reservation.Status.CHECKED_IN,
     ):
         raise FrontDeskOperationError("只有已确认或部分办理入住的预订可以排房。")
-    if line.check_out <= _property_today(property_obj):
+    # V12-01：日租当日使用当日退，离店日=入住日=今天属合法排房窗口，
+    # 只有严格早于今天才算过期。
+    if reservation.billing_type == Reservation.BillingType.DAY_USE:
+        if line.check_out < _property_today(property_obj):
+            raise FrontDeskOperationError("该预订的日期已过，不能再排房。")
+    elif line.check_out <= _property_today(property_obj):
         raise FrontDeskOperationError("该预订的离店日期已过，不能再排房。")
     if Stay.objects.filter(reservation_room=line).exists():
         raise FrontDeskOperationError("该房间明细已生成实际入住记录，不能重新排房。")
@@ -307,10 +359,14 @@ def _assign_room_locked(*, property_obj, reservation_room_id, room_id,
         room.number,
     )
     AuditEvent.record(
-        action="frontdesk.room_assigned", entity_type="ReservationRoom",
-        entity_id=str(line.pk), actor=assigned_by, property_obj=property_obj,
+        action="frontdesk.room_assigned",
+        entity_type="ReservationRoom",
+        entity_id=str(line.pk),
+        actor=assigned_by,
+        property_obj=property_obj,
         after={"booking_no": reservation.booking_no, "room": room.number},
-        reason="前台排房")
+        reason="前台排房",
+    )
     return line, True
 
 
@@ -340,12 +396,18 @@ def check_in_stay(*, property_obj, reservation_room_id, checked_in_by=None):
     today = _property_today(property_obj)
     if line.check_in > today:
         raise FrontDeskOperationError("尚未到预订入住日期，不能提前办理入住。")
-    if line.check_out <= today:
+    # V12-01：日租的离店日=入住日（当日使用当日退），不能用"离店日已过"
+    # 的过夜口径拦截；只有 check_out 严格早于今天才算过期。
+    if reservation.billing_type == Reservation.BillingType.DAY_USE:
+        if line.check_out < today:
+            raise FrontDeskOperationError("预订日期已过，不能办理入住。")
+    elif line.check_out <= today:
         raise FrontDeskOperationError("预订离店日期已过，不能办理入住。")
     # §4.2 营业日结后的业务写入限制（P0-C 缺口收口）：当日营业日已完成夜审关账
     # 后，拒绝再生成新的在住 Stay（新入住的房费过租会归属已关账营业日）。
     # 仅阻挡入住；排房/换房不产生营业日归属账务，允许为次日到店提前排房。
     from apps.core.models import BusinessDate
+
     if BusinessDate.objects.filter(
         property=property_obj,
         business_date=today,
@@ -358,19 +420,21 @@ def check_in_stay(*, property_obj, reservation_room_id, checked_in_by=None):
     if not line.assigned_room_id:
         raise FrontDeskOperationError("请先为该预订明细分配房间。")
 
-    existing = Stay.objects.select_for_update().filter(
-        reservation_room=line
-    ).first()
+    existing = Stay.objects.select_for_update().filter(reservation_room=line).first()
     if existing is not None:
         if existing.status == Stay.Status.IN_HOUSE:
             return existing, False
         raise FrontDeskOperationError("该预订明细已有已退房记录，不能重复入住。")
 
-    room = Room.objects.select_for_update().filter(
-        pk=line.assigned_room_id,
-        property=property_obj,
-        room_type_id=line.room_type_id,
-    ).first()
+    room = (
+        Room.objects.select_for_update()
+        .filter(
+            pk=line.assigned_room_id,
+            property=property_obj,
+            room_type_id=line.room_type_id,
+        )
+        .first()
+    )
     if room is None or not room.is_sellable_now:
         raise FrontDeskOperationError("已分配房间不再满足入住条件，请重新排房。")
     if Stay.objects.filter(
@@ -379,9 +443,7 @@ def check_in_stay(*, property_obj, reservation_room_id, checked_in_by=None):
         status=Stay.Status.IN_HOUSE,
     ).exists():
         raise FrontDeskOperationError("该房间已有其他在住记录。")
-    if not Folio.objects.filter(
-        property=property_obj, reservation=reservation
-    ).exists():
+    if not Folio.objects.filter(property=property_obj, reservation=reservation).exists():
         raise FrontDeskOperationError("预订账单尚未建立，不能办理入住。")
 
     now = timezone.now()
@@ -395,12 +457,42 @@ def check_in_stay(*, property_obj, reservation_room_id, checked_in_by=None):
     room.occupancy_status = Room.OccupancyStatus.OCCUPIED
     room.save(update_fields=("occupancy_status", "updated_at"))
     StayRoomSegment.objects.create(
-        property=property_obj, stay=stay, room=room, started_at=now,
-        move_reason="初始入住房间", moved_by=checked_in_by,
+        property=property_obj,
+        stay=stay,
+        room=room,
+        started_at=now,
+        move_reason="初始入住房间",
+        moved_by=checked_in_by,
     )
 
     reservation.status = Reservation.Status.CHECKED_IN
     reservation.save(update_fields=("status", "updated_at"))
+    # V12-01：日租房费在入住时一次性确认收入（ROOM_CHARGE，凭证号
+    # day-use:{stay.pk} 全局唯一即幂等键）。夜审只处理过夜在住，day-use
+    # 的入住日与离店日相同、永不满足"过租窗口"，因此收入只能在此确认；
+    # 不确认就等于房间被使用而无房费收入。
+    if reservation.billing_type == Reservation.BillingType.DAY_USE:
+        from apps.reservations.day_use import post_day_use_room_charge
+
+        folio = (
+            Folio.objects.select_for_update()
+            .filter(
+                property=property_obj,
+                reservation=reservation,
+                folio_type=Folio.FolioType.MASTER,
+            )
+            .first()
+        )
+        if folio is None:
+            raise FrontDeskOperationError("预订缺少主账单，不能确认日租房费。")
+        post_day_use_room_charge(
+            property_obj=property_obj,
+            reservation=reservation,
+            stay=stay,
+            folio=folio,
+            actor=checked_in_by,
+            business_date=today,
+        )
     audit.info(
         "前台办理入住 user=%s booking=%s stay=%s room=%s",
         getattr(checked_in_by, "username", "system"),
@@ -409,11 +501,14 @@ def check_in_stay(*, property_obj, reservation_room_id, checked_in_by=None):
         room.number,
     )
     AuditEvent.record(
-        action="frontdesk.checked_in", entity_type="Stay",
-        entity_id=str(stay.pk), actor=checked_in_by, property_obj=property_obj,
-        after={"booking_no": reservation.booking_no, "room": room.number,
-               "status": stay.status},
-        reason="前台办理入住")
+        action="frontdesk.checked_in",
+        entity_type="Stay",
+        entity_id=str(stay.pk),
+        actor=checked_in_by,
+        property_obj=property_obj,
+        after={"booking_no": reservation.booking_no, "room": room.number, "status": stay.status},
+        reason="前台办理入住",
+    )
     return stay, True
 
 
@@ -429,12 +524,16 @@ def collect_manual_payment(
     key = str(idempotency_key or "").strip()
     if not key or len(key) > 64:
         raise FrontDeskOperationError("请提供 1 至 64 个字符的 Idempotency-Key。")
-    reservation = Reservation.objects.select_for_update().filter(
-        property=property_obj, booking_no=booking_no).first()
+    reservation = (
+        Reservation.objects.select_for_update()
+        .filter(property=property_obj, booking_no=booking_no)
+        .first()
+    )
     if reservation is None:
         raise FrontDeskOperationError("未找到该物业下的预订。")
     if reservation.status not in (
-        Reservation.Status.PENDING, Reservation.Status.CONFIRMED,
+        Reservation.Status.PENDING,
+        Reservation.Status.CONFIRMED,
         Reservation.Status.CHECKED_IN,
     ):
         raise FrontDeskOperationError("当前预订状态不允许前台收款。")
@@ -454,14 +553,18 @@ def collect_manual_payment(
             or existing.provider != "frontdesk_manual"
             or existing.status != Payment.Status.SUCCEEDED
         ):
-            raise FrontDeskOperationError(
-                "该 Idempotency-Key 已用于其他收款请求，不能重复使用。")
+            raise FrontDeskOperationError("该 Idempotency-Key 已用于其他收款请求，不能重复使用。")
     from apps.billing.services_v2 import BillingInputError, BillingService
+
     try:
         payment = BillingService.collect_payment(
-            property_obj=property_obj, reservation=reservation,
-            amount=amount, method=method, collected_by=received_by,
-            reference=provider_ref)
+            property_obj=property_obj,
+            reservation=reservation,
+            amount=amount,
+            method=method,
+            collected_by=received_by,
+            reference=provider_ref,
+        )
     except BillingInputError as exc:
         # RSV-10：金额格式/精度、支付方式、参考号格式 → 400。
         raise FrontDeskValidationError(str(exc)) from exc
@@ -475,6 +578,7 @@ def collect_manual_payment(
     # 与在线支付回调同口径（先确认库存占用，再置 CONFIRMED），并落审计。
     if reservation.status == Reservation.Status.PENDING:
         from apps.inventory.services import InventoryUnavailable, confirm_inventory_for_reservation
+
         try:
             confirm_inventory_for_reservation(reservation)
         except InventoryUnavailable as exc:
@@ -485,12 +589,16 @@ def collect_manual_payment(
         # （DEC-ED-01：预订确认时保存政策版本快照）。
         snapshot_early_departure_policy(reservation)
         from apps.billing.services import cancel_open_payment_intents_for_reservation
+
         cancel_open_payment_intents_for_reservation(reservation)
         AuditEvent.record(
             action="reservation.confirmed_at_frontdesk",
-            entity_type="Reservation", entity_id=reservation.booking_no,
-            property_obj=property_obj, actor=received_by,
-            reason=f"前台收款确认（{method} {amount}，凭证 {payment.provider_ref}）")
+            entity_type="Reservation",
+            entity_id=reservation.booking_no,
+            property_obj=property_obj,
+            actor=received_by,
+            reason=f"前台收款确认（{method} {amount}，凭证 {payment.provider_ref}）",
+        )
 
     return payment, existing is None
 
@@ -503,20 +611,17 @@ def check_out_stay(*, property_obj, stay_id, checked_out_by=None):
     必须在 READ COMMITTED 下执行。
     """
     from apps.reservations.isolation import use_read_committed
+
     use_read_committed()
     with transaction.atomic():
         return _check_out_stay_locked(
-            property_obj=property_obj, stay_id=stay_id,
-            checked_out_by=checked_out_by)
+            property_obj=property_obj, stay_id=stay_id, checked_out_by=checked_out_by
+        )
 
 
 @transaction.atomic
 def _check_out_stay_locked(*, property_obj, stay_id, checked_out_by=None):
-    stay = (
-        Stay.objects.select_for_update()
-        .filter(pk=stay_id, property=property_obj)
-        .first()
-    )
+    stay = Stay.objects.select_for_update().filter(pk=stay_id, property=property_obj).first()
     if stay is None:
         raise FrontDeskOperationError("未找到该物业下的入住记录。")
     if stay.status == Stay.Status.CHECKED_OUT:
@@ -531,106 +636,172 @@ def _check_out_stay_locked(*, property_obj, stay_id, checked_out_by=None):
     reservation = Reservation.objects.select_for_update().get(
         pk=line.reservation_id, property=property_obj
     )
-    folio = Folio.objects.select_for_update().filter(
-        property=property_obj, reservation=reservation,
-        folio_type=Folio.FolioType.MASTER,
-    ).first()
+    folio = (
+        Folio.objects.select_for_update()
+        .filter(
+            property=property_obj,
+            reservation=reservation,
+            folio_type=Folio.FolioType.MASTER,
+        )
+        .first()
+    )
     if folio is None or folio.status != Folio.Status.OPEN:
         raise FrontDeskOperationError("账单不存在或已关闭，不能办理退房。")
 
-    # WB-075：逐晚房价快照缺失时拒绝自动结算退房房费（与夜审
-    # NIGHTLY_RATE_MISSING critical 阻断同口径——没有价格依据不得入账）。
-    # 语义边界（WB-097 正式语义）：本守卫只拦截"缺数据"；有快照时
-    # NONE 政策=按实际入住晚数的逐晚快照之和结算、未住晚不计房费
-    # 也不收违约金（calculate_early_departure，DEC-ED-01 §2.1）。
-    if not (line.nightly_rates or []):
-        raise FrontDeskOperationError(
-            "缺少逐晚房价快照，无法自动结算退房房费；"
-            "请先补录快照或走异常放行流程")
+    today = _property_today(property_obj)
+    is_day_use = reservation.billing_type == Reservation.BillingType.DAY_USE
+    if is_day_use:
+        # V12-01：日租按创建时的政策价快照一次性结算，不逐晚重算，也不
+        # 适用提前离店违约金（日租没有"未住晚"）。入住时已确认收入则
+        # 差额为 0，重复退房不会再生凭证（凭证号 day-use:{stay.pk} 唯一）。
+        if line.day_use_price is None:
+            raise FrontDeskOperationError("日租订单缺少房费快照，不能办理退房。")
+        charge_reference = f"day-use:{stay.pk}"
+        target_room_charge = Decimal(line.day_use_price)
+        posted_for_stay = LedgerEntry.objects.filter(
+            folio=folio,
+            entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+            reference=charge_reference,
+        ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+        penalty = Decimal("0.00")
+        policy_type = "DAY_USE"
+        remaining_room_charge = target_room_charge - posted_for_stay
+    else:
+        # WB-075：逐晚房价快照缺失时拒绝自动结算退房房费（与夜审
+        # NIGHTLY_RATE_MISSING critical 阻断同口径——没有价格依据不得入账）。
+        # 语义边界（WB-097 正式语义）：本守卫只拦截"缺数据"；有快照时
+        # NONE 政策=按实际入住晚数的逐晚快照之和结算、未住晚不计房费
+        # 也不收违约金（calculate_early_departure，DEC-ED-01 §2.1）。
+        if not (line.nightly_rates or []):
+            raise FrontDeskOperationError(
+                "缺少逐晚房价快照，无法自动结算退房房费；" "请先补录快照或走异常放行流程"
+            )
 
-    # 退房房费按净额入账（用户全链路串测发现双记风险）：夜审已按晚过账
-    # 的部分（night-audit:*:stay:{pk} 凭证）不得在退房时以整单金额重复入账。
-    # 归集口径=本入住单（多房预订共用一本 Folio，不能把兄弟房间的房费算进来）。
-    # WB-084：续住凭证（stay-extension:{stay.pk}:{日期}）同属本间已入账
-    # 房费，一并归集，避免退房时对续住晚重复计费。
-    # 待补房费 = 本间合同房费 − 本间已入账房费；为 0 则不再生成凭证。
-    charge_reference = f"stay-room-charge:{stay.pk}"
-    posted_for_stay = (
-        folio.entries.filter(
-            entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-            # RSV-11：差额凭证使用 base_reference:delta:N 后缀，必须一并归集，
-            # 否则重复退房会把已补差额当成未入账而再次计费。
-            reference__startswith=charge_reference,
-        ).aggregate(total=Sum("amount"))["total"]
-        or Decimal("0.00")
-    ) + (
-        folio.entries.filter(
-            entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-            reference__endswith=f":stay:{stay.pk}",
-        ).aggregate(total=Sum("amount"))["total"]
-        or Decimal("0.00")
-    ) + (
-        folio.entries.filter(
-            entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-            reference__startswith=f"stay-extension:{stay.pk}:",
-        ).aggregate(total=Sum("amount"))["total"]
-        or Decimal("0.00")
-    )
-    # DEC-ED-01（WB-009/062/063/064 修复；WB-097 正式语义）：
-    # 无论有无 EarlyDeparturePolicy，均按实际入住晚数 + nightly_rates 快照重算；
-    # 政策口径优先读预订确认时保存的 early_departure_snapshot（WB-098）。
-    # 无政策时罚金=0（NONE 安全默认）；有政策时违约金独立凭证入账。
-    # 夜审已过账金额按差额处理：多收（负差额）生成 ADJUSTMENT 冲回凭证。
-    from apps.reservations.walkin import calculate_early_departure
-    ed = calculate_early_departure(line=line, actual_check_out=timezone.now())
-    target_room_charge = ed["actual_room_charge"]
-    remaining_room_charge = target_room_charge - posted_for_stay
+        # 退房房费按净额入账（用户全链路串测发现双记风险）：夜审已按晚过账
+        # 的部分（night-audit:*:stay:{pk} 凭证）不得在退房时以整单金额重复入账。
+        # 归集口径=本入住单（多房预订共用一本 Folio，不能把兄弟房间的房费算进来）。
+        # WB-084：续住凭证（stay-extension:{stay.pk}:{日期}）同属本间已入账
+        # 房费，一并归集，避免退房时对续住晚重复计费。
+        # 待补房费 = 本间合同房费 − 本间已入账房费；为 0 则不再生成凭证。
+        charge_reference = f"stay-room-charge:{stay.pk}"
+        posted_for_stay = (
+            (
+                folio.entries.filter(
+                    entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+                    # RSV-11：差额凭证使用 base_reference:delta:N 后缀，必须一并归集，
+                    # 否则重复退房会把已补差额当成未入账而再次计费。
+                    reference__startswith=charge_reference,
+                ).aggregate(total=Sum("amount"))["total"]
+                or Decimal("0.00")
+            )
+            + (
+                folio.entries.filter(
+                    entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+                    reference__endswith=f":stay:{stay.pk}",
+                ).aggregate(total=Sum("amount"))["total"]
+                or Decimal("0.00")
+            )
+            + (
+                folio.entries.filter(
+                    entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
+                    reference__startswith=f"stay-extension:{stay.pk}:",
+                ).aggregate(total=Sum("amount"))["total"]
+                or Decimal("0.00")
+            )
+        )
+        # DEC-ED-01（WB-009/062/063/064 修复；WB-097 正式语义）：
+        # 无论有无 EarlyDeparturePolicy，均按实际入住晚数 + nightly_rates 快照重算；
+        # 政策口径优先读预订确认时保存的 early_departure_snapshot（WB-098）。
+        # 无政策时罚金=0（NONE 安全默认）；有政策时违约金独立凭证入账。
+        # 夜审已过账金额按差额处理：多收（负差额）生成 ADJUSTMENT 冲回凭证。
+        from apps.reservations.walkin import calculate_early_departure
+
+        ed = calculate_early_departure(line=line, actual_check_out=timezone.now())
+        target_room_charge = ed["actual_room_charge"]
+        penalty = ed["penalty"]
+        policy_type = ed["policy_type"]
+        remaining_room_charge = target_room_charge - posted_for_stay
     # RSV-11：三处凭证守卫一律改为「按金额幂等」，不再凭 reference 存在性吞差额。
     if remaining_room_charge > 0:
-        charge_ref = _ledger_reference_for_amount(
-            folio, base_reference=charge_reference,
-            amount=remaining_room_charge)
+        if is_day_use:
+            # 日租只有一个房费凭证号（day-use:{stay.pk}）：金额幂等已由
+            # remaining<=0 保证，重复退房不会再入账。
+            charge_ref = charge_reference
+            charge_description = f"日租房费补记 {line.check_in.isoformat()}"
+        else:
+            charge_ref = _ledger_reference_for_amount(
+                folio, base_reference=charge_reference, amount=remaining_room_charge
+            )
+            charge_description = (
+                f"房费：{line.check_in.isoformat()} 至 {line.check_out.isoformat()}"
+            )
         if charge_ref:
             from apps.billing.services_v2 import BillingService
+
             BillingService.post_entry(
-                property_obj=property_obj, folio=folio, stay=stay,
+                property_obj=property_obj,
+                folio=folio,
+                stay=stay,
                 entry_type=LedgerEntry.EntryType.ROOM_CHARGE,
-                amount=remaining_room_charge, currency=folio.currency,
-                business_date=_property_today(property_obj),
+                amount=remaining_room_charge,
+                currency=folio.currency,
+                business_date=today,
                 reference=charge_ref,
-                description=f"房费：{line.check_in.isoformat()} 至 {line.check_out.isoformat()}",
+                description=charge_description,
                 posted_by=checked_out_by,
             )
     elif remaining_room_charge < 0:
         # WB-064：夜审多收房费 → 负向 ADJUSTMENT 冲回（不产生正数凭证）
         adj_ref = _ledger_reference_for_amount(
-            folio, base_reference=f"checkout-adjust:{stay.pk}",
-            amount=remaining_room_charge)
+            folio, base_reference=f"checkout-adjust:{stay.pk}", amount=remaining_room_charge
+        )
         if adj_ref:
             from apps.billing.services_v2 import BillingService
+
             BillingService.post_entry(
-                property_obj=property_obj, folio=folio, stay=stay,
+                property_obj=property_obj,
+                folio=folio,
+                stay=stay,
                 entry_type=LedgerEntry.EntryType.ADJUSTMENT,
-                amount=remaining_room_charge, currency=folio.currency,
+                amount=remaining_room_charge,
+                currency=folio.currency,
                 business_date=_property_today(property_obj),
                 reference=adj_ref,
                 description=f"提前离店房费冲回（差额 {remaining_room_charge}）",
-                posted_by=checked_out_by)
-    # WB-063：违约金独立凭证（有政策且罚金>0 时入账）
-    if ed.get("penalty") and ed["penalty"] > 0:
+                posted_by=checked_out_by,
+            )
+    # WB-063：违约金独立凭证（有政策且罚金>0 时入账）；日租不适用。
+    if not is_day_use and penalty and penalty > 0:
         penalty_ref = _ledger_reference_for_amount(
-            folio, base_reference=f"ed-penalty:{stay.pk}",
-            amount=ed["penalty"])
+            folio, base_reference=f"ed-penalty:{stay.pk}", amount=penalty
+        )
         if penalty_ref:
             from apps.billing.services_v2 import BillingService
+
             BillingService.post_entry(
-                property_obj=property_obj, folio=folio, stay=stay,
+                property_obj=property_obj,
+                folio=folio,
+                stay=stay,
                 entry_type=LedgerEntry.EntryType.ADJUSTMENT,
-                amount=ed["penalty"], currency=folio.currency,
-                business_date=_property_today(property_obj),
+                amount=penalty,
+                currency=folio.currency,
+                business_date=today,
                 reference=penalty_ref,
-                description=f"提前离店违约金（政策 {ed['policy_type']}）",
-                posted_by=checked_out_by)
+                description=f"提前离店违约金（政策 {policy_type}）",
+                posted_by=checked_out_by,
+            )
+    # V12-01：日租超时使用费（约定结束时间 + 宽限后按小时向上取整）。
+    # 独立 ADJUSTMENT 凭证，不篡改原房费；重复退房因凭证号唯一而幂等。
+    if is_day_use:
+        from apps.reservations.day_use import post_overtime_charge
+
+        post_overtime_charge(
+            property_obj=property_obj,
+            stay=stay,
+            folio=folio,
+            actor=checked_out_by,
+            business_date=today,
+        )
 
     total_lines = ReservationRoom.objects.filter(
         property=property_obj, reservation=reservation
@@ -658,6 +829,7 @@ def _check_out_stay_locked(*, property_obj, stay_id, checked_out_by=None):
         # 正式负债）；无已批准放行则维持阻断并给出申请指引。
         try:
             from apps.billing.liabilities import register_refund_liability
+
             register_refund_liability(
                 property_obj=property_obj,
                 reservation=reservation,
@@ -667,60 +839,74 @@ def _check_out_stay_locked(*, property_obj, stay_id, checked_out_by=None):
             )
         except ValueError as exc:
             from apps.billing.dec02 import consume_approved_exception_release
+
             release = consume_approved_exception_release(
-                property_obj=property_obj, folio=folio, stay=stay,
-                amount=abs(balance), actor=checked_out_by,
-                trigger_reason=str(exc))
+                property_obj=property_obj,
+                folio=folio,
+                stay=stay,
+                amount=abs(balance),
+                actor=checked_out_by,
+                trigger_reason=str(exc),
+            )
             if release is None:
                 raise FrontDeskOperationError(
-                    f"{exc} 如需让客人先离店，请发起异常放行申请并由值班经理审批。") from exc
+                    f"{exc} 如需让客人先离店，请发起异常放行申请并由值班经理审批。"
+                ) from exc
 
     # WB-086：提前离店同事务释放剩余住宿日已售库存。实际离店日（含，=物业
     # 时区当日）至 line.check_out（不含）的每个 stay_date 行锁递减 sold；
     # 历史已住晚数保持 sold 不变。
     release_from = max(line.check_in, _property_today(property_obj))
-    released_nights = _release_sold_inventory_for_early_departure(
-        line, from_date=release_from)
+    released_nights = _release_sold_inventory_for_early_departure(line, from_date=release_from)
 
     now = timezone.now()
     StayRoomSegment.objects.filter(stay=stay, ended_at__isnull=True).update(
-        ended_at=now, active_stay_key=None)
+        ended_at=now, active_stay_key=None
+    )
     stay.status = Stay.Status.CHECKED_OUT
     stay.actual_check_out = now
     stay.save(update_fields=("status", "actual_check_out", "updated_at"))
 
-    room = Room.objects.select_for_update().get(
-        pk=stay.room_id, property=property_obj
-    )
+    room = Room.objects.select_for_update().get(pk=stay.room_id, property=property_obj)
     room.occupancy_status = Room.OccupancyStatus.VACANT
     room.housekeeping_status = Room.HousekeepingStatus.DIRTY
-    room.save(update_fields=(
-        "occupancy_status", "housekeeping_status", "updated_at"
-    ))
+    room.save(update_fields=("occupancy_status", "housekeeping_status", "updated_at"))
 
     # WB-055：退房自动生成退房清洁任务（V1.1 M-06 P0；模型此前无创建方，
     # 房态置 DIRTY 但任务断链）。同事务创建；幂等键=该房未关闭的 DEPARTURE
     # 任务唯一（重复退房在入口按 stay 状态早退，不会走到这里）。
     if not HousekeepingTask.objects.filter(
-        property=property_obj, room=room,
+        property=property_obj,
+        room=room,
         task_type=HousekeepingTask.TaskType.DEPARTURE,
-        status__in=(HousekeepingTask.TaskStatus.PENDING,
-                    HousekeepingTask.TaskStatus.IN_PROGRESS,
-                    HousekeepingTask.TaskStatus.DONE),
+        status__in=(
+            HousekeepingTask.TaskStatus.PENDING,
+            HousekeepingTask.TaskStatus.IN_PROGRESS,
+            HousekeepingTask.TaskStatus.DONE,
+        ),
     ).exists():
         hk_task = HousekeepingTask.objects.create(
-            property=property_obj, room=room,
+            property=property_obj,
+            room=room,
             task_type=HousekeepingTask.TaskType.DEPARTURE,
             status=HousekeepingTask.TaskStatus.PENDING,
-            notes=f"退房自动生成（stay {stay.pk}，房号 {room.number}）")
+            notes=f"退房自动生成（stay {stay.pk}，房号 {room.number}）",
+        )
         AuditEvent.record(
-            action="housekeeping.task_created", entity_type="HousekeepingTask",
-            entity_id=hk_task.pk, actor=checked_out_by,
+            action="housekeeping.task_created",
+            entity_type="HousekeepingTask",
+            entity_id=hk_task.pk,
+            actor=checked_out_by,
             property_obj=property_obj,
-            after={"task_type": "DEPARTURE", "room_id": room.pk,
-                   "room_number": room.number, "stay_id": stay.pk,
-                   "status": "PENDING"},
-            reason="退房自动生成清洁任务（WB-055）")
+            after={
+                "task_type": "DEPARTURE",
+                "room_id": room.pk,
+                "room_number": room.number,
+                "stay_id": stay.pk,
+                "status": "PENDING",
+            },
+            reason="退房自动生成清洁任务（WB-055）",
+        )
 
     if final_room_checkout:
         reservation.status = Reservation.Status.CHECKED_OUT
@@ -741,22 +927,30 @@ def _check_out_stay_locked(*, property_obj, stay_id, checked_out_by=None):
     # WB-086：审计 reason 说明提前离店库存释放区间（含起点、不含终点）。
     checkout_reason = "前台办理退房"
     checkout_after = {
-        "booking_no": reservation.booking_no, "room": room.number,
+        "booking_no": reservation.booking_no,
+        "room": room.number,
         "status": stay.status,
     }
     if released_nights:
-        checkout_after.update({
-            "early_departure_released_nights": released_nights,
-            "early_departure_release_from": release_from.isoformat(),
-            "early_departure_release_to_exclusive": line.check_out.isoformat(),
-        })
+        checkout_after.update(
+            {
+                "early_departure_released_nights": released_nights,
+                "early_departure_release_from": release_from.isoformat(),
+                "early_departure_release_to_exclusive": line.check_out.isoformat(),
+            }
+        )
         checkout_reason = (
             f"前台办理退房（提前离店，释放 {release_from.isoformat()} 至 "
             f"{line.check_out.isoformat()}（不含）区间已售库存 "
-            f"{released_nights} 晚）")
+            f"{released_nights} 晚）"
+        )
     AuditEvent.record(
-        action="frontdesk.checked_out", entity_type="Stay",
-        entity_id=str(stay.pk), actor=checked_out_by, property_obj=property_obj,
+        action="frontdesk.checked_out",
+        entity_type="Stay",
+        entity_id=str(stay.pk),
+        actor=checked_out_by,
+        property_obj=property_obj,
         after=checkout_after,
-        reason=checkout_reason)
+        reason=checkout_reason,
+    )
     return stay, True

@@ -5477,10 +5477,19 @@
                     "type": "integer",
                     "description": "价格计划 ID（必填）。"
                   },
+                  "billing_type": {
+                    "type": "string",
+                    "description": "计费类型：NIGHT_STAY（过夜，默认）或 DAY_USE（日租，当日入住当日退）。日租的房费按物业×房型×当日生效的 DayUsePolicy 政策价一次性入账，不使用逐晚房价；无覆盖当日的启用政策时拒绝下单（不回落过夜价、不按 0 元）。",
+                    "enum": [
+                      "NIGHT_STAY",
+                      "DAY_USE"
+                    ],
+                    "default": "NIGHT_STAY"
+                  },
                   "nights": {
                     "type": "integer",
-                    "description": "住宿晚数，默认 1，取值 1-30。",
-                    "minimum": 1,
+                    "description": "住宿晚数：NIGHT_STAY 时默认 1，取值 1-30；DAY_USE 时由服务端固定为 0，客户端传值不参与计费。",
+                    "minimum": 0,
                     "maximum": 30,
                     "default": 1
                   },

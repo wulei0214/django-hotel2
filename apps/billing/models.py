@@ -2934,9 +2934,7 @@ class LegacyOrderReservationMap(models.Model):
         # 三元组约束含可空 supersedes 时 NULL 相异会导致普通确认失去防重）：
         # position_key 物化 "order:reservation:root|sup:<被取代行>"，单列唯一。
         constraints = [
-            models.UniqueConstraint(
-                fields=("position_key",), name="uq_legacy_map_position_key"
-            ),
+            models.UniqueConstraint(fields=("position_key",), name="uq_legacy_map_position_key"),
         ]
         indexes = [
             models.Index(fields=("property", "legacy_order"), name="ix_legacy_map_prop_order"),
@@ -2955,3 +2953,89 @@ class LegacyOrderReservationMap(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("关系映射只读：确认事实不可删除；改映射须追加 supersedes 新行。")
+
+
+class DayUsePolicy(models.Model):
+    """日租（day-use）价格政策（TASK-01，负责人裁定 2.3）。
+
+    按 物业×房型×日期区间 配置日租价格、约定使用时段、宽限与超时费率。
+    day-use 订单创建/入住时必须能解析到覆盖当日的活跃政策，否则拒绝
+    （不得静默 0 元，也不得自动套用过夜房价）。价格金额、时段与超时
+    阈值属于经营配置，不硬编码在代码中。
+    """
+
+    property: models.ForeignKey = models.ForeignKey(
+        "core.Property",
+        on_delete=models.CASCADE,
+        related_name="day_use_policies",
+        verbose_name="物业",
+    )
+    room_type: models.ForeignKey = models.ForeignKey(
+        "inventory.RoomType",
+        on_delete=models.CASCADE,
+        related_name="day_use_policies",
+        verbose_name="适用房型",
+    )
+    day_use_price: models.DecimalField = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        verbose_name="日租价格",
+        help_text="单次日租总房费（非每晚价）",
+    )
+    start_time: models.TimeField = models.TimeField(verbose_name="使用开始时间")
+    end_time: models.TimeField = models.TimeField(verbose_name="约定结束时间")
+    grace_minutes: models.PositiveIntegerField = models.PositiveIntegerField(
+        default=60,
+        verbose_name="超时宽限（分钟）",
+    )
+    overtime_hourly_rate: models.DecimalField = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        verbose_name="超时费率（元/小时）",
+        help_text="超出宽限期后按小时向上取整计费",
+    )
+    valid_from: models.DateField = models.DateField(verbose_name="生效日期")
+    valid_to: models.DateField = models.DateField(verbose_name="失效日期")
+    is_active: models.BooleanField = models.BooleanField(default=True, verbose_name="是否启用")
+    created_at: models.DateTimeField = models.DateTimeField(
+        auto_now_add=True, verbose_name="创建时间"
+    )
+    updated_at: models.DateTimeField = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "日租价格政策"
+        verbose_name_plural = "日租价格政策"
+        ordering = ("-valid_from", "-id")
+        constraints = [
+            # 同一物业、同一房型、同一生效日只允许一条政策：解析规则是
+            # "覆盖当日的启用政策中取 valid_from 最晚者"，若允许同起点重复
+            # 就退化为不确定取值（哪条生效取决于主键顺序），价格不可复现。
+            models.UniqueConstraint(
+                fields=("property", "room_type", "valid_from"),
+                name="uq_dayuse_property_type_from",
+            ),
+            models.CheckConstraint(
+                check=models.Q(end_time__gt=models.F("start_time")),
+                name="ck_dayuse_end_after_start",
+            ),
+            models.CheckConstraint(
+                check=models.Q(valid_to__gte=models.F("valid_from")),
+                name="ck_dayuse_valid_range",
+            ),
+            models.CheckConstraint(
+                check=models.Q(day_use_price__gt=0),
+                name="ck_dayuse_price_positive",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=("property", "room_type", "is_active"),
+                name="ix_dayuse_prop_type_active",
+            ),
+        ]
+
+    def covers(self, day):
+        return self.is_active and self.valid_from <= day <= self.valid_to
+
+    def __str__(self):
+        return f"day-use #{self.pk} {self.room_type_id} ¥{self.day_use_price}"

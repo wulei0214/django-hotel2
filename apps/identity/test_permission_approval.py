@@ -10,13 +10,17 @@ import json
 from django.contrib.auth.models import Group, Permission
 from django.test import Client, TestCase
 
+# 测试专用密码：运行时随机生成，源码不落凭据字面量（Mimosa L3 门禁）。
+from django.utils.crypto import get_random_string  # noqa: E402
+
 from apps.core.models import AuditEvent
 
 from .models import PermissionMatrixApproval
 from .permission_center import allowed_codenames, special_codenames
 
-_TEST_PW_APPROVAL = "pw-" + "a" * 20
-_TEST_PW_APPROVER = "pw-" + "b" * 20
+_TEST_PW_APPROVAL = get_random_string(24)
+_TEST_PW_APPROVER = get_random_string(24)
+_TEST_PW_STAFF = get_random_string(24)
 
 User = None  # 延迟到 setUp 解析（与 test_permission_center 一致使用 get_user_model）
 
@@ -118,7 +122,6 @@ class PermissionApprovalTestBase(TestCase):
 
 
 class PermissionApprovalFlowTests(PermissionApprovalTestBase):
-
     def test_high_risk_save_returns_approval_required_and_creates_record(self):
         held = self._held()
         response, record, proposed = self._request_approval()
@@ -251,7 +254,7 @@ class PermissionApprovalFlowTests(PermissionApprovalTestBase):
     def test_non_superadmin_cannot_approve(self):
         _, record, _ = self._request_approval()
         user_model = _get_user_model()
-        staffer = user_model.objects.create_user(username="pms-staff", password="pms-staff-pass123")
+        staffer = user_model.objects.create_user(username="pms-staff", password=_TEST_PW_STAFF)
         staff_client = Client()
         self._platform_login(staff_client, staffer)
         response = staff_client.post(
@@ -272,7 +275,6 @@ class PermissionApprovalFlowTests(PermissionApprovalTestBase):
 
 
 class PermissionApprovalModelGuardTests(PermissionApprovalTestBase):
-
     def _make_pending(self, requester=None):
         record = PermissionMatrixApproval.objects.create(
             group=self.group,
