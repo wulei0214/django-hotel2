@@ -377,6 +377,8 @@ MANAGEMENT_CENTERS = {
                     # （D-R4-02，后端不读 level）。
                     {"name": "member_no", "label": "会员编号", "required": True},
                     {"name": "level_code", "label": "会员等级", "required": True},
+                    # MC11-MB-01：有效期全链（创建可填 + 到期扫描置 EXPIRED）
+                    {"name": "expires_at", "label": "有效期至", "type": "date"},
                 ],
             },
             {

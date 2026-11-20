@@ -53,8 +53,11 @@ class ReportExportTests(ReportCenterTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response["Content-Type"].startswith("text/csv"))
         lines = response.content.decode("utf-8-sig").strip().splitlines()
-        self.assertEqual(len(lines) - 1, len(expected))
-        self.assertIn("occupancy_pct", lines[0])
+        # MC11-RPT-02：CSV 头部携带口径 metadata 注释行（# 前缀），数据行数不变
+        data_lines = [l for l in lines if not l.lstrip("﻿").startswith("#")]
+        self.assertEqual(len(data_lines) - 1, len(expected))
+        self.assertTrue(any(l.startswith("# date_basis") for l in lines))
+        self.assertIn("occupancy_pct", data_lines[0])
         # 每次导出签发带下载有效期的受控凭证。
         credential = ExportCredential.objects.get(token=response["X-Export-Credential"])
         self.assertEqual(credential.kind, ExportCredential.Kind.REPORT)
@@ -92,7 +95,11 @@ class ReportExportTests(ReportCenterTestBase):
         )
         self.assertEqual(response.status_code, 200)
         lines = response.content.decode("utf-8-sig").strip().splitlines()
-        self.assertEqual(len(lines) - 1, len(expected))
+        # MC11-RPT-02：凭证下载的 CSV 同样带口径注释行，数据行数口径一致
+        # （BOM 粘连首行时一并剥离后再判注释行）
+        self.assertEqual(
+            len([l for l in lines if not l.lstrip("﻿").startswith("#")]) - 1, len(expected)
+        )
         after = AuditEvent.objects.filter(
             property=self.property, action="report.export_download"
         ).count()
@@ -155,8 +162,9 @@ class ReportExportTests(ReportCenterTestBase):
         response = self.client.get(self.URL, {"report": "memberships", "reason": self.REASON})
         self.assertEqual(response.status_code, 200)
         lines = response.content.decode("utf-8-sig").strip().splitlines()
-        self.assertIn("level_code", lines[0])
-        self.assertEqual(len(lines) - 1, len(query["series"]))
+        data_lines = [l for l in lines if not l.lstrip("﻿").startswith("#")]
+        self.assertIn("level_code", data_lines[0])
+        self.assertEqual(len(data_lines) - 1, len(query["series"]))
 
 
 class ReportExportPageTests(ReportCenterTestBase):

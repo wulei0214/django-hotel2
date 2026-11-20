@@ -95,7 +95,9 @@ $tasks = @(
     @{ Slug = "billing_maintenance";         Name = "PMS2 billing_maintenance";         Cmd = "run_billing_maintenance";                 Interval = 10 },
     @{ Slug = "payment_compensation";        Name = "PMS2 payment_compensation_worker"; Cmd = "payment_compensation_worker --once";       Interval = 5 },
     @{ Slug = "recover_stale_night_audits";  Name = "PMS2 recover_stale_night_audits";  Cmd = "recover_stale_night_audits";              Interval = 15 },
-    @{ Slug = "inventory_reconciliation";    Name = "PMS2 inventory_reconciliation";    Cmd = "run_inventory_reconciliation --property-code DEFAULT"; Interval = 60 }
+    @{ Slug = "inventory_reconciliation";    Name = "PMS2 inventory_reconciliation";    Cmd = "run_inventory_reconciliation --property-code DEFAULT"; Interval = 60 },
+    # MC11-MB-01：会员有效期到期扫描（每日一轮即可；间隔按分钟计）
+    @{ Slug = "expire_memberships";          Name = "PMS2 expire_memberships";          Cmd = "expire_memberships";                      Interval = 1440 }
 )
 
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `

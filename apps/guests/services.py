@@ -195,11 +195,15 @@ def register_document(
 
 
 def _require_reveal_reason(reason):
-    """§10.2：PII 揭示理由强制——空白理由一律拒绝（fail-closed）。"""
+    """§10.2：PII 揭示理由强制——空白/过短理由一律拒绝（fail-closed）。
+
+    MC11-G360-04：与服务层对齐 API 层（guest_center reveal 端点）的
+    8-240 字符策略，消除双轨口径漂移；API 层为唯一生产入口，本服务
+    保留供管理命令/内部工具复用（口径一致）。"""
     reason = str(reason or "").strip()
-    if not reason:
-        raise ValueError("揭示必须填写理由")
-    return reason[:240]
+    if len(reason) < 8 or len(reason) > 240:
+        raise ValueError("揭示理由必须为 8 至 240 个字符")
+    return reason
 
 
 def reveal_document(document, *, revealed_by, reason="", request=None):
@@ -931,6 +935,7 @@ class GuestMembershipService:
         member_no,
         level_code="STANDARD",
         joined_at=None,
+        expires_at=None,
         source="新建",
         created_by=None,
         request=None,
@@ -939,6 +944,12 @@ class GuestMembershipService:
 
         member_no = str(member_no or "").strip()
         level_code = str(level_code or "").strip()
+        if expires_at is not None:
+            from django.utils import timezone as _tz
+
+            effective_joined = joined_at or _tz.localdate()
+            if expires_at < effective_joined:
+                raise GuestServiceError("会员有效期不得早于加入日期。")
         if guest.property_id != property_obj.pk:
             raise GuestServiceError("客人不属于当前物业。")
         if not member_no or len(member_no) > 32:
@@ -958,6 +969,7 @@ class GuestMembershipService:
             level_code=level_code,
             status=GuestMembership.Status.ACTIVE,
             joined_at=joined_at,
+            expires_at=expires_at,
             source=source,
         )
         MembershipLevelHistory.objects.create(
@@ -969,7 +981,11 @@ class GuestMembershipService:
             entity_id=m.pk,
             actor=created_by,
             property_obj=property_obj,
-            after={"member_no": member_no, "level": level_code},
+            after={
+                "member_no": member_no,
+                "level": level_code,
+                "expires_at": str(expires_at) if expires_at else None,
+            },
             request=request,
         )
         return m

@@ -65,6 +65,18 @@ def _render_report_csv(request, report_type):
     series = series[:MAX_EXPORT_ROWS]
     columns = list(series[0].keys()) if series else []
     buffer = io.StringIO()
+    # MC11-RPT-02：CSV 头部携带口径 metadata（期间/日期口径/状态口径/币种），
+    # 脱离页面流转时统计口径不丢失；导出超限如实标注截断。
+    meta = payload.get("metadata") or {}
+    for meta_key in ("period", "date_basis", "status_scope", "currency", "generated_at"):
+        value = meta.get(meta_key)
+        if value is None:
+            continue
+        if isinstance(value, (dict, list)):
+            value = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        buffer.write(f"# {meta_key}: {value}\n")
+    if len(payload.get("series") or []) > MAX_EXPORT_ROWS:
+        buffer.write(f"# truncated: 仅导出前 {MAX_EXPORT_ROWS} 行\n")
     writer = csv.DictWriter(buffer, fieldnames=columns or ["empty"])
     writer.writeheader()
     for row in series:

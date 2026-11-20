@@ -519,6 +519,9 @@ def night_audit_break_glass_list(request):
     """break-glass 记录分页列表；status/review_decision 筛选（复核状态即
     REVIEWED 已复核、USED 待复核等生命周期态）。"""
     property_obj = _context(request, "core.night_audit_view")
+    # MC11-NA-05：查询前惰性批量过期——过窗 GRANTED 落 EXPIRED+审计
+    # （与执行路径同码），DB status 不再滞留 GRANTED。
+    NightAuditService.expire_stale_break_glass_grants(property_obj=property_obj)
     queryset = BreakGlassRecord.objects.filter(property=property_obj).order_by("-created_at", "-id")
     status = request.GET.get("status", "")
     if status:

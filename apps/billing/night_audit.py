@@ -860,6 +860,37 @@ class NightAuditService:
 
     @staticmethod
     @transaction.atomic
+    def expire_stale_break_glass_grants(*, property_obj, actor=None):
+        """MC11-NA-05：过窗 GRANTED 批量落 EXPIRED+审计（惰性过期）。
+
+        与执行路径的过期语义同码（night_audit.break_glass_expired）；
+        供 break-glass 列表/详情查询前调用，DB status 不再滞留 GRANTED。
+        返回过期条数。"""
+        stale = (
+            BreakGlassRecord.objects.select_for_update()
+            .filter(
+                property=property_obj,
+                status=BreakGlassRecord.Status.GRANTED,
+                expires_at__lte=timezone.now(),
+            )
+            .order_by("id")
+        )
+        expired = 0
+        for record in stale:
+            record.status = BreakGlassRecord.Status.EXPIRED
+            record.save(update_fields=("status",))
+            AuditEvent.record(
+                action="night_audit.break_glass_expired",
+                entity_type="BreakGlassRecord",
+                entity_id=record.pk,
+                actor=actor,
+                property_obj=property_obj,
+                after={"status": record.status},
+                reason=record.reason,
+            )
+            expired += 1
+        return expired
+
     def review_break_glass(*, property_obj, record_id, reviewed_by, decision, reason):
         """事后独立复核；复核账号必须不同于紧急操作账号。"""
         from apps.identity.authorization import AuthorizationService
