@@ -286,6 +286,11 @@ urlpatterns = [
         name="inventory_discrepancy_list",
     ),
     path(
+        "inventory/assignment-conflicts",
+        inventory_admin_center.assignment_conflict_list,
+        name="inventory_assignment_conflicts",
+    ),
+    path(
         "inventory/discrepancies/scan",
         inventory_admin_center.discrepancy_scan,
         name="inventory_discrepancy_scan",

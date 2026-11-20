@@ -137,6 +137,27 @@ MANAGEMENT_CENTERS = {
                         ["total_amount", "金额"],
                     ],
                 },
+                # MC11-G360-01：详情抽屉渲染 API 已返回的子资源（此前
+                # documents/phones 有数据无 UI）
+                {
+                    "title": "联系方式（脱敏）",
+                    "key": "phones",
+                    "columns": [
+                        ["phone", "号码（掩码）"],
+                        ["type", "类型"],
+                        ["is_primary", "主联系方式"],
+                    ],
+                },
+                {
+                    "title": "证件（脱敏）",
+                    "key": "documents",
+                    "columns": [
+                        ["doc_type", "类型"],
+                        ["masked", "证件号（掩码）"],
+                        ["is_primary", "主证件"],
+                        ["verified", "已核验"],
+                    ],
+                },
             ],
         },
         # MC-002：封闭动作白名单；前端显隐由服务端逐动作复核，API 再校验一次。
@@ -161,6 +182,9 @@ MANAGEMENT_CENTERS = {
                 "fields": [
                     {"name": "full_name", "label": "姓名"},
                     {"name": "email", "label": "邮箱"},
+                    # MC11-G360-03：主号码变更入口（后端 update_guest 支持
+                    # phone 切换；留空不改动主联系方式）
+                    {"name": "phone", "label": "新主手机号（留空不改）"},
                     {"name": "notes", "label": "备注"},
                 ],
             },
@@ -200,6 +224,70 @@ MANAGEMENT_CENTERS = {
                 "fields": [
                     {"name": "doc_no", "label": "证件号", "required": True},
                     {"name": "doc_type", "label": "证件类型"},
+                ],
+            },
+            # MC11-G360-02：MC-003 生命周期动作页面入口（此前仅 API 可达）
+            {
+                "key": "phone_set_primary",
+                "label": "设为主联系方式",
+                "endpoint": "/api/v1/guests/{id}/phones/{phone_id}/primary",
+                "permission": "hotelapp.change_client",
+                "scope": "row",
+                "fields": [
+                    {
+                        "name": "phone_id",
+                        "label": "联系方式 ID",
+                        "type": "number",
+                        "required": True,
+                    },
+                ],
+            },
+            {
+                "key": "phone_verify",
+                "label": "核验电话",
+                "endpoint": "/api/v1/guests/{id}/phones/{phone_id}/verify",
+                "permission": "hotelapp.change_client",
+                "scope": "row",
+                "fields": [
+                    {
+                        "name": "phone_id",
+                        "label": "联系方式 ID",
+                        "type": "number",
+                        "required": True,
+                    },
+                ],
+            },
+            {
+                "key": "document_update",
+                "label": "更新证件",
+                "endpoint": "/api/v1/guests/{id}/documents/{doc_id}/update",
+                "permission": "hotelapp.change_client",
+                "scope": "row",
+                "fields": [
+                    {"name": "doc_id", "label": "证件 ID", "type": "number", "required": True},
+                    {"name": "doc_type", "label": "证件类型"},
+                    {"name": "expiry_date", "label": "有效期至（YYYY-MM-DD）"},
+                ],
+            },
+            {
+                "key": "document_verify",
+                "label": "核验证件",
+                "endpoint": "/api/v1/guests/{id}/documents/{doc_id}/verify",
+                "permission": "hotelapp.change_client",
+                "scope": "row",
+                "fields": [
+                    {"name": "doc_id", "label": "证件 ID", "type": "number", "required": True},
+                ],
+            },
+            {
+                "key": "document_invalidate",
+                "label": "证件失效",
+                "endpoint": "/api/v1/guests/{id}/documents/{doc_id}/invalidate",
+                "permission": "hotelapp.change_client",
+                "scope": "row",
+                "fields": [
+                    {"name": "doc_id", "label": "证件 ID", "type": "number", "required": True},
+                    {"name": "reason", "label": "失效原因", "required": True},
                 ],
             },
         ],
@@ -311,10 +399,137 @@ MANAGEMENT_CENTERS = {
                     {"name": "reason", "label": "原因", "required": True},
                 ],
             },
+            # MC11-INV-01：MC-004 孤儿写动作接通（此前仅 API 可达）
+            {
+                "key": "room_type_create",
+                "label": "新增房型",
+                "endpoint": "/api/v1/inventory/room-types/create",
+                "permission": "hotelapp.change_room",
+                "scope": "page",
+                "fields": [
+                    {"name": "code", "label": "房型代码", "required": True},
+                    {"name": "name", "label": "房型名称", "required": True},
+                    {"name": "capacity", "label": "核定人数", "type": "number", "required": True},
+                    {"name": "bed_type", "label": "床型"},
+                    {"name": "reason", "label": "原因", "required": True},
+                ],
+            },
+            {
+                "key": "room_type_update",
+                "label": "更新房型",
+                "endpoint": "/api/v1/inventory/room-types/{room_type_id}/update",
+                "permission": "hotelapp.change_room",
+                "scope": "page",
+                "fields": [
+                    {
+                        "name": "room_type_id",
+                        "label": "房型 ID",
+                        "type": "number",
+                        "required": True,
+                    },
+                    {"name": "name", "label": "房型名称"},
+                    {"name": "capacity", "label": "核定人数", "type": "number"},
+                    {"name": "reason", "label": "原因", "required": True},
+                ],
+            },
+            {
+                "key": "room_create",
+                "label": "新增房间",
+                "endpoint": "/api/v1/inventory/rooms/create",
+                "permission": "hotelapp.change_room",
+                "scope": "page",
+                "fields": [
+                    {
+                        "name": "room_type_id",
+                        "label": "房型 ID",
+                        "type": "number",
+                        "required": True,
+                    },
+                    {"name": "number", "label": "房号", "required": True},
+                    {"name": "floor", "label": "楼层"},
+                    {"name": "reason", "label": "原因", "required": True},
+                ],
+            },
+            # MC11-INV-01：差异修复工作流四步（申请→审批→执行→关闭）
+            {
+                "key": "discrepancy_scan",
+                "label": "扫描库存差异",
+                "endpoint": "/api/v1/inventory/discrepancies/scan",
+                "permission": "inventory.maintenance_manage",
+                "scope": "page",
+                "fields": [
+                    {"name": "days_back", "label": "回溯天数（1-180）", "type": "number"},
+                ],
+            },
+            {
+                "key": "discrepancy_fix_request",
+                "label": "差异修复申请",
+                "endpoint": "/api/v1/inventory/discrepancies/{discrepancy_id}/fix-request",
+                "permission": "inventory.maintenance_manage",
+                "scope": "page",
+                "fields": [
+                    {
+                        "name": "discrepancy_id",
+                        "label": "差异 ID",
+                        "type": "number",
+                        "required": True,
+                    },
+                    {"name": "fix_reason", "label": "修复原因", "required": True},
+                    {"name": "fix_evidence", "label": "证据"},
+                ],
+            },
+            {
+                "key": "discrepancy_approve",
+                "label": "差异修复审批",
+                "endpoint": "/api/v1/inventory/discrepancies/{discrepancy_id}/approve",
+                "permission": "inventory.maintenance_manage",
+                "scope": "page",
+                "fields": [
+                    {
+                        "name": "discrepancy_id",
+                        "label": "差异 ID",
+                        "type": "number",
+                        "required": True,
+                    },
+                ],
+            },
+            {
+                "key": "discrepancy_execute",
+                "label": "差异修复执行",
+                "endpoint": "/api/v1/inventory/discrepancies/{discrepancy_id}/execute",
+                "permission": "inventory.maintenance_manage",
+                "scope": "page",
+                "fields": [
+                    {
+                        "name": "discrepancy_id",
+                        "label": "差异 ID",
+                        "type": "number",
+                        "required": True,
+                    },
+                ],
+            },
+            {
+                "key": "discrepancy_dismiss",
+                "label": "关闭差异（误报）",
+                "endpoint": "/api/v1/inventory/discrepancies/{discrepancy_id}/dismiss",
+                "permission": "inventory.maintenance_manage",
+                "scope": "page",
+                "fields": [
+                    {
+                        "name": "discrepancy_id",
+                        "label": "差异 ID",
+                        "type": "number",
+                        "required": True,
+                    },
+                    {"name": "reason", "label": "关闭原因", "required": True},
+                ],
+            },
         ],
         "workflow_links": [
             {"label": "清洁维修任务工作台", "url": "/manage/housekeeping/"},
             {"label": "前台履约排房/入住", "url": "/checkin/"},
+            # MC11-INV-01：差异/冲突复核经任务中心闭环（扫描→WorkItem→完成）
+            {"label": "待办任务中心（差异/冲突复核）", "url": "/manage/notifications/"},
         ],
     },
     "memberships": {

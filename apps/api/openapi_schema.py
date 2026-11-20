@@ -2919,6 +2919,34 @@ op(
 )
 
 op(
+    "/inventory/assignment-conflicts",
+    "get",
+    "房态库存",
+    "排房冲突只读列表（MC11-INV-02；只报告不改派，修复后经任务中心复核闭环）",
+    status="verified",
+    query=[Q("status", "冲突状态筛选 OPEN/DISMISSED。"), *PQ()],
+    permission="有效员工 + inventory.housekeeping_view",
+    ok=(("200", "冲突分页列表"),),
+    data=s_arr(
+        s_obj(
+            {
+                "id": s_int(),
+                "room_number": s_str(),
+                "room_type_code": s_str(),
+                "stay_date": s_str("", format="date"),
+                "conflict_count": s_int(),
+                "details": s_str(),
+                "status": s_str(),
+                "status_label": s_str(),
+                "created_at": s_str("", format="date-time"),
+                "source_system": s_str(),
+            }
+        )
+    ),
+    errors=E_STAFF,
+)
+
+op(
     "/inventory/discrepancies/scan",
     "post",
     "房态库存",

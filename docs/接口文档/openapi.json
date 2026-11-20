@@ -13025,6 +13025,191 @@
         ]
       }
     },
+    "/api/v1/inventory/assignment-conflicts": {
+      "get": {
+        "tags": [
+          "房态库存"
+        ],
+        "summary": "排房冲突只读列表（MC11-INV-02；只报告不改派，修复后经任务中心复核闭环）",
+        "description": "权限要求：有效员工 + inventory.housekeeping_view。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "operationId": "get_inventory_assignment_conflicts",
+        "responses": {
+          "200": {
+            "description": "冲突分页列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "{data, meta} 统一成功封套（apps.core.api_contract.api_response）。",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "description": "",
+                      "items": {
+                        "type": "object",
+                        "description": "",
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "description": ""
+                          },
+                          "room_number": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "room_type_code": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "stay_date": {
+                            "type": "string",
+                            "description": "",
+                            "format": "date"
+                          },
+                          "conflict_count": {
+                            "type": "integer",
+                            "description": ""
+                          },
+                          "details": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "status": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "status_label": {
+                            "type": "string",
+                            "description": ""
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "description": "",
+                            "format": "date-time"
+                          },
+                          "source_system": {
+                            "type": "string",
+                            "description": ""
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/ResponseMeta"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或 JSON 请求体校验失败（VALIDATION_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或认证凭据无效（AUTHENTICATION_REQUIRED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "当前员工/岗位无权执行此操作（PERMISSION_DENIED）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前物业（RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误（INTERNAL_ERROR）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "物业上下文不可用（PROPERTY_UNAVAILABLE / RESOURCE_NOT_FOUND）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "x-contract-status": "verified",
+        "x-authentication": "Django Session Cookie + 员工任职",
+        "x-required-permission": "有效员工 + inventory.housekeeping_view",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "冲突状态筛选 OPEN/DISMISSED。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "页码，从 1 开始，默认 1。",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "每页数量，默认 20，最大 100。",
+            "schema": {
+              "type": "integer",
+              "example": 20
+            }
+          }
+        ],
+        "security": [
+          {
+            "PMS2Session": []
+          }
+        ]
+      }
+    },
     "/api/v1/inventory/discrepancies/scan": {
       "post": {
         "tags": [

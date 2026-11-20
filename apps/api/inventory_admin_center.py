@@ -13,7 +13,7 @@ from apps.core.api_contract import ApiError, api_response, api_view, idempotent,
 from apps.identity.authorization import AuthorizationService
 from apps.inventory import reconciliation
 from apps.inventory import services_inventory_admin as admin_services
-from apps.inventory.models import InventoryDiscrepancy
+from apps.inventory.models import InventoryDiscrepancy, RoomAssignmentConflict
 from apps.inventory.services import HousekeepingOperationError
 
 
@@ -267,6 +267,47 @@ def discrepancy_list(request):
     items, pagination = paginate(qs, request)
     return api_response(
         request, {"items": [_discrepancy_dto(disc) for disc in items]}, pagination=pagination
+    )
+
+
+@require_GET
+@api_view
+def assignment_conflict_list(request):
+    """MC11-INV-02：排房冲突只读列表（此前对管理者完全不可见，仅调度留痕）。
+
+    只报告不改派（M4-4 约束）；修复经前台换房/取消后由任务中心复核闭环。"""
+    property_obj, _ = _context(request, "inventory.housekeeping_view")
+    qs = (
+        RoomAssignmentConflict.objects.filter(property=property_obj)  # type: ignore[has-type]
+        .select_related("room", "room_type")
+        .order_by("-stay_date", "-id")
+    )
+    status = request.GET.get("status", "").strip()
+    if status:
+        if status not in RoomAssignmentConflict.Status.values:
+            raise ApiError("VALIDATION_ERROR", "status 只支持 OPEN/DISMISSED。")
+        qs = qs.filter(status=status)
+    items, pagination = paginate(qs, request)
+    return api_response(
+        request,
+        {
+            "items": [
+                {
+                    "id": conflict.pk,
+                    "room_number": conflict.room.number,
+                    "room_type_code": conflict.room_type.code,
+                    "stay_date": conflict.stay_date.isoformat(),
+                    "conflict_count": conflict.conflict_count,
+                    "details": conflict.details,
+                    "status": conflict.status,
+                    "status_label": conflict.get_status_display(),
+                    "created_at": conflict.created_at.isoformat(),
+                    "source_system": "PMS2",
+                }
+                for conflict in items
+            ]
+        },
+        pagination=pagination,
     )
 
 

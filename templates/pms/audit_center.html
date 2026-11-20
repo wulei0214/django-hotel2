@@ -150,6 +150,26 @@
       <p class="au-note" id="au-retention-note">留存说明：读取中…</p>
     </section>
 
+    {# ── 治理操作（MC11-AUD-01）：受控导出 / 留存状态 / 完整性检查 ── #}
+    <section class="pms-panel" aria-label="审计治理">
+      <div class="pms-tools">
+        <strong>受控导出</strong>
+        <input id="au-export-reason" type="text" maxlength="240" minlength="8"
+               placeholder="导出原因（8-240 字，记入审计）" aria-label="导出原因" style="min-width:280px">
+        <button id="au-export-btn" type="button">导出 CSV</button>
+        <span class="pms-meta" id="au-export-meta"></span>
+      </div>
+      <div class="pms-error" id="au-export-result" hidden></div>
+      <div class="pms-pager" style="margin-top:12px">
+        <span class="pms-pager-controls">
+          <strong>留存与完整性</strong>
+          <button id="au-integrity-btn" type="button" class="au-ghost">完整性检查</button>
+          <span class="pms-meta" id="au-governance-meta"></span>
+        </span>
+      </div>
+      <pre id="au-integrity-result" style="white-space:pre-wrap;font-size:12px;color:var(--color-text-secondary,#606266)" hidden></pre>
+    </section>
+
     {# ── 事件详情抽屉：before/after diff JSON 格式化展示 ── #}
     <div class="pms-drawer-mask" id="au-drawer-mask"></div>
     <aside class="pms-drawer" id="au-drawer" role="dialog" aria-modal="true" aria-labelledby="au-drawer-title" hidden>
@@ -454,6 +474,73 @@
   $("au-rows").addEventListener("click", function (event) {
     var button = event.target.closest("button[data-event-id]");
     if (button) openDetail(button.getAttribute("data-event-id"));
+  });
+
+  // ── 治理操作（MC11-AUD-01）：受控导出 + 留存状态 + 完整性检查 ──
+  $("au-export-btn").addEventListener("click", function () {
+    var reason = $("au-export-reason").value.trim();
+    if (reason.length < 8 || reason.length > 240) {
+      var box = $("au-export-result");
+      box.hidden = false;
+      box.textContent = "导出原因必须为 8 至 240 个字符。";
+      return;
+    }
+    // 导出沿用当前检索条件（同口径签发）；凭证 15 分钟内可同参数重下载
+    var scope = filterQuery();
+    fetch(api + "/export" + scope + (scope ? "&" : "?") + "reason="
+        + encodeURIComponent(reason), { credentials: "same-origin" })
+      .then(async function (response) {
+        if (!response.ok) {
+          var body = null;
+          try { body = await response.json(); } catch (e) { /* 非JSON */ }
+          throw new Error((body && body.error && body.error.message)
+              || ("导出失败（HTTP " + response.status + "）"));
+        }
+        return response.blob().then(function (blob) {
+          var box = $("au-export-result");
+          box.hidden = false;
+          var token = response.headers.get("X-Export-Credential") || "";
+          var url = URL.createObjectURL(blob);
+          var link = document.createElement("a");
+          link.href = url;
+          link.download = "audit-export-" + new Date().toISOString().slice(0, 10) + ".csv";
+          link.textContent = "下载已生成的 CSV";
+          box.textContent = "";
+          box.appendChild(document.createTextNode("导出成功" +
+              (token ? "（凭证 " + token.slice(0, 8) + "…，15 分钟内可同口径重下载）" : "") + "。"));
+          box.appendChild(link);
+          URL.revokeObjectURL(url);
+          $("au-export-meta").textContent = "已写审计 audit.export";
+        });
+      })
+      .catch(function (error) {
+        var box = $("au-export-result");
+        box.hidden = false;
+        box.textContent = error.message;
+      });
+  });
+
+  $("au-integrity-btn").addEventListener("click", function () {
+    var button = $("au-integrity-btn");
+    var out = $("au-integrity-result");
+    button.disabled = true;
+    fetch(api + "/integrity/check", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "X-CSRFToken": document.querySelector('#pms-csrf-token input[name="csrfmiddlewaretoken"]').value }
+    }).then(async function (response) {
+      var body = await response.json().catch(function () { return null; });
+      if (!response.ok) {
+        throw new Error((body && body.error && body.error.message)
+            || ("完整性检查失败（HTTP " + response.status + "）"));
+      }
+      out.hidden = false;
+      out.textContent = JSON.stringify(body.data, null, 2);
+      $("au-governance-meta").textContent = "完整性摘要已生成（只读，不改数据）";
+    }).catch(function (error) {
+      out.hidden = false;
+      out.textContent = error.message;
+    }).then(function () { button.disabled = false; });
   });
 
   loadSummary();

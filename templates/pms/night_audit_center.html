@@ -699,12 +699,32 @@
         tr.appendChild(el("td", "", record.review_decision
             ? record.review_decision_label + "（复核人 " + (record.reviewed_by_id || "—") + "）" : "—"));
         const actionTd = el("td");
+        // MC11-NA-01：GRANTED 授权由原申请账号在页面内执行（此前断链只能 API）
+        if (canReopen && record.status === "GRANTED"
+            && String(record.requested_by_id) === "{{ current_user_id }}") {
+          const execBtn = el("button", "pms-row-btn na-danger", "执行重开");
+          execBtn.type = "button";
+          execBtn.addEventListener("click", async function () {
+            if (!window.confirm("确认以本授权立即重开营业日 " + record.business_date
+                + "？授权一次性消耗，事后必须复核。")) return;
+            execBtn.disabled = true;
+            try {
+              await postJson("/api/v1/night-audit/business-dates/" + record.business_date_id
+                  + "/break-glass/" + record.id + "/execute", {});
+              await loadBreakGlass(bgPage, undefined, true);
+            } catch (error) {
+              execBtn.disabled = false;
+              alertBox(actionTd, "pms-drawer-err", error.message);
+            }
+          });
+          actionTd.appendChild(execBtn);
+        }
         if (canReview && record.review_pending) {
           const btn = el("button", "pms-row-btn na-danger", "事后复核");
           btn.type = "button";
           btn.addEventListener("click", function () { openBreakGlassReview(record); });
           actionTd.appendChild(btn);
-        } else {
+        } else if (actionTd.children.length === 0) {
           actionTd.textContent = "—";
         }
         tr.appendChild(actionTd);
