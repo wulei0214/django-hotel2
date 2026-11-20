@@ -80,6 +80,10 @@ def _make_target_employee(label, with_account=True):
 
 
 class StaffCenterAccessTests(TestCase):
+    # setUpTestData 赋值的类级属性（mypy 无 django-stubs 需显式声明）
+    owner: User
+    fd: User
+
     """§10.1 步骤 1：员工中心页面门禁（PMS 会话域 + identity.staff_manage）。"""
 
     @classmethod
@@ -117,6 +121,8 @@ class StaffCenterAccessTests(TestCase):
 
 
 class StaffCenterWriteTests(TestCase):
+    owner: User
+
     """§10.1 六个写操作：成功路径（DB 副作用 + AuditEvent）与 400 中文校验。"""
 
     @classmethod
@@ -459,6 +465,12 @@ class StaffCenterWriteTests(TestCase):
 
 
 class OldStaffAccountsRetiredTests(TestCase):
+    owner: User
+    profile: StaffProfile
+    membership: PropertyStaffMembership
+    user: User
+    assignment: StaffRoleAssignment
+
     """§10.1 步骤 7：旧 /staff_accounts/ 写入口退役，只读页保留。"""
 
     @classmethod
@@ -540,6 +552,9 @@ class OldStaffAccountsRetiredTests(TestCase):
 
 
 class StaffCenterSecurityTests(TestCase):
+    owner: User
+    fd: User
+
     """§10.1 门禁与 CSRF：页面域写端点强制 CSRF、越权 403、越店 404。"""
 
     @classmethod
@@ -805,7 +820,7 @@ class RehireEmployeeLifecycleTests(TestCase):
             group=Group.objects.get(name="前台"),
             starts_at=timezone.now() - datetime.timedelta(days=290),
         )
-        new_membership = rehire_employee(
+        rehire_employee(
             property_obj=self.prop,
             staff_profile=profile,
             department_code="FO",
@@ -966,6 +981,7 @@ class RehireWorkbenchViewTests(TestCase):
             .order_by("-id")
             .first()
         )
+        assert new_membership is not None
         self.assertEqual(new_membership.status, PropertyStaffMembership.Status.ACTIVE)
         self.assertTrue(
             AuditEvent.objects.filter(

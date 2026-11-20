@@ -167,7 +167,7 @@ class InventoryAdminTests(E2EFlowTestBase):
         row = RoomTypeInventory.objects.filter(
             property=self.property, room_type=self.room_type, stay_date=self.today
         ).first()
-        self.assertIsNotNone(row, "主数据写后今日库存行必须存在")
+        assert row is not None, "主数据写后今日库存行必须存在"
         self.assertGreaterEqual(row.total_rooms, 1)
         total_after_create = row.total_rooms
 

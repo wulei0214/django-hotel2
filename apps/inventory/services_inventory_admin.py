@@ -267,7 +267,11 @@ def update_room(*, property_obj, room_id, actor, reason="", **fields):
     # MC11-INV-04：房型迁移/停用即时反映到库存日历（换房型/停用影响
     # 新旧两个房型的可售量）
     if "room_type_id" in before or "is_active" in before:
-        _sync_calendar_for_room_type(RoomType.objects.get(pk=room.room_type_id))
+        # room 为 Room 实例；room_type_id 由 FK 生成（mypy 无 django-stubs
+        # 不识别 FK _id 属性，运行时恒存在）
+        _sync_calendar_for_room_type(
+            RoomType.objects.get(pk=room.room_type_id)  # type: ignore[attr-defined]
+        )
         if "room_type_id" in before and before["room_type_id"]:
             old_type = RoomType.objects.filter(pk=before["room_type_id"]).first()
             if old_type is not None:

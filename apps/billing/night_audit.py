@@ -891,6 +891,7 @@ class NightAuditService:
             expired += 1
         return expired
 
+    @staticmethod
     def review_break_glass(*, property_obj, record_id, reviewed_by, decision, reason):
         """事后独立复核；复核账号必须不同于紧急操作账号。"""
         from apps.identity.authorization import AuthorizationService
