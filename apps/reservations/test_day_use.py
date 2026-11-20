@@ -13,6 +13,8 @@
 from datetime import datetime, time, timedelta
 from decimal import Decimal
 from threading import Barrier, Thread
+from unittest import mock
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
 from django.db import close_old_connections, connection
@@ -53,6 +55,17 @@ class DayUseFixtureMixin:
 
         self.property = Property.objects.create(code="DU", name="日租测试酒店")
         self.today = property_date(self.property)
+        # GAP-DU-TIME 修复：超时计费以真实时钟对比政策结束时间（18:00+宽限），
+        # 未冻结时钟时 19:00 后运行本套件会额外产生超时费导致 3 个退房类
+        # 断言失败（时间依赖 flaky）。统一冻结在当日 12:00（物业时区，处于
+        # 9:00-18:00 使用时段内），使套件任意时刻运行结果一致。
+        frozen = timezone.make_aware(
+            datetime.combine(self.today, time(12, 0)),
+            ZoneInfo(self.property.timezone or "Asia/Shanghai"),
+        )
+        clock = mock.patch.object(timezone, "now", return_value=frozen)
+        clock.start()
+        self.addCleanup(clock.stop)
         self.operator = User.objects.create_user(username="du-operator")
         # 现金押金/收款要求操作员先开立本人收银班次（BillingService 强制）。
         from apps.billing.services_v2 import BillingService
