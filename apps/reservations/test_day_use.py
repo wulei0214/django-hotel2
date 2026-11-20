@@ -644,6 +644,102 @@ class DayUseConvertTests(DayUseFixtureMixin, TestCase):
                 reason="同日",
             )
 
+    def test_convert_after_partial_payment_and_full_settlement(self):
+        """V13-06 §8.3：已部分收款/已结清状态下的转换——账务状态保持一致。"""
+        # 部分收款（押金 60 之外再收 40）：转换后 Folio 保持 OPEN、凭证不变
+        result = self._checked_in_day_use(key="du-conv6", phone="13900000907")
+        reservation = result["reservation"]
+        collect_manual_payment(
+            property_obj=self.property,
+            booking_no=reservation.booking_no,
+            amount=Decimal("40.00"),
+            method="CASH",
+            idempotency_key="du-conv6-pay1",
+            received_by=self.operator,
+        )
+        folio = Folio.objects.get(reservation=reservation)
+        entries_before = LedgerEntry.objects.filter(folio=folio).count()
+        line = reservation.reservation_rooms.get()
+        convert_day_use_to_overnight(
+            property_obj=self.property,
+            reservation_room_id=line.pk,
+            new_check_out=self.today + timedelta(days=1),
+            actor=self.operator,
+            reason="部分收款后转为过夜",
+        )
+        folio.refresh_from_db()
+        self.assertEqual(folio.status, Folio.Status.OPEN)
+        self.assertEqual(
+            LedgerEntry.objects.filter(folio=folio).count(), entries_before
+        )
+
+        # 已结清（补齐余额至 0）后转换：同样保持账务事实不变
+        Room.objects.create(
+            property=self.property,
+            room_type=self.room_type,
+            number="DU-102",
+            occupancy_status=Room.OccupancyStatus.VACANT,
+            housekeeping_status=Room.HousekeepingStatus.CLEAN,
+            maintenance_status=Room.MaintenanceStatus.NORMAL,
+        )
+        result2 = self._checked_in_day_use(key="du-conv7", phone="13900000908")
+        reservation2 = result2["reservation"]
+        folio2 = Folio.objects.get(reservation=reservation2)
+        balance = sum(
+            (e.amount for e in LedgerEntry.objects.filter(folio=folio2)),
+            Decimal("0.00"),
+        )
+        self.assertGreater(balance, 0, "结清前应存在正的应收余额")
+        collect_manual_payment(
+            property_obj=self.property,
+            booking_no=reservation2.booking_no,
+            amount=balance,
+            method="CASH",
+            idempotency_key="du-conv7-pay-full",
+            received_by=self.operator,
+        )
+        line2 = reservation2.reservation_rooms.get()
+        convert_day_use_to_overnight(
+            property_obj=self.property,
+            reservation_room_id=line2.pk,
+            new_check_out=self.today + timedelta(days=1),
+            actor=self.operator,
+            reason="结清后申请续住",
+        )
+        folio2.refresh_from_db()
+        self.assertEqual(folio2.status, Folio.Status.OPEN)
+        self.assertEqual(
+            sum((e.amount for e in LedgerEntry.objects.filter(folio=folio2)), Decimal("0.00")),
+            Decimal("0.00"),
+        )
+
+    def test_convert_repeat_submission_fails_safe(self):
+        """V13-06 §8.3：重复提交——第二次按类型守卫拒绝，原状态保持一致。"""
+        result = self._checked_in_day_use(key="du-conv8", phone="13900000909")
+        line = result["reservation"].reservation_rooms.get()
+        first = convert_day_use_to_overnight(
+            property_obj=self.property,
+            reservation_room_id=line.pk,
+            new_check_out=self.today + timedelta(days=1),
+            actor=self.operator,
+            reason="首次转换",
+        )
+        with self.assertRaisesMessage(DayUseError, "仅 day-use"):
+            convert_day_use_to_overnight(
+                property_obj=self.property,
+                reservation_room_id=line.pk,
+                new_check_out=self.today + timedelta(days=2),
+                actor=self.operator,
+                reason="重复提交",
+            )
+        line.refresh_from_db()
+        self.assertEqual(line.check_out, self.today + timedelta(days=1))
+        self.assertEqual(
+            line.nightly_rates,
+            [{"date": self.today.isoformat(), "price": "400.00"}],
+        )
+        self.assertEqual(first[1].total_amount, Decimal("600.00"))
+
 
 class DayUseClosedDayGuardTests(DayUseFixtureMixin, TestCase):
     """GAP-DU-14：营业日关账守卫对 day-use 超时凭证同样生效。"""
