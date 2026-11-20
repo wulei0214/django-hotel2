@@ -1,0 +1,18 @@
+证据生成时间：2026-11-20T16:10:26+08:00
+被测树：fc62c79bd19ad880a8aef87245bba40909b74a09（隔离 worktree 检出 HEAD 干净树，证据树=该提交，工作区无未提交变更）
+Python：3.9.0    Django：4.1.13
+数据库：SQLite（:memory:，DJANGO_ENV=test，DJANGO_DB_ENGINE=sqlite）
+执行命令：F:\Desktop\django-hotel\.venv\Scripts\python.exe manage.py test --noinput（隔离 worktree，CI 同口径，不带 --keepdb）
+测试总数：1754    最终判定：OK (skipped=26)    跳过：26
+退出码：0
+
+说明：
+1. 本证据在独立隔离 worktree（F:\WorkBuddy\AgentFiles\head-test-wt，git worktree add --detach HEAD fc62c79）中执行，避免主工作区在途 day-use 计费工作线（apps/billing/models.py、apps/reservations/models.py 未提交变更）污染被测树；主工作区 mypy/migrations 的"新增"告警均源于该在途工作线，与已提交树无关。
+2. stderr 出现 RuntimeError: db unavailable 系 apps/billing/tests.py 补偿任务扫描故障注入测试的预期模拟异常（@patch side_effect），测试本身判定 OK，非真实数据库故障。
+3. skipped=26 为既有环境条件跳过（MySQL 专用并发/触发器专项在 SQLite 下显式 skip，select_for_update 为 no-op 不可替代），符合双引擎纪律——锁/约束/并发权威结果以 MySQL 为准（见 test-mysql-r5-gate-20261119.log 与 R5 质量门禁报告 §二）。
+4. Django system check（0 issues）与 makemigrations --check --dry-run（No changes detected）在同隔离树实测退出码均 0。
+
+末行原文：
+Ran 1754 tests in 420.794s
+OK (skipped=26)
+Destroying test database for alias 'default'...

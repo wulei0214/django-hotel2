@@ -10,6 +10,22 @@ on:
       - main
 
 jobs:
+  secret-scan:
+    # TASK-04 凭据泄露整改：凭据治理门禁接入 CI（任务书 V1.1 §2.2/§3、R6-10）。
+    # 复用 scripts/scan_secrets.py（历史失效口令字面量 + 通用密钥赋值形态扫描），
+    # 命中即退出码 1 阻断——防止可用明文凭据再次进入文档/代码。
+    # 口径：口令只允许存在于 gitignore 的 scripts/r6_env.txt 与环境变量。
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Secret literal scan (docs/ scripts/)
+        run: python scripts/scan_secrets.py
+
   lint:
     # 多 AI 协作治理方案 附录#9：lint 门禁。
     # 差异范围策略：只检查本次变更的 apps/、hotel/ 下 .py 文件——
