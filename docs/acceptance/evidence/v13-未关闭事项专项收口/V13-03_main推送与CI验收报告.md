@@ -37,3 +37,13 @@
 ## 三、推送后回读
 
 见本报告提交后的 push 输出与 GitHub Actions（本报告提交 SHA 记录于 V13-08 汇总）。
+
+## 四、终态（2026-11-21 更新）
+
+后继提交序列：a0b875f（V13-07/V13-06/报告集）→ 3b5d9cc（CI lint 清偿——MC11 三文件 ruff 回归）。
+
+**CI 终态（GitHub Actions 实测，head=3b5d9cc）**：
+- Django CI：**completed / success**（lint ✅ / docs-lint ✅ / secret-scan ✅ / type-check ✅ / test ✅ 五 job 全绿）
+- tests workflow：**completed / success**（全量 1844 例）
+
+main 已恢复可信质量门禁状态。lint 失败根因说明：a0b875f 推送的变更文件集含 MC11 接线三文件（audit_center/staff_center/inventory_admin_center），其 ruff 回归（15 重复字典键 + 9 B904 + 1 FK ignore）由本会话清偿（3b5d9cc）。
