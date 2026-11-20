@@ -1,0 +1,55 @@
+{
+  "base": "http://127.0.0.1:8100",
+  "ticket_no": "MT-DEFAULT-20261120-88E95070",
+  "room": "1410",
+  "avail_before": 1,
+  "avail_stopped": 0,
+  "avail_after": 1,
+  "results": [
+    {
+      "name": "staff_profile_id",
+      "pass": true,
+      "detail": "test_duty → 档案 #13"
+    },
+    {
+      "name": "pick_room",
+      "pass": true,
+      "detail": "1410（room_type=3）"
+    },
+    {
+      "name": "availability_before",
+      "pass": true,
+      "detail": "available_count=1"
+    },
+    {
+      "name": "ticket_created",
+      "pass": true,
+      "detail": "维修工单 MT-DEFAULT-20261120-88E95070 已登记。"
+    },
+    {
+      "name": "inventory_stopped_on_report",
+      "pass": true,
+      "detail": "报修后 available_count=0（基线 1）"
+    },
+    {
+      "name": "resolve_leaves_pending_verify",
+      "pass": true,
+      "detail": "工单状态=待验收"
+    },
+    {
+      "name": "resolve_does_not_restore_inventory",
+      "pass": true,
+      "detail": "完成维修后 available_count=0（应仍为 0）"
+    },
+    {
+      "name": "verify_pass",
+      "pass": true,
+      "detail": "工单状态=验收通过"
+    },
+    {
+      "name": "inventory_restored_after_acceptance",
+      "pass": true,
+      "detail": "验收后 available_count=1（基线 1）"
+    }
+  ]
+}

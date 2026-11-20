@@ -71,3 +71,4 @@ _pytest_smoke*.sqlite3
 .ruff_cache/
 .mypy_cache/
 backups/
+node_modules/

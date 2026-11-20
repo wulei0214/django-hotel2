@@ -1,0 +1,13 @@
+{
+  "name": "pms2-browser-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PMS2 浏览器级回归（playwright-core + msedge channel，免浏览器下载）",
+  "type": "module",
+  "scripts": {
+    "test:pending": "node e2e_frontdesk_pending.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}
