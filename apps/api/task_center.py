@@ -5,11 +5,16 @@ claim/assign/complete 只编排任务过程，complete 必须由 apps.core.task_
 调用源领域服务，源业务成功后才关闭 WorkItem。
 """
 
-import json
-
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.core.api_contract import ApiError, api_response, api_view, idempotent, paginate
+from apps.core.api_contract import (
+    ApiError,
+    api_response,
+    api_view,
+    idempotent,
+    paginate,
+    parse_json_object,
+)
 from apps.core.models import WorkItem
 from apps.core.services_work_items import (
     WorkItemError,
@@ -71,18 +76,6 @@ def _dto(work_item):
         "updated_at": work_item.updated_at.isoformat(),
         "source_system": "PMS2",
     }
-
-
-def _body(request):
-    if not request.body:
-        return {}
-    try:
-        payload = json.loads(request.body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise ApiError("VALIDATION_ERROR", "请求体必须是合法 JSON 对象。") from None
-    if not isinstance(payload, dict):
-        raise ApiError("VALIDATION_ERROR", "请求体必须是 JSON 对象。")
-    return payload
 
 
 def _map_work_item_error(exc):
@@ -181,7 +174,7 @@ def task_assign(request, work_item_id):
         request.user, property_obj, "identity.staff_manage", obj=work_item
     ):
         raise ApiError("PERMISSION_DENIED", "当前岗位无权指派待办。")
-    payload = _body(request)
+    payload = parse_json_object(request)
     target_id = payload.get("assigned_to")
     if not isinstance(target_id, int):
         raise ApiError("VALIDATION_ERROR", "assigned_to 必须是员工档案 ID。")
@@ -226,7 +219,7 @@ def task_complete(request, work_item_id):
         )
     ):
         raise ApiError("PERMISSION_DENIED", "当前岗位无权完成该类待办。")
-    payload = _body(request)
+    payload = parse_json_object(request)
     try:
         item, changed = complete_work_item(
             property_obj=property_obj,

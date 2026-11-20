@@ -4,12 +4,17 @@
 不在视图里直接改模型；available_count 始终为派生事实。
 """
 
-import json
-
 from django.db import IntegrityError
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.core.api_contract import ApiError, api_response, api_view, idempotent, paginate
+from apps.core.api_contract import (
+    ApiError,
+    api_response,
+    api_view,
+    idempotent,
+    paginate,
+    parse_json_object,
+)
 from apps.identity.authorization import AuthorizationService
 from apps.inventory import reconciliation
 from apps.inventory import services_inventory_admin as admin_services
@@ -27,18 +32,6 @@ def _context(request, permission):
     if not AuthorizationService.has_permission(user, property_obj, permission):
         raise ApiError("PERMISSION_DENIED", "当前岗位无权维护房态库存。")
     return property_obj, user
-
-
-def _body(request):
-    if not request.body:
-        return {}
-    try:
-        payload = json.loads(request.body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise ApiError("VALIDATION_ERROR", "请求体必须是合法 JSON 对象。") from None
-    if not isinstance(payload, dict):
-        raise ApiError("VALIDATION_ERROR", "请求体必须是 JSON 对象。")
-    return payload
 
 
 def _map_error(exc):
@@ -126,7 +119,7 @@ def _discrepancy_dto(disc):
 @idempotent
 def daily_rate_close(request, rate_id):
     property_obj, user = _context(request, "inventory.manage_rates")
-    payload = _body(request)
+    payload = parse_json_object(request)
     reason = str(payload.get("reason", "") or "")
     try:
         rate, changed = admin_services.set_daily_rate_closed(
@@ -146,7 +139,7 @@ def daily_rate_close(request, rate_id):
 @idempotent
 def stock_stop_sell(request, inventory_id):
     property_obj, user = _context(request, "inventory.maintenance_manage")
-    payload = _body(request)
+    payload = parse_json_object(request)
     try:
         row, changed = admin_services.set_inventory_stop_sell(
             property_obj=property_obj,
@@ -165,7 +158,7 @@ def stock_stop_sell(request, inventory_id):
 @idempotent
 def room_type_create(request):
     property_obj, user = _context(request, "hotelapp.change_room")
-    payload = _body(request)
+    payload = parse_json_object(request)
     try:
         room_type = admin_services.create_room_type(
             property_obj=property_obj,
@@ -193,7 +186,7 @@ def room_type_create(request):
 @idempotent
 def room_type_update(request, room_type_id):
     property_obj, user = _context(request, "hotelapp.change_room")
-    payload = _body(request)
+    payload = parse_json_object(request)
     reason = payload.pop("reason", "")
     try:
         room_type, changed = admin_services.update_room_type(
@@ -216,7 +209,7 @@ def room_type_update(request, room_type_id):
 @idempotent
 def room_create(request):
     property_obj, user = _context(request, "hotelapp.change_room")
-    payload = _body(request)
+    payload = parse_json_object(request)
     try:
         room = admin_services.create_room(
             property_obj=property_obj,
@@ -239,7 +232,7 @@ def room_create(request):
 @idempotent
 def room_update(request, room_id):
     property_obj, user = _context(request, "hotelapp.change_room")
-    payload = _body(request)
+    payload = parse_json_object(request)
     reason = payload.pop("reason", "")
     try:
         room, changed = admin_services.update_room(
@@ -316,7 +309,7 @@ def assignment_conflict_list(request):
 @idempotent
 def discrepancy_scan(request):
     property_obj, user = _context(request, "inventory.maintenance_manage")
-    days_back = _body(request).get("days_back", 30)
+    days_back = parse_json_object(request).get("days_back", 30)
     if isinstance(days_back, bool) or not isinstance(days_back, int) or not 1 <= days_back <= 180:
         raise ApiError("VALIDATION_ERROR", "days_back 必须是 1-180 的整数。")
     run = reconciliation.scan_inventory_discrepancies(
@@ -339,7 +332,7 @@ def _discrepancy_action(request, discrepancy_id, action):
         pk=discrepancy_id, property=property_obj
     ).exists():
         raise ApiError("RESOURCE_NOT_FOUND", "库存差异不存在或不属于当前物业。")
-    payload = _body(request)
+    payload = parse_json_object(request)
     try:
         if action == "fix-request":
             disc = reconciliation.request_inventory_fix(

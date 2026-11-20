@@ -5,12 +5,10 @@
 任务/房态/库存同事务，失败整体回滚。
 """
 
-import json
 from datetime import date
-from django.db.models import Q
+
 from django.contrib.auth.models import User
-
-
+from django.db.models import Q
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
@@ -20,6 +18,7 @@ from apps.core.api_contract import (
     api_view,
     idempotent,
     paginate,
+    parse_json_object,
 )
 from apps.identity.authorization import AuthorizationService
 from apps.identity.models import StaffProfile
@@ -38,18 +37,6 @@ def _context(request, permission):
     if not AuthorizationService.has_permission(user, property_obj, permission):
         raise ApiError("PERMISSION_DENIED", "当前岗位无权访问清洁维修任务。")
     return property_obj, user
-
-
-def _body(request):
-    if not request.body:
-        return {}
-    try:
-        payload = json.loads(request.body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise ApiError("VALIDATION_ERROR", "请求体必须是合法 JSON 对象。") from None
-    if not isinstance(payload, dict):
-        raise ApiError("VALIDATION_ERROR", "请求体必须是 JSON 对象。")
-    return payload
 
 
 def _int(payload, field, *, required=True):
@@ -245,7 +232,7 @@ def task_claim(request, task_id):
 def task_assign(request, task_id):
     property_obj, user = _context(request, "inventory.housekeeping_update")
     _task_or_404(property_obj, task_id)
-    payload = _body(request)
+    payload = parse_json_object(request)
     assignee_id = _int(payload, "assigned_to")
     assignee = StaffProfile.objects.filter(pk=assignee_id).first()
     if assignee is None:
@@ -295,7 +282,7 @@ def task_complete(request, task_id):
 def task_inspect(request, task_id):
     property_obj, user = _context(request, "inventory.housekeeping_view")
     _task_or_404(property_obj, task_id)
-    payload = _body(request)
+    payload = parse_json_object(request)
     result = str(payload.get("result", "") or "").strip().upper()
     checklist = payload.get("checklist_result", {})
     failed_items = payload.get("failed_items", [])
@@ -335,7 +322,7 @@ def task_inspect(request, task_id):
 def task_cancel(request, task_id):
     property_obj, user = _context(request, "inventory.housekeeping_update")
     _task_or_404(property_obj, task_id)
-    reason = str(_body(request).get("reason", "") or "")
+    reason = str(parse_json_object(request).get("reason", "") or "")
     try:
         task = task_services.cancel_housekeeping_task(
             property_obj=property_obj, task_id=task_id, actor=user, reason=reason
@@ -385,7 +372,7 @@ def ticket_detail(request, ticket_id):
 @idempotent
 def ticket_create(request):
     property_obj, user = _context(request, "inventory.maintenance_manage")
-    payload = _body(request)
+    payload = parse_json_object(request)
     room_id = _int(payload, "room_id")
     try:
         ticket = task_services.create_maintenance_ticket(
@@ -410,7 +397,9 @@ def ticket_create(request):
 def ticket_assign(request, ticket_id):
     property_obj, user = _context(request, "inventory.maintenance_manage")
     _ticket_or_404(property_obj, ticket_id)
-    assignee = StaffProfile.objects.filter(pk=_int(_body(request), "assigned_to")).first()
+    assignee = StaffProfile.objects.filter(
+        pk=_int(parse_json_object(request), "assigned_to")
+    ).first()
     if assignee is None:
         raise ApiError("VALIDATION_ERROR", "被指派员工档案不存在。")
     try:
@@ -443,7 +432,7 @@ def ticket_start(request, ticket_id):
 def ticket_resolve(request, ticket_id):
     property_obj, user = _context(request, "inventory.maintenance_manage")
     _ticket_or_404(property_obj, ticket_id)
-    notes = str(_body(request).get("notes", "") or "")
+    notes = str(parse_json_object(request).get("notes", "") or "")
     try:
         ticket, changed = task_services.resolve_maintenance_ticket(
             property_obj=property_obj, ticket_id=ticket_id, actor=user, notes=notes
@@ -459,7 +448,7 @@ def ticket_resolve(request, ticket_id):
 def ticket_verify(request, ticket_id):
     property_obj, user = _context(request, "inventory.maintenance_manage")
     _ticket_or_404(property_obj, ticket_id)
-    payload = _body(request)
+    payload = parse_json_object(request)
     result = str(payload.get("result", "") or "").strip().upper()
     notes = str(payload.get("notes", "") or "")
     try:
@@ -477,7 +466,7 @@ def ticket_verify(request, ticket_id):
 def ticket_cancel(request, ticket_id):
     property_obj, user = _context(request, "inventory.maintenance_manage")
     _ticket_or_404(property_obj, ticket_id)
-    reason = str(_body(request).get("reason", "") or "")
+    reason = str(parse_json_object(request).get("reason", "") or "")
     try:
         ticket = task_services.cancel_maintenance_ticket(
             property_obj=property_obj, ticket_id=ticket_id, actor=user, reason=reason

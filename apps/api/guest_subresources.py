@@ -4,13 +4,18 @@
 API 只做权限、参数与响应映射，不直接写 GuestPhone/GuestDocument。
 """
 
-import json
 from datetime import date
 
 from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_POST
 
-from apps.core.api_contract import ApiError, api_response, api_view, idempotent
+from apps.core.api_contract import (
+    ApiError,
+    api_response,
+    api_view,
+    idempotent,
+    parse_json_object,
+)
 from apps.guests.models import Guest
 from apps.guests.services import GuestService, GuestServiceError, register_document
 from apps.identity.authorization import AuthorizationService
@@ -26,18 +31,6 @@ def _context(request, permission):
     if not AuthorizationService.has_permission(user, property_obj, permission):
         raise ApiError("PERMISSION_DENIED", "当前岗位无权维护客人档案。")
     return property_obj, user
-
-
-def _body(request):
-    if not request.body:
-        return {}
-    try:
-        payload = json.loads(request.body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise ApiError("VALIDATION_ERROR", "请求体必须是合法 JSON 对象。") from None
-    if not isinstance(payload, dict):
-        raise ApiError("VALIDATION_ERROR", "请求体必须是 JSON 对象。")
-    return payload
 
 
 def _guest_or_404(property_obj, guest_id, permission):
@@ -111,7 +104,7 @@ def _document_dto(document):
 def phone_create(request, guest_id):
     property_obj, user = _context(request, "hotelapp.change_client")
     guest = _guest_or_404(property_obj, guest_id, "hotelapp.change_client")
-    payload = _body(request)
+    payload = parse_json_object(request)
     try:
         phone = GuestService.add_phone(
             guest=guest,
@@ -162,7 +155,7 @@ def phone_verify(request, guest_id, phone_id):
 def document_create(request, guest_id):
     property_obj, user = _context(request, "hotelapp.change_client")
     guest = _guest_or_404(property_obj, guest_id, "hotelapp.change_client")
-    payload = _body(request)
+    payload = parse_json_object(request)
     try:
         document = register_document(
             guest=guest,
@@ -185,7 +178,7 @@ def document_update(request, guest_id, document_id):
     property_obj, user = _context(request, "hotelapp.change_client")
     guest = _guest_or_404(property_obj, guest_id, "hotelapp.change_client")
     document = _document_or_404(guest, document_id)
-    payload = _body(request)
+    payload = parse_json_object(request)
     document, changed = GuestService.update_document(
         document=document,
         doc_type=payload.get("doc_type"),
@@ -219,7 +212,7 @@ def document_invalidate(request, guest_id, document_id):
     document, changed = GuestService.invalidate_document(
         document=document,
         changed_by=user,
-        reason=str(_body(request).get("reason", "") or ""),
+        reason=str(parse_json_object(request).get("reason", "") or ""),
         request=request,
     )
     return api_response(request, {**_document_dto(document), "changed": changed})
