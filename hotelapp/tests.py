@@ -1052,7 +1052,8 @@ class V11P0ModelTests(TestCase):
             codename="guest_document_reveal",
             content_type=ContentType.objects.get(app_label="hotelapp",
                                                  model="client")))
-        plain = reveal_document(doc, revealed_by=hk, reason="入住核验")
+        # MC11-G360-04：揭示理由口径统一为 8-240 字符（与 API 层一致）
+        plain = reveal_document(doc, revealed_by=hk, reason="前台入住登记核验证件真伪")
         self.assertEqual(plain, "110101199001010017")
         self.assertTrue(AuditEvent.objects.filter(
             action="guest.document_reveal", entity_id=str(doc.pk)).exists())
