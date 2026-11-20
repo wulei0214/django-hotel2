@@ -1,0 +1,621 @@
+{
+  "run_id": "20261121-p36b",
+  "context": {
+    "booking1": {
+      "booking_no": "R2704A424A251B4869649",
+      "token": "-ImbkJ0GLmXcislVsnLBSZQ82IqLU3vb_fILuo3xA0k"
+    },
+    "booking2": {
+      "booking_no": "R85E9586AC4430D6689BF",
+      "token": "WfQtamvPoVR9nVsIe93mzpv3h27zRVbp099rsElrnqg"
+    },
+    "reservation_room_id": 94,
+    "task_id": 10,
+    "ticket_no_raw": "维修工单 MT-DEFAULT-20261120-65C69419 已登记。",
+    "ticket_no": "MT-DEFAULT-20261120-65C69419"
+  },
+  "results": [
+    {
+      "op": "p3-booking1-create",
+      "account": "anonymous",
+      "page": "/booking/",
+      "api_calls": [
+        {
+          "method": "POST",
+          "url": "/api/v1/reservations",
+          "status": 201,
+          "body": {
+            "booking_no": "R2704A424A251B4869649",
+            "status": "PENDING",
+            "check_in": "2026-11-21",
+            "check_out": "2026-11-22",
+            "room_count": 1,
+            "total_amount": "300.00",
+            "currency": "CNY",
+            "expires_at": "2026-11-20T20:10:59.662342+00:00",
+            "created": true,
+            "access_token": "-ImbkJ0GLmXcislVsnLBSZQ82IqLU3vb_fILuo3xA0k"
+          }
+        }
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p3-booking1-create.png",
+      "booking_no": "R2704A424A251B4869649",
+      "token": "-ImbkJ0GLmXcislVsnLBSZQ82IqLU3vb_fILuo3xA0k",
+      "room_type": "高级大床房",
+      "dates": "2026-11-21~2026-11-22",
+      "summary_total": "¥300.00"
+    },
+    {
+      "op": "p3-booking1-cancel",
+      "account": "anonymous",
+      "page": "/booking/",
+      "api_calls": [
+        {
+          "method": "POST",
+          "url": "/api/v1/reservations/R2704A424A251B4869649/cancel",
+          "status": 200,
+          "body": {
+            "booking_no": "R2704A424A251B4869649",
+            "status": "CANCELLED",
+            "changed": true
+          }
+        }
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p3-booking1-cancel.png",
+      "booking_no": "R2704A424A251B4869649",
+      "after_text": "2026-11-21 至 2026-11-22 · 1 间 · ¥300.00"
+    },
+    {
+      "op": "p3-booking2-create",
+      "account": "anonymous",
+      "page": "/booking/",
+      "api_calls": [
+        {
+          "method": "POST",
+          "url": "/api/v1/reservations",
+          "status": 201,
+          "body": {
+            "booking_no": "R85E9586AC4430D6689BF",
+            "status": "PENDING",
+            "check_in": "2026-11-21",
+            "check_out": "2026-11-22",
+            "room_count": 1,
+            "total_amount": "300.00",
+            "currency": "CNY",
+            "expires_at": "2026-11-20T20:11:12.780951+00:00",
+            "created": true,
+            "access_token": "WfQtamvPoVR9nVsIe93mzpv3h27zRVbp099rsElrnqg"
+          }
+        }
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p3-booking2-create.png",
+      "booking_no": "R85E9586AC4430D6689BF",
+      "token": "WfQtamvPoVR9nVsIe93mzpv3h27zRVbp099rsElrnqg",
+      "room_type": "高级大床房",
+      "dates": "2026-11-21~2026-11-22",
+      "summary_total": "¥300.00"
+    },
+    {
+      "op": "p4-pending-ui-deny",
+      "account": "v12_fd",
+      "page": "/checkin/ drawer(tab=workbench)",
+      "api_calls": [],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p4-pending-ui-deny.png",
+      "booking_no": "R85E9586AC4430D6689BF",
+      "buttons": [],
+      "note": "PENDING 未确认订单无分配房间/办理入住入口（UI 门禁）"
+    },
+    {
+      "op": "p4-shift-already-open",
+      "account": "v12_fd",
+      "page": "/checkin/ 收银班次",
+      "api_calls": [],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p4-shift-already-open.png",
+      "shift_status": "当前班次 #12 · 备用金 0.00",
+      "note": "班次已处于开班状态，直接用于现金押金登记"
+    },
+    {
+      "op": "p4-deposit-confirm",
+      "account": "v12_fd",
+      "page": "/checkin/ drawer",
+      "api_calls": [
+        {
+          "method": "POST",
+          "url": "/api/v1/front-desk/reservations/R85E9586AC4430D6689BF/deposits",
+          "status": 201,
+          "body": {
+            "data": {
+              "payment_id": 53,
+              "provider_ref": "FDDEP-1-fd-deposit-1f85abd1-3df3-4837-aa46-eb5c0370044b",
+              "amount": "90.00",
+              "method": "CASH",
+              "status": "SUCCEEDED",
+              "payment_kind": "DEPOSIT"
+            },
+            "created": true
+          }
+        }
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p4-deposit-confirm.png",
+      "booking_no": "R85E9586AC4430D6689BF",
+      "amount": 90,
+      "method": "CASH",
+      "note": "押金登记成功即确认订单（PENDING→CONFIRMED）"
+    },
+    {
+      "op": "p4-assign-invalid-room-deny",
+      "account": "v12_fd",
+      "page": "/checkin/ drawer(API辅助)",
+      "api_calls": [],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p4-assign-invalid-room-deny.png",
+      "request": {
+        "reservation_room_id": 94,
+        "room_id": 27
+      },
+      "response": {
+        "status": 409,
+        "data": {
+          "error": {
+            "code": "BUSINESS_CONFLICT",
+            "message": "房间不存在、物业不匹配或房型不匹配。"
+          }
+        }
+      },
+      "note": "非可售房分配拒绝（房 27 非本订单房型净房；可分配列表亦不含它），预期 4xx"
+    },
+    {
+      "op": "p4-assignable-list",
+      "account": "v12_fd",
+      "page": "/checkin/ drawer",
+      "api_calls": [],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p4-assignable-list.png",
+      "options": [
+        {
+          "value": "8",
+          "text": "9936 · 9层 · 高级大床房"
+        }
+      ],
+      "note": "可分配净房列表（非净房/维修停用房不应在列）"
+    },
+    {
+      "op": "p4-room-assign",
+      "account": "v12_fd",
+      "page": "/checkin/ drawer",
+      "api_calls": [
+        {
+          "method": "POST",
+          "url": "/api/v1/front-desk/reservation-rooms/94/assign",
+          "status": 201,
+          "body": {
+            "data": {
+              "reservation_room_id": 94,
+              "assigned_room": {
+                "id": 8,
+                "number": "9936",
+                "floor": "9"
+              }
+            },
+            "changed": true
+          }
+        }
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p4-room-assign.png",
+      "booking_no": "R85E9586AC4430D6689BF",
+      "note": "确认排房成功"
+    },
+    {
+      "op": "p4-assigned-room-no",
+      "account": "v12_fd",
+      "page": "/checkin/ drawer",
+      "api_calls": [],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p4-assigned-room-no.png",
+      "room_no": "9936"
+    },
+    {
+      "op": "p4-checkin",
+      "account": "v12_fd",
+      "page": "/checkin/ drawer",
+      "api_calls": [
+        {
+          "method": "POST",
+          "url": "/api/v1/front-desk/reservation-rooms/94/check-in",
+          "status": 201,
+          "body": {
+            "data": {
+              "stay_id": 28,
+              "reservation_room_id": 94,
+              "room_id": 8,
+              "room_number": "9936",
+              "status": "IN_HOUSE",
+              "actual_check_in": "2026-11-20T19:56:33.442652+00:00"
+            },
+            "created": true
+          }
+        }
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p4-checkin.png",
+      "booking_no": "R85E9586AC4430D6689BF",
+      "note": "办理入住成功（confirm 已接受）"
+    },
+    {
+      "op": "p4-checkout",
+      "account": "v12_fd",
+      "page": "/checkin/ drawer",
+      "api_calls": [
+        {
+          "method": "POST",
+          "url": "/api/v1/front-desk/stays/28/check-out",
+          "status": 200,
+          "body": {
+            "data": {
+              "stay_id": 28,
+              "status": "CHECKED_OUT",
+              "actual_check_out": "2026-11-20T19:56:40.184939+00:00",
+              "room_id": 8,
+              "room_number": "9936"
+            },
+            "changed": true
+          }
+        }
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p4-checkout.png",
+      "booking_no": "R85E9586AC4430D6689BF",
+      "note": "办理退房（预期联动生成 DEPARTURE 清洁任务）"
+    },
+    {
+      "op": "p4-shift-close-skip",
+      "account": "v12_fd",
+      "page": "/checkin/ 收银班次",
+      "api_calls": [],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p4-shift-close-skip.png",
+      "shift_opened_here": false,
+      "note": "非本次开班或按钮不可见，不做关班（避免虚构实盘现金数）"
+    },
+    {
+      "op": "p5-housekeeper-ui-deny",
+      "account": "v13_hk",
+      "page": "/checkin/",
+      "api_calls": [],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p5-housekeeper-ui-deny.png",
+      "http_status": 403,
+      "body_head": "403 · 没有访问权限\n\n当前角色（客房服务员）无权访问该功能。\n如需开通权限，请联系店长或系统管理员。\n\n返回我有权限的首页   |   切换账号",
+      "note": "客房服务员访问前台工作台被拒或页面无业务操作入口"
+    },
+    {
+      "op": "p5-housekeeper-api-deny",
+      "account": "v13_hk",
+      "page": "/manage/housekeeping/(API辅助)",
+      "api_calls": [],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p5-housekeeper-api-deny.png",
+      "request": "POST reservation-rooms/94/check-in",
+      "response": {
+        "status": 403,
+        "data": {
+          "error": {
+            "code": "PERMISSION_DENIED",
+            "message": "当前岗位没有入住管理操作权限。"
+          }
+        }
+      },
+      "note": "客房服务员直调入住接口（预期 403）"
+    },
+    {
+      "op": "p5-task-claim",
+      "account": "v13_hk",
+      "page": "/manage/housekeeping/ 任务池",
+      "api_calls": [
+        {
+          "method": "POST",
+          "url": "/api/v1/housekeeping/tasks/10/claim",
+          "status": 200,
+          "body": {
+            "data": {
+              "id": 10,
+              "room_id": 8,
+              "room_number": "9936",
+              "task_type": "DEPARTURE",
+              "task_type_label": "退房清洁",
+              "status": "PENDING",
+              "status_label": "待清洁",
+              "priority": "P2",
+              "assigned_to": 38,
+              "created_by": null,
+              "started_at": null,
+              "completed_at": null,
+              "completed_by": null,
+              "inspected_by": null,
+              "inspected_at": null,
+              "due_at": null,
+              "overdue": false,
+              "checklist": [],
+              "notes": "退房自动生成（stay 28，房号 9936）",
+              "created_at": "2026-11-20T19:56:40.195389+00:00",
+              "source_system": "PMS2",
+              "changed": true
+            },
+            "meta": {
+              "request_id": "1dc1c54714de40cd",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T19:56:51.840771+00:00"
+            }
+          }
+        }
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p5-task-claim.png",
+      "needle": "9936",
+      "clicked": true,
+      "note": "领取任务（认领）"
+    },
+    {
+      "op": "p5-task-start-api",
+      "account": "v13_hk",
+      "page": "/manage/housekeeping/(API辅助)",
+      "api_calls": [],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p5-task-start-api.png",
+      "task_id": 10,
+      "http_status": 200,
+      "note": "任务池 UI 无 PENDING 开始按钮（登记为缺口），同会话 API 开始清洁"
+    },
+    {
+      "op": "p5-task-complete",
+      "account": "v13_hk",
+      "page": "/manage/housekeeping/ 任务池",
+      "api_calls": [
+        {
+          "method": "POST",
+          "url": "/api/v1/housekeeping/tasks/10/complete",
+          "status": 200,
+          "body": {
+            "data": {
+              "id": 10,
+              "room_id": 8,
+              "room_number": "9936",
+              "task_type": "DEPARTURE",
+              "task_type_label": "退房清洁",
+              "status": "DONE",
+              "status_label": "清洁完成待检查",
+              "priority": "P2",
+              "assigned_to": 38,
+              "created_by": null,
+              "started_at": "2026-11-20T19:56:53.078831+00:00",
+              "completed_at": "2026-11-20T19:56:54.431702+00:00",
+              "completed_by": 38,
+              "inspected_by": null,
+              "inspected_at": null,
+              "due_at": null,
+              "overdue": false,
+              "checklist": [],
+              "notes": "退房自动生成（stay 28，房号 9936）",
+              "created_at": "2026-11-20T19:56:40.195389+00:00",
+              "source_system": "PMS2",
+              "changed": true
+            },
+            "meta": {
+              "request_id": "98bc3f03728742e9",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T19:56:54.445231+00:00"
+            }
+          }
+        }
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p5-task-complete.png",
+      "task_id": 10,
+      "clicked": true,
+      "note": "完成任务→DONE 待检查"
+    },
+    {
+      "op": "p5-task-inspect-pass",
+      "account": "v12_gm",
+      "page": "/manage/housekeeping/ 任务池",
+      "api_calls": [
+        {
+          "method": "POST",
+          "url": "/api/v1/housekeeping/tasks/10/inspect",
+          "status": 200,
+          "body": {
+            "data": {
+              "task": {
+                "id": 10,
+                "room_id": 8,
+                "room_number": "9936",
+                "task_type": "DEPARTURE",
+                "task_type_label": "退房清洁",
+                "status": "INSPECTED",
+                "status_label": "检查通过",
+                "priority": "P2",
+                "assigned_to": 38,
+                "created_by": null,
+                "started_at": "2026-11-20T19:56:53.078831+00:00",
+                "completed_at": "2026-11-20T19:56:54.431702+00:00",
+                "completed_by": 38,
+                "inspected_by": 32,
+                "inspected_at": "2026-11-20T19:57:00.902247+00:00",
+                "due_at": null,
+                "overdue": false,
+                "checklist": [],
+                "notes": "退房自动生成（stay 28，房号 9936）",
+                "created_at": "2026-11-20T19:56:40.195389+00:00",
+                "source_system": "PMS2"
+              },
+              "inspection": {
+                "id": 2,
+                "result": "PASS",
+                "failed_items": [],
+                "reason": "",
+                "notes": ""
+              }
+            },
+            "meta": {
+              "request_id": "042778c6524541a2",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T19:57:00.918520+00:00"
+            }
+          }
+        }
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p5-task-inspect-pass.png",
+      "task_id": 10,
+      "needle": "9936",
+      "clicked": true,
+      "note": "检查通过→INSPECTED，房间转 CLEAN（清洁人≠检查人）"
+    },
+    {
+      "op": "p5-maintenance-target-room",
+      "account": "v13_duty",
+      "page": "/manage/housekeeping/ 房态板",
+      "api_calls": [],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p5-maintenance-target-room.png",
+      "room": "1410",
+      "note": "选定维修停用房间（room_id=27 对应房号）"
+    },
+    {
+      "op": "p5-ticket-create",
+      "account": "v13_duty",
+      "page": "/manage/housekeeping/ 报修表单",
+      "api_calls": [
+        {
+          "method": "POST",
+          "url": "/api/v1/maintenance/tickets/create",
+          "status": 201,
+          "body": {
+            "data": {
+              "id": 6,
+              "ticket_no": "MT-DEFAULT-20261120-65C69419",
+              "room_id": 24,
+              "room_number": "1410",
+              "category": "",
+              "severity": "NORMAL",
+              "status": "OPEN",
+              "status_label": "已报修",
+              "reason": "V13-02 验收：空调漏水报修",
+              "from_date": "2026-11-21",
+              "to_date": null,
+              "reported_by": 37,
+              "assigned_to": null,
+              "started_at": null,
+              "verified_by": null,
+              "verified_at": null,
+              "restored_by": null,
+              "restored_at": null,
+              "notes": "",
+              "created_at": "2026-11-20T19:57:07.430131+00:00",
+              "source_system": "PMS2"
+            },
+            "meta": {
+              "request_id": "472c5679cdc74182",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T19:57:07.469313+00:00"
+            }
+          }
+        }
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p5-ticket-create.png",
+      "room": "1410",
+      "result": "维修工单 MT-DEFAULT-20261120-65C69419 已登记。",
+      "ticket_no": "MT-DEFAULT-20261120-65C69419"
+    },
+    {
+      "op": "p5-ticket-start",
+      "account": "v13_duty",
+      "page": "/manage/housekeeping/ 工单池",
+      "api_calls": [
+        {
+          "method": "POST",
+          "url": "/api/v1/maintenance/tickets/6/start",
+          "status": 200,
+          "body": {
+            "data": {
+              "id": 6,
+              "ticket_no": "MT-DEFAULT-20261120-65C69419",
+              "room_id": 24,
+              "room_number": "1410",
+              "category": "",
+              "severity": "NORMAL",
+              "status": "IN_PROGRESS",
+              "status_label": "维修中",
+              "reason": "V13-02 验收：空调漏水报修",
+              "from_date": "2026-11-21",
+              "to_date": null,
+              "reported_by": 37,
+              "assigned_to": 37,
+              "started_at": "2026-11-20T19:57:09.051484+00:00",
+              "verified_by": null,
+              "verified_at": null,
+              "restored_by": null,
+              "restored_at": null,
+              "notes": "",
+              "created_at": "2026-11-20T19:57:07.430131+00:00",
+              "source_system": "PMS2",
+              "changed": true
+            },
+            "meta": {
+              "request_id": "4cf7fd0ab5ce418a",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T19:57:09.055961+00:00"
+            }
+          }
+        }
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p5-ticket-start.png",
+      "ticket_no": "MT-DEFAULT-20261120-65C69419",
+      "clicked": true
+    },
+    {
+      "op": "p5-ticket-resolve",
+      "account": "v13_duty",
+      "page": "/manage/housekeeping/ 工单池",
+      "api_calls": [
+        {
+          "method": "POST",
+          "url": "/api/v1/maintenance/tickets/6/resolve",
+          "status": 200,
+          "body": {
+            "data": {
+              "id": 6,
+              "ticket_no": "MT-DEFAULT-20261120-65C69419",
+              "room_id": 24,
+              "room_number": "1410",
+              "category": "",
+              "severity": "NORMAL",
+              "status": "PENDING_VERIFY",
+              "status_label": "待验收",
+              "reason": "V13-02 验收：空调漏水报修",
+              "from_date": "2026-11-21",
+              "to_date": null,
+              "reported_by": 37,
+              "assigned_to": 37,
+              "started_at": "2026-11-20T19:57:09.051484+00:00",
+              "verified_by": null,
+              "verified_at": null,
+              "restored_by": null,
+              "restored_at": null,
+              "notes": "维修说明：",
+              "created_at": "2026-11-20T19:57:07.430131+00:00",
+              "source_system": "PMS2",
+              "changed": true
+            },
+            "meta": {
+              "request_id": "c2231de675654677",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T19:57:10.368383+00:00"
+            }
+          }
+        }
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p5-ticket-resolve.png",
+      "ticket_no": "MT-DEFAULT-20261120-65C69419",
+      "clicked": true
+    },
+    {
+      "op": "p5-ticket-verify",
+      "account": "v12_gm",
+      "page": "/manage/housekeeping/ 工单池",
+      "api_calls": [],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p5-ticket-verify.png",
+      "ticket_no": "MT-DEFAULT-20261120-65C69419",
+      "clicked": true,
+      "note": "验收通过→VERIFIED，房间恢复可售"
+    }
+  ],
+  "partial": true
+}

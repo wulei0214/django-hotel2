@@ -1,0 +1,130 @@
+{
+  "run_id": "20261120-235614",
+  "phase": "P1+P2 rooms/rates/inventory/memberships",
+  "accounts": [
+    "v12_gm(店长)"
+  ],
+  "ids": {
+    "rate": {
+      "id": 220,
+      "stay_date": "2026-11-22",
+      "price": "300.00",
+      "closed": false
+    },
+    "inventory": {
+      "id": 216,
+      "stay_date": "2026-11-22",
+      "stop_sell": false
+    },
+    "guest_no_membership": {
+      "id": 52,
+      "name": "王芳(2)"
+    },
+    "level_codes": [
+      "ELITE",
+      "STANDARD",
+      "ADVANCED",
+      "GOLD2",
+      "GOLD"
+    ],
+    "existing_membership": {
+      "id": 11,
+      "member_no": "MEMDEFAULT00051",
+      "level": "ELITE"
+    }
+  },
+  "results": [
+    {
+      "op": "rooms-rate-close",
+      "account": "v12_gm",
+      "page": "/manage/rooms/",
+      "api_calls": [],
+      "drawer_status": [
+        "操作成功"
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261120-235614/rooms-rate-close.png"
+    },
+    {
+      "op": "rooms-rate-reopen",
+      "account": "v12_gm",
+      "page": "/manage/rooms/",
+      "api_calls": [],
+      "drawer_status": [
+        "操作成功"
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261120-235614/rooms-rate-reopen.png"
+    },
+    {
+      "op": "rooms-rate-adjust",
+      "account": "v12_gm",
+      "page": "/manage/rooms/",
+      "api_calls": [],
+      "drawer_status": [
+        "操作成功"
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261120-235614/rooms-rate-adjust.png"
+    },
+    {
+      "op": "rooms-stock-stop",
+      "account": "v12_gm",
+      "page": "/manage/rooms/",
+      "api_calls": [],
+      "drawer_status": [
+        "操作成功"
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261120-235614/rooms-stock-stop.png"
+    },
+    {
+      "op": "rooms-stock-resume",
+      "account": "v12_gm",
+      "page": "/manage/rooms/",
+      "api_calls": [],
+      "drawer_status": [
+        "操作成功"
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261120-235614/rooms-stock-resume.png"
+    },
+    {
+      "op": "membership-create",
+      "account": "v12_gm",
+      "page": "/manage/memberships/",
+      "api_calls": [],
+      "drawer_status": [
+        "操作成功"
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261120-235614/membership-create.png"
+    },
+    {
+      "op": "membership-level-change",
+      "account": "v12_gm",
+      "page": "/manage/memberships/ 查看抽屉",
+      "api_calls": [],
+      "drawer_status": [
+        "操作成功"
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261120-235614/membership-level-change.png"
+    },
+    {
+      "op": "membership-suspend",
+      "account": "v12_gm",
+      "page": "/manage/memberships/ 查看抽屉",
+      "api_calls": [],
+      "drawer_status": [
+        "操作成功",
+        "操作成功"
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261120-235614/membership-suspend.png"
+    },
+    {
+      "op": "membership-restore",
+      "account": "v12_gm",
+      "page": "/manage/memberships/ 查看抽屉",
+      "api_calls": [],
+      "drawer_status": [
+        "操作成功",
+        "操作成功"
+      ],
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261120-235614/membership-restore.png"
+    }
+  ]
+}

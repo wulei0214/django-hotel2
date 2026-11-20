@@ -1,0 +1,2010 @@
+{
+  "run_id": "20261121-p7",
+  "phase": "P7 nine-role high-risk permission denial",
+  "accounts": [
+    "v12_gm",
+    "v12_fd",
+    "v12_fin",
+    "v13_duty",
+    "v13_hk",
+    "v13_night",
+    "v13_rest",
+    "v13_chef",
+    "v13_sec"
+  ],
+  "role_names": {
+    "v12_gm": "店长",
+    "v12_fd": "前台接待",
+    "v12_fin": "财务",
+    "v13_duty": "值班经理",
+    "v13_hk": "客房服务员",
+    "v13_night": "夜审员",
+    "v13_rest": "餐饮服务员",
+    "v13_chef": "餐饮主管",
+    "v13_sec": "停车安保"
+  },
+  "results": [
+    {
+      "account": "v12_gm",
+      "role": "店长",
+      "landing": {
+        "url": "/home/",
+        "title": "主界面 - 酒店管理系统",
+        "head": "酒 酒店管理系统 工作台 通知与待办 23 运营 主界面 前台运营 预订与入住中心 前台接待工作台 客人关系 Guest 360 客人中心 会员中心 客房运营 房态与库存中心 清洁与维修工作台 员工组织 员工与账号中心 财务与日结 财务管理 营业日与夜审中心 经营分析 报表分析中心 系统管理 审计与合规中心 个人设置 "
+      },
+      "csrf_obtained": true,
+      "attempts": [
+        {
+          "scenario": "S1_refund_execute",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/execute",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有该项财务操作权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "15db66f5ac98459f",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:34.494158+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/approve",
+          "status": 400,
+          "response": {
+            "error": {
+              "code": "VALIDATION_ERROR",
+              "message": "退款申请不存在或不属于当前物业。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "d2e8d7598e6c4c29",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:34.521197+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "skipped": true,
+          "note": "店长/值班经理为夜审执行权限持有者（v12_gm 已在 Phase6 真实执行作为正控），为避免关账推进营业日不重复发起真实执行"
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "method": "POST",
+          "path": "/api/v1/guests/51/phones/47/reveal",
+          "status": 200,
+          "response": {
+            "data": {
+              "guest_id": 51,
+              "phone_id": 47,
+              "phone": "13839587039"
+            },
+            "meta": {
+              "request_id": "ff4f83e382244076",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:34.540672+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S5_room_release",
+          "method": "POST",
+          "path": "/api/v1/housekeeping/rooms/8/status",
+          "status": 200,
+          "response": {
+            "data": {
+              "id": 8,
+              "number": "9936",
+              "floor": "9",
+              "room_type": {
+                "id": 4,
+                "code": "SUP",
+                "name": "高级大床房"
+              },
+              "occupancy_status": "VACANT",
+              "occupancy_label": "空闲",
+              "housekeeping_status": "CLEAN",
+              "housekeeping_label": "净房",
+              "maintenance_status": "NORMAL",
+              "maintenance_label": "正常",
+              "is_sellable_now": true,
+              "source_system": "PMS2",
+              "changed": false
+            },
+            "meta": {
+              "request_id": "02909d57c6854f45",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:34.568286+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "method": "GET",
+          "path": "/api/v1/billing/refund-liabilities",
+          "status": 200,
+          "response": {
+            "data": [
+              {
+                "id": 9,
+                "reservation_id": 94,
+                "booking_no": "R85E9586AC4430D6689BF",
+                "folio_id": 64,
+                "amount": "90.00",
+                "refunded_amount": "0.00",
+                "remaining_amount": "90.00",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 53,
+                    "provider_ref": "FDDEP-1-fd-deposit-1f85abd1-3df3-4837-aa46-eb5c0370044b",
+                    "method": "CASH",
+                    "amount": "90.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-20T19:56:40.169337+00:00",
+                "settled_at": null
+              },
+              {
+                "id": 8,
+                "reservation_id": 92,
+                "booking_no": "RFC3F57FA9D8F77A2A5AC",
+                "folio_id": 62,
+                "amount": "90.00",
+                "refunded_amount": "0.00",
+                "remaining_amount": "90.00",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 52,
+                    "provider_ref": "FDDEP-1-fd-deposit-e87ec189-9529-45f8-a9e3-255d938a8805",
+                    "method": "CASH",
+                    "amount": "90.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-20T19:33:02.544209+00:00",
+                "settled_at": null
+              },
+              {
+                "id": 7,
+                "reservation_id": 84,
+                "booking_no": "R27CE0148396B4088DC69",
+                "folio_id": 54,
+                "amount": "206.40",
+                "refunded_amount": "0.00",
+                "remaining_amount": "206.40",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 48,
+                    "provider_ref": "FDDEP-1-fd-deposit-7cb19c6d-7de8-4fb7-9229-7ad60f39281b",
+                    "method": "CASH",
+                    "amount": "206.40",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-20T19:09:52.999720+00:00",
+                "settled_at": null
+              },
+              {
+                "id": 6,
+                "reservation_id": 62,
+                "booking_no": "R63788A358E321046BBD5",
+                "folio_id": 32,
+                "amount": "290.00",
+                "refunded_amount": "0.00",
+                "remaining_amount": "290.00",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 36,
+                    "provider_ref": "FD1-v12-foliohist-pay-2HwzTnRS",
+                    "method": "CASH",
+                    "amount": "200.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  },
+                  {
+                    "payment_id": 35,
+                    "provider_ref": "FDDEP-1-v12-foliohist-seed-QO2QAzNH-dep",
+                    "method": "CASH",
+                    "amount": "90.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-20T09:40:52.402860+00:00",
+                "settled_at": null
+              },
+              {
+                "id": 5,
+                "reservation_id": 52,
+                "booking_no": "R74610C690DDBFA89CF5F",
+                "folio_id": 22,
+                "amount": "100.00",
+                "refunded_amount": "100.00",
+                "remaining_amount": "0.00",
+                "currency": "CNY",
+                "status": "SETTLED",
+                "status_label": "已处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 26,
+                    "provider_ref": "FD1-fd-manual-0a6cda98-b9ff-429f-a88d-8bc21470fdc0",
+                    "method": "CASH",
+                    "amount": "100.00",
+                    "currency": "CNY",
+                    "status": "REFUNDED"
+                  }
+                ],
+                "created_at": "2026-11-19T17:05:14.962061+00:00",
+                "settled_at": "2026-11-19T17:54:14.222307+00:00"
+              },
+              {
+                "id": 4,
+                "reservation_id": 51,
+                "booking_no": "R8EDBEEB418E13EA54C73",
+                "folio_id": 21,
+                "amount": "288.00",
+                "refunded_amount": "0.00",
+                "remaining_amount": "288.00",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 24,
+                    "provider_ref": "MOCK-E65C0CCCBFD0402F97D853BA58FC9CE2",
+                    "method": "MOCK",
+                    "amount": "288.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-19T16:52:05.928027+00:00",
+                "settled_at": null
+              }
+            ],
+            "meta": {
+              "request_id": "2665de7f0c534f30",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:34.595867+00:00",
+              "pagination": {
+                "page": 1,
+                "page_size": 20,
+                "total": 6,
+                "has_next": false,
+                "has_previous": false
+              }
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S7_report_export",
+          "method": "GET",
+          "path": "/api/v1/reports/export?report=__invalid__&reason=P7-acceptance-evidence",
+          "status": 400,
+          "response": {
+            "error": {
+              "code": "VALIDATION_ERROR",
+              "message": "report 必须是已登记的报表代码。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "1c5854051bc94b28",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:34.608870+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S8_audit_export",
+          "method": "GET",
+          "path": "/api/v1/audit/export?reason=P7-acceptance-evidence",
+          "status": 200,
+          "response": null,
+          "denied": false
+        }
+      ]
+    },
+    {
+      "account": "v12_fd",
+      "role": "前台接待",
+      "landing": {
+        "url": "/home/",
+        "title": "主界面 - 酒店管理系统",
+        "head": "酒 酒店管理系统 工作台 通知与待办 40 运营 主界面 前台运营 预订与入住中心 前台接待工作台 客人关系 Guest 360 客人中心 会员中心 客房运营 房态与库存中心 清洁与维修工作台 经营分析 报表分析中心 个人设置 个人中心 v12_fd 前台 退出登录 LIFE IS ATOUR · 酒店管理系统 优"
+      },
+      "csrf_obtained": true,
+      "attempts": [
+        {
+          "scenario": "S1_refund_execute",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/execute",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "838b18709ca24402",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:38.499284+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/approve",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "130d95ebb0264306",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:38.518311+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "method": "POST",
+          "path": "/api/v1/night-audit/run",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有该项夜审权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "deb56963027841b3",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:38.533471+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "method": "POST",
+          "path": "/api/v1/guests/51/phones/47/reveal",
+          "status": 200,
+          "response": {
+            "data": {
+              "guest_id": 51,
+              "phone_id": 47,
+              "phone": "13839587039"
+            },
+            "meta": {
+              "request_id": "1d9bc4e104c14917",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:38.552416+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S5_room_release",
+          "method": "POST",
+          "path": "/api/v1/housekeeping/rooms/8/status",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有清洁与维修工作台权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "9ff9c17c28fc4ce5",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:38.567520+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "method": "GET",
+          "path": "/api/v1/billing/refund-liabilities",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "493f0a64f1fd46e9",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:38.586211+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S7_report_export",
+          "method": "GET",
+          "path": "/api/v1/reports/export?report=__invalid__&reason=P7-acceptance-evidence",
+          "status": 400,
+          "response": {
+            "error": {
+              "code": "VALIDATION_ERROR",
+              "message": "report 必须是已登记的报表代码。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "c4df275d30904cbe",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:38.598220+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S8_audit_export",
+          "method": "GET",
+          "path": "/api/v1/audit/export?reason=P7-acceptance-evidence",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "缺少审计查看权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "4192b7a465c54ae1",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:38.614212+00:00"
+            }
+          },
+          "denied": true
+        }
+      ]
+    },
+    {
+      "account": "v12_fin",
+      "role": "财务",
+      "landing": {
+        "url": "/home/",
+        "title": "主界面 - 酒店管理系统",
+        "head": "酒 酒店管理系统 工作台 通知与待办 运营 主界面 前台运营 预订与入住中心 前台接待工作台 客人关系 Guest 360 客人中心 会员中心 客房运营 房态与库存中心 清洁与维修工作台 财务与日结 财务管理 经营分析 报表分析中心 个人设置 个人中心 v12_fin 财务 退出登录 LIFE IS ATOUR · "
+      },
+      "csrf_obtained": true,
+      "attempts": [
+        {
+          "scenario": "S1_refund_execute",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/execute",
+          "status": 400,
+          "response": {
+            "error": {
+              "code": "VALIDATION_ERROR",
+              "message": "必须确认退款已经实际支付给客人。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "9375a70f3b094420",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:42.429403+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/approve",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有该项财务操作权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "1b21c628e0ff427a",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:42.452678+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "method": "POST",
+          "path": "/api/v1/night-audit/run",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有该项夜审权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "54f21f6356ef41eb",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:42.467698+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "method": "POST",
+          "path": "/api/v1/guests/51/phones/47/reveal",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位无客人电话完整值揭示权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "6cd1d97802704622",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:42.483232+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "method": "POST",
+          "path": "/api/v1/housekeeping/rooms/8/status",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有清洁与维修工作台权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "83216c1492c6462e",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:42.498805+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "method": "GET",
+          "path": "/api/v1/billing/refund-liabilities",
+          "status": 200,
+          "response": {
+            "data": [
+              {
+                "id": 9,
+                "reservation_id": 94,
+                "booking_no": "R85E9586AC4430D6689BF",
+                "folio_id": 64,
+                "amount": "90.00",
+                "refunded_amount": "0.00",
+                "remaining_amount": "90.00",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 53,
+                    "provider_ref": "FDDEP-1-fd-deposit-1f85abd1-3df3-4837-aa46-eb5c0370044b",
+                    "method": "CASH",
+                    "amount": "90.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-20T19:56:40.169337+00:00",
+                "settled_at": null
+              },
+              {
+                "id": 8,
+                "reservation_id": 92,
+                "booking_no": "RFC3F57FA9D8F77A2A5AC",
+                "folio_id": 62,
+                "amount": "90.00",
+                "refunded_amount": "0.00",
+                "remaining_amount": "90.00",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 52,
+                    "provider_ref": "FDDEP-1-fd-deposit-e87ec189-9529-45f8-a9e3-255d938a8805",
+                    "method": "CASH",
+                    "amount": "90.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-20T19:33:02.544209+00:00",
+                "settled_at": null
+              },
+              {
+                "id": 7,
+                "reservation_id": 84,
+                "booking_no": "R27CE0148396B4088DC69",
+                "folio_id": 54,
+                "amount": "206.40",
+                "refunded_amount": "0.00",
+                "remaining_amount": "206.40",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 48,
+                    "provider_ref": "FDDEP-1-fd-deposit-7cb19c6d-7de8-4fb7-9229-7ad60f39281b",
+                    "method": "CASH",
+                    "amount": "206.40",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-20T19:09:52.999720+00:00",
+                "settled_at": null
+              },
+              {
+                "id": 6,
+                "reservation_id": 62,
+                "booking_no": "R63788A358E321046BBD5",
+                "folio_id": 32,
+                "amount": "290.00",
+                "refunded_amount": "0.00",
+                "remaining_amount": "290.00",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 36,
+                    "provider_ref": "FD1-v12-foliohist-pay-2HwzTnRS",
+                    "method": "CASH",
+                    "amount": "200.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  },
+                  {
+                    "payment_id": 35,
+                    "provider_ref": "FDDEP-1-v12-foliohist-seed-QO2QAzNH-dep",
+                    "method": "CASH",
+                    "amount": "90.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-20T09:40:52.402860+00:00",
+                "settled_at": null
+              },
+              {
+                "id": 5,
+                "reservation_id": 52,
+                "booking_no": "R74610C690DDBFA89CF5F",
+                "folio_id": 22,
+                "amount": "100.00",
+                "refunded_amount": "100.00",
+                "remaining_amount": "0.00",
+                "currency": "CNY",
+                "status": "SETTLED",
+                "status_label": "已处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 26,
+                    "provider_ref": "FD1-fd-manual-0a6cda98-b9ff-429f-a88d-8bc21470fdc0",
+                    "method": "CASH",
+                    "amount": "100.00",
+                    "currency": "CNY",
+                    "status": "REFUNDED"
+                  }
+                ],
+                "created_at": "2026-11-19T17:05:14.962061+00:00",
+                "settled_at": "2026-11-19T17:54:14.222307+00:00"
+              },
+              {
+                "id": 4,
+                "reservation_id": 51,
+                "booking_no": "R8EDBEEB418E13EA54C73",
+                "folio_id": 21,
+                "amount": "288.00",
+                "refunded_amount": "0.00",
+                "remaining_amount": "288.00",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 24,
+                    "provider_ref": "MOCK-E65C0CCCBFD0402F97D853BA58FC9CE2",
+                    "method": "MOCK",
+                    "amount": "288.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-19T16:52:05.928027+00:00",
+                "settled_at": null
+              }
+            ],
+            "meta": {
+              "request_id": "992a64f4532a4a15",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:42.523984+00:00",
+              "pagination": {
+                "page": 1,
+                "page_size": 20,
+                "total": 6,
+                "has_next": false,
+                "has_previous": false
+              }
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S7_report_export",
+          "method": "GET",
+          "path": "/api/v1/reports/export?report=__invalid__&reason=P7-acceptance-evidence",
+          "status": 400,
+          "response": {
+            "error": {
+              "code": "VALIDATION_ERROR",
+              "message": "report 必须是已登记的报表代码。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "ee4c1714718d484b",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:42.538982+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S8_audit_export",
+          "method": "GET",
+          "path": "/api/v1/audit/export?reason=P7-acceptance-evidence",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "缺少审计查看权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "0beeb1c5f9ac4248",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:42.554112+00:00"
+            }
+          },
+          "denied": true
+        }
+      ]
+    },
+    {
+      "account": "v13_duty",
+      "role": "值班经理",
+      "landing": {
+        "url": "/home/",
+        "title": "主界面 - 酒店管理系统",
+        "head": "酒 酒店管理系统 工作台 通知与待办 67 运营 主界面 前台运营 预订与入住中心 前台接待工作台 客人关系 Guest 360 客人中心 会员中心 客房运营 房态与库存中心 清洁与维修工作台 财务与日结 财务管理 营业日与夜审中心 经营分析 报表分析中心 系统管理 审计与合规中心 个人设置 个人中心 v13_duty"
+      },
+      "csrf_obtained": true,
+      "attempts": [
+        {
+          "scenario": "S1_refund_execute",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/execute",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有该项财务操作权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "2324cb9d4c534ce2",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:46.365260+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/approve",
+          "status": 400,
+          "response": {
+            "error": {
+              "code": "VALIDATION_ERROR",
+              "message": "退款申请不存在或不属于当前物业。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "f6bb57cc41574da8",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:46.389529+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "skipped": true,
+          "note": "店长/值班经理为夜审执行权限持有者（v12_gm 已在 Phase6 真实执行作为正控），为避免关账推进营业日不重复发起真实执行"
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "method": "POST",
+          "path": "/api/v1/guests/51/phones/47/reveal",
+          "status": 200,
+          "response": {
+            "data": {
+              "guest_id": 51,
+              "phone_id": 47,
+              "phone": "13839587039"
+            },
+            "meta": {
+              "request_id": "79a0dec6974e42a7",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:46.409611+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S5_room_release",
+          "method": "POST",
+          "path": "/api/v1/housekeeping/rooms/8/status",
+          "status": 200,
+          "response": {
+            "data": {
+              "id": 8,
+              "number": "9936",
+              "floor": "9",
+              "room_type": {
+                "id": 4,
+                "code": "SUP",
+                "name": "高级大床房"
+              },
+              "occupancy_status": "VACANT",
+              "occupancy_label": "空闲",
+              "housekeeping_status": "CLEAN",
+              "housekeeping_label": "净房",
+              "maintenance_status": "NORMAL",
+              "maintenance_label": "正常",
+              "is_sellable_now": true,
+              "source_system": "PMS2",
+              "changed": false
+            },
+            "meta": {
+              "request_id": "488236809ad545f2",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:46.438140+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "method": "GET",
+          "path": "/api/v1/billing/refund-liabilities",
+          "status": 200,
+          "response": {
+            "data": [
+              {
+                "id": 9,
+                "reservation_id": 94,
+                "booking_no": "R85E9586AC4430D6689BF",
+                "folio_id": 64,
+                "amount": "90.00",
+                "refunded_amount": "0.00",
+                "remaining_amount": "90.00",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 53,
+                    "provider_ref": "FDDEP-1-fd-deposit-1f85abd1-3df3-4837-aa46-eb5c0370044b",
+                    "method": "CASH",
+                    "amount": "90.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-20T19:56:40.169337+00:00",
+                "settled_at": null
+              },
+              {
+                "id": 8,
+                "reservation_id": 92,
+                "booking_no": "RFC3F57FA9D8F77A2A5AC",
+                "folio_id": 62,
+                "amount": "90.00",
+                "refunded_amount": "0.00",
+                "remaining_amount": "90.00",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 52,
+                    "provider_ref": "FDDEP-1-fd-deposit-e87ec189-9529-45f8-a9e3-255d938a8805",
+                    "method": "CASH",
+                    "amount": "90.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-20T19:33:02.544209+00:00",
+                "settled_at": null
+              },
+              {
+                "id": 7,
+                "reservation_id": 84,
+                "booking_no": "R27CE0148396B4088DC69",
+                "folio_id": 54,
+                "amount": "206.40",
+                "refunded_amount": "0.00",
+                "remaining_amount": "206.40",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 48,
+                    "provider_ref": "FDDEP-1-fd-deposit-7cb19c6d-7de8-4fb7-9229-7ad60f39281b",
+                    "method": "CASH",
+                    "amount": "206.40",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-20T19:09:52.999720+00:00",
+                "settled_at": null
+              },
+              {
+                "id": 6,
+                "reservation_id": 62,
+                "booking_no": "R63788A358E321046BBD5",
+                "folio_id": 32,
+                "amount": "290.00",
+                "refunded_amount": "0.00",
+                "remaining_amount": "290.00",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 36,
+                    "provider_ref": "FD1-v12-foliohist-pay-2HwzTnRS",
+                    "method": "CASH",
+                    "amount": "200.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  },
+                  {
+                    "payment_id": 35,
+                    "provider_ref": "FDDEP-1-v12-foliohist-seed-QO2QAzNH-dep",
+                    "method": "CASH",
+                    "amount": "90.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-20T09:40:52.402860+00:00",
+                "settled_at": null
+              },
+              {
+                "id": 5,
+                "reservation_id": 52,
+                "booking_no": "R74610C690DDBFA89CF5F",
+                "folio_id": 22,
+                "amount": "100.00",
+                "refunded_amount": "100.00",
+                "remaining_amount": "0.00",
+                "currency": "CNY",
+                "status": "SETTLED",
+                "status_label": "已处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 26,
+                    "provider_ref": "FD1-fd-manual-0a6cda98-b9ff-429f-a88d-8bc21470fdc0",
+                    "method": "CASH",
+                    "amount": "100.00",
+                    "currency": "CNY",
+                    "status": "REFUNDED"
+                  }
+                ],
+                "created_at": "2026-11-19T17:05:14.962061+00:00",
+                "settled_at": "2026-11-19T17:54:14.222307+00:00"
+              },
+              {
+                "id": 4,
+                "reservation_id": 51,
+                "booking_no": "R8EDBEEB418E13EA54C73",
+                "folio_id": 21,
+                "amount": "288.00",
+                "refunded_amount": "0.00",
+                "remaining_amount": "288.00",
+                "currency": "CNY",
+                "status": "OPEN",
+                "status_label": "待处理",
+                "candidate_payments": [
+                  {
+                    "payment_id": 24,
+                    "provider_ref": "MOCK-E65C0CCCBFD0402F97D853BA58FC9CE2",
+                    "method": "MOCK",
+                    "amount": "288.00",
+                    "currency": "CNY",
+                    "status": "SUCCEEDED"
+                  }
+                ],
+                "created_at": "2026-11-19T16:52:05.928027+00:00",
+                "settled_at": null
+              }
+            ],
+            "meta": {
+              "request_id": "1bc604e4cfcf491b",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:46.463337+00:00",
+              "pagination": {
+                "page": 1,
+                "page_size": 20,
+                "total": 6,
+                "has_next": false,
+                "has_previous": false
+              }
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S7_report_export",
+          "method": "GET",
+          "path": "/api/v1/reports/export?report=__invalid__&reason=P7-acceptance-evidence",
+          "status": 400,
+          "response": {
+            "error": {
+              "code": "VALIDATION_ERROR",
+              "message": "report 必须是已登记的报表代码。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "7c158866684f4a42",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:46.478365+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S8_audit_export",
+          "method": "GET",
+          "path": "/api/v1/audit/export?reason=P7-acceptance-evidence",
+          "status": 200,
+          "response": null,
+          "denied": false
+        }
+      ]
+    },
+    {
+      "account": "v13_hk",
+      "role": "客房服务员",
+      "landing": {
+        "url": "/home/",
+        "title": "主界面 - 酒店管理系统",
+        "head": "酒 酒店管理系统 工作台 通知与待办 1 运营 主界面 客房运营 房态与库存中心 清洁与维修工作台 个人设置 个人中心 v13_hk 客房服务员 退出登录 LIFE IS ATOUR · 酒店管理系统 优雅入住，从容管理 v13_hk，客房服务员 · 今天是 2026-11-21 · 欢迎回来 4 今日预抵 0"
+      },
+      "csrf_obtained": true,
+      "attempts": [
+        {
+          "scenario": "S1_refund_execute",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/execute",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "e6aac3cb831c44f3",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:50.355219+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/approve",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "06f4a51575bc4f6a",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:50.371390+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "method": "POST",
+          "path": "/api/v1/night-audit/run",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有该项夜审权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "8279cbe1e35c42a5",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:50.385412+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "method": "POST",
+          "path": "/api/v1/guests/51/phones/47/reveal",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位无客人电话完整值揭示权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "a86f5f40492e4029",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:50.400941+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "method": "POST",
+          "path": "/api/v1/housekeeping/rooms/8/status",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "净房放行需要 hotelapp.room_release_ready 权限（值班经理/店长）。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "626091aa45cf4a3d",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:50.417944+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "method": "GET",
+          "path": "/api/v1/billing/refund-liabilities",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "51960acb5afc47bc",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:50.434114+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S7_report_export",
+          "method": "GET",
+          "path": "/api/v1/reports/export?report=__invalid__&reason=P7-acceptance-evidence",
+          "status": 400,
+          "response": {
+            "error": {
+              "code": "VALIDATION_ERROR",
+              "message": "report 必须是已登记的报表代码。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "7de98a6fe7b64f0c",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:50.447141+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S8_audit_export",
+          "method": "GET",
+          "path": "/api/v1/audit/export?reason=P7-acceptance-evidence",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "缺少审计查看权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "2d17cf7368834bb3",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:50.461249+00:00"
+            }
+          },
+          "denied": true
+        }
+      ]
+    },
+    {
+      "account": "v13_night",
+      "role": "夜审员",
+      "landing": {
+        "url": "/home/",
+        "title": "主界面 - 酒店管理系统",
+        "head": "酒 酒店管理系统 工作台 通知与待办 运营 主界面 个人设置 个人中心 v13_night 夜审员 退出登录 LIFE IS ATOUR · 酒店管理系统 优雅入住，从容管理 v13_night，夜审员 · 今天是 2026-11-21 · 欢迎回来 4 今日预抵 0 今日离店 16 在住房间 5 空闲净房 4"
+      },
+      "csrf_obtained": true,
+      "attempts": [
+        {
+          "scenario": "S1_refund_execute",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/execute",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "a7b4c4a6dd7f4216",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:54.242251+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/approve",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "8bb783488d924f1b",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:54.261633+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "method": "POST",
+          "path": "/api/v1/night-audit/run",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有该项夜审权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "4470b51d0c2042a8",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:54.276228+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "method": "POST",
+          "path": "/api/v1/guests/51/phones/47/reveal",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位无客人电话完整值揭示权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "4121313f07de4b33",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:54.289697+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "method": "POST",
+          "path": "/api/v1/housekeeping/rooms/8/status",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有清洁与维修工作台权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "8c86f7a0f30d4d64",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:54.306252+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "method": "GET",
+          "path": "/api/v1/billing/refund-liabilities",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "2594ffb1d1274e5e",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:54.322930+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S7_report_export",
+          "method": "GET",
+          "path": "/api/v1/reports/export?report=__invalid__&reason=P7-acceptance-evidence",
+          "status": 400,
+          "response": {
+            "error": {
+              "code": "VALIDATION_ERROR",
+              "message": "report 必须是已登记的报表代码。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "d6523c6b522a4556",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:54.336225+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S8_audit_export",
+          "method": "GET",
+          "path": "/api/v1/audit/export?reason=P7-acceptance-evidence",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "缺少审计查看权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "5971a019e89a4113",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:54.353626+00:00"
+            }
+          },
+          "denied": true
+        }
+      ]
+    },
+    {
+      "account": "v13_rest",
+      "role": "餐饮服务员",
+      "landing": {
+        "url": "/home/",
+        "title": "主界面 - 酒店管理系统",
+        "head": "酒 酒店管理系统 工作台 通知与待办 运营 主界面 个人设置 个人中心 v13_rest 餐饮服务员 退出登录 LIFE IS ATOUR · 酒店管理系统 优雅入住，从容管理 v13_rest，餐饮服务员 · 今天是 2026-11-21 · 欢迎回来 4 今日预抵 0 今日离店 16 在住房间 5 空闲净房"
+      },
+      "csrf_obtained": true,
+      "attempts": [
+        {
+          "scenario": "S1_refund_execute",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/execute",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "52381760afc04cf6",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:58.154337+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/approve",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "82ac091f5cd744bd",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:58.173341+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "method": "POST",
+          "path": "/api/v1/night-audit/run",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有该项夜审权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "f4a4424ac7734216",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:58.187353+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "method": "POST",
+          "path": "/api/v1/guests/51/phones/47/reveal",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位无客人电话完整值揭示权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "a91d2c64b92747e4",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:58.202935+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "method": "POST",
+          "path": "/api/v1/housekeeping/rooms/8/status",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有清洁与维修工作台权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "1ccafa01c2b94bb5",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:58.217459+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "method": "GET",
+          "path": "/api/v1/billing/refund-liabilities",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "3b0017ebaa26410c",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:58.235463+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S7_report_export",
+          "method": "GET",
+          "path": "/api/v1/reports/export?report=__invalid__&reason=P7-acceptance-evidence",
+          "status": 400,
+          "response": {
+            "error": {
+              "code": "VALIDATION_ERROR",
+              "message": "report 必须是已登记的报表代码。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "41c4b74e97224019",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:58.246453+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S8_audit_export",
+          "method": "GET",
+          "path": "/api/v1/audit/export?reason=P7-acceptance-evidence",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "缺少审计查看权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "41e2dfca3b9b40c0",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:29:58.261455+00:00"
+            }
+          },
+          "denied": true
+        }
+      ]
+    },
+    {
+      "account": "v13_chef",
+      "role": "餐饮主管",
+      "landing": {
+        "url": "/home/",
+        "title": "主界面 - 酒店管理系统",
+        "head": "酒 酒店管理系统 工作台 通知与待办 运营 主界面 个人设置 个人中心 v13_chef 餐饮主管 退出登录 LIFE IS ATOUR · 酒店管理系统 优雅入住，从容管理 v13_chef，餐饮主管 · 今天是 2026-11-21 · 欢迎回来 4 今日预抵 0 今日离店 16 在住房间 5 空闲净房 4"
+      },
+      "csrf_obtained": true,
+      "attempts": [
+        {
+          "scenario": "S1_refund_execute",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/execute",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "29f7fdca718a4c16",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:02.032865+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/approve",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "11c990563d904ed9",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:02.052351+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "method": "POST",
+          "path": "/api/v1/night-audit/run",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有该项夜审权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "55285b4f41d643ad",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:02.067089+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "method": "POST",
+          "path": "/api/v1/guests/51/phones/47/reveal",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位无客人电话完整值揭示权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "34c05698b1bd4d33",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:02.082312+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "method": "POST",
+          "path": "/api/v1/housekeeping/rooms/8/status",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有清洁与维修工作台权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "f4178945bcca4987",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:02.096412+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "method": "GET",
+          "path": "/api/v1/billing/refund-liabilities",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "4ce2caa8225f4aa2",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:02.113329+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S7_report_export",
+          "method": "GET",
+          "path": "/api/v1/reports/export?report=__invalid__&reason=P7-acceptance-evidence",
+          "status": 400,
+          "response": {
+            "error": {
+              "code": "VALIDATION_ERROR",
+              "message": "report 必须是已登记的报表代码。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "7907aa6d386d4522",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:02.123564+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S8_audit_export",
+          "method": "GET",
+          "path": "/api/v1/audit/export?reason=P7-acceptance-evidence",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "缺少审计查看权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "74249f2d21e845e0",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:02.138575+00:00"
+            }
+          },
+          "denied": true
+        }
+      ]
+    },
+    {
+      "account": "v13_sec",
+      "role": "停车安保",
+      "landing": {
+        "url": "/home/",
+        "title": "主界面 - 酒店管理系统",
+        "head": "酒 酒店管理系统 工作台 通知与待办 运营 主界面 个人设置 个人中心 v13_sec 停车安保 退出登录 LIFE IS ATOUR · 酒店管理系统 优雅入住，从容管理 v13_sec，停车安保 · 今天是 2026-11-21 · 欢迎回来 4 今日预抵 0 今日离店 16 在住房间 5 空闲净房 4 待"
+      },
+      "csrf_obtained": true,
+      "attempts": [
+        {
+          "scenario": "S1_refund_execute",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/execute",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "9b602babf8294ca3",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:05.926548+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "method": "POST",
+          "path": "/api/v1/billing/refunds/999999/approve",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "a1c3028c78ae4cc1",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:05.945861+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "method": "POST",
+          "path": "/api/v1/night-audit/run",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有该项夜审权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "ea4e19ebf7f24a04",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:05.960996+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "method": "POST",
+          "path": "/api/v1/guests/51/phones/47/reveal",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位无客人电话完整值揭示权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "e9953ab698ae45a3",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:05.976862+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "method": "POST",
+          "path": "/api/v1/housekeeping/rooms/8/status",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "当前岗位没有清洁与维修工作台权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "8b00036bd0f14bfe",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:05.991365+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "method": "GET",
+          "path": "/api/v1/billing/refund-liabilities",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "员工任职或财务权限验证失败，无法访问财务中心。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "670ca1b5f7e946df",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:06.008698+00:00"
+            }
+          },
+          "denied": true
+        },
+        {
+          "scenario": "S7_report_export",
+          "method": "GET",
+          "path": "/api/v1/reports/export?report=__invalid__&reason=P7-acceptance-evidence",
+          "status": 400,
+          "response": {
+            "error": {
+              "code": "VALIDATION_ERROR",
+              "message": "report 必须是已登记的报表代码。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "1df000a428ac4b6a",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:06.020285+00:00"
+            }
+          },
+          "denied": false
+        },
+        {
+          "scenario": "S8_audit_export",
+          "method": "GET",
+          "path": "/api/v1/audit/export?reason=P7-acceptance-evidence",
+          "status": 403,
+          "response": {
+            "error": {
+              "code": "PERMISSION_DENIED",
+              "message": "缺少审计查看权限。",
+              "field_errors": {},
+              "retryable": false
+            },
+            "meta": {
+              "request_id": "ca7f10a493f349c7",
+              "source_system": "PMS2",
+              "generated_at": "2026-11-20T20:30:06.035749+00:00"
+            }
+          },
+          "denied": true
+        }
+      ]
+    }
+  ]
+}

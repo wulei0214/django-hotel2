@@ -1,0 +1,73 @@
+{
+  "run_id": "20261121-p7",
+  "results": [
+    {
+      "account": "v12_fd",
+      "role": "前台接待",
+      "scenario": "S7b_report_export_occupancy",
+      "path": "/api/v1/reports/export?report=occupancy&reason=P7b-acceptance-occupancy-export",
+      "status": 200,
+      "response": null
+    },
+    {
+      "account": "v13_night",
+      "role": "夜审员",
+      "scenario": "S7b_report_export_occupancy",
+      "path": "/api/v1/reports/export?report=occupancy&reason=P7b-acceptance-occupancy-export",
+      "status": 403,
+      "response": {
+        "error": {
+          "code": "PERMISSION_DENIED",
+          "message": "当前岗位无权查看该报表。",
+          "field_errors": {},
+          "retryable": false
+        },
+        "meta": {
+          "request_id": "d97e0a6333d04cc1",
+          "source_system": "PMS2",
+          "generated_at": "2026-11-20T20:32:01.099092+00:00"
+        }
+      }
+    },
+    {
+      "account": "v13_rest",
+      "role": "餐饮服务员",
+      "scenario": "S7b_report_export_occupancy",
+      "path": "/api/v1/reports/export?report=occupancy&reason=P7b-acceptance-occupancy-export",
+      "status": 403,
+      "response": {
+        "error": {
+          "code": "PERMISSION_DENIED",
+          "message": "当前岗位无权查看该报表。",
+          "field_errors": {},
+          "retryable": false
+        },
+        "meta": {
+          "request_id": "d316f5edb5a94763",
+          "source_system": "PMS2",
+          "generated_at": "2026-11-20T20:32:04.773084+00:00"
+        }
+      }
+    },
+    {
+      "account": "v13_sec",
+      "role": "停车安保",
+      "scenario": "S7b_report_export_occupancy",
+      "path": "/api/v1/reports/export?report=occupancy&reason=P7b-acceptance-occupancy-export",
+      "status": 403,
+      "response": {
+        "error": {
+          "code": "PERMISSION_DENIED",
+          "message": "当前岗位无权查看该报表。",
+          "field_errors": {},
+          "retryable": false
+        },
+        "meta": {
+          "request_id": "0f24a43ae85d4ccc",
+          "source_system": "PMS2",
+          "generated_at": "2026-11-20T20:32:08.441192+00:00"
+        }
+      }
+    }
+  ]
+}

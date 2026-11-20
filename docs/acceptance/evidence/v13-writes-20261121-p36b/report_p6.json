@@ -1,0 +1,22 @@
+{
+  "run_id": "20261121-p36b",
+  "results": [
+    {
+      "op": "p6-night-audit-preview",
+      "account": "v12_gm",
+      "page": "/manage/night-audit/",
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p6-night-audit-preview.png",
+      "business_date_before": "2026-11-20",
+      "run_button_enabled": true
+    },
+    {
+      "op": "p6-night-audit-run",
+      "account": "v12_gm",
+      "page": "/manage/night-audit/",
+      "screenshot": "docs/acceptance/evidence/v13-writes-20261121-p36b/p6-night-audit-run.png",
+      "business_date_before": "2026-11-20",
+      "business_date_after": "2026-11-21",
+      "note": "执行夜审并关账（confirm 已接受），营业日应推进到次日"
+    }
+  ]
+}
