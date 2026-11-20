@@ -17,6 +17,8 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.core.models import AuditEvent
+from apps.core.phone import legacy_phone_variants
+from apps.core.phone import normalize_phone as _normalize_phone
 
 
 def _pii_key_bytes():
@@ -271,10 +273,41 @@ def _mask(value):
 
 
 def normalize_phone(raw):
-    """标准化手机号：去空格/横线/括号，保留数字和+号。"""
-    import re
+    """标准化手机号：只保留数字（TASK-02 统一口径）。
 
-    return re.sub(r"[^\d+]", "", (raw or "").strip())
+    历史问题：本函数原先保留 `+`（`re.sub(r"[^\d+]", "", ...)`），而预订侧
+    `apps.reservations.services.normalize_phone` 只保留数字。同一号码
+    （如 `+86 138 0000 1111`）在两条链路上算出**不同** `phone_hash`：
+      * 客人档案侧：HMAC("+8613800001111")
+      * 预订/待确认锁行侧：HMAC("8613800001111")
+    后果是共享号码判定（M-03 规则 2）、同手机号 PENDING 上限（§6.4）与
+    `PendingBookingGate.gate_key` 三处口径漂移，同一自然人可被当成不同人。
+    现统一委托 `apps.core.phone.normalize_phone`（纯数字形态），与预订侧
+    完全同源。
+
+    历史数据不改写：迁移 0007 上线前以 `+数字` 录入的档案，其 `phone_hash`
+    仍是 HMAC("+数字")。读侧比对请用 `phone_hash_candidates()`，它同时
+    覆盖规范形态与历史形态，避免存量档案检索/共享判定漏判。
+    """
+    return _normalize_phone(raw)
+
+
+def phone_hash_candidates(raw):
+    """号码的哈希候选集：`(HMAC(纯数字), HMAC(+数字))`，供读侧兼容比对。
+
+    仅用于**读取**（`phone_hash__in=` 过滤），不得用于写库——写入一律用
+    `phone_hash(normalize_phone(x))`，保证新数据只有一种形态。
+
+    返回顺序固定（规范形态在前、历史形态在后）且已去重；空号码返回空元组，
+    调用方必须跳过该过滤条件，不得用空集合直接过滤（会得到"零命中"，
+    把"没有号码"误判为"号码不存在"）。
+    """
+    digests = []
+    for variant in legacy_phone_variants(normalize_phone(raw)):
+        digest = phone_hash(variant)
+        if digest not in digests:
+            digests.append(digest)
+    return tuple(digests)
 
 
 class GuestServiceError(Exception):
@@ -284,6 +317,7 @@ class GuestServiceError(Exception):
 class GuestFieldError(GuestServiceError):
     """入参字段格式/长度错误（RSV-10 口径：应映射 400 VALIDATION_ERROR，
     与业务状态冲突 409 区分）。"""
+
     pass
     """客人服务业务校验失败。"""
 
@@ -379,7 +413,8 @@ class GuestService:
                 if len(new_val) > field_limits[field]:
                     raise GuestFieldError(
                         f"{field} 长度不能超过 {field_limits[field]} 字符"
-                        f"（当前 {len(new_val)}）。")
+                        f"（当前 {len(new_val)}）。"
+                    )
                 old_val = getattr(guest, field) or ""
                 if new_val != old_val:
                     changed[field] = {"before": old_val, "after": new_val}

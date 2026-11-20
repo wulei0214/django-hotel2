@@ -9,6 +9,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.billing.models import Folio
+from apps.core.phone import validate_phone
 from apps.guests.services import GuestService, phone_hash
 from apps.inventory.models import RoomType
 from apps.inventory.services import (
@@ -30,10 +31,16 @@ class ReservationConflict(Exception):
 
 
 def normalize_phone(phone):
-    value = "".join(char for char in str(phone or "") if char.isdigit())
-    if not 6 <= len(value) <= 20:
-        raise ValueError("请输入有效联系电话。")
-    return value
+    """预订侧号码规范化 + 有效性校验（TASK-02：收敛到统一实现）。
+
+    原实现为本地 `"".join(ch for ch in ... if ch.isdigit())` + 6–20 位校验，
+    与客人档案侧保留 `+` 的实现口径不一致。现委托
+    `apps.core.phone.validate_phone`，**行为契约保持不变**：
+      * 返回纯数字串；
+      * 位数不在 [6, 20] 时抛 `ValueError("请输入有效联系电话。")`
+        （API 层据此映射 400，文案与状态码不变）。
+    """
+    return validate_phone(phone)
 
 
 def _fingerprint(payload):

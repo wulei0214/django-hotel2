@@ -27,7 +27,7 @@ from apps.billing.models import Folio, Payment, PaymentIntent, Refund
 from apps.billing.payment_intents import extend_intent_window, get_channel_window
 from apps.core import labels as L
 from apps.core.api_contract import ApiError, api_response, api_view, idempotent, parse_page_args
-from apps.guests.services import guest_phone_plain, phone_hash
+from apps.guests.services import guest_phone_plain, phone_hash_candidates
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import Room, RoomType
 from apps.inventory.services import InventoryUnavailable, _property_today
@@ -455,8 +455,12 @@ def _apply_search(queryset, value):
     )
     # WB-103：电话检索改为 phone_hash 精确匹配（HMAC 不可逆，不支持部分
     # 匹配）；不再查询 guest.phone / phone_normalized 明文列。
+    # TASK-02：用候选哈希集同时匹配"纯数字"与历史"+数字"两种入库形态，
+    # 避免迁移 0007 前录入的带 + 号码在检索中永久漏命中。
     if digits:
-        conditions = conditions | Q(reservation__guest__phone_hash=phone_hash(digits))
+        digests = phone_hash_candidates(digits)
+        if digests:
+            conditions = conditions | Q(reservation__guest__phone_hash__in=digests)
     return queryset.filter(conditions)
 
 
@@ -676,9 +680,11 @@ def reservations(request):
             )
         digits = "".join(ch for ch in value if ch.isdigit()) or value
         # WB-103：电话检索改为 guest.phone_hash 精确匹配（HMAC 不可逆）。
+        # TASK-02：候选哈希集覆盖"纯数字"与历史"+数字"两种入库形态。
         conditions = Q(booking_no__icontains=value) | Q(guest__full_name__icontains=value)
-        if digits:
-            conditions = conditions | Q(guest__phone_hash=phone_hash(digits))
+        digests = phone_hash_candidates(digits) if digits else ()
+        if digests:
+            conditions = conditions | Q(guest__phone_hash__in=digests)
         queryset = queryset.filter(conditions)
     status = (request.GET.get("status") or "").strip().upper()
     valid_statuses = {choice[0] for choice in Reservation.Status.choices}
