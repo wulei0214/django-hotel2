@@ -512,6 +512,122 @@
         return prefix + "-" + nonce;
     }
 
+    /* ---------------- 散客建单（TASK-02：过夜/日租前台入口） ----------------
+       价格与押金全部来自服务端：房型/价格计划下拉来自 walk-in-options，
+       日租政策价与时段在选项里如实透出（无政策房型不透出日租价），
+       前端不计算任何金额；建单走 POST /front-desk/walk-ins（服务端
+       30% 强制押金、DayUsePolicy fail-closed 定价）。 */
+    var walkin = { type: "NIGHT_STAY", options: null };
+
+    function walkinCanOperate() {
+        return root.dataset.canOperate === "true";
+    }
+
+    function updateWalkinQuote() {
+        var quoteNode = $("fd-walkin-quote");
+        if (!quoteNode) return;
+        quoteNode.textContent = "";
+        if (walkin.type !== "DAY_USE" || !walkin.options) return;
+        var roomTypeId = Number($("fd-walkin-room-type").value || 0);
+        var policy = (walkin.options.day_use_policies || []).filter(function (p) {
+            return p.room_type_id === roomTypeId;
+        })[0];
+        if (!policy) {
+            quoteNode.textContent = "该房型今日无日租政策，无法日租建单";
+            return;
+        }
+        quoteNode.textContent = "日租价 ¥" + policy.price + " · " + policy.start_time +
+            "–" + policy.end_time + " · 超时 ¥" + policy.overtime_hourly_rate + "/小时";
+    }
+
+    function setWalkinType(type) {
+        walkin.type = type === "DAY_USE" ? "DAY_USE" : "NIGHT_STAY";
+        document.querySelectorAll("#fd-walkinbar [data-walkin-type]").forEach(function (btn) {
+            btn.classList.toggle("is-active", btn.dataset.walkinType === walkin.type);
+        });
+        var nightsInput = $("fd-walkin-nights");
+        if (nightsInput) nightsInput.hidden = walkin.type === "DAY_USE";
+        updateWalkinQuote();
+    }
+
+    function fillWalkinSelect(selectId, rows, emptyLabel) {
+        var select = $(selectId);
+        if (!select) return;
+        select.replaceChildren();
+        if (!rows.length) {
+            var empty = element("option", "", emptyLabel);
+            empty.value = "";
+            select.appendChild(empty);
+            select.disabled = true;
+            return;
+        }
+        select.disabled = false;
+        rows.forEach(function (row) {
+            var option = element("option", "", row.name + "（" + row.code + "）");
+            option.value = row.id;
+            select.appendChild(option);
+        });
+    }
+
+    async function loadWalkinOptions() {
+        var bar = $("fd-walkinbar");
+        if (!bar) return;
+        if (!walkinCanOperate()) { bar.hidden = true; return; }
+        try {
+            var payload = await api("walk-in-options");
+            walkin.options = payload.data || {};
+            fillWalkinSelect("fd-walkin-room-type", walkin.options.room_types || [], "无可售房型");
+            fillWalkinSelect("fd-walkin-rate-plan", walkin.options.rate_plans || [], "无有效价格计划");
+            setWalkinType(walkin.type);
+        } catch (error) {
+            bar.hidden = true;
+            showToast("建单选项读取失败：" + error.message, true);
+        }
+    }
+
+    function bindWalkinForm() {
+        var bar = $("fd-walkinbar");
+        if (!bar || !walkinCanOperate()) return;
+        document.querySelectorAll("#fd-walkinbar [data-walkin-type]").forEach(function (btn) {
+            btn.addEventListener("click", function () { setWalkinType(btn.dataset.walkinType); });
+        });
+        $("fd-walkin-room-type").addEventListener("change", updateWalkinQuote);
+        $("fd-walkin-submit").addEventListener("click", async function () {
+            var submit = $("fd-walkin-submit");
+            var fullName = $("fd-walkin-name").value.trim();
+            var roomTypeId = Number($("fd-walkin-room-type").value || 0);
+            var ratePlanId = Number($("fd-walkin-rate-plan").value || 0);
+            if (!fullName) { showToast("请输入住客姓名。", true); return; }
+            if (!roomTypeId) { showToast("无可售房型，无法建单。", true); return; }
+            if (!ratePlanId) { showToast("无有效价格计划，无法建单。", true); return; }
+            var payload = {
+                full_name: fullName,
+                phone: $("fd-walkin-phone").value.trim(),
+                room_type_id: roomTypeId,
+                rate_plan_id: ratePlanId,
+                adults: Math.max(1, Number($("fd-walkin-adults").value) || 1),
+                children: Math.max(0, Number($("fd-walkin-children").value) || 0),
+                billing_type: walkin.type
+            };
+            if (walkin.type === "NIGHT_STAY") {
+                payload.nights = Math.min(30, Math.max(1, Number($("fd-walkin-nights").value) || 1));
+            }
+            submit.disabled = true;
+            try {
+                var result = await postApi("walk-ins", payload, makeIdempotencyKey("fd-walkin"));
+                var data = result.data || {};
+                showToast((data.created ? "已建单入住：" : "该建单请求已存在：") +
+                    data.booking_no + " · 房 " + data.room_number +
+                    " · 押金 ¥" + data.deposit_amount, false);
+                $("fd-walkin-name").value = "";
+                $("fd-walkin-phone").value = "";
+                await Promise.all([loadOverview(), loadList(), loadCashierShift()]);
+            } catch (error) {
+                showToast(error.message, true);
+            } finally { submit.disabled = false; }
+        });
+    }
+
     function renderDepositForm(item, content) {
         var summary = item.folio_summary || {};
         // R1-02 同口径：PENDING 押金登记即确认订单（DEC-DEP-01 服务端 30% 强制）。
@@ -560,6 +676,55 @@
         content.appendChild(box);
     }
 
+    /* ---------------- 日租转过夜（TASK-03，DU-11）----------------
+       复用服务端 convert-to-overnight 全链（逐晚房价快照 fail-closed、库存
+       行锁、原日租收入保留、审计）；前端不计算价格，重复提交由服务端 409 拒绝。 */
+    function showConvertToOvernightForm(roomLine, roomNode, trigger, item) {
+        if (roomNode.querySelector(".fd-convert-form")) return;
+        trigger.disabled = true;
+        var form = element("form", "fd-convert-form fd-payment-form");
+        var dateLabel = element("label", "fd-operation-label", "新离店日期");
+        var dateInput = element("input", "fd-operation-input");
+        dateInput.type = "date";
+        if (walkin.options && walkin.options.business_date) {
+            dateInput.min = walkin.options.business_date;
+        }
+        dateLabel.appendChild(dateInput);
+        var reasonLabel = element("label", "fd-operation-label", "转换理由");
+        var reasonInput = element("input", "fd-operation-input");
+        reasonInput.maxLength = 240;
+        reasonInput.required = true;
+        reasonLabel.appendChild(reasonInput);
+        var confirmButton = operationButton("确认转为过夜", "fd-btn-primary", async function () {
+            if (!dateInput.value) { showToast("请选择新离店日期。", true); return; }
+            if (!reasonInput.value.trim()) { showToast("请填写转换理由。", true); return; }
+            confirmButton.disabled = true;
+            try {
+                await postApi(
+                    "reservation-rooms/" + roomLine.reservation_room_id + "/convert-to-overnight",
+                    {new_check_out: dateInput.value, reason: reasonInput.value.trim()}
+                );
+                await refreshAfterOperation(item.booking_no, "已转为过夜住宿，新增夜租按房价快照入账");
+            } catch (error) {
+                showToast(error.message, true);
+                confirmButton.disabled = false;
+            }
+        });
+        var cancelButton = operationButton("取消", "fd-btn-secondary", function () {
+            form.remove();
+            trigger.disabled = false;
+        });
+        var actions = element("div", "fd-operation-actions");
+        actions.appendChild(confirmButton);
+        actions.appendChild(cancelButton);
+        form.appendChild(dateLabel);
+        form.appendChild(reasonLabel);
+        form.appendChild(actions);
+        roomNode.appendChild(form);
+        trigger.disabled = false;
+        dateInput.focus();
+    }
+
     function renderOperations(item) {
         var section = $("fd-operations-section");
         var content = $("detail-operations");
@@ -605,6 +770,13 @@
                     }
                 });
                 actionRow.appendChild(noShowButton);
+            }
+            if (canOperate && item.billing_type === "DAY_USE" && !roomLine.no_show &&
+                ["CONFIRMED", "CHECKED_IN"].includes(roomLine.reservation_status)) {
+                var convertButton = operationButton("转为过夜", "fd-btn-secondary", function () {
+                    showConvertToOvernightForm(roomLine, roomNode, convertButton, item);
+                });
+                actionRow.appendChild(convertButton);
             }
             if (canOperate && !stay && !roomLine.no_show &&
                 ["CONFIRMED", "CHECKED_IN"].includes(roomLine.reservation_status)) {
@@ -1155,5 +1327,7 @@
 
     state.date = $("fd-date").value || "";
     bindCashierShiftControls();
+    bindWalkinForm();
+    loadWalkinOptions();
     loadAll();
 })();

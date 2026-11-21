@@ -52,6 +52,22 @@
         <button type="button" class="fd-btn fd-btn-primary" id="fd-search-submit">搜索</button>
     </section>
 
+    <section class="fd-searchbar fd-walkinbar" aria-label="散客建单" id="fd-walkinbar">
+        <div class="fd-walkin-type" role="group" aria-label="计费类型">
+            <button type="button" class="fd-btn fd-btn-secondary is-active" data-walkin-type="NIGHT_STAY">过夜</button>
+            <button type="button" class="fd-btn fd-btn-secondary" data-walkin-type="DAY_USE">日租</button>
+        </div>
+        <input id="fd-walkin-name" maxlength="80" placeholder="住客姓名" aria-label="住客姓名">
+        <input id="fd-walkin-phone" maxlength="24" placeholder="手机号（可空）" aria-label="手机号">
+        <select id="fd-walkin-room-type" aria-label="房型"></select>
+        <select id="fd-walkin-rate-plan" aria-label="价格计划"></select>
+        <input type="number" id="fd-walkin-nights" min="1" max="30" value="1" aria-label="晚数" class="fd-walkin-num">
+        <input type="number" id="fd-walkin-adults" min="1" max="10" value="1" aria-label="成人" class="fd-walkin-num">
+        <input type="number" id="fd-walkin-children" min="0" max="10" value="0" aria-label="儿童" class="fd-walkin-num">
+        <span class="fd-walkin-quote" id="fd-walkin-quote"></span>
+        <button type="button" class="fd-btn fd-btn-primary" id="fd-walkin-submit">建单入住</button>
+    </section>
+
     <section class="fd-kpis" aria-label="今日运营概况">
         <button class="fd-kpi fd-kpi-blue" type="button" data-kpi-tab="arrivals">
             <span class="fd-kpi-label">今日应到</span>

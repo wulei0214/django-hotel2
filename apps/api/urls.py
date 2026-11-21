@@ -159,6 +159,12 @@ urlpatterns = [
         front_desk.assign_room,
         name="front_desk_assign_room",
     ),
+    # TASK-03 day-use 转过夜（DU-11 服务层唯一事实源；重复提交 409 拒绝）
+    path(
+        "front-desk/reservation-rooms/<int:reservation_room_id>/convert-to-overnight",
+        front_desk.day_use_convert_to_overnight,
+        name="front_desk_day_use_convert_to_overnight",
+    ),
     path(
         "front-desk/reservation-rooms/<int:reservation_room_id>/check-in",
         front_desk.check_in,
@@ -177,6 +183,12 @@ urlpatterns = [
     path("front-desk/walk-in", front_desk.walk_in_create, name="front_desk_walk_in"),
     # A1 散客直入（契约口径：业务冲突 409、幂等重放 200+created=false、含服务端计押金）
     path("front-desk/walk-ins", front_desk.walk_ins_create, name="front_desk_walk_ins_create"),
+    # TASK-02 散客建单表单选项（房型/价格计划/日租政策价，只读）
+    path(
+        "front-desk/walk-in-options",
+        front_desk.walk_in_options,
+        name="front_desk_walk_in_options",
+    ),
     path("availability", views.availability, name="availability"),
     path("reservations", views.reservations_create, name="reservations_create"),
     path("reservations/<str:booking_no>", views.reservation_detail, name="reservation_detail"),

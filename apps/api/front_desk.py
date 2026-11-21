@@ -29,8 +29,13 @@ from apps.core import labels as L
 from apps.core.api_contract import ApiError, api_response, api_view, idempotent, parse_page_args
 from apps.guests.services import guest_phone_plain, phone_hash_candidates
 from apps.identity.authorization import AuthorizationService
-from apps.inventory.models import Room, RoomType
+from apps.inventory.models import RatePlan, Room, RoomType
 from apps.inventory.services import InventoryUnavailable, _property_today
+from apps.reservations.day_use import (
+    DayUseError,
+    convert_day_use_to_overnight,
+    resolve_day_use_policy,
+)
 from apps.reservations.front_desk_services import (
     FrontDeskOperationError,
     FrontDeskValidationError,
@@ -789,6 +794,8 @@ def reservation_detail(request, booking_no):
                 "booking_no": reservation.booking_no,
                 "status": reservation.status,
                 "status_label": _status_label(reservation.status),
+                # TASK-03：日租订单抽屉按计费类型显隐「转为过夜」动作。
+                "billing_type": reservation.billing_type,
                 "source": reservation.source,
                 "source_label": _source_label(reservation.source),
                 "guest": {
@@ -1990,6 +1997,145 @@ def walk_ins_create(request):
             "meta": _request_meta(request),
         },
         200 if not walk_in_created else 201,
+    )
+
+
+@require_GET
+def walk_in_options(request):
+    """GET /api/v1/front-desk/walk-in-options — 散客建单表单选项（TASK-02）。
+
+    前台工作台建单区（过夜/日租）的下拉数据源：本物业启用房型、当日有效
+    价格计划、以及逐房型的日租政策价（复用 resolve_day_use_policy 同口径
+    解析；无覆盖当日政策的房型不进 day_use_policies——与 POST /walk-ins
+    的 fail-closed 定价规则一致，页面不得自行计算价格）。
+    只读端点：要求当前物业任职且具备入住查看权限（与前台工作台读面一致）。
+    """
+    user = request.user
+    if not user.is_authenticated or not user.is_active:
+        return _response(
+            {"error": {"code": "AUTHENTICATION_REQUIRED", "message": "请先登录员工账号。"}}, 401
+        )
+    property_obj = getattr(request, "property", None)
+    membership = getattr(request, "staff_membership", None)
+    if property_obj is None or membership is None or membership.property_id != property_obj.pk:
+        return _response(
+            {
+                "error": {
+                    "code": "EMPLOYEE_MEMBERSHIP_REQUIRED",
+                    "message": "当前账号没有该酒店的有效任职关系。",
+                }
+            },
+            403,
+        )
+    if not AuthorizationService.has_permission(user, property_obj, "hotelapp.view_accommodation"):
+        return _response(
+            {"error": {"code": "PERMISSION_DENIED", "message": "当前岗位没有入住管理查看权限。"}},
+            403,
+        )
+
+    today = _property_today(property_obj)
+    room_types = RoomType.objects.filter(property=property_obj, is_active=True).order_by("code")
+    rate_plans = RatePlan.objects.filter(
+        property=property_obj,
+        is_active=True,
+        valid_from__lte=today,
+    ).filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today)).order_by("code")
+
+    day_use_policies = []
+    for room_type in room_types:
+        try:
+            policy = resolve_day_use_policy(
+                property_obj=property_obj, room_type=room_type, day=today
+            )
+        except DayUseError:
+            continue  # fail-closed：无政策房型不透出日租价（服务端同样拒绝建单）
+        day_use_policies.append(
+            {
+                "room_type_id": room_type.pk,
+                "price": str(policy.day_use_price.quantize(Decimal("0.01"))),
+                "start_time": policy.start_time.strftime("%H:%M"),
+                "end_time": policy.end_time.strftime("%H:%M"),
+                "grace_minutes": policy.grace_minutes,
+                "overtime_hourly_rate": str(
+                    policy.overtime_hourly_rate.quantize(Decimal("0.01"))
+                ),
+            }
+        )
+
+    return _response(
+        {
+            "data": {
+                "room_types": [
+                    {"id": rt.pk, "code": rt.code, "name": rt.name, "capacity": rt.capacity}
+                    for rt in room_types
+                ],
+                "rate_plans": [
+                    {"id": rp.pk, "code": rp.code, "name": rp.name} for rp in rate_plans
+                ],
+                "day_use_policies": day_use_policies,
+                "business_date": today.isoformat(),
+            },
+            "meta": _request_meta(request),
+        },
+        200,
+    )
+
+
+@require_POST
+@_front_desk_write_required
+def day_use_convert_to_overnight(request, reservation_room_id):
+    """POST /api/v1/front-desk/reservation-rooms/{id}/convert-to-overnight — TASK-03。
+
+    前台抽屉「转为过夜」动作的端点：复用
+    apps.reservations.day_use.convert_day_use_to_overnight（DU-11 服务层唯一
+    事实源，含库存/房价快照/账单/审计全链），本层只做入参结构校验与错误
+    映射（业务冲突 409 消息透传、入参错误 400）。重复提交天然被拒：转换
+    成功后 billing_type 已置 NIGHT_STAY，再次调用命中"仅 day-use 可转"409。
+    """
+    property_obj = request.front_desk_property
+    try:
+        body = _body(request)
+        raw_date = str(body.get("new_check_out") or "").strip()
+        reason = str(body.get("reason") or "").strip()
+        new_check_out = (
+            _parse_date(raw_date, "新离店日期", None) if raw_date else None
+        )
+    except ValueError:
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": "请求体或日期格式不正确。"}}, 400
+        )
+    if new_check_out is None:
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": "新离店日期必须是 YYYY-MM-DD。"}}, 400
+        )
+    if not reason or len(reason) > 240:
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": "转换理由必填（1-240 字符）。"}}, 400
+        )
+    try:
+        line, reservation = convert_day_use_to_overnight(
+            property_obj=property_obj,
+            reservation_room_id=reservation_room_id,
+            new_check_out=new_check_out,
+            actor=request.user,
+            reason=reason,
+        )
+    except DayUseError as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    except InventoryUnavailable as exc:
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    return _response(
+        {
+            "data": {
+                "booking_no": reservation.booking_no,
+                "reservation_room_id": line.pk,
+                "billing_type": reservation.billing_type,
+                "check_out": reservation.check_out.isoformat(),
+                "total_amount": str(reservation.total_amount),
+            },
+            "meta": _request_meta(request),
+        },
+        200,
     )
 
 

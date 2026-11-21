@@ -1536,6 +1536,15 @@ fd_read = [
         "AssignableRoom 数组；同型洁净空闲且不与在途预订重叠",
     ),
     (
+        "/front-desk/walk-in-options",
+        "散客建单选项（房型/价格计划/日租政策价）",
+        "verified",
+        [],
+        "WalkInOptions：room_types（启用房型）、rate_plans（当日有效价格计划）、"
+        "day_use_policies（逐房型日租政策价，仅含当日生效政策——fail-closed 口径，"
+        "无政策房型不透出）、business_date（物业营业日）",
+    ),
+    (
         "/front-desk/legacy-reservations",
         "历史预订列表",
         "verified",
@@ -1902,6 +1911,35 @@ fd_write = [
         "仅驳回待审批申请，不执行退款、不追加 REFUND 凭证；必须提供 Idempotency-Key。",
         "有效员工任职（DEFAULT 物业）+ billing.refund_approve",
         (("200", "退款申请已驳回"),),
+    ),
+    (
+        "/front-desk/reservation-rooms/{reservation_room_id}/convert-to-overnight",
+        "日租转过夜（DU-11）",
+        "verified",
+        [("reservation_room_id", "预订房间明细 ID。")],
+        s_obj(
+            {
+                "new_check_out": s_str(
+                    "转换后离店日期 YYYY-MM-DD（必须晚于物业今天，过夜至少住当晚）。"
+                ),
+                "reason": s_str("转换理由（必填，1-240 字符，审计追溯）。", maxLength=240),
+            },
+            required=["new_check_out", "reason"],
+        ),
+        s_obj(
+            {
+                "booking_no": s_str("预订号。"),
+                "reservation_room_id": s_int("预订房间明细 ID。"),
+                "billing_type": s_str("转换后计费类型，固定 NIGHT_STAY。"),
+                "check_out": s_str("转换后离店日期。"),
+                "total_amount": s_str("转换后订单总额（原日租收入+新增夜租房价快照合计）。"),
+            }
+        ),
+        "复用 apps.reservations.day_use.convert_day_use_to_overnight：逐晚 DailyRate "
+        "快照 fail-closed（缺任一晚价格拒绝）、新增住宿日逐日行锁 sold+=1、原日租"
+        "房费保留、夜审按快照过租；重复提交 409（成功后计费类型已是 NIGHT_STAY）。",
+        FD_WRITE_PERM,
+        (("200", "已转换为过夜住宿"),),
     ),
     (
         "/front-desk/walk-in",

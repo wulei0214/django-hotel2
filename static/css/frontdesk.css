@@ -181,3 +181,16 @@
 .fd-shift-controls span{font-size:12px;color:var(--color-text-secondary,#637188);font-weight:600}
 .fd-shift-controls [hidden]{display:none!important}
 @media(max-width:820px){.fd-shift-controls{width:100%;justify-content:space-between}.fd-header-actions{align-items:stretch}}
+
+/* 散客建单（TASK-02）：过夜/日租单行建单区，复用 fd-searchbar 卡片样式 */
+.fd-walkinbar{flex-wrap:wrap}
+.fd-walkinbar input:not(.fd-walkin-num),.fd-walkinbar select{height:38px;border:1px solid #d7dfec;border-radius:9px;padding:0 12px;font-size:13px;background:#fff}
+.fd-walkinbar #fd-walkin-name{flex:1 1 150px;min-width:130px}
+.fd-walkinbar #fd-walkin-phone{flex:1 1 140px;min-width:120px}
+.fd-walkinbar select{min-width:150px;max-width:220px}
+.fd-walkin-num{width:70px;height:38px;border:1px solid #d7dfec;border-radius:9px;padding:0 10px;font-size:13px}
+.fd-walkin-type{display:flex;border:1px solid #d7dfec;border-radius:9px;overflow:hidden}
+.fd-walkin-type .fd-btn{border-radius:0;border:none}
+.fd-walkin-type .fd-btn.is-active{background:#1c2f4b;color:#fff}
+.fd-walkin-quote{font-size:12px;color:#24794e;font-weight:600;white-space:nowrap}
+.fd-walkinbar [hidden]{display:none!important}
