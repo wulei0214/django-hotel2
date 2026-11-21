@@ -314,8 +314,18 @@ def create_reservation(
 
 
 @transaction.atomic
-def cancel_pending_reservation(*, property_obj, booking_no, reservation_pk):
-    """P0-08：取消凭 Booking Access Token（view 层已校验），按主键定位不再用 phone。"""
+def cancel_pending_reservation(
+    *, property_obj, booking_no, reservation_pk, reason=""
+):
+    """P0-08：取消凭 Booking Access Token（view 层已校验），按主键定位不再用 phone。
+
+    TASK-04（V3.0 任务书）扩展：
+    * 已有成功收款的预订不得普通取消——必须进入退款流程（申请→审批→执行），
+      防止绕过退款三人分离链路；
+    * ``reason`` 为取消理由（可追溯，由调用方视图记入审计）。
+    """
+    from apps.billing.models import Payment
+
     try:
         reservation = (
             Reservation.objects.select_for_update()
@@ -331,6 +341,13 @@ def cancel_pending_reservation(*, property_obj, booking_no, reservation_pk):
 
     if reservation.status == Reservation.Status.CANCELLED:
         return reservation, False
+    succeeded_payment = Payment.objects.filter(
+        reservation=reservation, status=Payment.Status.SUCCEEDED
+    ).exists()
+    if succeeded_payment:
+        raise ReservationConflict(
+            "该预订已有成功收款，不能按普通取消处理；请走退款流程（申请→审批→执行）。"
+        )
     if reservation.status == Reservation.Status.PENDING:
         try:
             release_inventory_hold(reservation)

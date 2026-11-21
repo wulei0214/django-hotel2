@@ -27,6 +27,7 @@ from apps.billing.models import Folio, Payment, PaymentIntent, Refund
 from apps.billing.payment_intents import extend_intent_window, get_channel_window
 from apps.core import labels as L
 from apps.core.api_contract import ApiError, api_response, api_view, idempotent, parse_page_args
+from apps.core.models import AuditEvent
 from apps.guests.services import guest_phone_plain, phone_hash_candidates
 from apps.identity.authorization import AuthorizationService
 from apps.inventory.models import RatePlan, Room, RoomType
@@ -70,7 +71,7 @@ from apps.reservations.models import (
     Stay,
     StayRoomSegment,
 )
-from apps.reservations.services import ReservationConflict
+from apps.reservations.services import ReservationConflict, cancel_pending_reservation
 from apps.reservations.walkin import create_walk_in
 
 from .billing_center import _require_finance_access
@@ -2074,6 +2075,74 @@ def walk_in_options(request):
                 ],
                 "day_use_policies": day_use_policies,
                 "business_date": today.isoformat(),
+            },
+            "meta": _request_meta(request),
+        },
+        200,
+    )
+
+
+@require_POST
+@_front_desk_write_required
+def cancel_reservation(request, booking_no):
+    """POST /api/v1/front-desk/reservations/{booking_no}/cancel — TASK-04。
+
+    前台取消 PENDING 预订的正式入口（RES-06）：复用
+    cancel_pending_reservation 唯一事实源（Hold 释放+支付意图取消+幂等），
+    取消原因必填（审计追溯）；已有成功收款的订单被服务层守卫拒绝，必须走
+    退款流程（申请→审批→执行），不得绕过三人分离链路。
+    """
+    property_obj = request.front_desk_property
+    try:
+        body = _body(request)
+        reason = str(body.get("reason") or "").strip()
+    except ValueError:
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": "请求体必须是 JSON 对象。"}}, 400
+        )
+    if not reason or len(reason) > 240:
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": "取消原因必填（1-240 字符）。"}}, 400
+        )
+    reservation = (
+        Reservation.objects.filter(property=property_obj, booking_no=booking_no).first()
+    )
+    if reservation is None:
+        return _response(
+            {"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该预订。"}}, 404
+        )
+    try:
+        reservation, changed = cancel_pending_reservation(
+            property_obj=property_obj,
+            booking_no=booking_no,
+            reservation_pk=reservation.pk,
+            reason=reason,
+        )
+    except ReservationConflict as exc:
+        AuditEvent.record(
+            action="frontdesk.reservation_cancel_rejected",
+            entity_type="Reservation",
+            entity_id=booking_no[:32],
+            property_obj=property_obj,
+            reason=f"cancel_rejected: {str(exc)[:120]}",
+            request=request,
+        )
+        return _response({"error": {"code": "BUSINESS_CONFLICT", "message": str(exc)}}, 409)
+    AuditEvent.record(
+        action="frontdesk.reservation_cancelled",
+        entity_type="Reservation",
+        entity_id=reservation.booking_no,
+        property_obj=property_obj,
+        after={"status": reservation.status, "changed": changed},
+        reason=reason,
+        request=request,
+    )
+    return _response(
+        {
+            "data": {
+                "booking_no": reservation.booking_no,
+                "status": reservation.status,
+                "changed": changed,
             },
             "meta": _request_meta(request),
         },

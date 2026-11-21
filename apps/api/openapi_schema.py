@@ -1942,6 +1942,28 @@ fd_write = [
         (("200", "已转换为过夜住宿"),),
     ),
     (
+        "/front-desk/reservations/{booking_no}/cancel",
+        "前台取消 PENDING 预订（TASK-04/RES-06）",
+        "verified",
+        [("booking_no", "预订号。")],
+        s_obj(
+            {"reason": s_str("取消原因（必填，1-240 字符，审计追溯）。", maxLength=240)},
+            required=["reason"],
+        ),
+        s_obj(
+            {
+                "booking_no": s_str("预订号。"),
+                "status": s_str("取消后状态（CANCELLED；已过期单为 EXPIRED）。"),
+                "changed": s_bool("本次是否发生状态变更（重复取消幂等 false）。"),
+            }
+        ),
+        "复用 cancel_pending_reservation 唯一事实源：Hold 释放+支付意图取消+重复取消"
+        "幂等；已有成功收款的订单 409 拒绝并引导走退款流程（申请→审批→执行），"
+        "不得绕过退款三人分离链路。",
+        FD_WRITE_PERM,
+        (("200", "取消成功或幂等重放"),),
+    ),
+    (
         "/front-desk/walk-in",
         "散客直入（已退役）",
         "retired",

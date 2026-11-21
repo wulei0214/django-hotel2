@@ -725,6 +725,39 @@
         dateInput.focus();
     }
 
+    /* ---------------- 前台取消 PENDING 预订（TASK-04，RES-06）----------------
+       复用服务端 cancel_pending_reservation（Hold 释放+幂等+已收款守卫）；
+       原因必填；已收款订单服务端 409 引导走退款流程。 */
+    function appendCancelReservationBox(item, content) {
+        if (item.status !== "PENDING" || !item.allowed_actions.includes("operate")) return;
+        var box = element("div", "fd-payment-box");
+        box.appendChild(element("h4", "", "取消预订"));
+        var reasonLabel = element("label", "fd-operation-label", "取消原因");
+        var reasonInput = element("input", "fd-operation-input");
+        reasonInput.maxLength = 240;
+        reasonInput.placeholder = "例如：客人来电取消";
+        reasonLabel.appendChild(reasonInput);
+        var submit = operationButton("取消预订", "fd-btn-danger", async function () {
+            var reason = reasonInput.value.trim();
+            if (!reason) { showToast("请填写取消原因。", true); return; }
+            if (!window.confirm("确认取消该 PENDING 预订？对应库存 Hold 将同步释放。")) return;
+            submit.disabled = true;
+            try {
+                await postApi(
+                    "reservations/" + encodeURIComponent(item.booking_no) + "/cancel",
+                    {reason: reason}
+                );
+                await refreshAfterOperation(item.booking_no, "已取消该预订");
+            } catch (error) {
+                showToast(error.message, true);
+                submit.disabled = false;
+            }
+        });
+        box.appendChild(reasonLabel);
+        box.appendChild(submit);
+        content.appendChild(box);
+    }
+
     function renderOperations(item) {
         var section = $("fd-operations-section");
         var content = $("detail-operations");
@@ -905,6 +938,7 @@
             renderPaymentForm(item, content);
             renderDepositForm(item, content);
         }
+        appendCancelReservationBox(item, content);
     }
 
     async function loadDetail(bookingNo) {

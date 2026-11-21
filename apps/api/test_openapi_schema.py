@@ -420,7 +420,8 @@ class PMS2ContractStatusTests(TestCase):
         # 第 3 批报表端点 +2（A4 /reports/memberships + A5 /reports/sources）
         # TASK-02 建单选项 +1（GET /front-desk/walk-in-options，V3.0 任务书第一批）
         # TASK-03 日租转过夜 +1（POST /front-desk/reservation-rooms/{id}/convert-to-overnight）
-        self.assertEqual(business, 172, "业务 operation 应为 172 个（排除 openapi.json 自身）")
+        # TASK-04 前台取消 PENDING 预订 +1（POST /front-desk/reservations/{booking_no}/cancel）
+        self.assertEqual(business, 173, "业务 operation 应为 173 个（排除 openapi.json 自身）")
 
     def test_no_operation_is_marked_planned(self):
         """全部 60 条路由均已实现，不允许出现 planned 端点（虚构计划外接口）。"""

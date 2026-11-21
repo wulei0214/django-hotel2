@@ -165,6 +165,12 @@ urlpatterns = [
         front_desk.day_use_convert_to_overnight,
         name="front_desk_day_use_convert_to_overnight",
     ),
+    # TASK-04 前台取消 PENDING 预订（RES-06；原因必填、已收款守卫走退款流程）
+    path(
+        "front-desk/reservations/<str:booking_no>/cancel",
+        front_desk.cancel_reservation,
+        name="front_desk_cancel_reservation",
+    ),
     path(
         "front-desk/reservation-rooms/<int:reservation_room_id>/check-in",
         front_desk.check_in,
