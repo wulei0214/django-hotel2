@@ -1,4 +1,4 @@
-"""Walk-in 旧入口（410）访问统计（V12-09）。
+"""Walk-in 旧入口（410）访问统计（V12-09 / V13-03）。
 
 用途：在部署侧访问日志上统计旧入口 `POST /api/v1/front-desk/walk-in` 的
 真实命中情况，用于"观察 → 迁移 → 410 → 退役"的收口判定。开发/本地证据目录
@@ -8,16 +8,24 @@
   * 常见 Web 服务器 combined/common 访问日志（nginx/Apache/IIS 导出均可）；
   * 单行 JSON（如 `{"request": "POST /api/v1/front-desk/walk-in", "status": 410}`）。
 
-隐私约束：输出只含聚合计数与 User-Agent 族，**不输出客户端 IP**（只输出
-不可逆短哈希用于区分来源数量），不输出 cookie / Authorization / 请求体。
+V13-03 方法口径（任务书 §3）：
+  * 默认只统计旧入口的 `POST` 命中（`--method POST`，可改 `ALL` 或其他方法）；
+  * 旧入口其他 HTTP 方法**分开统计**（`legacy_by_method` / `legacy_other_hits`），
+    不与 POST 口径混计；
+  * 旧入口与标准入口 `POST /api/v1/front-desk/walk-ins` 始终分开计数；
+  * 状态码、按日、UA 族、来源去重等聚合只作用于当前方法口径；
+  * 隐私约束不变：输出只含聚合计数与 User-Agent 族，**不输出客户端 IP**（只输出
+    不可逆短哈希用于区分来源数量），不输出 cookie / Authorization / 请求体。
 
 用法：
     python scripts/walkin_410_stats.py access.log
     python scripts/walkin_410_stats.py access.log --json
-    python scripts/walkin_410_stats.py logs/ --pattern "access*.log"
+    python scripts/walkin_410_stats.py logs/ --pattern "access*.log" --date 20/Nov/2026
+    python scripts/walkin_410_stats.py access.log --method ALL   # 全方法口径
 
 退出码：0 统计完成；2 无可解析样本（不静默当作"零残留调用"）。
 """
+
 import argparse
 import hashlib
 import json
@@ -31,7 +39,7 @@ STANDARD_PATH = "/api/v1/front-desk/walk-ins"
 
 # combined: host - - [time] "METHOD path HTTP/x" status bytes "referer" "ua"
 COMBINED = re.compile(
-    r'^(?P<host>\S+) \S+ \S+ \[(?P<time>[^\]]+)\] '
+    r"^(?P<host>\S+) \S+ \S+ \[(?P<time>[^\]]+)\] "
     r'"(?P<method>[A-Z]+) (?P<path>[^ ]+)[^"]*" (?P<status>\d{3}) (?P<bytes>\S+)'
     r'(?: "(?P<referer>[^"]*)" "(?P<ua>[^"]*)")?'
 )
@@ -113,9 +121,19 @@ def _iter_files(targets, pattern):
                     yield os.path.join(root, name)
 
 
-def collect(paths, *, pattern="*.log", date_filter=None):
+def collect(paths, *, pattern="*.log", date_filter=None, method="POST"):
+    """统计访问日志。
+
+    method 口径：`POST` 等具体方法 → 只把该方法的旧入口命中计入主口径，
+    其余方法进入 `legacy_other_hits` / `legacy_by_method` 分开统计；
+    `ALL` → 所有方法都计入主口径。
+    """
+    if method != "ALL":
+        method = method.upper()
     counts = Counter()
-    by_day = defaultdict(Counter)
+    legacy_by_method = Counter()
+    standard_by_method = Counter()
+    by_day = defaultdict(int)
     by_status = Counter()
     by_ua = Counter()
     sources = set()
@@ -131,28 +149,35 @@ def collect(paths, *, pattern="*.log", date_filter=None):
                 parsed_lines += 1
                 if row["path"] not in (LEGACY_PATH, STANDARD_PATH):
                     continue
-                if date_filter and date_filter not in row["time"]:
-                    continue
                 kind = "legacy" if row["path"] == LEGACY_PATH else "standard"
-                counts[kind] += 1
-                by_status[(kind, row["status"])] += 1
-                by_day[row["time"][:11].strip() or "(unknown)"][kind] += 1
+                in_scope = method == "ALL" or row["method"] == method
                 if kind == "legacy":
-                    by_ua[_ua_family(row["ua"])] += 1
-                    sources.add(_ip_token(row["host"]))
+                    legacy_by_method[row["method"] or "(unknown)"] += 1
+                else:
+                    standard_by_method[row["method"] or "(unknown)"] += 1
+                if kind == "standard":
+                    counts["standard_hits"] += 1
+                elif in_scope:
+                    counts["legacy_hits"] += 1
+                else:
+                    counts["legacy_other_hits"] += 1
+                if kind != "legacy" or not in_scope:
+                    continue
+                by_status[row["status"] or "(unknown)"] += 1
+                by_day[row["time"][:11].strip() or "(unknown)"] += 1
+                by_ua[_ua_family(row["ua"])] += 1
+                sources.add(_ip_token(row["host"]))
     return {
         "total_lines": total_lines,
         "parsed_lines": parsed_lines,
-        "legacy_hits": counts["legacy"],
-        "standard_hits": counts["standard"],
-        "legacy_by_status": {
-            status: number
-            for (kind, status), number in sorted(by_status.items())
-            if kind == "legacy"
-        },
-        "legacy_by_day": {
-            day: counter["legacy"] for day, counter in sorted(by_day.items())
-        },
+        "method_filter": method,
+        "legacy_hits": counts["legacy_hits"],
+        "legacy_other_hits": counts["legacy_other_hits"],
+        "legacy_by_method": dict(legacy_by_method.most_common()),
+        "standard_hits": counts["standard_hits"],
+        "standard_by_method": dict(standard_by_method.most_common()),
+        "legacy_by_status": dict(sorted(by_status.items())),
+        "legacy_by_day": dict(sorted(by_day.items())),
         "legacy_by_ua": dict(by_ua.most_common()),
         "distinct_sources": len(sources),
     }
@@ -163,23 +188,51 @@ def main(argv=None):
     parser.add_argument("paths", nargs="*", default=["logs"], help="日志文件或目录")
     parser.add_argument("--pattern", default="*.log", help="目录模式下匹配的文件名")
     parser.add_argument("--date", default=None, help="只统计时间列包含该子串的行")
+    parser.add_argument(
+        "--method",
+        default="POST",
+        help="旧入口主统计口径的 HTTP 方法（默认 POST；ALL 表示全方法）",
+    )
     parser.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args(argv)
 
-    result = collect(args.paths or ["logs"], pattern=args.pattern, date_filter=args.date)
+    result = collect(
+        args.paths or ["logs"],
+        pattern=args.pattern,
+        date_filter=args.date,
+        method=args.method,
+    )
     if result["parsed_lines"] == 0:
         print("无可解析日志行：不能据此推断旧入口零调用（请提供部署侧访问日志）。")
         return 2
+    other = ", ".join(
+        f"{m} {n}" for m, n in result["legacy_by_method"].items() if m != result["method_filter"]
+    )
     if args.as_json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
-        print(f"扫描行数 {result['total_lines']}，可解析 {result['parsed_lines']}")
-        print(f"旧入口 {LEGACY_PATH} 命中 {result['legacy_hits']} 次；"
-              f"标准入口 {STANDARD_PATH} 命中 {result['standard_hits']} 次")
-        print(f"旧入口状态码分布：{result['legacy_by_status'] or '（无命中）'}")
-        print(f"旧入口按日：{result['legacy_by_day'] or '（无命中）'}")
-        print(f"旧入口调用方 UA 族：{result['legacy_by_ua'] or '（无命中）'}")
-        print(f"旧入口不同来源数（IP 短哈希去重）：{result['distinct_sources']}")
+        print(
+            f"扫描行数 {result['total_lines']}，可解析 {result['parsed_lines']}"
+            f"（旧入口主口径：{result['method_filter']}）"
+        )
+        print(
+            f"旧入口 {LEGACY_PATH} {result['method_filter']} 命中 {result['legacy_hits']} 次；"
+            f"其他方法合计 {result['legacy_other_hits']} 次" + (f"（{other}）" if other else "")
+        )
+        print(
+            f"标准入口 {STANDARD_PATH} 命中 {result['standard_hits']} 次"
+            f"（按方法：{result['standard_by_method'] or '（无命中）'}）"
+        )
+        print(
+            f"旧入口 {result['method_filter']} 状态码分布：{result['legacy_by_status'] or '（无命中）'}"
+        )
+        print(f"旧入口 {result['method_filter']} 按日：{result['legacy_by_day'] or '（无命中）'}")
+        print(
+            f"旧入口 {result['method_filter']} 调用方 UA 族：{result['legacy_by_ua'] or '（无命中）'}"
+        )
+        print(
+            f"旧入口 {result['method_filter']} 不同来源数（IP 短哈希去重）：{result['distinct_sources']}"
+        )
     return 0
 
 
