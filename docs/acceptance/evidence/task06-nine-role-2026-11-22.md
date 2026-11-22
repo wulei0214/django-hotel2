@@ -13,7 +13,7 @@ V13-02 Phase 7 在 `c4c15b6` 基线得出「夜审员分组无夜审权限」的
 
 | 项 | 值 |
 |---|---|
-| 代码基线 | `0a3d3ce`（含 `1b882eb` 授权与 `a04ade5` TASK-01 落库） |
+| 代码基线 | 运行时工作树 = `0a3d3ce`（含 `1b882eb` 授权与 `a04ade5` TASK-01 落库）。此后 `0d67e0b`（RES-04/05，仅前台 `static/js/frontdesk.js` 与报表用例）、`d30ef14`（报表一致性用例）不触及本矩阵的 9 个端点，故结论对当前 HEAD 仍然成立 |
 | 服务 | `manage.py runserver 127.0.0.1:8011 --noreload --nothreading`，dev MySQL（`DJANGO_DB_CONN_MAX_AGE=0`，避开开发库 `max_connections=20` 的连接争抢） |
 | 浏览器 | Playwright Chromium headless，每账号独立 context（隔离 session，防串号） |
 | 账号 | `v12_gm` 店长 / `v12_fd` 前台接待 / `v12_fin` 财务 / `v13_duty` 值班经理 / `v13_hk` 客房服务员 / `v13_night` 夜审员 / `v13_rest` 餐饮服务员 / `v13_chef` 餐饮主管 / `v13_sec` 停车安保，均 ACTIVE 且岗位归属与命名一致 |
