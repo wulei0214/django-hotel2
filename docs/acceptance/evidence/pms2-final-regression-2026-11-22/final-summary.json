@@ -1,0 +1,14 @@
+﻿{
+  "baseline_sha": "6b6519e81e81409e88154ea12fd5bb94871dd99e",
+  "generated_at": "2026-11-22T23:30:15.1376331+08:00",
+  "engine_results": {
+    "sqlite": {"tests": 1899, "result": "OK", "skipped": 28, "exit": 0, "log": "sqlite-fullsuite.log"},
+    "mysql": {"tests": 1899, "result": "OK", "skipped": 3, "exit": 0, "log": "mysql-fullsuite.log"}
+  },
+  "skip_explanation": "SQLite 28 skip vs MySQL 3 skip 差异系 test_mysql_concurrency.py 等按 connection.vendor 整类跳过（SQLite 下 select_for_update 为 no-op），两侧 Ran 数量一致（1899）",
+  "gates": {
+    "docs_link_check": {"new_violations": 0, "scanned": 179, "log": "docs-lint.log"},
+    "secret_scan": {"worktree": "PASS", "hit_count": 0, "exit": 0, "allowlist_size": 0, "log": "secret-scan.json"},
+    "openapi_snapshots": {"identical": true, "sha256": "C44EC999FD009251991DB79B7DB2D8AFDF7D0372BF8A03126EED4AC32EEDD154", "paths": 172}
+  }
+}
