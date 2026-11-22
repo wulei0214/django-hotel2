@@ -1,0 +1,102 @@
+{
+  "verdicts": [
+    {
+      "item": "营业日行未推进且无新增夜审成功事件",
+      "ok": true,
+      "detail": "{'date': '2026-11-20', 'status': 'CLOSED'} -> {'date': '2026-11-20', 'status': 'CLOSED'}; night_audit.run 9 -> 9"
+    },
+    {
+      "item": "目标房间房态未变化",
+      "ok": true,
+      "detail": "{'housekeeping': 'CLEANING', 'maintenance': 'NORMAL', 'occupancy': 'VACANT'} -> {'housekeeping': 'CLEANING', 'maintenance': 'NORMAL', 'occupancy': 'VACANT'}"
+    },
+    {
+      "item": "退款/收款事实未新增",
+      "ok": true,
+      "detail": "refund 3 -> 3; payment 43 -> 43"
+    },
+    {
+      "item": "新增审计事件无夜审/退款执行/退款审批成功动作",
+      "ok": true,
+      "detail": "通过"
+    }
+  ],
+  "new_audit_events": [
+    {
+      "id": 1968,
+      "action": "auth.login_success",
+      "actor__username": "v12_gm"
+    },
+    {
+      "id": 1969,
+      "action": "guest.pii_reveal.phone",
+      "actor__username": "v12_gm"
+    },
+    {
+      "id": 1970,
+      "action": "audit.export",
+      "actor__username": "v12_gm"
+    },
+    {
+      "id": 1971,
+      "action": "auth.login_success",
+      "actor__username": "v12_fd"
+    },
+    {
+      "id": 1972,
+      "action": "guest.pii_reveal.phone",
+      "actor__username": "v12_fd"
+    },
+    {
+      "id": 1973,
+      "action": "report.export",
+      "actor__username": "v12_fd"
+    },
+    {
+      "id": 1974,
+      "action": "auth.login_success",
+      "actor__username": "v12_fin"
+    },
+    {
+      "id": 1975,
+      "action": "auth.login_success",
+      "actor__username": "v13_duty"
+    },
+    {
+      "id": 1976,
+      "action": "guest.pii_reveal.phone",
+      "actor__username": "v13_duty"
+    },
+    {
+      "id": 1977,
+      "action": "audit.export",
+      "actor__username": "v13_duty"
+    },
+    {
+      "id": 1978,
+      "action": "auth.login_success",
+      "actor__username": "v13_hk"
+    },
+    {
+      "id": 1979,
+      "action": "auth.login_success",
+      "actor__username": "v13_night"
+    },
+    {
+      "id": 1980,
+      "action": "auth.login_success",
+      "actor__username": "v13_rest"
+    },
+    {
+      "id": 1981,
+      "action": "auth.login_success",
+      "actor__username": "v13_chef"
+    },
+    {
+      "id": 1982,
+      "action": "auth.login_success",
+      "actor__username": "v13_sec"
+    }
+  ],
+  "passed": true
+}
