@@ -1,0 +1,13 @@
+﻿{
+    "scanned_at":  "2026-11-22T20:05+08:00",
+    "head":  "99c020e902d132fa7d19a0210eb53ab764e5110d",
+    "mode":  "--history --json (worktree + all git history)",
+    "allowlist_size":  0,
+    "hit_count":  10,
+    "by_rule":  {
+                    "django-secret-key":  7,
+                    "known-redacted-literal":  3
+                },
+    "worktree_hits":  0,
+    "note":  "原始命中片段含历史 dev 密钥与已轮换口令，按纪律不在证据中回抄（scan_secrets 自命中原则）；全文见扫描时点输出"
+}
