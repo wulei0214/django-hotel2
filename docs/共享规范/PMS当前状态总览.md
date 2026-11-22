@@ -7,7 +7,7 @@
 ## 1. 基线与 CI
 
 - **当前基线 `c4c15b6`**（V13 专项收口交付：V13-02 十一大中心写操作浏览器验收 PASS + 九岗位高危拒绝矩阵；V13-01 DBA 骨架；V1.3 总表 NO-GO）。其下最近代码提交 `e578905`（四中心请求体解析收敛到 `core.parse_json_object`）、`a4bccf2`（V13-03 报告终态）、`e4599db`（11C-001 统一验收：总盘点表+双引擎权威全绿）。不得继续使用 `8467012`、`c24b1da`、`1591ce2`、`387e6bf` 或更早 SHA 描述当前 main 状态。
-- **CI（现取，2026-11-22，绑定 `c4c15b6`）**：Django CI run 44814612824 **五 job 全绿**（lint / docs-lint / secret-scan / type-check / test）；tests workflow run 44814612894 **django-tests 成功**。CI 通过 ≠ 部署或独立验收。
+- **CI（现取，2026-11-22，绑定 `0d865eb`）**：Django CI run 44988780824 **五 job 全绿**（lint / docs-lint / secret-scan / type-check / test）；tests workflow run 44988780790 **django-tests 成功**；OpenAPI snapshot run 44987966563 成功。CI 通过 ≠ 部署或独立验收。
 - 当前部署形态：**Windows 本地开发/测试/演示/验收**（.env + waitress）。真实生产部署 `WAITING_FOR_SERVER / PRODUCTION PENDING`（等服务器与生产资源具备），不得把本地运行结果冒充生产验收。
 - 门禁：`python scripts/docs_link_check.py check` 为本地等效命令，基线冻结于 `docs_gate_baseline.json`。
 
