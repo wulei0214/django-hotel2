@@ -1,0 +1,38 @@
+{
+  "current_business_date": {
+    "date": "2026-11-20",
+    "status": "CLOSED",
+    "note": "11-20 已由夜审关闭；下一营业日 11-21 按现行实现不物化落行，以 before/after 行不变为不变量"
+  },
+  "room_9936": {
+    "number": "9936",
+    "housekeeping": "CLEAN",
+    "maintenance": "NORMAL",
+    "occupancy": "VACANT",
+    "expected_housekeeping": "CLEAN（房态放行拒绝场景不得变化）"
+  },
+  "counts": {
+    "refund": 3,
+    "refund_executed": 2,
+    "export_credential": 7,
+    "payment": 30,
+    "night_audit_event": 9,
+    "reveal_event": 3,
+    "audit_event_total": 1332
+  },
+  "max_audit_event_id": 1355,
+  "guest_1": {
+    "exists": false,
+    "phone_ids": []
+  },
+  "last_night_audit_run_date": [
+    {
+      "date": "2026-11-20",
+      "status": "CLOSED"
+    },
+    {
+      "date": "2026-11-18",
+      "status": "CLOSED"
+    }
+  ]
+}

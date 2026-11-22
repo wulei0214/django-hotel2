@@ -1,0 +1,202 @@
+{
+  "reservation": {
+    "booking_no": "R85E9586AC4430D6689BF",
+    "status": "CHECKED_OUT",
+    "check_in": "2026-11-21",
+    "check_out": "2026-11-22",
+    "room_type": "高级大床房",
+    "assigned_room": "9936",
+    "expected_status": "CHECKED_OUT"
+  },
+  "check_cancelled": {
+    "booking_no": "R2704A424A251B4869649",
+    "status": "CANCELLED",
+    "expected_status": "CANCELLED"
+  },
+  "stay": {
+    "id": 28,
+    "status": "CHECKED_OUT",
+    "expected_status": "CHECKED_OUT"
+  },
+  "folio": {
+    "status": "CLOSED",
+    "charges": "0",
+    "credits": "90.00",
+    "balance": "-90.00",
+    "entries": [
+      {
+        "type": "DEPOSIT",
+        "amount": "-90.00",
+        "desc": "前台登记押金（CASH）"
+      }
+    ]
+  },
+  "payments": [
+    {
+      "amount": "90.00",
+      "method": "CASH",
+      "status": "SUCCEEDED",
+      "provider": "frontdesk_deposit"
+    }
+  ],
+  "room_9936": {
+    "number": "9936",
+    "housekeeping": "CLEANING",
+    "maintenance": "NORMAL",
+    "occupancy": "VACANT",
+    "expected_housekeeping": "CLEAN"
+  },
+  "task_10": {
+    "status": "INSPECTED",
+    "task_type": "DEPARTURE",
+    "assigned_to": "v13_hk",
+    "completed_by": "v13_hk",
+    "inspected_by": "v12_gm",
+    "expected_status": "INSPECTED"
+  },
+  "inspection_10": {
+    "result": "PASS",
+    "inspector": "v12_gm"
+  },
+  "ticket_6": {
+    "ticket_no": "MT-DEFAULT-20261120-65C69419",
+    "status": "VERIFIED",
+    "room": "1410",
+    "reported_by": "v13_duty",
+    "verified_by": "v12_gm",
+    "expected_status": "VERIFIED"
+  },
+  "room_1410": {
+    "number": "1410",
+    "maintenance": "NORMAL",
+    "expected_maintenance": "NORMAL"
+  },
+  "business_dates": [
+    {
+      "date": "2026-11-20",
+      "status": "CLOSED"
+    },
+    {
+      "date": "2026-11-18",
+      "status": "CLOSED"
+    }
+  ],
+  "check_business_date_closed": true,
+  "audit_events_filter": "id 区间 [1278, 1316]（本轮首笔预订创建→夜审执行锚点）+ action 白名单",
+  "audit_events": [
+    {
+      "action": "public.reservation_created",
+      "actor": null,
+      "entity": "Reservation#R2704A424A251B4869649",
+      "at": "19:55:59"
+    },
+    {
+      "action": "guest.booking_cancelled",
+      "actor": null,
+      "entity": "Reservation#R2704A424A251B4869649",
+      "at": "19:56:06"
+    },
+    {
+      "action": "public.reservation_created",
+      "actor": null,
+      "entity": "Reservation#R85E9586AC4430D6689BF",
+      "at": "19:56:12"
+    },
+    {
+      "action": "reservation.confirmed_at_frontdesk",
+      "actor": "v12_fd",
+      "entity": "Reservation#R85E9586AC4430D6689BF",
+      "at": "19:56:26"
+    },
+    {
+      "action": "billing.deposit_collect",
+      "actor": "v12_fd",
+      "entity": "Payment#53",
+      "at": "19:56:26"
+    },
+    {
+      "action": "frontdesk.room_assigned",
+      "actor": "v12_fd",
+      "entity": "ReservationRoom#94",
+      "at": "19:56:29"
+    },
+    {
+      "action": "frontdesk.checked_in",
+      "actor": "v12_fd",
+      "entity": "Stay#28",
+      "at": "19:56:33"
+    },
+    {
+      "action": "housekeeping.task_created",
+      "actor": "v12_fd",
+      "entity": "HousekeepingTask#10",
+      "at": "19:56:40"
+    },
+    {
+      "action": "frontdesk.checked_out",
+      "actor": "v12_fd",
+      "entity": "Stay#28",
+      "at": "19:56:40"
+    },
+    {
+      "action": "housekeeping.task_claimed",
+      "actor": "v13_hk",
+      "entity": "HousekeepingTask#10",
+      "at": "19:56:51"
+    },
+    {
+      "action": "housekeeping.task_started",
+      "actor": "v13_hk",
+      "entity": "HousekeepingTask#10",
+      "at": "19:56:53"
+    },
+    {
+      "action": "housekeeping.task_completed",
+      "actor": "v13_hk",
+      "entity": "HousekeepingTask#10",
+      "at": "19:56:54"
+    },
+    {
+      "action": "housekeeping.task_inspected",
+      "actor": "v12_gm",
+      "entity": "RoomInspection#2",
+      "at": "19:57:00"
+    },
+    {
+      "action": "maintenance.ticket_created",
+      "actor": "v13_duty",
+      "entity": "MaintenanceTicket#6",
+      "at": "19:57:07"
+    },
+    {
+      "action": "maintenance.ticket_started",
+      "actor": "v13_duty",
+      "entity": "MaintenanceTicket#6",
+      "at": "19:57:09"
+    },
+    {
+      "action": "maintenance.ticket_resolved",
+      "actor": "v13_duty",
+      "entity": "MaintenanceTicket#6",
+      "at": "19:57:10"
+    },
+    {
+      "action": "maintenance.ticket_verified",
+      "actor": "v12_gm",
+      "entity": "MaintenanceTicket#6",
+      "at": "19:57:13"
+    },
+    {
+      "action": "night_audit.run",
+      "actor": "v12_gm",
+      "entity": "BusinessDate#4",
+      "at": "20:03:22"
+    }
+  ],
+  "room_27_unchanged": {
+    "number": "2425",
+    "housekeeping": "CLEAN",
+    "maintenance": "NORMAL",
+    "occupancy": "VACANT"
+  }
+}

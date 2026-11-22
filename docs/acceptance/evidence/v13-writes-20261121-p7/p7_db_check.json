@@ -1,0 +1,192 @@
+{
+  "before": {
+    "refund": 3,
+    "refund_executed": 2,
+    "export_credential": 4,
+    "payment": 30,
+    "night_audit_event": 9,
+    "reveal_event": 0,
+    "audit_event_total": 1313
+  },
+  "after": {
+    "refund": 3,
+    "refund_executed": 2,
+    "export_credential": 7,
+    "payment": 30,
+    "night_audit_event": 9,
+    "reveal_event": 3,
+    "audit_event_total": 1332
+  },
+  "diff": {
+    "export_credential": {
+      "before": 4,
+      "after": 7
+    },
+    "reveal_event": {
+      "before": 0,
+      "after": 3
+    },
+    "audit_event_total": {
+      "before": 1313,
+      "after": 1332
+    }
+  },
+  "verdicts": [
+    {
+      "item": "营业日行未推进且无新增夜审成功事件（夜审执行被拒/持权者跳过）",
+      "ok": true,
+      "detail": "{'date': '2026-11-20', 'status': 'CLOSED', 'note': '11-20 已由夜审关闭；下一营业日 11-21 按现行实现不物化落行，以 before/after 行不变为不变量'} -> {'date': '2026-11-20', 'status': 'CLOSED', 'note': '11-20 已由夜审关闭；下一营业日 11-21 按现行实现不物化落行，以 before/after 行不变为不变量'}; night_audit.run 事件数 9 -> 9"
+    },
+    {
+      "item": "房间 9936 房态未变化（房态放行被拒）",
+      "ok": true,
+      "detail": "{'number': '9936', 'housekeeping': 'CLEAN', 'maintenance': 'NORMAL', 'occupancy': 'VACANT', 'expected_housekeeping': 'CLEAN（房态放行拒绝场景不得变化）'} -> {'number': '9936', 'housekeeping': 'CLEAN', 'maintenance': 'NORMAL', 'occupancy': 'VACANT', 'expected_housekeeping': 'CLEAN（房态放行拒绝场景不得变化）'}"
+    },
+    {
+      "item": "新增审计事件无高危成功动作（夜审/退款执行/退款审批）",
+      "ok": true,
+      "detail": "通过"
+    },
+    {
+      "item": "退款/收款事实未新增（退款执行、退款审批拒绝场景无业务写）",
+      "ok": true,
+      "detail": "refund 3 -> 3; executed 2 -> 2; payment 30 -> 30"
+    }
+  ],
+  "new_audit_events": [
+    {
+      "id": 1337,
+      "action": "auth.login_success",
+      "actor": "v12_gm",
+      "entity": "User#32",
+      "at": "20:29:32"
+    },
+    {
+      "id": 1338,
+      "action": "guest.pii_reveal.phone",
+      "actor": "v12_gm",
+      "entity": "GuestPhone#47",
+      "at": "20:29:34"
+    },
+    {
+      "id": 1339,
+      "action": "audit.export",
+      "actor": "v12_gm",
+      "entity": "AuditExport#44136fa355b3678a1146ad16f7e8649e",
+      "at": "20:29:34"
+    },
+    {
+      "id": 1340,
+      "action": "auth.login_success",
+      "actor": "v12_fd",
+      "entity": "User#34",
+      "at": "20:29:36"
+    },
+    {
+      "id": 1341,
+      "action": "guest.pii_reveal.phone",
+      "actor": "v12_fd",
+      "entity": "GuestPhone#47",
+      "at": "20:29:38"
+    },
+    {
+      "id": 1342,
+      "action": "auth.login_success",
+      "actor": "v12_fin",
+      "entity": "User#33",
+      "at": "20:29:40"
+    },
+    {
+      "id": 1343,
+      "action": "auth.login_success",
+      "actor": "v13_duty",
+      "entity": "User#37",
+      "at": "20:29:44"
+    },
+    {
+      "id": 1344,
+      "action": "guest.pii_reveal.phone",
+      "actor": "v13_duty",
+      "entity": "GuestPhone#47",
+      "at": "20:29:46"
+    },
+    {
+      "id": 1345,
+      "action": "audit.export",
+      "actor": "v13_duty",
+      "entity": "AuditExport#44136fa355b3678a1146ad16f7e8649e",
+      "at": "20:29:46"
+    },
+    {
+      "id": 1346,
+      "action": "auth.login_success",
+      "actor": "v13_hk",
+      "entity": "User#38",
+      "at": "20:29:48"
+    },
+    {
+      "id": 1347,
+      "action": "auth.login_success",
+      "actor": "v13_night",
+      "entity": "User#39",
+      "at": "20:29:52"
+    },
+    {
+      "id": 1348,
+      "action": "auth.login_success",
+      "actor": "v13_rest",
+      "entity": "User#40",
+      "at": "20:29:56"
+    },
+    {
+      "id": 1349,
+      "action": "auth.login_success",
+      "actor": "v13_chef",
+      "entity": "User#41",
+      "at": "20:30:00"
+    },
+    {
+      "id": 1350,
+      "action": "auth.login_success",
+      "actor": "v13_sec",
+      "entity": "User#42",
+      "at": "20:30:03"
+    },
+    {
+      "id": 1351,
+      "action": "auth.login_success",
+      "actor": "v12_fd",
+      "entity": "User#34",
+      "at": "20:31:55"
+    },
+    {
+      "id": 1352,
+      "action": "report.export",
+      "actor": "v12_fd",
+      "entity": "ReportExport#occupancy",
+      "at": "20:31:57"
+    },
+    {
+      "id": 1353,
+      "action": "auth.login_success",
+      "actor": "v13_night",
+      "entity": "User#39",
+      "at": "20:31:59"
+    },
+    {
+      "id": 1354,
+      "action": "auth.login_success",
+      "actor": "v13_rest",
+      "entity": "User#40",
+      "at": "20:32:02"
+    },
+    {
+      "id": 1355,
+      "action": "auth.login_success",
+      "actor": "v13_sec",
+      "entity": "User#42",
+      "at": "20:32:06"
+    }
+  ],
+  "new_night_audit_events": []
+}
