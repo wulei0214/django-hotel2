@@ -1,0 +1,28 @@
+﻿2026-11-22 19:20:34 dev MySQL 7天真实数据复算（V3.2 TASK-14，HEAD=d30ef14)
+
+{
+  "property": "DEFAULT",
+  "range": "2026-11-16..2026-11-22",
+  "checks": [
+    {
+      "name": "occupancy vs RoomTypeInventory",
+      "passed": true,
+      "detail": "全部日期一致",
+      "diffs": []
+    },
+    {
+      "name": "revenue vs LedgerEntry",
+      "passed": true,
+      "detail": "全部日期一致",
+      "diffs": []
+    },
+    {
+      "name": "adr 分子/分母/比率 vs 源账本与库存",
+      "passed": true,
+      "detail": "全部日期一致",
+      "diffs": []
+    }
+  ],
+  "result": "PASS"
+}
+exit=0
