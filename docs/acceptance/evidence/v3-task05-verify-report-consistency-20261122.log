@@ -1,0 +1,22 @@
+{
+  "property": "DEFAULT",
+  "range": "2026-11-16..2026-11-22",
+  "checks": [
+    {
+      "name": "occupancy vs RoomTypeInventory",
+      "passed": true,
+      "detail": "全部住宿日一致"
+    },
+    {
+      "name": "revenue vs LedgerEntry",
+      "passed": true,
+      "detail": "全部营业日一致"
+    },
+    {
+      "name": "adr 分子 vs ROOM_CHARGE 凭证",
+      "passed": true,
+      "detail": "全部营业日一致"
+    }
+  ],
+  "result": "PASS"
+}

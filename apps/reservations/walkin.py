@@ -22,6 +22,7 @@ from apps.core.models import AuditEvent
 from apps.reservations.models import (
     EarlyDeparturePolicy,
     Reservation,
+    ReservationRoom,
     Stay,
 )
 
@@ -330,15 +331,43 @@ def _create_walk_in_once(
     # 排房 + 入住（同事务）；WB-002 修复：assign_room/check_in_stay 已导入。
     # WB-074 修复：房间查询限定当前物业（room_type 已由 create_reservation
     # 校验属于本物业），杜绝多物业同房型时跨物业占用他店客房。
+    # V3.0-TASK-02（诊断 C 口径）：自动排房不得只按房态选房——被活跃预订
+    # （PENDING/CONFIRMED/CHECKED_IN）持有当日或续住日期的房间必须跳过，
+    # 否则 assign_room 的重叠校验会把"首间净房已被预订"的内部冲突以 409
+    # 形式抛给前台（净房池非空却建单失败）。
+    from django.db.models import Q
+
     from apps.inventory.models import Room
 
-    target_room = Room.objects.filter(
-        property=property_obj,
-        room_type_id=room_type_id,
-        occupancy_status=Room.OccupancyStatus.VACANT,
-        housekeeping_status=Room.HousekeepingStatus.CLEAN,
-        maintenance_status=Room.MaintenanceStatus.NORMAL,
-    ).first()
+    active_states = (
+        Reservation.Status.PENDING,
+        Reservation.Status.CONFIRMED,
+        Reservation.Status.CHECKED_IN,
+    )
+    if billing_type == Reservation.BillingType.DAY_USE:
+        # 日租占用日=入住日单日；既有单 [a,b) 与之重叠 ⇔ a <= today < b
+        busy_q = Q(check_in__lte=walkin_today, check_out__gt=walkin_today)
+    else:
+        # 过夜占用 [check_in, check_out)；既有单 [a,b) 与之重叠 ⇔ a < check_out 且 b > check_in
+        busy_q = Q(check_in__lt=check_out, check_out__gt=walkin_today)
+    busy_room_ids = ReservationRoom.objects.filter(
+        Q(property=property_obj, assigned_room__isnull=False, reservation__status__in=active_states)
+        & busy_q
+    ).values_list("assigned_room_id", flat=True)
+
+    target_room = (
+        Room.objects.filter(
+            property=property_obj,
+            room_type_id=room_type_id,
+            occupancy_status=Room.OccupancyStatus.VACANT,
+            housekeeping_status=Room.HousekeepingStatus.CLEAN,
+            maintenance_status=Room.MaintenanceStatus.NORMAL,
+        )
+        .exclude(id__in=busy_room_ids)
+        .first()
+    )
+    if target_room is None:
+        raise ValueError("当前无可入住净房，Walk-in 无法完成。")
     if target_room is None:
         raise ValueError("当前无可入住净房，Walk-in 无法完成。")
     assign_room(

@@ -1,0 +1,65 @@
+{
+  "results": [
+    {
+      "name": "walkinbar_visible",
+      "pass": true,
+      "detail": "建单区已渲染"
+    },
+    {
+      "name": "dayuse_quote_policy_price",
+      "pass": true,
+      "detail": "日租价 ¥200.00 · 00:00–23:59 · 超时 ¥30.00/小时"
+    },
+    {
+      "name": "dayuse_create_toast",
+      "pass": true,
+      "detail": "已建单入住：R637AE8700F4D70E45EF0 · 房 4612 · 押金 ¥60.00"
+    },
+    {
+      "name": "api_dayuse_billing_type",
+      "pass": true,
+      "detail": "billing_type=DAY_USE status=CHECKED_IN total=200.00"
+    },
+    {
+      "name": "api_dayuse_room_charge",
+      "pass": true,
+      "detail": "房费凭证 200.00"
+    },
+    {
+      "name": "convert_button_visible",
+      "pass": true,
+      "detail": "DAY_USE 抽屉含转为过夜动作"
+    },
+    {
+      "name": "convert_success_toast",
+      "pass": true,
+      "detail": "已转为过夜住宿，新增夜租按房价快照入账"
+    },
+    {
+      "name": "api_converted_night_stay",
+      "pass": true,
+      "detail": "billing_type=NIGHT_STAY check_out=2026-11-24"
+    },
+    {
+      "name": "convert_action_hidden_after_convert",
+      "pass": true,
+      "detail": "NIGHT_STAY 抽屉无转换动作"
+    },
+    {
+      "name": "ui_payment_collected",
+      "pass": true,
+      "detail": "余额 140.00 已收 已登记本次实收款项"
+    },
+    {
+      "name": "checkout_success_toast",
+      "pass": true,
+      "detail": "退房办理成功，房间已转为待清洁"
+    },
+    {
+      "name": "api_checked_out",
+      "pass": true,
+      "detail": "status=CHECKED_OUT"
+    }
+  ],
+  "booking_no": "R637AE8700F4D70E45EF0"
+}

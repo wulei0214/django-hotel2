@@ -1,0 +1,25 @@
+{
+  "results": [
+    {
+      "name": "pending_row_found",
+      "pass": true,
+      "detail": "任务池存在未派工 PENDING 行"
+    },
+    {
+      "name": "start_button_visible",
+      "pass": true,
+      "detail": "PENDING 行（房 3287）含「开始」按钮"
+    },
+    {
+      "name": "row_becomes_in_progress",
+      "pass": true,
+      "detail": "3287退房清洁清洁中员工 #12普通—完成已开始清洁，房间转为清洁中。"
+    },
+    {
+      "name": "api_task_in_progress",
+      "pass": true,
+      "detail": "任务#15 房 3287 IN_PROGRESS assigned_to=12"
+    }
+  ],
+  "task_id": 15
+}
