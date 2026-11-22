@@ -2036,11 +2036,15 @@ def walk_in_options(request):
 
     today = _property_today(property_obj)
     room_types = RoomType.objects.filter(property=property_obj, is_active=True).order_by("code")
-    rate_plans = RatePlan.objects.filter(
-        property=property_obj,
-        is_active=True,
-        valid_from__lte=today,
-    ).filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today)).order_by("code")
+    rate_plans = (
+        RatePlan.objects.filter(
+            property=property_obj,
+            is_active=True,
+            valid_from__lte=today,
+        )
+        .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today))
+        .order_by("code")
+    )
 
     day_use_policies = []
     for room_type in room_types:
@@ -2057,9 +2061,7 @@ def walk_in_options(request):
                 "start_time": policy.start_time.strftime("%H:%M"),
                 "end_time": policy.end_time.strftime("%H:%M"),
                 "grace_minutes": policy.grace_minutes,
-                "overtime_hourly_rate": str(
-                    policy.overtime_hourly_rate.quantize(Decimal("0.01"))
-                ),
+                "overtime_hourly_rate": str(policy.overtime_hourly_rate.quantize(Decimal("0.01"))),
             }
         )
 
@@ -2104,10 +2106,8 @@ def cancel_reservation(request, booking_no):
         return _response(
             {"error": {"code": "VALIDATION_ERROR", "message": "取消原因必填（1-240 字符）。"}}, 400
         )
-    reservation = (
-        Reservation.objects.filter(property=property_obj, booking_no=booking_no).first()
-    )
-    if reservation is None:
+    existing = Reservation.objects.filter(property=property_obj, booking_no=booking_no).first()
+    if existing is None:
         return _response(
             {"error": {"code": "RESOURCE_NOT_FOUND", "message": "未找到该预订。"}}, 404
         )
@@ -2115,7 +2115,7 @@ def cancel_reservation(request, booking_no):
         reservation, changed = cancel_pending_reservation(
             property_obj=property_obj,
             booking_no=booking_no,
-            reservation_pk=reservation.pk,
+            reservation_pk=existing.pk,
             reason=reason,
         )
     except ReservationConflict as exc:
@@ -2166,9 +2166,7 @@ def day_use_convert_to_overnight(request, reservation_room_id):
         body = _body(request)
         raw_date = str(body.get("new_check_out") or "").strip()
         reason = str(body.get("reason") or "").strip()
-        new_check_out = (
-            _parse_date(raw_date, "新离店日期", None) if raw_date else None
-        )
+        new_check_out = _parse_date(raw_date, "新离店日期", None) if raw_date else None
     except ValueError:
         return _response(
             {"error": {"code": "VALIDATION_ERROR", "message": "请求体或日期格式不正确。"}}, 400

@@ -50,8 +50,9 @@ class WalkInOptionsApiTests(WalkInApiTestBase):
         self.assertIn(self.room_type.pk, type_ids)
         plan_ids = [row["id"] for row in data["rate_plans"]]
         self.assertIn(self.rate_plan.pk, plan_ids)
-        policy_rows = [row for row in data["day_use_policies"]
-                       if row["room_type_id"] == self.room_type.pk]
+        policy_rows = [
+            row for row in data["day_use_policies"] if row["room_type_id"] == self.room_type.pk
+        ]
         self.assertEqual(len(policy_rows), 1)
         self.assertEqual(policy_rows[0]["price"], "288.00")
         self.assertEqual(policy_rows[0]["start_time"], "08:00")
@@ -66,8 +67,9 @@ class WalkInOptionsApiTests(WalkInApiTestBase):
         response = self._get()
         self.assertEqual(response.status_code, 200, response.content)
         data = response.json()["data"]
-        policy_rows = [row for row in data["day_use_policies"]
-                       if row["room_type_id"] == self.room_type.pk]
+        policy_rows = [
+            row for row in data["day_use_policies"] if row["room_type_id"] == self.room_type.pk
+        ]
         self.assertEqual(policy_rows, [])
 
     def test_options_requires_view_accommodation(self):
@@ -120,11 +122,12 @@ class DayUseWalkInCreateApiTests(WalkInApiTestBase):
         self.assertEqual(reservation.billing_type, Reservation.BillingType.DAY_USE)
         self.assertEqual(reservation.total_amount, Decimal("288.00"))
         # 日租离店日=入住日
-        self.assertEqual(reservation.reservation_rooms.first().check_out,
-                         reservation.reservation_rooms.first().check_in)
+        line = reservation.reservation_rooms.first()  # type: ignore[attr-defined]
+        self.assertEqual(line.check_out, line.check_in)
         # 房费凭证=政策价一次性入账
         charge = LedgerEntry.objects.filter(
-            folio__reservation=reservation, entry_type="ROOM_CHARGE",
+            folio__reservation=reservation,
+            entry_type="ROOM_CHARGE",
         ).aggregate(total=Sum("amount"))["total"]
         self.assertEqual(charge, Decimal("288.00"))
         # 无政策房型 → 409 fail-closed（政策解析先于净房检查）
@@ -155,9 +158,7 @@ class DayUseWalkInCreateApiTests(WalkInApiTestBase):
             HTTP_IDEMPOTENCY_KEY="ns-default-001",
         )
         self.assertEqual(response.status_code, 201, response.content)
-        reservation = Reservation.objects.get(
-            booking_no=response.json()["data"]["booking_no"]
-        )
+        reservation = Reservation.objects.get(booking_no=response.json()["data"]["booking_no"])
         self.assertEqual(reservation.billing_type, Reservation.BillingType.NIGHT_STAY)
-        line = reservation.reservation_rooms.first()
+        line = reservation.reservation_rooms.first()  # type: ignore[attr-defined]
         self.assertEqual(line.check_out, line.check_in + timedelta(days=1))

@@ -62,7 +62,7 @@ class DayUseConvertOvernightApiTests(WalkInApiTestBase):
     def test_convert_success_inventory_audit_and_repeat_rejected(self):
         self._auth()
         reservation = self._create_day_use_walk_in()
-        line = reservation.reservation_rooms.first()
+        line = reservation.reservation_rooms.first()  # type: ignore[attr-defined]
         today = line.check_in
         # 新增住宿日 [check_in+1, new_check_out) 的过夜房价快照与库存日历行
         DailyRate.objects.create(
@@ -79,7 +79,8 @@ class DayUseConvertOvernightApiTests(WalkInApiTestBase):
             total_rooms=3,
         )
         tomorrow_inv = RoomTypeInventory.objects.get(
-            property=self.property, room_type=self.room_type,
+            property=self.property,
+            room_type=self.room_type,
             stay_date=today + timedelta(days=1),
         )
         sold_before = tomorrow_inv.sold
@@ -105,6 +106,7 @@ class DayUseConvertOvernightApiTests(WalkInApiTestBase):
             entity_id=str(line.pk),
         ).first()
         self.assertIsNotNone(audit)
+        assert audit is not None  # mypy 收窄
         self.assertEqual(audit.reason, "客人要求续住过夜")
         self.assertEqual(audit.before_json["billing_type"], "DAY_USE")
         self.assertEqual(audit.after_json["billing_type"], "NIGHT_STAY")
@@ -124,7 +126,7 @@ class DayUseConvertOvernightApiTests(WalkInApiTestBase):
         )
         self.assertEqual(response.status_code, 201, response.content)
         reservation = Reservation.objects.get(booking_no=response.json()["data"]["booking_no"])
-        line = reservation.reservation_rooms.first()
+        line = reservation.reservation_rooms.first()  # type: ignore[attr-defined]
         today = timezone.localdate()
         blocked = self._convert(line.pk, (today + timedelta(days=2)).isoformat())
         self.assertEqual(blocked.status_code, 409, blocked.content)
@@ -133,7 +135,7 @@ class DayUseConvertOvernightApiTests(WalkInApiTestBase):
     def test_convert_fail_closed_without_nightly_rate(self):
         self._auth()
         reservation = self._create_day_use_walk_in(key="du-conv-norate")
-        line = reservation.reservation_rooms.first()
+        line = reservation.reservation_rooms.first()  # type: ignore[attr-defined]
         today = line.check_in
         # 未创建明晚 DailyRate：缺快照必须整体拒绝
         blocked = self._convert(line.pk, (today + timedelta(days=2)).isoformat())
@@ -146,7 +148,7 @@ class DayUseConvertOvernightApiTests(WalkInApiTestBase):
     def test_convert_input_validation(self):
         self._auth()
         reservation = self._create_day_use_walk_in(key="du-conv-input")
-        line = reservation.reservation_rooms.first()
+        line = reservation.reservation_rooms.first()  # type: ignore[attr-defined]
         today = line.check_in
         future = (today + timedelta(days=2)).isoformat()
         # 理由必填
@@ -165,7 +167,7 @@ class DayUseConvertOvernightApiTests(WalkInApiTestBase):
     def test_convert_requires_operate_permission(self):
         self._auth()  # 授权岗建单
         reservation = self._create_day_use_walk_in(key="du-conv-perm")
-        line = reservation.reservation_rooms.first()
+        line = reservation.reservation_rooms.first()  # type: ignore[attr-defined]
         today = line.check_in
         # 切换只读岗（仅 view_accommodation）：转换必须 403
         readonly = self._make_staff(codenames={"view_accommodation"})

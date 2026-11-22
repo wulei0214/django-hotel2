@@ -64,10 +64,9 @@ class FrontDeskCancelApiTests(WalkInApiTestBase):
     def test_cancel_pending_releases_hold_and_audits_reason(self):
         self._auth()
         reservation = self._create_pending_reservation()
-        hold = InventoryHold.objects.filter(
-            reservation_room__reservation=reservation
-        ).first()
+        hold = InventoryHold.objects.filter(reservation_room__reservation=reservation).first()
         self.assertIsNotNone(hold)
+        assert hold is not None  # mypy 收窄
         inv = RoomTypeInventory.objects.get(
             property=self.property, room_type=self.room_type, stay_date=reservation.check_in
         )
@@ -92,6 +91,7 @@ class FrontDeskCancelApiTests(WalkInApiTestBase):
             entity_id=reservation.booking_no,
         ).first()
         self.assertIsNotNone(audit)
+        assert audit is not None  # mypy 收窄
         self.assertEqual(audit.reason, "客人来电取消")
 
         # 重复取消：幂等 changed=false

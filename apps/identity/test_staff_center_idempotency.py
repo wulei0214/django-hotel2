@@ -10,15 +10,21 @@
 * 不带 Idempotency-Key → 透传执行（旧行为兼容，装饰器可选语义）。
 """
 
+from django.contrib.auth.models import User
 from django.test import TestCase
 
 from apps.core.models import AuditEvent, IdempotencyRecord
+from apps.identity.models import StaffProfile
 
 from .test_staff_center import _make_target_employee, _make_user
 
 
 class StaffCenterIdempotencyTests(TestCase):
     """四条写路由 @idempotent 契约（ST-02 关闭条件）。"""
+
+    # setUpTestData 赋值的类级属性（mypy 无 django-stubs 需显式声明）
+    owner: User
+    target: StaffProfile
 
     @classmethod
     def setUpTestData(cls):
@@ -32,19 +38,19 @@ class StaffCenterIdempotencyTests(TestCase):
 
     def test_update_profile_replay_returns_first_response_without_double_audit(self):
         url = f"/manage/staff/actions/{self.profile.pk}/update_profile/"
-        payload = {"full_name": "幂等重放员工", "phone": "13811112222", "reason": "幂等契约测试更新"}
-        first = self.client.post(
-            url, payload, HTTP_IDEMPOTENCY_KEY="sc-idem-up-001"
-        )
+        payload = {
+            "full_name": "幂等重放员工",
+            "phone": "13811112222",
+            "reason": "幂等契约测试更新",
+        }
+        first = self.client.post(url, payload, HTTP_IDEMPOTENCY_KEY="sc-idem-up-001")
         self.assertEqual(first.status_code, 200, first.content)
         audits_after_first = AuditEvent.objects.filter(
             entity_id=str(self.profile.pk),
             action__contains="profile_update",
         ).count()
 
-        replay = self.client.post(
-            url, payload, HTTP_IDEMPOTENCY_KEY="sc-idem-up-001"
-        )
+        replay = self.client.post(url, payload, HTTP_IDEMPOTENCY_KEY="sc-idem-up-001")
         self.assertEqual(replay.status_code, 200, replay.content)
         # 重放返回首响应（同 key 同 body → 首次响应体）
         self.assertEqual(replay.json(), first.json())
@@ -56,9 +62,7 @@ class StaffCenterIdempotencyTests(TestCase):
             audits_after_first,
         )
         # 幂等记录恰好一条
-        self.assertEqual(
-            IdempotencyRecord.objects.filter(key="sc-idem-up-001").count(), 1
-        )
+        self.assertEqual(IdempotencyRecord.objects.filter(key="sc-idem-up-001").count(), 1)
 
     def test_set_status_replay_is_idempotent_single_record(self):
         url = f"/manage/staff/actions/{self.profile.pk}/set_status/"
@@ -73,11 +77,15 @@ class StaffCenterIdempotencyTests(TestCase):
     def test_same_key_different_body_conflicts(self):
         url = f"/manage/staff/actions/{self.profile.pk}/update_profile/"
         first = self.client.post(
-            url, {"full_name": "冲突测试A", "reason": "冲突契约测试A"}, HTTP_IDEMPOTENCY_KEY="sc-idem-cx-001"
+            url,
+            {"full_name": "冲突测试A", "reason": "冲突契约测试A"},
+            HTTP_IDEMPOTENCY_KEY="sc-idem-cx-001",
         )
         self.assertEqual(first.status_code, 200, first.content)
         conflict = self.client.post(
-            url, {"full_name": "冲突测试B", "reason": "冲突契约测试B"}, HTTP_IDEMPOTENCY_KEY="sc-idem-cx-001"
+            url,
+            {"full_name": "冲突测试B", "reason": "冲突契约测试B"},
+            HTTP_IDEMPOTENCY_KEY="sc-idem-cx-001",
         )
         self.assertEqual(conflict.status_code, 409, conflict.content)
         self.assertEqual(conflict.json()["error"]["code"], "BUSINESS_CONFLICT")
@@ -87,6 +95,4 @@ class StaffCenterIdempotencyTests(TestCase):
         url = f"/manage/staff/actions/{self.profile.pk}/update_profile/"
         response = self.client.post(url, {"full_name": "无键透传员工", "reason": "无键透传测试"})
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertFalse(
-            IdempotencyRecord.objects.filter(key="").exists()
-        )
+        self.assertFalse(IdempotencyRecord.objects.filter(key="").exists())
