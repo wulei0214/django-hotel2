@@ -21,11 +21,12 @@
 
 | 证据 | 结论 | 时点限定 |
 |---|---|---|
-| `docs/acceptance/evidence/mc11-sqlite-fullsuite-final-20261121.log` | Ran **1846**，OK (skipped=28) | 11C-001 验收轮，SQLite 引擎 |
-| `docs/acceptance/evidence/mc11-mysql-fullsuite-20261121.log` | Ran **1849**，OK (skipped=3) | 11C-001 验收轮，**MySQL 8 权威**（文件头含错峰登记） |
+| `docs/acceptance/evidence/v3-sqlite-fullsuite-20261122.log` | Ran **1878**，OK (skipped=28)，exit 0 | V3.0 第一批交付轮（绑定 1b882eb 代码态），SQLite 引擎 |
+| `docs/acceptance/evidence/v3-mysql-fullsuite-20261122.log` | Ran **1878**，OK (skipped=3)，exit 0 | 同轮，**MySQL 8 权威**（文件头含错峰登记） |
+| `docs/acceptance/evidence/mc11-{sqlite,mysql}-fullsuite-20261121.log` | 1846 / 1849 OK | 历史（11C-001 验收轮，e4599db 链） |
 
-- 以上为最新权威全量（2026-11-21，e4599db 验收链）；CI 的 test job 为每 push 的持续回归。
-- 规则：历史报告中的测试数字仅对其各自 SHA 有效（1558/1602/1598/1307/948/…均为绑定值）；MySQL 全量测试须遵守错峰纪律（同一共享测试环境同一时刻仅一个全量进程，登记执行人/起止/库名/命令/退出码），剥 `DJANGO_PLATFORM_ADMIN_*` 实名环境变量；SQLite 全绿不替代 MySQL 权威（锁/约束/并发以 MySQL 结果为准）。
+- 最新权威全量为 **1878/1878 双绿**（2026-11-22，净增 32 例=V3.0 第一批新测试：walk-in-options/日租建单/转过夜/前台取消/幂等契约/复算冒烟/夜审员矩阵）。
+- 规则：历史报告中的测试数字仅对其各自 SHA 有效（1846/1849/1602/…均为绑定值）；MySQL 全量测试须遵守错峰纪律（同一共享测试环境同一时刻仅一个全量进程，登记执行人/起止/库名/命令/退出码），剥 `DJANGO_PLATFORM_ADMIN_*` 实名环境变量；SQLite 全绿不替代 MySQL 权威（锁/约束/并发以 MySQL 结果为准）。
 
 ## 4. MC11 管理中心闭环状态（当前）
 
