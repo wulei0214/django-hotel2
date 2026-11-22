@@ -13,11 +13,15 @@ from django.conf import settings
 from django.test import SimpleTestCase
 
 TEMPLATE_DIR = Path(settings.BASE_DIR) / "templates" / "pms"
+STATIC_JS_DIR = Path(settings.BASE_DIR) / "static" / "js"
 
 
 class CenterTemplateRegressionTests(SimpleTestCase):
     def read_template(self, name):
         return (TEMPLATE_DIR / name).read_text(encoding="utf-8")
+
+    def read_js(self, name):
+        return (STATIC_JS_DIR / name).read_text(encoding="utf-8")
 
     def test_write_centers_render_session_backed_csrf_token(self):
         self.assertTrue(settings.CSRF_USE_SESSIONS)
@@ -122,3 +126,27 @@ class CenterTemplateRegressionTests(SimpleTestCase):
         self.assertIn("!task.assigned_to || task.assigned_to === currentUserId", source)
         # REJECTED 的「重新开始」入口必须保留（状态机对齐：REJECTED→start→IN_PROGRESS）
         self.assertIn('"重新开始", "", "start"', source)
+
+    def test_frontdesk_deposit_methods_align_with_server_enum(self):
+        """MC11-RES-04：押金方式下拉必须与服务端枚举对齐
+        （BillingService.VALID_PAYMENT_METHODS = CASH/CARD/TRANSFER，
+        BANK_TRANSFER 由服务端归一为 TRANSFER）。OTHER 不在服务端枚举内，
+        选择后提交必然 400——前端不得提供服务端不接受的选项。"""
+        source = self.read_js("frontdesk.js")
+        deposit_section = source.split("function renderDepositForm", 1)[1].split("function ", 1)[0]
+        self.assertIn('"CASH"', deposit_section)
+        self.assertIn('"CARD"', deposit_section)
+        self.assertIn('"BANK_TRANSFER"', deposit_section)
+        self.assertNotIn('["OTHER"', deposit_section)
+        self.assertNotIn('"其他"', deposit_section)
+
+    def test_frontdesk_refresh_rebuilds_open_folio_entries(self):
+        """MC11-RES-05：操作刷新（refreshAfterOperation）必须同步重建已展开
+        的账单凭证面板（detail-folio-entries），否则收款/押金/退款/退房后
+        面板滞留旧凭证，与摘要区数字不一致。展开状态由 state.folioOpen
+        跟踪：抽屉重开复位、loadFolio 与查看按钮置位。"""
+        source = self.read_js("frontdesk.js")
+        self.assertIn("folioOpen: false", source)
+        self.assertIn("state.folioOpen = false", source)  # openDrawer 复位
+        self.assertIn("if (state.folioOpen) await loadFolio(bookingNo);", source)
+        self.assertIn("state.folioOpen = true; loadFolio(bookingNo)", source)

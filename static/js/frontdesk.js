@@ -14,6 +14,7 @@
         assigned: "all",
         readiness: "ALL",
         currentBooking: null,
+        folioOpen: false,
         paymentKey: null,
         depositKey: null,
         refundKey: null,
@@ -351,6 +352,9 @@
         $("detail-operations").replaceChildren();
         $("fd-operations-section").hidden = true;
         $("detail-folio-entries").replaceChildren();
+        // MC11-RES-05：凭证面板展开状态跟随抽屉重开复位；操作刷新时按此
+        // 标记决定是否同步重建，避免已展开的面板滞留操作前旧数据。
+        state.folioOpen = false;
         state.paymentKey = null;
         state.depositKey = null;
         $("fd-view-folio").hidden = false;
@@ -377,6 +381,9 @@
     async function refreshAfterOperation(bookingNo, message) {
         showToast(message, false);
         await loadDetail(bookingNo);
+        // MC11-RES-05：凭证面板已展开时同步重建，否则操作后（收款/押金/
+        // 退款/退房等产生新凭证的操作）面板滞留旧数据，与摘要区数字不一致。
+        if (state.folioOpen) await loadFolio(bookingNo);
         await loadOverview();
         await loadList();
         await loadCashierShift();
@@ -644,7 +651,11 @@
         amountLabel.appendChild(amount); form.appendChild(amountLabel);
         var methodLabel = element("label", "fd-operation-label", "押金方式");
         var method = element("select", "fd-operation-select");
-        [["CASH","现金"],["CARD","银行卡 / 刷卡"],["BANK_TRANSFER","银行转账"],["OTHER","其他"]].forEach(function (entry) {
+        /* MC11-RES-04：押金方式必须与服务端枚举（BillingService.
+           VALID_PAYMENT_METHODS = CASH/CARD/TRANSFER，BANK_TRANSFER 由
+           服务端归一为 TRANSFER）对齐；OTHER 不在服务端枚举内，提交
+           必然 400。前端不得提供服务端不接受的选项。 */
+        [["CASH","现金"],["CARD","银行卡 / 刷卡"],["BANK_TRANSFER","银行转账"]].forEach(function (entry) {
             var option = element("option", "", entry[1]); option.value = entry[0]; method.appendChild(option);
         });
         methodLabel.appendChild(method); form.appendChild(methodLabel);
@@ -1023,7 +1034,7 @@
             if (!roomList.children.length) roomList.appendChild(element("div", "fd-detail-room", "暂无房间明细"));
 
             renderOperations(item);
-            $("fd-view-folio").onclick = function () { loadFolio(bookingNo); };
+            $("fd-view-folio").onclick = function () { state.folioOpen = true; loadFolio(bookingNo); };
         } catch (error) {
             showToast(error.message, true);
             $("detail-guest-name").textContent = "暂时无法读取";
@@ -1035,6 +1046,7 @@
             var payload = await api("folios/" + encodeURIComponent(bookingNo));
             var data = payload.data || {};
             var summary = data.summary || {};
+            state.folioOpen = true; /* MC11-RES-05：面板已展开，后续操作刷新须同步重建 */
             /* V12-10：本区展示的是"账单全量流水"（含已结账单），与上方预订摘要
                的"当前未结应收"口径不同。已结账单必须换标签，否则点开明细时
                数字从 0.00 跳到累计值，会被读成账务被改写。 */

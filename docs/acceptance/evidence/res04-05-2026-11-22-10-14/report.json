@@ -1,0 +1,40 @@
+{
+  "task": "MC11-RES-04 + MC11-RES-05",
+  "base": "http://127.0.0.1:8124",
+  "booking_no": "RC9BC9C09C245A97C0520",
+  "results": [
+    {
+      "name": "fixture: reservation with OPEN folio",
+      "pass": true,
+      "detail": "RC9BC9C09C245A97C0520"
+    },
+    {
+      "name": "RES-04 deposit select has no OTHER",
+      "pass": true,
+      "detail": "CASH/CARD/BANK_TRANSFER"
+    },
+    {
+      "name": "RES-04 deposit select keeps server-accepted methods",
+      "pass": true,
+      "detail": "CASH/CARD/BANK_TRANSFER"
+    },
+    {
+      "name": "RES-05 fixture: folio panel open, deposit entries visible",
+      "pass": true,
+      "detail": "4 deposit row(s)"
+    },
+    {
+      "name": "RES-05 panel rebuilt after operation (new deposit visible)",
+      "pass": true,
+      "detail": "4 -> 6"
+    },
+    {
+      "name": "RES-05 API cross-check: panel rows match entries+payments",
+      "pass": true,
+      "detail": "api 3 entries + 3 payments = 6; panel 6"
+    }
+  ],
+  "passed": 6,
+  "failed": 0,
+  "finished_at": "2026-11-22T10:14:39.387Z"
+}
