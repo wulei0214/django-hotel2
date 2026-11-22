@@ -2,19 +2,19 @@
 
 > 文档编号：GOV-001 ｜ 类型：GOVERNANCE ｜ 状态：ACTIVE ｜ 版本域：跨版本 ｜ 业务模块：文档治理
 > **本文件是全仓唯一「当前值」载体**。更新方式：整体重写固定章节，禁止追加节；旧内容靠 Git 历史与《更新日志》追溯。
-> 本轮核实基线：远端 main HEAD `0d67e0b`（2026-11-22 现取现核；负责人裁定基线为 `21e04df`，其后为 CI type-check、TASK-01 落库、扫描门禁修复、V13-03/04、裁定落档与 RES-04/RES-05 修复；工作树另含本地提交 `d30ef14`「MC11-RPT-01 用例增强」与本批 TASK-06 收口提交）。当前值以远端 main 现取现核；历史证据仍绑定各自原始 SHA，不随本文件更新。本次修订依据：PMS 2.0 总任务书 V3.0 第一批负责人 2026-11-22 裁定 + 本轮 TASK-06 矩阵复跑与凭据扫描收口。
+> 本轮核实基线：远端 main HEAD `b4d5aa0`（2026-11-22 现取现核；负责人裁定基线为 `21e04df`，其后为 CI type-check、TASK-01 落库、扫描门禁修复、V13-03/04、裁定落档、RES-04/RES-05 修复与复验入账、TASK-06 九岗位矩阵收口、TASK-21 历史扫描补证）。当前值以远端 main 现取现核；历史证据仍绑定各自原始 SHA，不随本文件更新。本次修订依据：PMS 2.0 总任务书 V3.0 第一批负责人 2026-11-22 裁定 + V3.2 增量整改（TASK-14 报表复算增强、TASK-17/18/19/21 收口）。
 
 ## 1. 基线与 CI
 
-- **当前基线 `0d67e0b`**：负责人裁定基线为 `21e04df`，其后依次为 `0d865eb`（type-check 清偿）、`a04ade5`（TASK-01 落库）、`0c61398`（扫描门禁修复）、`9fa3520`（扫描证据）、`d55b328`（V13-04）、`ade5cca`（V13-03）、`0a3d3ce`（裁定落档）、`0d67e0b`（RES-04/RES-05 修复）。本批提交链见 V3.0 第一批交付记录。不得继续使用 `c4c15b6`、`8467012`、`c24b1da`、`1591ce2`、`387e6bf` 或更早 SHA 描述当前 main 状态。
-- **CI（现取，2026-11-22，绑定 `0c61398`）**：Django CI run `45005686602` 五个 job 全绿（lint / docs-lint / secret-scan / type-check / test），tests workflow 同步成功。**secret-scan 本次为真绿**：日志 `shell: /usr/bin/bash … -e -o pipefail` 且 `hit_count: 0`，与 `0d865eb`/`a04ade5` 的假绿（`hit_count: 1` 而 job success）有本质区别，详见 `docs/acceptance/evidence/v3-security-scan-2026-11-22.md` §六。CI 通过 ≠ 部署或独立验收。
+- **当前基线 `b4d5aa0`**：负责人裁定基线为 `21e04df`，其后依次为 `0d865eb`（type-check 清偿）、`a04ade5`（TASK-01 落库）、`0c61398`（扫描门禁修复）、`9fa3520`（扫描证据）、`d55b328`/`ade5cca`（V13-04/V13-03）、`0a3d3ce`（裁定落档）、`0d67e0b`（RES-04/RES-05 修复）、`d30ef14`/`3a85acd`（TASK-14 复算增强 + dev MySQL 证据）、`3b35e29`（查漏补缺）、`b9c9a4c`（TASK-06 九岗位矩阵收口）、`99c020e`（RES-04/05 复验入账，MC11 统计 46/46）、`a58387a`/`03be8cd`/`7d534e3`（TASK-21 历史扫描补证）、`9dd1267`（G14 owner 补充确认材料就位）、`b4d5aa0`（扫描证据去字面量，CI 恢复全绿）。不得继续使用 `c4c15b6`、`8467012`、`c24b1da`、`1591ce2`、`387e6bf` 或更早 SHA 描述当前 main 状态。
+- **CI（现取，2026-11-22，绑定 `b4d5aa0`）**：Django CI run `45024442610` 五 job 全绿 + tests workflow run `45024442578` success；此前 `9dd1267` 的 Django CI run `45023592595` secret-scan 失败（历史扫描证据 md 回抄了已轮换口令哨兵值，`b4d5aa0` 去字面量后恢复）。**secret-scan 为真绿**：工作流 `-o pipefail` 且 `hit_count: 0`，详见 `docs/acceptance/evidence/v3-security-scan-2026-11-22.md` §六 与 `docs/acceptance/evidence/v3-security-scan-history-2026-11-22.md`（含 Git 历史扫描 10 处命中的分类处置与 Mimosa scanner 根因登记）。CI 通过 ≠ 部署或独立验收。
 - 当前部署形态：**Windows 本地开发/测试/演示/验收**（.env + waitress）。真实生产部署 `WAITING_FOR_SERVER / PRODUCTION PENDING`（等服务器与生产资源具备），不得把本地运行结果冒充生产验收。
 - 门禁：`python scripts/docs_link_check.py check` 为本地等效命令，基线冻结于 `docs_gate_baseline.json`。
 
 ## 2. OpenAPI 契约
 
 - 权威快照：`docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/openapi.json`；兼容镜像：`docs/接口文档/openapi.json`。
-- **现值（绑定 `0d865eb`，2026-11-22 现取现核）**：OpenAPI **172 paths / 174 HTTP operations**；双快照逐字节一致（SHA-256 均为 `C44EC999…D154`），**1,357,610 字节**。较 2026-11-17 值（168/169）净变更为 V3.0 第一批新增的 walk-in options、前台取消等端点。
+- **现值（绑定 `b4d5aa0`，2026-11-22 现取现核 + 本地重导出核验）**：OpenAPI **172 paths / 174 HTTP operations**；双快照逐字节一致（SHA-256 均为 `C44EC999…D154`），**1,357,610 字节**；本地 `export_openapi_schema` 重导出哈希不变（导出稳定）。较 2026-11-17 值（168/169）净变更为 V3.0 第一批新增的 walk-in options、前台取消、day-use 转过夜等端点；抽查新增端点（walk-in-options/walk-ins/convert-to-overnight/cancel）权限说明与 4xx/5xx 错误响应定义齐备。
 - 守卫：`apps/api/test_openapi_schema.py` 逐字节断言两快照一致；`openapi-snapshot.yml` 负责导出与镜像同步。**两路径冻结，禁止第三份快照**。
 
 ## 3. 双引擎测试数
@@ -25,13 +25,14 @@
 | `docs/acceptance/evidence/v3-mysql-fullsuite-20261122.log` | Ran **1878**，OK (skipped=3)，exit 0 | 同轮，**MySQL 8 权威**（文件头含错峰登记） |
 | `docs/acceptance/evidence/mc11-{sqlite,mysql}-fullsuite-20261121.log` | 1846 / 1849 OK | 历史（11C-001 验收轮，e4599db 链） |
 
-- 最新权威全量为 **1878/1878 双绿**（2026-11-22，绑定 V3.0 第一批代码态 `1b882eb`；净增 32 例=walk-in-options/日租建单/转过夜/前台取消/幂等契约/复算冒烟/夜审员矩阵）。其后 `21e04df` 为文档/证据、`0d865eb` 为 type-check 收窄，未新增全量测试；双引擎数字不替代安全扫描与生产验收。
+- 最新权威全量为 **1878/1878 双绿**（2026-11-22，绑定 V3.0 第一批代码态 `1b882eb`；净增 32 例=walk-in-options/日租建单/转过夜/前台取消/幂等契约/复算冒烟/夜审员矩阵）。其后 `21e04df`/`0d865eb` 为文档与 type-check；V3.2 增量（`d30ef14`）复算工具新增 15 例专项测试（apps.api.test_verify_report_consistency，SQLite 实测 OK），并入 CI test job（`b4d5aa0` run `45024442610` success）；双引擎数字不替代安全扫描与生产验收。
+- **V3.2 TASK-14 验收证据**：`docs/acceptance/evidence/v3-task14-reconcile-devmysql-20261122.log`——dev MySQL DEFAULT 物业 2026-11-16..11-22 真实数据三项核对全 PASS、exit 0，绑定 `d30ef14`。复算逻辑独立实现（不调用 report_center 内部函数），差异输出 name/date/report_value/source_value 结构化 JSON、失败退出码 1。
 - 规则：历史报告中的测试数字仅对其各自 SHA 有效（1846/1849/1602/…均为绑定值）；MySQL 全量测试须遵守错峰纪律（同一共享测试环境同一时刻仅一个全量进程，登记执行人/起止/库名/命令/退出码），剥 `DJANGO_PLATFORM_ADMIN_*` 实名环境变量；SQLite 全绿不替代 MySQL 权威（锁/约束/并发以 MySQL 结果为准）。
 
 ## 4. MC11 管理中心闭环状态（当前）
 
 - **权威载体**：`docs/PMS2.0_当前版本/05_测试审计与缺陷整改/PMS2_11个管理中心功能闭环总盘点表_2026-11-20.md`（负责人 2026-11-22 裁定后修订版）。
-- **当前统计（裁定基线 `21e04df`，现取 `0d67e0b`）**：92 项缺口（90 原始 + V13-02 新登记 2）已关闭 **46** 项；**开放 46 项 = P1 0 + P2/生产待验收/待裁定登记 46**；P0 决策项清零（NA-13 已由负责人批准落地 1b882eb）。**RES-04/RES-05 已于 `0d67e0b` 修复并复验关闭**（押金 OTHER 漂移 + 凭证面板重建；浏览器 E2E `docs/acceptance/evidence/res04-05-2026-11-22-10-14/` 6/6 PASS，回归用例 `apps/api/test_center_template_regressions.py` 固化），**MC11 P1 开放清零**。
+- **当前统计（裁定基线 `21e04df`，现取 `b4d5aa0`）**：92 项缺口（90 原始 + V13-02 新登记 2）已关闭 **46** 项；**开放 46 项 = P1 0 + P2/生产待验收/待裁定登记 46**；P0 决策项清零（NA-13 已由负责人批准落地 1b882eb）。**RES-04/RES-05 已于 `0d67e0b` 修复、`99c020e` 复验入账并改 CLOSED**（押金 OTHER 漂移 + 凭证面板重建；浏览器 E2E `docs/acceptance/evidence/res04-05-2026-11-22-10-14/` 6/6 PASS，回归用例 `apps/api/test_center_template_regressions.py` 固化），**MC11 P1 开放清零**。
 - **TASK-01 / HK-10 已关闭（`a04ade5`）**：任务池 PENDING「开始」按钮、已指派他人守卫、REJECTED 重开伴随缺陷（服务层此前只收 PENDING，重开必然 409）连同三组浏览器证据正式落库，状态由 OPEN 转 CLOSED / BROWSER VERIFIED。
 - V3.0 第一批已验收部分：Day-use 前台建单+转过夜（12/12 PASS）、前台取消 PENDING（5/5 PASS）、任务池 PENDING 开始（3 组 E2E，a04ade5）、报表源数据复算实测 PASS。交付记录 `docs/PMS2.0_当前版本/04_开发实施记录/`（V3.0 第一批）。
 - 已关闭项不再以原始 P0/P1 状态计入剩余工作量；生产条件限制类标记 `WAITING_FOR_SERVER`，与代码未实现严格分开。
@@ -41,7 +42,7 @@
 
 - **G14 项目验收**：负责人 2026-11-17 复核后代录 **PASS WITH RESERVATIONS**（96 号签署页代录节；保留项：生产库备份恢复、Redis 多 worker、生产部署与 PII 独立密钥切换须环境具备后重做）。负责人 2026-11-22 裁定：该结论**继续有效，不要求第三方独立签字**；但最新基线在 TASK-01 落库复验、TASK-06 九岗位浏览器矩阵、最新 CI 与安全扫描证据、owner 补充确认四项完成前**不得标记最终 PASS**。
 - **V1.3 未关闭事项专项总表**：本轮总体结论 **NO-GO**——V13-01 MySQL 孪生账户取证被 DBA 阻塞、生产侧 V13-03/V13-04 等待真实生产输入。G14 历史验收结论与 V1.3 专项 NO-GO 是两个口径，不得混同。
-- **V3.0 第一批**：主体交付完成，总体暂定 **PASS WITH RESERVATIONS**；四项收口中三项已闭环——TASK-01 已落库复验（a04ade5）、TASK-06 九岗位矩阵已复跑 PASS（task06-nine-role-20261122）、安全扫描已转 PASS（0c61398，工作树口径）；**仅剩 owner 对最新基线的补充确认**，开发自测不替代负责人确认。生产资源缺失仍不计入代码完成率。
+- **V3.0 第一批**：主体交付完成，总体暂定 **PASS WITH RESERVATIONS**；负责人裁定的四项前置已全部闭环——TASK-01 已落库复验（a04ade5）、TASK-06 九岗位矩阵已复跑 PASS（task06-nine-role-20261122）、最新 CI 与安全扫描证据齐备（b4d5aa0 run 45024442610 全绿；工作树扫描 PASS + 历史扫描分类处置见 v3-security-scan-history-2026-11-22.md）；**仅剩 owner 对最新基线的补充确认**（材料已按 V13-08 §十就位），开发自测不替代负责人确认。生产资源缺失仍不计入代码完成率。
 
 ## 6. 待负责人裁定项
 
