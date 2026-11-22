@@ -1,0 +1,23 @@
+{
+  "task": "TASK-01 companion: assigned-to-others guard",
+  "results": [
+    {
+      "name": "HK10-01b self-assigned PENDING row shows start",
+      "pass": true,
+      "detail": "1 button(s)"
+    },
+    {
+      "name": "HK10-09 row assigned to duty manager hides start",
+      "pass": true,
+      "detail": "0 button(s)"
+    },
+    {
+      "name": "HK10-09b row assigned to other staff hides start",
+      "pass": true,
+      "detail": "0 button(s)"
+    }
+  ],
+  "passed": 3,
+  "failed": 0,
+  "finished_at": "2026-11-22T06:34:48.992Z"
+}

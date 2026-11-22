@@ -108,3 +108,17 @@ class CenterTemplateRegressionTests(SimpleTestCase):
         # 未解析成功的占位符不得打到服务端（给出明确提示而非 404 网络错误）
         self.assertIn("/\\{\\w+\\}/.test(requestUrl)", source)
         self.assertIn("缺少定位操作行所需的 ID 字段", source)
+
+    def test_housekeeping_task_pool_pending_row_offers_start_action(self):
+        """MC11-HK-10（任务书 TASK-01）：清洁任务池 PENDING 任务行必须有
+        「开始」按钮（复用已有 start API），否则客房服务员无法从正式页面
+        开始新任务，只能走 API 路径完成测试。已指派给他人的 PENDING 任务
+        不显示「开始」（服务端守卫为幂等兜底，前端不发起必然 409 的请求）。"""
+        source = self.read_template("housekeeping_center.html")
+        # PENDING 分支内的 start 按钮（认领/派工之外，服务层 PENDING→IN_PROGRESS）
+        self.assertIn('"开始", "", "start"', source)
+        self.assertIn('"认领", "", "claim"', source)
+        # 显示守卫：只有未指派或指派给本人的 PENDING 任务才出现开始按钮
+        self.assertIn("!task.assigned_to || task.assigned_to === currentUserId", source)
+        # REJECTED 的「重新开始」入口必须保留（状态机对齐：REJECTED→start→IN_PROGRESS）
+        self.assertIn('"重新开始", "", "start"', source)

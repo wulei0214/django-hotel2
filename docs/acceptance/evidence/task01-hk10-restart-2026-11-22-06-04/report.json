@@ -1,0 +1,25 @@
+{
+  "task": "TASK-01 companion: REJECTED restart",
+  "task_id": 17,
+  "room": "3287",
+  "results": [
+    {
+      "name": "HK10-07 REJECTED row renders restart",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "HK10-08 restart -> task IN_PROGRESS",
+      "pass": true,
+      "detail": "IN_PROGRESS"
+    },
+    {
+      "name": "HK10-08b room DIRTY->CLEANING same transaction",
+      "pass": true,
+      "detail": "CLEANING"
+    }
+  ],
+  "passed": 3,
+  "failed": 0,
+  "finished_at": "2026-11-22T06:04:32.231Z"
+}

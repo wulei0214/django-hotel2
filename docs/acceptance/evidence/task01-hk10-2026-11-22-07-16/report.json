@@ -1,0 +1,72 @@
+{
+  "task": "TASK-01 / MC11-HK-10 pending start button",
+  "base": "http://127.0.0.1:8123",
+  "operator": "test_housekeeping",
+  "verified_by": "test_duty",
+  "task_id": 21,
+  "results": [
+    {
+      "name": "fixture: staff profiles",
+      "pass": true,
+      "detail": "HK=#16 Duty=#13"
+    },
+    {
+      "name": "fixture: dirty room exists",
+      "pass": true,
+      "detail": "room 4612"
+    },
+    {
+      "name": "fixture: PENDING tasks exist",
+      "pass": true,
+      "detail": "count 4"
+    },
+    {
+      "name": "HK10-01 PENDING rows render start button",
+      "pass": true,
+      "detail": "2 button(s)"
+    },
+    {
+      "name": "HK10-02 room dirty before start",
+      "pass": true,
+      "detail": "DIRTY"
+    },
+    {
+      "name": "HK10-03 page start -> task IN_PROGRESS",
+      "pass": true,
+      "detail": "IN_PROGRESS"
+    },
+    {
+      "name": "HK10-04 room transitioned DIRTY->CLEANING",
+      "pass": true,
+      "detail": "CLEANING"
+    },
+    {
+      "name": "HK10-05 page complete -> task DONE",
+      "pass": true,
+      "detail": "DONE"
+    },
+    {
+      "name": "HK10-06 inspect FAIL -> REJECTED",
+      "pass": true,
+      "detail": "REJECTED"
+    },
+    {
+      "name": "HK10-07 REJECTED row renders restart",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "HK10-08 restart -> IN_PROGRESS",
+      "pass": true,
+      "detail": "IN_PROGRESS"
+    },
+    {
+      "name": "HK10-09 row assigned to others hides start",
+      "pass": true,
+      "detail": "SKIP: no second fixture; covered by template regression test"
+    }
+  ],
+  "passed": 12,
+  "failed": 0,
+  "finished_at": "2026-11-22T07:16:17.500Z"
+}

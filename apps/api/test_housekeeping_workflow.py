@@ -95,6 +95,46 @@ class HousekeepingTaskWorkflowTests(HousekeepingCenterTestBase):
         inspection = RoomInspection.objects.get(task=task)
         self.assertEqual(inspection.failed_items, ["地面有水渍"])
 
+    def test_rejected_task_can_restart_to_in_progress(self):
+        """MC11-HK-10 伴随缺陷：任务池 REJECTED 行「重新开始」按钮自
+        c73aaf2 起调用 start API，但服务层此前只接受 PENDING——REJECTED
+        重开必然 409，按钮从未可用。模型 help_text 既有口径「REJECTED 回
+        IN_PROGRESS」；本测试固化服务层补齐后的语义：REJECTED→IN_PROGRESS
+        且同事务把检查退回的房间 DIRTY→CLEANING；DONE/CANCELLED 等其余
+        状态仍拒绝开始（不放宽状态机）。"""
+        room = self._make_dirty_room("HK-WF-05")
+        task = self._task(room, status=HousekeepingTask.TaskStatus.DONE, assigned_to=self.hk)
+        response = self._post(
+            f"/api/v1/housekeeping/tasks/{task.pk}/inspect",
+            {"result": "FAIL", "failed_items": ["地面有水渍"], "notes": "需重新清洁"},
+            user=self.dm,
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        task.refresh_from_db()
+        self.assertEqual(task.status, HousekeepingTask.TaskStatus.REJECTED)
+
+        response = self._post(f"/api/v1/housekeeping/tasks/{task.pk}/start", user=self.hk)
+        self.assertEqual(response.status_code, 200, response.content)
+        task.refresh_from_db()
+        room.refresh_from_db()
+        self.assertEqual(task.status, HousekeepingTask.TaskStatus.IN_PROGRESS)
+        self.assertEqual(room.housekeeping_status, Room.HousekeepingStatus.CLEANING)
+
+        # 其余状态不放宽：终态（INSPECTED/CANCELLED）开始仍然 409。
+        cancelled = self._task(self._make_dirty_room("HK-WF-06"))
+        cancel = self._post(
+            f"/api/v1/housekeeping/tasks/{cancelled.pk}/cancel",
+            {"reason": "重复任务撤销"},
+            user=self.dm,
+        )
+        self.assertEqual(cancel.status_code, 200, cancel.content)
+        self.assertEqual(
+            self._post(
+                f"/api/v1/housekeeping/tasks/{cancelled.pk}/start", user=self.hk
+            ).status_code,
+            409,
+        )
+
     def test_assigned_group_filter_isolates_cross_group_tasks(self):
         """MC-006-R2：assigned=group 必须真过滤——本组任务可见，跨组任务不可见。"""
         hk2 = self._make_staff("hk_center_cleaner2", "客房服务员")

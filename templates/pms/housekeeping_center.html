@@ -718,6 +718,12 @@
     const actions = el("div", "hk-row-actions");
     const msgBox = el("div", "hk-row-msg");
     if (task.status === "PENDING" && canFlow) {
+      /* MC11-HK-10：PENDING 任务必须能从页面直接开始（复用 POST /start，
+         服务端同事务推进房态 DIRTY→CLEANING 并守卫“已指派给他人”）。 */
+      if (!task.assigned_to || task.assigned_to === currentUserId) {
+        actions.appendChild(taskButton(tr, task, msgBox, "开始", "", "start", null,
+            function () { return "已开始清洁，房间转为清洁中。"; }));
+      }
       actions.appendChild(taskButton(tr, task, msgBox, "认领", "", "claim", null,
           function () { return "已认领，负责人已改为当前账号。"; }));
       const input = assignInput();

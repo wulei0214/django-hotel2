@@ -131,13 +131,24 @@ def assign_housekeeping_task(*, property_obj, task_id, assignee, actor):
 
 @transaction.atomic
 def start_housekeeping_task(*, property_obj, task_id, actor):
-    """开始清洁：任务与房间 DIRTY→CLEANING 同事务。"""
+    """开始清洁：任务与房间 DIRTY→CLEANING 同事务。
+
+    MC11-HK-10 伴随缺陷（2026-11-22 E2E 实证）：任务池 REJECTED 行的
+    「重新开始」按钮自 c73aaf2 起调用本服务，但本服务此前只接受 PENDING——
+    REJECTED 重开必然 409，按钮从未可用。模型 help_text 既有口径
+    「REJECTED 回 IN_PROGRESS」（models.py 状态机注释）与页面按钮一致，
+    此处补齐服务层语义：REJECTED 任务重新开始，同事务把已检查退回的
+    房间 DIRTY→CLEANING（与 PENDING 开始同一推进路径，不新建状态机）。
+    """
     _require(actor, property_obj, "inventory.housekeeping_update", "缺少客房任务更新权限。")
     task = _task_or_error(property_obj, task_id)
     if task.status == HousekeepingTask.TaskStatus.IN_PROGRESS:
         return task, False
-    if task.status != HousekeepingTask.TaskStatus.PENDING:
-        raise HousekeepingOperationError("只有待清洁任务可以开始。")
+    if task.status not in (
+        HousekeepingTask.TaskStatus.PENDING,
+        HousekeepingTask.TaskStatus.REJECTED,
+    ):
+        raise HousekeepingOperationError("只有待清洁或检查退回的任务可以开始。")
     if task.assigned_to_id and task.assigned_to_id != actor.pk:
         raise HousekeepingOperationError("该任务已指派给其他员工。")
     before = {"status": task.status, "housekeeping_status": task.room.housekeeping_status}
