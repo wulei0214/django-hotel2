@@ -22,7 +22,10 @@ class VerifyReportConsistencyCommandTests(TestCase):
     """verify_report_consistency 命令：可执行 + 空期 PASS。"""
 
     def _seed_owner(self):
-        owner = User.objects.create_user(username="vc_owner", password="x-not-used-123")
+        # 该账号只用于角色归属，从不登录：不设口令，避免出现任何口令字面量。
+        owner = User.objects.create_user(username="vc_owner")
+        owner.set_unusable_password()
+        owner.save(update_fields=["password"])
         profile = StaffProfile.objects.create(
             user=owner,
             full_name="复算店长",
@@ -56,8 +59,10 @@ class VerifyReportConsistencyCommandTests(TestCase):
         out = StringIO()
         call_command(
             "verify_report_consistency",
-            "--days", "1",
-            "--business-date", "2026-11-22",
+            "--days",
+            "1",
+            "--business-date",
+            "2026-11-22",
             "--as-json",
             stdout=out,
         )

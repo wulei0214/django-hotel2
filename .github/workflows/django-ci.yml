@@ -27,7 +27,13 @@ jobs:
         with:
           python-version: "3.9"
       - name: Secret literal scan (whole repository)
-        run: python scripts/scan_secrets.py --json | tee secret-scan-report.json
+        # 管道会覆盖扫描器退出码（tee 恒返回 0）：0d865eb 的 run 实测
+        # hit_count=1 而 job 仍报 success，属门禁假绿。此处显式开启
+        # pipefail，命中时整条管道以 1 失败，保留 JSON 报告供上传。
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/scan_secrets.py --json | tee secret-scan-report.json
       - name: Scan self-test (mock credential must block)
         # 反向验证：扫描器必须对模拟密钥返回退出码 1，防止"永远通过"的空转门禁。
         # 样例密钥在运行时拼装，避免本工作流自身被扫描器命中（自伤式误报）。
