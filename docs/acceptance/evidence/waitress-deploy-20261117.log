@@ -1,1 +1,586 @@
 INFO:waitress:Serving on http://0.0.0.0:8000
+WARNING:security:login_failed ip=127.0.0.1 username_fp=44970b42ae8d reason=bad_credentials
+WARNING:security:login_failed ip=127.0.0.1 username_fp=9cbd64eef006 reason=bad_credentials
+WARNING:security:login_failed ip=127.0.0.1 username_fp=356f6912a7a6 reason=bad_credentials
+WARNING:security:login_failed ip=127.0.0.1 username_fp=356f6912a7a6 reason=bad_credentials
+ERROR:hotel.api:API 未预期错误：POST /api/v1/guests/90/update
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\mysql\base.py", line 75, in execute
+    return self.cursor.execute(query, args)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 148, in execute
+    result = self._query(query)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 310, in _query
+    conn.query(q)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 548, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 775, in _read_query_result
+    result.read()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 1156, in read
+    first_packet = self.connection._read_packet()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 725, in _read_packet
+    packet.raise_for_error()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\protocol.py", line 221, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\err.py", line 143, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.DataError: (1406, "Data too long for column 'full_name' at row 1")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 97, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 217, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\api\guest_center.py", line 677, in guest_update
+    guest, changed = GuestService.update_guest(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\guests\services.py", line 405, in update_guest
+    guest.save()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 812, in save
+    self.save_base(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 863, in save_base
+    updated = self._save_table(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 976, in _save_table
+    updated = self._do_update(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 1040, in _do_update
+    return filtered._update(values) > 0
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\query.py", line 1216, in _update
+    return query.get_compiler(self.db).execute_sql(CURSOR)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\sql\compiler.py", line 1822, in execute_sql
+    cursor = super().execute_sql(result_type)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\sql\compiler.py", line 1398, in execute_sql
+    cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 102, in execute
+    return super().execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 67, in execute
+    return self._execute_with_wrappers(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 80, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\mysql\base.py", line 75, in execute
+    return self.cursor.execute(query, args)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 148, in execute
+    result = self._query(query)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 310, in _query
+    conn.query(q)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 548, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 775, in _read_query_result
+    result.read()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 1156, in read
+    first_packet = self.connection._read_packet()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 725, in _read_packet
+    packet.raise_for_error()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\protocol.py", line 221, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\err.py", line 143, in raise_mysql_exception
+    raise errorclass(errno, errval)
+django.db.utils.DataError: (1406, "Data too long for column 'full_name' at row 1")
+ERROR:hotel.api:API 未预期错误：POST /api/v1/guests/90/update
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\mysql\base.py", line 75, in execute
+    return self.cursor.execute(query, args)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 148, in execute
+    result = self._query(query)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 310, in _query
+    conn.query(q)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 548, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 775, in _read_query_result
+    result.read()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 1156, in read
+    first_packet = self.connection._read_packet()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 725, in _read_packet
+    packet.raise_for_error()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\protocol.py", line 221, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\err.py", line 143, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.DataError: (1406, "Data too long for column 'full_name' at row 1")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 97, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 217, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\api\guest_center.py", line 677, in guest_update
+    guest, changed = GuestService.update_guest(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\guests\services.py", line 405, in update_guest
+    guest.save()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 812, in save
+    self.save_base(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 863, in save_base
+    updated = self._save_table(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 976, in _save_table
+    updated = self._do_update(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 1040, in _do_update
+    return filtered._update(values) > 0
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\query.py", line 1216, in _update
+    return query.get_compiler(self.db).execute_sql(CURSOR)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\sql\compiler.py", line 1822, in execute_sql
+    cursor = super().execute_sql(result_type)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\sql\compiler.py", line 1398, in execute_sql
+    cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 102, in execute
+    return super().execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 67, in execute
+    return self._execute_with_wrappers(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 80, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\mysql\base.py", line 75, in execute
+    return self.cursor.execute(query, args)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 148, in execute
+    result = self._query(query)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 310, in _query
+    conn.query(q)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 548, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 775, in _read_query_result
+    result.read()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 1156, in read
+    first_packet = self.connection._read_packet()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 725, in _read_packet
+    packet.raise_for_error()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\protocol.py", line 221, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\err.py", line 143, in raise_mysql_exception
+    raise errorclass(errno, errval)
+django.db.utils.DataError: (1406, "Data too long for column 'full_name' at row 1")
+ERROR:hotel.api:API 未预期错误：POST /api/v1/guests/90/update
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\mysql\base.py", line 75, in execute
+    return self.cursor.execute(query, args)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 148, in execute
+    result = self._query(query)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 310, in _query
+    conn.query(q)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 548, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 775, in _read_query_result
+    result.read()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 1156, in read
+    first_packet = self.connection._read_packet()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 725, in _read_packet
+    packet.raise_for_error()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\protocol.py", line 221, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\err.py", line 143, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.DataError: (1406, "Data too long for column 'full_name' at row 1")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 97, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 217, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\api\guest_center.py", line 677, in guest_update
+    guest, changed = GuestService.update_guest(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\guests\services.py", line 405, in update_guest
+    phone_ciphertext=encrypt_phone(norm),
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 812, in save
+    self.save_base(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 863, in save_base
+    updated = self._save_table(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 976, in _save_table
+    updated = self._do_update(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 1040, in _do_update
+    return filtered._update(values) > 0
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\query.py", line 1216, in _update
+    return query.get_compiler(self.db).execute_sql(CURSOR)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\sql\compiler.py", line 1822, in execute_sql
+    cursor = super().execute_sql(result_type)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\sql\compiler.py", line 1398, in execute_sql
+    cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 102, in execute
+    return super().execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 67, in execute
+    return self._execute_with_wrappers(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 80, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\mysql\base.py", line 75, in execute
+    return self.cursor.execute(query, args)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 148, in execute
+    result = self._query(query)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 310, in _query
+    conn.query(q)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 548, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 775, in _read_query_result
+    result.read()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 1156, in read
+    first_packet = self.connection._read_packet()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 725, in _read_packet
+    packet.raise_for_error()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\protocol.py", line 221, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\err.py", line 143, in raise_mysql_exception
+    raise errorclass(errno, errval)
+django.db.utils.DataError: (1406, "Data too long for column 'full_name' at row 1")
+ERROR:hotel.api:API 未预期错误：POST /api/v1/guests/90/update
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\mysql\base.py", line 75, in execute
+    return self.cursor.execute(query, args)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 148, in execute
+    result = self._query(query)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 310, in _query
+    conn.query(q)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 548, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 775, in _read_query_result
+    result.read()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 1156, in read
+    first_packet = self.connection._read_packet()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 725, in _read_packet
+    packet.raise_for_error()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\protocol.py", line 221, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\err.py", line 143, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.DataError: (1406, "Data too long for column 'full_name' at row 1")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 97, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 217, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\api\guest_center.py", line 677, in guest_update
+    guest, changed = GuestService.update_guest(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\guests\services.py", line 405, in update_guest
+    phone_ciphertext=encrypt_phone(norm),
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 812, in save
+    self.save_base(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 863, in save_base
+    updated = self._save_table(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 976, in _save_table
+    updated = self._do_update(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\base.py", line 1040, in _do_update
+    return filtered._update(values) > 0
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\query.py", line 1216, in _update
+    return query.get_compiler(self.db).execute_sql(CURSOR)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\sql\compiler.py", line 1822, in execute_sql
+    cursor = super().execute_sql(result_type)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\sql\compiler.py", line 1398, in execute_sql
+    cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 102, in execute
+    return super().execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 67, in execute
+    return self._execute_with_wrappers(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 80, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\mysql\base.py", line 75, in execute
+    return self.cursor.execute(query, args)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 148, in execute
+    result = self._query(query)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 310, in _query
+    conn.query(q)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 548, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 775, in _read_query_result
+    result.read()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 1156, in read
+    first_packet = self.connection._read_packet()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 725, in _read_packet
+    packet.raise_for_error()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\protocol.py", line 221, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\err.py", line 143, in raise_mysql_exception
+    raise errorclass(errno, errval)
+django.db.utils.DataError: (1406, "Data too long for column 'full_name' at row 1")
+INFO:waitress:Serving on http://0.0.0.0:8000
+ERROR:hotel.api:API 未预期错误：POST /api/v1/guests/90/update
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\api\guest_center.py", line 677, in guest_update
+    guest, changed = GuestService.update_guest(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\guests\services.py", line 380, in update_guest
+    raise GuestFieldError(
+apps.guests.services.GuestFieldError: full_name 长度不能超过 80 字符（当前 200）。
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 97, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 217, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\api\guest_center.py", line 686, in guest_update
+    except GuestFieldError as exc:
+NameError: name 'GuestFieldError' is not defined
+ERROR:hotel.api:API 未预期错误：POST /api/v1/guests/90/update
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\api\guest_center.py", line 677, in guest_update
+    guest, changed = GuestService.update_guest(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\guests\services.py", line 380, in update_guest
+    raise GuestFieldError(
+apps.guests.services.GuestFieldError: full_name 长度不能超过 80 字符（当前 200）。
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 97, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 217, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\api\guest_center.py", line 686, in guest_update
+    except GuestFieldError as exc:
+NameError: name 'GuestFieldError' is not defined
+INFO:waitress:Serving on http://0.0.0.0:8000
+ERROR:hotel.api:API 未预期错误：POST /api/v1/guests/90/update
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\api\guest_center.py", line 677, in guest_update
+    guest, changed = GuestService.update_guest(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\guests\services.py", line 380, in update_guest
+    raise GuestFieldError(
+apps.guests.services.GuestFieldError: full_name 长度不能超过 80 字符（当前 200）。
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 97, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 217, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\api\guest_center.py", line 686, in guest_update
+    except GuestFieldError as exc:
+NameError: name 'GuestFieldError' is not defined
+ERROR:hotel.api:API 未预期错误：POST /api/v1/guests/90/update
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\api\guest_center.py", line 677, in guest_update
+    guest, changed = GuestService.update_guest(
+  File "D:\Python39\lib\contextlib.py", line 79, in inner
+    return func(*args, **kwds)
+  File "F:\Desktop\django-hotel\apps\guests\services.py", line 380, in update_guest
+    raise GuestFieldError(
+apps.guests.services.GuestFieldError: full_name 长度不能超过 80 字符（当前 200）。
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 97, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 217, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\api\guest_center.py", line 686, in guest_update
+    except GuestFieldError as exc:
+NameError: name 'GuestFieldError' is not defined
+INFO:waitress:Serving on http://0.0.0.0:8000
+WARNING:security:login_failed ip=127.0.0.1 username_fp=356f6912a7a6 reason=bad_credentials
+Forbidden (CSRF token missing.): /api/v1/reservations
+WARNING:django.security.csrf:Forbidden (CSRF token missing.): /api/v1/reservations
+Forbidden (CSRF token missing.): /api/v1/reservations
+WARNING:django.security.csrf:Forbidden (CSRF token missing.): /api/v1/reservations
+INFO:waitress:Serving on http://0.0.0.0:8000
+Forbidden (CSRF cookie not set.): /api/v1/front-desk/walk-in
+WARNING:django.security.csrf:Forbidden (CSRF cookie not set.): /api/v1/front-desk/walk-in
+Forbidden (CSRF cookie not set.): /api/v1/front-desk/walk-in
+WARNING:django.security.csrf:Forbidden (CSRF cookie not set.): /api/v1/front-desk/walk-in
+INFO:waitress:Serving on http://0.0.0.0:8000
+ERROR:hotel.api:API 未预期错误：POST /api/v1/notifications/refresh
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\mysql\base.py", line 75, in execute
+    return self.cursor.execute(query, args)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 148, in execute
+    result = self._query(query)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 310, in _query
+    conn.query(q)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 548, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 775, in _read_query_result
+    result.read()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 1156, in read
+    first_packet = self.connection._read_packet()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 725, in _read_packet
+    packet.raise_for_error()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\protocol.py", line 221, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\err.py", line 143, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.ProgrammingError: (1146, "Table 'hotel.inventory_roomassignmentconflict' doesn't exist")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 97, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\api\notification_center.py", line 231, in refresh
+    summary = refresh_operational_todos(property_obj)
+  File "F:\Desktop\django-hotel\apps\core\services_notifications.py", line 372, in refresh_operational_todos
+    items = _collect_active_items(property_obj, today)
+  File "F:\Desktop\django-hotel\apps\core\services_notifications.py", line 329, in _collect_active_items
+    for conflict in conflicts:
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\query.py", line 394, in __iter__
+    self._fetch_all()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\query.py", line 1867, in _fetch_all
+    self._result_cache = list(self._iterable_class(self))
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\query.py", line 87, in __iter__
+    results = compiler.execute_sql(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\sql\compiler.py", line 1398, in execute_sql
+    cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 102, in execute
+    return super().execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 67, in execute
+    return self._execute_with_wrappers(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 80, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\mysql\base.py", line 75, in execute
+    return self.cursor.execute(query, args)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 148, in execute
+    result = self._query(query)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 310, in _query
+    conn.query(q)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 548, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 775, in _read_query_result
+    result.read()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 1156, in read
+    first_packet = self.connection._read_packet()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 725, in _read_packet
+    packet.raise_for_error()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\protocol.py", line 221, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\err.py", line 143, in raise_mysql_exception
+    raise errorclass(errno, errval)
+django.db.utils.ProgrammingError: (1146, "Table 'hotel.inventory_roomassignmentconflict' doesn't exist")
+ERROR:hotel.api:API 未预期错误：POST /api/v1/notifications/refresh
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\mysql\base.py", line 75, in execute
+    return self.cursor.execute(query, args)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 148, in execute
+    result = self._query(query)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 310, in _query
+    conn.query(q)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 548, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 775, in _read_query_result
+    result.read()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 1156, in read
+    first_packet = self.connection._read_packet()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 725, in _read_packet
+    packet.raise_for_error()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\protocol.py", line 221, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\err.py", line 143, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.ProgrammingError: (1146, "Table 'hotel.inventory_roomassignmentconflict' doesn't exist")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "F:\Desktop\django-hotel\apps\core\api_contract.py", line 97, in wrapper
+    return view(request, *args, **kwargs)
+  File "F:\Desktop\django-hotel\apps\api\notification_center.py", line 231, in refresh
+    summary = refresh_operational_todos(property_obj)
+  File "F:\Desktop\django-hotel\apps\core\services_notifications.py", line 372, in refresh_operational_todos
+    items = _collect_active_items(property_obj, today)
+  File "F:\Desktop\django-hotel\apps\core\services_notifications.py", line 329, in _collect_active_items
+    for conflict in conflicts:
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\query.py", line 394, in __iter__
+    self._fetch_all()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\query.py", line 1867, in _fetch_all
+    self._result_cache = list(self._iterable_class(self))
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\query.py", line 87, in __iter__
+    results = compiler.execute_sql(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\models\sql\compiler.py", line 1398, in execute_sql
+    cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 102, in execute
+    return super().execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 67, in execute
+    return self._execute_with_wrappers(
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 80, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\utils.py", line 89, in _execute
+    return self.cursor.execute(sql, params)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\django\db\backends\mysql\base.py", line 75, in execute
+    return self.cursor.execute(query, args)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 148, in execute
+    result = self._query(query)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\cursors.py", line 310, in _query
+    conn.query(q)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 548, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 775, in _read_query_result
+    result.read()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 1156, in read
+    first_packet = self.connection._read_packet()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\connections.py", line 725, in _read_packet
+    packet.raise_for_error()
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\protocol.py", line 221, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "F:\Desktop\django-hotel\.venv\lib\site-packages\pymysql\err.py", line 143, in raise_mysql_exception
+    raise errorclass(errno, errval)
+django.db.utils.ProgrammingError: (1146, "Table 'hotel.inventory_roomassignmentconflict' doesn't exist")
+WARNING:security:login_failed ip=127.0.0.1 username_fp=356f6912a7a6 reason=bad_credentials
+D:\Python39\python.exe: No module named waitress
+INFO:waitress:Serving on http://0.0.0.0:8000
+INFO:waitress:Serving on http://0.0.0.0:8000
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header incorrect.): /api/v1/billing/refunds
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header incorrect.): /api/v1/billing/refunds
+Forbidden (CSRF token from the 'X-Csrftoken' HTTP header incorrect.): /api/v1/billing/refunds
+WARNING:django.security.csrf:Forbidden (CSRF token from the 'X-Csrftoken' HTTP header incorrect.): /api/v1/billing/refunds
+INFO:waitress:Serving on http://0.0.0.0:8000
+INFO:waitress:Serving on http://0.0.0.0:8000
+INFO:waitress:Serving on http://0.0.0.0:8000

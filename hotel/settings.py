@@ -136,17 +136,21 @@ if DB_ENGINE == "sqlite":
         }
     }
 else:
-    DATABASES = {
-        "default": {
-            "ENGINE": DB_ENGINES[DB_ENGINE],
-            "NAME": os.environ.get("DJANGO_DB_NAME", "hotel"),
-            "USER": os.environ.get("DJANGO_DB_USER", ""),
-            "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD", ""),
-            "HOST": os.environ.get("DJANGO_DB_HOST", "localhost"),
-            "PORT": os.environ.get("DJANGO_DB_PORT", "3306" if DB_ENGINE == "mysql" else "5432"),
-            "CONN_MAX_AGE": int(os.environ.get("DJANGO_DB_CONN_MAX_AGE", "60")),
-        }
+    # 值类型混合（str/int/bool），显式标注以免 mypy 按首项收窄为 dict[str, str]。
+    default_db: dict = {
+        "ENGINE": DB_ENGINES[DB_ENGINE],
+        "NAME": os.environ.get("DJANGO_DB_NAME", "hotel"),
+        "USER": os.environ.get("DJANGO_DB_USER", ""),
+        "PASSWORD": os.environ.get("DJANGO_DB_PASSWORD", ""),
+        "HOST": os.environ.get("DJANGO_DB_HOST", "localhost"),
+        "PORT": os.environ.get("DJANGO_DB_PORT", "3306" if DB_ENGINE == "mysql" else "5432"),
+        "CONN_MAX_AGE": int(os.environ.get("DJANGO_DB_CONN_MAX_AGE", "60")),
+        # V13-04：持久连接请求前健康检查（Django 4.1+），消除服务端杀连接
+        # / 实例重启后 60s 年龄窗口内复用死连接的 gone-away 风险。
+        # 默认 False 保持既有行为不变；生产建议置 1（见 V13-04 报告 §五）。
+        "CONN_HEALTH_CHECKS": int(env_bool("DJANGO_DB_CONN_HEALTH_CHECKS")),
     }
+    DATABASES = {"default": default_db}
     if DB_ENGINE == "mysql":
         DATABASES["default"]["OPTIONS"] = {"charset": "utf8mb4"}
 
