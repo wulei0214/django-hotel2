@@ -1,0 +1,109 @@
+{
+  "task": "TASK-07 Windows 独立部署复现：九岗位登录与页面服务",
+  "base": "http://127.0.0.1:8130",
+  "results": [
+    {
+      "name": "前台 (test_front) 登录",
+      "pass": true,
+      "detail": "/home/"
+    },
+    {
+      "name": "  前台 /checkin/ 页面服务",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "值班经理 (test_duty) 登录",
+      "pass": true,
+      "detail": "/home/"
+    },
+    {
+      "name": "  值班经理 /manage/night-audit/ 页面服务",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "  值班经理 /manage/housekeeping/ 页面服务",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "财务 (test_finance) 登录",
+      "pass": true,
+      "detail": "/home/"
+    },
+    {
+      "name": "  财务 /manage/finance/ 页面服务",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "店长 (test_owner) 登录",
+      "pass": true,
+      "detail": "/home/"
+    },
+    {
+      "name": "  店长 /manage/staff/ 页面服务",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "  店长 /manage/audit/ 页面服务",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "客房服务员 (test_housekeeping) 登录",
+      "pass": true,
+      "detail": "/home/"
+    },
+    {
+      "name": "  客房服务员 /manage/housekeeping/ 页面服务",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "夜审员 (test_nightaudit) 登录",
+      "pass": true,
+      "detail": "/home/"
+    },
+    {
+      "name": "  夜审员 /manage/night-audit/ 页面服务",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "餐饮服务员 (test_fnb) 登录",
+      "pass": true,
+      "detail": "/home/"
+    },
+    {
+      "name": "  餐饮服务员 /home/ 页面服务",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "餐饮主管 (test_fnbsup) 登录",
+      "pass": true,
+      "detail": "/home/"
+    },
+    {
+      "name": "  餐饮主管 /home/ 页面服务",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "停车安保 (test_parking) 登录",
+      "pass": true,
+      "detail": "/home/"
+    },
+    {
+      "name": "  停车安保 /home/ 页面服务",
+      "pass": true,
+      "detail": "HTTP 200"
+    }
+  ],
+  "passed": 20,
+  "failed": 0,
+  "finished_at": "2026-11-22T13:49:47.242Z"
+}
