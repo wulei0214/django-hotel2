@@ -491,11 +491,12 @@ class RoleRegistryTests(TestCase):
         self.assertEqual(found, set(names), "ROLE_REGISTRY 与数据库业务组必须一一对应")
         self.assertEqual(len(found), 9)
 
-    def test_role_status_split_is_five_active_and_four_planned(self):
+    def test_role_status_split_is_six_active_and_three_planned(self):
+        """NA-13（TASK-06，2026-11-22 负责人批准）：夜审员激活为现役岗位。"""
         active = [r["name"] for r in ROLE_REGISTRY if r["status"] == ROLE_ACTIVE]
         planned = [r["name"] for r in ROLE_REGISTRY if r["status"] == ROLE_PLANNED]
-        self.assertEqual(set(active), {"前台", "值班经理", "财务", "店长", "客房服务员"})
-        self.assertEqual(set(planned), {"夜审员", "餐饮服务员", "餐饮主管", "停车安保"})
+        self.assertEqual(set(active), {"前台", "值班经理", "财务", "店长", "客房服务员", "夜审员"})
+        self.assertEqual(set(planned), {"餐饮服务员", "餐饮主管", "停车安保"})
 
     def test_active_roles_hold_permissions_and_planned_roles_are_empty(self):
         for role in ROLE_REGISTRY:
