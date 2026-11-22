@@ -409,6 +409,115 @@ class VerifyReportConsistencyCommandTests(TestCase):
         self.assertEqual(summary["result"], "PASS", summary)
 
     # ------------------------------------------------------------------
+    # D. V4.0 TASK-04 补齐：RPT-04 / RPT-06 / RPT-08 / RPT-10
+    # ------------------------------------------------------------------
+
+    def test_rpt04_report_extra_row_when_source_missing(self):
+        """RPT-04：报表存在、源数据缺失 → 报表多行差异（不得静默 PASS）。
+
+        RPT-03 覆盖"源有报表缺"，本用例覆盖反向：源账本当日无凭证，
+        报表却输出该日收入行——必须报 revenue_report_extra_row。
+        """
+        # 不种子任何 LedgerEntry：源账本为空，报表却报当日有收入
+        ghost = _rev_payload(
+            [
+                {
+                    "business_date": BD,
+                    "revenue": "120.00",
+                    "expense": "0.00",
+                    "net": "120.00",
+                    "business_date_label": None,
+                    "entries": 1,
+                }
+            ]
+        )
+        with mock.patch("apps.api.report_center.revenue_report", return_value=_FakeResponse(ghost)):
+            summary = self._run_expect_fail("--business-date", BD)
+        check = next(c for c in summary["checks"] if c["name"].startswith("revenue"))
+        diff = next(d for d in check["diffs"] if d["name"] == "revenue_report_extra_row")
+        self.assertEqual(diff["date"], BD)
+        # 源账本零凭证：source_value 按设计为 None（不是 0.00），detail 说明口径
+        self.assertIsNone(diff["source_value"])
+        self.assertIn("源账本零凭证", diff["detail"])
+
+    def test_rpt06_adr_room_revenue_numerator_mismatch(self):
+        """RPT-06：ADR 分子（房费收入）与源账本 ROOM_CHARGE 不一致必须报差异。
+
+        分母（已售间夜）取正确值，只让分子偏移，锁死只比对比率或分母的
+        伪通过路径。
+        """
+        self._seed_inventory(sold=2)
+        folio = self._seed_folio()
+        self._seed_entry(folio, "ROOM_CHARGE", "600.00")
+        # 源：分子 600 / 分母 2 = 300；报表谎报分子 800（比率随之 400）
+        payload = _adr_payload(
+            [{"date": BD, "room_revenue": "800.00", "sold_room_nights": 2, "adr": "400.00"}]
+        )
+        with mock.patch("apps.api.report_center.adr_report", return_value=_FakeResponse(payload)):
+            summary = self._run_expect_fail("--business-date", BD)
+        check = next(c for c in summary["checks"] if c["name"].startswith("adr"))
+        names = {d["name"] for d in check["diffs"]}
+        self.assertIn("adr_room_revenue_mismatch", names)
+        diff = next(d for d in check["diffs"] if d["name"] == "adr_room_revenue_mismatch")
+        self.assertEqual(diff["report_value"], "800.00")
+        self.assertEqual(diff["source_value"], "600.00")
+
+    def test_rpt08_adr_final_value_mismatch(self):
+        """RPT-08：分子与分母都正确、但最终 ADR 值算错必须报 adr_value_mismatch。
+
+        防止"只校验分子分母、不校验最终值"的漏检。
+        """
+        self._seed_inventory(sold=2)
+        folio = self._seed_folio()
+        self._seed_entry(folio, "ROOM_CHARGE", "600.00")
+        # 分子 600 / 分母 2 都与源一致，仅 adr 最终值谎报 999
+        payload = _adr_payload(
+            [{"date": BD, "room_revenue": "600.00", "sold_room_nights": 2, "adr": "999.00"}]
+        )
+        with mock.patch("apps.api.report_center.adr_report", return_value=_FakeResponse(payload)):
+            summary = self._run_expect_fail("--business-date", BD)
+        check = next(c for c in summary["checks"] if c["name"].startswith("adr"))
+        names = {d["name"] for d in check["diffs"]}
+        self.assertIn("adr_value_mismatch", names)
+        # 分子/分母未偏移，不得出现对应差异（差异必须精确定位）
+        self.assertNotIn("adr_room_revenue_mismatch", names)
+        self.assertNotIn("adr_sold_room_nights_mismatch", names)
+        diff = next(d for d in check["diffs"] if d["name"] == "adr_value_mismatch")
+        self.assertEqual(diff["report_value"], "999.00")
+        self.assertEqual(diff["source_value"], "300.00")
+
+    def test_rpt10_occupancy_sold_room_nights_mismatch(self):
+        """RPT-10：Occupancy 已售房量与源 RoomTypeInventory.sold 不一致必须报差异。
+
+        可售房量（分母）与比率都由报表给的 sold 推出、彼此自洽，只有 sold
+        与源表不一致——锁死"只校验比率自洽性"的伪通过路径。
+        """
+        self._seed_inventory(sold=2, total=5)
+        payload = _occ_payload(
+            [
+                {
+                    "date": BD,
+                    "sold_room_nights": 4,  # 源为 2
+                    "sellable_room_nights": 5,
+                    "occupancy_pct": "80.00",  # 4/5，与谎报 sold 自洽
+                    "total_rooms": 5,
+                    "out_of_service": 0,
+                    "held": 0,
+                }
+            ]
+        )
+        with mock.patch(
+            "apps.api.report_center.occupancy_report", return_value=_FakeResponse(payload)
+        ):
+            summary = self._run_expect_fail("--business-date", BD)
+        check = next(c for c in summary["checks"] if c["name"].startswith("occupancy"))
+        names = {d["name"] for d in check["diffs"]}
+        self.assertIn("occupancy_sold_mismatch", names)
+        diff = next(d for d in check["diffs"] if d["name"] == "occupancy_sold_mismatch")
+        self.assertEqual(diff["report_value"], "4")
+        self.assertEqual(diff["source_value"], "2")
+
+    # ------------------------------------------------------------------
     # C. 参数门禁（场景 10/11/12）
     # ------------------------------------------------------------------
     def test_empty_range_days_one_still_runs(self):
