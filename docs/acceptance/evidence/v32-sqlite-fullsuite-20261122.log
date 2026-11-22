@@ -1,0 +1,2 @@
+﻿执行人：lead 会话（V3.2 收口轮）；起：2026-11-22 21:45:23；库：SQLite :memory:；命令：manage.py test -v 1（无 --keepdb）；基线：912833d
+Ran 1898 tests in 491.677s，OK (skipped=28)，SQLite 全绿
