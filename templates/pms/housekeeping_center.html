@@ -904,6 +904,12 @@
             "verify", {"result": "FAIL"},
             function () { return "验收不通过，工单退回维修中。"; }));
       }
+      /* MC11-HK-07（NS-E-01 负责人裁定 2026-11-22）：取消工单只终止工单流程，
+         不解除房间维修停用、不恢复可售库存；停用必须另行走「维修恢复」。 */
+      if (ticket.status === "CANCELLED") {
+        actions.appendChild(el("span", "hk-room-type",
+            "工单已取消；房间停用未解除，需另行执行维修恢复"));
+      }
     }
     if (!actions.children.length) {
       actions.appendChild(el("span", "hk-room-type", "—"));

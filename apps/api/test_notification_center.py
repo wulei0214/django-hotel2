@@ -219,6 +219,24 @@ class RefreshDerivationTests(NotificationCenterTestBase):
             self.assertEqual(row.severity, "critical")
             self.assertEqual(row.link, "/checkin/")
 
+    def test_todo_refresh_never_mutates_reservation_state(self):
+        """NS-E-02（负责人 2026-11-22 裁定）：WorkItem/Notification 只是待办
+        提示，不是预订业务事实源——刷新待办不得改动 Reservation 状态、
+        金额或房间分配，预订变更只能走前台权威写入口。"""
+        reservation = self._reservation(status=Reservation.Status.PENDING, nights=2)
+        before = Reservation.objects.filter(pk=reservation.pk).values().get()
+        refresh_operational_todos(self.property)
+        after = Reservation.objects.filter(pk=reservation.pk).values().get()
+        self.assertEqual(before, after, "刷新待办不得改动 Reservation 任何字段")
+
+        # 待办完成回写源业务也不得触碰预订状态：WorkItem 只有自身生命周期。
+        rows = self._rows(category=Notification.Category.RESERVATION)
+        self.assertTrue(rows)
+        self.assertEqual(
+            Reservation.objects.filter(pk=reservation.pk).values().get()["status"],
+            Reservation.Status.PENDING,
+        )
+
     def test_dirty_room_creates_cleaning_todo_with_count(self):
         self._set_room(self.room1, Room.HousekeepingStatus.DIRTY)
         refresh_operational_todos(self.property)

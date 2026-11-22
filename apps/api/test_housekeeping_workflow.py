@@ -423,7 +423,13 @@ class MaintenanceTicketWorkflowTests(E2EFlowTestBase):
         self.assertEqual(room.maintenance_status, Room.MaintenanceStatus.NORMAL)
 
     def test_ticket_cancel_endpoint_and_room_release(self):
-        """MC11-HK-04：工单取消端点此前零测试；取消后房间级恢复放行（工单不再活跃）。"""
+        """MC11-HK-04 + MC11-HK-07：工单取消端点此前零测试；取消后房间级恢复放行（工单不再活跃）。
+
+        NS-E-01（负责人 2026-11-22 裁定）：取消工单**只终止工单流程**，
+        不得自动解除房间维修停用、不得恢复可售库存——解除必须另行走
+        既有「维修恢复」链路。本用例在取消后、人工恢复前显式断言房间
+        仍为 OUT_OF_ORDER，锁死"取消即自动恢复"的错误实现。
+        """
         room = self._make_room("MT-CANCEL-01")
         create = self._post(
             "/api/v1/maintenance/tickets/create",
@@ -440,6 +446,14 @@ class MaintenanceTicketWorkflowTests(E2EFlowTestBase):
         self.assertEqual(response.status_code, 200, response.content)
         ticket = MaintenanceTicket.objects.get(pk=ticket_id)
         self.assertEqual(ticket.status, MaintenanceTicket.TicketStatus.CANCELLED)
+
+        # NS-E-01 裁定：取消不解除停用（此断言防止实现回退为自动恢复）
+        room.refresh_from_db()
+        self.assertEqual(
+            room.maintenance_status,
+            Room.MaintenanceStatus.OUT_OF_ORDER,
+            "取消工单不得自动解除房间维修停用（NS-E-01 裁定）",
+        )
 
         restored = self._post(
             f"/api/v1/housekeeping/rooms/{room.pk}/maintenance",
