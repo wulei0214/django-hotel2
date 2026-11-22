@@ -10,7 +10,7 @@
 |---|---|
 | 扫描器 | `scripts/scan_secrets.py`（V12-06 增强版） |
 | 模式 | `--history --json`（工作树 + Git 全历史提交内容） |
-| 执行时间 | 2026-11-22 20:0x（HEAD `3b35e29`） |
+| 执行时间 | 2026-11-22 20:05（历史扫描时点，HEAD 见随附 JSON） |
 | Python | 3.9.0（本机 `.venv`） |
 | 白名单 | 0 条（`allowlist_size: 0`） |
 | 工作树结果 | 退出码 0、`hit_count: 0`（§六 PASS 口径） |
