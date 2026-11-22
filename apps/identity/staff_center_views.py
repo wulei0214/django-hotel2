@@ -42,7 +42,7 @@ from django.shortcuts import render
 from django.utils import timezone
 
 from apps.core import rate_limit
-from apps.core.api_contract import ApiError, api_response, api_view
+from apps.core.api_contract import ApiError, api_response, api_view, idempotent
 from apps.identity.decorators import pms_permission_required
 from apps.identity.invitation_services import (
     EmployeeInvitationService,
@@ -496,15 +496,21 @@ staff_action_provision = staff_required(
 )
 
 staff_action_assign_role = staff_required(
-    pms_permission_required("identity.staff_manage")(api_view(_action_assign_role))
+    pms_permission_required("identity.staff_manage")(
+        api_view(idempotent(_action_assign_role))
+    )
 )
 
 staff_action_end_assignment = staff_required(
-    pms_permission_required("identity.staff_manage")(api_view(_action_end_assignment))
+    pms_permission_required("identity.staff_manage")(
+        api_view(idempotent(_action_end_assignment))
+    )
 )
 
 staff_action_set_status = staff_required(
-    pms_permission_required("identity.staff_manage")(api_view(_action_set_status))
+    pms_permission_required("identity.staff_manage")(
+        api_view(idempotent(_action_set_status))
+    )
 )
 
 staff_action_rehire = staff_required(
@@ -512,7 +518,9 @@ staff_action_rehire = staff_required(
 )
 
 staff_action_update_profile = staff_required(
-    pms_permission_required("identity.staff_manage")(api_view(_action_update_profile))
+    pms_permission_required("identity.staff_manage")(
+        api_view(idempotent(_action_update_profile))
+    )
 )
 
 staff_action_reset_password = staff_required(
