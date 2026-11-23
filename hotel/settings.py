@@ -19,6 +19,8 @@ def env_bool(name, default=False):
 
 
 DJANGO_ENV = os.environ.get("DJANGO_ENV", "dev").strip().lower()
+if DJANGO_ENV not in {"dev", "test", "prod"}:
+    raise ImproperlyConfigured("DJANGO_ENV must be one of dev, test or prod.")
 DEBUG = env_bool("DJANGO_DEBUG", default=(DJANGO_ENV != "prod"))
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 if not SECRET_KEY:
@@ -373,7 +375,19 @@ SIMPLEUI_CONFIG = {
 # WB-123（第 31 轮）：校验逻辑收敛为独立函数以便启动测试——全空白、
 # 前后空白、长度不足的 PII 密钥必须在启动阶段 fail-fast，而不是等到
 # 加密调用才暴露（原实现读原始环境变量，32 个空格可绕过长度检查）。
-def _validate_production_settings(*, debug, secret_key, pii_key, allowed_hosts_raw):
+def _validate_production_settings(
+    *,
+    debug,
+    secret_key,
+    pii_key,
+    allowed_hosts_raw,
+    secure_ssl_redirect,
+    hsts_seconds,
+    session_cookie_secure,
+    csrf_cookie_secure,
+    db_engine,
+    is_production,
+):
     _prod_errors = []
     if debug:
         _prod_errors.append("DEBUG must be False")
@@ -384,6 +398,14 @@ def _validate_production_settings(*, debug, secret_key, pii_key, allowed_hosts_r
         _prod_errors.append("DJANGO_PII_KEY must be >=32 chars independent PII key")
     if not allowed_hosts_raw or "*" in allowed_hosts_raw:
         _prod_errors.append("DJANGO_ALLOWED_HOSTS must not use wildcard")
+    if not secure_ssl_redirect or hsts_seconds <= 0:
+        _prod_errors.append("HTTPS redirect and HSTS must be enabled in production")
+    if not session_cookie_secure or not csrf_cookie_secure:
+        _prod_errors.append("Session and CSRF cookies must be Secure in production")
+    if db_engine != "mysql":
+        _prod_errors.append("DJANGO_DB_ENGINE must be mysql in production")
+    if not is_production or debug:
+        _prod_errors.append("Mock payments are disabled in production")
     if _prod_errors:
         raise ImproperlyConfigured("Q7 production validation failed: " + "; ".join(_prod_errors))
 
@@ -396,4 +418,10 @@ if DJANGO_ENV == "prod":
         # 不再读原始环境变量，保证被校验的值与业务加密实际使用的值一致。
         pii_key=DJANGO_PII_KEY,
         allowed_hosts_raw=os.environ.get("DJANGO_ALLOWED_HOSTS", ""),
+        secure_ssl_redirect=SECURE_SSL_REDIRECT,
+        hsts_seconds=SECURE_HSTS_SECONDS,
+        session_cookie_secure=SESSION_COOKIE_SECURE,
+        csrf_cookie_secure=CSRF_COOKIE_SECURE,
+        db_engine=DB_ENGINE,
+        is_production=IS_PRODUCTION,
     )
