@@ -111,11 +111,15 @@ def candidate_guests(property_obj, policy, as_of, exclude_ids=None):
     return Guest.objects.filter(pk__in=ids).order_by("id")
 
 
-def plan_retention_cleanup(*, property_obj, policy, as_of, operator, dry_run=True):
+def plan_retention_cleanup(
+    *, property_obj, policy, as_of, operator, dry_run=True, approval_reference=""
+):
     """生成一次清理计划：dry-run 统计或正式执行。
 
-    返回 RetentionExecution（未保存 or 已保存，视 dry_run）。
-    正式执行必须已通过 plan 之外的审批链（approval_reference 必填）。
+    正式执行（dry_run=False）强制审批门（DEFECT-T02-2 修复）：
+    approval_reference 必须指向一条 APPROVED 的 ApprovalRecord
+    （action_code=privacy.retention_execute、同物业），且执行人≠审批申请人
+    （SoD；申请人≠审批人由 ApprovalRecord 保存时保证）。
     """
     hold_ids = _active_legal_hold_guest_ids(property_obj)
     exec_record = RetentionExecution(
@@ -166,9 +170,27 @@ def plan_retention_cleanup(*, property_obj, policy, as_of, operator, dry_run=Tru
         )
         return exec_record, to_process
 
-    # 正式执行：匿名化写路径（逐个事务，单个失败不影响整批可重试）
+    # 审批门（DEFECT-T02-2 修复）：不可逆操作必须有已批准审批，
+    # 且执行人不得为审批申请人。
+    approval_ref = str(approval_reference or "").strip()
+    if not approval_ref:
+        raise ValueError("正式执行必须提供已批准的审批记录引用。")
+    approval = ApprovalRecord.objects.filter(
+        pk=approval_ref,
+        property=property_obj,
+        action_code=ACTION_RETENTION_EXECUTE,
+        status=ApprovalRecord.Status.APPROVED,
+    ).first()
+    if approval is None:
+        raise ValueError("审批记录不存在、未通过或不属于本物业。")
+    if approval.requested_by_id == operator.pk:
+        raise ValueError("执行人不得为审批申请人（职责分离）。")
+    exec_record.approval_reference = approval_ref
+
+    # 正式执行：先落库建立 pk（DEFECT-T02-1 修复：无 pk 实例不允许
+    # update_fields 保存），再进入 EXECUTING。
     exec_record.execution_status = RetentionExecution.ExecutionStatus.EXECUTING
-    exec_record.save(update_fields=("execution_status",))
+    exec_record.save()
     for guest in to_process:
         try:
             with transaction.atomic():

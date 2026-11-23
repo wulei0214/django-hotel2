@@ -12,6 +12,7 @@
   服务层与模型层不变量。
 """
 
+import uuid
 from datetime import timedelta
 from typing import Any
 
@@ -21,10 +22,11 @@ from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.billing.models import Folio, LedgerEntry
+from apps.billing.models import ApprovalRecord, Folio, LedgerEntry
 from apps.core.models import AuditEvent, Property
 from apps.guests.models import Guest, LegalHold, RetentionExecution, RetentionPolicy
 from apps.guests.retention import (
+    ACTION_RETENTION_EXECUTE,
     ANONYMIZED_MARKER,
     anonymize_guest,
     candidate_guests,
@@ -282,29 +284,49 @@ class BusinessLinkSkipTests(PrivacyGovernanceTestBase):
 class ExecutionTests(PrivacyGovernanceTestBase):
     """正式执行：不可逆匿名化 + 执行记录 + 审计 + 幂等。"""
 
-    def test_execution_anonymizes_guest(self):
+    def _make_approval(self, requester, approver):
+        """造一条 APPROVED 清理审批：PENDING 创建后经裸 QuerySet 置 APPROVED。
+
+        ApprovalRecord 只允许从 PENDING 创建（不可变守卫），测试绕过用
+        django_models.QuerySet.update（与 test_legacy_archive 同模式）。
+        """
+        from django.db import models as django_models
+
+        record = ApprovalRecord.objects.create(
+            property=self.property,
+            action_code=ACTION_RETENTION_EXECUTE,
+            entity_type="RetentionExecution",
+            entity_id="batch-test",
+            requested_by=requester,
+            reason="保留期满清理审批（测试）",
+            idempotency_key=f"AR-{requester.pk}-{approver.pk}-{uuid.uuid4().hex[:8]}",
+        )
+        django_models.QuerySet(ApprovalRecord).filter(pk=record.pk).update(
+            approved_by=approver,
+            status=ApprovalRecord.Status.APPROVED,
+            approved_at=timezone.now(),
+        )
+        record.refresh_from_db()
+        return record
+
+    def test_formal_execution_via_real_path_anonymizes(self):
+        """DEFECT-T02-1/3 修复验证：dry_run=False 真实路径走通并匿名化。"""
         guest = self._make_guest("正式执行", days_ago=400, phone_cipher="QUJD")
-        execution, to_process = plan_retention_cleanup(
+        requester = User.objects.create_user(username="t02_requester")
+        requester.set_unusable_password()
+        requester.save(update_fields=["password"])
+        approval = self._make_approval(requester, self.operator)
+        execution, _processed = plan_retention_cleanup(
             property_obj=self.property,
             policy=self.policy,
             as_of=self._as_of(),
             operator=self.operator,
-            dry_run=True,
+            dry_run=False,
+            approval_reference=str(approval.pk),
         )
-        self.assertEqual(len(to_process), 1)
-        # 正式执行（测试环境直接调；审批链在 API 层测）
-        execution.approval_reference = "AR-TEST-1"
-        execution.dry_run = False
-        execution.candidate_count = 1
-        execution.save()
-        _exec2, processed = plan_retention_cleanup(
-            property_obj=self.property,
-            policy=self.policy,
-            as_of=self._as_of(),
-            operator=self.operator,
-            dry_run=True,
-        )
-        anonymize_guest(guest)
+        self.assertEqual(execution.execution_status, RetentionExecution.ExecutionStatus.COMPLETED)
+        self.assertEqual(execution.processed_count, 1)
+        self.assertEqual(execution.approval_reference, str(approval.pk))
         guest.refresh_from_db()
         self.assertEqual(guest.full_name, ANONYMIZED_MARKER)
         self.assertIsNone(guest.phone_ciphertext)
@@ -314,6 +336,49 @@ class ExecutionTests(PrivacyGovernanceTestBase):
                 action="privacy.guest_anonymized", entity_id=str(guest.pk)
             ).exists()
         )
+
+    def test_formal_execution_without_approval_rejected(self):
+        """无审批引用 → 拒绝且不落任何正式执行记录。"""
+        self._make_guest("无审批", days_ago=400)
+        with self.assertRaises(ValueError):
+            plan_retention_cleanup(
+                property_obj=self.property,
+                policy=self.policy,
+                as_of=self._as_of(),
+                operator=self.operator,
+                dry_run=False,
+            )
+        self.assertFalse(RetentionExecution.objects.filter(dry_run=False).exists())
+
+    def test_formal_execution_unknown_approval_rejected(self):
+        """审批不存在 → 拒绝。"""
+        self._make_guest("假审批", days_ago=400)
+        with self.assertRaises(ValueError):
+            plan_retention_cleanup(
+                property_obj=self.property,
+                policy=self.policy,
+                as_of=self._as_of(),
+                operator=self.operator,
+                dry_run=False,
+                approval_reference="999999",
+            )
+
+    def test_formal_execution_self_approval_rejected(self):
+        """执行人=审批申请人（SoD）→ 拒绝。"""
+        requester = User.objects.create_user(username="t02_self")
+        requester.set_unusable_password()
+        requester.save(update_fields=["password"])
+        approval = self._make_approval(requester, requester)
+        self._make_guest("自批拒绝", days_ago=400)
+        with self.assertRaises(ValueError):
+            plan_retention_cleanup(
+                property_obj=self.property,
+                policy=self.policy,
+                as_of=self._as_of(),
+                operator=requester,
+                dry_run=False,
+                approval_reference=str(approval.pk),
+            )
 
     def test_repeat_execution_is_idempotent(self):
         guest = self._make_guest("幂等执行", days_ago=400)
