@@ -21,15 +21,21 @@
 
 ## 3. 双引擎测试数
 
-| 证据 | 结论 | 时点限定 |
-|---|---|---|
-| `docs/acceptance/evidence/v3-sqlite-fullsuite-20261122.log` | Ran **1878**，OK (skipped=28)，exit 0 | V3.0 第一批交付轮（绑定 1b882eb 代码态），SQLite 引擎 |
-| `docs/acceptance/evidence/v3-mysql-fullsuite-20261122.log` | Ran **1878**，OK (skipped=3)，exit 0 | 同轮，**MySQL 8 权威**（文件头含错峰登记） |
-| `docs/acceptance/evidence/mc11-{sqlite,mysql}-fullsuite-20261121.log` | 1846 / 1849 OK | 历史（11C-001 验收轮，e4599db 链） |
+> **本章已于 2026-11-23 按 TASK-00 基线核查重写**：原表只列 1878（V3.0 第一批）与 1846/1849（更早），正文却称「最新权威全量为 1878/1878」，与本文件 §1「基线区分」自称的 `6b6519e` 1899 直接冲突。
 
-- 最新权威全量为 **1878/1878 双绿**（2026-11-22，绑定 V3.0 第一批代码态 `1b882eb`；净增 32 例=walk-in-options/日租建单/转过夜/前台取消/幂等契约/复算冒烟/夜审员矩阵）。其后 `21e04df`/`0d865eb` 为文档与 type-check；V3.2 增量（`d30ef14`）复算工具新增 15 例专项测试（apps.api.test_verify_report_consistency，SQLite 实测 OK），并入 CI test job（`b4d5aa0` run `45024442610` success）；双引擎数字不替代安全扫描与生产验收。
-- **V3.2 TASK-14 验收证据**：`docs/acceptance/evidence/v3-task14-reconcile-devmysql-20261122.log`——dev MySQL DEFAULT 物业 2026-11-16..11-22 真实数据三项核对全 PASS、exit 0，绑定 `d30ef14`。复算逻辑独立实现（不调用 report_center 内部函数），差异输出 name/date/report_value/source_value 结构化 JSON、失败退出码 1。
-- 规则：历史报告中的测试数字仅对其各自 SHA 有效（1846/1849/1602/…均为绑定值）；MySQL 全量测试须遵守错峰纪律（同一共享测试环境同一时刻仅一个全量进程，登记执行人/起止/库名/命令/退出码），剥 `DJANGO_PLATFORM_ADMIN_*` 实名环境变量；SQLite 全绿不替代 MySQL 权威（锁/约束/并发以 MySQL 结果为准）。
+| 证据 | 结论 | 时点限定（**必须与 SHA 同时引用**） |
+|---|---|---|
+| `pms2-final-regression-2026-11-22/sqlite-fullsuite.log` | Ran **1899**，OK (skipped=28)，exit 0 | **当前权威**，绑定 `6b6519e`，SQLite 引擎 |
+| `pms2-final-regression-2026-11-22/mysql-fullsuite.log` | Ran **1899**，OK (skipped=3)，exit 0 | **当前权威**，绑定 `6b6519e`，**MySQL 8 权威**（含错峰登记） |
+| `v32-{sqlite,mysql}-fullsuite-20261122.log` | Ran **1898**，OK (skipped=28/3)，exit 0 | V3.2 收口轮，绑定 `912833d` |
+| `v3-{sqlite,mysql}-fullsuite-20261122.log` | Ran **1878**，OK | V3.0 第一批，绑定 `1b882eb` |
+| `mc11-{sqlite,mysql}-fullsuite-20261121.log` | 1846 / 1849 OK | 11C-001 验收轮，`e4599db` 链 |
+
+- **当前权威全量为 1899/1899 双绿**（2026-11-23 现取现核，绑定 `6b6519e`）。
+- **1898 与 1899 均真实，绑定不同 SHA，不得混用**：差额 **+1** 已用 `git diff 912833d 6b6519e -- "apps/**/test_*.py"` 证实——`test_housekeeping_workflow.py`（NS-E-01/HK-07 取消不恢复库存断言）与 `test_notification_center.py`（NS-E-02/NTF-05 防回写断言）新增固化用例。
+- skip 差异 28 vs 3（差 25）为并发/锁用例按 `connection.vendor` 整类跳过；两侧 `Ran` 一致。
+- **测试绑定 SHA（`6b6519e`）≠ 当前 main HEAD**：后续仅文档提交不改变测试绑定，直至下一次全量回归重绑。引用测试数时必须同时标注 SHA 与环境。
+- 规则：历史报告中的测试数字仅对其各自 SHA 有效；MySQL 全量须遵守错峰纪律（同一共享测试环境同一时刻仅一个全量进程，登记执行人/起止/库名/命令/退出码），剥 `DJANGO_PLATFORM_ADMIN_*` 实名环境变量；SQLite 全绿不替代 MySQL 权威（锁/约束/并发以 MySQL 结果为准）。
 
 ## 4. MC11 管理中心闭环状态（当前）
 
@@ -48,9 +54,17 @@
 
 ## 6. 待负责人裁定项
 
-1. HK-07（工单取消库存语义）、NTF-05（预订四类任务确认入口）、AUD-04（链式哈希演进）、NA-09/10（调度停摆探测与告警）、FIN-06/MB-11（权限码扩展 L3）：登记待裁定（见 MC11 总盘点表 §14）。
+> **本章已于 2026-11-23 按 TASK-00 基线核查更正**：原文仍把六项 P2 列为「登记待裁定」，与 §4「六项 P2 已裁定落档」自相矛盾（陈旧残留）。
+
+1. **六项 P2 已于 2026-11-22 由负责人正式裁定**（NS-E-01~05，见 `00_项目基线与决策/六项P2待裁定事项正式记录_2026-11-22.md`）。~~HK-07 / NTF-05 / AUD-04 / NA-09-10 / FIN-06-MB-11 待裁定~~ → 已分别落为 `APPROVED_NO_CODE_CHANGE`（01/02）、`APPROVED_PMS3_HANDOFF`（03/04）、`APPROVED_WITH_PENDING`（05 逐项审批）。
 2. ~~夜审员岗位权限面（NA-13）~~ **已裁定并落地（2026-11-22 负责人批准，1b882eb）**：授常规夜审查看/预览/执行，不授管理例外。
 3. ~~押金 30% 固定口径~~ 已裁定（2026-11-16）；~~day-use 计费语义~~ 已落地（V12-01，9f162de）。
+4. **当前实际待裁定项（2026-11-23 TASK-00 核查新识别）**：见 `docs/acceptance/PMS全项目审计基线报告_2026-11-23.md` §8 ——
+   - `OWNER-02` MC11 分母口径（实测 **91 项 / 46 关闭 / 45 开放** vs 文档 92/46/46）；
+   - `OWNER-03` NS-E「六项」表述（实际 5 组编号，NA-09/10 合一组）；
+   - `OWNER-05` TASK-02 数据保留年限与法律 owner；
+   - `OWNER-06` TASK-03 姓名揭示权限码（属 NS-E-05 逐项审批）；
+   - `OWNER-07` 需求总账状态口径（任务书 12 态 vs 台账 9 态）。
 
 ## 7. 文档状态入口表
 
