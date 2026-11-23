@@ -5,7 +5,7 @@
 """
 
 from io import StringIO
-from typing import cast
+from typing import Any, cast
 
 from django.core.exceptions import ValidationError
 from django.core.management import CommandError, call_command
@@ -24,10 +24,12 @@ from apps.billing.legacy_checksum import ALGORITHM_VERSION, row_digest, table_di
 from apps.billing.models import (
     LegacyAccommodationArchive,
     LegacyArchiveRun,
+    LegacyClientArchive,
     LegacyFinanceRecordArchive,
     LegacyFolioArchive,
     LegacyMigrationBatch,
     LegacyNightAuditArchive,
+    LegacyVipArchive,
 )
 from apps.core.models import Property
 
@@ -97,7 +99,7 @@ class ArchiveTableTests(TestCase):
         self.prop = Property.objects.get(code="DEFAULT")
         _legacy_fixtures()
 
-    def test_archive_specs_cover_four_tables(self):
+    def test_archive_specs_cover_legacy_tables(self):
         self.assertEqual(
             {spec.archive_table for spec in ARCHIVE_SPECS},
             {
@@ -105,6 +107,8 @@ class ArchiveTableTests(TestCase):
                 "legacy_finance_record_archive",
                 "legacy_night_audit_archive",
                 "legacy_accommodation_archive",
+                "legacy_client_archive",
+                "legacy_vip_archive",
             },
         )
 
@@ -162,14 +166,20 @@ class ArchiveTableTests(TestCase):
         self.assertTrue(rows.exists())
         self.assertEqual({row.property_id for row in rows}, {None})
 
-    def test_all_four_tables_archive_and_verify(self):
+    def test_all_six_tables_archive_and_verify(self):
+        # client/vip 夹具不在 _legacy_fixtures 内（各自测试类自建）——本测试补建
+        from hotelapp.models import Vip
+
+        Vip.objects.create(姓名="全表归档会员", 会员等级="普通会员", 联系方式="13800007777")
         for spec in ARCHIVE_SPECS:
             run = archive_table(spec=spec, batch_uid="ARC-ALL", operator="ops")
             self.assertTrue(verify_archive_run(run)["ok"], msg=spec.archive_table)
         self.assertEqual(LegacyAccommodationArchive.objects.count(), 1)
         self.assertEqual(LegacyFinanceRecordArchive.objects.count(), 1)
         self.assertEqual(LegacyNightAuditArchive.objects.count(), 1)
-        self.assertEqual(LegacyArchiveRun.objects.filter(batch_uid="ARC-ALL").count(), 4)
+        self.assertEqual(LegacyClientArchive.objects.count(), 1)
+        self.assertEqual(LegacyVipArchive.objects.count(), 1)
+        self.assertEqual(LegacyArchiveRun.objects.filter(batch_uid="ARC-ALL").count(), 6)
 
     def test_same_batch_and_table_archived_once(self):
         spec = get_spec("Folio")
@@ -312,3 +322,94 @@ class ArchiveCommandTests(TestCase):
                 "--verify",
                 stdout=StringIO(),
             )
+
+
+class ClientVipArchiveTests(TestCase):
+    property: Any
+    legacy_client: Any
+    vip: Any
+    """TASK-04：client/vip 归档 spec（PII 密文+盲索引门禁版）。
+
+    锁定：①明文不落归档行任何列（V1.1 §3.2）；②密文可解密、盲索引判等；
+    ③主键沿用源表主键（顾客id/会员编号）；④归档行不可变；⑤dry-run 零写入。
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from hotelapp.models import Client, Vip
+
+        cls.property = Property.objects.get(code="DEFAULT")
+        cls.legacy_client = Client.objects.create(姓名="归档顾客甲", 身份证号="110101199001019999")
+        cls.vip = Vip.objects.create(姓名="归档会员乙", 会员等级="高级会员", 联系方式="13800009999")
+
+    def test_client_archive_encrypts_pii(self):
+        spec = get_spec("Client")
+        rows = __import__(
+            "apps.billing.legacy_archive", fromlist=["read_source_rows"]
+        ).read_source_rows(spec)
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        # 明文键已弹出
+        self.assertNotIn("name_text", row)
+        self.assertNotIn("id_no_text", row)
+        # 密文可解密还原
+        from apps.guests.name_pii import decrypt_guest_name, normalize_guest_name
+        from apps.guests.services import decrypt_doc_no
+
+        self.assertEqual(
+            decrypt_guest_name(row["name_ciphertext"]), normalize_guest_name("归档顾客甲")
+        )
+        self.assertEqual(decrypt_doc_no(row["id_no_ciphertext"]), "110101199001019999")
+        # 盲索引判等
+        from apps.guests.name_pii import guest_name_hash
+
+        self.assertEqual(row["name_hash"], guest_name_hash(normalize_guest_name("归档顾客甲")))
+        # 主键沿用源表主键（顾客id）
+        self.assertEqual(row["id"], self.legacy_client.pk)
+
+    def test_vip_archive_encrypts_contact(self):
+        from apps.billing.legacy_archive import read_source_rows
+        from apps.core.phone import normalize_phone
+        from apps.guests.name_pii import decrypt_guest_name, normalize_guest_name
+        from apps.guests.services import decrypt_phone, phone_hash
+
+        rows = read_source_rows(get_spec("Vip"))
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertNotIn("name_text", row)
+        self.assertNotIn("contact_text", row)
+        self.assertEqual(
+            decrypt_guest_name(row["name_ciphertext"]), normalize_guest_name("归档会员乙")
+        )
+        self.assertEqual(decrypt_phone(row["contact_ciphertext"]), normalize_phone("13800009999"))
+        self.assertEqual(row["contact_hash"], phone_hash(normalize_phone("13800009999")))
+        self.assertEqual(row["rank_text"], "高级会员")
+        self.assertEqual(row["id"], self.vip.pk)
+
+    def test_archive_roundtrip_and_immutability(self):
+        spec = get_spec("Client")
+        batch_uid = "ARC-CV-1"
+        run = archive_table(spec=spec, batch_uid=batch_uid, operator="ops-test")
+        self.assertEqual(run.row_count, 1)
+        # 核验通过
+        verdict = verify_archive_run(run)
+        self.assertTrue(verdict["ok"])
+        # 归档行不可变
+        archived = LegacyClientArchive.objects.get(pk=self.legacy_client.pk)
+        with self.assertRaises(ValidationError):
+            archived.name_hash = "tampered"
+            archived.save()
+
+    def test_dry_run_writes_nothing(self):
+        out = StringIO()
+        call_command(
+            "archive_legacy_finance",
+            "--tables",
+            "Client,Vip",
+            "--dry-run",
+            stdout=out,
+        )
+        self.assertIn("dry-run", out.getvalue())
+        self.assertIn("未写入任何归档行", out.getvalue())
+        self.assertFalse(LegacyArchiveRun.objects.filter(source_table="client").exists())
+        self.assertFalse(LegacyArchiveRun.objects.filter(source_table="vip").exists())

@@ -78,14 +78,14 @@ def _transform_client_row(row):
     from apps.guests.name_pii import encrypt_guest_name, guest_name_hash, normalize_guest_name
     from apps.guests.services import doc_no_hash, encrypt_doc_no
 
-    name_norm = normalize_guest_name(row.get("name_text") or "")
+    name_norm = normalize_guest_name(row.get("姓名") or "")
     row["name_ciphertext"] = encrypt_guest_name(name_norm) if name_norm else None
     row["name_hash"] = guest_name_hash(name_norm) if name_norm else None
-    id_raw = (row.get("id_no_text") or "").strip().upper()
+    id_raw = (row.get("身份证号") or "").strip().upper()
     row["id_no_ciphertext"] = encrypt_doc_no(id_raw) if id_raw else None
     row["id_no_hash"] = doc_no_hash(id_raw) if id_raw else None
-    row.pop("name_text", None)
-    row.pop("id_no_text", None)
+    row.pop("姓名", None)
+    row.pop("身份证号", None)
     return row
 
 
@@ -95,14 +95,16 @@ def _transform_vip_row(row):
     from apps.guests.name_pii import encrypt_guest_name, guest_name_hash, normalize_guest_name
     from apps.guests.services import encrypt_phone, phone_hash
 
-    name_norm = normalize_guest_name(row.get("name_text") or "")
+    name_norm = normalize_guest_name(row.get("姓名") or "")
     row["name_ciphertext"] = encrypt_guest_name(name_norm) if name_norm else None
     row["name_hash"] = guest_name_hash(name_norm) if name_norm else None
-    contact_norm = normalize_phone(row.get("contact_text") or "")
+    contact_norm = normalize_phone(row.get("联系方式") or "")
     row["contact_ciphertext"] = encrypt_phone(contact_norm) if contact_norm else None
     row["contact_hash"] = phone_hash(contact_norm) if contact_norm else None
-    row.pop("name_text", None)
-    row.pop("contact_text", None)
+    row["rank_text"] = row.get("会员等级") or ""
+    row.pop("姓名", None)
+    row.pop("联系方式", None)
+    row.pop("会员等级", None)
     return row
 
 
@@ -175,10 +177,8 @@ ARCHIVE_SPECS: tuple[ArchiveSpec, ...] = (
         archive_table="legacy_client_archive",
         column_map=(
             ("id", "顾客id"),
-            ("name_text", "姓名"),
             ("name_ciphertext", "姓名"),
             ("name_hash", "姓名"),
-            ("id_no_text", "身份证号"),
             ("id_no_ciphertext", "身份证号"),
             ("id_no_hash", "身份证号"),
         ),
@@ -190,11 +190,9 @@ ARCHIVE_SPECS: tuple[ArchiveSpec, ...] = (
         archive_table="legacy_vip_archive",
         column_map=(
             ("id", "会员编号"),
-            ("name_text", "姓名"),
             ("name_ciphertext", "姓名"),
             ("name_hash", "姓名"),
             ("rank_text", "会员等级"),
-            ("contact_text", "联系方式"),
             ("contact_ciphertext", "联系方式"),
             ("contact_hash", "联系方式"),
         ),
@@ -240,12 +238,15 @@ def read_source_rows(spec: ArchiveSpec) -> list[dict[str, Any]]:
         # 主键 = column_map 首对的源列（client="顾客id"、vip="会员编号"；
         # 旧表主键列名非 "id"），归档行主键沿用源表主键。
         pk_source = spec.column_map[0][1]
+        pk_archive = spec.column_map[0][0]
+        allowed = {af for af, _ in spec.column_map}
         source_fields = sorted({sf for _, sf in spec.column_map})
         rows: list[dict[str, Any]] = []
         for raw in _source_queryset(spec).values(*source_fields).order_by(pk_source):
             row = spec.transform(raw)
-            row[spec.column_map[0][0]] = raw[pk_source]
-            rows.append(row)
+            row[pk_archive] = raw[pk_source]
+            # 只保留归档模型字段（弹出残留的中文源列键）
+            rows.append({k: v for k, v in row.items() if k in allowed})
         return rows
     source_fields = [source_field for _, source_field in spec.column_map]
     rows = []

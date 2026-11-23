@@ -949,3 +949,75 @@ class ExportCredential(models.Model):
 
     def __str__(self):
         return f"{self.kind}/{self.token[:8]}"
+
+
+class OutboxEvent(models.Model):
+    """通用 Outbox 事件（TASK-05 / Q3 批准方向：MySQL Outbox + Django Worker）。
+
+    事务性发件箱：业务代码在自己的事务内调用 enqueue_outbox_event 写入本表
+    （同事务提交，业务回滚则事件随之回滚，杜绝「业务失败但事件已发出」）；
+    Worker 进程经 lease_outbox_events 以 select_for_update(skip_locked=True)
+    批量认领后分派给 OUTBOX_CONSUMERS 注册表中的消费者执行。
+
+    标识口径（二选一裁定）：event_id 采用自增 BigAutoField 主键。理由：
+    - 事件消费语义以 status 单次认领仲裁，无需全局唯一 uuid 去重；
+    - 自增主键配合 (status, next_attempt_at) 索引时写入局部性好，且
+      created_at 排序即天然事件顺序，便于运维排查；
+    - aggregate_type/aggregate_id 已承载业务溯源，不额外造 uuid 列。
+
+    状态机（单一权威事实源，Worker 与服务层共用）：
+      PENDING    待处理（next_attempt_at 到期后可被认领）；
+      PROCESSING 已被某 worker 认领（locked_at/lease_owner 记录租约）；
+      SUCCEEDED  消费成功（终态）；
+      RETRY      消费失败进入退避（到期后重新可被认领）；
+      DEAD       超过 max_attempts 的死信（等待人工排查/重放）。
+
+    并发仲裁：MySQL 下靠 select_for_update(skip_locked=True) 行锁互斥；
+    SQLite 下 select_for_update 为 no-op，测试不依赖锁语义（并发用例
+    以 @skipUnless(connection.vendor == "mysql") 整类跳过，权威验证在
+    MySQL 侧由主会话串行执行）。
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "待处理"
+        PROCESSING = "PROCESSING", "处理中"
+        SUCCEEDED = "SUCCEEDED", "已成功"
+        RETRY = "RETRY", "等待重试"
+        DEAD = "DEAD", "死信"
+
+    event_type: models.CharField = models.CharField(max_length=64, verbose_name="事件类型")
+    aggregate_type: models.CharField = models.CharField(max_length=64, verbose_name="聚合类型")
+    aggregate_id: models.CharField = models.CharField(max_length=64, verbose_name="聚合标识")
+    payload: models.JSONField = models.JSONField(default=dict, verbose_name="事件载荷")
+    status: models.CharField = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.PENDING, verbose_name="处理状态"
+    )
+    attempt_count: models.IntegerField = models.IntegerField(default=0, verbose_name="已尝试次数")
+    max_attempts: models.IntegerField = models.IntegerField(default=5, verbose_name="最大尝试次数")
+    next_attempt_at: models.DateTimeField = models.DateTimeField(
+        null=True, blank=True, verbose_name="下次可认领时间"
+    )
+    locked_at: models.DateTimeField = models.DateTimeField(
+        null=True, blank=True, verbose_name="租约锁定时间"
+    )
+    lease_owner: models.CharField = models.CharField(
+        max_length=128, blank=True, default="", verbose_name="租约持有者"
+    )
+    last_error: models.TextField = models.TextField(blank=True, default="", verbose_name="最近错误")
+    created_at: models.DateTimeField = models.DateTimeField(
+        auto_now_add=True, verbose_name="创建时间"
+    )
+    processed_at: models.DateTimeField = models.DateTimeField(
+        null=True, blank=True, verbose_name="完成时间"
+    )
+
+    class Meta:
+        verbose_name = "Outbox 事件"
+        verbose_name_plural = "Outbox 事件"
+        ordering = ("id",)
+        indexes = [
+            models.Index(fields=("status", "next_attempt_at"), name="idx_outbox_status_next"),
+        ]
+
+    def __str__(self):
+        return f"#{self.pk} {self.event_type} {self.status}"
