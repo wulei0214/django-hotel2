@@ -1,0 +1,2 @@
+﻿执行人：lead 会话（V1.0 TASK-13）；起：2026-11-23 23:59:52；库：test_hotel；命令：DJANGO_ENV=test manage.py test -v 1（无 --keepdb，MySQL 8 权威）；基线：5320830
+Ran 1980 tests in 556.379s，OK (skipped=3)，MySQL 8 权威全绿（含 Outbox skip_locked 互斥用例真实执行）；止：2026-11-24 00:13:47
