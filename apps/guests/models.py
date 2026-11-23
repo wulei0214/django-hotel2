@@ -81,6 +81,32 @@ class Guest(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
+    # ---------- 姓名 PII 加密（V1.0 任务书 TASK-03，阶段 1 双写） ----------
+    # 渐进迁移：新写入同时落密文/HMAC/密钥版本；明文 full_name 在观察期内
+    # 保留（受控回滚能力），读路径切换与明文列退役需负责人批准后另行迁移。
+    # 姓名规范化口径：strip + 全角空格折叠（服务层 normalize_guest_name）。
+    full_name_ciphertext: models.TextField = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="姓名密文",
+        help_text="Fernet(PII_KEY, 规范化姓名)；姓名完整值揭示权限待负责人逐项审批（NS-E-05），当前未开放",
+    )
+    full_name_hmac: models.CharField = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        verbose_name="姓名盲索引",
+        help_text="HMAC-SHA256(PII_KEY, 规范化姓名)，精确检索用；不可逆",
+        db_index=True,
+    )
+    pii_key_version: models.CharField = models.CharField(
+        max_length=16,
+        null=True,
+        blank=True,
+        verbose_name="PII 密钥版本",
+        help_text="姓名密文使用的密钥版本标识（v1=当前 DJANGO_PII_KEY；轮换后可区分）",
+    )
+
     # FK attname / 反向管理器注解：django-stubs 不生成这些运行期属性，
     # 统一显式声明，避免调用方出现 attr-defined 误报。
     property_id: Any

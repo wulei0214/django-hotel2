@@ -371,6 +371,11 @@ class GuestService:
             email=email or "",
             notes=notes or "",
         )
+        # TASK-03 阶段 1：姓名 PII 双写（密文/盲索引/密钥版本；明文列观察期保留）
+        from .name_pii import fill_guest_name_pii
+
+        fill_guest_name_pii(guest, full_name)
+        guest.save(update_fields=["full_name_ciphertext", "full_name_hmac", "pii_key_version"])
         if norm:
             GuestPhone.objects.create(
                 guest=guest,
@@ -423,6 +428,11 @@ class GuestService:
                 if new_val != old_val:
                     changed[field] = {"before": old_val, "after": new_val}
                     setattr(guest, field, new_val)
+        # TASK-03 阶段 1：姓名变更同步双写（密文/盲索引/密钥版本随明文一致更新）
+        if changed.get("full_name"):
+            from .name_pii import fill_guest_name_pii
+
+            fill_guest_name_pii(guest, changed["full_name"]["after"])
         phone = fields.get("phone")
         if phone is not None:
             norm = normalize_phone(phone)
