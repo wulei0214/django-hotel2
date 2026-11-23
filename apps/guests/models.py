@@ -3,6 +3,7 @@ from typing import Any
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 
 class Guest(models.Model):
@@ -253,7 +254,9 @@ class GuestDocument(models.Model):
         related_name="guest_documents_verified",
         verbose_name="核验人",
     )
-    retention_until = models.DateField(null=True, blank=True, verbose_name="保留截止日")
+    retention_until: models.DateField = models.DateField(
+        null=True, blank=True, verbose_name="保留截止日"
+    )
     is_primary = models.BooleanField(default=True, verbose_name="主证件")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
@@ -447,3 +450,285 @@ class MembershipLevelHistory(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValueError("会员等级历史不可删除")
+
+
+# ---------------------------------------------------------------------------
+# 隐私数据生命周期治理（V1.0 任务书 TASK-02）：保留策略 / 法律冻结 / 清理执行记录。
+# 审批复用 billing.ApprovalRecord（action_code=privacy.legal_hold_*），不重复建设审批模型。
+# 详见 apps/guests/retention.py 服务层说明（清理规则/不级联删账务/LegalHold 冻结语义）。
+
+
+class RetentionPolicy(models.Model):
+    """数据保留策略：某类 Guest 数据保留多久、依据什么、是否启用。"""
+
+    class DataCategory(models.TextChoices):
+        GUEST_PROFILE = "GUEST_PROFILE", "住客主档（含姓名密文/联系密文）"
+        GUEST_DOCUMENT = "GUEST_DOCUMENT", "证件登记记录"
+        MARKETING_CONSENT = "MARKETING_CONSENT", "营销同意记录"
+
+    class RetentionBasis(models.TextChoices):
+        LAW = "LAW", "法律法规要求"
+        CONTRACT = "CONTRACT", "合同义务"
+        LEGITIMATE_INTEREST = "LEGITIMATE_INTEREST", "正当业务目的"
+
+    property: models.ForeignKey = models.ForeignKey(
+        "core.Property",
+        on_delete=models.PROTECT,
+        related_name="retention_policies",
+        verbose_name="物业",
+    )
+    data_category: models.CharField = models.CharField(
+        max_length=32, choices=DataCategory.choices, verbose_name="数据类别"
+    )
+    retention_days: models.PositiveIntegerField = models.PositiveIntegerField(
+        verbose_name="保留天数（自最后退房/最后交互起算）"
+    )
+    retention_basis: models.CharField = models.CharField(
+        max_length=24, choices=RetentionBasis.choices, verbose_name="保留依据"
+    )
+    basis_note: models.CharField = models.CharField(
+        max_length=240, blank=True, verbose_name="依据说明（法条/条款号）"
+    )
+    enabled: models.BooleanField = models.BooleanField(default=True, verbose_name="启用")
+    effective_from: models.DateField = models.DateField(verbose_name="生效日期")
+    created_by: models.ForeignKey = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="retention_policies_created",
+        verbose_name="创建人",
+    )
+    updated_by: models.ForeignKey = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="retention_policies_updated",
+        verbose_name="最后修改人",
+    )
+    created_at: models.DateTimeField = models.DateTimeField(
+        auto_now_add=True, verbose_name="创建时间"
+    )
+    updated_at: models.DateTimeField = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "隐私保留策略"
+        verbose_name_plural = "隐私保留策略"
+        ordering = ("property", "data_category")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("property", "data_category"),
+                condition=models.Q(enabled=True),
+                name="uq_retention_policy_enabled_per_category",
+            ),
+            models.CheckConstraint(
+                check=models.Q(retention_days__gt=0), name="ck_retention_days_positive"
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk is None and not self._state.adding:  # 防御：新行必须走 creating
+            pass
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        if self.retention_days <= 0:
+            raise ValidationError("保留天数必须大于零。")
+
+    def __str__(self):
+        return f"{self.property.code}/{self.data_category}/{self.retention_days}d"
+
+
+class LegalHold(models.Model):
+    """法律冻结：冻结期内对应对象的一切清理动作跳过（skipped），不得删除。
+
+    target_type 当前取值：GUEST（住客主档）。审批走 billing.ApprovalRecord
+    （action_code=privacy.legal_hold / privacy.legal_hold_release），
+    approval_reference 保存对应审批记录的字符串引用（entity_id）。
+    """
+
+    class HoldStatus(models.TextChoices):
+        ACTIVE = "ACTIVE", "生效中"
+        RELEASED = "RELEASED", "已解除"
+
+    property: models.ForeignKey = models.ForeignKey(
+        "core.Property",
+        on_delete=models.PROTECT,
+        related_name="legal_holds",
+        verbose_name="物业",
+    )
+    target_type: models.CharField = models.CharField(max_length=32, verbose_name="冻结对象类型")
+    target_id: models.CharField = models.CharField(max_length=64, verbose_name="冻结对象ID")
+    hold_reason: models.CharField = models.CharField(max_length=240, verbose_name="冻结原因")
+    hold_status: models.CharField = models.CharField(
+        max_length=12,
+        choices=HoldStatus.choices,
+        default=HoldStatus.ACTIVE,
+        verbose_name="冻结状态",
+    )
+    requested_by: models.ForeignKey = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="legal_holds_requested",
+        verbose_name="申请人",
+    )
+    approved_by: models.ForeignKey = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="legal_holds_approved",
+        verbose_name="批准人（审批记录通过后回填）",
+    )
+    approval_reference: models.CharField = models.CharField(
+        max_length=64, blank=True, verbose_name="审批记录引用（ApprovalRecord.id）"
+    )
+    started_at: models.DateTimeField = models.DateTimeField(
+        default=timezone.now, verbose_name="冻结开始"
+    )
+    released_at: models.DateTimeField = models.DateTimeField(
+        null=True, blank=True, verbose_name="解除时间"
+    )
+    release_reason: models.CharField = models.CharField(
+        max_length=240, blank=True, verbose_name="解除原因"
+    )
+
+    class Meta:
+        verbose_name = "隐私法律冻结"
+        verbose_name_plural = "隐私法律冻结"
+        ordering = ("-started_at",)
+        indexes = [
+            models.Index(
+                fields=("property", "target_type", "target_id"), name="idx_legalhold_target"
+            ),
+            models.Index(fields=("hold_status",), name="idx_legalhold_status"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=~models.Q(hold_status="ACTIVE") | models.Q(released_at__isnull=True),
+                name="ck_legalhold_active_no_release",
+            ),
+            models.CheckConstraint(
+                check=models.Q(hold_status="ACTIVE") | models.Q(release_reason__gt=""),
+                name="ck_legalhold_release_has_reason",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            previous = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values(
+                    "property_id",
+                    "target_type",
+                    "target_id",
+                    "hold_reason",
+                    "requested_by_id",
+                    "hold_status",
+                )
+                .first()
+            )
+            if previous and any(
+                previous[field] != getattr(self, field)
+                for field in (
+                    "property_id",
+                    "target_type",
+                    "target_id",
+                    "hold_reason",
+                    "requested_by_id",
+                )
+            ):
+                raise ValidationError("冻结事实（对象/原因/申请人）不可修改；请解除后重新申请。")
+            if previous and previous["hold_status"] == self.HoldStatus.RELEASED:
+                raise ValidationError("已解除的冻结不可再变更（只追加新冻结）。")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise RuntimeError("法律冻结记录不可删除；走解除流程留痕。")
+
+    def __str__(self):
+        return f"{self.target_type}#{self.target_id} {self.hold_status}"
+
+
+class RetentionExecution(models.Model):
+    """清理执行记录：一次 dry-run 或正式执行的完整统计与审批引用。
+
+    execution_status：DRAFT(dry-run 完成)→APPROVED→EXECUTING→COMPLETED/FAILED。
+    正式执行（dry_run=False）必须引用一条 APPROVED 的 ApprovalRecord
+    （action_code=privacy.retention_execute），且申请人≠审批人由审批模型保证。
+    """
+
+    class ExecutionStatus(models.TextChoices):
+        DRAFT = "DRAFT", "试运行完成（未执行）"
+        APPROVED = "APPROVED", "已批准待执行"
+        EXECUTING = "EXECUTING", "执行中"
+        COMPLETED = "COMPLETED", "已完成"
+        FAILED = "FAILED", "失败（可重试）"
+
+    property: models.ForeignKey = models.ForeignKey(
+        "core.Property",
+        on_delete=models.PROTECT,
+        related_name="retention_executions",
+        verbose_name="物业",
+    )
+    policy: models.ForeignKey = models.ForeignKey(
+        RetentionPolicy,
+        on_delete=models.PROTECT,
+        related_name="executions",
+        verbose_name="执行策略",
+    )
+    execution_status: models.CharField = models.CharField(
+        max_length=12,
+        choices=ExecutionStatus.choices,
+        default=ExecutionStatus.DRAFT,
+        verbose_name="执行状态",
+    )
+    dry_run: models.BooleanField = models.BooleanField(
+        default=True, verbose_name="试运行（只统计不写）"
+    )
+    as_of: models.DateField = models.DateField(verbose_name="清理基准日")
+    candidate_count: models.PositiveIntegerField = models.PositiveIntegerField(
+        default=0, verbose_name="候选数"
+    )
+    processed_count: models.PositiveIntegerField = models.PositiveIntegerField(
+        default=0, verbose_name="已处理数"
+    )
+    skipped_count: models.PositiveIntegerField = models.PositiveIntegerField(
+        default=0, verbose_name="冻结/关联跳过数"
+    )
+    failure_count: models.PositiveIntegerField = models.PositiveIntegerField(
+        default=0, verbose_name="失败数"
+    )
+    failure_detail: models.JSONField = models.JSONField(
+        null=True, blank=True, verbose_name="失败明细（可重试清单）"
+    )
+    operator: models.ForeignKey = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="retention_executions_operated",
+        verbose_name="执行人",
+    )
+    approval_reference: models.CharField = models.CharField(
+        max_length=64, blank=True, verbose_name="审批记录引用（正式执行必填）"
+    )
+    started_at: models.DateTimeField = models.DateTimeField(
+        default=timezone.now, verbose_name="开始时间"
+    )
+    completed_at: models.DateTimeField = models.DateTimeField(
+        null=True, blank=True, verbose_name="完成时间"
+    )
+
+    class Meta:
+        verbose_name = "隐私清理执行记录"
+        verbose_name_plural = "隐私清理执行记录"
+        ordering = ("-started_at",)
+        indexes = [
+            models.Index(fields=("property", "execution_status"), name="idx_retx_prop_status"),
+        ]
+
+    def clean(self):
+        if not self.dry_run and not self.approval_reference:
+            raise ValidationError("正式执行（dry_run=False）必须引用一条已批准的审批记录。")
+
+    def __str__(self):
+        return f"{self.policy.data_category}/{self.as_of}/{'dry' if self.dry_run else 'run'}"
