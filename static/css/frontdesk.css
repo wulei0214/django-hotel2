@@ -33,6 +33,9 @@
 .fd-search-input kbd { border:1px solid #e1e7ef; border-radius:5px; padding:2px 6px; color:#8a97a9; background:#f8fafc; font-size:10px; white-space:nowrap; }
 .fd-date-filter { display:flex; align-items:center; gap:8px; padding-left:13px; border-left:1px solid #edf0f5; white-space:nowrap; color:#728198; font-size:12px; }
 .fd-date-filter input { width:145px!important; height:36px!important; border:1px solid #e2e8f0!important; border-radius:6px; padding:0 7px!important; font-size:12px; color:#35465d; }
+/* 营业日期仅对抵店/离店页签生效；禁用态要一眼可辨，避免误以为已按日期过滤 */
+.fd-date-filter.is-disabled { opacity:.55; }
+.fd-date-filter.is-disabled input { cursor:not-allowed; background:#f6f8fb!important; }
 .fd-kpis { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
 .fd-kpi { min-width:0; text-align:left; border:1px solid #e5eaf1; background:#fff; border-radius:12px; padding:16px 17px 14px; cursor:pointer; box-shadow:0 2px 8px rgba(25,50,85,.025); transition:transform .15s,box-shadow .15s,border-color .15s; }
 .fd-kpi:hover { transform:translateY(-2px); box-shadow:0 7px 18px rgba(25,50,85,.07); border-color:#cbd8ea; }
@@ -91,6 +94,11 @@
 .fd-room-panel .fd-panel-heading,.fd-exception-panel .fd-panel-heading { padding:18px 17px 14px; }
 .fd-room-panel .fd-panel-heading h2,.fd-exception-panel .fd-panel-heading h2 { font-size:15px; }
 .fd-room-stat { display:flex; justify-content:space-between; align-items:center; padding:12px 18px; border-bottom:1px solid #f0f2f6; font-size:11px; color:#627188; }
+/* 房间准备情况四行改为可点击筛选入口（跳到房间视图并带上房态条件） */
+.fd-room-stat-btn { width:100%; background:#fff; border:0; border-bottom:1px solid #f0f2f6; text-align:left; cursor:pointer; font:inherit; font-size:11px; color:#627188; }
+.fd-room-stat-btn:hover { background:#fafbfd; }
+.fd-room-stat-btn:focus-visible { outline:2px solid var(--color-accent-solid,#2563eb); outline-offset:-2px; }
+.fd-room-stat-btn strong { pointer-events:none; }
 .fd-room-stat strong { font-size:17px; color:#263b57; font-variant-numeric:tabular-nums; }
 .fd-state-dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:8px; }
 .fd-state-dot.is-green { background:#28a36a; }.fd-state-dot.is-blue { background:#4787d6; }.fd-state-dot.is-amber { background:#d89b32; }.fd-state-dot.is-red { background:#d65c5c; }
@@ -105,10 +113,10 @@
 .fd-exception-row small { display:block; color:#94a0af; font-size:9px; margin-top:4px; }
 .fd-exception-row > strong { color:#53647d; font-size:15px; font-variant-numeric:tabular-nums; }
 .fd-exception-footnote { margin:12px 15px 0; color:#9aa5b3; font-size:9px; line-height:1.5; }
-.fd-room-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:9px; padding:16px; }
-.fd-room-card { border:1px solid #e4eaf2; border-radius:9px; padding:11px; background:#fff; }
+.fd-room-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:9px; padding:16px; }
+.fd-room-card { border:1px solid #e4eaf2; border-radius:9px; padding:11px; background:#fff; min-width:0; }
 .fd-room-card b { display:block; color:#263953; font-size:14px; }
-.fd-room-card span { display:block; color:#8b97a8; font-size:10px; margin-top:5px; }
+.fd-room-card span { display:block; color:#8b97a8; font-size:10px; margin-top:5px; line-height:1.5; word-break:keep-all; }
 .fd-drawer { position:fixed; inset:0; z-index:500; visibility:hidden; pointer-events:none; }
 .fd-drawer.is-open { visibility:visible; pointer-events:auto; }
 .fd-drawer-backdrop { position:absolute; inset:0; background:rgba(18,35,59,.38); opacity:0; transition:opacity .2s; }

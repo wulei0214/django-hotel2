@@ -1,0 +1,148 @@
+{
+  "run_id": "frontdesk-dataflow-2026-11-23-08-27",
+  "base": "http://127.0.0.1:8124",
+  "total": 28,
+  "failed": 0,
+  "results": [
+    {
+      "name": "login",
+      "pass": true,
+      "detail": "http://127.0.0.1:8124/home/"
+    },
+    {
+      "name": "KPI 今日应到=3（A2+B1，排除 No-Show/已取消）",
+      "pass": true,
+      "detail": "3"
+    },
+    {
+      "name": "KPI 待排房=1（B 未排房）",
+      "pass": true,
+      "detail": "1"
+    },
+    {
+      "name": "KPI 今日离店=1",
+      "pass": true,
+      "detail": "1"
+    },
+    {
+      "name": "KPI 当前在住=3",
+      "pass": true,
+      "detail": "3"
+    },
+    {
+      "name": "可入住净房=1（8102）",
+      "pass": true,
+      "detail": "1"
+    },
+    {
+      "name": "清洁中/脏房=1（8104 脏房）",
+      "pass": true,
+      "detail": "1"
+    },
+    {
+      "name": "异常-逾期未离=1",
+      "pass": true,
+      "detail": "1"
+    },
+    {
+      "name": "工作台仅列未入住明细=2",
+      "pass": true,
+      "detail": "rows=2 badges=待入住|待排房"
+    },
+    {
+      "name": "今日抵店=3（部分入住后剩余房间不消失）",
+      "pass": true,
+      "detail": "rows=3"
+    },
+    {
+      "name": "今日抵店徽标含在住/待入住/待排房",
+      "pass": true,
+      "detail": "在住|待入住|待排房"
+    },
+    {
+      "name": "多房订单账务摘要标注整单口径",
+      "pass": true,
+      "detail": "验收住客01|8101|共 2 晚|整单 2 间：合同 CNY 1200.00 · 已实收 CNY 0.00|验收住客01|8102|共 2 晚|整单 2 间：合同 CNY 1200.00 · 已实收 CNY 0.00|验收住客02|待分配|共 2 晚|合同 CNY 600.00 · 已实收 CNY 180.00"
+    },
+    {
+      "name": "今日离店=1 且提示待结账",
+      "pass": true,
+      "detail": "rows=1 badges=待结账"
+    },
+    {
+      "name": "在住客人=3",
+      "pass": true,
+      "detail": "rows=3"
+    },
+    {
+      "name": "在住页签禁用营业日期",
+      "pass": true,
+      "detail": "true"
+    },
+    {
+      "name": "订单查询=6（含 No-Show/已取消）",
+      "pass": true,
+      "detail": "rows=6"
+    },
+    {
+      "name": "历史订单空态可用",
+      "pass": true,
+      "detail": "当前没有符合条件的记录。"
+    },
+    {
+      "name": "房间视图卡片=5",
+      "pass": true,
+      "detail": "cards=5"
+    },
+    {
+      "name": "房间视图表头为合并单列",
+      "pass": true,
+      "detail": "th=1"
+    },
+    {
+      "name": "房间视图按房号检索=1",
+      "pass": true,
+      "detail": "cards=1"
+    },
+    {
+      "name": "点清洁数进入房间视图并带筛选",
+      "pass": true,
+      "detail": "cards=1 subtitle=房间视图 · 仅看清洁中 / 脏房"
+    },
+    {
+      "name": "点待排房 KPI 后下拉框同步为 no",
+      "pass": true,
+      "detail": "no"
+    },
+    {
+      "name": "点待排房 KPI 后仅列 1 条",
+      "pass": true,
+      "detail": "rows=1"
+    },
+    {
+      "name": "逾期未离入口可跳转且只列逾期记录",
+      "pass": true,
+      "detail": "title=逾期未离 rows=1"
+    },
+    {
+      "name": "抽屉合同房费=600.00",
+      "pass": true,
+      "detail": "CNY 600.00"
+    },
+    {
+      "name": "抽屉已实收=180.00",
+      "pass": true,
+      "detail": "CNY 180.00"
+    },
+    {
+      "name": "抽屉合同待收=420.00 且标签正确",
+      "pass": true,
+      "detail": "待收（合同） CNY 420.00"
+    },
+    {
+      "name": "抽屉说明房费尚未全部入账",
+      "pass": true,
+      "detail": "已入账房费 CNY 0.00 / 合同房费 CNY 600.00；差额在夜审过租或退房时入账，未入账不等于未收费，请按上方待收金额收款。"
+    }
+  ]
+}

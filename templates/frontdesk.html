@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>前台接待工作台 - 酒店管理系统</title>
     <link rel="stylesheet" href="/static/css/site.css?v=14">
-    <link rel="stylesheet" href="/static/css/frontdesk.css?v=5">
+    <link rel="stylesheet" href="/static/css/frontdesk.css?v=7">
 </head>
 <body class="fd-body">
 {% include "_sidebar.html" %}
@@ -168,22 +168,22 @@
                     </div>
                     <a href="/manage/rooms/" class="fd-text-link">房态与库存中心 →</a>
                 </div>
-                <div class="fd-room-stat">
+                <button type="button" class="fd-room-stat fd-room-stat-btn" data-kpi-tab="rooms" data-kpi-filter="READY">
                     <span><i class="fd-state-dot is-green"></i>可入住净房</span>
                     <strong id="room-ready-count">—</strong>
-                </div>
-                <div class="fd-room-stat">
+                </button>
+                <button type="button" class="fd-room-stat fd-room-stat-btn" data-kpi-tab="rooms" data-kpi-filter="CLEANING">
                     <span><i class="fd-state-dot is-blue"></i>清洁中 / 脏房</span>
                     <strong id="room-cleaning-count">—</strong>
-                </div>
-                <div class="fd-room-stat">
+                </button>
+                <button type="button" class="fd-room-stat fd-room-stat-btn" data-kpi-tab="rooms" data-kpi-filter="INSPECTING">
                     <span><i class="fd-state-dot is-amber"></i>待检查放行</span>
                     <strong id="room-inspecting-count">—</strong>
-                </div>
-                <div class="fd-room-stat">
+                </button>
+                <button type="button" class="fd-room-stat fd-room-stat-btn" data-kpi-tab="rooms" data-kpi-filter="MAINTENANCE">
                     <span><i class="fd-state-dot is-red"></i>维修停用 / 售停</span>
                     <strong id="room-maintenance-count">—</strong>
-                </div>
+                </button>
                 <div class="fd-room-note" id="room-readiness-note">房间状态按占用、清洁、维修三个维度分别展示。</div>
             </section>
 
@@ -198,6 +198,11 @@
                     <span class="fd-exception-icon is-amber">!</span>
                     <span><b>待排房订单</b><small>预抵订单尚未分配房间</small></span>
                     <strong id="exception-unassigned">—</strong>
+                </button>
+                <button type="button" class="fd-exception-row" data-tab="departures" data-filter="overdue">
+                    <span class="fd-exception-icon is-red">!</span>
+                    <span><b>逾期未离</b><small>计划离店日已过但仍在住</small></span>
+                    <strong id="exception-overdue">—</strong>
                 </button>
                 <button type="button" class="fd-exception-row" data-tab="rooms" data-filter="INSPECTING">
                     <span class="fd-exception-icon is-amber">!</span>
@@ -261,6 +266,7 @@
                     <div><span>已收 / 抵扣</span><b id="detail-credits">¥0.00</b></div>
                     <div class="is-balance"><span>当前余额</span><b id="detail-balance">¥0.00</b></div>
                 </div>
+                <p class="fd-folio-history" id="detail-accrual-note" hidden></p>
                 <p class="fd-folio-history" id="detail-folio-history" hidden></p>
                 <div id="detail-folio-entries" class="fd-folio-entries"></div>
             </div>
@@ -278,6 +284,6 @@
 
 <div class="fd-toast" id="fd-toast" role="status" aria-live="polite"></div>
 <form id="fd-csrf-token-container" hidden>{% csrf_token %}</form>
-<script src="/static/js/frontdesk.js?v=7"></script>
+<script src="/static/js/frontdesk.js?v=9"></script>
 </body>
 </html>

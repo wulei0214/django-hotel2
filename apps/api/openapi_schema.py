@@ -523,6 +523,15 @@ COMPONENTS = {
             "currency_label": s_str(),
             "folio_count": s_int("预订关联的全部账单数，含历史已结账单。"),
             "open_folio_count": s_int("参与当前余额计算的未结账单数。"),
+            "contract_total": s_nullable(
+                s_str("合同房费（Reservation.total_amount）；币种不一致时为 null。")
+            ),
+            "collected_amount": s_nullable(
+                s_str("已实收净额（押金 + 收款 − 退款，跨全部账单）；币种不一致时为 null。")
+            ),
+            "contract_balance": s_nullable(
+                s_str("合同待收 = contract_total − collected_amount；为负表示预存/多收。")
+            ),
             "currency_mismatch": s_bool("未结账单币种与预订币种不一致时为 true；金额字段不合并。"),
         }
     ),
@@ -555,6 +564,7 @@ COMPONENTS = {
             "check_in": s_str("", format="date"),
             "check_out": s_str("", format="date"),
             "nights": s_int(),
+            "room_count": s_int("所属预订的房间数；账务摘要按整单口径聚合。"),
             "adults": s_int(),
             "children": s_int(),
             "amount": s_str("该明细房费。"),
@@ -1472,8 +1482,9 @@ fd_read = [
         "前台总览",
         "verified",
         [Q("date", "业务日期 YYYY-MM-DD；缺省取物业当前营业日。", "string", False, "2026-11-05")],
-        "arrivals_count/unassigned_count/departures_count/in_house_count/clean_available_count/"
-        "waiting_release_count/maintenance_count 与 exception_counts",
+        "arrivals_count/arrivals_checked_in_count/unassigned_count/departures_count/"
+        "overdue_departures_count/in_house_count/clean_available_count/waiting_release_count/"
+        "cleaning_count/maintenance_count 与 exception_counts",
     ),
     (
         "/front-desk/arrivals",
@@ -1483,16 +1494,22 @@ fd_read = [
             Q("date", "抵店日期；缺省取物业当前营业日。", "string", False),
             Q("q", "搜索词（预订号/姓名/手机号/房号，≤80 字符）。"),
             Q("assigned", "排房筛选：all/yes/no。"),
+            Q("stage", "阶段筛选：all（含已入住记录，缺省）/pending（仅未办理入住）。"),
             *PQ(),
         ],
-        "ReservationRoomSummary 数组（当天待抵店明细）",
+        "ReservationRoomSummary 数组（当天待抵店明细；排除 No-Show 与保留期已过的 PENDING）",
     ),
     (
         "/front-desk/departures",
         "离店列表",
         "verified",
-        [Q("date", "离店日期；缺省取物业当前营业日。", "string", False), Q("q", "搜索词。"), *PQ()],
-        "ReservationRoomSummary 数组（当天在住待离店）",
+        [
+            Q("date", "离店日期；缺省取物业当前营业日。", "string", False),
+            Q("q", "搜索词。"),
+            Q("overdue", "逾期口径：1/true/yes 时返回计划离店日早于营业日仍在住的记录。"),
+            *PQ(),
+        ],
+        "ReservationRoomSummary 数组（当天在住待离店；overdue=1 时为逾期未离）",
     ),
     (
         "/front-desk/in-house",
@@ -1525,7 +1542,14 @@ fd_read = [
         "/front-desk/rooms",
         "房间列表",
         "verified",
-        [Q("floor", "楼层。"), Q("readiness", "READY/INSPECTING/MAINTENANCE/ALL（缺省 ALL）。")],
+        [
+            Q("floor", "楼层。"),
+            Q("q", "搜索词（房号 / 房型名称，≤80 字符）。"),
+            Q(
+                "readiness",
+                "READY/INSPECTING/CLEANING/MAINTENANCE/ALL（缺省 ALL）；CLEANING 含脏房与清洁中。",
+            ),
+        ],
         "FrontDeskRoomRow 数组",
     ),
     (

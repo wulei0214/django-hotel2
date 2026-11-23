@@ -23,7 +23,7 @@ from apps.billing.legacy_archive_query import (
     legacy_reservation_row,
     legacy_reservation_rows,
 )
-from apps.billing.models import Folio, Payment, PaymentIntent, Refund
+from apps.billing.models import Folio, LedgerEntry, Payment, PaymentIntent, Refund
 from apps.billing.payment_intents import extend_intent_window, get_channel_window
 from apps.core import labels as L
 from apps.core.api_contract import ApiError, api_response, api_view, idempotent, parse_page_args
@@ -81,7 +81,23 @@ logger = logging.getLogger("hotel.api")
 
 PAGE_DEFAULT = 20
 PAGE_MAX = 100
-ARRIVAL_STATUSES = (Reservation.Status.PENDING, Reservation.Status.CONFIRMED)
+# 前台收银口径：押金与收款为贷方（负数），退款为借方（正数）。三者合计的
+# 相反数即"已实际收到的净额"，用于「合同应收 − 已实收」的催收口径。
+COLLECTED_ENTRY_TYPES = (
+    LedgerEntry.EntryType.DEPOSIT,
+    LedgerEntry.EntryType.PAYMENT,
+    LedgerEntry.EntryType.REFUND,
+)
+# 今日抵店清单可见的预订状态：PENDING/CONFIRMED 为待抵店，CHECKED_IN 覆盖
+# 多房订单"部分入住"后仍未办理入住的明细（否则整单会从清单消失），
+# CHECKED_OUT 仅用于当日日租已退房的记录留痕。CANCELLED/EXPIRED/NO_SHOW 不属
+# 抵店范围。
+ARRIVAL_VISIBLE_STATUSES = (
+    Reservation.Status.PENDING,
+    Reservation.Status.CONFIRMED,
+    Reservation.Status.CHECKED_IN,
+    Reservation.Status.CHECKED_OUT,
+)
 
 
 def _response(data, status=200):
@@ -247,12 +263,19 @@ def _source_label(source):
 
 
 def _folio_summaries(property_obj, reservation_ids):
-    """按预订汇总所有未结账单余额；付款操作权限/状态仍以 MASTER 账单为准。
+    """按预订汇总账单余额、已实收金额与合同应收口径。
 
-    Folio 模型允许一个预订有多个账单。不能把每张账单直接写入
-    result[reservation_id]，否则后处理账单会覆盖之前账单的摘要。
-    预订余额口径按账单模型约定：所有 OPEN Folio 的带符号凭证合计；
-    CLOSED/VOIDED Folio 保留历史，不计入当前余额。
+    两套口径必须同时给出，避免同一组数字承担两种含义：
+
+    * 已入账口径 ``charges/credits/balance``：只统计 OPEN 账单的带符号凭证。
+      夜宿房费要等夜审或退房才入账（日租在入住时入账），因此入住当天
+      ``charges=0`` 是正常现象，**不能**据此显示"已结清"。
+    * 催收口径 ``contract_total/collected_amount/contract_balance``：
+      ``contract_total`` 取预订合同金额 ``Reservation.total_amount``；
+      ``collected_amount`` 为押金 + 收款 − 退款（全部账单，含已结账单）；
+      ``contract_balance`` 才是前台应催收的金额（为负表示客人预存/多收）。
+
+    Folio 模型允许一个预订有多个账单，所以按预订聚合而不是逐张覆盖。
     """
     if not reservation_ids:
         return {}
@@ -278,6 +301,9 @@ def _folio_summaries(property_obj, reservation_ids):
                 "currency_label": L.currency_label(folio.reservation.currency),
                 "folio_count": 0,
                 "open_folio_count": 0,
+                # 合同口径：催收金额以预订合同金额为分母，不依赖房费是否已入账。
+                "contract_total": folio.reservation.total_amount,
+                "collected_amount": Decimal("0.00"),
                 # V12-10：历史（含已结/已关账单）口径。只用于在"当前未结应收
                 # 为 0"时说明历史账单仍然存在，不参与应收聚合契约——CLOSED
                 # Folio 依旧不计入 charges/credits/balance。
@@ -293,6 +319,19 @@ def _folio_summaries(property_obj, reservation_ids):
             summary["status"] = folio.status
             summary["status_label"] = L.folio_summary_status_label(folio.status)
 
+        entries = list(folio.entries.all())
+        # 币种不一致的账单不能直接相加，也不参与「已实收」净额；标记后由
+        # 调用方显示"请核对各账单币种"，不允许把不同币种当同一笔钱。
+        currency_matches = folio.currency == summary["currency"]
+        if not currency_matches:
+            summary["currency_mismatch"] = True
+        # 已实收跨全部账单统计：退房后账单转 CLOSED，收款事实不会消失。
+        if currency_matches:
+            summary["collected_amount"] += sum(
+                (-entry.amount for entry in entries if entry.entry_type in COLLECTED_ENTRY_TYPES),
+                Decimal("0.00"),
+            )
+
         # 预订当前余额只统计未结账单；已结/作废凭证仍保留在账单详情中。
         # （D-R4-08 复核：CLOSED 不计入 charges/credits/balance 是
         # test_e2e_flows 固化的已评审口径；摘要显示"已结清"+账单明细
@@ -301,23 +340,19 @@ def _folio_summaries(property_obj, reservation_ids):
         if folio.status != Folio.Status.OPEN:
             # V12-10：已结账单单独聚合历史金额，避免页面上"全部归零"被读成
             # 账务记录消失；CLOSED 仍然不进当前应收。
-            if folio.currency == summary["currency"]:
-                closed_entries = list(folio.entries.all())
+            if currency_matches:
                 summary["closed_folio_count"] += 1
                 summary["closed_charges"] += sum(
-                    (entry.amount for entry in closed_entries if entry.amount > 0),
+                    (entry.amount for entry in entries if entry.amount > 0),
                     Decimal("0.00"),
                 )
                 summary["closed_credits"] += sum(
-                    (-entry.amount for entry in closed_entries if entry.amount < 0),
+                    (-entry.amount for entry in entries if entry.amount < 0),
                     Decimal("0.00"),
                 )
             continue
-        if folio.currency != summary["currency"]:
-            # 不允许把不同币种金额直接相加；保留冲突标记，提示必须人工核对。
-            summary["currency_mismatch"] = True
+        if not currency_matches:
             continue
-        entries = list(folio.entries.all())
         summary["charges"] += sum(
             (entry.amount for entry in entries if entry.amount > 0), Decimal("0.00")
         )
@@ -335,16 +370,36 @@ def _folio_summaries(property_obj, reservation_ids):
 
     for summary in result.values():
         summary.setdefault("currency_mismatch", False)
-        for key in ("charges", "credits", "balance", "closed_charges", "closed_credits"):
-            summary[key] = (
-                None
-                if summary["currency_mismatch"]
-                else str(summary[key].quantize(Decimal("0.01")))
-            )
+        if summary["currency_mismatch"]:
+            for key in (
+                "charges",
+                "credits",
+                "balance",
+                "closed_charges",
+                "closed_credits",
+                "contract_total",
+                "collected_amount",
+                "contract_balance",
+            ):
+                summary[key] = None
+            continue
+        summary["contract_balance"] = summary["contract_total"] - summary["collected_amount"]
+        for key in (
+            "charges",
+            "credits",
+            "balance",
+            "closed_charges",
+            "closed_credits",
+            "contract_total",
+            "collected_amount",
+            "contract_balance",
+        ):
+            summary[key] = str(summary[key].quantize(Decimal("0.01")))
     return result
 
 
-def _empty_folio_summary(currency="CNY"):
+def _empty_folio_summary(currency="CNY", contract_total=Decimal("0.00")):
+    contract_total = contract_total or Decimal("0.00")
     return {
         "folio_id": None,
         "status": "NOT_OPENED",
@@ -355,6 +410,9 @@ def _empty_folio_summary(currency="CNY"):
         "pending_payment_count": 0,
         "currency": currency,
         "currency_label": L.currency_label(currency),
+        "contract_total": str(contract_total.quantize(Decimal("0.01"))),
+        "collected_amount": "0.00",
+        "contract_balance": str(contract_total.quantize(Decimal("0.01"))),
         "closed_folio_count": 0,
         "closed_charges": "0.00",
         "closed_credits": "0.00",
@@ -392,11 +450,13 @@ def _reservation_room_dto(line, folio_map=None, stay_map=None):
         "check_in": line.check_in.isoformat(),
         "check_out": line.check_out.isoformat(),
         "nights": (line.check_out - line.check_in).days,
+        "room_count": reservation.room_count,
         "adults": reservation.adult_count,
         "children": reservation.child_count,
         "amount": str(line.amount),
         "folio_summary": (folio_map or {}).get(
-            reservation.pk, _empty_folio_summary(reservation.currency)
+            reservation.pk,
+            _empty_folio_summary(reservation.currency, reservation.total_amount),
         ),
         "stay_status_label": (
             L.stay_status_labels().get(stay.status, stay.status)
@@ -470,6 +530,46 @@ def _apply_search(queryset, value):
     return queryset.filter(conditions)
 
 
+def _arrival_lines(property_obj, day):
+    """今日抵店房间明细的统一取数口径（总览计数与列表共用，避免两套算法）。
+
+    * 排除已登记 No-Show 的明细：No-Show 会清空已排房号，若仍留在抵店清单，
+      会被读成"待排房"，再点排房必然被服务端 409 拒绝。
+    * 状态放开到 CHECKED_IN/CHECKED_OUT：多房订单首间入住后整单状态变为
+      CHECKED_IN，若只看 PENDING/CONFIRMED，同一订单其余未到店房间会从
+      清单与 KPI 里消失。已办理入住的明细由调用方按 ``stay`` 过滤。
+    """
+    queryset = ReservationRoom.objects.filter(
+        property=property_obj,
+        check_in=day,
+        reservation__status__in=ARRIVAL_VISIBLE_STATUSES,
+    ).exclude(no_show_record__isnull=False)
+    # 保留期已过的 PENDING 单库存已释放、服务端也会拒绝入住；定时任务未及时
+    # 改状态时不能继续算作"今日应到"，否则前台会为死单反复排房。
+    return queryset.exclude(
+        reservation__status=Reservation.Status.PENDING,
+        reservation__expires_at__lt=timezone.now(),
+    )
+
+
+def _stay_search_condition(prefix, value):
+    """在住/离店 Stay 查询的搜索条件（含 phone_hash 精确匹配）。
+
+    WB-103 后 ``Guest.phone`` 明文列停止写入，``phone__icontains`` 恒不命中；
+    这里与抵店/预订列表统一改为候选哈希集精确匹配（HMAC 不可逆，不支持
+    部分匹配），并保留订单号/姓名/房号模糊匹配。
+    """
+    condition = Q(**{f"{prefix}booking_no__icontains": value}) | Q(
+        **{f"{prefix}guest__full_name__icontains": value}
+    )
+    digits = "".join(ch for ch in value if ch.isdigit())
+    if digits:
+        digests = phone_hash_candidates(digits)
+        if digests:
+            condition = condition | Q(**{f"{prefix}guest__phone_hash__in": digests})
+    return condition
+
+
 @require_GET
 @api_guard
 @_front_desk_required
@@ -479,12 +579,19 @@ def overview(request):
         day = _parse_date(request.GET.get("date"), "业务日期", _property_today(property_obj))
     except ValueError as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
-    arrivals = ReservationRoom.objects.filter(
-        property=property_obj, check_in=day, reservation__status__in=ARRIVAL_STATUSES
-    )
+    arrivals = _arrival_lines(property_obj, day)
+    # 待排房只对"尚未办理入住"的明细有意义：已入住明细必然已有房间，
+    # No-Show 明细已被 _arrival_lines 排除。
+    pending_arrivals = arrivals.filter(stay__isnull=True)
+    unassigned = pending_arrivals.filter(assigned_room__isnull=True).count()
     departures_qs = Stay.objects.filter(
         property=property_obj, status=Stay.Status.IN_HOUSE, reservation_room__check_out=day
     )
+    overdue_departures = Stay.objects.filter(
+        property=property_obj,
+        status=Stay.Status.IN_HOUSE,
+        reservation_room__check_out__lt=day,
+    ).count()
     rooms_qs = Room.objects.filter(property=property_obj, is_active=True)
     clean_available = rooms_qs.filter(
         occupancy_status=Room.OccupancyStatus.VACANT,
@@ -495,24 +602,32 @@ def overview(request):
         housekeeping_status=Room.HousekeepingStatus.INSPECTING
     ).count()
     maintenance = rooms_qs.exclude(maintenance_status=Room.MaintenanceStatus.NORMAL).count()
+    # 脏房与清洁中都是"尚未准备好"的房，前台需要同一口径的实时数量。
+    cleaning = rooms_qs.filter(
+        housekeeping_status__in=(Room.HousekeepingStatus.DIRTY, Room.HousekeepingStatus.CLEANING)
+    ).count()
     return _response(
         {
             "data": {
                 "property": {"code": property_obj.code, "name": property_obj.name},
                 "business_date": day.isoformat(),
                 "arrivals_count": arrivals.count(),
-                "unassigned_count": arrivals.filter(assigned_room__isnull=True).count(),
+                "arrivals_checked_in_count": arrivals.filter(stay__isnull=False).count(),
+                "unassigned_count": unassigned,
                 "departures_count": departures_qs.count(),
+                "overdue_departures_count": overdue_departures,
                 "in_house_count": Stay.objects.filter(
                     property=property_obj, status=Stay.Status.IN_HOUSE
                 ).count(),
                 "clean_available_count": clean_available,
                 "waiting_release_count": waiting_release,
+                "cleaning_count": cleaning,
                 "maintenance_count": maintenance,
                 "exception_counts": {
-                    "waiting_room_assignment": arrivals.filter(assigned_room__isnull=True).count(),
+                    "waiting_room_assignment": unassigned,
                     "waiting_manager_release": waiting_release,
                     "maintenance_rooms": maintenance,
+                    "overdue_departures": overdue_departures,
                 },
                 "data_updated_at": timezone.now().isoformat(),
             }
@@ -529,16 +644,22 @@ def arrivals(request):
         day = _parse_date(request.GET.get("date"), "抵店日期", _property_today(property_obj))
         page, page_size = _page_args(request)
         queryset = (
-            ReservationRoom.objects.filter(
-                property=property_obj, check_in=day, reservation__status__in=ARRIVAL_STATUSES
-            )
+            _arrival_lines(property_obj, day)
             .select_related("reservation__guest", "room_type", "assigned_room")
-            .order_by("reservation__created_at", "id")
             .prefetch_related("no_show_record")
+            .order_by("reservation__created_at", "id")
         )
         queryset = _apply_search(queryset, request.GET.get("q"))
     except (ValueError, ApiError) as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
+    stage = (request.GET.get("stage") or "all").strip().lower()
+    if stage == "pending":
+        # 工作台只列"还没办理入住"的明细，已入住的不再是待办任务。
+        queryset = queryset.filter(stay__isnull=True)
+    elif stage != "all":
+        return _response(
+            {"error": {"code": "VALIDATION_ERROR", "message": "stage 只能是 all/pending。"}}, 400
+        )
     assigned = request.GET.get("assigned", "all")
     if assigned == "yes":
         queryset = queryset.filter(assigned_room__isnull=False)
@@ -551,9 +672,30 @@ def arrivals(request):
     rows, meta = _paginate(queryset, page, page_size)
     reservation_ids = {line.reservation_id for line in rows}
     folio_map = _folio_summaries(property_obj, reservation_ids)
-    data = [_reservation_room_dto(line, folio_map) for line in rows]
+    # 抵店清单同时包含"已办理入住"的明细（多房订单部分入住后其余房间仍要在
+    # 清单里可见），必须带上本明细自己的 Stay，否则前端只能按预订状态猜，
+    # 会把已入住读成"待办理入住"。
+    stay_map = {
+        stay.reservation_room_id: stay
+        for stay in Stay.objects.filter(
+            property=property_obj, reservation_room_id__in=[line.pk for line in rows]
+        )
+        .select_related("room")
+        .prefetch_related(
+            Prefetch("room_segments", queryset=StayRoomSegment.objects.select_related("room"))
+        )
+    }
+    data = [_reservation_room_dto(line, folio_map, stay_map) for line in rows]
     return _response(
-        {"data": data, "meta": {**meta, "date": day.isoformat(), "source_system": "PMS2"}}
+        {
+            "data": data,
+            "meta": {
+                **meta,
+                "date": day.isoformat(),
+                "stage": stage,
+                "source_system": "PMS2",
+            },
+        }
     )
 
 
@@ -567,11 +709,16 @@ def departures(request):
         page, page_size = _page_args(request)
     except (ValueError, ApiError) as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
+    overdue = (request.GET.get("overdue") or "").strip().lower() in ("1", "true", "yes")
+    base = Stay.objects.filter(property=property_obj, status=Stay.Status.IN_HOUSE)
+    # 逾期未离：计划离店日早于营业日却仍在住，属必须跟进的异常，不能只靠
+    # "计划今日离店"清单（它永远不含逾期）。
+    if overdue:
+        base = base.filter(reservation_room__check_out__lt=day)
+    else:
+        base = base.filter(reservation_room__check_out=day)
     queryset = (
-        Stay.objects.filter(
-            property=property_obj, status=Stay.Status.IN_HOUSE, reservation_room__check_out=day
-        )
-        .select_related(
+        base.select_related(
             "reservation_room__reservation__guest", "reservation_room__room_type", "room"
         )
         .order_by("reservation_room__check_out", "id")
@@ -588,9 +735,7 @@ def departures(request):
                 400,
             )
         queryset = queryset.filter(
-            Q(reservation_room__reservation__booking_no__icontains=value)
-            | Q(reservation_room__reservation__guest__full_name__icontains=value)
-            | Q(reservation_room__reservation__guest__phone__icontains=value)
+            _stay_search_condition("reservation_room__reservation__", value)
             | Q(room__number__icontains=value)
         )
     rows, meta = _paginate(queryset, page, page_size)
@@ -599,7 +744,15 @@ def departures(request):
     stay_map = {stay.reservation_room_id: stay for stay in rows}
     data = [_reservation_room_dto(stay.reservation_room, folio_map, stay_map) for stay in rows]
     return _response(
-        {"data": data, "meta": {**meta, "date": day.isoformat(), "source_system": "PMS2"}}
+        {
+            "data": data,
+            "meta": {
+                **meta,
+                "date": day.isoformat(),
+                "overdue": overdue,
+                "source_system": "PMS2",
+            },
+        }
     )
 
 
@@ -631,9 +784,7 @@ def in_house(request):
                 400,
             )
         queryset = queryset.filter(
-            Q(reservation_room__reservation__booking_no__icontains=value)
-            | Q(reservation_room__reservation__guest__full_name__icontains=value)
-            | Q(reservation_room__reservation__guest__phone__icontains=value)
+            _stay_search_condition("reservation_room__reservation__", value)
             | Q(room__number__icontains=value)
         )
     room_type_id = request.GET.get("room_type_id")
@@ -750,7 +901,8 @@ def reservations(request):
                     for line in lines
                 ],
                 "folio_summary": folio_map.get(
-                    reservation.pk, _empty_folio_summary(reservation.currency)
+                    reservation.pk,
+                    _empty_folio_summary(reservation.currency, reservation.total_amount),
                 ),
                 "source_system": "PMS2",
             }
@@ -788,7 +940,10 @@ def reservation_detail(request, booking_no):
         )
     )
     stay_map = {stay.reservation_room_id: stay for stay in stays}
-    folio_summary = folio_map.get(reservation.pk, _empty_folio_summary(reservation.currency))
+    folio_summary = folio_map.get(
+        reservation.pk,
+        _empty_folio_summary(reservation.currency, reservation.total_amount),
+    )
     return _response(
         {
             "data": {
@@ -884,6 +1039,15 @@ def rooms(request):
     floor = (request.GET.get("floor") or "").strip()
     if floor:
         queryset = queryset.filter(floor=floor)
+    # P1：房间视图此前整体丢弃搜索词（前端也不发 q），搜索框形同虚设。
+    value = (request.GET.get("q") or "").strip()
+    if value:
+        if len(value) > 80:
+            return _response(
+                {"error": {"code": "VALIDATION_ERROR", "message": "搜索内容不能超过 80 个字符。"}},
+                400,
+            )
+        queryset = queryset.filter(Q(number__icontains=value) | Q(room_type__name__icontains=value))
     readiness = (request.GET.get("readiness") or "").strip().upper()
     if readiness == "READY":
         queryset = queryset.filter(
@@ -893,6 +1057,13 @@ def rooms(request):
         )
     elif readiness == "INSPECTING":
         queryset = queryset.filter(housekeeping_status=Room.HousekeepingStatus.INSPECTING)
+    elif readiness == "CLEANING":
+        queryset = queryset.filter(
+            housekeeping_status__in=(
+                Room.HousekeepingStatus.DIRTY,
+                Room.HousekeepingStatus.CLEANING,
+            )
+        )
     elif readiness == "MAINTENANCE":
         queryset = queryset.exclude(maintenance_status=Room.MaintenanceStatus.NORMAL)
     elif readiness not in ("", "ALL"):
@@ -1007,7 +1178,7 @@ def folio_detail(request, booking_no):
             {
                 "data": {
                     "folio": None,
-                    "summary": _empty_folio_summary(reservation.currency),
+                    "summary": _empty_folio_summary(reservation.currency, reservation.total_amount),
                     "entries": [],
                     "payments": [],
                     "allowed_actions": (

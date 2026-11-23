@@ -13,6 +13,7 @@
         date: "",
         assigned: "all",
         readiness: "ALL",
+        departureScope: "due",
         currentBooking: null,
         folioOpen: false,
         paymentKey: null,
@@ -87,6 +88,71 @@
             balanceNode.textContent = money(0, currency);
         }
     }
+
+    /* P0-1：前台催收口径以「合同房费 − 已实收」为分母。
+       夜宿房费要等夜审过租或退房才写入账单，入住当天账单借方为 0；
+       此时若直接展示账单余额，会把"还没入账"读成"已结清"而漏收。 */
+    function renderContractBalance(value, currency) {
+        var balanceNode = $("detail-balance");
+        var labelNode = balanceNode.parentElement.querySelector("span");
+        var summaryNode = balanceNode.parentElement;
+        if (value === null || typeof value === "undefined") {
+            summaryNode.classList.remove("is-credit");
+            labelNode.textContent = "币种不一致";
+            balanceNode.textContent = "请核对各账单币种";
+            return;
+        }
+        var amount = Number(value || 0);
+        if (!Number.isFinite(amount)) amount = 0;
+        summaryNode.classList.toggle("is-credit", amount < 0);
+        if (amount < 0) {
+            labelNode.textContent = "客人预存";
+            balanceNode.textContent = money(Math.abs(amount), currency);
+        } else if (amount > 0) {
+            labelNode.textContent = "待收（合同）";
+            balanceNode.textContent = money(amount, currency);
+        } else {
+            labelNode.textContent = "合同已结清";
+            balanceNode.textContent = money(0, currency);
+        }
+    }
+
+    /* 已入账消费与合同房费的差额要明说，否则用户看到「合同房费 600」
+       而账单只有押金时，无法判断是没入账还是漏收。 */
+    function renderAccrualNote(summary) {
+        var node = $("detail-accrual-note");
+        if (!node) return;
+        var total = summary.contract_total;
+        if (total === null || typeof total === "undefined") {
+            node.textContent = "";
+            node.hidden = true;
+            return;
+        }
+        var contract = Number(total || 0);
+        var charges = Number(summary.charges || 0);
+        var balance = Number(summary.balance || 0);
+        /* 退房后账单转 CLOSED，charges 口径归零；此时已入账金额在
+           closed_charges 里，不能据此提示"差额待夜审入账"。 */
+        if (Number(summary.closed_folio_count || 0) > 0 && charges + 0.005 < contract) {
+            charges = Number(summary.closed_charges || 0);
+        }
+        if (Number.isFinite(contract) && Number.isFinite(charges) && charges + 0.005 < contract) {
+            node.textContent = "已入账房费 " + money(charges, summary.currency) +
+                " / 合同房费 " + money(contract, summary.currency) +
+                "；差额在夜审过租或退房时入账，未入账不等于未收费，请按上方待收金额收款。";
+            node.hidden = false;
+            return;
+        }
+        if (Number.isFinite(balance) && Math.abs(balance) >= 0.005) {
+            node.textContent = "账单当前余额 " + money(balance, summary.currency) +
+                "（已入账口径）；催收请以上方合同待收金额为准。";
+            node.hidden = false;
+            return;
+        }
+        node.textContent = "";
+        node.hidden = true;
+    }
+
 
     /* V12-10：退房/关账后当前未结应收为 0 是账务口径，不是历史账务消失。
        摘要区单独说明"已结账单 N 张 · 历史消费 X · 历史已收 Y"，历史明细
@@ -270,7 +336,19 @@
             if (item.housekeeping_status === "DIRTY" || item.housekeeping_status === "CLEANING") return ["待清洁/清洁中", "amber"];
             return ["不可分配", "gray"];
         }
-        if (tab === "departures" || tab === "in-house") {
+        if (tab === "departures") {
+            /* 离店催收：合同待收 > 0 即必须结账后才能退房；已入账余额为异常口径
+               （例如挂账/超额），单独提示，不与合同待收混为一谈。 */
+            var contractBalance = item.folio_summary ? item.folio_summary.contract_balance : null;
+            if (contractBalance !== null && typeof contractBalance !== "undefined" &&
+                Number(contractBalance) > 0.004) {
+                return ["待结账", "red"];
+            }
+            var ledgerBalance = Number(item.folio_summary && item.folio_summary.balance || 0);
+            if (ledgerBalance > 0) return ["账单余额待核", "amber"];
+            if (item.stay && item.stay.status === "IN_HOUSE") return ["在住", "green"];
+        }
+        if (tab === "in-house") {
             var balance = Number(item.folio_summary && item.folio_summary.balance || 0);
             if (balance > 0) return ["余额待结", "red"];
             if (item.stay && item.stay.status === "IN_HOUSE") return ["在住", "green"];
@@ -281,6 +359,15 @@
         // 端点顶层提供（此前嵌在 rooms[] 内，前端读取恒为 undefined）。
         if (item.stay_status === "IN_HOUSE") return ["在住", "green"];
         if (item.stay_status === "CHECKED_OUT") return ["已退房", "gray"];
+        // P0-2/P0-3：No-Show 与「已入住/已退房」必须先于排房判定，否则已处理
+        // 的明细会被读成"待排房"，多房订单部分入住后剩余房间会被读成异常。
+        if (item.no_show) return ["未到店", "gray"];
+        if (item.stay && item.stay.status === "IN_HOUSE") return ["在住", "green"];
+        if (item.stay && item.stay.status === "CHECKED_OUT") return ["已退房", "gray"];
+        if (item.reservation_status === "CHECKED_IN") {
+            // 整单已入住但本明细还没有 Stay：多房订单"部分入住"的其余房间。
+            return item.assigned_room ? ["待入住", "blue"] : ["待排房", "amber"];
+        }
         if (item.reservation_status === "CANCELLED") return ["已取消", "gray"];
         if (item.reservation_status === "EXPIRED") return ["已过期", "gray"];
         if (item.reservation_status === "NO_SHOW") return ["未到", "gray"];
@@ -343,9 +430,12 @@
         ].forEach(function (id) { $(id).textContent = "加载中…"; });
         $("detail-balance").parentElement.classList.remove("is-credit");
         $("detail-balance").parentElement.querySelector("span").textContent = "当前余额";
-        // V12-10：上一次抽屉可能停在"账单累计"口径，重开必须回到预订摘要口径标签。
-        $("detail-charges").parentElement.querySelector("span").textContent = "应收 / 消费";
-        $("detail-credits").parentElement.querySelector("span").textContent = "已收 / 抵扣";
+        // P0-1：抽屉默认展示「合同房费 / 已实收 / 待收（合同）」催收口径，
+        // 账单已入账口径只在「查看账单明细」里切换，避免两组数字混用。
+        $("detail-charges").parentElement.querySelector("span").textContent = "合同房费";
+        $("detail-credits").parentElement.querySelector("span").textContent = "已实收（押金+收款−退款）";
+        $("detail-accrual-note").textContent = "";
+        $("detail-accrual-note").hidden = true;
         $("detail-folio-history").textContent = "";
         $("detail-folio-history").hidden = true;
         $("detail-rooms").replaceChildren();
@@ -1003,9 +1093,23 @@
             $("detail-room-count").textContent = item.room_count || (item.rooms || []).length;
             $("detail-guests").textContent = (item.adult_count || 0) + " 成人 / " + (item.child_count || 0) + " 儿童";
             var summary = item.folio_summary || {};
-            $("detail-charges").textContent = money(summary.charges, summary.currency);
-            $("detail-credits").textContent = money(summary.credits, summary.currency);
-            renderFolioBalance(summary.balance, summary.currency);
+            if (summary.contract_total !== null && typeof summary.contract_total !== "undefined") {
+                // 催收口径：合同房费 / 已实收 / 待收（合同）。
+                $("detail-charges").parentElement.querySelector("span").textContent = "合同房费";
+                $("detail-credits").parentElement.querySelector("span").textContent = "已实收（押金+收款−退款）";
+                $("detail-charges").textContent = money(summary.contract_total, summary.currency);
+                $("detail-credits").textContent = money(summary.collected_amount, summary.currency);
+                renderContractBalance(summary.contract_balance, summary.currency);
+                renderAccrualNote(summary);
+            } else {
+                // 币种不一致等无法给出合同口径时，退回已入账口径并标明。
+                $("detail-charges").parentElement.querySelector("span").textContent = "已入账消费";
+                $("detail-credits").parentElement.querySelector("span").textContent = "已收 / 抵扣";
+                $("detail-charges").textContent = money(summary.charges, summary.currency);
+                $("detail-credits").textContent = money(summary.credits, summary.currency);
+                renderFolioBalance(summary.balance, summary.currency);
+                renderAccrualNote(summary);
+            }
             renderFolioHistory(summary);
             $("detail-created").textContent = item.timeline && item.timeline.created_at ? new Date(item.timeline.created_at).toLocaleString() : "—";
             $("detail-updated").textContent = item.timeline && item.timeline.updated_at ? new Date(item.timeline.updated_at).toLocaleString() : "—";
@@ -1055,6 +1159,10 @@
                 closedFolio ? "账单累计消费" : "应收 / 消费";
             $("detail-credits").parentElement.querySelector("span").textContent =
                 closedFolio ? "账单累计已收" : "已收 / 抵扣";
+            /* 切到账单明细后，三个数字变成"已入账口径"；上方合同催收说明必须
+               收起，否则同一区域同时出现两种口径会互相打脸。 */
+            $("detail-accrual-note").textContent = "";
+            $("detail-accrual-note").hidden = true;
             $("detail-charges").textContent = money(summary.charges, summary.currency);
             $("detail-credits").textContent = money(summary.credits, summary.currency);
             renderFolioBalance(summary.balance, summary.currency);
@@ -1153,7 +1261,24 @@
                 appendCell(row, item.room_type ? item.room_type.name : "—", assigned);
                 appendCell(row, (item.check_in || "—") + " — " + (item.check_out || "—"), "共 " + (item.nights || 0) + " 晚");
                 var summary = item.folio_summary || {};
-                appendCell(row, money(summary.balance, summary.currency), "应收 " + money(summary.charges, summary.currency) + " · 已收/抵扣 " + money(summary.credits, summary.currency));
+                var contractBalance = summary.contract_balance;
+                if (contractBalance !== null && typeof contractBalance !== "undefined") {
+                    // 催收口径：主数字是「合同待收」，副行说明合同额与已实收。
+                    // 账单按预订聚合，多房订单每行都是整单口径，必须写明"整单"，
+                    // 否则会被读成"每间各欠一笔"。
+                    var multiRoom = Number(item.room_count || 1) > 1;
+                    appendCell(
+                        row,
+                        money(contractBalance, summary.currency),
+                        (multiRoom ? "整单 " + item.room_count + " 间：" : "") +
+                            "合同 " + money(summary.contract_total, summary.currency) +
+                            " · 已实收 " + money(summary.collected_amount, summary.currency)
+                    );
+                } else {
+                    appendCell(row, money(summary.balance, summary.currency),
+                        "应收 " + money(summary.charges, summary.currency) +
+                        " · 已收/抵扣 " + money(summary.credits, summary.currency));
+                }
             }
             var status = badgeFor(item, tab);
             var statusCell = element("td");
@@ -1173,6 +1298,33 @@
         });
     }
 
+    /* P1-1：房间视图是卡片网格（一行 colspan=6），继续沿用订单六列表头会
+       让表头与内容错位；这里按页签切换表头，房间视图只留一个合并表头。 */
+    function updateTableHead(mode) {
+        var head = $("fd-table-head");
+        var row = element("tr");
+        if (mode === "rooms") {
+            var th = element("th", "", "房间状态（按楼层、房号排序；上方搜索框可按房号 / 房型过滤）");
+            th.colSpan = 6;
+            row.appendChild(th);
+            head.replaceChildren(row);
+            return;
+        }
+        var labels = [
+            ["订单 / 住客", ""],
+            ["房型 / 房间", ""],
+            ["入住 · 离店", ""],
+            ["账务摘要", ""],
+            ["状态", ""],
+            ["详情", "fd-th-action"]
+        ];
+        labels.forEach(function (pair) {
+            var cell = element("th", pair[1], pair[0]);
+            row.appendChild(cell);
+        });
+        head.replaceChildren(row);
+    }
+
     function updateListHeading() {
         var titles = {
             "workbench": ["今日抵店任务", "优先处理今日预抵、待排房和待入住订单"],
@@ -1187,6 +1339,28 @@
         $("fd-list-title").textContent = pair[0];
         $("fd-list-subtitle").textContent = pair[1];
         $("fd-assigned-filter").hidden = !(state.tab === "workbench" || state.tab === "arrivals");
+        updateTableHead(state.tab);
+        /* P1-2：营业日期只对工作台/今日抵店/今日离店生效；其余页签忽略 date，
+           继续保留可编辑输入框会造成"已按该日过滤"的错觉，因此直接禁用。 */
+        var usesDate = state.tab === "workbench" || state.tab === "arrivals" ||
+            state.tab === "departures";
+        var dateInput = $("fd-date");
+        dateInput.disabled = !usesDate;
+        dateInput.title = usesDate ? "按该营业日期筛选抵店 / 离店" : "当前页签不使用营业日期筛选";
+        dateInput.closest("label").classList.toggle("is-disabled", !usesDate);
+        if (state.tab === "departures" && state.departureScope === "overdue") {
+            $("fd-list-title").textContent = "逾期未离";
+            $("fd-list-subtitle").textContent = "计划离店日已过但仍在住，需前台跟进续住或退房";
+        }
+        if (state.tab === "rooms" && state.readiness !== "ALL") {
+            var readinessLabels = {
+                READY: "仅看可入住净房",
+                INSPECTING: "仅看待检查放行",
+                CLEANING: "仅看清洁中 / 脏房",
+                MAINTENANCE: "仅看维修停售"
+            };
+            $("fd-list-subtitle").textContent = "房间视图 · " + (readinessLabels[state.readiness] || state.readiness);
+        }
     }
 
     function queryString(params) {
@@ -1203,13 +1377,21 @@
         setLoading("正在读取前台数据…");
         var params = { page: state.page, page_size: state.pageSize, q: state.query };
         var endpoint = "arrivals";
-        if (state.tab === "workbench" || state.tab === "arrivals") {
+        if (state.tab === "workbench") {
+            // 工作台是"待办清单"：只看还没办理入住的明细；今日抵店页签保留
+            // 已入住记录，两者不再重复。
+            endpoint = "arrivals";
+            params.date = state.date;
+            params.assigned = state.assigned;
+            params.stage = "pending";
+        } else if (state.tab === "arrivals") {
             endpoint = "arrivals";
             params.date = state.date;
             params.assigned = state.assigned;
         } else if (state.tab === "departures") {
             endpoint = "departures";
             params.date = state.date;
+            if (state.departureScope === "overdue") params.overdue = "1";
         } else if (state.tab === "in-house") {
             endpoint = "in-house";
         } else if (state.tab === "reservations") {
@@ -1217,8 +1399,9 @@
         } else if (state.tab === "legacy") {
             endpoint = "legacy-reservations";
         } else if (state.tab === "rooms") {
+            // P1-1：房间视图此前整体丢弃搜索词，且 readiness 只在点 KPI 时赋值。
             endpoint = "rooms";
-            params = { readiness: state.readiness };
+            params = { readiness: state.readiness, q: state.query };
         }
 
         try {
@@ -1260,9 +1443,11 @@
             $("room-inspecting-count").textContent = data.waiting_release_count || 0;
             $("room-maintenance-count").textContent = data.maintenance_count || 0;
             $("exception-unassigned").textContent = data.unassigned_count || 0;
+            $("exception-overdue").textContent = data.overdue_departures_count || 0;
             $("exception-inspecting").textContent = data.waiting_release_count || 0;
             $("exception-maintenance").textContent = data.maintenance_count || 0;
-            $("room-cleaning-count").textContent = "—";
+            // P1-4：此前固定写"—"（未接数据），脏房/清洁中在客房模块已有枚举。
+            $("room-cleaning-count").textContent = data.cleaning_count || 0;
             $("room-readiness-note").textContent = "状态更新时间：" + new Date(data.data_updated_at).toLocaleTimeString();
         } catch (error) {
             showToast(error.message, true);
@@ -1277,14 +1462,25 @@
     function switchTab(tab, filter) {
         state.tab = tab;
         state.page = 1;
-        if (filter === "unassigned") state.assigned = "no";
-        else if (filter === "READY" || filter === "INSPECTING" || filter === "MAINTENANCE") state.readiness = filter;
-        else if (tab === "arrivals" || tab === "workbench") state.assigned = "all";
+        /* P1-1/P1-2：页签级筛选先复位再应用本次 filter。此前 readiness 只在
+           点 KPI 时赋值、切回页签不复位，会出现"只显示 3 间房"却没有任何
+           筛选提示的假空列表；assigned 下拉框也不会同步。 */
+        state.readiness = "ALL";
+        state.departureScope = "due";
+        if (tab === "arrivals" || tab === "workbench") state.assigned = "all";
+        if (filter === "unassigned") {
+            state.assigned = "no";
+        } else if (filter === "overdue") {
+            state.departureScope = "overdue";
+        } else if (["READY", "INSPECTING", "CLEANING", "MAINTENANCE"].indexOf(filter) >= 0) {
+            state.readiness = filter;
+        }
         document.querySelectorAll(".fd-tab").forEach(function (button) {
             button.classList.toggle("is-active", button.dataset.tab === tab);
         });
-        if (tab === "rooms") $("fd-assigned-filter").hidden = true;
-        else $("fd-assigned-filter").hidden = !(tab === "arrivals" || tab === "workbench");
+        // 下拉框必须回写，否则点了"待排房"KPI 后筛选框仍显示"全部"，人会被误导。
+        $("fd-assigned-filter").value = state.assigned;
+        $("fd-assigned-filter").hidden = !(tab === "arrivals" || tab === "workbench");
         loadList();
     }
 

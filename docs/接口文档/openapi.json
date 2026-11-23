@@ -1029,7 +1029,7 @@
                   "properties": {
                     "data": {
                       "type": "array",
-                      "description": "ReservationRoomSummary 数组（当天待抵店明细）",
+                      "description": "ReservationRoomSummary 数组（当天待抵店明细；排除 No-Show 与保留期已过的 PENDING）",
                       "items": {
                         "$ref": "#/components/schemas/ReservationRoomSummary"
                       }
@@ -1139,6 +1139,15 @@
             }
           },
           {
+            "name": "stage",
+            "in": "query",
+            "required": false,
+            "description": "阶段筛选：all（含已入住记录，缺省）/pending（仅未办理入住）。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
@@ -1185,7 +1194,7 @@
                   "properties": {
                     "data": {
                       "type": "array",
-                      "description": "ReservationRoomSummary 数组（当天在住待离店）",
+                      "description": "ReservationRoomSummary 数组（当天在住待离店；overdue=1 时为逾期未离）",
                       "items": {
                         "$ref": "#/components/schemas/ReservationRoomSummary"
                       }
@@ -1281,6 +1290,15 @@
             "in": "query",
             "required": false,
             "description": "搜索词。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "overdue",
+            "in": "query",
+            "required": false,
+            "description": "逾期口径：1/true/yes 时返回计划离店日早于营业日仍在住的记录。",
             "schema": {
               "type": "string"
             }
@@ -1736,10 +1754,19 @@
             }
           },
           {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "搜索词（房号 / 房型名称，≤80 字符）。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "readiness",
             "in": "query",
             "required": false,
-            "description": "READY/INSPECTING/MAINTENANCE/ALL（缺省 ALL）。",
+            "description": "READY/INSPECTING/CLEANING/MAINTENANCE/ALL（缺省 ALL）；CLEANING 含脏房与清洁中。",
             "schema": {
               "type": "string"
             }
@@ -35547,6 +35574,39 @@
             "type": "integer",
             "description": "参与当前余额计算的未结账单数。"
           },
+          "contract_total": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "合同房费（Reservation.total_amount）；币种不一致时为 null。"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "collected_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "已实收净额（押金 + 收款 − 退款，跨全部账单）；币种不一致时为 null。"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contract_balance": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "合同待收 = contract_total − collected_amount；为负表示预存/多收。"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "currency_mismatch": {
             "type": "boolean",
             "description": "未结账单币种与预订币种不一致时为 true；金额字段不合并。"
@@ -35655,6 +35715,10 @@
           "nights": {
             "type": "integer",
             "description": ""
+          },
+          "room_count": {
+            "type": "integer",
+            "description": "所属预订的房间数；账务摘要按整单口径聚合。"
           },
           "adults": {
             "type": "integer",
