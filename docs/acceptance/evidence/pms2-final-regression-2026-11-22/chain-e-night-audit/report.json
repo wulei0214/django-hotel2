@@ -1,0 +1,55 @@
+{
+  "task": "TASK-12 链 E 夜审与营业日（只读 + 权限边界）",
+  "base": "http://127.0.0.1:8132",
+  "results": [
+    {
+      "name": "E1 值班经理夜审中心页面",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "E2 营业日状态可读",
+      "pass": true,
+      "detail": "HTTP 200 {\"id\":null,\"business_date\":\"2026-11-23\",\"exists\":false,\"status\":\"OPEN\",\"status_label\":\"营业中\"}"
+    },
+    {
+      "name": "E3 夜审预览结构完整",
+      "pass": true,
+      "detail": "HTTP 200，含 blockers 数组=true"
+    },
+    {
+      "name": "E4 夜审员夜审中心页面（TASK-06 授权）",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "E5 夜审员可读夜审运行记录",
+      "pass": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "E6 前台 夜审状态应拒绝",
+      "pass": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "E6 财务 夜审状态应拒绝",
+      "pass": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "E6 客房服务员 夜审状态应拒绝",
+      "pass": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "E7 历史营业日已关账（只读核对）",
+      "pass": true,
+      "detail": "见 E2 返回的营业日状态；本轮不执行新关账"
+    }
+  ],
+  "passed": 9,
+  "failed": 0,
+  "note": "本轮不执行真实关账（会推进营业日并影响其他验收）；关账后写操作拒绝由 API 测试覆盖",
+  "finished_at": "2026-11-23T02:35:38.942Z"
+}

@@ -1,0 +1,55 @@
+{
+  "base": "http://127.0.0.1:8132",
+  "ticket_no": "MT-DEFAULT-20261123-AEE58E2B",
+  "room": "1410",
+  "avail_before": 6,
+  "avail_stopped": 5,
+  "avail_after": 6,
+  "results": [
+    {
+      "name": "staff_profile_id",
+      "pass": true,
+      "detail": "test_duty → 档案 #13"
+    },
+    {
+      "name": "pick_room",
+      "pass": true,
+      "detail": "1410（room_type=3）"
+    },
+    {
+      "name": "availability_before",
+      "pass": true,
+      "detail": "available_count=6"
+    },
+    {
+      "name": "ticket_created",
+      "pass": true,
+      "detail": "维修工单 MT-DEFAULT-20261123-AEE58E2B 已登记。"
+    },
+    {
+      "name": "inventory_stopped_on_report",
+      "pass": true,
+      "detail": "报修后 available_count=5（基线 6）"
+    },
+    {
+      "name": "resolve_leaves_pending_verify",
+      "pass": true,
+      "detail": "工单状态=待验收"
+    },
+    {
+      "name": "resolve_does_not_restore_inventory",
+      "pass": true,
+      "detail": "完成维修后 available_count=5（应仍为 5）"
+    },
+    {
+      "name": "verify_pass",
+      "pass": true,
+      "detail": "工单状态=验收通过"
+    },
+    {
+      "name": "inventory_restored_after_acceptance",
+      "pass": true,
+      "detail": "验收后 available_count=6（基线 6）"
+    }
+  ]
+}

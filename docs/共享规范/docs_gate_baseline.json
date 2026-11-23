@@ -247,6 +247,18 @@
     "docs/acceptance/evidence/task06-nine-role-2026-11-22.md": "M",
     "docs/acceptance/evidence/v3-security-history-scan-2026-11-22.md": "D",
     "docs/acceptance/evidence/v3-security-scan-history-2026-11-22.md": "M",
-    "docs/PMS2.0_当前版本/00_项目基线与决策/DEC编号命名空间映射表_2026-11-14.md": "M"
+    "docs/PMS2.0_当前版本/00_项目基线与决策/DEC编号命名空间映射表_2026-11-14.md": "M",
+    "docs/acceptance/evidence/task07-win-repro-2026-11-22/nine-role-login-report.json": "M",
+    "docs/acceptance/evidence/task07-win-repro-2026-11-22/test_duty_manage_housekeeping_.png": "M",
+    "docs/acceptance/evidence/task07-win-repro-2026-11-22/test_duty_manage_night-audit_.png": "M",
+    "docs/acceptance/evidence/task07-win-repro-2026-11-22/test_finance_manage_finance_.png": "M",
+    "docs/acceptance/evidence/task07-win-repro-2026-11-22/test_fnb_home_.png": "M",
+    "docs/acceptance/evidence/task07-win-repro-2026-11-22/test_fnbsup_home_.png": "M",
+    "docs/acceptance/evidence/task07-win-repro-2026-11-22/test_front_checkin_.png": "M",
+    "docs/acceptance/evidence/task07-win-repro-2026-11-22/test_housekeeping_manage_housekeeping_.png": "M",
+    "docs/acceptance/evidence/task07-win-repro-2026-11-22/test_nightaudit_manage_night-audit_.png": "M",
+    "docs/acceptance/evidence/task07-win-repro-2026-11-22/test_owner_manage_audit_.png": "M",
+    "docs/acceptance/evidence/task07-win-repro-2026-11-22/test_parking_home_.png": "M",
+    "docs/acceptance/evidence/pms2-final-regression-2026-11-22/final-summary.json": "M"
   }
 }

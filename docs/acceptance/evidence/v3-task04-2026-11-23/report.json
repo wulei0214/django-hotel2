@@ -1,0 +1,30 @@
+{
+  "results": [
+    {
+      "name": "seed_pending_reservation",
+      "pass": true,
+      "detail": "PENDING 单 RDA7CD45837BFD147688F"
+    },
+    {
+      "name": "cancel_box_visible_for_pending",
+      "pass": true,
+      "detail": "PENDING 抽屉含取消预订动作"
+    },
+    {
+      "name": "empty_reason_blocked",
+      "pass": true,
+      "detail": "请填写取消原因。"
+    },
+    {
+      "name": "cancel_success_toast",
+      "pass": true,
+      "detail": "已取消该预订"
+    },
+    {
+      "name": "api_cancelled_status",
+      "pass": true,
+      "detail": "status=CANCELLED"
+    }
+  ],
+  "booking_no": "RDA7CD45837BFD147688F"
+}

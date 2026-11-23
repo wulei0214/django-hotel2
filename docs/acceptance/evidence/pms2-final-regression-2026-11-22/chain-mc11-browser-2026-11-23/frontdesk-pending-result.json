@@ -1,0 +1,51 @@
+{
+  "base": "http://127.0.0.1:8132",
+  "booking_no": "R2287A48B3F38350E669C",
+  "results": [
+    {
+      "name": "availability",
+      "pass": true,
+      "detail": "room_type=7 rate_plan=5"
+    },
+    {
+      "name": "public_create_pending",
+      "pass": true,
+      "detail": "R2287A48B3F38350E669C"
+    },
+    {
+      "name": "login",
+      "pass": true,
+      "detail": "http://127.0.0.1:8132/home/"
+    },
+    {
+      "name": "drawer_row_visible",
+      "pass": true,
+      "detail": "R2287A48B3F38350E669C"
+    },
+    {
+      "name": "drawer_open",
+      "pass": true,
+      "detail": "抽屉已打开"
+    },
+    {
+      "name": "pending_payment_form_visible",
+      "pass": true,
+      "detail": "PENDING 单抽屉含收款表单"
+    },
+    {
+      "name": "payment_confirms_pending",
+      "pass": true,
+      "detail": "#detail-status=已确认"
+    },
+    {
+      "name": "room_rows_not_duplicated",
+      "pass": true,
+      "detail": "房行数=1"
+    },
+    {
+      "name": "assign_entry_available",
+      "pass": true,
+      "detail": "确认后排房入口可见"
+    }
+  ]
+}

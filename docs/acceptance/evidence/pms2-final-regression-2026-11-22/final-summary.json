@@ -1,14 +1,111 @@
-﻿{
-  "baseline_sha": "6b6519e81e81409e88154ea12fd5bb94871dd99e",
-  "generated_at": "2026-11-22T23:30:15.1376331+08:00",
+{
+  "task": "TASK-12 PMS 2.0 最新基线最终回归",
+  "dual_engine_sha": "6b6519e81e81409e88154ea12fd5bb94871dd99e",
+  "ci_sha": "9050cc2",
   "engine_results": {
-    "sqlite": {"tests": 1899, "result": "OK", "skipped": 28, "exit": 0, "log": "sqlite-fullsuite.log"},
-    "mysql": {"tests": 1899, "result": "OK", "skipped": 3, "exit": 0, "log": "mysql-fullsuite.log"}
+    "sqlite": {
+      "tests": 1899,
+      "result": "OK",
+      "skipped": 28,
+      "exit": 0,
+      "log": "sqlite-fullsuite.log"
+    },
+    "mysql": {
+      "tests": 1899,
+      "result": "OK",
+      "skipped": 3,
+      "exit": 0,
+      "log": "mysql-fullsuite.log"
+    }
   },
-  "skip_explanation": "SQLite 28 skip vs MySQL 3 skip 差异系 test_mysql_concurrency.py 等按 connection.vendor 整类跳过（SQLite 下 select_for_update 为 no-op），两侧 Ran 数量一致（1899）",
+  "skip_explanation": "SQLite 28 vs MySQL 3 的 25 项差异系并发/锁用例按 connection.vendor 整类跳过；两侧 Ran 一致(1899)",
+  "browser_chains": {
+    "A_reservation_checkin": {
+      "passed": 9,
+      "failed": 0,
+      "status": "PASS"
+    },
+    "B_cancel_and_refund": {
+      "passed": 5,
+      "failed": 0,
+      "status": "PASS",
+      "note": "退款三方分离由 API 测试覆盖"
+    },
+    "C_housekeeping_maintenance": {
+      "passed": 9,
+      "failed": 0,
+      "status": "PASS",
+      "note": "resolve 不恢复库存，verify PASS 才恢复"
+    },
+    "D_day_use": {
+      "passed": 12,
+      "failed": 0,
+      "status": "PASS"
+    },
+    "E_night_audit": {
+      "passed": 9,
+      "failed": 0,
+      "status": "PASS_WITH_RESERVATIONS",
+      "note": "未执行真实关账(主动选择)"
+    },
+    "F_nine_roles": {
+      "passed": 20,
+      "failed": 0,
+      "status": "PASS"
+    }
+  },
   "gates": {
-    "docs_link_check": {"new_violations": 0, "scanned": 179, "log": "docs-lint.log"},
-    "secret_scan": {"worktree": "PASS", "hit_count": 0, "exit": 0, "allowlist_size": 0, "log": "secret-scan.json"},
-    "openapi_snapshots": {"identical": true, "sha256": "C44EC999FD009251991DB79B7DB2D8AFDF7D0372BF8A03126EED4AC32EEDD154", "paths": 172}
-  }
+    "docs_link_check": {
+      "new_violations": 0,
+      "scanned": 179,
+      "status": "PASS"
+    },
+    "secret_scan": {
+      "worktree_hit_count": 0,
+      "exit": 0,
+      "allowlist_size": 0,
+      "status": "PASS"
+    },
+    "openapi": {
+      "identical": true,
+      "sha256": "C44EC999FD009251991DB79B7DB2D8AFDF7D0372BF8A03126EED4AC32EEDD154",
+      "paths": 172,
+      "export_stable": true,
+      "status": "PASS"
+    },
+    "ci": {
+      "sha": "9050cc2",
+      "jobs": [
+        "lint",
+        "docs-lint",
+        "secret-scan",
+        "type-check",
+        "test",
+        "django-tests"
+      ],
+      "all_success": true,
+      "status": "PASS"
+    }
+  },
+  "status_grading": {
+    "sqlite_full": "PASS",
+    "mysql_full": "PASS",
+    "chains_A_B_C_D_F": "PASS",
+    "chain_E": "PASS_WITH_RESERVATIONS",
+    "docs_lint": "PASS",
+    "openapi": "PASS",
+    "worktree_secret_scan": "PASS",
+    "history_secret_scan": "PASS_WITH_RESERVATIONS",
+    "mimosa_scanner": "INCONCLUSIVE",
+    "ci": "PASS",
+    "production_deploy": "PRODUCTION_PENDING",
+    "real_payment_channel": "NOT_RUN"
+  },
+  "overall": "PASS_WITH_RESERVATIONS",
+  "reservations": [
+    "链 E 真实关账未执行（主动避免推进营业日污染验收环境）",
+    "历史凭据扫描 10 命中已分类且 dev 口令已轮换失效，属历史保留项",
+    "Mimosa scanner INCONCLUSIVE（覆盖度不足，未计 PASS）",
+    "生产部署与真实支付渠道 PRODUCTION_PENDING / NOT_RUN"
+  ]
 }
