@@ -121,7 +121,7 @@ class LegacyRestoreDrillTests(TestCase):
     def test_drill_passes_for_healthy_archive(self):
         report = self._drill()
         self.assertTrue(report["ok"], report["blockers"])
-        self.assertEqual(len(report["tables"]), 4)
+        self.assertEqual(len(report["tables"]), 6)
         for table in report["tables"]:
             self.assertEqual(table["status"], "checked")
             self.assertTrue(table["digest_ok"])
@@ -253,6 +253,6 @@ class LegacyRestoreDrillTests(TestCase):
 
     def test_archive_run_metadata_present(self):
         runs = LegacyArchiveRun.objects.filter(batch_uid=self.batch_uid)
-        self.assertEqual(runs.count(), 4)
+        self.assertEqual(runs.count(), 6)
         self.assertTrue(all(run.algorithm_version == "checksum-v2" for run in runs))
         self.assertTrue(all(run.computed_at <= datetime.now(dt_timezone.utc) for run in runs))

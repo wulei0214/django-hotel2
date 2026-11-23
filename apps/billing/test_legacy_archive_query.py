@@ -157,7 +157,7 @@ class LegacyArchiveQueryTests(TestCase):
     # --- 批次清单 ---------------------------------------------------------
     def test_list_batches_scoped_by_property(self):
         items = list_batches(property_obj=self.prop, is_superuser=False)
-        self.assertEqual(len(items), 4)
+        self.assertEqual(len(items), 6)
         self.assertEqual({item["property_code"] for item in items}, {"DEFAULT"})
 
     def test_list_batches_excludes_other_property(self):
@@ -166,7 +166,7 @@ class LegacyArchiveQueryTests(TestCase):
 
     def test_list_batches_includes_all_for_superuser(self):
         items = list_batches(property_obj=self.other_prop, is_superuser=True)
-        self.assertEqual(len(items), 4)
+        self.assertEqual(len(items), 6)
 
     def test_unregistered_batch_only_visible_to_superuser(self):
         """找不到登记批次的归档批次 = 来源未登记，非超管不可见。"""
@@ -338,7 +338,7 @@ class LegacyArchiveApiTests(TestCase):
         response = self.client.get("/api/v1/billing/legacy-archives")
         self.assertEqual(response.status_code, 200)
         payload = response.json()["data"]
-        self.assertEqual(len(payload), 4)
+        self.assertEqual(len(payload), 6)
         self.assertTrue(all(item["property_code"] == "DEFAULT" for item in payload))
 
     def test_batches_ok_for_superuser(self):
