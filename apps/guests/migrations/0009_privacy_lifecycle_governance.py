@@ -7,7 +7,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ("core", "0019_export_credential"),
@@ -59,6 +58,18 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ("enabled", models.BooleanField(default=True, verbose_name="启用")),
+                (
+                    "enabled_policy_key",
+                    models.CharField(
+                        blank=True,
+                        editable=False,
+                        help_text="property:data_category；仅 enabled=True 时有值，保证每物业每类仅一条启用策略",
+                        max_length=96,
+                        null=True,
+                        unique=True,
+                        verbose_name="启用策略唯一键",
+                    ),
+                ),
                 ("effective_from", models.DateField(verbose_name="生效日期")),
                 ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
                 ("updated_at", models.DateTimeField(auto_now=True, verbose_name="更新时间")),
@@ -264,14 +275,6 @@ class Migration(migrations.Migration):
                 "verbose_name_plural": "隐私法律冻结",
                 "ordering": ("-started_at",),
             },
-        ),
-        migrations.AddConstraint(
-            model_name="retentionpolicy",
-            constraint=models.UniqueConstraint(
-                condition=models.Q(("enabled", True)),
-                fields=("property", "data_category"),
-                name="uq_retention_policy_enabled_per_category",
-            ),
         ),
         migrations.AddConstraint(
             model_name="retentionpolicy",

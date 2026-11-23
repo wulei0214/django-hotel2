@@ -490,6 +490,15 @@ class RetentionPolicy(models.Model):
         max_length=240, blank=True, verbose_name="依据说明（法条/条款号）"
     )
     enabled: models.BooleanField = models.BooleanField(default=True, verbose_name="启用")
+    enabled_policy_key: models.CharField = models.CharField(
+        max_length=96,
+        null=True,
+        blank=True,
+        unique=True,
+        editable=False,
+        verbose_name="启用策略唯一键",
+        help_text="property:data_category；仅 enabled=True 时有值，保证每物业每类仅一条启用策略",
+    )
     effective_from: models.DateField = models.DateField(verbose_name="生效日期")
     created_by: models.ForeignKey = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -513,19 +522,24 @@ class RetentionPolicy(models.Model):
         verbose_name_plural = "隐私保留策略"
         ordering = ("property", "data_category")
         constraints = [
-            models.UniqueConstraint(
-                fields=("property", "data_category"),
-                condition=models.Q(enabled=True),
-                name="uq_retention_policy_enabled_per_category",
-            ),
+            # MySQL 8 不支持条件唯一约束（会被静默忽略）：用「可空唯一键」替代
+            # 条件 UniqueConstraint，由 save() 维护 enabled_policy_key。
+            # 降级口径与 GuestMembership.active_guest_key 一致。
             models.CheckConstraint(
                 check=models.Q(retention_days__gt=0), name="ck_retention_days_positive"
             ),
         ]
 
     def save(self, *args, **kwargs):
-        if self.pk is None and not self._state.adding:  # 防御：新行必须走 creating
-            pass
+        desired_key = (
+            f"{self.property_id}:{self.data_category}"
+            if self.property_id and self.enabled
+            else None
+        )
+        if self.enabled_policy_key != desired_key:
+            self.enabled_policy_key = desired_key
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"enabled_policy_key"}
         super().save(*args, **kwargs)
 
     def clean(self):
