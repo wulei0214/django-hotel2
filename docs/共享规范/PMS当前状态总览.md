@@ -2,12 +2,14 @@
 
 > 文档编号：GOV-001 ｜ 类型：GOVERNANCE ｜ 状态：ACTIVE ｜ 版本域：跨版本 ｜ 业务模块：文档治理
 > **本文件是全仓唯一「当前值」载体**。更新方式：整体重写固定章节，禁止追加节；旧内容靠 Git 历史与《更新日志》追溯。
-> 本轮核实基线：远端 main HEAD 见文件所在提交（V4.1 执行终点 `9050cc2` 之后；负责人裁定基线为 `21e04df`，其后为 CI type-check、TASK-01 落库、扫描门禁修复、V13-03/04、裁定落档、RES-04/RES-05 修复与复验入账、TASK-06 九岗位矩阵收口、TASK-21 历史扫描补证、V3.2 双引擎 1898/1898、V4.0 TASK-04/07/08/09、V4.1 TASK-11/13/14 与本轮 TASK-12 最终回归 1899/1899）。当前值以远端 main 现取现核；历史证据仍绑定各自原始 SHA，不随本文件更新。本次修订依据：PMS 2.0 最终收口任务书 **V4.1**（§四 六项 P2 裁定、§五 两项资产处置、§三 TASK-12 最终回归）。
+> 本轮核实基线：main HEAD 3ae016（2026-11-23 现取现核；V4.1 执行终点 9050cc2 及其后续文档同步提交）。当前值以远端 main 现取现核；历史证据仍绑定各自原始 SHA。本次修订依据：PMS 全项目收口任务书 V1.0 TASK-01（需求总账建立 + 基线区分防混淆），总账入口见 GOV-REQ-001。
 
 ## 1. 基线与 CI
 
-- **当前基线 `b4d5aa0`**：负责人裁定基线为 `21e04df`，其后依次为 `0d865eb`（type-check 清偿）、`a04ade5`（TASK-01 落库）、`0c61398`（扫描门禁修复）、`9fa3520`（扫描证据）、`d55b328`/`ade5cca`（V13-04/V13-03）、`0a3d3ce`（裁定落档）、`0d67e0b`（RES-04/RES-05 修复）、`d30ef14`/`3a85acd`（TASK-14 复算增强 + dev MySQL 证据）、`3b35e29`（查漏补缺）、`b9c9a4c`（TASK-06 九岗位矩阵收口）、`99c020e`（RES-04/05 复验入账，MC11 统计 46/46）、`a58387a`/`03be8cd`/`7d534e3`（TASK-21 历史扫描补证）、`9dd1267`（G14 owner 补充确认材料就位）、`b4d5aa0`（扫描证据去字面量，CI 恢复全绿）。不得继续使用 `c4c15b6`、`8467012`、`c24b1da`、`1591ce2`、`387e6bf` 或更早 SHA 描述当前 main 状态。
-- **CI（现取，2026-11-22，绑定 `b4d5aa0`）**：Django CI run `45024442610` 五 job 全绿 + tests workflow run `45024442578` success；此前 `9dd1267` 的 Django CI run `45023592595` secret-scan 失败（历史扫描证据 md 回抄了已轮换口令哨兵值，`b4d5aa0` 去字面量后恢复）。**secret-scan 为真绿**：工作流 `-o pipefail` 且 `hit_count: 0`，详见 `docs/acceptance/evidence/v3-security-scan-2026-11-22.md` §六 与 `docs/acceptance/evidence/v3-security-scan-history-2026-11-22.md`（含 Git 历史扫描 10 处命中的分类处置与 Mimosa scanner 根因登记）。CI 通过 ≠ 部署或独立验收。
+- **当前基线 `a3ae016`**（V1.0 收口任务书起点；文档头基线=本文件所在提交，逐次现取现核）。提交链（自 `21e04df` 起，择要）：`0d865eb`（type-check）→ `a04ade5`（TASK-01 落库）→ `0c61398`/`9fa3520`（扫描门禁修复+证据）→ `d55b328`/`ade5cca`（V13-04/03）→ `0a3d3ce`（裁定落档）→ `0d67e0b`/`99c020e`（RES-04/05 修复+复验）→ `d30ef14`/`3a85acd`（复算增强）→ `b9c9a4c`（九岗位矩阵）→ `b4d5aa0`（扫描去字面量）→ `8efbfc1`（V3.2 交付记录）→ `efd9453`（资产处置）→ `6b6519e`（PMS2→PMS3 移交+NS-E 裁定）→ `9050cc2`（双引擎 1899/1899）→ `ddb4dea`（状态总览 V4.1 终点）→ `a3ae016`（六链复验+汇总报告）。不得继续使用 `c4c15b6`、`8467012`、`c24b1da`、`1591ce2`、`387e6bf` 或更早 SHA 描述当前 main 状态。
+- **CI（现取，2026-11-23，绑定 `9050cc2`）**：六个 job（type-check / secret-scan / docs-lint / test / django-tests / lint）全部 success；`a3ae016` 本体 CI run 以 CI 历史页为准。**secret-scan 为真绿**：工作流 `-o pipefail` 且 `hit_count: 0`，详见 `docs/acceptance/evidence/v3-security-scan-2026-11-22.md` §六 与 `docs/acceptance/evidence/v3-security-scan-history-2026-11-22.md`。CI 通过 ≠ 部署或独立验收。
+- **基线区分（防混淆，V1.0 任务书要求）**：①当前 main HEAD=所在提交；②全量测试绑定代码态=`6b6519e`（SQLite 1899 skipped=28 / MySQL 1899 skipped=3，pms2-final-regression-2026-11-22/ 与 9050cc2 归档——后续文档提交不改变该绑定，直至下一次全量回归重绑）；③V3.2 交付记录=`8efbfc1`；④最新文档同步提交=本文件所在提交。文档提交 SHA 不得冒充测试代码基线。
+- **需求总账**：全项目历史需求唯一追踪入口=「[PMS全项目历史需求追踪与未完成任务总台账_2026-11-22](PMS全项目历史需求追踪与未完成任务总台账_2026-11-22.md)」（GOV-REQ-001）；派发开发任务前必查，防止已完成项重复开发。
 - 当前部署形态：**Windows 本地开发/测试/演示/验收**（.env + waitress）。真实生产部署 `WAITING_FOR_SERVER / PRODUCTION PENDING`（等服务器与生产资源具备），不得把本地运行结果冒充生产验收。
 - 门禁：`python scripts/docs_link_check.py check` 为本地等效命令，基线冻结于 `docs_gate_baseline.json`。
 
