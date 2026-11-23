@@ -9,10 +9,62 @@ Q7 决策已实现校验的测试缺口（DEBUG / SECRET_KEY / ALLOWED_HOSTS 维
 此前无负向测试，见 PMS2-ARCH-GOV-001 审计报告 §7.4）。
 """
 
+import importlib
+import os
+from unittest import mock
+
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase, override_settings
+from django.utils.crypto import get_random_string
 
+import hotel.settings as project_settings
 from hotel.settings import _validate_production_settings
+
+PRODUCTION_TEST_SECRET = get_random_string(48)
+PRODUCTION_TEST_PII_KEY = get_random_string(48)
+
+
+class DjangoEnvironmentTests(SimpleTestCase):
+    """非规范环境名必须拒绝启动，不能落到开发默认值。"""
+
+    def setUp(self):
+        self.settings_snapshot = {
+            key: value for key, value in vars(project_settings).items() if key.isupper()
+        }
+
+    def tearDown(self):
+        for key, value in self.settings_snapshot.items():
+            setattr(project_settings, key, value)
+        self.settings_snapshot.clear()
+
+    def _import_settings(self, django_env):
+        env = {
+            "DJANGO_ENV": django_env,
+            "DJANGO_DEBUG": "1",
+            "DJANGO_SECRET_KEY": PRODUCTION_TEST_SECRET,
+            "DJANGO_PII_KEY": PRODUCTION_TEST_PII_KEY,
+            "PAYMENT_WEBHOOK_SECRET": PRODUCTION_TEST_SECRET,
+            "DJANGO_ALLOWED_HOSTS": "pms.example.com",
+            "DJANGO_CACHE_BACKEND": "locmem",
+            "DJANGO_DB_ENGINE": "sqlite",
+            "DJANGO_DB_NAME": ":memory:",
+            "DJANGO_PLATFORM_ADMIN_USERNAME": "",
+            "DJANGO_PLATFORM_ADMIN_PASSWORD": "",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            with self.assertRaises(ImproperlyConfigured) as ctx:
+                importlib.reload(project_settings)
+            self.assertIn("DJANGO_ENV", str(ctx.exception))
+            self.assertNotIn(django_env, str(ctx.exception))
+
+    def test_production_spelling_fails_closed(self):
+        self._import_settings("production")
+
+    def test_prd_spelling_fails_closed(self):
+        self._import_settings("prd")
+
+    def test_unknown_spelling_fails_closed(self):
+        self._import_settings("unexpected-invalid-environment")
 
 
 class ProductionConfigFailFastTests(SimpleTestCase):
@@ -23,7 +75,37 @@ class ProductionConfigFailFastTests(SimpleTestCase):
         "secret_key": "s" * 40,
         "pii_key": "p" * 40,
         "allowed_hosts_raw": "pms.example.com",
+        "secure_ssl_redirect": True,
+        "hsts_seconds": 31536000,
+        "session_cookie_secure": True,
+        "csrf_cookie_secure": True,
+        "db_engine": "mysql",
+        "is_production": True,
     }
+
+    def test_https_and_hsts_are_required(self):
+        for field in ("secure_ssl_redirect", "hsts_seconds"):
+            with self.subTest(field=field), self.assertRaises(ImproperlyConfigured):
+                _validate_production_settings(**{**self.OK, field: False})
+
+    def test_secure_cookies_are_required(self):
+        for field in ("session_cookie_secure", "csrf_cookie_secure"):
+            with self.subTest(field=field), self.assertRaises(ImproperlyConfigured):
+                _validate_production_settings(**{**self.OK, field: False})
+
+    def test_mysql_is_required(self):
+        with self.assertRaises(ImproperlyConfigured):
+            _validate_production_settings(**{**self.OK, "db_engine": "sqlite"})
+
+    def test_mock_payments_are_rejected_in_production(self):
+        with self.assertRaises(ImproperlyConfigured) as ctx:
+            _validate_production_settings(**{**self.OK, "debug": True})
+        self.assertIn("Mock", str(ctx.exception))
+
+    def test_nonproduction_mock_state_is_rejected(self):
+        for field in ("is_production", "debug"):
+            with self.subTest(field=field), self.assertRaises(ImproperlyConfigured):
+                _validate_production_settings(**{**self.OK, field: not self.OK[field]})
 
     def test_all_valid_config_passes(self):
         """正向基线：全部合规时校验通过（证明负向断言非假阴性）。"""
