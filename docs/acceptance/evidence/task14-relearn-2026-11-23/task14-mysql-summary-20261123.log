@@ -1,0 +1,28 @@
+==========================================================================
+TASK-14 全量回归证据摘要 — MySQL 8
+==========================================================================
+
+【执行登记（原样取自日志头）】
+  证据生成时间：2026-11-23T21:41:28
+  被测树：fdf7d584e899ca9a44ecf9e7a031de4b514ce528（工作区含未提交变更 3 项：证据树不等于该提交，需以本行为准）
+  Python：3.9.0    Django：4.1.13
+  数据库：MySQL 8.0.33
+  执行命令：F:\Desktop\django-hotel\.venv\Scripts\python.exe manage.py test --noinput（DJANGO_ENV=test，engine=mysql）
+  测试总数：1977    最终判定：OK    跳过：3
+  退出码：0
+
+【结果】
+  测试数: 1977
+  耗时  : 602.685 秒
+  判定  : OK (skipped=3)
+  退出码: 0
+
+【原始日志处置】
+  原始日志共 211,707 行 / 14,325,799 字节，
+  含逐测试进度输出与 Django logging 轮转噪声（WinError 32 共 2534 行），
+  按仓库既有证据惯例（1-10KB 摘要级）不入库；
+  完整原始日志保留于 .work/task14-rawlogs/ 供复核。
+
+【复核命令】
+  python scripts/test_evidence.py --engine mysql --output <path>
+
