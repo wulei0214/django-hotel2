@@ -2761,6 +2761,104 @@ class LegacyAccommodationArchive(LegacyArchiveRecord):
         db_table = "legacy_accommodation_archive"
 
 
+class LegacyClientArchive(LegacyArchiveRecord):
+    """旧 ``client`` 快照（顾客主档；M5-4 §2.1/§2.3 PII 门禁版）。
+
+    姓名/身份证号为高敏 PII：密文 + 带密钥 HMAC 盲索引（V1.1 §3.2 裁定
+    唯一方案，明文快照已被否决）；id 为映射锚点（LegacyRecordLink 源）。
+    归档表无揭示出口；揭示需求经映射后新侧受控通道承接。
+    """
+
+    id: models.BigIntegerField = models.BigIntegerField(
+        primary_key=True, verbose_name="源主键(顾客id)"
+    )
+    name_ciphertext: models.CharField = models.CharField(
+        max_length=256,
+        null=True,
+        blank=True,
+        verbose_name="姓名密文",
+        help_text="Fernet(PII_KEY, 规范化姓名)；明文快照已被 V1.1 §3.2 否决",
+    )
+    name_hash: models.CharField = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        verbose_name="姓名盲索引",
+        help_text="HMAC-SHA256(PII_KEY, 规范化姓名)，判等核对用",
+        db_index=True,
+    )
+    id_no_ciphertext: models.CharField = models.CharField(
+        max_length=256,
+        null=True,
+        blank=True,
+        verbose_name="身份证号密文",
+        help_text="与 encrypt_doc_no 同机制（末位 X 规整后加密）",
+    )
+    id_no_hash: models.CharField = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        verbose_name="身份证号盲索引",
+        help_text="与 doc_no_hash 同机制",
+        db_index=True,
+    )
+
+    class Meta:
+        verbose_name = "旧顾客主档归档"
+        verbose_name_plural = "旧顾客主档归档"
+        db_table = "legacy_client_archive"
+
+
+class LegacyVipArchive(LegacyArchiveRecord):
+    """旧 ``vip`` 快照（会员主档；M5-4 §2.1/§2.3 PII 门禁版）。
+
+    姓名/联系方式密文+盲索引；rank 为非敏感枚举维持明文；
+    源主键（会员编号）是新旧会员映射锚点（legacy_vip_id）。
+    """
+
+    id: models.BigIntegerField = models.BigIntegerField(
+        primary_key=True, verbose_name="源主键(会员编号)"
+    )
+    name_ciphertext: models.CharField = models.CharField(
+        max_length=256,
+        null=True,
+        blank=True,
+        verbose_name="姓名密文",
+        help_text="Fernet(PII_KEY, 规范化姓名)",
+    )
+    name_hash: models.CharField = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        verbose_name="姓名盲索引",
+        db_index=True,
+    )
+    rank_text: models.CharField = models.CharField(
+        max_length=45,
+        verbose_name="会员等级",
+        help_text="普通会员/高级会员（非敏感枚举，明文快照）",
+    )
+    contact_ciphertext: models.CharField = models.CharField(
+        max_length=256,
+        null=True,
+        blank=True,
+        verbose_name="联系方式密文",
+        help_text="与 encrypt_phone 同机制（标准化后加密）",
+    )
+    contact_hash: models.CharField = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        verbose_name="联系方式盲索引",
+        db_index=True,
+    )
+
+    class Meta:
+        verbose_name = "旧会员主档归档"
+        verbose_name_plural = "旧会员主档归档"
+        db_table = "legacy_vip_archive"
+
+
 class LegacyArchiveRun(models.Model):
     """归档批次元数据（checksum-v2 第 9 条：算法版本/行数/min-max 主键/时间/执行人）。
 

@@ -37,6 +37,10 @@ class ArchiveSpec:
     archive_table: str
     # 归档字段名 → 旧表字段名；元组顺序 = 归档表列序 = checksum-v2 编码顺序。
     column_map: tuple[tuple[str, str], ...]
+    # PII 转换钩子（可选）：read_source_rows 读取后、写归档行前应用；
+    # client/vip 用它做姓名/证件/联系方式的 Fernet 密文 + HMAC 盲索引
+    # 转换（M5-4 §2.3 PII 门禁②）。
+    transform: Any = None
 
     @property
     def columns(self) -> tuple[str, ...]:
@@ -49,7 +53,57 @@ class ArchiveSpec:
             "legacy_finance_record_archive": billing_models.LegacyFinanceRecordArchive,
             "legacy_night_audit_archive": billing_models.LegacyNightAuditArchive,
             "legacy_accommodation_archive": billing_models.LegacyAccommodationArchive,
+            "legacy_client_archive": billing_models.LegacyClientArchive,
+            "legacy_vip_archive": billing_models.LegacyVipArchive,
         }[self.archive_table]
+
+
+def _encrypt_pii_pair(plain, normalize_fn, encrypt_fn, hash_fn):
+    """(密文, 盲索引) 对：空值 → (None, None)；标准化后加密+HMAC。
+
+    M5-4 §2.3：密文与盲索引共用 PII 独立密钥（与手机号/证件同源机制），
+    不新造第二套加密实现。
+    """
+    normalized = normalize_fn(plain) if plain else None
+    if not normalized:
+        return None, None
+    return encrypt_fn(normalized), hash_fn(normalized)
+
+
+def _transform_client_row(row):
+    """client 行 PII 转换：姓名/身份证号 → 密文+盲索引（id 明文保留）。
+
+    明文键在产出归档行前弹出（V1.1 §3.2：明文不进归档表任何列）。
+    """
+    from apps.guests.name_pii import encrypt_guest_name, guest_name_hash, normalize_guest_name
+    from apps.guests.services import doc_no_hash, encrypt_doc_no
+
+    name_norm = normalize_guest_name(row.get("name_text") or "")
+    row["name_ciphertext"] = encrypt_guest_name(name_norm) if name_norm else None
+    row["name_hash"] = guest_name_hash(name_norm) if name_norm else None
+    id_raw = (row.get("id_no_text") or "").strip().upper()
+    row["id_no_ciphertext"] = encrypt_doc_no(id_raw) if id_raw else None
+    row["id_no_hash"] = doc_no_hash(id_raw) if id_raw else None
+    row.pop("name_text", None)
+    row.pop("id_no_text", None)
+    return row
+
+
+def _transform_vip_row(row):
+    """vip 行 PII 转换：姓名/联系方式 → 密文+盲索引（id/rank 明文保留）。"""
+    from apps.core.phone import normalize_phone
+    from apps.guests.name_pii import encrypt_guest_name, guest_name_hash, normalize_guest_name
+    from apps.guests.services import encrypt_phone, phone_hash
+
+    name_norm = normalize_guest_name(row.get("name_text") or "")
+    row["name_ciphertext"] = encrypt_guest_name(name_norm) if name_norm else None
+    row["name_hash"] = guest_name_hash(name_norm) if name_norm else None
+    contact_norm = normalize_phone(row.get("contact_text") or "")
+    row["contact_ciphertext"] = encrypt_phone(contact_norm) if contact_norm else None
+    row["contact_hash"] = phone_hash(contact_norm) if contact_norm else None
+    row.pop("name_text", None)
+    row.pop("contact_text", None)
+    return row
 
 
 ARCHIVE_SPECS: tuple[ArchiveSpec, ...] = (
@@ -113,6 +167,39 @@ ARCHIVE_SPECS: tuple[ArchiveSpec, ...] = (
             ("reversed_at_text", "冲账时间"),
         ),
     ),
+    # M5-4 §2.1：client/vip 归档 spec（PII 密文+盲索引门禁版，V1.1 §3.2 裁定）。
+    # 归档字段 → 源明文列；PII 列源值仅经 transform 加密后落密文+盲索引双列。
+    ArchiveSpec(
+        source_model="Client",
+        source_table="client",
+        archive_table="legacy_client_archive",
+        column_map=(
+            ("id", "顾客id"),
+            ("name_text", "姓名"),
+            ("name_ciphertext", "姓名"),
+            ("name_hash", "姓名"),
+            ("id_no_text", "身份证号"),
+            ("id_no_ciphertext", "身份证号"),
+            ("id_no_hash", "身份证号"),
+        ),
+        transform=_transform_client_row,
+    ),
+    ArchiveSpec(
+        source_model="Vip",
+        source_table="vip",
+        archive_table="legacy_vip_archive",
+        column_map=(
+            ("id", "会员编号"),
+            ("name_text", "姓名"),
+            ("name_ciphertext", "姓名"),
+            ("name_hash", "姓名"),
+            ("rank_text", "会员等级"),
+            ("contact_text", "联系方式"),
+            ("contact_ciphertext", "联系方式"),
+            ("contact_hash", "联系方式"),
+        ),
+        transform=_transform_vip_row,
+    ),
 )
 
 _BY_MODEL = {spec.source_model: spec for spec in ARCHIVE_SPECS}
@@ -136,14 +223,32 @@ def _source_queryset(spec: ArchiveSpec) -> Any:
         "FinanceRecord": legacy_models.FinanceRecord,
         "NightAudit": legacy_models.NightAudit,
         "Accommodation": legacy_models.Accommodation,
+        "Client": legacy_models.Client,
+        "Vip": legacy_models.Vip,
     }[spec.source_model]
     return model.objects.all()
 
 
 def read_source_rows(spec: ArchiveSpec) -> list[dict[str, Any]]:
-    """按归档列序读取旧表（只读）；返回的键为**归档字段名**。"""
+    """按归档列序读取旧表（只读）；返回的键为**归档字段名**。
+
+    带 transform 的 spec（client/vip PII 门禁）：column_map 的源列是
+    **原始明文列**，读取后由 transform 整行重写为归档字段（密文+盲索引），
+    源明文不出现在返回行里。
+    """
+    if spec.transform is not None:
+        # 主键 = column_map 首对的源列（client="顾客id"、vip="会员编号"；
+        # 旧表主键列名非 "id"），归档行主键沿用源表主键。
+        pk_source = spec.column_map[0][1]
+        source_fields = sorted({sf for _, sf in spec.column_map})
+        rows: list[dict[str, Any]] = []
+        for raw in _source_queryset(spec).values(*source_fields).order_by(pk_source):
+            row = spec.transform(raw)
+            row[spec.column_map[0][0]] = raw[pk_source]
+            rows.append(row)
+        return rows
     source_fields = [source_field for _, source_field in spec.column_map]
-    rows: list[dict[str, Any]] = []
+    rows = []
     for raw in _source_queryset(spec).values(*source_fields).order_by("id"):
         rows.append(
             {archive_field: raw[source_field] for archive_field, source_field in spec.column_map}
