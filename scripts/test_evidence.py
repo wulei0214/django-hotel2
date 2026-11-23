@@ -80,12 +80,63 @@ def _db_version(engine):
         return f"{engine}（版本查询失败：{exc}）"
 
 
+def _running_test_processes():
+    """ "错峰纪律"前置检查：列出其它正在执行的 manage.py test 进程。
+
+    AGENTS.md 明令：同一共享测试环境同一时刻只允许一个 MySQL 全量测试进程
+    （建库/迁移/销毁期间并发会造成 test_hotel 被反复重建，表现为迁移期
+    "Table 'test_hotel.accommodation' doesn't exist" 等成片假失败）。
+
+    仅 Windows 提供实现（本项目部署形态）；其它平台返回空列表，由调用方
+    自行保证错峰。
+    """
+    if os.name != "nt":
+        return []
+    ps = (
+        "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
+        "Where-Object { $_.CommandLine -like '*manage.py test*' } | "
+        'ForEach-Object { "$($_.ProcessId)`t$($_.CommandLine)" }'
+    )
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        ).stdout
+    except Exception:
+        return []
+    me = os.getpid()
+    rows = []
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        pid, _, cmd = line.partition("\t")
+        if pid.strip() == str(me):
+            continue
+        rows.append((pid.strip(), cmd.strip()))
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--engine", choices=["sqlite", "mysql"], required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--keepdb", action="store_true")
     args = parser.parse_args()
+
+    # 错峰前置检查：任何引擎都应先确认无并发全量进程（MySQL 尤为严格）。
+    others = _running_test_processes()
+    if others:
+        print("检测到其它正在执行的 manage.py test 进程，按错峰纪律中止：", file=sys.stderr)
+        for pid, cmd in others:
+            print(f"  PID {pid}: {cmd[:120]}", file=sys.stderr)
+        print(
+            "请先等待其结束或清理残留进程，再重跑全量回归（详见 AGENTS.md MySQL 全量回归纪律）。",
+            file=sys.stderr,
+        )
+        sys.exit(3)
 
     import django
 
