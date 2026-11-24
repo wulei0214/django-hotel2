@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """T02-3：隐私清理三项专项权限（OWNER 2026-11-24 裁定方案 B）。
 
 request = guests.retention_request（店长）；
@@ -6,8 +5,8 @@ approve = guests.retention_approve（值班经理/店长）；
 execute = guests.retention_execute（值班经理/店长）。
 权限点本体创建由 guests 域迁移承接；角色授权同步由 identity 域迁移承接。
 """
-from django.db import migrations
 
+from django.db import migrations
 
 PERMISSIONS = (
     ("retention_request", "能申请 隐私数据保留期满清理"),
