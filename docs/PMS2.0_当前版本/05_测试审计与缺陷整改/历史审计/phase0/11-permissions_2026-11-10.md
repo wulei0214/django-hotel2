@@ -184,3 +184,23 @@
 | `billing.reversal_approve` | billing.0020 | 值班经理、店长 | `apps/api/approval.py:approval_approve`；`ApprovalActionRegistry` | 独立审批红字冲销；审批人与执行人必须不同 |
 
 数据库闭环：`LedgerEntry.approval_record` 关联审批事实；`legacy_workflow` 标记迁移前无法证明审批关联的历史冲销。约束 `ck_ledger_reversal_approval_link` 禁止新红字凭证在没有审批外键时入账。历史记录只标记为旧流程，不补造审批人或审批记录。
+
+### 2026-11-24 追加：T02-3 隐私保留期满清理三权限（OWNER 裁定方案 B）
+
+| 权限码 | 迁移 | 授权角色 | 真实执行点 | 说明 |
+|---|---|---|---|---|
+| `guests.retention_request` | guests.0011 | 店长 | `apps/guests/retention.py:plan_retention_cleanup`（申请侧） | 隐私数据保留期满清理**申请**。risk=high，requires_reason=True |
+| `guests.retention_approve` | guests.0011 | 值班经理、店长 | `apps/api/approval.py:approval_approve` + `apps/billing/approval_registry.py` | 清理**审批**。与申请人分离（Q-05 SoD），risk=high |
+| `guests.retention_execute` | guests.0011 | 值班经理、店长 | `apps/guests/retention.py:199` `AuthorizationService.has_permission(operator, property_obj, "guests.retention_execute")` | 清理**执行**。执行人≠审批申请人，risk=high，requires_confirm=True |
+
+**裁定依据**：NS-E-05 第六条 P2 事项，负责人 2026-11-24 逐项批复为
+`APPROVED_WITH_CONDITIONS`（五项准入条件：审批注册 / 真实审批链 /
+执行权限校验 / 计划绑定 / 双引擎验证）。逐项裁定全文见
+`docs/PMS2.0_当前版本/00_项目基线与决策/六项P2待裁定事项正式记录_2026-11-22.md`
+的「负责人逐项裁定（2026-11-24）」小节。
+
+**与三个权限码配套的审批业务动作码**（非 Django 权限码，不计入权限码数量）：
+`privacy.retention_execute`，登记于 `apps/billing/approval_registry.py`。
+
+**边界**：本追加仅登记权限码出处与执行点，不代表已获准合入 main。
+按裁定「当前不授权无条件合入」，须先满足上述五项条件。

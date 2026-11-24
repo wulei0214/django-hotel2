@@ -598,7 +598,9 @@ class PermissionCenterPageTests(PermissionCenterTestBase):
         self.assertEqual(len(data["modules"]), 11)
         self.assertEqual(len(data["roles"]), 9)
         # 既有 14 个专项权限 + 夜审查看、清洁查看/流转、维修管理 3 个专项权限
-        self.assertEqual(len(data["special_codenames"]), 22)
+        # 原 14 条专项权限 + 夜审查看/揭示查看/翻转/维修管理 3 条
+        # + T02-3（OWNER 2026-11-24 方案 B）隐私清理 3 条 = 25
+        self.assertEqual(len(data["special_codenames"]), 25)
         module_codes = {m["code"] for m in data["modules"]}
         self.assertEqual(
             module_codes,

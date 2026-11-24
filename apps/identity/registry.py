@@ -113,7 +113,16 @@ MODULE_REGISTRY_V2 = {
             "change": "hotelapp.change_client",
             "delete": "hotelapp.delete_client",
             "approve": NOT_APPLICABLE,
-            "special": ("hotelapp.guest_document_reveal", "hotelapp.guest_phone_reveal"),
+            "special": (
+                "hotelapp.guest_document_reveal",
+                "hotelapp.guest_phone_reveal",
+                # T02-3（OWNER 2026-11-24 裁定方案 B）：隐私数据保留期满清理三权限。
+                # 必须与 SPECIAL_PERMISSIONS 双向一致，否则
+                # test_special_tuple_and_special_permissions_are_bidirectionally_consistent 失败。
+                "guests.retention_request",
+                "guests.retention_approve",
+                "guests.retention_execute",
+            ),
         },
         "extra_codes": (),
         "notes": "运行时门禁用 hotelapp.*_client 码（11-permissions §3.1）；"
