@@ -800,25 +800,17 @@ def main():
          and (d.get("data") or {}).get("booking_no") == walkin_no,
          f"HTTP {code} created={(d.get('data') or {}).get('created')}")
 
-    # 双端点并存：旧 /walk-in（DEC-WALKIN-01）仍可用，复用同一服务层事实源
-    code, d1n = api(anon, "GET",
-                    f"/api/v1/availability?check_in={CHECK_IN}&check_out={tomorrow.isoformat()}")
-    alt = next((t for t in (d1n.get("data") or [])
-                if isinstance(t, dict) and t.get("room_type_id") != rt_id
-                and (t.get("available_count") or 0) > 0), None)
-    if alt is None:
-        alt = pick
-    code, d = api(front, "POST", "/api/v1/front-desk/walk-in",
-                  {"full_name": "链路散客乙", "phone": "13911118888",
-                   "room_type_id": alt["room_type_id"],
-                   "rate_plan_id": alt["rate_plan_id"],
-                   "nights": 1, "adults": 1, "children": 0},
+    # 旧端点 /walk-in 已按 DEC-WI-01 收敛退役（e56164d + 8ebf918）：
+    # 恒返 410 Gone + error.code=GONE，不读请求体、不做业务写入。
+    # 本步改为验证「旧入口确已退役」，而非断言 201 创建成功。
+    # 旧端点在读请求体之前即返回 410，故请求体只需最小可用载荷
+    # （此处保留空 dict，进一步证明「不读请求体、不做业务写入」）。
+    code, d = api(front, "POST", "/api/v1/front-desk/walk-in", {},
                   idem="e2e-walkin-002")
-    walkin2_no = (d.get("data") or {}).get("booking_no")
-    walkin2_total = Decimal(str(alt["total_amount"]))
-    step("B13 walk-in 旧端点并存 201（双端点同一服务层事实源）",
-         code == 201 and walkin2_no and (d.get("data") or {}).get("stay_id"),
-         f"{walkin2_no} 房型 {alt.get('room_type_name')} 总价 {walkin2_total}")
+    gone_code = (d.get("error") or {}).get("code")
+    step("B13 旧 /walk-in 端点已按 DEC-WI-01 退役（410 Gone，无业务写入）",
+         code == 410 and gone_code == "GONE",
+         f"HTTP {code} code={gone_code}")
 
     # BillingInputError → 400 分流（RSV-10）：非法支付方式
     assert_envelope("B14 BillingInputError 分流 400（押金方式非法）",
@@ -829,11 +821,11 @@ def main():
 
     # ================================================================ C 夜审链
     duty = login("test_duty")
-    inhouse_expected = 3  # booking1 + walk-in 甲 + walk-in 乙（均覆盖当日窗口）
-    expected_charge_total = q2(nightly + walkin_total + walkin2_total)
+    inhouse_expected = 2  # booking1 + walk-in 甲（旧端点已退役，仅两单）
+    expected_charge_total = q2(nightly + walkin_total)
     code, d = api(duty, "GET", f"/api/v1/night-audit/preview?date={CHECK_IN}")
     inner = d.get("data", d)
-    step("C1 夜审预览无阻断（在住 3 单，待过租 3 笔）",
+    step("C1 夜审预览无阻断（在住 2 单，待过租 2 笔）",
          code == 200 and inner.get("blocker_count") == 0
          and inner.get("stay_count") == inhouse_expected
          and inner.get("charge_count") == inhouse_expected
@@ -857,7 +849,7 @@ def main():
     run_data = d.get("data") or {}
     run_id = run_data.get("run_id")
     summary = run_data.get("summary") or {}
-    step("C3 执行夜审成功并关账（过租 3 笔）",
+    step("C3 执行夜审成功并关账（过租 2 笔）",
          code == 201 and run_data.get("status") == "SUCCESS"
          and summary.get("charge_count") == inhouse_expected
          and summary.get("charge_total") == str(expected_charge_total),
