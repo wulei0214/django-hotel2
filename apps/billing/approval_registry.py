@@ -9,6 +9,7 @@ ApprovalRecord 的 action_code / entity_type / payload 必须来自本注册表�
 新动作上线流程：实现执行服务 + 绑定申请/审批权限 + payload 白名单后，
 在 ``_ACTIONS`` 登记；未实现的动作只能登记在 ``PENDING_ACTIONS``，不得注册。
 """
+
 import re
 
 from apps.core.api_contract import ApiError
@@ -17,11 +18,35 @@ from apps.core.api_contract import ApiError
 # 敏感值识别：payload 不得携带身份证、密码、支付密钥类数据（P0-02 §5）
 # ---------------------------------------------------------------------------
 SENSITIVE_KEY_MARKERS = (
-    "password", "passwd", "pwd", "secret", "token", "api_key", "apikey",
-    "access_key", "private_key", "secret_key", "payment_key", "pay_key",
-    "cvv", "cvc", "pin", "id_card", "idcard", "id_number", "identity_no",
-    "credential", "session", "cookie",
-    "密码", "口令", "身份证", "证件号", "密钥", "支付密钥", "卡号",
+    "password",
+    "passwd",
+    "pwd",
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "access_key",
+    "private_key",
+    "secret_key",
+    "payment_key",
+    "pay_key",
+    "cvv",
+    "cvc",
+    "pin",
+    "id_card",
+    "idcard",
+    "id_number",
+    "identity_no",
+    "credential",
+    "session",
+    "cookie",
+    "密码",
+    "口令",
+    "身份证",
+    "证件号",
+    "密钥",
+    "支付密钥",
+    "卡号",
 )
 
 # 18 位身份证号（含末位 X）
@@ -54,15 +79,34 @@ class ApprovalActionSpec:
     """单个审批动作的白名单登记项。"""
 
     __slots__ = (
-        "action_code", "entity_type", "title", "request_permission",
-        "approve_permission", "executor", "payload_fields", "expires_hours",
-        "api_requestable", "validate_entity", "sod_rule",
+        "action_code",
+        "entity_type",
+        "title",
+        "request_permission",
+        "approve_permission",
+        "executor",
+        "payload_fields",
+        "expires_hours",
+        "api_requestable",
+        "validate_entity",
+        "sod_rule",
     )
 
-    def __init__(self, *, action_code, entity_type, title,
-                 request_permission, approve_permission, executor,
-                 payload_fields, expires_hours=48, api_requestable=True,
-                 validate_entity=None, sod_rule="申请人≠审批人（Q-05 SoD）"):
+    def __init__(
+        self,
+        *,
+        action_code,
+        entity_type,
+        title,
+        request_permission,
+        approve_permission,
+        executor,
+        payload_fields,
+        expires_hours=48,
+        api_requestable=True,
+        validate_entity=None,
+        sod_rule="申请人≠审批人（Q-05 SoD）",
+    ):
         self.action_code = action_code
         self.entity_type = entity_type
         self.title = title
@@ -96,13 +140,12 @@ def validate_refund_entity(property_obj, entity_id, requested_by):
     退款一律拒绝，避免绕过 BillingService.request_refund 的金额/余额校验。
     """
     from apps.billing.models import Refund
-    refund = Refund.objects.select_related("payment").filter(
-        pk=_int_or_none(entity_id)).first()
+
+    refund = Refund.objects.select_related("payment").filter(pk=_int_or_none(entity_id)).first()
     if refund is None or refund.property_id != property_obj.pk:
         raise ApiError("RESOURCE_NOT_FOUND", "退款申请不存在或不属于当前物业。")
     if refund.requested_by_id != requested_by.pk:
-        raise ApiError(
-            "PERMISSION_DENIED", "只能为本人发起的退款申请提交审批。")
+        raise ApiError("PERMISSION_DENIED", "只能为本人发起的退款申请提交审批。")
     if refund.status != Refund.Status.PENDING:
         raise ApiError("BUSINESS_CONFLICT", "退款申请已处理，不能重复提交审批。")
     return refund
@@ -111,9 +154,9 @@ def validate_refund_entity(property_obj, entity_id, requested_by):
 def validate_reversal_entity(property_obj, entity_id, requested_by):
     """红字冲销审批：原凭证必须存在、属于当前物业且尚未被冲销。"""
     from apps.billing.models import ApprovalRecord, LedgerEntry
+
     # approval_request 在 atomic 事务中调用；锁定原凭证，串行化不同财务人员的并发申请。
-    entry = LedgerEntry.objects.select_for_update().filter(
-        pk=_int_or_none(entity_id)).first()
+    entry = LedgerEntry.objects.select_for_update().filter(pk=_int_or_none(entity_id)).first()
     if entry is None or entry.property_id != property_obj.pk:
         raise ApiError("RESOURCE_NOT_FOUND", "账本凭证不存在或不属于当前物业。")
     if entry.entry_type == LedgerEntry.EntryType.REVERSAL:
@@ -121,10 +164,11 @@ def validate_reversal_entity(property_obj, entity_id, requested_by):
     if LedgerEntry.objects.filter(void_of=entry).exists():
         raise ApiError("BUSINESS_CONFLICT", "该账本凭证已经冲销。")
     existing = ApprovalRecord.objects.filter(
-        property=property_obj, action_code="billing.reversal",
-        entity_type="LedgerEntry", entity_id=str(entry.pk),
-        status__in=(ApprovalRecord.Status.PENDING,
-                    ApprovalRecord.Status.APPROVED),
+        property=property_obj,
+        action_code="billing.reversal",
+        entity_type="LedgerEntry",
+        entity_id=str(entry.pk),
+        status__in=(ApprovalRecord.Status.PENDING, ApprovalRecord.Status.APPROVED),
     ).first()
     if existing is not None and existing.requested_by_id != requested_by.pk:
         raise ApiError("BUSINESS_CONFLICT", "该凭证已有其他财务人员发起的冲销申请。")
@@ -134,8 +178,8 @@ def validate_reversal_entity(property_obj, entity_id, requested_by):
 def validate_business_date_entity(property_obj, entity_id, requested_by):
     """营业日重开审批：BusinessDate 必须属当前物业且已关账（对齐夜审语义）。"""
     from apps.core.models import BusinessDate
-    bd = BusinessDate.objects.filter(
-        pk=_int_or_none(entity_id), property=property_obj).first()
+
+    bd = BusinessDate.objects.filter(pk=_int_or_none(entity_id), property=property_obj).first()
     if bd is None:
         raise ApiError("RESOURCE_NOT_FOUND", "营业日不存在或不属于当前物业。")
     if bd.status != BusinessDate.Status.CLOSED:
@@ -149,6 +193,25 @@ def validate_staff_export_entity(property_obj, entity_id, requested_by):
     if not text or len(text) > 64 or not re.fullmatch(r"[0-9a-f]+", text):
         raise ApiError("RESOURCE_NOT_FOUND", "导出申请标识不合法。")
     return text
+
+
+def validate_retention_execution_entity(property_obj, entity_id, requested_by):
+    """隐私清理申请必须绑定同物业、dry-run 的 RetentionExecution 计划。
+
+    申请人与审批人分离由 ApprovalRecord 保存时保证；申请人与执行人分离由
+    plan_retention_cleanup 执行门独立校验（不能只凭 APPROVED 放行）。
+    """
+    from apps.guests.models import RetentionExecution
+
+    plan = RetentionExecution.objects.filter(
+        pk=_int_or_none(entity_id), property=property_obj
+    ).first()
+    if plan is None:
+        raise ValueError("清理计划不存在或不属于当前物业。")
+    if not plan.dry_run:
+        raise ValueError("审批必须绑定 dry-run 生成的清理计划，不得直接执行未复核计划。")
+    if plan.execution_status != RetentionExecution.ExecutionStatus.DRAFT:
+        raise ValueError("该清理计划已进入审批/执行流程，不得重复绑定审批申请。")
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +229,12 @@ class ApprovalActionRegistry:
             request_permission="billing.refund_request",
             approve_permission="billing.refund_approve",
             executor="apps.billing.services_v2.BillingService.execute_refund",
-            payload_fields={"payment_id": 20, "amount": 16, "currency": 3, "refund_liability_id": 20},
+            payload_fields={
+                "payment_id": 20,
+                "amount": 16,
+                "currency": 3,
+                "refund_liability_id": 20,
+            },
             validate_entity=validate_refund_entity,
         ),
         # 红字冲销：财务申请并执行，值班经理/店长单独审批；执行时关联审批事实。
@@ -203,20 +271,33 @@ class ApprovalActionRegistry:
             approve_permission="hotelapp.export_approve",
             executor="hotelapp.views.approve_staff_export",
             payload_fields={
-                "module": 20, "contains_salary": 10,
-                "format": 10, "requested_by": 20,
+                "module": 20,
+                "contains_salary": 10,
+                "format": 10,
+                "requested_by": 20,
             },
             api_requestable=False,
             validate_entity=validate_staff_export_entity,
+        ),
+        # privacy.retention_execute：隐私数据保留期满清理审批（T02-3 OWNER 裁定方案 B）
+        "privacy.retention_execute": ApprovalActionSpec(
+            action_code="privacy.retention_execute",
+            entity_type="RetentionExecution",
+            title="隐私数据保留期满清理审批",
+            request_permission="guests.retention_request",
+            approve_permission="guests.retention_approve",
+            executor="apps.guests.retention.plan_retention_cleanup",
+            payload_fields={"retention_policy_id": 20, "as_of_date": 10},
+            validate_entity=validate_retention_execution_entity,
+            sod_rule="申请人≠审批人≠执行人（三人分离，Q-05 SoD）",
         ),
     }
 
     # 待实现动作登记区（P0-02 §1）：不得出现在 _ACTIONS，仅作台账。
     PENDING_ACTIONS = {
-        "privacy.pii_export_unified":
-            "统一审批面的 PII 批量导出审批待实现：旧通道 privacy.export_staff"
-            "已按内部专用动作注册（api_requestable=False），P0-04 统一授权迁移"
-            "后另行评估在通用审批面开放。",
+        "privacy.pii_export_unified": "统一审批面的 PII 批量导出审批待实现：旧通道 privacy.export_staff"
+        "已按内部专用动作注册（api_requestable=False），P0-04 统一授权迁移"
+        "后另行评估在通用审批面开放。",
     }
 
     @classmethod
@@ -229,8 +310,7 @@ class ApprovalActionRegistry:
 
     @classmethod
     def api_requestable_codes(cls):
-        return tuple(sorted(
-            code for code, spec in cls._ACTIONS.items() if spec.api_requestable))
+        return tuple(sorted(code for code, spec in cls._ACTIONS.items() if spec.api_requestable))
 
     @classmethod
     def approver_permissions(cls):
@@ -242,8 +322,8 @@ class ApprovalActionRegistry:
         """entity_type 必须与登记项一致（双层校验的 Service 侧共用）。"""
         if str(entity_type or "").strip() != spec.entity_type:
             raise ValueError(
-                f"审批动作 {spec.action_code} 的目标实体类型必须为 "
-                f"{spec.entity_type}。")
+                f"审批动作 {spec.action_code} 的目标实体类型必须为 " f"{spec.entity_type}。"
+            )
 
     @classmethod
     def validate_payload(cls, spec, payload):
