@@ -44,10 +44,39 @@ class PrivacyGovernanceTestBase(TestCase):
 
     @classmethod
     def setUpTestData(cls):
+        from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
+
         cls.property = Property.objects.get(code="DEFAULT")
         cls.operator = User.objects.create_user(username="privacy_op")
         cls.operator.set_unusable_password()
         cls.operator.save(update_fields=["password"])
+        # 执行人完整岗位链（AuthorizationService 前提）+ 店长组 +
+        # guests.retention_execute 独立执行权限（OWNER 裁定授权矩阵）。
+        profile = StaffProfile.objects.create(
+            user=cls.operator,
+            full_name="隐私清理执行员",
+            employment_status=StaffProfile.EmploymentStatus.ACTIVE,
+        )
+        membership = PropertyStaffMembership.objects.create(
+            staff_profile=profile,
+            property=cls.property,
+            employee_no="RT-EXEC-001",
+            status=PropertyStaffMembership.Status.ACTIVE,
+        )
+        from django.contrib.auth.models import Group, Permission
+        from django.contrib.contenttypes.models import ContentType
+
+        group, _ = Group.objects.get_or_create(name="店长")
+        ct, _ = ContentType.objects.get_or_create(app_label="guests", model="guest")
+        execute_perm, _ = Permission.objects.get_or_create(
+            content_type=ct,
+            codename="retention_execute",
+            defaults={"name": "能执行已批准的隐私数据清理"},
+        )
+        group.permissions.add(execute_perm)
+        StaffRoleAssignment.objects.create(
+            membership=membership, group=group, starts_at=timezone.now()
+        )
         cls.policy = RetentionPolicy.objects.create(
             property=cls.property,
             data_category=RetentionPolicy.DataCategory.GUEST_PROFILE,
