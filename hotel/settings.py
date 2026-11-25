@@ -69,6 +69,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # 生产 WSGI 静态服务（runserver 不需要）
     "apps.identity.session_middleware.SplitSessionMiddleware",
+    "apps.core.request_context.RequestIDMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -248,6 +249,7 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {
         "std": {"format": "{asctime} [{levelname}] {message}", "style": "{"},
+        "json": {"()": "apps.core.logging_utils.JsonFormatter"},
     },
     "handlers": {
         "audit_file": {
@@ -270,6 +272,10 @@ LOGGING = {
     "loggers": {
         "hotel.audit": {"handlers": ["audit_file"], "level": "INFO", "propagate": False},
         "django.request": {"handlers": ["request_file"], "level": "WARNING", "propagate": False},
+        # ARCH-05/Q6：hotel.api 及父 logger 此前无 handler，ERROR 静默丢失。
+        "hotel.api": {"handlers": ["request_file"], "level": "INFO", "propagate": False},
+        "hotel.core": {"handlers": ["request_file"], "level": "INFO", "propagate": False},
+        "hotel.billing": {"handlers": ["audit_file"], "level": "INFO", "propagate": False},
     },
 }
 
