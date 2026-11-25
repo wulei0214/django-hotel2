@@ -35,7 +35,7 @@ from .permission_center import (
     managed_universe_codenames,
     special_codenames,
 )
-from .registry import validate_registry
+from .registry import SPECIAL_PERMISSIONS, validate_registry
 
 _TEST_PW_0F916B80 = get_random_string(24)
 _TEST_PW_B71AAACF = get_random_string(24)
@@ -597,10 +597,14 @@ class PermissionCenterPageTests(PermissionCenterTestBase):
         data = jsonlib.loads(match.group(1))
         self.assertEqual(len(data["modules"]), 11)
         self.assertEqual(len(data["roles"]), 9)
-        # 既有 14 个专项权限 + 夜审查看、清洁查看/流转、维修管理 3 个专项权限
-        # 原 14 条专项权限 + 夜审查看/揭示查看/翻转/维修管理 3 条
-        # + T02-3（OWNER 2026-11-24 方案 B）隐私清理 3 条 = 25
-        self.assertEqual(len(data["special_codenames"]), 25)
+        # 专项权限条数以注册表为权威（避免每次扩矩阵都要手改魔数）：
+        # 基线 14 + 夜审查看/揭示查看/翻转/维修管理 3 + T02-3 隐私清理 3
+        # + NS-E-05 FIN-06 收款 1 + MB-11 会员状态 1 = 27。
+        self.assertEqual(len(data["special_codenames"]), len(special_codenames()))
+        self.assertEqual(
+            set(data["special_codenames"]),
+            {item["codename"] for item in SPECIAL_PERMISSIONS},
+        )
         module_codes = {m["code"] for m in data["modules"]}
         self.assertEqual(
             module_codes,

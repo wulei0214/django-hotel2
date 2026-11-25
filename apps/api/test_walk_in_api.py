@@ -78,6 +78,9 @@ class WalkInApiTestBase(WhiteboxApiTestBase):
 
     def _auth(self, codenames=("view_accommodation", "change_accommodation")):
         user = self._make_staff(codenames=set(codenames))
+        # NS-E-05 FIN-06：前台收款另需 billing.payment_collect 专项码，
+        # change_accommodation 不再隐式携带资金收款能力。
+        self._grant(user, {"payment_collect"}, app_label="billing")
         self.client.force_login(user)
         # 沿用原契约测试夹具：预开班次（退役路径不读取任何业务上下文，仅保证
         # "已授权 + 班次就绪" 场景下退役行为与其他场景一致）。
