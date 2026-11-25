@@ -1341,10 +1341,66 @@ def check_in(request, reservation_room_id):
     )
 
 
+def _front_desk_action_required(permission_code):
+    """要求当前物业员工具有指定的独立业务权限，不隐式继承入住修改权。"""
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(request, *args, **kwargs):
+            user = request.user
+            if not user.is_authenticated or not user.is_active:
+                return _response(
+                    {"error": {"code": "AUTHENTICATION_REQUIRED", "message": "请先登录员工账号。"}},
+                    401,
+                )
+            property_obj = getattr(request, "property", None)
+            membership = getattr(request, "staff_membership", None)
+            if property_obj is None or property_obj.code != getattr(
+                settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"
+            ):
+                return _response(
+                    {"error": {"code": "PROPERTY_UNAVAILABLE", "message": "当前酒店物业不可用。"}},
+                    503,
+                )
+            if membership is None or membership.property_id != property_obj.pk:
+                return _response(
+                    {
+                        "error": {
+                            "code": "EMPLOYEE_MEMBERSHIP_REQUIRED",
+                            "message": "当前账号没有该酒店的有效任职关系。",
+                        }
+                    },
+                    403,
+                )
+            if not AuthorizationService.has_permission(user, property_obj, permission_code):
+                return _response(
+                    {
+                        "error": {
+                            "code": "PERMISSION_DENIED",
+                            "message": "当前岗位没有该项业务操作权限。",
+                        }
+                    },
+                    403,
+                )
+            request.front_desk_property = property_obj
+            return view(request, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
 @api_guard
 @require_POST
 @_front_desk_write_required
+@_front_desk_action_required("billing.payment_collect")
 def collect_payment(request, booking_no):
+    """前台预订收款（NS-E-05 IMPLEMENT-001 / FIN-06）。
+
+    在既有前台业务访问与预订对象校验之上，叠加 billing.payment_collect
+    专项收款权限——change_accommodation 不再隐式携带资金收款能力；
+    持有本专项码不授予财务中心任何读取权限（两个入口门禁体系互相独立）。
+    """
     try:
         body = _body(request)
         payment, created = collect_manual_payment(
@@ -1354,6 +1410,7 @@ def collect_payment(request, booking_no):
             method=body.get("method"),
             idempotency_key=request.headers.get("Idempotency-Key", ""),
             received_by=request.user,
+            request=request,
         )
     except ValueError as exc:
         return _response({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}}, 400)
@@ -1404,55 +1461,6 @@ def check_out(request, stay_id):
             "changed": changed,
         }
     )
-
-
-def _front_desk_action_required(permission_code):
-    """要求当前物业员工具有指定的独立业务权限，不隐式继承入住修改权。"""
-
-    def decorator(view):
-        @wraps(view)
-        def wrapped(request, *args, **kwargs):
-            user = request.user
-            if not user.is_authenticated or not user.is_active:
-                return _response(
-                    {"error": {"code": "AUTHENTICATION_REQUIRED", "message": "请先登录员工账号。"}},
-                    401,
-                )
-            property_obj = getattr(request, "property", None)
-            membership = getattr(request, "staff_membership", None)
-            if property_obj is None or property_obj.code != getattr(
-                settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"
-            ):
-                return _response(
-                    {"error": {"code": "PROPERTY_UNAVAILABLE", "message": "当前酒店物业不可用。"}},
-                    503,
-                )
-            if membership is None or membership.property_id != property_obj.pk:
-                return _response(
-                    {
-                        "error": {
-                            "code": "EMPLOYEE_MEMBERSHIP_REQUIRED",
-                            "message": "当前账号没有该酒店的有效任职关系。",
-                        }
-                    },
-                    403,
-                )
-            if not AuthorizationService.has_permission(user, property_obj, permission_code):
-                return _response(
-                    {
-                        "error": {
-                            "code": "PERMISSION_DENIED",
-                            "message": "当前岗位没有该项业务操作权限。",
-                        }
-                    },
-                    403,
-                )
-            request.front_desk_property = property_obj
-            return view(request, *args, **kwargs)
-
-        return wrapped
-
-    return decorator
 
 
 def _legacy_date(value):

@@ -409,14 +409,17 @@ def membership_change_status(request, membership_id):
       * suspend：ACTIVE/PENDING → SUSPENDED，原因必填并审计；
       * restore：SUSPENDED → ACTIVE，恢复前复核同客人无其他有效会员。
     幂等：同状态重复提交返回 changed=false（不重复审计）。
-    权限口径：hotelapp.change_vip（与等级变更同权；基线建议的独立
-    membership.suspend 专项码随矩阵扩展另行登记）。
+    权限口径（NS-E-05 IMPLEMENT-001，OWNER 裁定 MB-11）：本端点已从
+    hotelapp.change_vip 拆分，改由 guests.membership_status_manage 专项码
+    门禁——权限收紧：change_vip 保留等级变更、不再能暂停/恢复。
     """
     property_obj = getattr(request, "property", None)
     if property_obj is None:
         raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
-    if not AuthorizationService.has_permission(request.user, property_obj, "hotelapp.change_vip"):
-        raise ApiError("PERMISSION_DENIED", "缺少会员修改权限。")
+    if not AuthorizationService.has_permission(
+        request.user, property_obj, "guests.membership_status_manage"
+    ):
+        raise ApiError("PERMISSION_DENIED", "缺少会员暂停/恢复专项权限。")
     membership = GuestMembership.objects.filter(pk=membership_id, property=property_obj).first()
     if membership is None:
         raise ApiError("RESOURCE_NOT_FOUND", "当前物业下不存在该会员关系。")

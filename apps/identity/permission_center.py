@@ -80,6 +80,12 @@ SPECIAL_LABELS = {
     "export_pii": "导出敏感数据",
     "manage_rates": "每日房价调整",
     "staff_manage": "员工与账号管理",
+    # NS-E-05 IMPLEMENT-001（OWNER 2026-11-24 逐项裁定）
+    "payment_collect": "登记预订收款（统一入口）",
+    "membership_status_manage": "会员暂停/恢复",
+    "retention_request": "隐私清理申请",
+    "retention_approve": "隐私清理审批",
+    "retention_execute": "隐私清理执行",
 }
 
 # §8.1 页面固定文案（页面必须原文呈现）

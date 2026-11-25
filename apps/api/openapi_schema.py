@@ -4505,8 +4505,8 @@ op(
         },
         required=["action", "reason"],
     ),
-    permission="有效员工 + hotelapp.change_vip（与等级变更同权；基线建议的独立"
-    "membership 专项码随权限矩阵扩展另行登记）",
+    permission="有效员工 + guests.membership_status_manage（NS-E-05：会员暂停/恢复"
+    "已从 hotelapp.change_vip 拆分为专项权限；等级变更仍走 change_vip）",
     ok=(("200", "状态变更成功；同状态重复提交 changed=false（幂等）"),),
     data=s_obj(
         {

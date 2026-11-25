@@ -664,8 +664,13 @@ def collect_payment_api(request):
 
     body: {reservation_id, amount, method, reference?}；reference 即服务层
     provider_ref 幂等键（同号同事实重放返回原支付），叠加 @idempotent 头幂等。
+
+    NS-E-05 IMPLEMENT-001：收款与财务中心读取权限分离——
+    finance_access 仅保证进入与读取，实际收款另需 billing.payment_collect
+    专项码（_require_finance_access 的 extra_permission 叠加，与退款申请
+    billing.refund_request 同构）。
     """
-    property_obj = _require_finance_access(request)
+    property_obj = _require_finance_access(request, extra_permission="billing.payment_collect")
     body = _json_body(request)
     raw_id = body.get("reservation_id")
     try:
@@ -693,6 +698,8 @@ def collect_payment_api(request):
             method=method,
             collected_by=request.user,
             reference=reference,
+            request=request,
+            source_entry="billing_center",
         )
     except ValueError as exc:
         raise ApiError("VALIDATION_ERROR", str(exc)) from None

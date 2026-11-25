@@ -179,10 +179,13 @@ MODULE_REGISTRY_V2 = {
             "change": "hotelapp.change_vip",
             "delete": "hotelapp.delete_vip",
             "approve": NOT_APPLICABLE,
-            "special": NOT_APPLICABLE,
+            # NS-E-05 IMPLEMENT-001（OWNER 2026-11-24 裁定 MB-11）：暂停/恢复
+            # 从 change_vip 拆分为专项码（权限收紧）；change_vip 保留等级变更。
+            "special": ("guests.membership_status_manage",),
         },
         "extra_codes": (),
-        "notes": "会员等级变更 API 门禁 view/add/change_vip；PMS2 数据在 "
+        "notes": "会员等级变更 API 门禁 view/add/change_vip；暂停/恢复已拆分至 "
+        "guests.membership_status_manage（NS-E-05，2026-11-24）；PMS2 数据在 "
         "guests.GuestMembership，历史数据在 hotelapp.Vip。",
     },
     "staff": {
@@ -232,6 +235,7 @@ MODULE_REGISTRY_V2 = {
                 "billing.reversal_approve",
                 "billing.cashier_shift_manage",
                 "billing.cash_movement_manage",
+                "billing.payment_collect",
             ),
         },
         "extra_codes": (),
@@ -713,6 +717,37 @@ SPECIAL_PERMISSIONS = (
         "requires_reason": False,
         "requires_confirm": False,
         "note": "员工与账号工作台全门禁（店长）；矩阵外点（F-09）",
+    },
+    # NS-E-05 IMPLEMENT-001（OWNER 2026-11-24 逐项裁定 FIN-06 = APPROVED）：
+    # 统一收款执行权。双入口（财务中心 + 前台预订收款）均须本码；
+    # 不携带 finance_access（收款权不授予读取权）；与 refund_execute 分离；
+    # 现金收款仍须本人 OPEN 收银班次（服务层守卫）。
+    {
+        "key": "payment_collect",
+        "codename": "billing.payment_collect",
+        "module": "finance",
+        "risk": "high",
+        "requires_reason": False,
+        "requires_confirm": True,
+        "note": "统一收款执行权，覆盖财务中心与前台预订收款入口；"
+        "不授予财务中心读取权限；与退款执行权限分离；"
+        "现金收款仍须本人 OPEN 收银班次。",
+    },
+    # NS-E-05 IMPLEMENT-001（OWNER 2026-11-24 逐项裁定 MB-11 = APPROVED）：
+    # 会员暂停/恢复统一管理权，从 hotelapp.change_vip 拆分（权限收紧）。
+    # 状态机由 GuestMembershipService 唯一写入口强制：
+    # 仅 ACTIVE/PENDING→SUSPENDED 与 SUSPENDED→ACTIVE；EXPIRED/TERMINATED 不可恢复。
+    {
+        "key": "membership_status_manage",
+        "codename": "guests.membership_status_manage",
+        "module": "memberships",
+        "risk": "medium",
+        "requires_reason": True,
+        "requires_confirm": True,
+        "note": "会员暂停和恢复统一管理权；"
+        "暂停仅允许 ACTIVE/PENDING 转 SUSPENDED；"
+        "恢复仅允许 SUSPENDED 转 ACTIVE；EXPIRED/TERMINATED 不可恢复；"
+        "从 hotelapp.change_vip 拆分，等级变更仍保留在原权限。",
     },
 )
 

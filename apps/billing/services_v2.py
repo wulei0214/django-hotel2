@@ -768,7 +768,17 @@ class BillingService:
 
     @staticmethod
     @transaction.atomic
-    def collect_payment(*, property_obj, reservation, amount, method, collected_by, reference=""):
+    def collect_payment(
+        *,
+        property_obj,
+        reservation,
+        amount,
+        method,
+        collected_by,
+        reference="",
+        request=None,
+        source_entry="frontdesk",
+    ):
         """统一收款（Q-07）：记录支付方式，创建 Payment + LedgerEntry。"""
         from apps.billing.models import Folio, LedgerEntry, Payment
 
@@ -892,25 +902,39 @@ class BillingService:
             raise ValueError(
                 "该 Idempotency-Key 已被其他收款请求使用且业务事实不一致；" "请更换幂等键后重试。"
             ) from exc
+        business_date = BillingService._business_date(property_obj)
         BillingService.post_entry(
             property_obj=property_obj,
             folio=folio,
             entry_type=LedgerEntry.EntryType.PAYMENT,
             amount=-amount,
             currency=reservation.currency,
-            business_date=BillingService._business_date(property_obj),
+            business_date=business_date,
             reference=f"payment:{provider_ref}",
             description=f"前台登记收款（{method}）",
             posted_by=collected_by,
         )
+        # NS-E-05 IMPLEMENT-001（TASK-04）：审计字段取本次收款写下的真实账务
+        # 事实（复用同一 business_date），request 由 API 显式传入——原实现
+        # getattr(collected_by, "_request", None) 恒为 None，request_id 链路失效。
         AuditEvent.record(
             action="billing.collect",
             entity_type="Payment",
             entity_id=payment.pk,
             actor=collected_by,
             property_obj=property_obj,
-            after={"method": method, "amount": str(amount)},
-            request=getattr(collected_by, "_request", None),
+            after={
+                "payment_status": payment.status,
+                "method": method,
+                "amount": str(amount),
+                "currency": reservation.currency,
+                "reservation_id": reservation.pk,
+                "folio_id": folio.pk,
+                "business_date": str(business_date),
+                "provider_ref": provider_ref,
+                "source_entry": source_entry,
+            },
+            request=request,
         )
         return payment
 

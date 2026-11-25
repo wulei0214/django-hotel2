@@ -613,7 +613,7 @@ MANAGEMENT_CENTERS = {
                 "key": "membership_status",
                 "label": "暂停/恢复",
                 "endpoint": "/api/v1/memberships/{id}/status",
-                "permission": "hotelapp.change_vip",
+                "permission": "guests.membership_status_manage",
                 "scope": "row",
                 "fields": [
                     {"name": "action", "label": "suspend 或 restore", "required": True},

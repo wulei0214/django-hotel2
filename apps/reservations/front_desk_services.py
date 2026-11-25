@@ -514,7 +514,7 @@ def check_in_stay(*, property_obj, reservation_room_id, checked_in_by=None):
 
 @transaction.atomic
 def collect_manual_payment(
-    *, property_obj, booking_no, amount, method, idempotency_key, received_by=None
+    *, property_obj, booking_no, amount, method, idempotency_key, received_by=None, request=None
 ):
     """前台人工收款：委托 BillingService 统一写入 Payment、LedgerEntry 与审计。"""
     method = str(method or "").strip().upper()
@@ -574,6 +574,8 @@ def collect_manual_payment(
             method=method,
             collected_by=received_by,
             reference=provider_ref,
+            request=request,
+            source_entry="frontdesk",
         )
     except BillingInputError as exc:
         # RSV-10：金额格式/精度、支付方式、参考号格式 → 400。
