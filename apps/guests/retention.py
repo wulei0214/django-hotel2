@@ -223,11 +223,11 @@ def plan_retention_cleanup(
     )
     if approved_plan is None:
         raise ValueError("审批记录所绑定的清理计划不存在，禁止执行。")
-    if approved_plan.property_id != property_obj.pk:
+    if getattr(approved_plan, "property_id", None) != property_obj.pk:
         raise ValueError("审批记录绑定的计划不属于本物业，禁止执行。")
     if not approved_plan.dry_run:
         raise ValueError("审批记录绑定的不是 dry-run 计划，禁止执行。")
-    if approved_plan.policy_id != policy.pk:
+    if getattr(approved_plan, "policy_id", None) != policy.pk:
         raise ValueError("审批记录绑定的清理策略与本次执行不一致，禁止执行。")
     if approved_plan.as_of != as_of:
         raise ValueError("审批记录绑定的基准日与本次执行不一致，禁止执行。")

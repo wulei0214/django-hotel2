@@ -11,6 +11,7 @@
 
 import uuid
 from datetime import timedelta
+from typing import Any
 
 from django.contrib.auth.models import Group, Permission, User
 from django.contrib.contenttypes.models import ContentType
@@ -36,6 +37,10 @@ APPROVE_PERM = "guests.retention_approve"
 
 class GapFixTestBase(TestCase):
     """物业 + 策略 + 三个岗位链（店长/值班经理/无权限岗位）。"""
+
+    property: Any
+    policy: Any
+    ct: Any
 
     @classmethod
     def setUpTestData(cls):
