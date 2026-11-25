@@ -49,6 +49,7 @@ TAGS = [
     "报表分析",
     "通知与待办",
     "文档",
+    "隐私清理",
 ]
 
 COOKIE_SECURITY = [{"PMS2Session": []}]
@@ -5804,6 +5805,84 @@ op(
     errors=E_STAFF_CONFLICT,
     notes="源服务失败保留待处理并写 last_error_*；通知已读不能完成待办；"
     "未登记源服务的来源返回 409，须跳转权威业务工作流。",
+)
+
+
+# ========== 隐私数据生命周期（T02-3 方案 B） ==========
+op(
+    "/privacy/retention/plans",
+    "post",
+    "隐私清理",
+    "创建清理计划（dry-run，不产生清理写入）",
+    status="verified",
+    permission="有效员工 + guests.retention_request + 目标物业有效任职",
+    body=s_obj(
+        {
+            "policy_id": s_int("清理策略 ID（须为当前物业启用中的策略）"),
+            "as_of": s_str("基准日（YYYY-MM-DD）"),
+        },
+        required=["policy_id", "as_of"],
+    ),
+    ok=(("201", "计划创建成功，返回计划 ID 与候选统计"),),
+    data=s_obj(
+        {
+            "id": s_int(),
+            "dry_run": s_bool(),
+            "candidate_count": s_int(),
+            "skipped_count": s_int(),
+            "execution_status": s_str(),
+        }
+    ),
+    errors=E_STAFF,
+    notes="dry-run 只统计不落写；正式执行须经批准并另行调用 execute 端点。",
+)
+
+op(
+    "/privacy/retention/plans/{plan_id}/approve",
+    "post",
+    "隐私清理",
+    "审批清理计划（第二人批准，SoD）",
+    status="verified",
+    permission="有效员工 + guests.retention_approve + 目标物业有效任职",
+    path_params=[("plan_id", "清理计划 ID。")],
+    body=s_obj({}, desc="可选 reason；审批人为当前登录员工。"),
+    body_required=False,
+    ok=(("201", "审批记录创建并批准，返回审批与计划 ID"),),
+    data=s_obj(
+        {
+            "approval_id": s_nullable(s_int()),
+            "status": s_nullable(s_str()),
+            "plan_id": s_nullable(s_int()),
+        }
+    ),
+    errors=E_STAFF_CONFLICT,
+    notes="申请人不得为审批人（SoD）；审批记录绑定该计划，执行时须保持一致。",
+)
+
+op(
+    "/privacy/retention/plans/{plan_id}/execute",
+    "post",
+    "隐私清理",
+    "执行已批准的清理计划（不可逆）",
+    status="verified",
+    permission="有效员工 + guests.retention_execute + 目标物业有效任职",
+    path_params=[("plan_id", "清理计划 ID。")],
+    body=s_obj(
+        {
+            "approval_reference": s_str("已批准审批记录 ID。"),
+        },
+        required=["approval_reference"],
+    ),
+    ok=(("200", "清理执行完成或部分完成，返回处理统计"),),
+    data=s_obj(
+        {
+            "id": s_int(),
+            "dry_run": s_bool(),
+        }
+    ),
+    errors=E_STAFF_CONFLICT,
+    notes="不可逆操作：需独立执行权限（审批不能替代）、执行人≠申请人、"
+    "审批绑定的计划须与本次执行一致；LegalHold 与未结业务自动跳过。",
 )
 
 # ========== 文档 ==========
