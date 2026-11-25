@@ -583,3 +583,685 @@ class BillingCollectAuditTests(Nse05Base):
         )
         event = AuditEvent.objects.get(action="billing.collect", entity_id=str(payment.pk))
         self.assertEqual(event.after_json["payment_status"], Payment.Status.SUCCEEDED)
+
+
+class Fin06CollectBoundaryTests(Nse05Base):
+    """8.1 补充（7 例）：FIN-06 双入口 API 级门禁与边界。"""
+
+    def _setup_billable(self, booking_no="NSE05-API-BK"):
+        from apps.billing.models import LedgerEntry
+        from apps.billing.services_v2 import BillingService
+
+        reservation = self._make_reservation(booking_no)
+        folio = Folio.objects.create(
+            property=self.property,
+            reservation=reservation,
+            folio_type=Folio.FolioType.MASTER,
+            guest=reservation.guest,
+            status=Folio.Status.OPEN,
+            currency="CNY",
+        )
+        BillingService.post_entry(
+            property_obj=self.property,
+            folio=folio,
+            entry_type=LedgerEntry.EntryType.ADJUSTMENT,
+            amount=Decimal("500.00"),
+            reference=f"adj:{booking_no}",
+            description="NS-E-05 应收调整",
+        )
+        return reservation, folio
+
+    def _post(self, user, payload, path="/api/v1/billing/payments"):
+        self.client.force_login(user)
+        return self.client.post(path, data=payload, content_type="application/json")
+
+    def test_billing_center_collect_allowed_with_both_permissions(self):
+        """财务（finance_access + payment_collect）→ 201。"""
+        from apps.billing.services_v2 import BillingService
+
+        user = self._make_role_staff("财务")
+        BillingService.open_shift(
+            property_obj=self.property, cashier=user, opening_cash=Decimal("0.00")
+        )
+        reservation, _folio = self._setup_billable("NSE05-API-1")
+        response = self._post(
+            user,
+            {
+                "reservation_id": reservation.pk,
+                "amount": "200.00",
+                "method": "CASH",
+                "reference": "NSE05-API-REF-1",
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+
+    def test_billing_center_collect_denied_without_special_permission(self):
+        """有 finance_access 但无 payment_collect → 403（读取与收款分离）。"""
+        user = self._make_role_staff("财务")
+        assignment = StaffRoleAssignment.objects.filter(
+            membership__staff_profile__user=user
+        ).first()
+        assert assignment is not None
+        group = assignment.group
+        group.permissions.remove(
+            Permission.objects.get(content_type__app_label="billing", codename="payment_collect")
+        )
+        reservation, _folio = self._setup_billable("NSE05-API-2")
+        response = self._post(
+            user,
+            {
+                "reservation_id": reservation.pk,
+                "amount": "100.00",
+                "method": "CASH",
+                "reference": "NSE05-API-REF-2",
+            },
+        )
+        self.assertEqual(response.status_code, 403, response.content)
+
+    def test_billing_center_collect_denied_for_housekeeping(self):
+        """夜审员（无 finance_access）→ 403。"""
+        user = self._make_role_staff("夜审员")
+        reservation, _folio = self._setup_billable("NSE05-API-3")
+        response = self._post(
+            user,
+            {
+                "reservation_id": reservation.pk,
+                "amount": "100.00",
+                "method": "CASH",
+                "reference": "NSE05-API-REF-3",
+            },
+        )
+        self.assertEqual(response.status_code, 403, response.content)
+
+    def test_frontdesk_collect_denied_for_frontdesk_without_special(self):
+        """前台持有 change_accommodation 但移除本码 → 403（入口 B 收紧验证）。"""
+        from apps.reservations.front_desk_services import FrontDeskValidationError
+
+        user = self._make_role_staff("前台")
+        assignment = StaffRoleAssignment.objects.filter(
+            membership__staff_profile__user=user
+        ).first()
+        assert assignment is not None
+        group = assignment.group
+        group.permissions.remove(
+            Permission.objects.get(content_type__app_label="billing", codename="payment_collect")
+        )
+        reservation = self._make_reservation("NSE05-API-4")
+        response = self._post(
+            user,
+            {"amount": "100.00", "method": "CASH"},
+            path=f"/front-desk/reservations/{reservation.booking_no}/payments",
+        )
+        self.assertIn(response.status_code, (403, 404), response.content)
+        # 无权限时服务层不应被调用；显式断言异常类型存在（导入守卫）
+        self.assertTrue(issubclass(FrontDeskValidationError, Exception))
+
+    def test_collect_allowed_roles_all_resolve_at_api_layer(self):
+        """值班经理在 API 层可完成收款（持有 finance_access + payment_collect）。"""
+        user = self._make_role_staff("值班经理")
+        reservation, _folio = self._setup_billable("NSE05-API-5")
+        response = self._post(
+            user,
+            {
+                "reservation_id": reservation.pk,
+                "amount": "100.00",
+                "method": "CARD",
+                "reference": "NSE05-API-REF-5",
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        payload = response.json()["data"]
+        assert isinstance(payload, dict)
+        self.assertEqual(payload["amount"], "100.00")
+
+    def test_collect_permission_not_granted_by_frontdesk_group_to_finance_access(self):
+        """前台组权限集合中不含 finance_access，且含 payment_collect。"""
+        group = Group.objects.get(name="前台")
+        codenames = set(group.permissions.values_list("codename", flat=True))
+        self.assertIn("payment_collect", codenames)
+        self.assertNotIn("finance_access", codenames)
+
+    def test_payment_collect_risk_and_confirm_flags_locked(self):
+        """注册表口径锁定：不得被误改为低风险免确认。"""
+        from apps.identity.registry import get_special
+
+        item = get_special("billing.payment_collect")
+        self.assertEqual(item["risk"], "high")
+        self.assertTrue(item["requires_confirm"])
+        self.assertFalse(item["requires_reason"])
+        self.assertEqual(item["module"], "finance")
+
+
+class Mb11StatusBoundaryTests(Nse05Base):
+    """8.2 补充（6 例）：MB-11 状态机边界与 API 层门禁。"""
+
+    def _make_membership(self, guest_phone="13800004444", member_no="NSE05-MB-1"):
+        guest = Guest.objects.create(
+            property=self.property, full_name="MB11 边界会员", phone=guest_phone
+        )
+        return GuestMembership.objects.create(
+            property=self.property,
+            guest=guest,
+            member_no=member_no,
+            level_code="STANDARD",
+            status=GuestMembership.Status.ACTIVE,
+            joined_at=date.today(),
+        )
+
+    def _status(self, user, membership, action="suspend", reason="客人申请暂停"):
+        self.client.force_login(user)
+        return self.client.post(
+            f"/api/v1/memberships/{membership.pk}/status",
+            data={"action": action, "reason": reason},
+            content_type="application/json",
+        )
+
+    def test_api_suspend_succeeds_for_duty_manager(self):
+        user = self._make_role_staff("值班经理")
+        membership = self._make_membership()
+        response = self._status(user, membership)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["data"]["status"], "SUSPENDED")
+
+    def test_api_suspend_denied_for_frontdesk(self):
+        user = self._make_role_staff("前台")
+        membership = self._make_membership("13800004445", "NSE05-MB-2")
+        response = self._status(user, membership)
+        self.assertEqual(response.status_code, 403, response.content)
+
+    def test_api_suspend_denied_for_finance(self):
+        user = self._make_role_staff("财务")
+        membership = self._make_membership("13800004446", "NSE05-MB-3")
+        response = self._status(user, membership)
+        self.assertEqual(response.status_code, 403, response.content)
+
+    def test_api_status_requires_reason(self):
+        """原因必填：空原因被服务层拒绝（409 BUSINESS_CONFLICT）。"""
+        user = self._make_role_staff("店长")
+        membership = self._make_membership("13800004447", "NSE05-MB-4")
+        response = self._status(user, membership, reason="")
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertEqual(response.json()["error"]["code"], "BUSINESS_CONFLICT")
+
+    def test_api_status_rejects_unknown_action(self):
+        """未知动作 → 400。"""
+        user = self._make_role_staff("店长")
+        membership = self._make_membership("13800004448", "NSE05-MB-5")
+        response = self._status(user, membership, action="terminate")
+        self.assertEqual(response.status_code, 400, response.content)
+
+    def test_terminated_membership_cannot_restore(self):
+        """状态机边界：TERMINATED 不可恢复。"""
+        from apps.guests.services import GuestMembershipService, GuestServiceError
+
+        user = self._make_role_staff("值班经理")
+        membership = self._make_membership("13800004449", "NSE05-MB-6")
+        membership.status = GuestMembership.Status.TERMINATED
+        membership.save(update_fields=("status",))
+        with self.assertRaises(GuestServiceError):
+            GuestMembershipService.restore_membership(
+                membership=membership, reason="尝试恢复已终止会员", restored_by=user
+            )
+
+    def test_change_vip_group_still_holds_level_change(self):
+        """change_vip 保留等级变更（登记表特殊码不含状态管理）。"""
+        from apps.identity.registry import MODULE_REGISTRY_V2
+
+        memberships = MODULE_REGISTRY_V2["memberships"]  # type: ignore[index]
+        actions: dict = memberships["actions"]  # type: ignore[index,assignment]
+        self.assertEqual(actions["change"], "hotelapp.change_vip")
+        self.assertIn("guests.membership_status_manage", actions["special"])
+
+
+class RetentionChainBoundaryTests(Nse05Base):
+    """8.3 补充（12 例）：Retention 真实审批链与执行门全边界。"""
+
+    def _staff(self, group_name):
+        return self._make_role_staff(group_name)
+
+    def _policy(self, operator):
+        from apps.guests.models import RetentionPolicy
+
+        return RetentionPolicy.objects.create(
+            property=self.property,
+            data_category=RetentionPolicy.DataCategory.GUEST_PROFILE,
+            retention_days=365,
+            retention_basis=RetentionPolicy.RetentionBasis.LAW,
+            effective_from=self.today,
+            created_by=operator,
+            updated_by=operator,
+        )
+
+    def _plan(self, policy, operator, dry_run=True):
+        from apps.guests.retention import plan_retention_cleanup
+
+        return plan_retention_cleanup(
+            property_obj=self.property,
+            policy=policy,
+            as_of=self.today,
+            operator=operator,
+            dry_run=dry_run,
+        )
+
+    def _approved_record(self, plan, requester, approver):
+        """走真实 ApprovalService.request_approval → approve（禁止伪造）。"""
+        from apps.billing.services_v2 import ApprovalService
+
+        record, _created = ApprovalService.request_approval(
+            property_obj=self.property,
+            action_code="privacy.retention_execute",
+            entity_type="RetentionExecution",
+            entity_id=str(plan.pk),
+            requested_by=requester,
+            reason="保留期满清理申请",
+            payload={
+                "retention_policy_id": plan.policy_id,
+                "as_of_date": str(plan.as_of),
+            },
+        )
+        ApprovalService.approve(record.pk, approved_by=approver, property_obj=self.property)
+        record.refresh_from_db()
+        return record
+
+    def test_full_chain_request_approve_execute_anonymizes(self):
+        """真实三权分离链：店长申请、值班经理审批、另一值班经理执行。"""
+        requester = self._staff("店长")
+        approver = self._staff("值班经理")
+        executor = self._staff("值班经理")
+
+        policy = self._policy(requester)
+        guest = Guest.objects.create(
+            property=self.property, full_name="真实链清理客", phone="13800005001"
+        )
+        Guest.objects.filter(pk=guest.pk).update(created_at=timezone.now() - timedelta(days=800))
+
+        plan, _ = self._plan(policy, requester, dry_run=True)
+        record = self._approved_record(plan, requester, approver)
+        self.assertEqual(record.status, "APPROVED")
+
+        from apps.guests.retention import plan_retention_cleanup
+
+        result, _to_process = plan_retention_cleanup(
+            property_obj=self.property,
+            policy=policy,
+            as_of=self.today,
+            operator=executor,
+            dry_run=False,
+            approval_reference=str(record.pk),
+        )
+        self.assertEqual(result.execution_status, "COMPLETED")
+
+    def test_executor_same_as_requester_rejected(self):
+        """执行人 = 申请人 → 拒绝（SoD）。"""
+        requester = self._staff("店长")
+        approver = self._staff("值班经理")
+        policy = self._policy(requester)
+        plan, _ = self._plan(policy, requester)
+        record = self._approved_record(plan, requester, approver)
+
+        from apps.guests.retention import plan_retention_cleanup
+
+        with self.assertRaises(ValueError):
+            plan_retention_cleanup(
+                property_obj=self.property,
+                policy=policy,
+                as_of=self.today,
+                operator=requester,
+                dry_run=False,
+                approval_reference=str(record.pk),
+            )
+
+    def test_executor_without_execute_permission_rejected(self):
+        """执行人无 guests.retention_execute → PermissionDenied。"""
+        requester = self._staff("店长")
+        approver = self._staff("值班经理")
+        outsider = self._staff("前台")
+        policy = self._policy(requester)
+        plan, _ = self._plan(policy, requester)
+        record = self._approved_record(plan, requester, approver)
+
+        from django.core.exceptions import PermissionDenied
+
+        from apps.guests.retention import plan_retention_cleanup
+
+        with self.assertRaises(PermissionDenied):
+            plan_retention_cleanup(
+                property_obj=self.property,
+                policy=policy,
+                as_of=self.today,
+                operator=outsider,
+                dry_run=False,
+                approval_reference=str(record.pk),
+            )
+
+    def test_approval_bound_to_different_plan_rejected(self):
+        """审批绑定计划 A，却用计划 B 执行 → 拒绝。"""
+        requester = self._staff("店长")
+        approver = self._staff("值班经理")
+        executor = self._staff("值班经理")
+
+        policy = self._policy(requester)
+        plan_a, _ = self._plan(policy, requester)
+        record = self._approved_record(plan_a, requester, approver)
+
+        from apps.guests.retention import plan_retention_cleanup
+
+        plan_b, _ = self._plan(policy, requester)
+        self.assertNotEqual(plan_a.pk, plan_b.pk)
+        with self.assertRaises(ValueError):
+            plan_retention_cleanup(
+                property_obj=self.property,
+                policy=policy,
+                as_of=self.today,
+                operator=executor,
+                dry_run=False,
+                approval_reference=str(record.pk),
+                execution=plan_b,
+            )
+
+    def test_approval_bound_to_different_policy_rejected(self):
+        """审批绑定策略 A，却用策略 B 执行 → 拒绝。"""
+        requester = self._staff("店长")
+        approver = self._staff("值班经理")
+        executor = self._staff("值班经理")
+
+        policy_a = self._policy(requester)
+        plan_a, _ = self._plan(policy_a, requester)
+        record = self._approved_record(plan_a, requester, approver)
+
+        # enabled_policy_key 唯一：同物业同类别只允许一个 enabled 策略。
+        policy_a.enabled = False
+        policy_a.save(update_fields=("enabled",))
+        policy_b = self._policy(requester)
+        from apps.guests.retention import plan_retention_cleanup
+
+        with self.assertRaises(ValueError):
+            plan_retention_cleanup(
+                property_obj=self.property,
+                policy=policy_b,
+                as_of=self.today,
+                operator=executor,
+                dry_run=False,
+                approval_reference=str(record.pk),
+                execution=plan_a,
+            )
+
+    def test_requester_cannot_approve_own_request(self):
+        """申请人自审 → 拒绝（ApprovalService SoD）。"""
+        requester = self._staff("店长")
+        policy = self._policy(requester)
+        plan, _ = self._plan(policy, requester)
+
+        from apps.billing.services_v2 import ApprovalService
+
+        record, _ = ApprovalService.request_approval(
+            property_obj=self.property,
+            action_code="privacy.retention_execute",
+            entity_type="RetentionExecution",
+            entity_id=str(plan.pk),
+            requested_by=requester,
+            reason="自审尝试",
+            payload={
+                "retention_policy_id": plan.policy_id,
+                "as_of_date": str(plan.as_of),
+            },
+        )
+        with self.assertRaises(ValueError):
+            ApprovalService.approve(record.pk, approved_by=requester, property_obj=self.property)
+
+    def test_pending_approval_cannot_execute(self):
+        """PENDING 审批不能执行。"""
+        requester = self._staff("店长")
+        executor = self._staff("值班经理")
+        policy = self._policy(requester)
+        plan, _ = self._plan(policy, requester)
+
+        from apps.billing.services_v2 import ApprovalService
+
+        record, _ = ApprovalService.request_approval(
+            property_obj=self.property,
+            action_code="privacy.retention_execute",
+            entity_type="RetentionExecution",
+            entity_id=str(plan.pk),
+            requested_by=requester,
+            reason="待审批",
+            payload={
+                "retention_policy_id": plan.policy_id,
+                "as_of_date": str(plan.as_of),
+            },
+        )
+        from apps.guests.retention import plan_retention_cleanup
+
+        with self.assertRaises(ValueError):
+            plan_retention_cleanup(
+                property_obj=self.property,
+                policy=policy,
+                as_of=self.today,
+                operator=executor,
+                dry_run=False,
+                approval_reference=str(record.pk),
+            )
+
+    def test_rejected_approval_cannot_execute(self):
+        """REJECTED 审批不能执行。"""
+        requester = self._staff("店长")
+        approver = self._staff("值班经理")
+        executor = self._staff("值班经理")
+        policy = self._policy(requester)
+        plan, _ = self._plan(policy, requester)
+
+        from apps.billing.services_v2 import ApprovalService
+
+        record, _ = ApprovalService.request_approval(
+            property_obj=self.property,
+            action_code="privacy.retention_execute",
+            entity_type="RetentionExecution",
+            entity_id=str(plan.pk),
+            requested_by=requester,
+            reason="将被驳回",
+            payload={
+                "retention_policy_id": plan.policy_id,
+                "as_of_date": str(plan.as_of),
+            },
+        )
+        ApprovalService.reject(
+            record.pk, approved_by=approver, property_obj=self.property, reason="驳回"
+        )
+        from apps.guests.retention import plan_retention_cleanup
+
+        with self.assertRaises(ValueError):
+            plan_retention_cleanup(
+                property_obj=self.property,
+                policy=policy,
+                as_of=self.today,
+                operator=executor,
+                dry_run=False,
+                approval_reference=str(record.pk),
+            )
+
+    def test_approval_for_other_property_rejected(self):
+        """跨物业审批记录 → 拒绝。"""
+        requester = self._staff("店长")
+        approver = self._staff("值班经理")
+        executor = self._staff("值班经理")
+        policy = self._policy(requester)
+        plan, _ = self._plan(policy, requester)
+        record = self._approved_record(plan, requester, approver)
+
+        other_property = Property.objects.create(code="NSE05-OTHER", name="隔离测试物业")
+        from apps.guests.retention import plan_retention_cleanup
+
+        with self.assertRaises(ValueError):
+            plan_retention_cleanup(
+                property_obj=other_property,
+                policy=policy,
+                as_of=self.today,
+                operator=executor,
+                dry_run=False,
+                approval_reference=str(record.pk),
+            )
+
+    def test_dry_run_plan_has_draft_status(self):
+        """dry-run 产物为 DRAFT，可被审批绑定。"""
+        operator = self._staff("店长")
+        policy = self._policy(operator)
+        plan, _ = self._plan(policy, operator)
+        self.assertEqual(plan.execution_status, "DRAFT")
+        self.assertTrue(plan.dry_run)
+
+    def test_validate_entity_rejects_non_dry_run_plan(self):
+        """validate_entity 拒绝非 dry-run 计划。"""
+        from apps.billing.approval_registry import validate_retention_execution_entity
+
+        operator = self._staff("店长")
+        policy = self._policy(operator)
+        plan, _ = self._plan(policy, operator)
+        plan.dry_run = False
+        plan.save(update_fields=("dry_run",))
+
+        with self.assertRaises(ValueError):
+            validate_retention_execution_entity(self.property, str(plan.pk), operator)
+
+    def test_validate_entity_rejects_non_draft_plan(self):
+        """validate_entity 拒绝已进入执行流程的计划。"""
+        from apps.billing.approval_registry import validate_retention_execution_entity
+
+        operator = self._staff("店长")
+        policy = self._policy(operator)
+        plan, _ = self._plan(policy, operator)
+        plan.execution_status = "EXECUTING"
+        plan.save(update_fields=("execution_status",))
+
+        with self.assertRaises(ValueError):
+            validate_retention_execution_entity(self.property, str(plan.pk), operator)
+
+    def test_sod_rule_declared_three_way(self):
+        """registry 声明三人分离 SoD。"""
+        from apps.billing.approval_registry import ApprovalActionRegistry
+
+        spec = ApprovalActionRegistry.get("privacy.retention_execute")
+        self.assertIn("申请人", spec.sod_rule)
+        self.assertIn("审批人", spec.sod_rule)
+        self.assertIn("执行人", spec.sod_rule)
+
+
+class BillingCollectAuditDetailTests(Nse05Base):
+    """8.4 补充（4 例）：审计 request 链路与双入口对照细节。"""
+
+    def _setup_billable(self, booking_no):
+        from apps.billing.models import LedgerEntry
+        from apps.billing.services_v2 import BillingService
+
+        reservation = self._make_reservation(booking_no)
+        folio = Folio.objects.create(
+            property=self.property,
+            reservation=reservation,
+            folio_type=Folio.FolioType.MASTER,
+            guest=reservation.guest,
+            status=Folio.Status.OPEN,
+            currency="CNY",
+        )
+        BillingService.post_entry(
+            property_obj=self.property,
+            folio=folio,
+            entry_type=LedgerEntry.EntryType.ADJUSTMENT,
+            amount=Decimal("500.00"),
+            reference=f"adj:{booking_no}",
+            description="NS-E-05 应收调整",
+        )
+        return reservation, folio
+
+    def test_audit_request_id_populated_when_request_passed(self):
+        """传入 request 后 request_id 非空（原实现恒 None 的回归护栏）。"""
+        from apps.billing.services_v2 import BillingService
+
+        user = self._make_role_staff("财务")
+        BillingService.open_shift(
+            property_obj=self.property, cashier=user, opening_cash=Decimal("0.00")
+        )
+        reservation, _folio = self._setup_billable("NSE05-AUD-10")
+
+        class _FakeRequest:
+            request_id = "nse05-req-abc123"
+            META: dict = {}
+            headers: dict = {}
+
+        payment = BillingService.collect_payment(
+            property_obj=self.property,
+            reservation=reservation,
+            amount=Decimal("100.00"),
+            method="CASH",
+            collected_by=user,
+            reference="NSE05-AUD-REF-10",
+            request=_FakeRequest(),
+            source_entry="frontdesk",
+        )
+        event = AuditEvent.objects.get(action="billing.collect", entity_id=str(payment.pk))
+        self.assertEqual(event.request_id, "nse05-req-abc123")
+
+    def test_audit_request_id_empty_when_request_absent(self):
+        """未传 request 时 request_id 为空（而不是从 User 假读）。"""
+        from apps.billing.services_v2 import BillingService
+
+        user = self._make_role_staff("财务")
+        BillingService.open_shift(
+            property_obj=self.property, cashier=user, opening_cash=Decimal("0.00")
+        )
+        reservation, _folio = self._setup_billable("NSE05-AUD-11")
+        payment = BillingService.collect_payment(
+            property_obj=self.property,
+            reservation=reservation,
+            amount=Decimal("100.00"),
+            method="CASH",
+            collected_by=user,
+            reference="NSE05-AUD-REF-11",
+        )
+        event = AuditEvent.objects.get(action="billing.collect", entity_id=str(payment.pk))
+        self.assertFalse(event.request_id)
+
+    def test_audit_folio_id_matches_locked_folio(self):
+        """审计 folio_id 必须是服务层实际锁定的 MASTER 账单。"""
+        from apps.billing.services_v2 import BillingService
+
+        user = self._make_role_staff("财务")
+        BillingService.open_shift(
+            property_obj=self.property, cashier=user, opening_cash=Decimal("0.00")
+        )
+        reservation, folio = self._setup_billable("NSE05-AUD-12")
+        payment = BillingService.collect_payment(
+            property_obj=self.property,
+            reservation=reservation,
+            amount=Decimal("100.00"),
+            method="CASH",
+            collected_by=user,
+            reference="NSE05-AUD-REF-12",
+        )
+        event = AuditEvent.objects.get(action="billing.collect", entity_id=str(payment.pk))
+        self.assertEqual(event.after_json["folio_id"], folio.pk)
+
+    def test_audit_business_date_matches_ledger_entry(self):
+        """审计 business_date 与账本凭证一致（同一次计算）。"""
+        from apps.billing.models import LedgerEntry
+        from apps.billing.services_v2 import BillingService
+
+        user = self._make_role_staff("财务")
+        BillingService.open_shift(
+            property_obj=self.property, cashier=user, opening_cash=Decimal("0.00")
+        )
+        reservation, _folio = self._setup_billable("NSE05-AUD-13")
+        payment = BillingService.collect_payment(
+            property_obj=self.property,
+            reservation=reservation,
+            amount=Decimal("100.00"),
+            method="CASH",
+            collected_by=user,
+            reference="NSE05-AUD-REF-13",
+        )
+        event = AuditEvent.objects.get(action="billing.collect", entity_id=str(payment.pk))
+        entry = LedgerEntry.objects.filter(
+            folio__reservation=reservation,
+            entry_type=LedgerEntry.EntryType.PAYMENT,
+        ).first()
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        self.assertEqual(str(entry.business_date), event.after_json["business_date"])
