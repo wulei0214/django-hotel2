@@ -13,6 +13,7 @@ from . import (
     inventory_admin_center,
     night_audit,
     notification_center,
+    privacy_center,
     report_center,
     report_export,
     reservation_center,
@@ -338,6 +339,21 @@ urlpatterns = [
     path("approvals/request", approval.approval_request, name="approval_request"),
     path("approvals/<int:record_id>/approve", approval.approval_approve, name="approval_approve"),
     path("approvals/<int:record_id>/reject", approval.approval_reject, name="approval_reject"),
+    path(
+        "privacy/retention/plans",
+        privacy_center.retention_plan_create,
+        name="privacy_retention_plan_create",
+    ),
+    path(
+        "privacy/retention/plans/<int:plan_id>/approve",
+        privacy_center.retention_plan_approve,
+        name="privacy_retention_plan_approve",
+    ),
+    path(
+        "privacy/retention/plans/<int:plan_id>/execute",
+        privacy_center.retention_plan_execute,
+        name="privacy_retention_plan_execute",
+    ),
     # --- Reservation 管理 (V1.1 Phase 1) ---
     path("reservations-mgmt", reservation_center.reservation_list, name="reservation_mgmt_list"),
     path(
