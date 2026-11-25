@@ -204,3 +204,21 @@
 
 **边界**：本追加仅登记权限码出处与执行点，不代表已获准合入 main。
 按裁定「当前不授权无条件合入」，须先满足上述五项条件。
+
+### 2026-11-25 追加：NS-E-05 IMPLEMENT-001 两项已批准专项权限
+
+OWNER 2026-11-24 逐项裁定 `APPROVED`（FIN-06、MB-11）。权限点本体由领域迁移
+创建，角色授权由 identity.0013 统一承接（与 guests.0011 同一分工）。
+
+| 权限码 | 迁移 | 授权角色 | 真实执行点 | 说明 |
+|---|---|---|---|---|
+| `billing.payment_collect` | billing.0038 | 前台、值班经理、财务、店长 | `apps/api/billing_center.py:collect_payment_api`（`_require_finance_access(..., extra_permission="billing.payment_collect")`）与 `apps/api/front_desk.py:collect_payment`（`@_front_desk_action_required("billing.payment_collect")`） | 统一收款执行权，覆盖财务中心与前台预订收款入口。risk=high，requires_confirm=True。**不携带 `finance_access`**——收款权不授予财务中心读取；与 `billing.refund_execute` 严格分离；现金收款仍须本人 OPEN 收银班次 |
+| `guests.membership_status_manage` | guests.0012 | 值班经理、店长 | `apps/api/staff_center.py:membership_change_status`（`AuthorizationService.has_permission(..., "guests.membership_status_manage")`） | 会员暂停/恢复统一管理权，从 `hotelapp.change_vip` 拆分（权限收紧：change_vip 保留等级变更、失去暂停/恢复）。risk=medium，requires_reason=True，requires_confirm=True。状态机由 `GuestMembershipService` 唯一写入口强制：仅 ACTIVE/PENDING→SUSPENDED 与 SUSPENDED→ACTIVE，EXPIRED/TERMINATED 不可恢复 |
+
+**禁止项**（同裁定，不因本批授权而放开）：前台不得通过上述任一权限获得
+`hotelapp.finance_access`；财务不得获得 `guests.membership_status_manage`；
+本批权限不得合并为复合权限。
+
+**审计修复**：`billing.collect` 审计事件同步修复（`request` 由 API 显式传入，
+不再取恒为 None 的 `getattr(collected_by, "_request", None)`；`after` 扩充为
+payment_status/currency/reservation_id/folio_id/business_date/provider_ref/source_entry）。

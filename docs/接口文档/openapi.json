@@ -24027,7 +24027,7 @@
           "会员中心"
         ],
         "summary": "会员暂停/恢复",
-        "description": "基线 2.0 §3.4：写操作经 GuestMembershipService（状态机唯一写入口）；暂停释放有效会员唯一键，恢复前复核同客人无其他有效会员（冲突 409）；审计事件 membership.suspend / membership.restore。\n\n权限要求：有效员工 + hotelapp.change_vip（与等级变更同权；基线建议的独立membership 专项码随权限矩阵扩展另行登记）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
+        "description": "基线 2.0 §3.4：写操作经 GuestMembershipService（状态机唯一写入口）；暂停释放有效会员唯一键，恢复前复核同客人无其他有效会员（冲突 409）；审计事件 membership.suspend / membership.restore。\n\n权限要求：有效员工 + guests.membership_status_manage（NS-E-05：会员暂停/恢复已从 hotelapp.change_vip 拆分为专项权限；等级变更仍走 change_vip）。\n\n契约状态 verified：字段与错误结构经源码核实并有端点级测试覆盖。",
         "operationId": "post_memberships_membership_id_status",
         "responses": {
           "200": {
@@ -24151,7 +24151,7 @@
         },
         "x-contract-status": "verified",
         "x-authentication": "Django Session Cookie + 员工任职",
-        "x-required-permission": "有效员工 + hotelapp.change_vip（与等级变更同权；基线建议的独立membership 专项码随权限矩阵扩展另行登记）",
+        "x-required-permission": "有效员工 + guests.membership_status_manage（NS-E-05：会员暂停/恢复已从 hotelapp.change_vip 拆分为专项权限；等级变更仍走 change_vip）",
         "x-idempotency": {
           "header": "Idempotency-Key",
           "required": false,
