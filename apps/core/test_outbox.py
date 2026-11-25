@@ -27,6 +27,7 @@ from apps.core.models import OutboxEvent
 from apps.core.outbox import (
     OUTBOX_CONSUMERS,
     OUTBOX_NOP,
+    OUTBOX_NOTIFICATION_DELIVER,
     complete_outbox_event,
     default_lease_owner,
     enqueue_outbox_event,
@@ -91,6 +92,54 @@ class EnqueueOutboxEventTests(TestCase):
             event_type=OUTBOX_NOP, aggregate_type="Reservation", aggregate_id="8", payload={}
         )
         self.assertEqual(OutboxEvent.objects.count(), 1)
+
+
+class HighRiskEventGuardTests(TestCase):
+    """任务书 V1.1 §十二.10：Worker 不得自动重跑账务/退款/支付/夜审动作。
+
+    该约束必须在「入队」阶段硬拒绝，而不是只靠注释或 Worker 侧退避——
+    否则任何调用方传入 billing.refund.execute 都会先落一条事件事实。
+    """
+
+    FORBIDDEN_TYPES = (
+        "billing.post_entry",
+        "billing.refund.execute",
+        "billing.payment.capture",
+        "billing.reversal",
+        "night_audit.run",
+        "night_audit.close",
+        "business_date.reopen",
+        "reservation.checkout",
+    )
+
+    def test_high_risk_event_types_are_rejected_at_enqueue(self):
+        for event_type in self.FORBIDDEN_TYPES:
+            with self.subTest(event_type=event_type), self.assertRaises(ValueError):
+                enqueue_outbox_event(
+                    event_type=event_type,
+                    aggregate_type="Billing",
+                    aggregate_id="1",
+                    payload={},
+                )
+
+    def test_rejected_event_leaves_no_persisted_fact(self):
+        with self.assertRaises(ValueError):
+            enqueue_outbox_event(
+                event_type="billing.refund.execute",
+                aggregate_type="Refund",
+                aggregate_id="9",
+                payload={"amount": "1.00"},
+            )
+        self.assertFalse(OutboxEvent.objects.exists())
+
+    def test_low_risk_event_types_still_allowed(self):
+        event = enqueue_outbox_event(
+            event_type=OUTBOX_NOTIFICATION_DELIVER,
+            aggregate_type="Notification",
+            aggregate_id="5",
+            payload={"k": "v"},
+        )
+        self.assertEqual(event.status, OutboxEvent.Status.PENDING)
 
 
 class LeaseOutboxEventsTests(TestCase):

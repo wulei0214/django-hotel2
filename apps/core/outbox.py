@@ -41,6 +41,22 @@ OUTBOX_NOTIFICATION_DELIVER = "notification.deliver"
 # 指数退避基数（秒）：第 n 次失败后退避 30 * 2^n 秒。
 OUTBOX_BACKOFF_BASE_SECONDS = 30
 
+# 任务书 V1.1 §十二.10 强制约束：Worker 不得自动重跑已完成的账务、退款、
+# 支付或夜审操作。该边界必须在入队阶段硬拒绝（注释不构成运行时保护），
+# 否则任何调用方都能先把事件写成持久化事实、再由 Worker 重放业务动作。
+HIGH_RISK_EVENT_PREFIXES = (
+    "billing.",
+    "night_audit.",
+    "business_date.reopen",
+    "reservation.checkout",
+)
+
+
+def _is_high_risk_event(event_type):
+    """事件类型是否属于禁止 Worker 自动重放的高风险动作。"""
+    normalized = str(event_type or "").strip().lower()
+    return any(normalized.startswith(prefix) for prefix in HIGH_RISK_EVENT_PREFIXES)
+
 
 def default_lease_owner():
     """租约身份：worker:{hostname}:{pid}，用于租约校验与事故排查。"""
@@ -62,6 +78,11 @@ def enqueue_outbox_event(*, event_type, aggregate_type, aggregate_id, payload, p
         raise ValueError("Outbox 事件必须提供 aggregate_type。")
     if not str(aggregate_id).strip():
         raise ValueError("Outbox 事件必须提供 aggregate_id。")
+    if _is_high_risk_event(event_type):
+        raise ValueError(
+            f"高风险事件 {event_type} 禁止进入 Outbox：Worker 不得自动重放"
+            "账务/退款/支付/夜审等已完成动作，此类操作必须走其领域服务与审批链。"
+        )
     if payload is None:
         payload = {}
     with transaction.atomic():
