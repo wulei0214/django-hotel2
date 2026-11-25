@@ -93,7 +93,12 @@ def retention_plan_create(request):
 @require_POST
 @api_view
 def retention_plan_approve(request, plan_id):
-    """审批 dry-run 计划（走通用 ApprovalService，独立审批权限）。"""
+    """审批 dry-run 计划（走通用 ApprovalService，独立审批权限）。
+
+    SoD：审批记录的申请人必须是 plan.operator（发起清理计划的人），
+    审批人是当前持 guests.retention_approve 权限的用户——两人天然分离。
+    若审批记录不存在，以 plan.operator 为申请人补建申请再批准。
+    """
     from apps.api.approval import _json_body
 
     property_obj = _require_retention_permission(request, "guests.retention_approve")
@@ -104,18 +109,47 @@ def retention_plan_approve(request, plan_id):
     if not isinstance(body, dict):
         raise ApiError("VALIDATION_ERROR", "请求体必须是 JSON 对象。")
     with transaction.atomic():
-        record, _ = ApprovalService.request_approval(
-            property_obj=property_obj,
-            action_code="privacy.retention_execute",
-            entity_type="RetentionExecution",
-            entity_id=str(getattr(plan, "pk", "")),
-            requested_by=request.user,
-            reason=body.get("reason") or "",
-            payload={
-                "retention_policy_id": str(getattr(getattr(plan, "policy", None), "pk", "")),
-                "as_of_date": str(plan.as_of),
-            },
+        record = (
+            ApprovalRecord.objects.filter(
+                property=property_obj,
+                action_code="privacy.retention_execute",
+                entity_type="RetentionExecution",
+                entity_id=str(getattr(plan, "pk", "")),
+            )
+            .order_by("-pk")
+            .first()
         )
+        if record is not None:
+            if record.requested_by_id == request.user.pk:
+                raise ApiError("PERMISSION_DENIED", "审批人不得为申请人（职责分离）。")
+            if record.status == ApprovalRecord.Status.PENDING:
+                record = ApprovalService.approve(
+                    record.pk, approved_by=request.user, property_obj=property_obj
+                )
+            elif record.status != ApprovalRecord.Status.APPROVED:
+                raise ApiError("BUSINESS_CONFLICT", "审批已驳回或过期，须重新发起。")
+            # APPROVED：幂等返回，执行端点自行校验一致性。
+        else:
+            # 无审批记录：以 plan.operator 为申请人补建申请（dry-run 由其发起），
+            # 再由当前审批人批准。两人身份不同，SoD 天然满足。
+            applicant = getattr(plan, "operator", None)
+            if applicant is not None and applicant.pk == request.user.pk:
+                raise ApiError("PERMISSION_DENIED", "审批人不得为申请人（职责分离）。")
+            record, _ = ApprovalService.request_approval(
+                property_obj=property_obj,
+                action_code="privacy.retention_execute",
+                entity_type="RetentionExecution",
+                entity_id=str(getattr(plan, "pk", "")),
+                requested_by=applicant,
+                reason=body.get("reason") or "保留期满清理审批",
+                payload={
+                    "retention_policy_id": str(getattr(getattr(plan, "policy", None), "pk", "")),
+                    "as_of_date": str(plan.as_of),
+                },
+            )
+            record = ApprovalService.approve(
+                record.pk, approved_by=request.user, property_obj=property_obj
+            )
     return api_response(
         request,
         {
