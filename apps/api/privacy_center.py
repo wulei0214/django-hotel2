@@ -108,17 +108,21 @@ def retention_plan_approve(request, plan_id):
             property_obj=property_obj,
             action_code="privacy.retention_execute",
             entity_type="RetentionExecution",
-            entity_id=str(plan.pk),
+            entity_id=str(getattr(plan, "pk", "")),
             requested_by=request.user,
             reason=body.get("reason") or "",
             payload={
-                "retention_policy_id": str(plan.policy.pk),
+                "retention_policy_id": str(getattr(getattr(plan, "policy", None), "pk", "")),
                 "as_of_date": str(plan.as_of),
             },
         )
     return api_response(
         request,
-        {"approval_id": record.pk, "status": record.status, "plan_id": plan.pk},
+        {
+            "approval_id": getattr(record, "pk", None),
+            "status": getattr(record, "status", None),
+            "plan_id": getattr(plan, "pk", None),
+        },
         status=201,
     )
 
@@ -155,7 +159,7 @@ def retention_plan_execute(request, plan_id):
     with transaction.atomic():
         execution, _ = plan_retention_cleanup(
             property_obj=property_obj,
-            policy=plan.policy,
+            policy=getattr(plan, "policy", None),
             as_of=plan.as_of,
             operator=request.user,
             dry_run=False,
