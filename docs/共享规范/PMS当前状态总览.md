@@ -2,21 +2,21 @@
 
 > 文档编号：GOV-001 ｜ 类型：GOVERNANCE ｜ 状态：ACTIVE ｜ 版本域：跨版本 ｜ 业务模块：文档治理
 > **本文件是全仓唯一「当前值」载体**。更新方式：整体重写固定章节，禁止追加节；旧内容靠 Git 历史与《更新日志》追溯。
-> 本轮核实基线：main HEAD 3ae016（2026-11-23 现取现核；V4.1 执行终点 9050cc2 及其后续文档同步提交）。当前值以远端 main 现取现核；历史证据仍绑定各自原始 SHA。本次修订依据：PMS 全项目收口任务书 V1.0 TASK-01（需求总账建立 + 基线区分防混淆），总账入口见 GOV-REQ-001。
+> 本轮核实基线：main HEAD df6aef9（2026-11-25 现取现核；PMS2-ARCH-GOV-001 V1.1 架构治理批次）。历史证据仍绑定各自原始 SHA。总账入口见 GOV-REQ-001（ARCH-01～14 见其 §12A）。
 
 ## 1. 基线与 CI
 
-- **当前基线 `a3ae016`**（V1.0 收口任务书起点；文档头基线=本文件所在提交，逐次现取现核）。提交链（自 `21e04df` 起，择要）：`0d865eb`（type-check）→ `a04ade5`（TASK-01 落库）→ `0c61398`/`9fa3520`（扫描门禁修复+证据）→ `d55b328`/`ade5cca`（V13-04/03）→ `0a3d3ce`（裁定落档）→ `0d67e0b`/`99c020e`（RES-04/05 修复+复验）→ `d30ef14`/`3a85acd`（复算增强）→ `b9c9a4c`（九岗位矩阵）→ `b4d5aa0`（扫描去字面量）→ `8efbfc1`（V3.2 交付记录）→ `efd9453`（资产处置）→ `6b6519e`（PMS2→PMS3 移交+NS-E 裁定）→ `9050cc2`（双引擎 1899/1899）→ `ddb4dea`（状态总览 V4.1 终点）→ `a3ae016`（六链复验+汇总报告）。不得继续使用 `c4c15b6`、`8467012`、`c24b1da`、`1591ce2`、`387e6bf` 或更早 SHA 描述当前 main 状态。
-- **CI（现取，2026-11-23，绑定 `9050cc2`）**：六个 job（type-check / secret-scan / docs-lint / test / django-tests / lint）全部 success；`a3ae016` 本体 CI run 以 CI 历史页为准。**secret-scan 为真绿**：工作流 `-o pipefail` 且 `hit_count: 0`，详见 `docs/acceptance/evidence/v3-security-scan-2026-11-22.md` §六 与 `docs/acceptance/evidence/v3-security-scan-history-2026-11-22.md`。CI 通过 ≠ 部署或独立验收。
-- **基线区分（防混淆，V1.0 任务书要求）**：①当前 main HEAD=所在提交；②全量测试绑定代码态=`6b6519e`（SQLite 1899 skipped=28 / MySQL 1899 skipped=3，pms2-final-regression-2026-11-22/ 与 9050cc2 归档——后续文档提交不改变该绑定，直至下一次全量回归重绑）；③V3.2 交付记录=`8efbfc1`；④最新文档同步提交=本文件所在提交。文档提交 SHA 不得冒充测试代码基线。
-- **需求总账**：全项目历史需求唯一追踪入口=「[PMS全项目历史需求追踪与未完成任务总台账_2026-11-22](PMS全项目历史需求追踪与未完成任务总台账_2026-11-22.md)」（GOV-REQ-001）；派发开发任务前必查，防止已完成项重复开发。
+- **当前基线 `df6aef9`**（本文件所在提交的前一代码提交；文档头基线=本文件所在提交）。近期提交链（择要）：`4fa675d`（V1.1 执行总结）→ `2604b19`（Outbox 高风险入队硬拒绝）→ `352cff6`（七流程状态机规范）→ `0217836`（七角色旅程 + 追踪矩阵）→ `df6aef9`（JSON 日志 + RequestID）。不得沿用更早 SHA 描述当前 main。
+- **CI（现取，2026-11-25）**：`2604b19` 的 Django CI 已 success；`df6aef9` 运行中，以 CI 历史页为准。CI 通过 ≠ 部署或独立验收。
+- **基线区分（防混淆）**：①当前 main HEAD=所在提交；②最近一次双引擎全量绑定 `80fa7c5`（SQLite 2018 / MySQL 2018，证据 `docs/acceptance/evidence/t02-3-final-20261125/`）；③文档提交 SHA 不得冒充测试代码基线。
+- **需求总账**：全项目历史需求唯一追踪入口=「[PMS全项目历史需求追踪与未完成任务总台账_2026-11-22](PMS全项目历史需求追踪与未完成任务总台账_2026-11-22.md)」（GOV-REQ-001），含 §12A ARCH-01～14 专项表；派发任务前必查。
 - 当前部署形态：**Windows 本地开发/测试/演示/验收**（.env + waitress）。真实生产部署 `WAITING_FOR_SERVER / PRODUCTION PENDING`（等服务器与生产资源具备），不得把本地运行结果冒充生产验收。
 - 门禁：`python scripts/docs_link_check.py check` 为本地等效命令，基线冻结于 `docs_gate_baseline.json`。
 
 ## 2. OpenAPI 契约
 
 - 权威快照：`docs/PMS2.0_当前版本/03_API接口与前后端规范/接口文档/openapi.json`；兼容镜像：`docs/接口文档/openapi.json`。
-- **现值（绑定 `b4d5aa0`，2026-11-22 现取现核 + 本地重导出核验）**：OpenAPI **172 paths / 174 HTTP operations**；双快照逐字节一致（SHA-256 均为 `C44EC999…D154`），**1,357,610 字节**；本地 `export_openapi_schema` 重导出哈希不变（导出稳定）。较 2026-11-17 值（168/169）净变更为 V3.0 第一批新增的 walk-in options、前台取消、day-use 转过夜等端点；抽查新增端点（walk-in-options/walk-ins/convert-to-overnight/cancel）权限说明与 4xx/5xx 错误响应定义齐备。
+- **现值（2026-11-25 现取现核）**：OpenAPI **3.1.0**，**175 paths / 177 HTTP operations**；双快照**逐字节一致**（SHA-256 `5B681A642DD4E16357393AEBA20F63B471348272023EFFAD164C1A5882D5C262`），**1,378,244 字节**。
 - 守卫：`apps/api/test_openapi_schema.py` 逐字节断言两快照一致；`openapi-snapshot.yml` 负责导出与镜像同步。**两路径冻结，禁止第三份快照**。
 
 ## 3. 双引擎测试数
