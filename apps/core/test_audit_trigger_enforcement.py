@@ -61,7 +61,14 @@ class AuditEventTriggerEnforcementTests(TransactionTestCase):
 
     使用 TransactionTestCase：触发器是 schema 级 DDL，不能包在 TestCase 的
     外层事务里（MySQL 下 DDL 会隐式提交并破坏事务上下文）。
+
+    flush 抑制：`available_apps = []` 让 Django 的 `_fixture_teardown` 不再
+    执行全库 flush（TRUNCATE 会被 append-only 触发器拦截）。本类每个用例
+    自建并清理自有数据，不依赖 flush 隔离。
     """
+
+    # 关键：抑制全库 flush，避免 TRUNCATE 被本类安装的触发器拦截
+    available_apps: list = []
 
     def setUp(self):
         # 确保本测试库已安装守卫（CI 在迁移后安装；本地测试库需显式安装）
@@ -79,6 +86,25 @@ class AuditEventTriggerEnforcementTests(TransactionTestCase):
             reason="触发器行为验证样本",
         )
 
+    def _drop_guard_triggers(self):
+        with connection.cursor() as cursor:
+            for name in (
+                "trg_core_auditevent_no_update",
+                "trg_core_auditevent_no_delete",
+            ):
+                cursor.execute(f"DROP TRIGGER IF EXISTS `{name}`")
+
+    @classmethod
+    def tearDownClass(cls):
+        """类结束时移除本类安装的触发器，恢复测试前状态。"""
+        with connection.cursor() as cursor:
+            for name in (
+                "trg_core_auditevent_no_update",
+                "trg_core_auditevent_no_delete",
+            ):
+                cursor.execute(f"DROP TRIGGER IF EXISTS `{name}`")
+        super().tearDownClass()
+
     def _raw_execute(self, sql, params):
         """绕过 ORM 守卫，直接发 SQL——模拟管理命令/裸连接旁路。"""
         with connection.cursor() as cursor:
@@ -92,8 +118,10 @@ class AuditEventTriggerEnforcementTests(TransactionTestCase):
             )
         message = str(ctx.exception).lower()
         self.assertTrue(
-            any(token in message for token in ("trigger", "immutable", "cannot", "denied")),
-            f"UPDATE 未被触发器拒绝，实际异常：{ctx.exception}",
+            any(
+                token in message for token in ("append-only", "append_only", "trigger", "immutable")
+            ),
+            f"UPDATE 未被追加写保护拒绝，实际异常：{ctx.exception}",
         )
         self.assertNotEqual(AuditEvent.objects.get(pk=self.event.pk).reason, "tampered")
 
@@ -102,8 +130,10 @@ class AuditEventTriggerEnforcementTests(TransactionTestCase):
             self._raw_execute("DELETE FROM core_auditevent WHERE id = %s", [self.event.pk])
         message = str(ctx.exception).lower()
         self.assertTrue(
-            any(token in message for token in ("trigger", "immutable", "cannot", "denied")),
-            f"DELETE 未被触发器拒绝，实际异常：{ctx.exception}",
+            any(
+                token in message for token in ("append-only", "append_only", "trigger", "immutable")
+            ),
+            f"DELETE 未被追加写保护拒绝，实际异常：{ctx.exception}",
         )
         self.assertTrue(AuditEvent.objects.filter(pk=self.event.pk).exists())
 
