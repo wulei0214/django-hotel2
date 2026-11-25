@@ -27,6 +27,7 @@ from apps.core.outbox import (
     OUTBOX_CONSUMERS,
     complete_outbox_event,
     default_lease_owner,
+    enforce_consumer_risk_gate,
     lease_outbox_events,
     recover_stale_events,
 )
@@ -35,11 +36,17 @@ logger = logging.getLogger("hotel.core.outbox")
 
 
 def dispatch_outbox_event(event):
-    """执行单个已认领事件：查注册表分派消费者，返回 (success, error)。
+    """执行单个已认领事件：先过消费端风险门禁，再查注册表分派消费者。
 
+    OWNER-09：消费端不信任入队端已检查的标记——每次分派前重新按风险
+    登记表校验事件类型，未登记/高危/无消费者一律拒绝（fail-closed）。
     任何单事件异常都不得拖垮整轮处理：异常统一按失败回写，交给
     complete_outbox_event 做退避/死信迁移。
     """
+    gate_error = enforce_consumer_risk_gate(event)
+    if gate_error is not None:
+        logger.warning("outbox 事件 %s 被消费端风险门禁拒绝：%s", event.pk, gate_error)
+        return False, gate_error
     consumer = OUTBOX_CONSUMERS.get(event.event_type)
     if consumer is None:
         return False, f"未注册的事件类型 {event.event_type}（无消费者），按失败退避。"

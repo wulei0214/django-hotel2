@@ -51,10 +51,32 @@ HIGH_RISK_EVENT_PREFIXES = (
     "reservation.checkout",
 )
 
+# 事件风险级别登记表（OWNER-09 裁定交付物，PMS2-FINAL-DECISION-EXEC-002 批次 C）。
+# 唯一事实源：入队端与 Worker 消费端共用同一登记表判定风险，杜绝两端口径漂移。
+# 级别语义：
+#   LOW         普通领域通知/状态同步，Worker 可自动消费；
+#   FORBIDDEN   高危动作（账务/支付/退款/夜审/营业日关闭/退房）——入队硬拒绝、
+#               消费端再校验拒绝，此类操作只能走领域服务 + ApprovalService 审批链，
+#               不得经通用自动处理路径（含直接写库绕过入队门禁）。
+# 新增事件类型必须先在此登记并注明风险依据，未登记类型按 FORBIDDEN 处置
+# （入队拒绝、消费退避），防止「先写库后补登记」绕过门禁。
+OUTBOX_EVENT_RISK_REGISTRY = {
+    OUTBOX_NOP: "LOW",
+    OUTBOX_RESERVATION_STATUS_CHANGED: "LOW",
+    OUTBOX_MEMBERSHIP_CHANGED: "LOW",
+    OUTBOX_NOTIFICATION_DELIVER: "LOW",
+}
+
 
 def _is_high_risk_event(event_type):
-    """事件类型是否属于禁止 Worker 自动重放的高风险动作。"""
+    """事件类型是否属于禁止 Worker 自动重放的高风险动作。
+
+    判定顺序：先查登记表（已登记 → 按登记级别），未登记 → 按高危前缀
+    兜底（历史高危类型即使未登记也拒绝）。"""
     normalized = str(event_type or "").strip().lower()
+    level = OUTBOX_EVENT_RISK_REGISTRY.get(normalized)
+    if level is not None:
+        return level == "FORBIDDEN"
     return any(normalized.startswith(prefix) for prefix in HIGH_RISK_EVENT_PREFIXES)
 
 
@@ -226,3 +248,36 @@ OUTBOX_CONSUMERS = {
     OUTBOX_MEMBERSHIP_CHANGED: _log_only_consumer,
     OUTBOX_NOTIFICATION_DELIVER: _log_only_consumer,
 }
+
+
+def enforce_consumer_risk_gate(event):
+    """Worker 消费端二次校验（OWNER-09）：不信任入队端检查结果。
+
+    高危/未登记事件即使绕过 enqueue_outbox_event（直接写库、改名重试、
+    历史遗留数据）进入 PROCESSING，也在此拒绝消费。拒绝不消费、不产生
+    业务副作用，事件转入 RETRY 记录拒绝原因，等待人工处置。
+    返回 None 表示放行；返回错误字符串表示拒绝（调用方按失败处理）。
+    """
+    normalized = str(event.event_type or "").strip().lower()
+    level = OUTBOX_EVENT_RISK_REGISTRY.get(normalized)
+    if level is None:
+        # 未登记事件：先按高危前缀兜底判定（历史高危类型即使未登记也按高危拒绝），
+        # 其余未登记类型一律 fail-closed 拒绝，不因「注册表里没消费者」放行。
+        if any(normalized.startswith(prefix) for prefix in HIGH_RISK_EVENT_PREFIXES):
+            return (
+                f"事件类型 {event.event_type} 命中高危前缀且未登记为低风险，"
+                "禁止 Worker 自动重放（OWNER-09），必须走领域服务与审批链。"
+            )
+        return (
+            f"事件类型 {event.event_type} 未登记于风险登记表，"
+            "消费端默认拒绝（OWNER-09 fail-closed）。"
+        )
+    if level == "FORBIDDEN":
+        return (
+            f"事件类型 {event.event_type} 登记为高危动作，禁止 Worker 自动重放"
+            "（OWNER-09），必须走领域服务与审批链。"
+        )
+    consumer = OUTBOX_CONSUMERS.get(event.event_type)
+    if consumer is None:
+        return f"已登记低风险事件 {event.event_type} 无消费者，按失败退避。"
+    return None

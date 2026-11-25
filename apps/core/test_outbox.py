@@ -397,7 +397,7 @@ class OutboxConsumerRegistryTests(TestCase):
         self.assertEqual(summary["retried"], 1)
         event = OutboxEvent.objects.get(aggregate_id="1")
         self.assertEqual(event.status, OutboxEvent.Status.RETRY)
-        self.assertIn("未注册", event.last_error)
+        self.assertIn("未登记", event.last_error)
 
 
 class OutboxCommandOnceTests(TestCase):
@@ -451,3 +451,115 @@ class OutboxMysqlLeaseMutualExclusionTests(TransactionTestCase):
         w1, w2 = results["w1"], results["w2"]
         self.assertEqual(len(w1) + len(w2), 1)
         self.assertEqual(set(w1) & set(w2), set())
+
+
+class OutboxConsumerRiskGateTests(TestCase):
+    """OWNER-09 消费端硬拒绝（PMS2-FINAL-DECISION-EXEC-002 批次 C）。
+
+    入队端门禁（enqueue ValueError）之外，Worker 分派前二次校验：
+    不信任入队端标记；直接写库绕过入队 / 改名重试 / 历史遗留事件均
+    在消费端 fail-closed。覆盖任务书 §2.5 测试矩阵 1~6 项（第 7 项
+    双引擎由全量回归与 MySQL 专项覆盖）。
+    """
+
+    def _persist_raw_event(self, event_type, aggregate_id="1"):
+        """直接写库插入事件（模拟绕过 enqueue 门禁的路径）。"""
+        return OutboxEvent.objects.create(
+            event_type=event_type,
+            aggregate_type="R",
+            aggregate_id=aggregate_id,
+            payload={},
+            status=OutboxEvent.Status.PENDING,
+        )
+
+    def test_whitelist_event_consumed_normally(self):
+        """1. 白名单事件正常处理。"""
+        enqueue_outbox_event(
+            event_type=OUTBOX_NOP, aggregate_type="R", aggregate_id="1", payload={}
+        )
+        summary = run_worker_cycle(lease_owner="w-gate", lease_seconds=60)
+        self.assertEqual(summary["succeeded"], 1)
+        event = OutboxEvent.objects.get(aggregate_id="1")
+        self.assertEqual(event.status, OutboxEvent.Status.SUCCEEDED)
+
+    def test_high_risk_event_rejected_at_worker_even_if_persisted(self):
+        """2+4. 高危事件即使绕过入队直接写库，Worker 消费也拒绝。"""
+        raw = self._persist_raw_event("billing.payment_settled")
+        summary = run_worker_cycle(lease_owner="w-gate", lease_seconds=60)
+        self.assertEqual(summary["succeeded"], 0)
+        event = OutboxEvent.objects.get(pk=raw.pk)
+        self.assertEqual(event.status, OutboxEvent.Status.RETRY)
+        self.assertIn("高危", event.last_error)
+
+    def test_unknown_event_type_rejected_by_worker(self):
+        """3. 未知（未登记）事件消费端默认拒绝（fail-closed）。"""
+        raw = self._persist_raw_event("totally.unknown.event")
+        summary = run_worker_cycle(lease_owner="w-gate", lease_seconds=60)
+        self.assertEqual(summary["succeeded"], 0)
+        event = OutboxEvent.objects.get(pk=raw.pk)
+        self.assertEqual(event.status, OutboxEvent.Status.RETRY)
+        self.assertIn("未登记", event.last_error)
+
+    def test_direct_db_insert_of_checkout_event_never_executes_side_effect(self):
+        """4. 直接调用 Worker / 直接写库不得绕过入队门禁产生副作用。"""
+        executed = {"called": False}
+        original = OUTBOX_CONSUMERS.get("reservation.checkout")
+
+        def would_settle(event):
+            executed["called"] = True
+
+        # 即使有人把高危消费者塞进注册表，门禁也必须先拦下
+        OUTBOX_CONSUMERS["reservation.checkout"] = would_settle
+        try:
+            self._persist_raw_event("reservation.checkout", aggregate_id="9")
+            summary = run_worker_cycle(lease_owner="w-gate", lease_seconds=60)
+        finally:
+            if original is None:
+                OUTBOX_CONSUMERS.pop("reservation.checkout", None)
+            else:
+                OUTBOX_CONSUMERS["reservation.checkout"] = original
+        self.assertFalse(executed["called"])
+        self.assertEqual(summary["succeeded"], 0)
+
+    def test_case_or_space_rename_cannot_bypass_gate(self):
+        """5. 修改事件名称（大小写/空白/前缀变体）不能绕过门禁。"""
+        for ev in (
+            "Billing.Payment",
+            " billing.refund ",
+            "NIGHT_AUDIT.CLOSE",
+            "Business_Date.Reopen",
+            "reservation.checkout ".rstrip().upper(),
+        ):
+            with self.subTest(event_type=ev):
+                raw = self._persist_raw_event(ev, aggregate_id="42")
+                summary = run_worker_cycle(lease_owner="w-gate", lease_seconds=60)
+                self.assertEqual(summary["succeeded"], 0)
+                event = OutboxEvent.objects.get(pk=raw.pk)
+                self.assertNotEqual(event.status, OutboxEvent.Status.SUCCEEDED)
+                event.delete()
+
+    def test_redelivered_event_no_duplicate_side_effect(self):
+        """6. 重复投递不产生重复业务副作用：SUCCEEDED 终态不再被认领。"""
+        enqueue_outbox_event(
+            event_type=OUTBOX_NOP, aggregate_type="R", aggregate_id="7", payload={}
+        )
+        first = run_worker_cycle(lease_owner="w-gate", lease_seconds=60)
+        second = run_worker_cycle(lease_owner="w-gate", lease_seconds=60)
+        self.assertEqual(first["succeeded"], 1)
+        self.assertEqual(second["claimed"], 0)
+        self.assertEqual(OutboxEvent.objects.filter(aggregate_id="7").count(), 1)
+
+    def test_registry_levels_match_risk_registry(self):
+        """登记表一致性：预留类型全部登记为 LOW；高危前缀不可登记为 LOW。"""
+        from apps.core.outbox import HIGH_RISK_EVENT_PREFIXES, OUTBOX_EVENT_RISK_REGISTRY
+
+        for event_type in OUTBOX_CONSUMERS:
+            self.assertEqual(OUTBOX_EVENT_RISK_REGISTRY.get(event_type), "LOW")
+        for event_type, level in OUTBOX_EVENT_RISK_REGISTRY.items():
+            if level == "LOW":
+                normalized = event_type.strip().lower()
+                for prefix in HIGH_RISK_EVENT_PREFIXES:
+                    self.assertFalse(
+                        normalized.startswith(prefix),
+                        f"登记表冲突：{event_type} 既是 LOW 又命中高危前缀 {prefix}",
+                    )
