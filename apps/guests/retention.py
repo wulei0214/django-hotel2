@@ -54,6 +54,18 @@ OPEN_REFUND_STATUSES = (
 MAX_CANDIDATES = 500
 
 
+def _safe_int(value):
+    """把审批记录的 entity_id（CharField）安全转为 int；非法值返回 None。
+
+    用于计划绑定：entity_id 存的是 RetentionExecution 主键，
+    非数字一律视为「绑定不成立」，由调用方拒绝执行。
+    """
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
 def _active_legal_hold_guest_ids(property_obj):
     """该物业所有 ACTIVE 冻结的 Guest 主档 id 集合（target_type=GUEST）。"""
     return set(
@@ -112,7 +124,14 @@ def candidate_guests(property_obj, policy, as_of, exclude_ids=None):
 
 
 def plan_retention_cleanup(
-    *, property_obj, policy, as_of, operator, dry_run=True, approval_reference=""
+    *,
+    property_obj,
+    policy,
+    as_of,
+    operator,
+    dry_run=True,
+    approval_reference="",
+    execution=None,
 ):
     """生成一次清理计划：dry-run 统计或正式执行。
 
@@ -122,14 +141,18 @@ def plan_retention_cleanup(
     （SoD；申请人≠审批人由 ApprovalRecord 保存时保证）。
     """
     hold_ids = _active_legal_hold_guest_ids(property_obj)
-    exec_record = RetentionExecution(
-        property=property_obj,
-        policy=policy,
-        dry_run=dry_run,
-        as_of=as_of,
-        operator=operator,
-        started_at=timezone.now(),
-    )
+    if execution is not None:
+        # 复用已存在的 dry-run 计划（审批绑定的是它的 pk，执行必须同一行）。
+        exec_record = execution
+    else:
+        exec_record = RetentionExecution(
+            property=property_obj,
+            policy=policy,
+            dry_run=dry_run,
+            as_of=as_of,
+            operator=operator,
+            started_at=timezone.now(),
+        )
     candidates = candidate_guests(property_obj, policy, as_of)
     exec_record.candidate_count = candidates.count()
 
@@ -170,8 +193,14 @@ def plan_retention_cleanup(
         )
         return exec_record, to_process
 
-    # 审批门（DEFECT-T02-2 修复）：不可逆操作必须有已批准审批，
-    # 且执行人不得为审批申请人。
+    # 审批门（T02-3-FINAL-GAP-001：计划绑定 + 执行权限独立校验）
+    #
+    # 不可逆操作的安全边界分三层，缺一不可：
+    #   ① 审批真实有效：APPROVED + 同物业 + 同动作码（须经 ApprovalService 产生）；
+    #   ② 计划绑定：审批批准的是哪一个 dry-run 计划，就只能执行该计划——
+    #      物业/策略/基准日/计划实体必须完全一致，禁止「审批 A、执行 B」；
+    #   ③ 执行权限：guests.retention_execute 必须由执行人独立持有，
+    #      审批通过**不能**替代执行权限；且执行人不得为申请人（SoD）。
     approval_ref = str(approval_reference or "").strip()
     if not approval_ref:
         raise ValueError("正式执行必须提供已批准的审批记录引用。")
@@ -183,8 +212,56 @@ def plan_retention_cleanup(
     ).first()
     if approval is None:
         raise ValueError("审批记录不存在、未通过或不属于本物业。")
+
+    # —— 整改项一：计划绑定（物业/策略/基准日/计划实体四重一致性）——
+    if str(approval.entity_type) != "RetentionExecution":
+        raise ValueError("审批记录的目标实体类型不是清理计划，禁止执行。")
+    approved_plan = (
+        RetentionExecution.objects.filter(pk=_safe_int(approval.entity_id))
+        .select_related("policy")
+        .first()
+    )
+    if approved_plan is None:
+        raise ValueError("审批记录所绑定的清理计划不存在，禁止执行。")
+    if approved_plan.property_id != property_obj.pk:
+        raise ValueError("审批记录绑定的计划不属于本物业，禁止执行。")
+    if not approved_plan.dry_run:
+        raise ValueError("审批记录绑定的不是 dry-run 计划，禁止执行。")
+    if approved_plan.policy_id != policy.pk:
+        raise ValueError("审批记录绑定的清理策略与本次执行不一致，禁止执行。")
+    if approved_plan.as_of != as_of:
+        raise ValueError("审批记录绑定的基准日与本次执行不一致，禁止执行。")
+    # 计划不可重复使用：已执行/失败终态的计划不得再次用于执行。
+    if approved_plan.execution_status not in (
+        RetentionExecution.ExecutionStatus.DRAFT,
+        RetentionExecution.ExecutionStatus.APPROVED,
+    ):
+        raise ValueError(
+            "审批记录绑定的计划已执行或已终止，禁止重复执行"
+            f"（状态：{approved_plan.execution_status}）。"
+        )
+
+    # 若调用方传入已存在的 execution（复用 dry-run 计划），
+    # 它必须**就是**审批绑定的那一条，否则等于用 A 的审批执行 B 的计划。
+    if execution is not None and execution.pk != approved_plan.pk:
+        raise ValueError("传入的清理计划与审批记录绑定的计划不一致，禁止执行。")
+
+    # —— 整改项二：执行权限独立校验（审批不能替代执行权限）——
+    from django.core.exceptions import PermissionDenied
+
+    from apps.identity.authorization import AuthorizationService
+
+    if not AuthorizationService.has_permission(operator, property_obj, "guests.retention_execute"):
+        raise PermissionDenied(
+            "正式执行隐私数据清理需要独立的 guests.retention_execute 权限"
+            "（审批通过不能替代执行权限）。"
+        )
     if approval.requested_by_id == operator.pk:
         raise ValueError("执行人不得为审批申请人（职责分离）。")
+
+    # 绑定成立后：执行记录复用该计划的策略/基准日，并记录审批引用。
+    exec_record.policy = approved_plan.policy
+    exec_record.as_of = approved_plan.as_of
     exec_record.approval_reference = approval_ref
 
     # 正式执行：先落库建立 pk（DEFECT-T02-1 修复：无 pk 实例不允许

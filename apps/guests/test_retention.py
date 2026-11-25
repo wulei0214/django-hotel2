@@ -313,7 +313,7 @@ class BusinessLinkSkipTests(PrivacyGovernanceTestBase):
 class ExecutionTests(PrivacyGovernanceTestBase):
     """正式执行：不可逆匿名化 + 执行记录 + 审计 + 幂等。"""
 
-    def _make_approval(self, requester, approver):
+    def _make_approval(self, requester, approver, plan=None):
         """造一条 APPROVED 清理审批：PENDING 创建后经裸 QuerySet 置 APPROVED。
 
         ApprovalRecord 只允许从 PENDING 创建（不可变守卫），测试绕过用
@@ -325,7 +325,7 @@ class ExecutionTests(PrivacyGovernanceTestBase):
             property=self.property,
             action_code=ACTION_RETENTION_EXECUTE,
             entity_type="RetentionExecution",
-            entity_id="batch-test",
+            entity_id=str(plan.pk) if plan is not None else "batch-test",
             requested_by=requester,
             reason="保留期满清理审批（测试）",
             idempotency_key=f"AR-{requester.pk}-{approver.pk}-{uuid.uuid4().hex[:8]}",
@@ -344,7 +344,15 @@ class ExecutionTests(PrivacyGovernanceTestBase):
         requester = User.objects.create_user(username="t02_requester")
         requester.set_unusable_password()
         requester.save(update_fields=["password"])
-        approval = self._make_approval(requester, self.operator)
+        # 先做 dry-run 得到真实计划（T02-3 计划绑定要求审批绑定该计划）
+        plan, _ = plan_retention_cleanup(
+            property_obj=self.property,
+            policy=self.policy,
+            as_of=self._as_of(),
+            operator=requester,
+            dry_run=True,
+        )
+        approval = self._make_approval(requester, self.operator, plan=plan)
         execution, _processed = plan_retention_cleanup(
             property_obj=self.property,
             policy=self.policy,
@@ -352,6 +360,7 @@ class ExecutionTests(PrivacyGovernanceTestBase):
             operator=self.operator,
             dry_run=False,
             approval_reference=str(approval.pk),
+            execution=plan,
         )
         self.assertEqual(execution.execution_status, RetentionExecution.ExecutionStatus.COMPLETED)
         self.assertEqual(execution.processed_count, 1)
