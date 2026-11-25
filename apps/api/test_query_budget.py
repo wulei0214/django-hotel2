@@ -15,11 +15,15 @@ from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+from django.utils.crypto import get_random_string
 
 from apps.core.models import Property
 from apps.guests.models import Guest
 from apps.inventory.models import RatePlan, Room, RoomType
 from apps.reservations.models import Reservation, ReservationRoom
+
+# 测试账号口令运行时生成，源码不落可用凭据字面量（secret-scan 门禁）。
+TEST_ACCOUNT_PASSWORD = get_random_string(32)
 
 
 @override_settings(DEBUG=True, DJANGO_ENV="test")
@@ -49,7 +53,7 @@ class FrontDeskQueryBudgetTests(TestCase):
             StaffRoleAssignment,
         )
 
-        user = User.objects.create_user(username="qb-front", password="qb-front-pass-123")
+        user = User.objects.create_user(username="qb-front", password=TEST_ACCOUNT_PASSWORD)
         profile = StaffProfile.objects.create(
             user=user,
             full_name="预算测试员",
