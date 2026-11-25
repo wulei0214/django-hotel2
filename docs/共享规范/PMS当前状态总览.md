@@ -8,7 +8,7 @@
 
 - **当前基线 `df6aef9`**（本文件所在提交的前一代码提交；文档头基线=本文件所在提交）。近期提交链（择要）：`4fa675d`（V1.1 执行总结）→ `2604b19`（Outbox 高风险入队硬拒绝）→ `352cff6`（七流程状态机规范）→ `0217836`（七角色旅程 + 追踪矩阵）→ `df6aef9`（JSON 日志 + RequestID）。不得沿用更早 SHA 描述当前 main。
 - **CI（现取，2026-11-25）**：`2604b19` 的 Django CI 已 success；`df6aef9` 运行中，以 CI 历史页为准。CI 通过 ≠ 部署或独立验收。
-- **基线区分（防混淆）**：①当前 main HEAD=所在提交；②最近一次双引擎全量绑定 `80fa7c5`（SQLite 2018 / MySQL 2018，证据 `docs/acceptance/evidence/t02-3-final-20261125/`）；③文档提交 SHA 不得冒充测试代码基线。
+- **基线区分（防混淆）**：①当前 main HEAD=所在提交；②最近一次双引擎全量绑定 `31c33f8`（**SQLite 2071 / MySQL 2071**，OK；证据 `docs/acceptance/evidence/arch-gov-dual-engine-20261125/`，报告 `docs/acceptance/ARCH治理专项双引擎全量回归报告_2026-11-25.md`）；③更早的 2018/2018 绑 `80fa7c5`、1899/1899 绑 `6b6519e` 仅作历史；④文档提交 SHA 不得冒充测试代码基线。
 - **需求总账**：全项目历史需求唯一追踪入口=「[PMS全项目历史需求追踪与未完成任务总台账_2026-11-22](PMS全项目历史需求追踪与未完成任务总台账_2026-11-22.md)」（GOV-REQ-001），含 §12A ARCH-01～14 专项表；派发任务前必查。
 - 当前部署形态：**Windows 本地开发/测试/演示/验收**（.env + waitress）。真实生产部署 `WAITING_FOR_SERVER / PRODUCTION PENDING`（等服务器与生产资源具备），不得把本地运行结果冒充生产验收。
 - 门禁：`python scripts/docs_link_check.py check` 为本地等效命令，基线冻结于 `docs_gate_baseline.json`。
