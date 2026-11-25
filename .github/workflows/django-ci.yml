@@ -147,6 +147,11 @@ jobs:
         run: python manage.py check
       - name: Migration drift check
         run: python manage.py makemigrations --check --dry-run
+      # ARCH-10：模块依赖方向门禁（L1 core 不得依赖 api；L2 业务代码不得从 migrations 导入）。
+      # 规则只覆盖确定不可违反的两条，完整依赖图用 `python scripts/arch_gate.py graph` 人工审查；
+      # 违规即非零退出阻断。脚本 fail-closed：读取失败同样不会当作通过。
+      - name: Architecture dependency gate
+        run: python scripts/arch_gate.py check
       - name: Run tests
         run: python manage.py test --verbosity 2
 
