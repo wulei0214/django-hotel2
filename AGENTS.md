@@ -15,6 +15,10 @@
 ## 会话纪律（代码无法推断的约定）
 
 - Django 测试必须 `DJANGO_ENV=test`；`.env` 不被 settings 自动加载，连 dev MySQL 前 `set -a && source .env && set +a`。
+- **取证脚本不得覆盖调用方显式指定的环境变量**：读 `.env` 用 `setdefault` 语义（禁止 `os.environ[k] = v`），否则隔离库名会被 `.env` 里的开发库名悄悄替换；取证服务启动后必须打印实际所连库名并人工核对。**在开发库上跑验收脚本会污染开发数据**（2026-11-26 曾发生：E2E 业务写入落到开发库，需按时间窗口 + 外键闭包清理业务残留，审计事件须保留）。
+- **Windows 控制台默认 GBK**：任何以 stdout 镜像写 UTF-8 证据文件的脚本（`scripts/e2e_full_chain.py` 等）都必须固定 `PYTHONIOENCODING=utf-8`，否则遇到 `✓`(U+2713) 等字符会抛 `UnicodeEncodeError` 中断。
+- **本机 MySQL `max_connections=20`**：同时只保留一个取证服务，并设 `DJANGO_DB_CONN_MAX_AGE=0`，否则出现 `1040 Too many connections`。
+- **本机 MySQL 账号无 SUPER 且开启 binary log**：建触发器报 1419，append-only 触发器行为级验证必须在具备权限的独立 MySQL 上做，不得以「CI 只校验定义存在」冒充行为级通过。
 - 涉及锁/约束/并发的交付以 MySQL 结果为准（SQLite 下 `select_for_update` 为 no-op），只跑 SQLite 全绿不算数。
 - MySQL 全量回归纪律（负责人 V1.1 §3.3 正式裁定）：同一共享测试环境同一时刻只允许一个 MySQL 全量测试进程执行建库/迁移/销毁，全量测试串行；MySQL 触碰域组合测试与全量错峰；专项并发测试按设计执行但不得争抢同一测试库；SQLite 可并行但不替代 MySQL 权威。不追加 `test_%` 授权（hotelhotel 仅授 `hotel`/`test_hotel`，独立库名 1044 实证）；不得通过删减测试、降低断言或仅跑 SQLite 绕过 MySQL 失败。每次 MySQL 全量须登记执行人/起止时间/测试库名/命令/退出码/报告路径；出现 1213 须区分建库、迁移、夹具准备、真实业务事务四阶段，不笼统归因。新派发模板必须包含本条错峰要求。
 - 任何源码不得出现可用凭据字面量，测试密码一律 `get_random_string` 模块级常量（字典 `"password":`、`check_password(...)`、断言中的值与创建处必须同步替换）。
