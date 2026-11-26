@@ -54,6 +54,7 @@
             <form method="post" action="/system/">
                 {% csrf_token %}
                 <table class="info-table">
+                    <tr><th>当前密码</th><td><input type="password" name="current_password" required class="me-input" autocomplete="current-password"></td></tr>
                     <tr><th>新密码</th><td><input type="password" name="new_password1" minlength="6" required class="me-input" autocomplete="new-password"></td></tr>
                     <tr><th>确认新密码</th><td><input type="password" name="new_password2" minlength="6" required class="me-input" autocomplete="new-password"></td></tr>
                 </table>
