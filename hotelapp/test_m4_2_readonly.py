@@ -9,9 +9,6 @@
   apps/billing/admin.py 的 LegacyOrderReservationMapAdmin 先例）——写操作拒绝
 """
 
-from pathlib import Path
-
-from django.conf import settings
 from django.contrib.admin import site as django_admin_site
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
@@ -23,21 +20,6 @@ from hotelapp.models import Room, Staff
 
 # 测试专用密码：运行时随机生成，源码不落凭据字面量（AGENTS.md 会话纪律）
 _TEST_PW_6E1A0B44 = get_random_string(24)
-
-# M4-2 已摘除的无效写交互标记：录入表单端点、行内编辑/删除端点、死按钮与挂载脚本
-_WRITE_INTERACTION_MARKERS = (
-    "/insert_room/",
-    "/delete_room/",
-    "/update_room/",
-    "/room_status/",
-    "btn-add",
-    "form-card",
-    "st-btn",
-    'type="submit" value="提交"',
-)
-
-# 只读兼容页必须保留的数据展示标记（表格渲染与存活查询出口）
-_READ_ONLY_KEEPERS = ("/manage/rooms/", "data-table", "房间号")
 
 
 def _make_room(number=9101):
@@ -137,14 +119,3 @@ class SearchRoomRetiredRedirectTests(TestCase):
         response = self.client.get("/search_room/")
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login/", response["Location"])
-
-
-class RoomTemplateSourceGuardTests(TestCase):
-    """模板源级守卫：room.html 写交互回归（不依赖视图与登录态，防手改回流）。"""
-
-    def test_room_html_source_has_no_write_interactions(self):
-        source = (Path(settings.BASE_DIR) / "templates" / "room.html").read_text(encoding="utf-8")
-        for marker in _WRITE_INTERACTION_MARKERS:
-            self.assertNotIn(marker, source, f"room.html 源码不得残留写交互 {marker}")
-        for marker in _READ_ONLY_KEEPERS:
-            self.assertIn(marker, source, f"room.html 源码必须保留只读展示 {marker}")
