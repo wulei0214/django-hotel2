@@ -155,14 +155,14 @@ class TemplateSourceGuardTests(TestCase):
         source = self._source("html1.html")
         for marker in _ZOMBIE_MARKERS:
             self.assertNotIn(marker, source, f"html1.html 源码不得残留僵尸交互 {marker}")
-        for marker in ("data-table", "page-bar", "mask_idcard", "/search_client/"):
+        for marker in ("data-table", "page-bar", "mask_idcard", "/manage/guests/"):
             self.assertIn(marker, source, f"html1.html 源码必须保留只读展示 {marker}")
 
     def test_vip_html_source_has_no_zombie_interactions(self):
         source = self._source("vip.html")
         for marker in _ZOMBIE_MARKERS:
             self.assertNotIn(marker, source, f"vip.html 源码不得残留僵尸交互 {marker}")
-        for marker in ("data-table", "page-bar", "mask_tel", "/search_vip/"):
+        for marker in ("data-table", "page-bar", "mask_tel", "/manage/memberships/"):
             self.assertIn(marker, source, f"vip.html 源码必须保留只读展示 {marker}")
 
     def test_vip_html_has_no_global_perms_display(self):

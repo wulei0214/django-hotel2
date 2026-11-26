@@ -22,12 +22,12 @@
         <h2>客房管理</h2>
         <div class="toolbar">
             <button class="tb-btn" onclick="location.reload()">⟳ 刷新数据</button>
-            <a class="tb-btn" href="/export/room/">⬇ 导出数据</a>
+            <a class="tb-btn" href="/manage/rooms/">⬇ 导出数据</a>
         </div>
     </div>
 <div class="card list-card">
     <div class="list-toolbar">
-        <form action="/search_room/#list" method="post" class="inline-filter">
+        <form action="/manage/rooms/#list" method="post" class="inline-filter">
             {% csrf_token %}
             <select name="columns">
                         <option value="房间号">房间号</option>
@@ -37,7 +37,7 @@
                                           </select>
             <input type="text" name="value" placeholder="输入查询内容" class="input input-w200">
             <button type="submit" class="tb-btn tb-primary">查询</button>
-            {% if searched %}<a href="/show_room/" class="tb-btn">显示全部</a>{% endif %}
+            {% if searched %}<a href="/manage/rooms/" class="tb-btn">显示全部</a>{% endif %}
         </form>
         {% if searched %}<span class="search-note">查询结果 {{ people_list|length }} 条{% if not people_list %} · 未查询到相关记录，请重新核对信息{% endif %}</span>{% endif %}
     </div>

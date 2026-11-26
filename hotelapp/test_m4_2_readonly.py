@@ -36,7 +36,7 @@ _WRITE_INTERACTION_MARKERS = (
 )
 
 # 只读兼容页必须保留的数据展示标记（表格渲染与存活查询出口）
-_READ_ONLY_KEEPERS = ("/search_room/", "data-table", "房间号")
+_READ_ONLY_KEEPERS = ("/manage/rooms/", "data-table", "房间号")
 
 
 def _make_room(number=9101):

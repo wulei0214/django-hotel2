@@ -23,7 +23,7 @@
         <h2>客房订单管理</h2>
         <div class="toolbar">
             <button class="tb-btn" onclick="location.reload()">⟳ 刷新数据</button>
-            <a class="tb-btn" href="/export/accommodation/">⬇ 导出数据</a>
+            <a class="tb-btn" href="/manage/reservations/">⬇ 导出数据</a>
             {% if pms_perms.hotelapp.add_accommodation %}<button class="tb-btn tb-primary" id="btn-add">＋ 添加</button>{% endif %}
         </div>
     </div>
@@ -34,7 +34,7 @@
 					<h2>客房订单信息录入</h2>
     </div>
 </div>
-{% if pms_perms.hotelapp.add_accommodation %}<form action="/insert_accomodation/" method="post" class="form-inset">
+{% if pms_perms.hotelapp.add_accommodation %}<form action="/manage/reservations/" method="post" class="form-inset">
     {% csrf_token %}
     {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
 
@@ -47,11 +47,11 @@
 </form>{% endif %}
 </div><div class="card list-card">
     <div class="list-toolbar">
-        <form action="/search_accommodation/#list" method="post" class="inline-filter">
+        <form action="/manage/reservations/#list" method="post" class="inline-filter">
             {% csrf_token %}
             <input type="text" name="value" placeholder="按顾客编号查询" class="input input-w200">
             <button type="submit" class="tb-btn tb-primary">查询</button>
-            {% if searched %}<a href="/show_accomodation/" class="tb-btn">显示全部</a>{% endif %}
+            {% if searched %}<a href="/manage/reservations/" class="tb-btn">显示全部</a>{% endif %}
         </form>
         {% if searched %}<span class="search-note">查询结果 {{ people_list|length }} 条{% if not people_list %} · 未查询到相关记录，请重新核对信息{% endif %}</span>{% endif %}
     </div>
@@ -115,7 +115,7 @@
     $(".delete").click(function () {
         var id = $(this).closest('tr').find('.id').text();
         askPrompt('冲账为高危操作：冲账后该记录不再计入统计，且不可恢复。请填写冲账原因（必填，将写入审计日志）：', function (reason) {
-            $.post('/delete_accomodation/', {'id': id, 'reason': reason, 'csrfmiddlewaretoken': getCookie('csrftoken')}).done(function () {
+            $.post('/manage/reservations/', {'id': id, 'reason': reason, 'csrfmiddlewaretoken': getCookie('csrftoken')}).done(function () {
                 showToast('已冲账');
                 setTimeout(function () { location.reload(); }, 600);
             }).fail(function (xhr) { showToast(xhr.responseText || '冲账失败', 'error'); });
