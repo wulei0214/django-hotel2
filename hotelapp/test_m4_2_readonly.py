@@ -1,16 +1,14 @@
 """M4-2 旧轨只读面收口回归（派发单 GOV-DISPATCH-M3M4M5-001 · 派发单 M4-2）。
 
 覆盖裁定落地断言：
-* D4-5 修订①：room.html 保留为只读兼容页——无效写交互（指向已退役 410/404
-  旧写端点的录入表单与行内按钮）已摘除，只读数据展示保留
-* D4-5 修订②：search_room 出口暂保留并登记访问观察点（只登记不改行为）
+* D4-5 修订①：room.html 只读兼容页的无效写交互已摘除，只读数据展示保留；
+  该页随 ARCH-03 模板退役一并删除，源级守卫同步退役
+* D4-5 修订②：search_room 旧出口随 ARCH-02 REDIRECT 退役为 302 → /manage/rooms/
+  （访问观察点随之关闭）
 * D4-7 A：旧 Room 的 Django Admin 只读化（ReadOnlyLegacyAdmin 模式，参照
   apps/billing/admin.py 的 LegacyOrderReservationMapAdmin 先例）——写操作拒绝
 """
 
-from pathlib import Path
-
-from django.conf import settings
 from django.contrib.admin import site as django_admin_site
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
@@ -22,21 +20,6 @@ from hotelapp.models import Room, Staff
 
 # 测试专用密码：运行时随机生成，源码不落凭据字面量（AGENTS.md 会话纪律）
 _TEST_PW_6E1A0B44 = get_random_string(24)
-
-# M4-2 已摘除的无效写交互标记：录入表单端点、行内编辑/删除端点、死按钮与挂载脚本
-_WRITE_INTERACTION_MARKERS = (
-    "/insert_room/",
-    "/delete_room/",
-    "/update_room/",
-    "/room_status/",
-    "btn-add",
-    "form-card",
-    "st-btn",
-    'type="submit" value="提交"',
-)
-
-# 只读兼容页必须保留的数据展示标记（表格渲染与存活查询出口）
-_READ_ONLY_KEEPERS = ("/search_room/", "data-table", "房间号")
 
 
 def _make_room(number=9101):
@@ -102,8 +85,13 @@ class RoomAdminReadOnlyTests(TestCase):
         self.assertEqual(Room.objects.filter(pk=room.pk).count(), 1, "不得被物理删除")
 
 
-class SearchRoomReadOnlyPageTests(TestCase):
-    """D4-5 修订①/②：search_room 只读兼容页 + 访问观察点登记。"""
+class SearchRoomRetiredRedirectTests(TestCase):
+    """D4-5 修订②收口：search_room 旧只读出口随 ARCH-02 REDIRECT 退役。
+
+    旧出口（room.html 只读兼容页）已按矩阵裁定退役为 302 → /manage/rooms/
+    （房态与库存中心）；M4-2 访问观察点随之关闭（退役已裁定，不再登记访问日志）。
+    门禁不变：无 view_room 仍 403、匿名仍走登录墙。
+    """
 
     def setUp(self):
         _grant("前台", "view_room")
@@ -116,39 +104,18 @@ class SearchRoomReadOnlyPageTests(TestCase):
 
         return _make_user("m42observer", "前台")
 
-    def test_search_room_renders_readonly_page_without_write_interactions(self):
-        """只读数据展示保留，无效写交互（表单/按钮/挂载脚本）无残留。"""
-        room = _make_room(9103)
+    def test_search_room_get_redirects_to_rooms_center(self):
         response = self.client.get("/search_room/")
-        self.assertEqual(response.status_code, 200)
-        content = response.content.decode("utf-8")
-        for marker in _READ_ONLY_KEEPERS:
-            self.assertIn(marker, content, f"只读展示标记 {marker} 必须保留")
-        for marker in _WRITE_INTERACTION_MARKERS:
-            self.assertNotIn(marker, content, f"无效写交互 {marker} 必须已摘除")
-        self.assertContains(response, str(room.pk))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/manage/rooms/")
 
-    def test_search_room_post_search_flow_kept_and_logged(self):
-        """查询行为不变（POST 检索照常返回结果），且登记 M4-2 观察点日志。"""
-        room = _make_room(9104)
-        with self.assertLogs("hotelapp.views", level="INFO") as logs:
-            response = self.client.post(
-                "/search_room/", {"columns": "房间号", "value": str(room.pk)}
-            )
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, str(room.pk), msg_prefix="POST 检索行为不得改变")
-        self.assertTrue(
-            any("M4-2 观察点" in line and "search_room" in line for line in logs.output),
-            f"search_room 必须登记 M4-2 观察点日志，实际输出：{logs.output}",
-        )
+    def test_search_room_post_redirects_to_rooms_center(self):
+        response = self.client.post("/search_room/", {"columns": "房间号", "value": "9103"})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/manage/rooms/")
 
-
-class RoomTemplateSourceGuardTests(TestCase):
-    """模板源级守卫：room.html 写交互回归（不依赖视图与登录态，防手改回流）。"""
-
-    def test_room_html_source_has_no_write_interactions(self):
-        source = (Path(settings.BASE_DIR) / "templates" / "room.html").read_text(encoding="utf-8")
-        for marker in _WRITE_INTERACTION_MARKERS:
-            self.assertNotIn(marker, source, f"room.html 源码不得残留写交互 {marker}")
-        for marker in _READ_ONLY_KEEPERS:
-            self.assertIn(marker, source, f"room.html 源码必须保留只读展示 {marker}")
+    def test_anonymous_gets_login_wall(self):
+        self.client.logout()
+        response = self.client.get("/search_room/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response["Location"])

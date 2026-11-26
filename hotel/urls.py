@@ -3,8 +3,9 @@
 路由分组：
   /login/ /logout/          前台独立登录/退出
   /                         按当前角色权限跳转到首个可访问模块
-  /index/ /insert/ ...      员工管理（index 即员工模块首页）
-  /show_client/ ...         其余 7 个模块：show_/insert_/update_/delete_/search_ 五件套
+  /manage/<center>/ ...     PMS2 管理中心注册表（客人/会员/房态/预订 等 11 个中心）
+  /index/ /show_client/ ... 旧只读入口 → 302 跳对应 /manage/<center>/（ARCH-02 REDIRECT，
+                            门禁不变；/insert_/delete_/update_ 旧写入口仍为 410）
   /manage/staff/ ...        员工中心（§10.1：生命周期写工作台 + actions 写路由）
   /invite/accept/           员工邀请激活页（AUTH-18：匿名公开 + 限流 + 一次性 token）
   /staff_accounts/ ...      旧员工工作台：列表/详情保留只读，写路由 302 → /manage/staff/
@@ -32,6 +33,20 @@ from apps.api import pages as api_pages
 from apps.core.admin_views import pms_business_overview
 from apps.identity import invitation_views, permission_admin, permission_center, staff_center_views
 from apps.identity import platform as identity_platform
+from apps.identity.decorators import pms_permission_required
+
+
+def _legacy_center_redirect(target, permission_code):
+    """ARCH-02 REDIRECT：旧只读入口退役为 302 跳转 PMS2 新管理中心。
+
+    退役的是旧页渲染能力，不是访问控制：门禁口径保持不变
+    （staff_required + 原权限码）——无有效任职/无权限仍 403，匿名仍走登录墙。
+    永久化（301）需业务确认，本轮统一 302。
+    """
+    return views.staff_required(
+        pms_permission_required(permission_code)(RedirectView.as_view(url=target, permanent=False))
+    )
+
 
 urlpatterns = [
     path("api/v1/", include("apps.api.urls")),
@@ -111,7 +126,7 @@ urlpatterns = [
     path("logout/", views.logout_view),
     path("booking/", views.booking_page),
     path("checkin/", views.checkin_workspace),
-    path("checkin/legacy/", views.checkin_manage),
+    path("checkin/legacy/", _legacy_center_redirect("/checkin/", "hotelapp.view_accommodation")),
     path("checkin_confirm/", views.checkin_confirm),
     path("checkin_in/", views.checkin_in),
     path("cancel_booking/", views.cancel_booking),
@@ -218,27 +233,27 @@ urlpatterns = [
     path("export/staff/request/", views.request_staff_export),
     path("export/staff/approve/<int:approval_id>/", views.approve_staff_export),
     path("export/<str:module>/", views.export_module),
-    path("index/", views.index),
+    path("index/", _legacy_center_redirect("/manage/staff/", "hotelapp.view_staff")),
     path("insert/", views.insert),
     path("insert_client/", views.insert_client),
     path("delete_staff/", views.delete_staff),
-    path("search_staff/", views.search_staff),
+    path("search_staff/", _legacy_center_redirect("/manage/staff/", "hotelapp.view_staff")),
     # path('single/', views.single),
     path("update_staff/", views.update_staff),
-    path("show_client/", views.show_client),
+    path("show_client/", _legacy_center_redirect("/manage/guests/", "hotelapp.view_client")),
     path("delete_client/", views.delete_client),
     path("update_client/", views.update_client),
-    path("search_client/", views.search_client),
+    path("search_client/", _legacy_center_redirect("/manage/guests/", "hotelapp.view_client")),
     path("insert_food/", views.insert_food),
     path("show_food/", views.show_food),
     path("delete_food/", views.delete_food),
     path("update_food/", views.update_food),
     path("search_food/", views.search_food),
     path("insert_vip/", views.insert_vip),
-    path("show_vip/", views.show_vip),
+    path("show_vip/", _legacy_center_redirect("/manage/memberships/", "hotelapp.view_vip")),
     path("delete_vip/", views.delete_vip),
     path("update_vip/", views.update_vip),
-    path("search_vip/", views.search_vip),
+    path("search_vip/", _legacy_center_redirect("/manage/memberships/", "hotelapp.view_vip")),
     path("insert_park/", views.insert_park),
     path("show_park/", views.show_park),
     path("delete_park/", views.delete_park),
@@ -246,13 +261,19 @@ urlpatterns = [
     path("search_park/", views.search_park),
     # path('show_cook/', views.show_cook),
     path("show_room/", views.show_room),  # 旧入口先执行原权限校验，再跳转 PMS2 房态与库存中心
-    path("search_room/", views.search_room),
+    path("search_room/", _legacy_center_redirect("/manage/rooms/", "hotelapp.view_room")),
     path("insert_order/", views.insert_order),
     path("show_order/", views.show_order),
     path("delete_order/", views.delete_order),
     path("search_order/", views.search_order),
     path("insert_accomodation/", views.insert_accomodation),
     path("delete_accomodation/", views.delete_accomodation),
-    path("search_accomodation/", views.search_accomodation),
-    path("show_accomodation/", views.show_accomodation),
+    path(
+        "search_accomodation/",
+        _legacy_center_redirect("/manage/reservations/", "hotelapp.view_accommodation"),
+    ),
+    path(
+        "show_accomodation/",
+        _legacy_center_redirect("/manage/reservations/", "hotelapp.view_accommodation"),
+    ),
 ]

@@ -46,6 +46,7 @@ from apps.billing.legacy_archive_query import (
     legacy_folio_rows,
     legacy_reservation_row,
     legacy_reservation_rows,
+    mask_phone,
 )
 from apps.billing.models import LegacyAccommodationArchive, LegacyMigrationBatch
 from apps.core.models import AuditEvent, Property
@@ -575,35 +576,32 @@ class SeededEquivalenceTests(LegacyEquivalenceBase):
             "不同物业快照（DEFAULT/NULL）的归档行都不得被适配器过滤",
         )
 
-    def test_show_accomodation_rows_equivalent_to_direct_read(self):
-        """E2 页面：归档行包装形状与旧直读模型逐字段恒等（房号=room_id 主键等价）。"""
+    def test_legacy_reservations_rows_equivalent_to_direct_read(self):
+        """E2 读通道：归档适配器行与旧直读模型逐字段恒等（房号=room_id 主键等价）。
+
+        ARCH-03 退役旧页 /show_accomodation/ 后，E2 页面契约由存活的归档查询
+        通道（/api/v1/front-desk/legacy-reservations）承接：行内容口径不变——
+        状态/入住退房时间/收款金额/顾客与客房外键逐项对齐，电话按掩码口径输出
+        （脱敏由通道承担，不再依赖旧页模板过滤器）。
+        """
         old_by_id = {item.pk: item for item in LegacyAccommodation.objects.all()}
-        self.client.force_login(self.front)
-        response = self.client.get("/show_accomodation/")
-        self.assertEqual(response.status_code, 200)
-        people = list(response.context["people_list"])
-        self.assertEqual(len(people), len(old_by_id))
-        for wrapped in people:
-            old = old_by_id[wrapped.id]
-            self.assertEqual(wrapped.状态, old.状态)
-            self.assertEqual(wrapped.联系电话, old.联系电话)
-            self.assertEqual(wrapped.入住时间, old.入住时间)
-            self.assertEqual(wrapped.退房时间, old.退房时间)
-            self.assertEqual(wrapped.收款金额, old.收款金额)
-            self.assertEqual(wrapped.顾客id.顾客id, old.顾客id_id)  # type: ignore[attr-defined]  # wrapped=归档行+注入形状（views._legacy_archive_row_wrapper），非模型声明属性
-            self.assertEqual(wrapped.客房编号.房间号, old.客房编号_id)  # type: ignore[attr-defined]
-        # 模板层 mask_tel 脱敏口径保持（服务端渲染输出不含完整值）。
-        self.assertContains(response, "138****5678")
-        self.assertNotContains(response, "13812345678")
-        # 已冲账行灰显徽标语义保持（七态多态覆盖）。
-        self.assertContains(response, "voided-row")
+        rows, _ = legacy_reservation_rows(page_size=100)
+        self.assertEqual(len(rows), len(old_by_id))
+        for row in rows:
+            old = old_by_id[row["id"]]
+            self.assertEqual(row["status"], old.状态)
+            self.assertEqual(row["contact_phone"], mask_phone(old.联系电话))
+            self.assertEqual(row["check_in_text"], old.入住时间)
+            self.assertEqual(row["check_out_text"], old.退房时间)
+            self.assertEqual(row["received_amount_text"], old.收款金额)
+            self.assertEqual(row["client_id"], old.顾客id_id)  # type: ignore[attr-defined]  # 旧模型 FK attname，非模型声明属性
+            self.assertEqual(row["room_id"], old.客房编号_id)  # type: ignore[attr-defined]
 
     def test_adapter_queries_write_archive_audit_events(self):
         """归档通道审计事件抽样：适配器查询逐次登记 who/when/what（§4.1 第 5 条）。"""
         self.client.force_login(self.front)
         self.client.get("/api/v1/front-desk/legacy-reservations")
         self.client.get(f"/api/v1/front-desk/legacy-reservations/{_FIRST_ORDER_ID}")
-        self.client.get("/show_accomodation/")
         entity_ids = set(
             AuditEvent.objects.filter(action="billing.legacy_archive_query").values_list(
                 "entity_id", flat=True

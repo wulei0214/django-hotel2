@@ -323,7 +323,9 @@ class UnifiedAuthorizationTests(TestCase):
         self.client.logout()
         self.assertTrue(self.client.login(username="bound01", password=_TEST_PW_271EB116))
         response = self.client.get("/show_client/")
-        self.assertEqual(response.status_code, 200, "绑定账号必须能访问旧后台（P0-1 验收标准）")
+        self.assertEqual(response.status_code, 302,
+                         "绑定账号必须能通过旧入口进入 PMS2 客人中心（P0-1 验收标准）")
+        self.assertEqual(response["Location"], "/manage/guests/")
 
     def test_staff_without_membership_denied(self):
         """有效账号但无任职关系 → 员工路由拒绝（AUTH-02）"""
@@ -478,14 +480,17 @@ class SensitiveFieldMaskingTests(TestCase):
                                                身份证号="110101199001010011")
 
     def test_list_renders_masked_idcard_only(self):
-        """DATA-03：响应体不得包含完整身份证（HTML 为遮罩值）"""
+        """DATA-03：旧客户只读页退役后，响应体不得携带完整身份证。
+
+        ARCH-03 退役 html1.html 后旧页不再输出任何客户数据（含脱敏展示面）；
+        完整值只允许经受权 reveal 通道按需读取（见 test_reveal_requires_change_permission）。
+        """
         self.client.force_login(self.fd)
         response = self.client.get("/show_client/")
-        self.assertEqual(response.status_code, 200)
-        self.assertNotIn("110101199001010011", response.content.decode("utf-8"),
-                         "完整身份证不得出现在 HTML 中")
-        self.assertIn("11**************11", response.content.decode("utf-8"),
-                      "应渲染前2后2遮罩值")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/manage/guests/")
+        body = response.content.decode("utf-8")
+        self.assertNotIn("110101199001010011", body, "完整身份证不得出现在响应体中")
 
     def test_reveal_requires_change_permission(self):
         """完整值仅限持修改权岗位（前台/经理）；财务只读 403"""
@@ -503,12 +508,14 @@ class SensitiveFieldMaskingTests(TestCase):
         self.assertEqual(response.json()["identify"], "110101199001010011")
 
     def test_vip_tel_mask_and_reveal(self):
+        """会员电话：旧只读页退役后不再输出完整值；完整值仅经受权 reveal 通道读取。"""
         from hotelapp.models import Vip
         vip = Vip.objects.create(姓名="遮罩会员", 会员等级="普通会员", 联系方式="13812345678")
         self.client.force_login(self.fd)
         page = self.client.get("/show_vip/")
+        self.assertEqual(page.status_code, 302)
+        self.assertEqual(page["Location"], "/manage/memberships/")
         self.assertNotIn("13812345678", page.content.decode("utf-8"))
-        self.assertIn("138****5678", page.content.decode("utf-8"))
 
         response = self.client.post("/vip/reveal_tel/", {
             "id": vip.会员编号, "reason": "办理会员联系电话核验"
@@ -857,7 +864,8 @@ class ForcedPasswordChangeTests(TestCase):
         profile.refresh_from_db()
         self.assertFalse(profile.must_change_password)
         self.assertIsNotNone(profile.last_password_change)
-        self.assertEqual(self.client.get("/show_client/").status_code, 200)
+        self.assertEqual(self.client.get("/show_client/").status_code, 302)
+        self.assertEqual(self.client.get("/show_client/")["Location"], "/manage/guests/")
         from apps.core.models import AuditEvent
         self.assertTrue(AuditEvent.objects.filter(
             action="identity.password_changed",
@@ -947,17 +955,20 @@ class SalaryDecisionBoundaryTests(TestCase):
         self.assertEqual(self.staff.月薪, "6000.00", "旧入口不得再改薪酬")
 
     def test_staff_list_access_boundaries_match_v11(self):
-        """V1.1 权限矩阵：前台无 view_staff→403；财务有 view_staff→200 可见薪酬"""
+        """V1.1 权限矩阵：前台无 view_staff→403；财务有 view_staff→放行到员工中心。
+
+        ARCH-02 REDIRECT：旧员工列表页 /index/ 已退役为 302 → /manage/staff/
+        （旧页的薪酬展示面随之下线，见交付说明未关闭事项）。
+        """
         self.client.force_login(self.front_desk)
         response = self.client.get("/index/")
         self.assertEqual(response.status_code, 403,
                          "前台无 view_staff 权限，不应看到员工列表")
         self.client.force_login(self.finance)
         response = self.client.get("/index/")
-        self.assertEqual(response.status_code, 200,
-                         "财务有 view_staff（migration 0018），应可查看")
-        self.assertIn("6000.00", response.content.decode("utf-8"),
-                      "财务应能看到薪酬完整值（Q-03/D-08）")
+        self.assertEqual(response.status_code, 302,
+                         "财务有 view_staff（migration 0018），应放行到员工中心")
+        self.assertEqual(response["Location"], "/manage/staff/")
 
 
 class FinanceStaffReadOnlyTests(TestCase):
@@ -970,10 +981,15 @@ class FinanceStaffReadOnlyTests(TestCase):
             姓名="财务只读员工", 职务="服务员", 月薪="7200.00", 工龄="3")
 
     def test_finance_can_view_salary_but_cannot_change_it(self):
+        """Q-03：财务只读旧薪酬数据且不得修改（旧写入口 410/403）。
+
+        ARCH-02 REDIRECT：旧员工列表页 /index/ 退役为 302 → /manage/staff/
+        （旧页薪酬展示面随页退役下线；旧表薪酬数据保持只读、不得被改写）。
+        """
         self.client.force_login(self.finance)
         page = self.client.get("/index/")
-        self.assertEqual(page.status_code, 200)
-        self.assertContains(page, "7200.00")
+        self.assertEqual(page.status_code, 302)
+        self.assertEqual(page["Location"], "/manage/staff/")
         response = self.client.post("/update_staff/", {
             "id": self.staff.员工id, "job": "服务员",
             "salary": "8000.00", "time": "4",
@@ -1219,8 +1235,9 @@ class SuperuserPolicyTests(TestCase):
             group=Group.objects.get(name="前台"))
         self.client.force_login(self.admin)
         response = self.client.get("/show_client/")
-        self.assertEqual(response.status_code, 200,
+        self.assertEqual(response.status_code, 302,
                          "superuser + 任职 + 角色授权 → 可进 PMS（与普通员工一致）")
+        self.assertEqual(response["Location"], "/manage/guests/")
 
 
 class GuestServiceTests(TestCase):
