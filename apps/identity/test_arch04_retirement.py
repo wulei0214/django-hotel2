@@ -655,3 +655,64 @@ class MigrationRoundTripTests(TransactionTestCase):
             ).exists(),
             "再次正向迁移后必须重新授予新栈权限码",
         )
+
+
+class C6ReverseWithNullAndDanglingDataTests(TransactionTestCase):
+    """C6 反向迁移在「NULL 工号 + 悬空工号」数据上真实可用。
+
+    实证缺陷（2026-11-26 复核）：0022 把三处旧 staff 外键改成可空整数后，同批用例
+    又把「悬空工号（指向不存在的 staff 行）」与「NULL 工号」断言为合法数据；而反向
+    迁移在 MySQL 上先 MODIFY ... NOT NULL（遇 NULL 报 1138）、再 ADD CONSTRAINT
+    FOREIGN KEY（遇悬空工号报 1452）——反向在真实数据上必失败，违反方案
+    §5.2「可用反向迁移（不可 noop）」的硬约束。
+    修复：0022 的反向路径先补建占位员工行并回填 NULL，使 FK 约束可被真实重建。
+    """
+
+    reset_sequences = True
+
+    def test_reverse_migration_succeeds_with_null_and_dangling_staff_refs(self):
+        legacy = Staff.objects.create(姓名="C6 反向员工", 职务="服务员", 月薪="3000", 工龄="1")
+        Room.objects.create(
+            房间号=97061, 客房类型="标准间", 价格=300, 负责人编号=legacy.pk, 房间状态="空闲"
+        )
+        Room.objects.create(
+            房间号=97062, 客房类型="标准间", 价格=300, 负责人编号=987655, 房间状态="空闲"
+        )  # 悬空工号
+        Room.objects.create(
+            房间号=97063, 客房类型="标准间", 价格=300, 负责人编号=None, 房间状态="空闲"
+        )  # NULL 工号
+
+        # 反向：不得抛 1138 / 1452
+        call_command("migrate", "hotelapp", "0021_night_auditor_activation", verbosity=0)
+
+        with connection.cursor() as cursor:
+            self.assertIn(
+                "staff",
+                _foreign_key_targets(cursor, "room"),
+                "反向迁移必须把 FK 约束复原（回滚能力真实可用，非 noop）",
+            )
+        self.assertEqual(
+            Room.objects.get(房间号=97061).负责人编号,
+            legacy.pk,
+            "真实工号原值不得丢失",
+        )
+        self.assertEqual(
+            Room.objects.get(房间号=97062).负责人编号,
+            987655,
+            "悬空工号不得被改写（须补建同 id 占位行而不是改值）",
+        )
+        self.assertTrue(
+            Staff.objects.filter(员工id=987655).exists(),
+            "悬空工号必须补建同 id 的占位员工行，否则 FK 约束重建失败",
+        )
+        nulled = Room.objects.get(房间号=97063).负责人编号
+        self.assertIsNotNone(nulled, "NULL 工号必须在反向前被回填（否则 NOT NULL 还原失败）")
+        self.assertTrue(
+            Staff.objects.filter(员工id=nulled).exists(),
+            "回填目标必须是真实存在的占位员工行",
+        )
+
+        # --- 末态：重新正向，状态与首次正向一致 ---
+        call_command("migrate", "hotelapp", verbosity=0)
+        call_command("migrate", "identity", verbosity=0)
+        self.assertEqual(Room.objects.get(房间号=97062).负责人编号, 987655)

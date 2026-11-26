@@ -34,6 +34,13 @@ DEFAULT_LIMITS = {
     "identity.invitation_manage": [(("ip",), 30, 600)],
     # 通知待办重算是物业级聚合操作，限制单员工/IP 的重复触发。
     "pms.notification_refresh": [(("ip", "username"), 10, 60)],
+    # R5：自助改密「当前密码」二次认证的失败限流。
+    #   * 第一条与 auth.login 同口径（IP + username，5 次 / 300 秒）；
+    #   * 第二条是 username 维度的全局桶（20 次 / 300 秒），防分布式换 IP 爆破
+    #     （被猜的是「某个账号的密码」，只按 IP 分桶挡不住换源地址的并行尝试）。
+    # 计数落在 RateLimitCounter（DB 内 F() 原子自增），跨会话、跨进程有效——
+    # 会话级读-改-写会在并发请求下丢计数（2026-11-26 复核实证缺陷，已修）。
+    "identity.pwd_reauth": [(("ip", "username"), 5, 300), (("username",), 20, 300)],
 }
 
 
@@ -55,6 +62,90 @@ def _client_ip(request):
 def _limits_for(action):
     configured = getattr(settings, "PUBLIC_RATE_LIMITS", {})
     return configured.get(action, DEFAULT_LIMITS.get(action, []))
+
+
+def _bucket_specs(request, action, *, phone="", username="", booking_no="", token=""):
+    """返回该动作在各维度组合下的 (limit, window_seconds, key_hash)。
+
+    check() / reset() / remaining_seconds() 共用同一套桶计算，避免
+    「判定用的桶」与「清理用的桶」算不一致。
+    """
+    rules = _limits_for(action)
+    if not rules:
+        return []
+    ip = _client_ip(request)
+    values = {
+        "ip": ip,
+        "phone": fingerprint(normalize_phone(phone)),
+        "username": fingerprint(username),
+        "booking": (booking_no or "").strip().upper(),
+        "token": fingerprint(token)[:16],
+    }
+    specs = []
+    for dimensions, limit, window_seconds in rules:
+        parts = [values[d] for d in dimensions if values.get(d)]
+        if not parts:
+            # 全部维度缺失（如无手机号且拿不到 IP）→ 用纯 IP 兜底；
+            # IP 也缺失时按错误请求独立桶，绝不用空串共享桶
+            parts = [ip or "malformed"]
+        key_hash = hashlib.sha256((action + "|" + "|".join(parts)).encode("utf-8")).hexdigest()[:48]
+        specs.append((limit, int(window_seconds), key_hash))
+    return specs
+
+
+def _window_bounds(now, window_seconds):
+    window_start = now.replace(microsecond=0) - timedelta(
+        seconds=int(now.timestamp()) % window_seconds
+    )
+    return window_start, window_start + timedelta(seconds=window_seconds)
+
+
+def reset(request, action, *, phone="", username="", booking_no="", token=""):
+    """清除某动作在当前维度组合下的计数（连续失败语义复位）。
+
+    典型用途：自助改密二次认证在「当前密码」校验通过后清零失败配额。
+    与 check() 使用同一套桶计算（_bucket_specs），不会算错桶。
+    """
+    deleted = 0
+    for _limit, _window, key_hash in _bucket_specs(
+        request,
+        action,
+        phone=phone,
+        username=username,
+        booking_no=booking_no,
+        token=token,
+    ):
+        deleted += RateLimitCounter.objects.filter(key_hash=key_hash, action=action).delete()[0]
+    return deleted
+
+
+def remaining_seconds(request, action, *, phone="", username="", booking_no="", token=""):
+    """返回当前维度组合下计数窗口的剩余秒数（无计数返回 0）。
+
+    用于给用户「请在 N 秒后重试」这类提示；取各桶中最长的剩余时间
+    （先被它挡住的那个桶才是真正的约束）。
+    """
+    remain = 0
+    now = timezone.now()
+    for _limit, _window, key_hash in _bucket_specs(
+        request,
+        action,
+        phone=phone,
+        username=username,
+        booking_no=booking_no,
+        token=token,
+    ):
+        counter = (
+            RateLimitCounter.objects.filter(key_hash=key_hash, action=action)
+            .order_by("-expires_at")
+            .first()
+        )
+        if counter is None:
+            continue
+        seconds = int((counter.expires_at - now).total_seconds())
+        if seconds > remain:
+            remain = seconds
+    return max(0, remain)
 
 
 def cleanup_expired(now=None):
@@ -87,29 +178,19 @@ def check(
       `138-0000-1111` 必须落进同一个桶，否则同一号码换写法即可成倍放大
       配额。规范化在服务端完成，不依赖各调用方自行处理。
     """
-    rules = _limits_for(action)
-    if not rules:
+    specs = _bucket_specs(
+        request,
+        action,
+        phone=phone,
+        username=username,
+        booking_no=booking_no,
+        token=token,
+    )
+    if not specs:
         return True
-    ip = _client_ip(request)
-    values = {
-        "ip": ip,
-        "phone": fingerprint(normalize_phone(phone)),
-        "username": fingerprint(username),
-        "booking": (booking_no or "").strip().upper(),
-        "token": fingerprint(token)[:16],
-    }
     now = timezone.now()
-    for dimensions, limit, window_seconds in rules:
-        parts = [values[d] for d in dimensions if values.get(d)]
-        if not parts:
-            # 全部维度缺失（如无手机号且拿不到 IP）→ 用纯 IP 兜底；
-            # IP 也缺失时按错误请求独立桶，绝不用空串共享桶
-            parts = [ip or "malformed"]
-        key_hash = hashlib.sha256((action + "|" + "|".join(parts)).encode("utf-8")).hexdigest()[:48]
-        window_start = now.replace(microsecond=0) - timedelta(
-            seconds=int(now.timestamp()) % window_seconds
-        )
-        expires_at = window_start + timedelta(seconds=window_seconds)
+    for limit, window_seconds, key_hash in specs:
+        window_start, expires_at = _window_bounds(now, window_seconds)
         try:
             with transaction.atomic():
                 if consume:

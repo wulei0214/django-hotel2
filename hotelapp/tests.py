@@ -956,20 +956,27 @@ class SalaryDecisionBoundaryTests(TestCase):
         self.assertEqual(self.staff.月薪, "6000.00", "旧入口不得再改薪酬")
 
     def test_staff_list_access_boundaries_match_v11(self):
-        """V1.1 权限矩阵：前台无 view_staff→403；财务有 view_staff→放行到员工中心。
+        """V1.1 权限矩阵：前台无 view_staff→403；财务有 view_staff 但无员工中心门禁→403。
 
-        ARCH-02 REDIRECT：旧员工列表页 /index/ 已退役为 302 → /manage/staff/
-        （旧页的薪酬展示面随之下线，见交付说明未关闭事项）。
+        ARCH-02 REDIRECT：旧员工列表页 /index/ 已退役为 302 → /manage/staff/；
+        2026-11-26 复核修正——/manage/staff/ 的门禁是 identity.staff_manage（仅店长），
+        而财务只持有旧码 hotelapp.view_staff。若旧入口仍放行，财务会被 302 引导到
+        一个自己无权进入的页面（403 死胡同）。现口径：旧入口额外要求目标中心门禁码，
+        缺码直接 403，不做误导性跳转（不新增任何授权）。
+
+        「财务的只读薪酬查看（Q-03）在新中心的落点」属业务权限裁定，
+        已登记为待定夺事项（见 docs/acceptance/前端opt-in与三开发线复核修复报告_2026-11-26.md §五）。
         """
         self.client.force_login(self.front_desk)
         response = self.client.get("/index/")
         self.assertEqual(response.status_code, 403,
-                         "前台无 view_staff 权限，不应看到员工列表")
+                         "前台无 view_staff 权限，不应看到员工列")
         self.client.force_login(self.finance)
         response = self.client.get("/index/")
-        self.assertEqual(response.status_code, 302,
-                         "财务有 view_staff（migration 0018），应放行到员工中心")
-        self.assertEqual(response["Location"], "/manage/staff/")
+        self.assertEqual(response.status_code, 403,
+                         "财务无 identity.staff_manage，不得被引导到无权的新中心（302→403 死胡同）")
+        self.assertNotIn("/manage/staff/", response.get("Location", ""),
+                         "不得把财务 302 到自己无权访问的 /manage/staff/")
 
 
 class FinanceStaffReadOnlyTests(TestCase):
@@ -984,13 +991,17 @@ class FinanceStaffReadOnlyTests(TestCase):
     def test_finance_can_view_salary_but_cannot_change_it(self):
         """Q-03：财务只读旧薪酬数据且不得修改（旧写入口 410/403）。
 
-        ARCH-02 REDIRECT：旧员工列表页 /index/ 退役为 302 → /manage/staff/
-        （旧页薪酬展示面随页退役下线；旧表薪酬数据保持只读、不得被改写）。
+        ARCH-02 REDIRECT：旧员工列表页 /index/ 退役为 302 → /manage/staff/，但
+        /manage/staff/ 要求 identity.staff_manage（仅店长）——财务持有旧码
+        hotelapp.view_staff 却不持有新中心门禁。2026-11-26 复核修正：旧入口不再
+        302 引导（那是 403 死胡同），改为直接 403；旧表薪酬数据保持只读、不得被改写。
+        「财务在新中心的只读落点」属业务权限裁定，已登记为待定夺事项。
         """
         self.client.force_login(self.finance)
         page = self.client.get("/index/")
-        self.assertEqual(page.status_code, 302)
-        self.assertEqual(page["Location"], "/manage/staff/")
+        self.assertEqual(page.status_code, 403,
+                         "财务无 identity.staff_manage，旧入口不得 302 到无权的新中心")
+        self.assertNotIn("/manage/staff/", page.get("Location", ""))
         response = self.client.post("/update_staff/", {
             "id": self.staff.员工id, "job": "服务员",
             "salary": "8000.00", "time": "4",

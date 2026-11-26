@@ -73,6 +73,7 @@ try {
   await page.click('button[type="submit"]');
   await page.waitForLoadState("networkidle");
   if (page.url().includes("/force-password-change/")) {
+    await page.fill('input[name="current_password"]', PASSWORD);
     await page.fill('input[name="new_password1"]', PASSWORD);
     await page.fill('input[name="new_password2"]', PASSWORD);
     await page.click('button[type="submit"]');
@@ -257,10 +258,48 @@ try {
   const afterSubmit = await page.evaluate(() => {
     const form = document.querySelector("#pms-drawer form[data-ux-form]");
     const get = (n) => { const el = form.querySelector('[name="' + n + '"]'); return el ? el.value : ""; };
-    return { price: get("price"), reason: get("reason"), disabled: form.querySelector("[data-ux-submit]").disabled };
+    const btn = form.querySelector("[data-ux-submit]");
+    return {
+      price: get("price"), reason: get("reason"),
+      disabled: btn.disabled, loading: btn.classList.contains("is-loading"),
+      label: (btn.textContent || "").trim(),
+    };
   });
   record("提交成功后表单已复位", afterSubmit.price === "" && afterSubmit.reason === "",
     JSON.stringify(afterSubmit));
+  /* 回归：提交成功后按钮必须解除 disabled 与 is-loading
+     （否则按钮文字被 CSS 隐藏且一直转圈，用户无法在同一抽屉内再次提交）。 */
+  record("提交成功后提交按钮已恢复可用（未禁用、未残留 loading）",
+    afterSubmit.disabled === false && afterSubmit.loading === false,
+    JSON.stringify(afterSubmit));
+  record("提交成功后提交按钮文字可见", afterSubmit.label.length > 0, `label=${afterSubmit.label}`);
+
+  // 回归：同一抽屉内可以再次提交（按钮可再次点击 → 请求真的发出）
+  await page.fill('#pms-drawer input[name="rate_id"]', rateId);
+  await page.fill('#pms-drawer input[name="price"]', "555.00");
+  await page.fill('#pms-drawer textarea[name="reason"]', "浏览器验收二次提交");
+  await page.click('#pms-drawer button[data-ux-submit]');
+  await page.waitForTimeout(1500);
+  /* 断言要能区分「第一次的成功提示」与「第二次真的成功」：
+     第二次成功时 result 元素被重写为「操作成功」，且表单再次复位（price 清空）。 */
+  const secondSubmit = await page.evaluate(() => {
+    const form = document.querySelector("#pms-drawer form[data-ux-form]");
+    const price = form.querySelector('[name="price"]');
+    /* 表单内有两个 role=status：草稿「已保存」标记与提交结果框；
+       结果框是后挂的那个，取最后一个。 */
+    const results = Array.from(form.querySelectorAll('[role="status"]'));
+    const result = results.length ? results[results.length - 1] : null;
+    const btn = form.querySelector("[data-ux-submit]");
+    return {
+      price: price ? price.value : "",
+      result: result ? (result.textContent || "").trim() : "",
+      disabled: btn ? btn.disabled : true,
+      loading: btn ? btn.classList.contains("is-loading") : true,
+    };
+  });
+  record("提交成功后可再次提交（同一抽屉二次提交成功并再次复位）",
+    secondSubmit.result === "操作成功" && secondSubmit.price === "" && secondSubmit.disabled === false,
+    JSON.stringify(secondSubmit));
   await page.screenshot({ path: join(EVIDENCE_DIR, "03-action-submitted.png"), fullPage: true });
 
   record("浏览器控制台无脚本错误", consoleErrors.length === 0,

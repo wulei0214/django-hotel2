@@ -718,21 +718,49 @@ def Q_ends_null_or_future():
 #     截断在可接受范围内。
 #   * 冷却 300 秒：与登录限流窗口一致。冷却期内完全拒绝校验（即使密码正确），
 #     猜测速率被压到 ≤1 次/300 秒；剩余秒数随提示返回，便于员工自行安排重试。
+#
+# 计数落点（2026-11-26 复核修正）：失败计数写在 RateLimitCounter（DB 内 F() 原子
+# 自增），不再写在 session 里。原实现是「session 读-改-写 + 整行覆盖保存」，
+# 并发请求各自读到同一旧值、各自写 fail+1，最后写者胜出 → 计数每批只 +1，
+# 5 次阈值在并发下形同虚设；且会话级计数换会话即清零、无法跨会话防爆破。
+# 改为 DB 原子计数后：并发下计数不丢、跨会话/跨进程有效、口径与登录限流一致。
 PASSWORD_REAUTH_MAX_FAILURES = 5
 PASSWORD_REAUTH_COOLDOWN_SECONDS = 300
+PASSWORD_REAUTH_RATE_LIMIT_ACTION = "identity.pwd_reauth"
 
 
 def _reauth_session_key(user, suffix):
-    """二次认证的会话键按用户隔离：同一浏览器换账号登录不复用他人的失败计数。"""
+    """二次认证的会话键（历史键，保留仅为兼容旧会话数据，不再作为判定依据）。"""
     return f"identity.pwd_reauth_{suffix}:{getattr(user, 'pk', 0)}"
 
 
+def _audit_reauth_failure(request, user, reason):
+    """二次认证失败落审计事件（不记录任何口令值）。
+
+    reason 只取枚举值：wrong_current_password（当前密码不符）/ rate_limited（已达阈值）。
+    """
+    from apps.core.models import AuditEvent
+
+    AuditEvent.record(
+        action="auth.password_reauth_failure",
+        entity_type="User",
+        entity_id=str(getattr(user, "pk", "")),
+        actor=user,
+        reason=reason,
+        request=request,
+    )
+
+
 def reset_current_password_failures(request, user):
-    """清零该用户在本会话中的当前密码失败计数与冷却标记（幂等）。
+    """清零该用户的当前密码失败计数（幂等）。
 
     改密成功后由视图显式调用：改密成功即视为身份重新自证，旧失败计数不得
     继续累积到下一次改密上。
     """
+    from apps.core import rate_limit
+
+    username = getattr(user, "username", "") or ""
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
     session = getattr(request, "session", None)
     if session is None:
         return
@@ -746,30 +774,37 @@ def check_current_password(request, user, current_password):
     约定：
       * 失败文案统一为「当前密码不正确」——不区分账号不存在与密码错误，
         不泄露任何额外信息（用户名/账号状态/密码策略）；
-      * 同一会话内当前密码连续失败达 PASSWORD_REAUTH_MAX_FAILURES 次后进入
+      * 当前密码连续失败达 PASSWORD_REAUTH_MAX_FAILURES 次后进入
         PASSWORD_REAUTH_COOLDOWN_SECONDS 秒冷却，冷却期内即使密码正确也拒绝校验；
-      * 校验通过即清零该用户在本会话中的失败计数（连续失败语义）。
+      * 计数是 DB 原子计数（跨会话、跨进程有效，并发不丢计数）；
+      * 校验通过即清零该用户的失败计数（连续失败语义）。
     """
-    session = getattr(request, "session", None)
-    if session is None or user is None or not getattr(user, "is_authenticated", False):
+    if user is None or not getattr(user, "is_authenticated", False):
         return "当前密码不正确"
-    fail_key = _reauth_session_key(user, "fail")
-    lock_key = _reauth_session_key(user, "lock_until")
-    now = timezone.now().timestamp()
-    lock_until = float(session.get(lock_key) or 0)
-    if lock_until > now:
-        remain = int(lock_until - now) + 1
+    from apps.core import rate_limit
+
+    username = getattr(user, "username", "") or ""
+    # ① 先 peek：已达阈值即处于冷却期（此时即使密码正确也拒绝校验）。
+    #    peek 不消耗配额——只有真正校验失败才计数（与登录限流同口径）。
+    if not rate_limit.check(
+        request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username, consume=False
+    ):
+        try:
+            remain = rate_limit.remaining_seconds(
+                request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username
+            )
+        except Exception:
+            remain = 0
+        if remain <= 0:
+            # 无计数行却判定超限 → 只可能是计数存储异常（fail-closed）
+            return "校验服务暂不可用，请稍后重试"
+        _audit_reauth_failure(request, user, "rate_limited")
         return f"当前密码连续输入错误次数过多，请在 {remain} 秒后重试"
-    if lock_until:
-        # 冷却已到期：清空计数与冷却标记，重新给足一次完整配额
-        session.pop(lock_key, None)
-        session.pop(fail_key, None)
     current_password = current_password or ""
     if not current_password or not user.check_password(current_password):
-        fails = int(session.get(fail_key) or 0) + 1
-        session[fail_key] = fails
-        if fails >= PASSWORD_REAUTH_MAX_FAILURES:
-            session[lock_key] = now + PASSWORD_REAUTH_COOLDOWN_SECONDS
+        # ② 校验失败才消耗配额（DB 原子自增，并发下不丢计数）。
+        rate_limit.check(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+        _audit_reauth_failure(request, user, "wrong_current_password")
         return "当前密码不正确"
     reset_current_password_failures(request, user)
     return None

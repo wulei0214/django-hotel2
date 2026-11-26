@@ -25,18 +25,21 @@ from django.urls import resolve
 from apps.identity.test_module_gates import _gate_evidence, _grant
 from hotelapp.models import Client, Vip
 
-# ARCH-02 §三 REDIRECT 10 条：(旧 URL, 新中心 URL, 该入口原权限码 codename)
+# ARCH-02 §三 REDIRECT 10 条：
+# (旧 URL, 新中心 URL, 该入口原权限码 codename, 目标中心额外门禁码)
+# 第 4 项是「目标中心比旧入口更严」的差额门禁：给出时旧入口必须同时要求它，
+# 以守住「旧入口放行 ⇒ 新中心放行」不变式（否则 302 会把人送进 403 死胡同）。
 REDIRECT_CASES = (
-    ("/checkin/legacy/", "/checkin/", "view_accommodation"),
-    ("/index/", "/manage/staff/", "view_staff"),
-    ("/search_staff/", "/manage/staff/", "view_staff"),
-    ("/show_client/", "/manage/guests/", "view_client"),
-    ("/search_client/", "/manage/guests/", "view_client"),
-    ("/show_vip/", "/manage/memberships/", "view_vip"),
-    ("/search_vip/", "/manage/memberships/", "view_vip"),
-    ("/search_room/", "/manage/rooms/", "view_room"),
-    ("/search_accomodation/", "/manage/reservations/", "view_accommodation"),
-    ("/show_accomodation/", "/manage/reservations/", "view_accommodation"),
+    ("/checkin/legacy/", "/checkin/", "view_accommodation", None),
+    ("/index/", "/manage/staff/", "view_staff", "identity.staff_manage"),
+    ("/search_staff/", "/manage/staff/", "view_staff", "identity.staff_manage"),
+    ("/show_client/", "/manage/guests/", "view_client", None),
+    ("/search_client/", "/manage/guests/", "view_client", None),
+    ("/show_vip/", "/manage/memberships/", "view_vip", None),
+    ("/search_vip/", "/manage/memberships/", "view_vip", None),
+    ("/search_room/", "/manage/rooms/", "view_room", None),
+    ("/search_accomodation/", "/manage/reservations/", "view_accommodation", None),
+    ("/show_accomodation/", "/manage/reservations/", "view_accommodation", None),
 )
 
 # ARCH-03 §二：DELETE（零引用）2 个 + MIGRATE（先迁内部链接、随路由重定向后删页）6 个
@@ -75,6 +78,14 @@ def _make_user(username, group_name):
     return _factory(username, group_name)
 
 
+def _grant_identity(group_name, *codenames):
+    """给岗位组授予 identity.* 权限码（_grant 只覆盖 hotelapp.*）。"""
+    group = Group.objects.get(name=group_name)
+    group.permissions.add(
+        *Permission.objects.filter(content_type__app_label="identity", codename__in=codenames)
+    )
+
+
 class RetiredRouteRedirectTests(TestCase):
     """退役路由的 302 跳转目标与门禁终态。"""
 
@@ -87,16 +98,35 @@ class RetiredRouteRedirectTests(TestCase):
             "view_room",
             "view_accommodation",
         )
+        # 「旧入口放行 ⇒ 新中心放行」不变式的前置条件：测试用户同时持有
+        # 目标中心的门禁码（/manage/staff/ 要求 identity.staff_manage）。
+        _grant_identity("前台", "staff_manage")
         self.user = _make_user("arch-retire", "前台")
         self.client.force_login(self.user)
 
     def test_every_retired_route_redirects_to_its_new_center(self):
         """10 条 REDIRECT 入口一律 302，且 Location 指向矩阵登记的新中心。"""
-        for old_url, new_url, _codename in REDIRECT_CASES:
+        for old_url, new_url, _codename, _extra in REDIRECT_CASES:
             with self.subTest(old_url=old_url):
                 response = self.client.get(old_url)
                 self.assertEqual(response.status_code, 302, f"{old_url} 必须 302")
                 self.assertEqual(response["Location"], new_url, f"{old_url} 跳转目标不符")
+
+    def test_redirect_target_is_reachable_for_permitted_user(self):
+        """跟随重定向后不得落在 403 死胡同（旧入口放行 ⇒ 新中心放行）。"""
+        for old_url, new_url, _codename, _extra in REDIRECT_CASES:
+            with self.subTest(old_url=old_url):
+                response = self.client.get(old_url, follow=True)
+                self.assertNotEqual(
+                    response.status_code,
+                    403,
+                    f"{old_url} → {new_url} 落到 403：旧入口放行但新中心无权（死胡同）",
+                )
+                self.assertLessEqual(
+                    len(response.redirect_chain),
+                    1,
+                    f"{old_url} 出现链式重定向：{response.redirect_chain}",
+                )
 
     def test_search_staff_redirect_is_explicitly_covered(self):
         """ARCH-02 §七.1：search_staff/ 此前零测试覆盖——本条补齐明确断言。
@@ -110,13 +140,13 @@ class RetiredRouteRedirectTests(TestCase):
 
     def test_redirect_targets_are_resolvable_management_centers(self):
         """跳转目标必须是仍注册在路由表上的真实中心（不得指向已下线页面）。"""
-        for _old_url, new_url, _codename in REDIRECT_CASES:
+        for _old_url, new_url, _codename, _extra in REDIRECT_CASES:
             with self.subTest(center=new_url):
                 self.assertTrue(resolve(new_url).func, f"{new_url} 必须是有效中心入口")
 
     def test_retired_routes_render_no_legacy_template(self):
         """旧路由不再渲染任何旧模板（302 响应不产出模板上下文）。"""
-        for old_url, _new_url, _codename in REDIRECT_CASES:
+        for old_url, _new_url, _codename, _extra in REDIRECT_CASES:
             with self.subTest(old_url=old_url):
                 response = self.client.get(old_url)
                 self.assertEqual(response.status_code, 302)
@@ -130,7 +160,7 @@ class RetiredRouteRedirectTests(TestCase):
             姓名="退役回归会员", 会员等级="普通会员", 联系方式="13812345678"
         )
         secrets = (guest.姓名, guest.身份证号, member.姓名, member.联系方式)
-        for old_url, _new_url, _codename in REDIRECT_CASES:
+        for old_url, _new_url, _codename, _extra in REDIRECT_CASES:
             with self.subTest(old_url=old_url):
                 body = self.client.get(old_url).content.decode("utf-8")
                 for secret in secrets:
@@ -138,7 +168,7 @@ class RetiredRouteRedirectTests(TestCase):
 
     def test_anonymous_hits_login_wall_on_every_retired_route(self):
         """匿名访问退役入口仍走登录墙（不得因改重定向而降级为公开面）。"""
-        for old_url, _new_url, _codename in REDIRECT_CASES:
+        for old_url, _new_url, _codename, _extra in REDIRECT_CASES:
             with self.subTest(old_url=old_url):
                 self.client.logout()
                 response = self.client.get(old_url)
@@ -148,7 +178,7 @@ class RetiredRouteRedirectTests(TestCase):
 
     def test_route_without_permission_still_gets_403(self):
         """无对应权限码仍 403（退役不放宽权限面）。"""
-        for old_url, _new_url, codename in REDIRECT_CASES:
+        for old_url, _new_url, codename, _extra in REDIRECT_CASES:
             with self.subTest(old_url=old_url):
                 group = Group.objects.get(name="前台")
                 group.permissions.remove(
@@ -160,6 +190,43 @@ class RetiredRouteRedirectTests(TestCase):
                 self.assertEqual(response.status_code, 403, f"{old_url} 无权限时必须 403")
 
 
+class RetiredRoutePermissionEquivalenceTests(TestCase):
+    """旧入口与新中心的权限等价性：旧入口不得把人引导进无权的新中心。
+
+    实证缺陷（2026-11-26 复核）：/index/ 与 /search_staff/ 的门禁是
+    hotelapp.view_staff，而 /manage/staff/ 要求 identity.staff_manage。
+    财务岗位持有前者却不持有后者 → 旧入口 302 放行 → 新中心 403，
+    用户被引导进死胡同，且「财务只读查看薪酬」的旧能力静默消失。
+    修复口径：旧入口额外要求目标中心门禁码，缺码时直接 403，不做误导性跳转。
+    """
+
+    def setUp(self):
+        # 只持旧码 hotelapp.view_staff 的岗位组（模拟财务：可读旧员工页，
+        # 但无 identity.staff_manage → 无权进入 /manage/staff/）
+        group = Group.objects.create(name="arch-retire-readonly")
+        group.permissions.add(
+            *Permission.objects.filter(content_type__app_label="hotelapp", codename="view_staff")
+        )
+        self.user = _make_user("arch-retire-readonly", group.name)
+        self.client.force_login(self.user)
+
+    def test_old_code_without_target_code_gets_403_not_misleading_redirect(self):
+        """持旧码但不持目标中心门禁码 → 旧入口直接 403，不得 302 到 403 死胡同。"""
+        for old_url in ("/index/", "/search_staff/"):
+            with self.subTest(old_url=old_url):
+                response = self.client.get(old_url)
+                self.assertEqual(
+                    response.status_code,
+                    403,
+                    f"{old_url} 不得 302 到无权访问的 /manage/staff/（死胡同）",
+                )
+                self.assertNotIn(
+                    "/manage/staff/",
+                    response.get("Location", ""),
+                    f"{old_url} 不得把用户引导到自己无权的新中心",
+                )
+
+
 class RetiredRouteGateEvidenceTests(TestCase):
     """退役路由仍携带门禁证据（权限码 + 员工门禁），不退化为裸 RedirectView。
 
@@ -168,7 +235,7 @@ class RetiredRouteGateEvidenceTests(TestCase):
     """
 
     def test_redirect_routes_keep_permission_and_staff_gate_evidence(self):
-        for old_url, _new_url, _codename in REDIRECT_CASES:
+        for old_url, _new_url, _codename, _extra in REDIRECT_CASES:
             with self.subTest(old_url=old_url):
                 evidence = _gate_evidence(resolve(old_url).func)
                 self.assertIn("perm", evidence, f"{old_url} 丢失权限码门禁证据")

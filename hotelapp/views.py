@@ -902,7 +902,7 @@ def force_password_change(request):
                     AuditEvent.record(
                         action="identity.password_changed", entity_type="StaffProfile",
                         entity_id=profile.pk, actor=request.user,
-                        reason="首次登录/被重置后强制改密完成")
+                        reason="首次登录/被重置后强制改密完成", request=request)
                     from django.contrib.auth import update_session_auth_hash
                     update_session_auth_hash(request, request.user)  # 保持当前会话
                     # 改密成功即身份重新自证：清零本会话的当前密码失败计数

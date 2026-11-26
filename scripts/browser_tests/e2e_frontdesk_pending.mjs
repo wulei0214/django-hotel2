@@ -144,6 +144,7 @@ try {
   // 首登强制改密（must_change_password=True 账号）：顺应自助改密流程，
   // 新密码取同一 --password 值，保证脚本对同一账号可重复执行。
   if (page.url().includes("/force-password-change/")) {
+    await page.fill('input[name="current_password"]', PASSWORD);
     await page.fill('input[name="new_password1"]', PASSWORD);
     await page.fill('input[name="new_password2"]', PASSWORD);
     await page.click('button[type="submit"]');

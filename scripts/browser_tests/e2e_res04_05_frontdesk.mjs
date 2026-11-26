@@ -50,6 +50,7 @@ async function login(browser, username) {
   await page.click('button[type="submit"]');
   await page.waitForLoadState("networkidle");
   if (page.url().includes("/force-password-change/")) {
+    await page.fill('input[name="current_password"]', PASSWORD);
     await page.fill('input[name="new_password1"]', PASSWORD);
     await page.fill('input[name="new_password2"]', PASSWORD);
     await page.click('button[type="submit"]');

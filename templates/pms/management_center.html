@@ -287,6 +287,9 @@
     const requestUrl = resolveEndpoint(endpoint, payload);
     if (/\{\w+\}/.test(requestUrl)) {
       resultBox.textContent = "缺少定位操作行所需的 ID 字段，请填写后再提交。";
+      /* 本路径不发请求，但守卫已把按钮置为 loading/disabled；
+         必须释放，否则用户补齐字段后按钮仍是禁用态，无法再次提交。 */
+      if (typeof form.__uxRelease === "function") form.__uxRelease();
       return;
     }
     resultBox.textContent = "提交中…";
@@ -307,6 +310,10 @@
       resultBox.textContent = "操作成功";
       form.reset();
       if (typeof form.__uxClearDirty === "function") form.__uxClearDirty();
+      /* 成功后同样释放提交按钮：抽屉保持打开、表单已复位，
+         若不释放则按钮永久 disabled + is-loading（文字被 CSS 隐藏、一直转圈），
+         用户无法在同一抽屉内再次提交（实证缺陷，已由真实浏览器验收捕获）。 */
+      if (typeof form.__uxRelease === "function") form.__uxRelease();
       if (typeof load === "function") load(currentPage, true);
     }).catch(function () {
       resultBox.textContent = "网络错误，请稍后重试。";

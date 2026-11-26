@@ -36,16 +36,24 @@ from apps.identity import platform as identity_platform
 from apps.identity.decorators import pms_permission_required
 
 
-def _legacy_center_redirect(target, permission_code):
+def _legacy_center_redirect(target, permission_code, target_permission_code=None):
     """ARCH-02 REDIRECT：旧只读入口退役为 302 跳转 PMS2 新管理中心。
 
     退役的是旧页渲染能力，不是访问控制：门禁口径保持不变
     （staff_required + 原权限码）——无有效任职/无权限仍 403，匿名仍走登录墙。
     永久化（301）需业务确认，本轮统一 302。
+
+    target_permission_code：目标中心的门禁权限码。给出时额外要求该权限，
+    以守住「旧入口放行 ⇒ 新中心放行」不变式：
+    否则会出现「旧入口 302 → 新中心 403」的死胡同——用户被引导到一个自己
+    根本无权进入的页面（2026-11-26 复核实证：/index/ 与 /search_staff/ 的
+    门禁是 hotelapp.view_staff，而 /manage/staff/ 要求 identity.staff_manage，
+    财务岗位持有前者却不持有后者）。此情形下在旧入口直接 403，不做误导性跳转。
     """
-    return views.staff_required(
-        pms_permission_required(permission_code)(RedirectView.as_view(url=target, permanent=False))
-    )
+    view = RedirectView.as_view(url=target, permanent=False)
+    if target_permission_code:
+        view = pms_permission_required(target_permission_code)(view)
+    return views.staff_required(pms_permission_required(permission_code)(view))
 
 
 urlpatterns = [
@@ -233,11 +241,17 @@ urlpatterns = [
     path("export/staff/request/", views.request_staff_export),
     path("export/staff/approve/<int:approval_id>/", views.approve_staff_export),
     path("export/<str:module>/", views.export_module),
-    path("index/", _legacy_center_redirect("/manage/staff/", "hotelapp.view_staff")),
+    path(
+        "index/",
+        _legacy_center_redirect("/manage/staff/", "hotelapp.view_staff", "identity.staff_manage"),
+    ),
     path("insert/", views.insert),
     path("insert_client/", views.insert_client),
     path("delete_staff/", views.delete_staff),
-    path("search_staff/", _legacy_center_redirect("/manage/staff/", "hotelapp.view_staff")),
+    path(
+        "search_staff/",
+        _legacy_center_redirect("/manage/staff/", "hotelapp.view_staff", "identity.staff_manage"),
+    ),
     # path('single/', views.single),
     path("update_staff/", views.update_staff),
     path("show_client/", _legacy_center_redirect("/manage/guests/", "hotelapp.view_client")),
