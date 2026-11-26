@@ -51,6 +51,7 @@ docs/acceptance/evidence/hotel-backup-*.sql
 .ua/
 understand-out/
 .deepseek-harness/
+.memsearch/
 
 # 工具回收站垃圾
 .trash-*/
