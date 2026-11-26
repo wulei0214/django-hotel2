@@ -43,7 +43,10 @@ if "test" not in NAME.lower():
     raise SystemExit("拒绝执行：库名必须包含 test，实际为 %s" % NAME)
 
 USERNAME = os.environ.get("UX_ACCEPT_USER", "ux_accept_user")
-PASSWORD = os.environ.get("UX_ACCEPT_PASSWORD", "UxAccept#2026Strong")
+# 口令由调用方注入：仓库内不得出现可用凭据字面量（AGENTS.md 会话纪律）
+PASSWORD = os.environ.get("UX_ACCEPT_PASSWORD", "")
+if not PASSWORD:
+    raise SystemExit("缺少 UX_ACCEPT_PASSWORD：请由调用方注入本次运行的随机口令")
 PERMS = ["hotelapp.view_room", "inventory.manage_rates"]
 
 prop = Property.objects.filter(code="DEFAULT").first()

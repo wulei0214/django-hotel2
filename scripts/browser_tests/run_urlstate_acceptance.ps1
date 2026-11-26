@@ -21,7 +21,7 @@
 param(
   [int]$Port = 8124,
   [string]$User = "ux_accept_user",
-  [string]$Password = "UxAccept#2026Strong",
+  [string]$Password = "",
   [string]$Center = "rooms"
 )
 
@@ -30,6 +30,12 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $scriptDir = $PSScriptRoot
 $dbPath = Join-Path $repoRoot ".work\ux_accept_test.sqlite3"
 $py = Join-Path $repoRoot ".venv\Scripts\python.exe"
+
+# No credential literal in the repo (AGENTS.md): generate a random password for
+# this run when the caller did not provide one.
+if (-not $Password) {
+  $Password = ([System.Guid]::NewGuid().ToString('N') + 'Aa1!')
+}
 
 # ---- 1) explicit env vars first (highest priority) ----
 $env:DJANGO_DB_ENGINE = "sqlite"
