@@ -37,13 +37,8 @@ from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.core.paginator import Paginator
 from django.shortcuts import render, redirect, get_object_or_404
 
-logger = logging.getLogger(__name__)
-
 from .models import (Staff, Room, Client, Food, Vip, Park, Order, Accommodation,
                      Folio)
-
-# M3-2（D6 读路径切换）：show_accomodation 数据源改归档查询通道（只读）。
-from apps.billing.legacy_archive_query import legacy_accommodation_queryset
 
 
 # ---------- 模块启停注册表（RBAC 决策：餐饮/停车对接第三方，本阶段隐藏入口） ----------
@@ -137,12 +132,8 @@ def staff_required(view):
 
 
 # 各模块查询表单允许使用的字段白名单，用户提交的字段名不在白名单内则忽略查询
-STAFF_SEARCH_FIELDS = ("员工id", "姓名", "职务", "月薪", "工龄")
-CLIENT_SEARCH_FIELDS = ("顾客id", "姓名", "身份证号")
 FOOD_SEARCH_FIELDS = ("菜品编号", "菜名", "价格", "厨师id")
-VIP_SEARCH_FIELDS = ("会员编号", "姓名", "会员等级")
 PARK_SEARCH_FIELDS = ("车位编号", "当前状态", "车辆牌号")
-ROOM_SEARCH_FIELDS = ("房间号", "客房类型", "价格", "负责人编号")
 
 # 字段格式白名单：编号类 1-10 位数字；姓名 2-10 位中英文；
 # 金额最多 6 位整数加 2 位小数；身份证 18 位；手机号 11 位；车牌为省份汉字开头
@@ -211,26 +202,6 @@ def _search(model, pk, fields, request):
 
 
 # ---------- 员工信息管理 ----------
-@staff_required
-@pms_permission_required('hotelapp.view_staff')
-def index(request):
-    """员工管理列表（图5）：筛选条件 + 可排序表格 + 分页（15 条/页）"""
-    order = request.GET.get("order", "asc")
-    order_field = "员工id" if order != "desc" else "-员工id"
-    status = request.GET.get("status")
-    queryset = Staff.objects.order_by(order_field)
-    if status in ("on", "off"):
-        queryset = queryset.filter(启用=(status == "on"))
-    paginator = Paginator(queryset, 15)
-    page = paginator.get_page(request.GET.get("page"))
-    return render(request, "index.html", {
-        "page_obj": page, "people_list": page.object_list, "order": order,
-        "status_filter": status or "",
-        "can_view_salary": _has_role(request.user, "财务", "店长"),
-        "can_manage_salary": _has_role(request.user, "店长"),
-    })
-
-
 @staff_required
 @pms_permission_required('hotelapp.change_staff')
 def staff_toggle(request):
@@ -346,23 +317,6 @@ def delete_staff(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.view_staff')
-def search_staff(request):
-    can_view_salary = _has_role(request.user, "财务", "店长")
-    searchable_fields = list(STAFF_SEARCH_FIELDS)
-    if not can_view_salary:
-        searchable_fields = [field for field in searchable_fields if field != "月薪"]
-    rows, searched = _search(Staff, "员工id", searchable_fields, request)
-    return render(request, "index.html", {
-        "people_list": Staff.objects.order_by("员工id"),
-        "staffs": rows,
-        "searched": searched,
-        "can_view_salary": can_view_salary,
-        "can_manage_salary": _has_role(request.user, "店长"),
-    })
-
-
-@staff_required
 @pms_permission_required('hotelapp.change_staff')
 def update_staff(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
@@ -370,15 +324,6 @@ def update_staff(request):
 
 
 # ---------- 顾客信息管理 ----------
-@staff_required
-@pms_permission_required('hotelapp.view_client')
-def show_client(request):
-    """顾客信息管理列表（图5）：分页 15 条/页"""
-    paginator = Paginator(Client.objects.order_by("顾客id"), 15)
-    page = paginator.get_page(request.GET.get("page"))
-    return render(request, "html1.html", {"people_list": page.object_list, "page_obj": page})
-
-
 @staff_required
 @pms_permission_required('hotelapp.add_client')
 def insert_client(request):
@@ -398,18 +343,6 @@ def delete_client(request):
 def update_client(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-
-
-@staff_required
-@pms_permission_required('hotelapp.view_client')
-def search_client(request):
-    """顾客信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
-    rows, searched = _search(Client, "顾客id", CLIENT_SEARCH_FIELDS, request)
-    people = rows if searched else Client.objects.order_by("顾客id")
-    return render(request, "html1.html", {
-        "people_list": people,
-        "searched": searched,
-    })
 
 
 # ---------- 餐厅信息管理 ----------
@@ -462,15 +395,6 @@ def search_food(request):
 
 # ---------- 会员信息管理 ----------
 @staff_required
-@pms_permission_required('hotelapp.view_vip')
-def show_vip(request):
-    """会员信息管理列表（图5）：分页 15 条/页"""
-    paginator = Paginator(Vip.objects.order_by("会员编号"), 15)
-    page = paginator.get_page(request.GET.get("page"))
-    return render(request, "vip.html", {"people_list": page.object_list, "page_obj": page})
-
-
-@staff_required
 @pms_permission_required('hotelapp.add_vip')
 def insert_vip(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
@@ -489,18 +413,6 @@ def delete_vip(request):
 def update_vip(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-
-
-@staff_required
-@pms_permission_required('hotelapp.view_vip')
-def search_vip(request):
-    """会员信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
-    rows, searched = _search(Vip, "会员编号", VIP_SEARCH_FIELDS, request)
-    people = rows if searched else Vip.objects.order_by("会员编号")
-    return render(request, "vip.html", {
-        "people_list": people,
-        "searched": searched,
-    })
 
 
 # ---------- 停车场信息管理 ----------
@@ -559,25 +471,6 @@ def show_room(request):
     return redirect("/manage/rooms/")
 
 
-@staff_required
-@pms_permission_required('hotelapp.view_room')
-def search_room(request):
-    """客房信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
-    rows, searched = _search(Room, "房间号", ROOM_SEARCH_FIELDS, request)
-    # M4-2 观察点（D4-5 修订②）：旧出口暂保留，登记真实访问流量以支撑退役裁定；只登记不改行为
-    logger.info(
-        "M4-2 观察点: search_room 访问 user=%s method=%s searched=%s",
-        request.user.pk,
-        request.method,
-        searched,
-    )
-    people = rows if searched else Room.objects.order_by("房间号")
-    return render(request, "room.html", {
-        "people_list": people,
-        "searched": searched,
-    })
-
-
 # ---------- 餐饮订单管理 ----------
 @staff_required
 @pms_permission_required('hotelapp.view_order')
@@ -624,65 +517,6 @@ def search_order(request):
 
 
 # ---------- 客房订单管理 ----------
-
-class _LegacyArchiveClientRef:
-    """归档行的顾客引用：模板 ``line.顾客id.顾客id`` 形状兼容（快照仅含 client_id）。"""
-
-    def __init__(self, client_id):
-        self.顾客id = client_id
-
-
-class _LegacyArchiveRoomRef:
-    """归档行的客房引用：模板 ``line.客房编号.房间号`` 形状兼容。
-
-    快照 room_id 即旧 ``room.房间号`` 主键，房号展示等价；房型名未归档，
-    模板列表页不消费该列。"""
-
-    def __init__(self, room_id):
-        self.房间号 = room_id
-
-
-def _legacy_archive_row_wrapper(row):
-    """归档 accommodation 行 → accomodation.html 现状契约的行形状。
-
-    列语义与旧直读一致：状态（已冲账行灰显徽标）、联系电话（模板 mask_tel
-    脱敏，服务端渲染输出不含完整值）、入住/退房时间、收款金额。
-    """
-    row.顾客id = _LegacyArchiveClientRef(row.client_id) if row.client_id is not None else None
-    row.客房编号 = _LegacyArchiveRoomRef(row.room_id) if row.room_id is not None else None
-    row.状态 = row.status
-    row.联系电话 = row.contact_phone
-    row.入住时间 = row.check_in_text
-    row.退房时间 = row.check_out_text
-    row.收款金额 = row.received_amount_text
-    return row
-
-
-@staff_required
-@pms_permission_required('hotelapp.view_accommodation')
-def show_accomodation(request):
-    """客房订单管理列表（图5）：分页 15 条/页。
-
-    M3-2（D6 读路径切换）：数据源=归档查询通道（legacy_accommodation_archive
-    全列快照，apps.billing.legacy_archive_query），不再直读旧 accommodation 表；
-    分页/列表行为与旧直读一致（id 升序，15 条/页）。"""
-    from apps.billing.legacy_archive_query import record_adapter_query_audit
-
-    queryset = legacy_accommodation_queryset()
-    paginator = Paginator(queryset, 15)
-    page = paginator.get_page(request.GET.get("page"))
-    people = [_legacy_archive_row_wrapper(row) for row in page.object_list]
-    record_adapter_query_audit(
-        source_table="accommodation",
-        actor=request.user,
-        request=request,
-        filters={"page": page.number, "page_size": 15},
-        returned_rows=len(people),
-        total=paginator.count,
-    )
-    return render(request, "accomodation.html", {"people_list": people, "page_obj": page})
-
-
 @staff_required
 @pms_permission_required('hotelapp.add_accommodation')
 def insert_accomodation(request):
@@ -695,29 +529,6 @@ def insert_accomodation(request):
 def delete_accomodation(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
-
-
-@staff_required
-@pms_permission_required('hotelapp.view_accommodation')
-def search_accomodation(request):
-    room_list = []
-    searched = False
-    if request.method == "POST":
-        cid = (request.POST.get("id") or "").strip()
-        if cid:
-            searched = True
-            try:
-                for item in Accommodation.objects.filter(顾客id=cid):
-                    room = item.客房编号
-                    room_list.append({
-                        "房间号": room.房间号,
-                        "客房类型": room.客房类型,
-                        "价格": room.价格,
-                        "入住时间": item.入住时间,
-                    })
-            except ValueError:
-                room_list = []
-    return render(request, "accomodation.html", {"people_list": Accommodation.objects.order_by("id"), "room_list": room_list, "searched": searched})
 
 
 # ---------- 入住管理增强：续住 / 换房 / 快捷离店 / 散客直入 / 电子账单 / No-Show ----------
@@ -1233,24 +1044,6 @@ def checkin_workspace(request):
     })
 
 # ---------- 入住管理 ----------
-@staff_required
-@pms_permission_required('hotelapp.view_accommodation')
-def checkin_manage(request):
-    """入住管理工作台：预抵名单 / 待确认排房 / 已确认待入住 / 在住 / 近期退房"""
-    import datetime as _dt
-    rooms = Room.objects.order_by("房间号")
-    pending = Accommodation.objects.filter(状态="待确认").order_by("id")
-    confirmed = Accommodation.objects.filter(状态="已确认").order_by("id")
-    living = Accommodation.objects.filter(状态="已入住").order_by("id")
-    done = Accommodation.objects.filter(状态="已退房").order_by("-id")[:10]
-    pre_arrival = confirmed.filter(入住时间__lte=(timezone.localdate() + _dt.timedelta(days=3)).strftime("%Y-%m-%d"))
-    return render(request, "checkin.html", {
-        "rooms": rooms, "pending": pending, "confirmed": confirmed, "living": living,
-        "done": done, "pre_arrival": pre_arrival,
-        "today": _today(getattr(request, "property", None)), "can_void": _has_permission(request, "hotelapp.reverse_checkout"),
-    })
-
-
 @staff_required
 def cancel_booking(request):
     """P1-04（方案 §10.4）：退役兼容入口——去掉员工门禁与重复装饰器，
