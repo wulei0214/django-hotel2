@@ -7,12 +7,15 @@
  *  B) 房态与库存中心的操作表单启用了 pms-ux 的表单守卫：
  *     未保存提醒（beforeunload）、草稿（localDraft）、失焦校验、提交防重复。
  *
- * 前置准备（隔离库，不得连开发库）：
+ * 推荐用法（一条命令跑完前置准备与验收，自动用隔离 sqlite 库、打印所连库名）：
+ *   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\browser_tests\run_urlstate_acceptance.ps1
+ *
+ * 手工前置（隔离库，不得连开发库）：
  *   $env:DJANGO_ENV="test"; $env:DJANGO_DB_ENGINE="sqlite"
  *   $env:DJANGO_DB_NAME="<仓库>\.work\ux_acceptance_test.sqlite3"
  *   python manage.py migrate
  *   python manage.py seed_hotel_data --rooms-per-type 3 --guests 5 --reservations 2
- *   （再准备一个具备 hotelapp.view_room / inventory.manage_rates 权限的账号）
+ *   python scripts/browser_tests/prepare_acceptance_account.py
  *   $env:DJANGO_ENV="dev"; python manage.py runserver 127.0.0.1:8124 --noreload
  *
  * 用法：
