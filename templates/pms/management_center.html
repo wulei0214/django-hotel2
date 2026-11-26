@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{{ title }} - PMS2</title>
     <link rel="stylesheet" href="/static/css/site.css?v=14">
+    {% include "_ux_assets.html" %}
     <style>
         .pms-center{padding:24px;max-width:1500px;margin:0 auto}
         .pms-center-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px}
@@ -509,7 +510,11 @@
       });
       const payload=await response.json();
       if(!response.ok) throw new Error(payload.error && payload.error.message || "读取失败（HTTP "+response.status+"）");
-      rows(body,columns,Array.isArray(payload.data)?payload.data:[],!!detail.endpoint);
+      const pageRows = Array.isArray(payload.data) ? payload.data : [];
+      rows(body,columns,pageRows,!!detail.endpoint);
+      /* PMSUX：缓存当前页数据供浏览器内模糊搜索建议（不改动既有渲染与契约） */
+      window.__PMSUX_ROWS__ = pageRows;
+      if (window.__PMSUX_REFRESH__) window.__PMSUX_REFRESH__();
       const pageInfo=payload.meta && payload.meta.pagination;
       if(pageInfo) {
         currentPage=pageInfo.page;
@@ -548,6 +553,42 @@
   document.getElementById("pms-goto-btn").addEventListener("click",gotoPage);
   gotoPageInput.addEventListener("keydown",function(e){if(e.key==="Enter")gotoPage();});
   search.addEventListener("keydown",function(e){if(e.key==="Enter")load(1);});
+  /* ---------- PMSUX：浏览器内模糊搜索建议（容错 / 拼音 / 高亮 / 相似度排序） ---------- */
+  (function attachFuzzySuggest(){
+    const searchFields = columns.map(function(c){return c.path;});
+    const labelPath = searchFields[0] || "id";
+    let searchIndex = null;
+    /* 刷新入口必须同步定义：load() 的响应回调可能早于 pms-ux.js 执行，此处需安全空转 */
+    window.__PMSUX_REFRESH__ = function(){
+      if (!window.PMSUX) return;
+      searchIndex = window.PMSUX.createSearch(window.__PMSUX_ROWS__ || [], searchFields);
+    };
+    function primaryOf(item){
+      const v = at(item, labelPath);
+      return v == null ? "" : String(v);
+    }
+    function attach(){
+      if (!window.PMSUX) return;
+      window.__PMSUX_REFRESH__();
+      window.PMSUX.attachSuggest(search, {
+        search: { query: function(q, n){ return searchIndex ? searchIndex.query(q, n) : []; } },
+        /* 展示命中字段的值：ranges 是相对命中字段的区间，展示别的字段会错位高亮 */
+        render: function(item, r){
+          const v = r && r.field ? at(item, r.field) : null;
+          return v == null ? primaryOf(item) : String(v);
+        },
+        onSelect: function(item){
+          /* 服务端 q 按主标识检索，用主标识回填才能命中后端 */
+          search.value = primaryOf(item);
+          load(1);
+        }
+      });
+    }
+    /* pms-ux.js 以 defer 载入，defer 脚本在解析完成后才执行：
+       本内联脚本先于它运行，必须等 DOMContentLoaded 再接线 */
+    if (window.PMSUX) attach();
+    else document.addEventListener("DOMContentLoaded", attach);
+  })();
   load(1);
 })();
 </script>

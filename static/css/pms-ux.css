@@ -1,0 +1,90 @@
+/* ============================================================
+   pms-ux.css — PMS2 通用前端体验增强样式（配套 pms-ux.js）
+   全部使用 site.css 的语义色令牌，light 主题，无独立配色。
+   ============================================================ */
+
+/* ---------- 命中高亮：加粗 + 主色底 ---------- */
+.ux-hl {
+    background: var(--color-accent-bg, #ecf5ff);
+    color: var(--color-accent-text, #1f6fd0);
+    font-weight: 700;
+    border-radius: 3px;
+    padding: 0 1px;
+}
+
+/* ---------- 搜索建议下拉 ---------- */
+.ux-suggest {
+    position: fixed;
+    z-index: 9000;
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--color-bg-surface, #fff);
+    border: 1px solid var(--color-border-default, #dcdfe6);
+    border-radius: var(--radius-md, 8px);
+    box-shadow: 0 6px 20px rgba(31, 45, 61, .14);
+}
+.ux-suggest[hidden] { display: none; }
+.ux-suggest-item {
+    padding: 8px 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-text-primary, #303133);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ux-suggest-item:hover,
+.ux-suggest-item.is-active {
+    background: var(--color-accent-bg, #ecf5ff);
+    color: var(--color-accent-text, #1f6fd0);
+}
+.ux-suggest-item.is-active { box-shadow: inset 3px 0 0 var(--color-accent-solid, #2b74c9); }
+
+/* 建议面板的定位由 pms-ux.js 按输入框实测矩形计算（position:fixed），
+   不依赖宿主的定位上下文。 */
+
+/* ---------- 表单实时校验错误（输入框下方，不弹窗） ---------- */
+.ux-field-error {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--color-danger-text, #b34a4a);
+}
+.ux-field-error[hidden] { display: none; }
+[aria-invalid="true"] {
+    border-color: var(--color-danger-solid, #f56c6c) !important;
+}
+
+/* ---------- 草稿已保存提示 ---------- */
+.ux-saved {
+    margin-left: 10px;
+    font-size: 12px;
+    color: var(--color-success-text, #3d7a1e);
+}
+.ux-saved[hidden] { display: none; }
+
+/* ---------- 按钮加载态兜底（site.css 已含 .is-loading 旋转图标时自动叠加） ---------- */
+button.is-loading { position: relative; color: transparent !important; }
+button.is-loading::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, .5);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: ux-spin .6s linear infinite;
+}
+@keyframes ux-spin { to { transform: rotate(360deg); } }
+
+/* ---------- 图片占位：加载前后不跳动 ---------- */
+img[data-ux-img-done="1"] {
+    background: var(--color-bg-subtle, #f5f7fa);
+    object-fit: cover;
+}
+
+/* ---------- 跳转增强后的链接继承原样式 ---------- */
+a[data-ux-href] { text-decoration: none; }

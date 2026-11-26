@@ -99,4 +99,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # 输出编码固定为 UTF-8：Windows 默认代码页（CP936）会把中文结论写成非 UTF-8 字节，
+    # 调用方（如 apps.core.test_arch_gate 按 UTF-8 解码的断言）将无法匹配，误判为门禁失败。
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     sys.exit(main())
