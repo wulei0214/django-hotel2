@@ -166,7 +166,7 @@ class ReverseExecutionRightTests(TestCase):
         self.fd = _make_user("fd201", "前台")
         self.fin = _make_user("fin201", "财务")
         self.room = Room.objects.create(房间号=9101, 客房类型="标准间", 价格=300,
-                                        负责人编号_id=_make_staff("保洁乙").pk,
+                                        负责人编号=_make_staff("保洁乙").pk,
                                         房间状态="已入住")
         client = Client.objects.create(姓名="顾客乙", 身份证号="110101199001010012")
         self.acc = Accommodation.objects.create(
@@ -397,12 +397,13 @@ class AdminHardeningTests(TestCase):
             FinanceRecordAdmin,
             NightAuditAdmin,
             RoomAdmin,
-            StaffAdmin,
         )
-        from hotelapp.models import Accommodation, Client, FinanceRecord, NightAudit, Room, Staff
+        from hotelapp.models import Accommodation, Client, FinanceRecord, NightAudit, Room
         request = None
+        # ARCH-04 C1：旧 staff 表已从 Admin 注销（表与历史数据保留），
+        # 其 Admin 删除/新增/修改禁用断言随该 Admin 一并退役。
         for admin_cls, model in [(AccommodationAdmin, Accommodation), (ClientAdmin, Client),
-                                 (RoomAdmin, Room), (StaffAdmin, Staff),
+                                 (RoomAdmin, Room),
                                  (FinanceRecordAdmin, FinanceRecord), (NightAuditAdmin, NightAudit)]:
             admin_obj = admin_cls(model, self.admin_site)
             self.assertFalse(
@@ -449,7 +450,7 @@ class FolioAccessGateTests(TestCase):
         self.hk = _make_user("hk601", "客房服务员")
         self.fd = _make_user("fd601", "前台")
         room = Room.objects.create(房间号=9201, 客房类型="标准间", 价格=300,
-                                   负责人编号_id=_make_staff("保洁丙").pk, 房间状态="已入住")
+                                   负责人编号=_make_staff("保洁丙").pk, 房间状态="已入住")
         from hotelapp.models import Client
         client = Client.objects.create(姓名="账单测试客", 身份证号="110101199001010013")
         self.acc = Accommodation.objects.create(
@@ -536,7 +537,7 @@ class ExpressCheckoutBalanceTests(TestCase):
         self.fd = _make_user("fd801", "前台")
         self.client.force_login(self.fd)
         room = Room.objects.create(房间号=9301, 客房类型="标准间", 价格=300,
-                                   负责人编号_id=_make_staff("保洁丁").pk, 房间状态="已入住")
+                                   负责人编号=_make_staff("保洁丁").pk, 房间状态="已入住")
         client = Client.objects.create(姓名="退房测试客", 身份证号="110101199001010014")
         self.acc = Accommodation.objects.create(
             id=7301, 顾客id=client, 客房编号=room, 状态="已入住", 入住时间="2026-11-02")
@@ -577,9 +578,9 @@ class ChangeRoomPolicyTests(TestCase):
         self.dm = _make_user("dm901", "值班经理")
         self.client.force_login(self.fd)
         old_room = Room.objects.create(房间号=9401, 客房类型="标准间", 价格=300,
-                                       负责人编号_id=_make_staff("保洁戊").pk, 房间状态="已入住")
+                                       负责人编号=_make_staff("保洁戊").pk, 房间状态="已入住")
         self.diff_room = Room.objects.create(房间号=9402, 客房类型="大床房", 价格=388,
-                                             房间状态="空闲", 负责人编号_id=_make_staff("保洁己").pk)
+                                             房间状态="空闲", 负责人编号=_make_staff("保洁己").pk)
         client = Client.objects.create(姓名="换房测试客", 身份证号="110101199001010015")
         self.acc = Accommodation.objects.create(
             id=7401, 顾客id=client, 客房编号=old_room, 状态="已入住", 入住时间="2026-11-02")

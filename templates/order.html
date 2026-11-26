@@ -69,7 +69,7 @@
     {% if line.状态 == "已冲账" %}<tr class="voided-row"><td class="id">{{line.id}}</td>{% else %}<tr><td class="id">{{line.id}}</td>{% endif %}
         <td>{{line.顾客编号.顾客id}}</td>
         <td>{{line.菜品编号.菜品编号}}</td>
-        <td>{{line.服务员编号.员工id}}</td>
+        <td>{{line.服务员编号}}</td>
         <td>{{line.桌号}}</td>
         <td>{% if line.状态 == '已冲账' %}<span class="badge void-badge">已冲账</span>{% else %}<span class="badge ok-badge">正常</span>{% endif %}</td>
         {% if perms.hotelapp.delete_order %}<td class="td-center">{% if line.状态 == '已冲账' %}<button class="btn btn-primary" disabled title="该订单已冲账，不可重复操作">已冲账</button>{% else %}<button class="btn btn-primary delete">冲账</button>{% endif %}</td>{% endif %}

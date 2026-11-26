@@ -43,7 +43,7 @@ def _make_room(number=9101):
     """造一条旧 Room 只读展示数据（负责人须为服务员职务）。"""
     waiter = Staff.objects.create(姓名=f"保洁{number}", 职务="服务员", 月薪="3000", 工龄="1")
     return Room.objects.create(
-        房间号=number, 客房类型="标准间", 价格=288, 负责人编号=waiter, 房间状态="空闲"
+        房间号=number, 客房类型="标准间", 价格=288, 负责人编号=waiter.pk, 房间状态="空闲"
     )
 
 

@@ -111,9 +111,13 @@ def _initial_password_response(password):
 
 
 def _staff_center_page(request):
-    """员工生命周期工作台：列表读 /api/v1/staff，操作面板走 actions 路由。"""
-    from hotelapp.models import Staff as LegacyStaff
+    """员工生命周期工作台：列表读 /api/v1/staff，操作面板走 actions 路由。
 
+    ARCH-04 C2：页面不再反查旧 staff 表（「未映射旧员工」下拉随旧表退役一并摘除，
+    旧表只读历史档案、在线路径零引用）。MC11-ST-07（旧员工批量迁移映射）仍为
+    PRODUCTION_PENDING，故以状态标记显式表达「历史员工档案尚未映射」，
+    不靠选项凭空消失来隐喻——映射口径仍待负责人裁定。
+    """
     property_obj = getattr(request, "property", None)
     if property_obj is None:
         return HttpResponse("当前账号没有可用物业上下文", status=503)
@@ -123,7 +127,8 @@ def _staff_center_page(request):
         {
             "property_name": property_obj.name,
             "workbench_roles": list(BUSINESS_ROLE_NAMES),
-            "unmapped_staff": LegacyStaff.objects.filter(pms_staff_profile__isnull=True),
+            # MC11-ST-07 未关闭：历史员工档案尚未映射到新员工档案（负责人裁定前保持可见状态）
+            "legacy_mapping_pending": True,
         },
     )
 
@@ -136,9 +141,9 @@ def _action_create(request):
 
     WB-100：工号不再从表单读取——一律由服务端按部门代码自动编号
     （DEC-EMP-02），前端不得决定流水号；表单只需提交 department_code。
+    ARCH-04 C2：不再按工号反查旧 staff 表建档（在线路径零旧表读）；
+    旧档案与新档案的映射待 MC11-ST-07 裁定后由专项迁移完成。
     """
-    from hotelapp.models import Staff as LegacyStaff
-
     property_obj = getattr(request, "property", None)
     if property_obj is None:
         raise ApiError("RESOURCE_NOT_FOUND", "物业上下文不可用。")
@@ -147,8 +152,6 @@ def _action_create(request):
     position_code = (request.POST.get("position_code") or "").strip() or "UNASSIGNED"
     phone = (request.POST.get("phone") or "").strip()
     username = (request.POST.get("username") or "").strip()
-    legacy_id = (request.POST.get("legacy_staff") or "").strip()
-    legacy = LegacyStaff.objects.filter(员工id=legacy_id).first() if legacy_id.isdigit() else None
 
     password, generated = _initial_password_response(request.POST.get("password") or "")
     role_names = [r for r in request.POST.getlist("roles") if r in BUSINESS_ROLE_NAMES]
@@ -161,7 +164,6 @@ def _action_create(request):
         department_code=department_code,
         position_code=position_code,
         phone=phone,
-        legacy_staff=legacy,
         account_username=username,
         account_password=password,
         role_groups=groups,
@@ -496,21 +498,15 @@ staff_action_provision = staff_required(
 )
 
 staff_action_assign_role = staff_required(
-    pms_permission_required("identity.staff_manage")(
-        api_view(idempotent(_action_assign_role))
-    )
+    pms_permission_required("identity.staff_manage")(api_view(idempotent(_action_assign_role)))
 )
 
 staff_action_end_assignment = staff_required(
-    pms_permission_required("identity.staff_manage")(
-        api_view(idempotent(_action_end_assignment))
-    )
+    pms_permission_required("identity.staff_manage")(api_view(idempotent(_action_end_assignment)))
 )
 
 staff_action_set_status = staff_required(
-    pms_permission_required("identity.staff_manage")(
-        api_view(idempotent(_action_set_status))
-    )
+    pms_permission_required("identity.staff_manage")(api_view(idempotent(_action_set_status)))
 )
 
 staff_action_rehire = staff_required(
@@ -518,9 +514,7 @@ staff_action_rehire = staff_required(
 )
 
 staff_action_update_profile = staff_required(
-    pms_permission_required("identity.staff_manage")(
-        api_view(idempotent(_action_update_profile))
-    )
+    pms_permission_required("identity.staff_manage")(api_view(idempotent(_action_update_profile)))
 )
 
 staff_action_reset_password = staff_required(

@@ -62,7 +62,7 @@ def _make_legacy_chain(seq):
     """旧表三件套造数：Staff/Room/Client/Accommodation + 旧 Folio 一条凭证。"""
     staffer = Staff.objects.create(姓名=f"契约保洁{seq}", 职务="服务员", 月薪="3000", 工龄="1")
     room = Room.objects.create(
-        房间号=9300 + seq, 客房类型="标准间", 价格=300, 负责人编号=staffer, 房间状态="空闲"
+        房间号=9300 + seq, 客房类型="标准间", 价格=300, 负责人编号=staffer.pk, 房间状态="空闲"
     )
     client = Client.objects.create(姓名=f"契约住客{seq}", 身份证号=f"11010119900101{seq:04d}")
     order = Accommodation.objects.create(

@@ -20,21 +20,19 @@ from typing import Any
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.management import CommandError, call_command
-from django.db import close_old_connections, connection
+from django.db import close_old_connections, connection, transaction
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from apps.billing.legacy_migration import build_plan
-from django.db import transaction
-
 from apps.billing.legacy_order_map import (
     LegacyOrderMapError,
     confirm_pair,
-    pair_position_key,
     current_map_for_order,
     current_rows,
     merge_order_mappings,
     orders_mapping,
+    pair_position_key,
     superseded_chain,
 )
 from apps.billing.models import Folio, LegacyMigrationBatch, LegacyOrderReservationMap
@@ -48,7 +46,7 @@ def _make_legacy_order(pk, *, room_no=9401):
 
     staff = Staff.objects.create(姓名=f"关系员工{pk}", 职务="服务员", 月薪="3000", 工龄="1")
     room = Room.objects.create(
-        房间号=room_no, 客房类型="标准间", 价格=300, 负责人编号=staff, 房间状态="空闲"
+        房间号=room_no, 客房类型="标准间", 价格=300, 负责人编号=staff.pk, 房间状态="空闲"
     )
     client = Client.objects.create(姓名=f"关系顾客{pk}", 身份证号=f"1101011990010{pk:04d}")
     return Accommodation.objects.create(
@@ -237,12 +235,11 @@ class LegacyOrderMapBaseTests(TestCase):
 
         直插必须自给 position_key（可空列 NULL 相异，不设键不会触发约束）——
         这正是服务层统一经 pair_position_key 物化的原因。"""
-        from django.db import IntegrityError, transaction
+        from django.db import IntegrityError
 
         first = self._confirm()
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                LegacyOrderReservationMap.objects.create(
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            LegacyOrderReservationMap.objects.create(
                 legacy_order=self.legacy_order,
                 reservation=self.reservation,
                 property=self.prop,
@@ -250,9 +247,7 @@ class LegacyOrderMapBaseTests(TestCase):
                 match_basis="并发第二行（无人工确认通道）",
                 confirmed_by=self.confirmer,
                 supersedes=None,
-                position_key=pair_position_key(
-                    self.legacy_order.pk, self.reservation.pk, None
-                ),
+                position_key=pair_position_key(self.legacy_order.pk, self.reservation.pk, None),
             )
         self.assertEqual(LegacyOrderReservationMap.objects.count(), 1)
         self.assertIsNotNone(first.pk)

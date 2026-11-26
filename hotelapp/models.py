@@ -100,7 +100,10 @@ class Food(models.Model):
                             help_text="全局唯一，2-20 位中英文或数字")
     价格 = models.CharField(max_length=45, verbose_name="价格（元）",
                             help_text="非负数字，最多两位小数")
-    厨师id = models.ForeignKey('Staff', models.DO_NOTHING, db_column='厨师id', verbose_name="负责厨师")
+    # ARCH-04 C6：解除对旧 staff 表的外键依赖。旧行上的工号原值保留为普通整数
+    # （非外键），旧表退役后仅作历史追溯；反向迁移可复原 FK 约束（不删表、不删历史数据）。
+    厨师id = models.IntegerField(null=True, blank=True, db_column='厨师id', verbose_name="负责厨师",
+                                help_text="旧 staff 表员工工号（历史快照，已非外键）")
 
     def clean(self):
         _validate(self.菜名, RE_NAME20, "菜名")
@@ -118,7 +121,9 @@ class Food(models.Model):
 class Order(models.Model):
     顾客编号 = models.ForeignKey(Client, models.DO_NOTHING, db_column='顾客编号', verbose_name="消费顾客")
     菜品编号 = models.ForeignKey(Food, models.DO_NOTHING, db_column='菜品编号', verbose_name="所点菜品")
-    服务员编号 = models.ForeignKey('Staff', models.DO_NOTHING, db_column='服务员编号', verbose_name="服务员工")
+    # ARCH-04 C6：同 厨师id —— 旧工号原值保留为普通整数，解除对旧 staff 表的依赖。
+    服务员编号 = models.IntegerField(null=True, blank=True, db_column='服务员编号', verbose_name="服务员工",
+                                help_text="旧 staff 表员工工号（历史快照，已非外键）")
     桌号 = models.IntegerField(verbose_name="桌号", help_text="正整数桌位号")
     id = models.IntegerField(primary_key=True)
     # 冲账后标记「已冲账」，不再物理删除；报表排除已冲账订单
@@ -255,7 +260,9 @@ class Room(models.Model):
     客房类型 = models.CharField(max_length=45, verbose_name="客房类型",
                                help_text="如 商务大床房；2-10 位中英文或数字")
     价格 = models.IntegerField(verbose_name="门市价（元）", help_text="1-5 位整数")
-    负责人编号 = models.ForeignKey('Staff', models.DO_NOTHING, db_column='负责人编号', verbose_name="保洁负责人")
+    # ARCH-04 C6：同 厨师id —— 旧工号原值保留为普通整数，解除对旧 staff 表的依赖。
+    负责人编号 = models.IntegerField(null=True, blank=True, db_column='负责人编号', verbose_name="保洁负责人",
+                                help_text="旧 staff 表员工工号（历史快照，已非外键）")
     # 房间状态：空闲 / 已预订 / 已入住 / 待清洁 / 清洁中 / 待检查 / 维修中
     # 清洁链：退房 → 待清洁 → 清洁中 → 待检查 → 空闲（检查通过才重回可售）
     房间状态 = models.CharField(max_length=10, default='空闲', blank=True, null=True, verbose_name="房间状态")
@@ -278,6 +285,13 @@ class Room(models.Model):
 
 
 class Staff(models.Model):
+    """旧员工表（ARCH-04 渐进退役）：只读历史档案，保留表与全部历史数据行。
+
+    写路径早已清零；读路径已迁往新栈（StaffProfile + PropertyStaffMembership）。
+    本表仅剩三类合法引用：①模型/迁移定义 ②一次性归档与盘点命令
+    ③测试夹具。任何在线页面与接口不得再读本表（C1）。
+    """
+
     员工id = models.AutoField(primary_key=True, verbose_name="工号")
     姓名 = models.CharField(max_length=45, verbose_name="员工姓名", help_text="2-10 位中英文")
     启用 = models.BooleanField(default=True, verbose_name="是否启用")

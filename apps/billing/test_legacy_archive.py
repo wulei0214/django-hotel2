@@ -29,6 +29,7 @@ from apps.billing.models import (
     LegacyFolioArchive,
     LegacyMigrationBatch,
     LegacyNightAuditArchive,
+    LegacyStaffArchive,
     LegacyVipArchive,
 )
 from apps.core.models import Property
@@ -40,7 +41,7 @@ def _legacy_fixtures():
 
     staff = Staff.objects.create(姓名="归档员工", 职务="服务员", 月薪="3000", 工龄="1")
     room = Room.objects.create(
-        房间号=9201, 客房类型="标准间", 价格=300, 负责人编号=staff, 房间状态="空闲"
+        房间号=9201, 客房类型="标准间", 价格=300, 负责人编号=staff.pk, 房间状态="空闲"
     )
     client = Client.objects.create(姓名="归档顾客", 身份证号="110101199001019999")
     acc = Accommodation.objects.create(
@@ -109,6 +110,8 @@ class ArchiveTableTests(TestCase):
                 "legacy_accommodation_archive",
                 "legacy_client_archive",
                 "legacy_vip_archive",
+                # ARCH-04 C8：旧 staff 表的归档落点
+                "legacy_staff_archive",
             },
         )
 
@@ -166,7 +169,7 @@ class ArchiveTableTests(TestCase):
         self.assertTrue(rows.exists())
         self.assertEqual({row.property_id for row in rows}, {None})
 
-    def test_all_six_tables_archive_and_verify(self):
+    def test_all_seven_tables_archive_and_verify(self):
         # client/vip 夹具不在 _legacy_fixtures 内（各自测试类自建）——本测试补建
         from hotelapp.models import Vip
 
@@ -179,7 +182,9 @@ class ArchiveTableTests(TestCase):
         self.assertEqual(LegacyNightAuditArchive.objects.count(), 1)
         self.assertEqual(LegacyClientArchive.objects.count(), 1)
         self.assertEqual(LegacyVipArchive.objects.count(), 1)
-        self.assertEqual(LegacyArchiveRun.objects.filter(batch_uid="ARC-ALL").count(), 6)
+        # ARCH-04 C8：旧员工表同样有归档落点
+        self.assertEqual(LegacyStaffArchive.objects.count(), 1)
+        self.assertEqual(LegacyArchiveRun.objects.filter(batch_uid="ARC-ALL").count(), 7)
 
     def test_same_batch_and_table_archived_once(self):
         spec = get_spec("Folio")

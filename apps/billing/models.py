@@ -2859,6 +2859,51 @@ class LegacyVipArchive(LegacyArchiveRecord):
         db_table = "legacy_vip_archive"
 
 
+class LegacyStaffArchive(LegacyArchiveRecord):
+    """旧 ``staff`` 快照（员工主档；ARCH-04 C8 归档落点）。
+
+    姓名按 PII 门禁（V1.1 §3.2）落密文 + 盲索引；职务/薪酬/工龄/启用为非
+    标识列，明文保留旧值——旧表全列入档，旧表退役后历史事实仍可逐行对位。
+    源主键（员工id）是新旧员工档案映射的锚点（StaffProfile.legacy_staff）。
+    """
+
+    id: models.BigIntegerField = models.BigIntegerField(
+        primary_key=True, verbose_name="源主键(员工id)"
+    )
+    name_ciphertext: models.CharField = models.CharField(
+        max_length=256,
+        null=True,
+        blank=True,
+        verbose_name="姓名密文",
+        help_text="Fernet(PII_KEY, 规范化姓名)",
+    )
+    name_hash: models.CharField = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        verbose_name="姓名盲索引",
+        help_text="HMAC-SHA256(PII_KEY, 规范化姓名)，判等核对用",
+        db_index=True,
+    )
+    job_title_text: models.CharField = models.CharField(
+        max_length=45, verbose_name="旧职务", help_text="总经理/大堂经理/厨师/服务员/保安"
+    )
+    salary_text: models.CharField = models.CharField(
+        max_length=45, verbose_name="旧月薪(字符串)", help_text="非负数字，最多两位小数"
+    )
+    service_years_text: models.CharField = models.CharField(
+        max_length=45, null=True, blank=True, verbose_name="旧工龄(字符串)"
+    )
+    enabled_text: models.CharField = models.CharField(
+        max_length=8, verbose_name="旧启用标志", help_text="启用/停用"
+    )
+
+    class Meta:
+        verbose_name = "旧员工主档归档"
+        verbose_name_plural = "旧员工主档归档"
+        db_table = "legacy_staff_archive"
+
+
 class LegacyArchiveRun(models.Model):
     """归档批次元数据（checksum-v2 第 9 条：算法版本/行数/min-max 主键/时间/执行人）。
 

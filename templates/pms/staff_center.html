@@ -26,6 +26,8 @@
       <div class="pms-tools">
         <h2 class="pms-panel-title">新增员工</h2>
         <button type="button" class="sc-toggle-btn" id="sc-create-toggle" aria-expanded="false" aria-controls="sc-create-form">展开表单</button>
+        {# ARCH-04 C2：旧员工关联入口随旧表退役摘除；MC11-ST-07 未关闭，状态显式呈现 #}
+        {% if legacy_mapping_pending %}<span class="pms-meta" id="sc-legacy-mapping-state">历史员工档案：尚未映射</span>{% endif %}
         <span class="pms-meta">建档 + DEFAULT 任职；工号由系统按部门自动编号，无需填写；登录账号可稍后为员工单独开通</span>
       </div>
       <form id="sc-create-form" class="sc-form sc-hidden" autocomplete="off">
@@ -50,11 +52,6 @@
               <input type="text" name="position_code" maxlength="32" placeholder="描述工作岗位，如 FO / HK"></label>
             <label class="sc-field">手机号（选填）
               <input type="text" name="phone" maxlength="11" placeholder="11 位手机号"></label>
-            <label class="sc-field">关联旧员工记录（选填）
-              <select name="legacy_staff">
-                <option value="">（不关联）</option>
-                {% for s in unmapped_staff %}<option value="{{ s.员工id }}">{{ s.员工id }} - {{ s.姓名 }}</option>{% endfor %}
-              </select></label>
           </div>
         </fieldset>
         {# —— B. 登录账号（§2.1-B）—— #}

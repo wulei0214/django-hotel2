@@ -47,7 +47,7 @@ def _make_legacy_fixtures():
 
     staff = Staff.objects.create(姓名="归档查询员工", 职务="服务员", 月薪="3000", 工龄="1")
     room = Room.objects.create(
-        房间号=9601, 客房类型="标准间", 价格=300, 负责人编号=staff, 房间状态="空闲"
+        房间号=9601, 客房类型="标准间", 价格=300, 负责人编号=staff.pk, 房间状态="空闲"
     )
     client = Client.objects.create(姓名="归档查询顾客", 身份证号="110101199003017777")
     order = Accommodation.objects.create(
@@ -157,7 +157,8 @@ class LegacyArchiveQueryTests(TestCase):
     # --- 批次清单 ---------------------------------------------------------
     def test_list_batches_scoped_by_property(self):
         items = list_batches(property_obj=self.prop, is_superuser=False)
-        self.assertEqual(len(items), 6)
+        # ARCH-04 C8：归档 spec 增至 7 张（含旧 staff 表）
+        self.assertEqual(len(items), 7)
         self.assertEqual({item["property_code"] for item in items}, {"DEFAULT"})
 
     def test_list_batches_excludes_other_property(self):
@@ -166,7 +167,7 @@ class LegacyArchiveQueryTests(TestCase):
 
     def test_list_batches_includes_all_for_superuser(self):
         items = list_batches(property_obj=self.other_prop, is_superuser=True)
-        self.assertEqual(len(items), 6)
+        self.assertEqual(len(items), 7)
 
     def test_unregistered_batch_only_visible_to_superuser(self):
         """找不到登记批次的归档批次 = 来源未登记，非超管不可见。"""
@@ -338,7 +339,7 @@ class LegacyArchiveApiTests(TestCase):
         response = self.client.get("/api/v1/billing/legacy-archives")
         self.assertEqual(response.status_code, 200)
         payload = response.json()["data"]
-        self.assertEqual(len(payload), 6)
+        self.assertEqual(len(payload), 7)
         self.assertTrue(all(item["property_code"] == "DEFAULT" for item in payload))
 
     def test_batches_ok_for_superuser(self):
