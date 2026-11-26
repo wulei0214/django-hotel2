@@ -206,7 +206,18 @@ class SensitiveExportBoundaryTests(TestCase):
         self.fd = _make_user("export-fd", "前台")
         # F-06 登记点：request_staff_export 用权限码 export_pii（财务/值班经理/店长持有），
         # approve_staff_export 仍硬编码 _has_role("值班经理", "店长")
-        Staff.objects.create(姓名="薪酬员工甲", 职务="服务员", 月薪="3000", 工龄="1")
+        # ARCH-04 C4：导出 CSV 的数据源已改为新栈（StaffProfile +
+        # PropertyStaffMembership），夹具随之迁到新栈——旧 staff 表不再是在线路径数据源。
+        salary_profile = StaffProfile.objects.create(
+            full_name="薪酬员工甲", employment_status="ACTIVE"
+        )
+        PropertyStaffMembership.objects.create(
+            property=Property.objects.get(code="DEFAULT"),
+            staff_profile=salary_profile,
+            employee_no="E-export-salary",
+            position_code="FO",
+            status="ACTIVE",
+        )
 
     def test_legacy_export_staff_channel_closed_for_everyone(self):
         anonymous = self.client.get("/export/staff/")
@@ -304,11 +315,11 @@ class PlannedModuleGateTests(TestCase):
         staff = Staff.objects.create(姓名="厨师甲", 职务="厨师", 月薪="5000", 工龄="3")
         client = Client.objects.create(姓名="门禁客人甲", 身份证号="110101199001019999")
         room = Room.objects.create(
-            房间号=9901, 客房类型="标准间", 价格=288, 负责人编号=staff, 房间状态="空闲"
+            房间号=9901, 客房类型="标准间", 价格=288, 负责人编号=staff.pk, 房间状态="空闲"
         )
-        food = Food.objects.create(菜品编号=901, 菜名="宫保鸡丁", 价格="38", 厨师id=staff)
+        food = Food.objects.create(菜品编号=901, 菜名="宫保鸡丁", 价格="38", 厨师id=staff.pk)
         Order.objects.create(
-            id=901, 顾客编号=client, 菜品编号=food, 服务员编号=staff, 桌号=1, 状态="正常"
+            id=901, 顾客编号=client, 菜品编号=food, 服务员编号=staff.pk, 桌号=1, 状态="正常"
         )
         Park.objects.create(车位编号=901, 当前状态="空闲", 车辆牌号="黑A99999")
         Accommodation.objects.create(id=901, 顾客id=client, 客房编号=room, 状态="待确认")
@@ -545,11 +556,11 @@ class LegacyEntryNoBypassTests(TestCase):
         staff = Staff.objects.create(姓名="终验员工", 职务="服务员", 月薪="3000", 工龄="1")
         client = Client.objects.create(姓名="终验客人", 身份证号="110101199001018888")
         room = Room.objects.create(
-            房间号=9801, 客房类型="标准间", 价格=288, 负责人编号=staff, 房间状态="空闲"
+            房间号=9801, 客房类型="标准间", 价格=288, 负责人编号=staff.pk, 房间状态="空闲"
         )
-        food = Food.objects.create(菜品编号=801, 菜名="终验菜品", 价格="30", 厨师id=staff)
+        food = Food.objects.create(菜品编号=801, 菜名="终验菜品", 价格="30", 厨师id=staff.pk)
         Order.objects.create(
-            id=801, 顾客编号=client, 菜品编号=food, 服务员编号=staff, 桌号=2, 状态="正常"
+            id=801, 顾客编号=client, 菜品编号=food, 服务员编号=staff.pk, 桌号=2, 状态="正常"
         )
         Park.objects.create(车位编号=802, 当前状态="空闲", 车辆牌号="黑A88888")
         Accommodation.objects.create(id=801, 顾客id=client, 客房编号=room, 状态="待确认")
@@ -640,17 +651,27 @@ class LegacyEntryNoBypassTests(TestCase):
     def test_m41_removed_room_write_routes_are_gone_and_never_write(self):
         """M4-1（2026-11-18）：5 条旧房态写路由已从 urlpatterns 摘除——
         员工/匿名 POST 一律 404（比 410 更强的退役终态），永不产生旧表写入。"""
-        removed = ("/change_room/", "/room_status/", "/insert_room/", "/delete_room/", "/update_room/")
+        removed = (
+            "/change_room/",
+            "/room_status/",
+            "/insert_room/",
+            "/delete_room/",
+            "/update_room/",
+        )
         before = _legacy_counts()
         for route in removed:
             self.client.force_login(self.owner)
             self.assertEqual(
-                self.client.post(route, {"id": "1", "room": "9801"}).status_code, 404,
-                f"POST {route}：路由已摘除，应 404")
+                self.client.post(route, {"id": "1", "room": "9801"}).status_code,
+                404,
+                f"POST {route}：路由已摘除，应 404",
+            )
             self.client.logout()
             self.assertEqual(
-                self.client.post(route, {"id": "1"}).status_code, 404,
-                f"匿名 POST {route}：路由已摘除，应 404")
+                self.client.post(route, {"id": "1"}).status_code,
+                404,
+                f"匿名 POST {route}：路由已摘除，应 404",
+            )
         self.assertEqual(_legacy_counts(), before, "摘除路由不得产生任何旧表写入")
 
     def test_legacy_register_booking_cancel_redirect_and_never_write(self):

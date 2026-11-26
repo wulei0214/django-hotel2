@@ -177,7 +177,7 @@ class LegacyEquivalenceBase(TestCase):
                 房间号=9401 + index,
                 客房类型="商务大床房",
                 价格=388,
-                负责人编号=staffer,
+                负责人编号=staffer.pk,
                 房间状态="空闲",
             )
             for index in range(2)

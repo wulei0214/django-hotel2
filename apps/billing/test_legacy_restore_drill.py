@@ -46,7 +46,7 @@ def _make_legacy_fixtures():
 
     staff = Staff.objects.create(姓名="演练员工", 职务="服务员", 月薪="3000", 工龄="1")
     room = Room.objects.create(
-        房间号=9701, 客房类型="标准间", 价格=300, 负责人编号=staff, 房间状态="空闲"
+        房间号=9701, 客房类型="标准间", 价格=300, 负责人编号=staff.pk, 房间状态="空闲"
     )
     client = Client.objects.create(姓名="演练顾客", 身份证号="110101199004015555")
     order = Accommodation.objects.create(
@@ -121,7 +121,8 @@ class LegacyRestoreDrillTests(TestCase):
     def test_drill_passes_for_healthy_archive(self):
         report = self._drill()
         self.assertTrue(report["ok"], report["blockers"])
-        self.assertEqual(len(report["tables"]), 6)
+        # ARCH-04 C8：归档 spec 增至 7 张（含旧 staff 表）
+        self.assertEqual(len(report["tables"]), 7)
         for table in report["tables"]:
             self.assertEqual(table["status"], "checked")
             self.assertTrue(table["digest_ok"])
@@ -253,6 +254,6 @@ class LegacyRestoreDrillTests(TestCase):
 
     def test_archive_run_metadata_present(self):
         runs = LegacyArchiveRun.objects.filter(batch_uid=self.batch_uid)
-        self.assertEqual(runs.count(), 6)
+        self.assertEqual(runs.count(), 7)
         self.assertTrue(all(run.algorithm_version == "checksum-v2" for run in runs))
         self.assertTrue(all(run.computed_at <= datetime.now(dt_timezone.utc) for run in runs))

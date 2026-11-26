@@ -55,6 +55,7 @@ class ArchiveSpec:
             "legacy_accommodation_archive": billing_models.LegacyAccommodationArchive,
             "legacy_client_archive": billing_models.LegacyClientArchive,
             "legacy_vip_archive": billing_models.LegacyVipArchive,
+            "legacy_staff_archive": billing_models.LegacyStaffArchive,
         }[self.archive_table]
 
 
@@ -105,6 +106,30 @@ def _transform_vip_row(row):
     row.pop("姓名", None)
     row.pop("联系方式", None)
     row.pop("会员等级", None)
+    return row
+
+
+def _transform_staff_row(row):
+    """staff 行 PII 转换：姓名 → 密文+盲索引（职务/薪酬/工龄/启用明文保留）。
+
+    ARCH-04 C8：旧员工表的归档落点。姓名属 PII（V1.1 §3.2 明文快照已否决），
+    其余列为非标识历史事实（薪酬/工龄的归属仍待负责人裁定 C12），
+    本归档只做旧表全列快照，不向新业务模型迁移任何字段。
+    """
+    from apps.guests.name_pii import encrypt_guest_name, guest_name_hash, normalize_guest_name
+
+    name_norm = normalize_guest_name(row.get("姓名") or "")
+    row["name_ciphertext"] = encrypt_guest_name(name_norm) if name_norm else None
+    row["name_hash"] = guest_name_hash(name_norm) if name_norm else None
+    row["job_title_text"] = row.get("职务") or ""
+    row["salary_text"] = row.get("月薪") or ""
+    row["service_years_text"] = row.get("工龄") or ""
+    row["enabled_text"] = "启用" if row.get("启用") else "停用"
+    row.pop("姓名", None)
+    row.pop("职务", None)
+    row.pop("月薪", None)
+    row.pop("工龄", None)
+    row.pop("启用", None)
     return row
 
 
@@ -198,6 +223,23 @@ ARCHIVE_SPECS: tuple[ArchiveSpec, ...] = (
         ),
         transform=_transform_vip_row,
     ),
+    # ARCH-04 C8：旧 staff 表归档 spec（员工主档；姓名 PII 密文+盲索引）。
+    # 旧表只读历史档案，本 spec 只做全列快照，不写旧表、不改旧表。
+    ArchiveSpec(
+        source_model="Staff",
+        source_table="staff",
+        archive_table="legacy_staff_archive",
+        column_map=(
+            ("id", "员工id"),
+            ("name_ciphertext", "姓名"),
+            ("name_hash", "姓名"),
+            ("job_title_text", "职务"),
+            ("salary_text", "月薪"),
+            ("service_years_text", "工龄"),
+            ("enabled_text", "启用"),
+        ),
+        transform=_transform_staff_row,
+    ),
 )
 
 _BY_MODEL = {spec.source_model: spec for spec in ARCHIVE_SPECS}
@@ -223,6 +265,7 @@ def _source_queryset(spec: ArchiveSpec) -> Any:
         "Accommodation": legacy_models.Accommodation,
         "Client": legacy_models.Client,
         "Vip": legacy_models.Vip,
+        "Staff": legacy_models.Staff,
     }[spec.source_model]
     return model.objects.all()
 

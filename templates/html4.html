@@ -74,7 +74,7 @@
         <td class="id">{{line.菜品编号}}</td>
         <td>{{line.菜名}}</td>
         <td>{{line.价格}}</td>
-        <td>{{line.厨师id.员工id}}</td>
+        <td>{{line.厨师id}}</td>
         {% if pms_perms.hotelapp.delete_food %}<td class="td-center"><button class="btn btn-primary delete">删除</button></td>{% endif %}
         {% if pms_perms.hotelapp.change_food %}<td class="td-center"><button class="btn btn-primary update">修改</button></td>{% endif %}
     </tr>

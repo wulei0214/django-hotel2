@@ -21,6 +21,7 @@ _unique_field_exists 缓存回退助手已随旧页僵尸表单一并摘除，�
 import csv
 import datetime
 import functools
+import io
 import logging
 import re
 
@@ -32,7 +33,7 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.core.paginator import Paginator
 from django.shortcuts import render, redirect, get_object_or_404
@@ -180,14 +181,6 @@ def _error_context(request, efield):
     return {"error": None, "form": form}
 
 
-def _get_staff(sid, job):
-    """按工号取出指定职务的员工，查不到或编号非法时返回 None"""
-    try:
-        return Staff.objects.get(员工id=sid, 职务=job)
-    except (Staff.DoesNotExist, ValueError, TypeError):
-        return None
-
-
 def _search(model, pk, fields, request):
     """按白名单字段执行安全查询；返回 (结果列表, 是否执行了查询)，结果按主键排序"""
     if request.method == "POST":
@@ -255,9 +248,53 @@ def request_staff_export(request):
     }, status=201 if created else 200, json_dumps_params={"ensure_ascii": False})
 
 
+def _staff_export_rows(property_obj):
+    """员工导出行（新栈唯一数据源）：字段语义与员工中心列表（/api/v1/staff）一致。
+
+    ARCH-04 C1/C4：旧 staff 表不再是在线路径的数据源——旧表只读历史档案，
+    保留表与历史数据行，但任何在线页面/接口都不得再读它。
+    旧导出的「月薪/工龄」在新员工档案无对应字段（C12 待负责人裁定），
+    故导出列不含这两列；旧值仍保留在旧表与其归档表中，可追溯。
+    """
+    from apps.api.staff_center import _staff_dto
+    from apps.identity.models import PropertyStaffMembership, StaffProfile
+
+    profiles = (
+        StaffProfile.objects.filter(property_memberships__property=property_obj)
+        .select_related("user")
+        .distinct()
+        .order_by("-created_at", "-id")
+        .prefetch_related(
+            Prefetch(
+                "property_memberships",
+                queryset=PropertyStaffMembership.objects.filter(property=property_obj),
+                to_attr="current_memberships",
+            )
+        )
+    )
+    rows = []
+    for profile in profiles:
+        dto = _staff_dto(profile, property_obj)
+        rows.append(
+            {
+                "employee_no": dto.get("employee_no") or "",
+                "full_name": dto.get("full_name") or "",
+                "position_code": dto.get("position_code") or "",
+                "employment_status": dto.get("employment_status_label") or "",
+                "membership_status": dto.get("membership_status_label") or "",
+                "username": (dto.get("account") or {}).get("username") or "",
+            }
+        )
+    return rows
+
+
 @staff_required
 def approve_staff_export(request, approval_id):
-    """另一位经理审批并下载薪酬 CSV；审批动作与下载绑定为一次 POST。"""
+    """另一位经理审批并下载员工 CSV；审批动作与下载绑定为一次 POST。
+
+    ARCH-04 C4：CSV 数据源由旧 Staff 表改为新栈（StaffProfile +
+    PropertyStaffMembership），导出内容与员工中心列表同源同语义。
+    """
     if request.method != "POST":
         return HttpResponse("请使用 POST 执行审批和下载。", status=405)
     # F-06：审批判定改走 AuthorizationService（hotelapp.export_approve，矩阵可管理）
@@ -284,14 +321,20 @@ def approve_staff_export(request, approval_id):
         return HttpResponse(str(exc), status=409)
     if approval.status != ApprovalRecord.Status.APPROVED:
         return HttpResponse("导出审批已过期或未获批准。", status=409)
-    rows = list(Staff.objects.order_by("员工id"))
+    rows = _staff_export_rows(property_obj)
+    # 先在内存里拼完整份 CSV 再一次性写出：HttpResponse.write 每次调用都会按
+    # charset（utf-8-sig）重新编码，逐行写会在每一行前重复插入 BOM。
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["员工编号", "姓名", "岗位代码", "雇佣状态", "任职状态", "登录账号"])
+    for row in rows:
+        writer.writerow([
+            row["employee_no"], row["full_name"], row["position_code"],
+            row["employment_status"], row["membership_status"], row["username"],
+        ])
     response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
     response["Content-Disposition"] = 'attachment; filename="staff.csv"'
-    writer = csv.writer(response)
-    writer.writerow(["员工编号", "姓名", "职务", "月薪", "工龄", "是否启用"])
-    for s in rows:
-        writer.writerow([s.员工id, s.姓名, s.职务, s.月薪, s.工龄,
-                         "启用" if s.启用 else "停用"])
+    response.write(buffer.getvalue())
     from apps.core.models import AuditEvent
     AuditEvent.record(
         action="privacy.export_staff", entity_type="StaffExport",

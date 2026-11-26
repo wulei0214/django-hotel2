@@ -54,6 +54,18 @@ _PHASE0_DOCS = (
     "20-findings-register_2026-11-10.md",
 )
 
+# ARCH-04 C10（2026-11-26）例外：员工模块权限码解绑旧 ContentType(hotelapp.staff)
+# 后改指新栈 identity.StaffProfile 的默认 CRUD 码。Phase 0 基线是 2026-11-10 的
+# 历史审计快照，不回填改写；这四个码的出处是 ARCH-04 方案文档
+# （docs/acceptance/ARCH-04LegacyStaff迁移方案_2026-11-26.md §5.1 M6）。
+# 例外清单必须与注册表 staff 模块声明逐点一致——不得静默扩大。
+ARCH04_NEW_STACK_CODES = {
+    "identity.view_staffprofile",
+    "identity.add_staffprofile",
+    "identity.change_staffprofile",
+    "identity.delete_staffprofile",
+}
+
 
 def _phase0_audit_text():
     """读取 Phase 0 审计文档全文（权限点清单 + 角色快照），供交叉核对。"""
@@ -129,7 +141,11 @@ class RegistryConsistencyTests(TestCase):
         self.assertEqual(missing, [], "ACTIVE 模块存在未解析权限码：" + "；".join(missing))
 
     def test_module_codes_traceable_to_phase0_audit_docs(self):
-        """注册表权限码与 Phase 0 审计文档（11/12 号报告）逐点交叉核对。"""
+        """注册表权限码与 Phase 0 审计文档（11/12 号报告）逐点交叉核对。
+
+        ARCH-04 C10 的四个新栈员工档案码不在 Phase 0（2026-11-10）基线内，
+        按登记化例外处理：例外清单必须全部属于 staff 模块的授权面。
+        """
         audit_text = _phase0_audit_text()
         untraceable = []
         for module in MODULE_REGISTRY_V2.values():
@@ -141,8 +157,14 @@ class RegistryConsistencyTests(TestCase):
             codename = item["codename"].split(".", 1)[1]
             if codename not in audit_text:
                 untraceable.append(item["codename"])
+        untraceable = [code for code in untraceable if code not in ARCH04_NEW_STACK_CODES]
         self.assertEqual(
             untraceable, [], "以下权限码在 Phase 0 审计文档中无出处：" + "；".join(untraceable)
+        )
+        staff_codes = set(iter_module_permission_codes(MODULE_REGISTRY_V2["staff"]))
+        self.assertTrue(
+            ARCH04_NEW_STACK_CODES.issubset(staff_codes),
+            "ARCH-04 例外码必须属于 staff 模块登记面：" + "；".join(sorted(ARCH04_NEW_STACK_CODES)),
         )
 
     def test_special_tuple_and_special_permissions_are_bidirectionally_consistent(self):

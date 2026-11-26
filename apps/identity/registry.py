@@ -198,17 +198,24 @@ MODULE_REGISTRY_V2 = {
         "risk_level": "high",
         "property_scoped": True,
         "actions": {
-            "view": "hotelapp.view_staff",
-            "add": "hotelapp.add_staff",
-            "change": "hotelapp.change_staff",
-            "delete": "hotelapp.delete_staff",
+            # ARCH-04 C10：权限码解绑旧 ContentType(hotelapp.staff)——改指新栈
+            # 员工档案（identity.staffprofile）的四个 CRUD 码。旧码的既有授权由
+            # identity/0015 迁移台账映射到新码（可逆）；旧码本体与旧表、历史
+            # 数据一并保留（旧 410 路由仍以其为门禁，不在本轮退役范围）。
+            "view": "identity.view_staffprofile",
+            "add": "identity.add_staffprofile",
+            "change": "identity.change_staffprofile",
+            "delete": "identity.delete_staffprofile",
             "approve": NOT_APPLICABLE,
             "special": ("identity.staff_manage", "hotelapp.export_pii", "hotelapp.export_approve"),
         },
         "extra_codes": (),
         "notes": "员工与账号工作台（8 视图 + staff API）门禁 identity.staff_manage；"
         "敏感薪酬导出审批走 hotelapp.export_approve（F-06：原 _has_role 硬编码已迁入权限码）"
-        "_has_role，待 Phase 2/3 迁移到权限码）。",
+        "_has_role，待 Phase 2/3 迁移到权限码）。"
+        "ARCH-04 C10：actions 四列改指新栈员工档案权限码（identity.*_staffprofile），"
+        "不再指向旧 hotelapp.staff ContentType；旧码既有授权由 identity/0015"
+        "迁移台账一一映射并留可逆回退路径。",
     },
     "finance": {
         "code": "finance",

@@ -7,6 +7,8 @@
 * 订单状态/冲账留痕字段只读——Admin 不能绕过业务状态机直接改状态（评审 P0-2-2）
 * 敏感字段（月薪/身份证/联系方式）在 admin 的可见性由模型权限（view_*）门控，
   字段级遮罩待 D1-D5 决策后与业务页面统一实施（P1-1）
+* ARCH-04 C1：旧员工表 staff 不再注册 Admin（只读历史档案，出口迁至员工中心）；
+  表本身与历史数据行保留，不做删表
 """
 from django.contrib import admin
 from hotelapp.models import *
@@ -83,18 +85,6 @@ class RoomAdmin(NoAdminDeleteMixin, admin.ModelAdmin):
     readonly_fields = tuple(field.name for field in Room._meta.fields)
 
 
-class StaffAdmin(NoAdminDeleteMixin, admin.ModelAdmin):
-    '''员工信息：月薪可见性受 view_staff 门控（字段遮罩待 P1-1）'''
-    list_display = ("员工id", "姓名", "职务", "salary_hidden", "工龄")
-    list_filter = ("员工id", "姓名", "职务")
-    exclude = ("月薪",)
-    list_per_page = 15
-
-    @admin.display(description="月薪")
-    def salary_hidden(self, obj):
-        return "受控字段"
-
-
 class VipAdmin(NoAdminDeleteMixin, admin.ModelAdmin):
     '''会员信息：联系方式唯一，禁止物理删除'''
     list_display = ("会员编号", "姓名", "会员等级", "masked_phone")
@@ -139,7 +129,8 @@ admin.site.register(Accommodation, AccommodationAdmin)
 admin.site.register(Client, ClientAdmin)
 admin.site.register(Room, RoomAdmin)
 admin.site.register(Vip, VipAdmin)
-admin.site.register(Staff, StaffAdmin)
+# ARCH-04 C1：旧 staff 表在 Admin 侧注销（表与历史数据行全部保留，不删表）。
+# 旧员工档案的只读出口改为员工中心 /manage/staff/（新栈），Admin 不再是读路径。
 admin.site.register(FinanceRecord, FinanceRecordAdmin)
 admin.site.register(NightAudit, NightAuditAdmin)
 admin.site.register(Folio, FolioAdmin)

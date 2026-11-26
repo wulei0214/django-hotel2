@@ -25,14 +25,16 @@ class StaffProfile(models.Model):
         verbose_name="登录账号",
         help_text="一对一关联 Django 用户；空表示尚未开通后台账号",
     )
+    # ARCH-04 C7：旧员工表渐进退役——历史映射保留，但不再阻断旧表处置。
+    # PROTECT → SET_NULL：旧行被清理时关联置空（历史关联仍在归档与迁移台账中可追溯）。
     legacy_staff = models.OneToOneField(
         "hotelapp.Staff",
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         related_name="pms_staff_profile",
         verbose_name="旧版员工记录",
-        help_text="与 hotelapp 员工表的迁移映射；未迁移的员工为空",
+        help_text="与 hotelapp 员工表的历史映射；未迁移的员工为空；旧表退役后置空不阻断处置",
     )
     full_name = models.CharField(max_length=80, verbose_name="员工姓名")
     phone = models.CharField(max_length=20, blank=True, verbose_name="手机号")
@@ -548,3 +550,42 @@ class PermissionMatrixApproval(models.Model):
 
     def __str__(self):
         return f"权限矩阵审批#{self.pk} Group#{self.group_id} " f"{self.diff_hash} {self.status}"
+
+
+class LegacyPermissionCodeGrant(models.Model):
+    """旧权限码 → 新栈权限码 的授权迁移台账（ARCH-04 C10）。
+
+    旧 ``hotelapp.view_staff/add_staff/change_staff/delete_staff`` 绑定在旧
+    ContentType（hotelapp.staff）上；新员工中心改用新栈权限码。若不把既有
+    授权同步过来，新员工中心将 403（方案 §5.1 M6 高风险点）。
+
+    本表登记**本次迁移新增的每一条授权**，反向迁移据此精确撤销——回滚
+    不靠推断，也不误删迁移前就已持有的授权。
+    """
+
+    group: models.ForeignKey = models.ForeignKey(
+        "auth.Group",
+        on_delete=models.PROTECT,
+        related_name="legacy_permission_grants",
+        verbose_name="角色组",
+    )
+    source_code: models.CharField = models.CharField(max_length=64, verbose_name="旧权限码")
+    target_code: models.CharField = models.CharField(max_length=64, verbose_name="新权限码")
+    granted_at: models.DateTimeField = models.DateTimeField(
+        auto_now_add=True, verbose_name="迁移时间"
+    )
+
+    class Meta:
+        verbose_name = "旧权限码迁移台账"
+        verbose_name_plural = "旧权限码迁移台账"
+        ordering = ("id",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=("group", "source_code", "target_code"),
+                name="uq_legacy_permission_code_grant",
+            ),
+        ]
+
+    def __str__(self):
+        group_name = self.group.name  # type: ignore[attr-defined]
+        return f"{group_name}: {self.source_code} → {self.target_code}"

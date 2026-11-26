@@ -347,7 +347,7 @@ class PartialContractVerificationBase(TestCase):
             房间号=920000 + seq,
             客房类型="标准间",
             价格=300,
-            负责人编号=housekeeper,
+            负责人编号=housekeeper.pk,
             房间状态="空闲",
         )
         client = LegacyClient.objects.create(

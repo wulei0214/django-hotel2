@@ -48,7 +48,7 @@ def _legacy_rows():
 
     staff = Staff.objects.create(姓名="迁移员工", 职务="服务员", 月薪="3000", 工龄="1")
     room = Room.objects.create(
-        房间号=9301, 客房类型="标准间", 价格=300, 负责人编号=staff, 房间状态="空闲"
+        房间号=9301, 客房类型="标准间", 价格=300, 负责人编号=staff.pk, 房间状态="空闲"
     )
     client = Client.objects.create(姓名="迁移顾客", 身份证号="110101199001018888")
     acc = Accommodation.objects.create(
