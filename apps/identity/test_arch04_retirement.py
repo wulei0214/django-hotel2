@@ -22,7 +22,7 @@ import pathlib
 import tempfile
 from typing import cast
 
-from django.contrib.auth.models import Group, User
+from django.contrib.auth.models import Group, Permission, User
 from django.core.management import call_command
 from django.db import connection, models
 from django.test import TestCase, TransactionTestCase
@@ -59,14 +59,10 @@ ALLOWED_LEGACY_STAFF_REFERENCES = {
     ("hotelapp/management/commands/seed_hotel_data.py", "handle"): (
         "②一次性盘点/种子命令的只读映射（不写旧表）"
     ),
-    ("hotelapp/views.py", None): (
-        "③并行开发线在办：模块级 import 仅供 index/search_staff 两处旧只读页"
-    ),
-    ("hotelapp/views.py", "index"): ("③并行开发线在办：路由级重定向并删除该视图（本线不触碰）"),
-    ("hotelapp/views.py", "search_staff"): (
-        "③并行开发线在办：路由级重定向并删除该视图（本线不触碰）"
-    ),
 }
+# 旧表在在线业务路径上已零引用：ARCH-02/03 把 /index/ 与 /search_staff/ 退役为
+# 路由级重定向并删除对应视图后，hotelapp/views.py 的模块级 import 一并摘除，
+# 例外清单收敛到「一次性归档/盘点命令」四类。
 
 # 旧表在模型/迁移层的声明级引用（不产生 ORM 读，不在源码扫描命中范围）
 DECLARATION_ONLY_REFERENCES = (
@@ -172,18 +168,11 @@ class LegacyStaffSourceScanTests(TestCase):
 
     def test_exception_list_only_covers_offline_paths(self):
         """例外清单本身受约束：不得把在线业务路径登记成例外。"""
-        for rel, func in ALLOWED_LEGACY_STAFF_REFERENCES:
+        for rel, _func in ALLOWED_LEGACY_STAFF_REFERENCES:
             self.assertTrue(
-                rel.endswith(("legacy_archive.py", "audit_employee_data.py", "seed_hotel_data.py"))
-                or rel == "hotelapp/views.py",
+                rel.endswith(("legacy_archive.py", "audit_employee_data.py", "seed_hotel_data.py")),
                 f"例外清单出现未登记文件：{rel}",
             )
-            if rel == "hotelapp/views.py":
-                self.assertIn(
-                    func,
-                    (None, "index", "search_staff"),
-                    "旧表例外只允许并行开发线在办的两处旧只读页",
-                )
 
     def test_dead_code_and_admin_paths_are_cleaned(self):
         """C1/C16：死代码 _get_staff 已摘除、旧 staff 表不再注册 Admin。"""
@@ -564,13 +553,13 @@ class MigrationRoundTripTests(TransactionTestCase):
         profile = StaffProfile.objects.create(
             full_name="迁移往返档案", legacy_staff=legacy, employment_status="ACTIVE"
         )
-        owner_group = Group.objects.get(name="店长")
-        self.assertTrue(
-            owner_group.permissions.filter(
-                content_type__app_label="identity", codename="view_staffprofile"
-            ).exists(),
-            "正向迁移后新栈权限码必须已授予既有持有组",
-        )
+        # 自建持有旧权限码的角色组：数据迁移种出的角色组会被 TransactionTestCase 的
+        # flush 清空（flush 只重建 ContentType/Permission，不重建 Group），
+        # 断言不得依赖迁移种子数据——否则用例结果取决于同批次其它 TransactionTestCase
+        # 的执行顺序与引擎跳过项（MySQL 跳过项少→flush 更多→种子组先消失）。
+        group = Group.objects.create(name="ARCH04-ROUNDTRIP")
+        old_view = Permission.objects.get(content_type__app_label="hotelapp", codename="view_staff")
+        group.permissions.add(old_view)
 
         # --- 反向：identity → 0013（撤销 0014/0015），hotelapp → 0021（复原 FK）---
         call_command("migrate", "identity", "0013_ns_e05_permission_grants", verbosity=0)
@@ -584,12 +573,10 @@ class MigrationRoundTripTests(TransactionTestCase):
             legacy.pk,
             "反向迁移不得丢失历史映射",
         )
-        owner_group.refresh_from_db()
-        self.assertFalse(
-            owner_group.permissions.filter(
-                content_type__app_label="identity", codename="view_staffprofile"
-            ).exists(),
-            "反向迁移必须精确撤销本迁移新增的授权",
+        group.refresh_from_db()
+        self.assertTrue(
+            group.permissions.filter(pk=old_view.pk).exists(),
+            "反向迁移不得误删迁移前就持有的旧权限码",
         )
         with connection.cursor() as cursor:
             fk_targets = _foreign_key_targets(cursor, "room")
@@ -609,13 +596,62 @@ class MigrationRoundTripTests(TransactionTestCase):
             profile.legacy_staff_id,  # type: ignore[attr-defined]
             legacy.pk,
         )
-        owner_group.refresh_from_db()
+        group.refresh_from_db()
         self.assertTrue(
-            owner_group.permissions.filter(
+            group.permissions.filter(
                 content_type__app_label="identity", codename="view_staffprofile"
             ).exists(),
-            "正向迁移必须重新授予新栈权限码",
+            "正向迁移必须给持有旧码的角色组补上新栈权限码",
+        )
+        self.assertFalse(
+            group.permissions.filter(
+                content_type__app_label="identity",
+                codename__in=[
+                    "add_staffprofile",
+                    "change_staffprofile",
+                    "delete_staffprofile",
+                ],
+            ).exists(),
+            "只读旧码不得被迁移放大成写权限",
+        )
+        self.assertTrue(
+            LegacyPermissionCodeGrant.objects.filter(
+                group=group,
+                source_code="hotelapp.view_staff",
+                target_code="identity.view_staffprofile",
+            ).exists(),
+            "权限迁移必须留台账（回退路径可核对）",
         )
         with connection.cursor() as cursor:
             fk_targets = _foreign_key_targets(cursor, "room")
             self.assertNotIn("staff", fk_targets, "正向迁移后不得存在指向旧 staff 表的 FK 约束")
+
+        # --- 再次反向：必须精确撤销本迁移新增的授权，且不误删旧码 ---
+        call_command("migrate", "identity", "0013_ns_e05_permission_grants", verbosity=0)
+        group.refresh_from_db()
+        self.assertFalse(
+            group.permissions.filter(
+                content_type__app_label="identity", codename="view_staffprofile"
+            ).exists(),
+            "反向迁移必须精确撤销本迁移新增的授权",
+        )
+        self.assertTrue(
+            group.permissions.filter(pk=old_view.pk).exists(),
+            "反向迁移不得误删迁移前就持有的旧权限码",
+        )
+        with connection.cursor() as cursor:
+            tables = set(connection.introspection.table_names(cursor))
+        self.assertNotIn(
+            LegacyPermissionCodeGrant._meta.db_table,
+            tables,
+            "反向迁移必须把台账表一并撤下（表随模型删除，无残留）",
+        )
+        # --- 末态：重新正向，状态与首次正向一致 ---
+        call_command("migrate", "identity", verbosity=0)
+        group.refresh_from_db()
+        self.assertTrue(
+            group.permissions.filter(
+                content_type__app_label="identity", codename="view_staffprofile"
+            ).exists(),
+            "再次正向迁移后必须重新授予新栈权限码",
+        )

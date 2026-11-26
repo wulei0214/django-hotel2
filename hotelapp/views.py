@@ -38,7 +38,7 @@ from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.core.paginator import Paginator
 from django.shortcuts import render, redirect, get_object_or_404
 
-from .models import (Staff, Room, Client, Food, Vip, Park, Order, Accommodation,
+from .models import (Room, Client, Food, Vip, Park, Order, Accommodation,
                      Folio)
 
 

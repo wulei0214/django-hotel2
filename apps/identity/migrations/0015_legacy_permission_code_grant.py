@@ -120,14 +120,18 @@ class Migration(migrations.Migration):
                 "verbose_name": "旧权限码迁移台账",
                 "verbose_name_plural": "旧权限码迁移台账",
                 "ordering": ("id",),
+                # 唯一约束随建表内联创建（不单独 AddConstraint）：
+                # MySQL 会把 (group_id, ...) 开头的唯一索引选作 group_id 外键的支撑索引，
+                # 单独 AddConstraint 的反向迁移要先 DROP INDEX，此时外键仍在 →
+                # 报 1553「index needed in a foreign key constraint」。内联建表时
+                # 外键先于唯一约束声明，索引归属不冲突，反向迁移直接 DROP TABLE。
+                "constraints": [
+                    models.UniqueConstraint(
+                        fields=("group", "source_code", "target_code"),
+                        name="uq_legacy_permission_code_grant",
+                    ),
+                ],
             },
-        ),
-        migrations.AddConstraint(
-            model_name="legacypermissioncodegrant",
-            constraint=models.UniqueConstraint(
-                fields=("group", "source_code", "target_code"),
-                name="uq_legacy_permission_code_grant",
-            ),
         ),
         migrations.RunPython(rebind_staff_permissions, restore_legacy_staff_permissions),
     ]
