@@ -1005,8 +1005,16 @@ def staff_accounts_detail(request, pk):
 
 @staff_required
 def force_password_change(request):
-    """D-07：首次登录/密码被重置后强制修改密码；完成后清除标记。"""
+    """D-07：首次登录/密码被重置后强制修改密码；完成后清除标记。
+
+    R5（ARCH-05 AI 复核「改密缺二次认证」）：写入新密码前必须先校验当前密码，
+    失败统一提示「当前密码不正确」；同一会话内连续失败达阈值进入冷却。
+    """
     from apps.identity.models import StaffProfile
+    from apps.identity.services import (
+        check_current_password,
+        reset_current_password_failures,
+    )
     profile = StaffProfile.objects.filter(user=request.user).first()
     if profile is None or not profile.must_change_password:
         return redirect("/home/")
@@ -1014,33 +1022,39 @@ def force_password_change(request):
     if request.method == "POST":
         new1 = request.POST.get("new_password1") or ""
         new2 = request.POST.get("new_password2") or ""
-        if len(new1) < 6:
-            error = "密码至少 6 位"
-        elif new1 != new2:
-            error = "两次输入的密码不一致"
-        else:
-            try:
-                from django.contrib.auth.password_validation import validate_password
-                from django.core.exceptions import ValidationError as _PwdError
-                validate_password(new1, user=request.user)
-            except _PwdError as exc:
-                error = "；".join(exc.messages)
-            if not error:
-                request.user.set_password(new1)  # session_auth_hash 变更 → 其他会话失效
-                request.user.save(update_fields=("password",))
-                profile.must_change_password = False
-                profile.last_password_change = timezone.now()
-                profile.save(update_fields=("must_change_password",
-                                            "last_password_change", "updated_at"))
-                from apps.core.models import AuditEvent
-                AuditEvent.record(
-                    action="identity.password_changed", entity_type="StaffProfile",
-                    entity_id=profile.pk, actor=request.user,
-                    reason="首次登录/被重置后强制改密完成")
-                from django.contrib.auth import update_session_auth_hash
-                update_session_auth_hash(request, request.user)  # 保持当前会话
-                messages.success(request, "密码修改成功，欢迎使用酒店管理系统")
-                return redirect("/home/")
+        # R5：二次认证闸门——当前密码未通过校验则一律不改密
+        error = check_current_password(
+            request, request.user, request.POST.get("current_password") or "")
+        if not error:
+            if len(new1) < 6:
+                error = "密码至少 6 位"
+            elif new1 != new2:
+                error = "两次输入的密码不一致"
+            else:
+                try:
+                    from django.contrib.auth.password_validation import validate_password
+                    from django.core.exceptions import ValidationError as _PwdError
+                    validate_password(new1, user=request.user)
+                except _PwdError as exc:
+                    error = "；".join(exc.messages)
+                if not error:
+                    request.user.set_password(new1)  # session_auth_hash 变更 → 其他会话失效
+                    request.user.save(update_fields=("password",))
+                    profile.must_change_password = False
+                    profile.last_password_change = timezone.now()
+                    profile.save(update_fields=("must_change_password",
+                                                "last_password_change", "updated_at"))
+                    from apps.core.models import AuditEvent
+                    AuditEvent.record(
+                        action="identity.password_changed", entity_type="StaffProfile",
+                        entity_id=profile.pk, actor=request.user,
+                        reason="首次登录/被重置后强制改密完成")
+                    from django.contrib.auth import update_session_auth_hash
+                    update_session_auth_hash(request, request.user)  # 保持当前会话
+                    # 改密成功即身份重新自证：清零本会话的当前密码失败计数
+                    reset_current_password_failures(request, request.user)
+                    messages.success(request, "密码修改成功，欢迎使用酒店管理系统")
+                    return redirect("/home/")
     return render(request, "force_password_change.html", {"error": error})
 
 
@@ -1324,6 +1338,10 @@ def system_info(request):
     """PMS 员工个人页（§6.1）：仅本人信息（姓名/账号/角色/任职/本人最后登录）
     + 修改自己密码。平台环境信息已拆至 /platform/system/（平台会话域），
     本页不得渲染任何平台级配置或其他员工的 PII。"""
+    from apps.identity.services import (
+        check_current_password,
+        reset_current_password_failures,
+    )
     user = request.user
     role = _role_name(user)
 
@@ -1332,17 +1350,21 @@ def system_info(request):
         # 自助改密：与 /force-password-change/ 同一套校验规则（D-07 逻辑复用）
         new1 = request.POST.get("new_password1") or ""
         new2 = request.POST.get("new_password2") or ""
-        if len(new1) < 6:
-            error = "密码至少 6 位"
-        elif new1 != new2:
-            error = "两次输入的密码不一致"
-        else:
-            try:
-                from django.contrib.auth.password_validation import validate_password
-                from django.core.exceptions import ValidationError as _PwdError
-                validate_password(new1, user=request.user)
-            except _PwdError as exc:
-                error = "；".join(exc.messages)
+        # R5：二次认证闸门——当前密码未通过校验则一律不改密
+        error = check_current_password(
+            request, user, request.POST.get("current_password") or "")
+        if not error:
+            if len(new1) < 6:
+                error = "密码至少 6 位"
+            elif new1 != new2:
+                error = "两次输入的密码不一致"
+            else:
+                try:
+                    from django.contrib.auth.password_validation import validate_password
+                    from django.core.exceptions import ValidationError as _PwdError
+                    validate_password(new1, user=request.user)
+                except _PwdError as exc:
+                    error = "；".join(exc.messages)
         if not error:
             from django.contrib.auth import update_session_auth_hash
             from apps.identity.models import StaffProfile as _StaffProfile
@@ -1350,7 +1372,7 @@ def system_info(request):
             user.save(update_fields=("password",))
             update_session_auth_hash(request, user)  # 当前会话保持登录
             profile = _StaffProfile.objects.filter(user=user).first()
-            if profile is not None and profile.must_change_password:
+            if profile is not None:
                 profile.must_change_password = False
                 profile.last_password_change = timezone.now()
                 profile.save(update_fields=("must_change_password",
@@ -1360,6 +1382,8 @@ def system_info(request):
                 action="identity.password_changed", entity_type="StaffProfile",
                 entity_id=str(profile.pk if profile else user.pk),
                 actor=user, reason="self_change_via_pms_me", request=request)
+            # 改密成功即身份重新自证：清零本会话的当前密码失败计数
+            reset_current_password_failures(request, user)
             messages.success(request, "密码已修改")
             return redirect("/system/")
 

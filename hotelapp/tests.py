@@ -37,6 +37,8 @@ _TEST_PW_491BAD38 = get_random_string(24)
 _TEST_PW_03F943F8 = get_random_string(24)
 _TEST_PW_BE89F138 = get_random_string(24)
 _TEST_PW_70A5813B = get_random_string(24)
+# R5 改密二次认证：强制改密用例的「当前密码」专用常量
+_TEST_PW_3C7A19F2 = get_random_string(24)
 
 
 
@@ -839,6 +841,9 @@ class ForcedPasswordChangeTests(TestCase):
         profile = StaffProfile.objects.get(user=self.owner)
         profile.must_change_password = True
         profile.save(update_fields=("must_change_password",))
+        # R5：改密必须先通过「当前密码」二次认证——账号密码改为测试专用随机常量
+        self.owner.set_password(_TEST_PW_3C7A19F2)
+        self.owner.save(update_fields=("password",))
         self.client.force_login(self.owner)
         # 访问业务页被重定向到改密页
         response = self.client.get("/show_client/")
@@ -846,6 +851,7 @@ class ForcedPasswordChangeTests(TestCase):
         self.assertIn("/force-password-change/", response["Location"])
         # 改密完成 → 清除标记 + 审计事件 + 回业务页
         response = self.client.post("/force-password-change/", {
+            "current_password": _TEST_PW_3C7A19F2,
             "new_password1": "brand-new-pass", "new_password2": "brand-new-pass"})
         self.assertEqual(response.status_code, 302)
         profile.refresh_from_db()

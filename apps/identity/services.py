@@ -704,3 +704,72 @@ def Q_ends_null_or_future():
 
     now = timezone.now()
     return Q(ends_at__isnull=True) | Q(ends_at__gt=now)
+
+
+# ---------- R5：自助改密二次认证（当前密码校验 + 防爆破冷却） ----------
+# 背景：ARCH-05《辅助功能安全检查报告》AI 复核保留意见——自助改密缺二次认证。
+# 两条改密入口（/force-password-change/ 与 /system/）在写入新密码之前，
+# 必须先校验「当前密码」，避免仅凭一个已登录会话就能改掉账号凭据。
+#
+# 阈值与冷却时长的取值理由：
+#   * 阈值 5 次：与仓库既有登录限流同口径（apps/core/rate_limit.py 的
+#     DEFAULT_LIMITS["auth.login"] = IP+username 5 次 / 300 秒）。改密页不得成为
+#     比登录页更廉价的口令猜测通道；5 次既能容忍员工连续手误，也把在线可猜次数
+#     截断在可接受范围内。
+#   * 冷却 300 秒：与登录限流窗口一致。冷却期内完全拒绝校验（即使密码正确），
+#     猜测速率被压到 ≤1 次/300 秒；剩余秒数随提示返回，便于员工自行安排重试。
+PASSWORD_REAUTH_MAX_FAILURES = 5
+PASSWORD_REAUTH_COOLDOWN_SECONDS = 300
+
+
+def _reauth_session_key(user, suffix):
+    """二次认证的会话键按用户隔离：同一浏览器换账号登录不复用他人的失败计数。"""
+    return f"identity.pwd_reauth_{suffix}:{getattr(user, 'pk', 0)}"
+
+
+def reset_current_password_failures(request, user):
+    """清零该用户在本会话中的当前密码失败计数与冷却标记（幂等）。
+
+    改密成功后由视图显式调用：改密成功即视为身份重新自证，旧失败计数不得
+    继续累积到下一次改密上。
+    """
+    session = getattr(request, "session", None)
+    if session is None:
+        return
+    session.pop(_reauth_session_key(user, "fail"), None)
+    session.pop(_reauth_session_key(user, "lock_until"), None)
+
+
+def check_current_password(request, user, current_password):
+    """改密二次认证：校验「当前密码」；通过返回 None，失败返回面向用户的提示文案。
+
+    约定：
+      * 失败文案统一为「当前密码不正确」——不区分账号不存在与密码错误，
+        不泄露任何额外信息（用户名/账号状态/密码策略）；
+      * 同一会话内当前密码连续失败达 PASSWORD_REAUTH_MAX_FAILURES 次后进入
+        PASSWORD_REAUTH_COOLDOWN_SECONDS 秒冷却，冷却期内即使密码正确也拒绝校验；
+      * 校验通过即清零该用户在本会话中的失败计数（连续失败语义）。
+    """
+    session = getattr(request, "session", None)
+    if session is None or user is None or not getattr(user, "is_authenticated", False):
+        return "当前密码不正确"
+    fail_key = _reauth_session_key(user, "fail")
+    lock_key = _reauth_session_key(user, "lock_until")
+    now = timezone.now().timestamp()
+    lock_until = float(session.get(lock_key) or 0)
+    if lock_until > now:
+        remain = int(lock_until - now) + 1
+        return f"当前密码连续输入错误次数过多，请在 {remain} 秒后重试"
+    if lock_until:
+        # 冷却已到期：清空计数与冷却标记，重新给足一次完整配额
+        session.pop(lock_key, None)
+        session.pop(fail_key, None)
+    current_password = current_password or ""
+    if not current_password or not user.check_password(current_password):
+        fails = int(session.get(fail_key) or 0) + 1
+        session[fail_key] = fails
+        if fails >= PASSWORD_REAUTH_MAX_FAILURES:
+            session[lock_key] = now + PASSWORD_REAUTH_COOLDOWN_SECONDS
+        return "当前密码不正确"
+    reset_current_password_failures(request, user)
+    return None
