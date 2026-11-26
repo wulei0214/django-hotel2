@@ -34,6 +34,13 @@
         .pms-row-btn{padding:6px 12px;border:1px solid var(--color-accent-solid,#2b74c9);background:transparent;color:var(--color-accent-solid,#2b74c9);border-radius:var(--radius-md,6px);cursor:pointer;font-size:12px}
         .pms-row-btn:hover{background:var(--color-accent-bg,#ecf5ff)}
         .pms-row-btn:focus-visible{outline:2px solid var(--color-accent-solid,#2b74c9);outline-offset:2px}
+        /* ---------- 可排序表头 ---------- */
+        .pms-sort{display:inline-flex;align-items:center;gap:4px;padding:0;border:0;background:none;font:inherit;font-weight:600;color:inherit;cursor:pointer}
+        .pms-sort::after{content:"↕";font-size:10px;opacity:.3}
+        .pms-sort:hover{color:var(--color-accent-solid,#2b74c9)}
+        .pms-sort:focus-visible{outline:2px solid var(--color-accent-solid,#2b74c9);outline-offset:2px}
+        .pms-sort[data-ux-sort-state="asc"]::after{content:"▲";opacity:1}
+        .pms-sort[data-ux-sort-state="desc"]::after{content:"▼";opacity:1}
         /* ---------- 详情抽屉（§七：列表行 → 详情 API → 右侧抽屉，不造 HTML 详情路由） ---------- */
         .pms-drawer-mask{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:60;opacity:0;pointer-events:none;transition:opacity .2s}
         .pms-drawer-mask.is-open{opacity:1;pointer-events:auto}
@@ -80,12 +87,15 @@
       </div>
       <a href="/checkin/">返回前台接待</a>
     </div>
-    <section class="pms-panel">
+    <section class="pms-panel" data-ux-urlstate>
       <div class="pms-tools">
-        <input id="pms-search" type="search" placeholder="输入关键字搜索">
+        <input id="pms-search" type="search" placeholder="输入关键字搜索" data-ux-param="q">
         <button id="pms-reload" type="button">查询</button>
         <span class="pms-meta" id="pms-meta">正在读取 PMS2 数据…</span>
       </div>
+      <!-- 排序状态没有直接可见的输入框，用隐藏参数承载，供 pms-ux 的 URL 状态同步读写 -->
+      <input type="hidden" id="pms-ux-order-by" data-ux-param="order_by" value="">
+      <input type="hidden" id="pms-ux-direction" data-ux-param="direction" value="">
       <div class="pms-table-wrap">
         <table class="pms-table">
           <thead><tr id="pms-head"></tr></thead>
@@ -96,7 +106,7 @@
         <span id="pms-state-note">数据来自 PMS2 API；列表点击「查看」打开详情抽屉。</span>
         <span class="pms-pager-controls">
           <label for="pms-page-size">每页</label>
-          <select id="pms-page-size" aria-label="每页显示条数">
+          <select id="pms-page-size" aria-label="每页显示条数" data-ux-param="page_size">
             <option value="20" selected>20 条</option>
             <option value="50">50 条</option>
             <option value="100">100 条</option>
@@ -105,7 +115,7 @@
           <span id="pms-page" class="pms-pager-label"></span>
           <label for="pms-goto-page">跳至</label>
           <input id="pms-goto-page" type="number" min="1" step="1" value="1"
-                 aria-label="跳转到页码">
+                 aria-label="跳转到页码" data-ux-param="page">
           <button id="pms-goto-btn" type="button">跳转</button>
           <button id="pms-next" type="button" disabled>下一页</button>
         </span>
@@ -155,6 +165,8 @@
   const nextButton = document.getElementById("pms-next");
   const pageSizeSelect = document.getElementById("pms-page-size");
   const gotoPageInput = document.getElementById("pms-goto-page");
+  const orderByInput = document.getElementById("pms-ux-order-by");
+  const directionInput = document.getElementById("pms-ux-direction");
   const drawer = document.getElementById("pms-drawer");
   const drawerMask = document.getElementById("pms-drawer-mask");
   const drawerTitle = document.getElementById("pms-drawer-title");
@@ -162,6 +174,12 @@
   let currentPage = 1;
   let currentPageSize = 20;
   let totalPages = 1;
+  /* ---------- URL 状态（筛选 / 排序 / 分页） ----------
+     pms-ux 的 data-ux-urlstate 负责受控控件与 URL 互写；页面侧只负责三件事：
+     ①把 URL 读回页面状态；②把页面状态写回受控控件（排序没有可见输入框，用隐藏参数承载）；
+     ③把排序状态转成服务端排序参数随列表请求下发。 */
+  const SORT_KEYS = new Set(columns.filter(function (c) { return !!c.sort; }).map(function (c) { return c.sort; }));
+  const uxState = { page: 1, pageSize: 20, q: "", orderBy: "", direction: "" };
   function at(item, path) {
     return path.split(".").reduce(function(v,k){return v == null ? null : v[k];},item);
   }
@@ -171,6 +189,71 @@
     if (typeof v === "boolean") return v ? "是" : "否";
     if (typeof v === "object") return JSON.stringify(v);
     return String(v);
+  }
+  /* ---------- URL 状态读写 ---------- */
+  function readUrlState() {
+    const params = new URLSearchParams(window.location.search);
+    const rawPage = Number.parseInt(params.get("page") || "1", 10);
+    uxState.page = Number.isInteger(rawPage) && rawPage >= 1 ? rawPage : 1;
+    const rawSize = Number.parseInt(params.get("page_size") || "", 10);
+    uxState.pageSize = [20, 50, 100].indexOf(rawSize) !== -1 ? rawSize : 20;
+    uxState.q = params.get("q") || "";
+    const orderBy = params.get("order_by") || "";
+    uxState.orderBy = SORT_KEYS.has(orderBy) ? orderBy : "";
+    const direction = params.get("direction") || "";
+    uxState.direction = uxState.orderBy && (direction === "asc" || direction === "desc") ? direction : "";
+    /* 页面自身的列表状态也以 URL 为准（否则请求会用旧页长/旧页码） */
+    currentPage = uxState.page;
+    currentPageSize = uxState.pageSize;
+  }
+  function applyStateToControls() {
+    search.value = uxState.q;
+    pageSizeSelect.value = String(uxState.pageSize);
+    gotoPageInput.value = String(uxState.page);
+    orderByInput.value = uxState.orderBy;
+    directionInput.value = uxState.direction;
+    applySortMarks();
+  }
+  function applySortMarks() {
+    head.querySelectorAll("[data-ux-sort]").forEach(function (btn) {
+      const active = btn.getAttribute("data-ux-sort") === uxState.orderBy;
+      if (active) btn.setAttribute("data-ux-sort-state", uxState.direction === "desc" ? "desc" : "asc");
+      else btn.removeAttribute("data-ux-sort-state");
+      const th = btn.closest("th");
+      if (!th) return;
+      if (!active) th.removeAttribute("aria-sort");
+      else th.setAttribute("aria-sort", uxState.direction === "desc" ? "descending" : "ascending");
+    });
+  }
+  function urlStateMatches() {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get("q") || "") === uxState.q
+      && (params.get("page") || "1") === String(uxState.page)
+      && (params.get("page_size") || "20") === String(uxState.pageSize)
+      && (params.get("order_by") || "") === uxState.orderBy
+      && (params.get("direction") || "") === uxState.direction;
+  }
+  /* 把页面状态写回 URL：受控控件的值就是 URL 参数值，触发一次 input 事件
+     让 pms-ux 的 attachUrlState 完成 pushState（库内已做 200ms 防抖）。 */
+  function syncUrlState(force) {
+    if (!force && urlStateMatches()) return;
+    orderByInput.value = uxState.orderBy;
+    directionInput.value = uxState.direction;
+    orderByInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  /* 排序三态：升序 → 降序 → 回到服务端默认排序 */
+  function toggleSort(key) {
+    if (uxState.orderBy === key) {
+      if (uxState.direction === "asc") uxState.direction = "desc";
+      else if (uxState.direction === "desc") { uxState.orderBy = ""; uxState.direction = ""; }
+      else uxState.direction = "asc";
+    } else {
+      uxState.orderBy = key;
+      uxState.direction = "asc";
+    }
+    uxState.page = 1;
+    applyStateToControls();
+    load(1, true);
   }
   /* MC-002：只渲染服务端已授权的业务动作；写操作统一带 CSRF + 幂等键。 */
   function newIdemKey() {
@@ -217,12 +300,18 @@
     }).then(function (res) {
       if (!res.ok) {
         resultBox.textContent = (res.payload && res.payload.error && res.payload.error.message) || "操作失败";
+        /* 失败时恢复提交按钮（守卫已把它置为 loading/disabled） */
+        if (typeof form.__uxRelease === "function") form.__uxRelease();
         return;
       }
       resultBox.textContent = "操作成功";
       form.reset();
-      if (typeof load === "function") load(currentPage);
-    }).catch(function () { resultBox.textContent = "网络错误，请稍后重试。"; });
+      if (typeof form.__uxClearDirty === "function") form.__uxClearDirty();
+      if (typeof load === "function") load(currentPage, true);
+    }).catch(function () {
+      resultBox.textContent = "网络错误，请稍后重试。";
+      if (typeof form.__uxRelease === "function") form.__uxRelease();
+    });
   }
   function renderActionForm(action, endpoint, parent, rowItem) {
     const box = document.createElement("section");
@@ -231,6 +320,12 @@
     title.textContent = action.label;
     box.appendChild(title);
     const form = document.createElement("form");
+    /* pms-ux 表单守卫：未保存提醒 + 草稿 + 失焦校验 + 提交防重复。
+       草稿键按「动作 + 作用行」隔离，行级动作各自一份草稿。 */
+    form.setAttribute("data-ux-form", "");
+    form.setAttribute("data-ux-draft", "");
+    form.setAttribute("data-ux-validate", "");
+    form.setAttribute("data-ux-draft-key", action.key + ":" + (rowItem && rowItem.id ? rowItem.id : "page"));
     (action.fields || []).forEach(function (f) {
       const field = document.createElement("div");
       field.className = "pms-field";
@@ -249,7 +344,12 @@
         if (f.type === "number") input.setAttribute("type", "number");
       }
       input.setAttribute("name", f.name);
-      if (f.required) input.setAttribute("required", "required");
+      if (f.required) {
+        input.setAttribute("required", "required");
+        input.setAttribute("data-ux-rule", "required");
+      } else if (f.type === "number") {
+        input.setAttribute("data-ux-rule", "number");
+      }
       if (rowItem && f.name === "id") input.value = rowItem.id || "";
       field.appendChild(label);
       field.appendChild(input);
@@ -257,16 +357,31 @@
     });
     const btn = document.createElement("button");
     btn.type = "submit"; btn.textContent = "提交"; btn.className = "pms-submit";
+    btn.setAttribute("data-ux-submit", "");
     form.appendChild(btn);
+    const slot = document.createElement("div");
+    slot.setAttribute("data-ux-saved-slot", "");
+    form.appendChild(slot);
     const result = document.createElement("div");
     result.setAttribute("role", "status");
     form.appendChild(result);
+    /* 先挂守卫（它负责失焦校验并在不通过时阻断提交），再挂本表单的提交处理 */
+    if (window.PMSUX) window.PMSUX.attachFormGuard(form, {});
     form.addEventListener("submit", function (e) {
+      /* 守卫（pms-ux）先于本处理器执行：失焦校验不通过时它会 preventDefault，
+         这里据此放弃发请求；校验通过则由本处理器接管并阻止原生提交。 */
+      if (e.defaultPrevented) return;
       e.preventDefault();
       submitAction(action, endpoint, form, result);
     });
     box.appendChild(form);
     parent.appendChild(box);
+  }
+  /* 抽屉内容被替换前，解除旧表单注册的全局 beforeunload 监听，避免监听器累积 */
+  function destroyDrawerForms() {
+    drawerBody.querySelectorAll("form[data-ux-form]").forEach(function (form) {
+      if (typeof form.__uxDestroy === "function") form.__uxDestroy();
+    });
   }
   function renderPageActions() {
     const host = document.getElementById("pms-actions");
@@ -276,6 +391,7 @@
       btn.type = "button"; btn.className = "pms-row-btn"; btn.textContent = a.label;
       btn.addEventListener("click", function () {
         drawerTitle.textContent = a.label;
+        destroyDrawerForms();
         drawerBody.replaceChildren();
         drawer.classList.add("is-open"); drawerMask.classList.add("is-open");
         renderActionForm(a, a.endpoint, drawerBody, null);
@@ -289,9 +405,22 @@
     });
   }
   renderPageActions();
-  function header(target, cols, extraAction) {
+  function header(target, cols, extraAction, sortable) {
     target.replaceChildren();
-    cols.forEach(function(c){const th=document.createElement("th");th.textContent=c.label;target.appendChild(th);});
+    cols.forEach(function(c){
+      const th=document.createElement("th");
+      if (sortable && c.sort) {
+        const btn=document.createElement("button");
+        btn.type="button";btn.className="pms-sort";btn.setAttribute("data-ux-sort",c.sort);
+        const label=document.createElement("span");label.textContent=c.label;
+        btn.appendChild(label);
+        btn.addEventListener("click",function(){toggleSort(c.sort);});
+        th.appendChild(btn);
+      } else {
+        th.textContent=c.label;
+      }
+      target.appendChild(th);
+    });
     if (extraAction) { const th=document.createElement("th");th.textContent="操作";target.appendChild(th); }
   }
   function rows(target, cols, data, withAction) {
@@ -315,9 +444,10 @@
       target.appendChild(tr);
     });
   }
-  header(head, columns, !!detail.endpoint);
+  header(head, columns, !!detail.endpoint, true);
   /* ---------- 详情抽屉 ---------- */
   function closeDrawer() {
+    destroyDrawerForms();
     drawer.classList.remove("is-open");
     drawerMask.classList.remove("is-open");
   }
@@ -340,13 +470,15 @@
   function openDetail(id) {
     if (id===null||id===undefined||id==="") return;
     drawerTitle.textContent="详情";
+    destroyDrawerForms();
     drawerBody.replaceChildren();
     const loading=document.createElement("div");loading.className="pms-drawer-state";loading.textContent="读取中…";
     drawerBody.appendChild(loading);
     drawer.classList.add("is-open");drawerMask.classList.add("is-open");
     fetch(detail.endpoint.replace("{id}", encodeURIComponent(String(id))),{
       method:"GET",credentials:"same-origin",headers:{"Accept":"application/json"}
-    }).then(function(r){return r.json().then(function(p){return {ok:r.ok,payload:p};});}).then(function(res){
+    }).then(function(r){return r.json().then(function(p){return {ok:r.ok,payload:p};});    }).then(function(res){
+      destroyDrawerForms();
       drawerBody.replaceChildren();
       if(!res.ok){
         const msg=res.payload&&res.payload.error&&res.payload.error.message||("读取失败（HTTP 错误）");
@@ -494,13 +626,21 @@
     if(search.value.trim()) canonical.set("q",search.value.trim());
     return canonical.toString()!==lastLoadQuery;
   }
-  async function load(page) {
-    if(page===1 && lastLoadQuery!==null && !loadQueryChanged()) return;
-    currentPage=Math.max(1,page || 1);meta.textContent="读取中…";
+  async function load(page, force) {
+    if(!force && page===1 && lastLoadQuery!==null && !loadQueryChanged()) return;
+    currentPage=Math.max(1,page || 1);
+    /* 页码先落到可见控件，否则 URL 同步会带上上一页的残留值 */
+    gotoPageInput.value=String(currentPage);
+    uxState.page=currentPage;
+    uxState.pageSize=currentPageSize;
+    uxState.q=search.value.trim();
+    meta.textContent="读取中…";
     prevButton.disabled=true;nextButton.disabled=true;
     body.replaceChildren();
     const params=new URLSearchParams({page:String(currentPage),page_size:String(currentPageSize)});
     if(search.value.trim()) params.set("q",search.value.trim());
+    /* 排序在服务端执行（浏览器内排序只作用于当前页，在服务端分页下会误导） */
+    if(uxState.orderBy){ params.set("order_by",uxState.orderBy); params.set("direction",uxState.direction||"asc"); }
     const canonical=new URLSearchParams({page:"1",page_size:String(currentPageSize)});
     if(search.value.trim()) canonical.set("q",search.value.trim());
     lastLoadQuery=canonical.toString();
@@ -532,6 +672,8 @@
       td.colSpan=columns.length+(detail.endpoint?1:0);td.className="pms-state";td.textContent=error.message;
       tr.appendChild(td);body.appendChild(tr);meta.textContent="数据读取失败";
     }
+    /* 列表状态回写 URL（筛选 / 排序 / 分页），刷新与分享链接都能还原 */
+    syncUrlState();
   }
   document.getElementById("pms-reload").addEventListener("click",function(){load(1);});
   prevButton.addEventListener("click",function(){load(currentPage-1);});
@@ -589,7 +731,21 @@
     if (window.PMSUX) attach();
     else document.addEventListener("DOMContentLoaded", attach);
   })();
-  load(1);
+  /* ---------- 初始化：先从 URL 还原筛选 / 排序 / 分页，再拉数据 ---------- */
+  readUrlState();
+  applyStateToControls();
+  load(uxState.page);
+  /* pms-ux 以 defer 载入，其 URL→控件回填发生在本页脚本之后：
+     DOMContentLoaded 时再收敛一次，把非法参数（page_size=999 等）归位。 */
+  document.addEventListener("DOMContentLoaded", function () {
+    applyStateToControls();
+  });
+  /* 浏览器前进/后退：URL 变了就还原状态并重新拉取 */
+  window.addEventListener("popstate", function () {
+    readUrlState();
+    applyStateToControls();
+    load(uxState.page, true);
+  });
 })();
 </script>
 </body>

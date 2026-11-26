@@ -14,7 +14,14 @@ from django.views.decorators.http import require_GET, require_POST
 
 from apps.billing.models import Folio, LedgerEntry, Payment, Refund
 from apps.core import labels as L
-from apps.core.api_contract import ApiError, api_response, api_view, idempotent, paginate
+from apps.core.api_contract import (
+    ApiError,
+    api_response,
+    api_view,
+    apply_ordering,
+    idempotent,
+    paginate,
+)
 from apps.core.models import AuditEvent, LegacyRecordLink
 from apps.guests.models import (
     Guest,
@@ -41,6 +48,8 @@ from apps.inventory.models import (
 )
 from apps.inventory.services import _property_today
 from apps.reservations.models import Reservation, Stay
+
+from .center_ordering import ordering_for
 
 logger = logging.getLogger("hotel.api")
 
@@ -199,6 +208,7 @@ def guest_list(request):
         if digests:
             conditions = conditions | Q(phones__phone_hash__in=digests)
         qs = qs.filter(conditions).distinct()
+    qs = apply_ordering(qs, request, ordering_for("guests"))
     items, pagination = paginate(qs, request)
     # G10：本页客人的在住 Stay 一次取回（深层反向链逐行查询是压测
     # P50 1040ms 的主因；50 行 = 50 次跨 4 表 JOIN 查询）
@@ -603,6 +613,7 @@ def room_status_list(request):
 
         qs = qs.filter(Q(number__icontains=q) | Q(room_type__name__icontains=q))
 
+    qs = apply_ordering(qs, request, ordering_for("rooms"))
     items, pagination = paginate(qs, request)
     data = [
         {

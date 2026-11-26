@@ -1,0 +1,135 @@
+{
+  "task": "管理中心 opt-in 能力真实浏览器验收（URL 状态同步 + 房态操作表单守卫）",
+  "base": "http://127.0.0.1:8124",
+  "center": "rooms",
+  "results": [
+    {
+      "name": "进入房态与库存中心真实页面",
+      "pass": true,
+      "detail": "http://127.0.0.1:8124/manage/rooms/"
+    },
+    {
+      "name": "pms-ux 已加载（window.PMSUX 存在）",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "页面声明了 URL 状态容器",
+      "pass": true,
+      "detail": "data-ux-urlstate x1"
+    },
+    {
+      "name": "受控参数覆盖筛选/排序/分页",
+      "pass": true,
+      "detail": "direction,order_by,page,page_size,q"
+    },
+    {
+      "name": "存在可排序表头",
+      "pass": true,
+      "detail": "6 个"
+    },
+    {
+      "name": "筛选值同步到 URL（q）",
+      "pass": true,
+      "detail": "http://127.0.0.1:8124/manage/rooms/?q=8&page_size=20&page=1"
+    },
+    {
+      "name": "每页条数同步到 URL（page_size）",
+      "pass": true,
+      "detail": "http://127.0.0.1:8124/manage/rooms/?q=8&page_size=50&page=1"
+    },
+    {
+      "name": "点表头排序同步到 URL（order_by/direction=asc）",
+      "pass": true,
+      "detail": "order_by=number direction=asc"
+    },
+    {
+      "name": "排序列标记生效",
+      "pass": true,
+      "detail": "data-ux-sort-state=asc"
+    },
+    {
+      "name": "再次点击切换为降序（direction=desc）",
+      "pass": true,
+      "detail": "direction=desc"
+    },
+    {
+      "name": "三击复位后 URL 不再带 order_by",
+      "pass": true,
+      "detail": "http://127.0.0.1:8124/manage/rooms/?q=8&page_size=50&page=1"
+    },
+    {
+      "name": "页码同步到 URL（page）",
+      "pass": true,
+      "detail": "http://127.0.0.1:8124/manage/rooms/?q=8&page_size=50&page=2"
+    },
+    {
+      "name": "刷新后筛选值还原",
+      "pass": true,
+      "detail": "q=8"
+    },
+    {
+      "name": "刷新后每页条数还原",
+      "pass": true,
+      "detail": "page_size=50"
+    },
+    {
+      "name": "刷新后排序状态还原",
+      "pass": true,
+      "detail": "number/desc"
+    },
+    {
+      "name": "操作表单启用 pms-ux 表单守卫（data-ux-form/draft/validate）",
+      "pass": true,
+      "detail": "{\"hasForm\":true,\"draft\":true,\"draftKey\":\"rate_adjust:page\",\"validate\":true,\"rules\":[{\"name\":\"rate_id\",\"rule\":\"required\"},{\"name\":\"price\",\"rule\":\"required\"},{\"name\":\"reason\",\"rule\":\"required\"}],\"submit\":true,\"slot\":true}"
+    },
+    {
+      "name": "必填字段声明了失焦校验规则",
+      "pass": true,
+      "detail": "[{\"name\":\"rate_id\",\"rule\":\"required\"},{\"name\":\"price\",\"rule\":\"required\"},{\"name\":\"reason\",\"rule\":\"required\"}]"
+    },
+    {
+      "name": "提交按钮声明了防重复标记",
+      "pass": true,
+      "detail": "draftKey=rate_adjust:page"
+    },
+    {
+      "name": "必填项失焦即时报错",
+      "pass": true,
+      "detail": "提示=此项为必填项"
+    },
+    {
+      "name": "草稿已写入 localStorage",
+      "pass": true,
+      "detail": "pms-ux:draft:rate_adjust:page"
+    },
+    {
+      "name": "刷新后草稿内容已还原",
+      "pass": true,
+      "detail": "{\"rate_id\":\"999001\",\"price\":\"888.00\",\"reason\":\"浏览器验收草稿\"}"
+    },
+    {
+      "name": "未保存离开页面触发提醒",
+      "pass": true,
+      "detail": "beforeunload=true"
+    },
+    {
+      "name": "操作表单提交成功并回显结果",
+      "pass": true,
+      "detail": "调整每日房价 关闭 调整每日房价 房价行 ID * 新价格 * 调整原因 * 提交 保存中… 操作成功"
+    },
+    {
+      "name": "提交成功后表单已复位",
+      "pass": true,
+      "detail": "{\"price\":\"\",\"reason\":\"\",\"disabled\":true}"
+    },
+    {
+      "name": "浏览器控制台无脚本错误",
+      "pass": true,
+      "detail": ""
+    }
+  ],
+  "passed": 25,
+  "failed": 0,
+  "finished_at": "2026-11-26T12:21:02.197Z"
+}

@@ -852,6 +852,12 @@
       dirty = false;
       initial = JSON.stringify(serialize());
     };
+    /* 解除全局监听：抽屉等动态容器会反复创建/销毁表单，
+       不解除则 beforeunload 监听器随操作次数累积。 */
+    form.__uxDestroy = function () {
+      window.removeEventListener("beforeunload", beforeUnload);
+      if (useDraft) debouncedSave.cancel();
+    };
 
     // 实时校验：失焦检查，错误显示在输入框下方，改对即消失
     if (config.validate !== false && form.hasAttribute("data-ux-validate")) {

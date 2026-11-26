@@ -11,7 +11,14 @@ from django.db.models import Prefetch
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.core import labels as L
-from apps.core.api_contract import ApiError, api_response, api_view, idempotent, paginate
+from apps.core.api_contract import (
+    ApiError,
+    api_response,
+    api_view,
+    apply_ordering,
+    idempotent,
+    paginate,
+)
 from apps.guests.models import Guest, GuestMembership, MembershipLevelHistory
 from apps.guests.services import GuestMembershipService, GuestServiceError
 from apps.identity.authorization import AuthorizationService
@@ -21,6 +28,8 @@ from apps.identity.models import (
     StaffProfile,
     StaffRoleAssignment,
 )
+
+from .center_ordering import ordering_for
 
 
 def _api_error(code, message):
@@ -226,6 +235,7 @@ def membership_list(request):
             | Q(guest__full_name__icontains=q)
             | Q(guest__phone__icontains=q)
         )
+    qs = apply_ordering(qs, request, ordering_for("memberships"))
     items, pagination = paginate(qs, request)
     data = [
         {

@@ -26,7 +26,14 @@ from apps.billing.legacy_archive_query import (
 from apps.billing.models import Folio, LedgerEntry, Payment, PaymentIntent, Refund
 from apps.billing.payment_intents import extend_intent_window, get_channel_window
 from apps.core import labels as L
-from apps.core.api_contract import ApiError, api_response, api_view, idempotent, parse_page_args
+from apps.core.api_contract import (
+    ApiError,
+    api_response,
+    api_view,
+    apply_ordering,
+    idempotent,
+    parse_page_args,
+)
 from apps.core.models import AuditEvent
 from apps.guests.services import guest_phone_plain, phone_hash_candidates
 from apps.identity.authorization import AuthorizationService
@@ -75,6 +82,7 @@ from apps.reservations.services import ReservationConflict, cancel_pending_reser
 from apps.reservations.walkin import create_walk_in
 
 from .billing_center import _require_finance_access
+from .center_ordering import ordering_for
 from .views import _body, api_guard
 
 logger = logging.getLogger("hotel.api")
@@ -854,6 +862,7 @@ def reservations(request):
     source = (request.GET.get("source") or "").strip().upper()
     if source:
         queryset = queryset.filter(source=source)
+    queryset = apply_ordering(queryset, request, ordering_for("reservations"))
     rows, meta = _paginate(queryset, page, page_size)
     folio_map = _folio_summaries(property_obj, {item.pk for item in rows})
     data = []

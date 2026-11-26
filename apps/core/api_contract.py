@@ -237,6 +237,25 @@ def paginate(queryset, request, page_size_default=PAGE_SIZE_DEFAULT, page_size_m
     }
 
 
+def apply_ordering(queryset, request, allowed_fields, pk_name="id"):
+    """按 ?order_by=<key>&direction=<asc|desc> 排序（白名单制）。
+
+    - allowed_fields：{对外排序键: ORM 字段路径}，调用方必须显式声明可排序字段，
+      避免任意字段排序被注入；键不在白名单内 → 保持调用方默认排序（不报错、不 400）；
+    - direction 只认 asc / desc，其它值按 asc 处理；
+    - 排序后追加主键，保证分页稳定（与 ensure_stable_ordering 同口径）。
+    """
+    key = (request.GET.get("order_by") or "").strip()
+    if not key:
+        return queryset
+    field = allowed_fields.get(key)
+    if not field:
+        return queryset
+    direction = (request.GET.get("direction") or "asc").strip().lower()
+    prefix = "-" if direction == "desc" else ""
+    return queryset.order_by(prefix + field, pk_name)
+
+
 def idempotent(view):
     """幂等装饰器（V1.1 M-14）：Idempotency-Key + 请求体 hash 去重。
 
