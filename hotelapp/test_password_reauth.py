@@ -9,12 +9,15 @@
   * 当前密码连续失败达阈值后进入冷却，冷却期内即使密码正确也拒绝；
   * 失败计数是 DB 原子计数（RateLimitCounter）：跨会话、跨进程有效，
     并发下不丢计数（2026-11-26 复核修正的实现缺陷，见下方计数落点用例）；
+  * 同值策略是**强制业务政策**（负责人 2026-11-27 裁定）：新密码与当前口令
+    相同一律拒绝，两条入口口径一致，且不提供任何可关闭该策略的运行时开关；
   * 改密成功后收尾完整：密码已更新、must_change_password 置位、
     last_password_change 更新、当前会话仍然有效（不被登出）、审计事件已写入、
     失败计数清零。
 """
 
 import contextlib
+import os
 import threading
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
@@ -50,6 +53,7 @@ _TEST_PW_WRONG = get_random_string(24)
 
 _ERROR_TEXT = "当前密码不正确"
 _COOLDOWN_TEXT = "次数过多"
+_SAME_PASSWORD_TEXT = "新密码不能与当前密码相同"
 
 
 def _make_staff(username, *, must_change_password=False):
@@ -534,8 +538,9 @@ class PasswordChangeUnifiedEntryTests(TestCase):
     路径的口径随时可能漂移。本组用例锁定：
       * 两条入口对同一组输入给出**完全相同**的错误文案；
       * 两条入口共用 `validate_password_change` 唯一入口；
-      * 同值策略由 PASSWORD_POLICY_FORBID_REUSE 开关控制（口径待负责人裁定，
-        开关关闭即回到整改前行为）。
+      * 同值策略是**强制业务政策**（负责人 2026-11-27 裁定，ARCH-05 决策表
+        R1 由 WAITING_OWNER 改为 DONE）：两条入口都必须拒绝「新密码 == 当前
+        口令」，且不得留任何可关闭该策略的运行时开关。
     """
 
     def setUp(self):
@@ -613,24 +618,93 @@ class PasswordChangeUnifiedEntryTests(TestCase):
         self.assertNotIn("两次输入的密码不一致", view_source)
         self.assertNotIn("密码至少 6 位", view_source)
 
-    def test_policy_switch_allows_same_password_when_disabled(self):
-        """开关关闭 → 允许同值改密（负责人若否决该策略，一处回退即可）。"""
-        with self.settings(PASSWORD_POLICY_FORBID_REUSE=False):
-            response = self._post(
-                "/system/", _TEST_PW_CURRENT, _TEST_PW_CURRENT, _TEST_PW_CURRENT
-            )
-        self.assertEqual(response.status_code, 302)
+    def test_same_password_rejected_on_both_entries(self):
+        """强制业务政策：同值改密在**两条入口**都必须被拒绝。
+
+        负责人 2026-11-27 裁定「禁止新旧密码相同」升级为强制业务政策，原
+        `PASSWORD_POLICY_FORBID_REUSE` 运行时开关已移除——不存在「某个环境
+        用环境变量就能放行同值改密」的口子。两条入口口径一致：拒绝 + 提示
+        「新密码不能与当前密码相同」+ 不得改写口令哈希 + 不得写
+        `identity.password_changed` 审计。
+        """
+        forced_before = self.forced_user.password
+        forced_response = self._post_forced(
+            _TEST_PW_CURRENT, _TEST_PW_CURRENT, _TEST_PW_CURRENT
+        )
+        self.assertEqual(forced_response.status_code, 200)
+        self.assertContains(forced_response, _SAME_PASSWORD_TEXT)
+        self.forced_user.refresh_from_db()
+        self.assertEqual(
+            self.forced_user.password, forced_before,
+            "强制改密入口同值改密不得改写口令哈希",
+        )
+        self.forced_profile.refresh_from_db()
+        self.assertTrue(
+            self.forced_profile.must_change_password,
+            "强制改密标记不得被同值改密清除",
+        )
+
+        self_before = self.user.password
+        self_response = self._post(
+            "/system/", _TEST_PW_CURRENT, _TEST_PW_CURRENT, _TEST_PW_CURRENT
+        )
+        self.assertEqual(self_response.status_code, 200)
+        self.assertContains(self_response, _SAME_PASSWORD_TEXT)
         self.user.refresh_from_db()
+        self.assertEqual(
+            self.user.password, self_before,
+            "自助改密入口同值改密不得改写口令哈希",
+        )
         self.assertTrue(self.user.check_password(_TEST_PW_CURRENT))
 
-    def test_policy_switch_blocks_same_password_when_enabled(self):
-        """开关开启 → 拒绝同值改密（默认口径）。"""
-        with self.settings(PASSWORD_POLICY_FORBID_REUSE=True):
+        self.assertFalse(
+            AuditEvent.objects.filter(
+                action="identity.password_changed",
+                actor__in=[self.user, self.forced_user],
+            ).exists(),
+            "口令未实际变更时不得写 identity.password_changed 审计",
+        )
+
+    def test_same_password_policy_has_no_runtime_switch(self):
+        """强制口径：不得留有可关闭同值策略的运行时开关（防静默降级复发）。
+
+        强制业务政策若仍由 `settings.PASSWORD_POLICY_FORBID_REUSE` 之类的开关
+        控制，或仍读 `DJANGO_PASSWORD_FORBID_REUSE` 环境变量，就等于给「某个
+        环境悄悄放开同值改密」留了口子——与本项目持续治理的「静默策略降级」
+        是同一类缺陷。因此：settings 项必须不存在，且即便环境变量被置为关闭，
+        同值改密仍必须被拒绝。
+        """
+        self.assertFalse(
+            hasattr(settings, "PASSWORD_POLICY_FORBID_REUSE"),
+            "同值策略已升级为强制业务政策，不得再提供运行时开关",
+        )
+        with mock.patch.dict(os.environ, {"DJANGO_PASSWORD_FORBID_REUSE": "0"}):
             response = self._post(
                 "/system/", _TEST_PW_CURRENT, _TEST_PW_CURRENT, _TEST_PW_CURRENT
             )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "新密码不能与当前密码相同")
+        self.assertContains(
+            response, _SAME_PASSWORD_TEXT,
+            msg_prefix="环境变量不得再能放开强制同值策略",
+        )
+
+    def test_account_without_usable_password_not_misjudged_as_same(self):
+        """边界：账号无可用口令时不得误判为「与新口令相同」。
+
+        `set_unusable_password()` 后 `check_password()` 恒为 False（待激活账号
+        没有可用凭据），同值策略必须据此放行改密，不得把这类账号误判成
+        「新密码 == 当前口令」而拦死。
+        """
+        from apps.identity.services import check_new_password_not_reused
+
+        user, _profile = _make_staff("r5_unusable")
+        user.set_unusable_password()
+        user.save(update_fields=("password",))
+        self.assertFalse(user.check_password(_TEST_PW_NEW))
+        self.assertIsNone(
+            check_new_password_not_reused(user, _TEST_PW_NEW),
+            "无可用口令的账号不得被误判为与新口令相同",
+        )
 
 
 class PasswordReauthCooldownWindowBoundaryTests(TestCase):
