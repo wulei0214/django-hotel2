@@ -2783,6 +2783,25 @@ op(
         Q("start", "开始日期 YYYY-MM-DD；缺省今天。", "string", False, "2026-11-05", fmt="date"),
         Q("days", "查询天数 1-30，默认 14。", "integer", False, 14),
         Q("room_type_id", "房型 ID。", "integer"),
+        Q(
+            "q",
+            "兼容搜索词（房型代码/名称模糊匹配），同时作用于房价与库存两个集合；"
+            "被 rate_q / inventory_q 覆盖。",
+        ),
+        Q(
+            "rate_q",
+            "房价集合搜索词（房型代码/名称模糊匹配）；只作用于房价集合，"
+            "出现时优先于兼容参数 q。",
+        ),
+        Q(
+            "inventory_q",
+            "库存集合搜索词（房型代码/名称模糊匹配）；只作用于库存集合，"
+            "出现时优先于兼容参数 q。",
+        ),
+        Q("rate_page", "房价集合页码，从 1 开始，默认 1。", "integer", False, 1),
+        Q("rate_page_size", "房价集合每页条数，默认 20，最大 100。", "integer", False, 20),
+        Q("inventory_page", "库存集合页码，从 1 开始，默认 1。", "integer", False, 1),
+        Q("inventory_page_size", "库存集合每页条数，默认 20，最大 100。", "integer", False, 20),
     ],
     permission="有效员工 + hotelapp.view_room",
     ok=(("200", "逐日库存 + 逐日房价"),),

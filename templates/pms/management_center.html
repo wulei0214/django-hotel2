@@ -213,6 +213,7 @@
     orderByInput.value = uxState.orderBy;
     directionInput.value = uxState.direction;
     applySortMarks();
+    applySecondaryStateToInputs();
   }
   function applySortMarks() {
     head.querySelectorAll("[data-ux-sort]").forEach(function (btn) {
@@ -227,11 +228,25 @@
   }
   function urlStateMatches() {
     const params = new URLSearchParams(window.location.search);
-    return (params.get("q") || "") === uxState.q
+    const mainMatches =
+      (params.get("q") || "") === uxState.q
       && (params.get("page") || "1") === String(uxState.page)
       && (params.get("page_size") || "20") === String(uxState.pageSize)
       && (params.get("order_by") || "") === uxState.orderBy
       && (params.get("direction") || "") === uxState.direction;
+    if (!mainMatches) return false;
+    /* 次级列表的 URL 参数也必须一致，否则会多推一条历史记录 */
+    return sections.every(function (section) {
+      const st = secondaryState[section.data_key];
+      if (!st) return true;
+      if (section.searchable
+          && (params.get(secondarySearchParam(section)) || "") !== st.q) return false;
+      if (section.page_param
+          && (params.get(section.page_param) || "1") !== String(st.page)) return false;
+      if (section.size_param
+          && (params.get(section.size_param) || "20") !== String(st.size)) return false;
+      return true;
+    });
   }
   /* 把页面状态写回 URL：受控控件的值就是 URL 参数值，触发一次 input 事件
      让 pms-ux 的 attachUrlState 完成 pushState（库内已做 200ms 防抖）。 */
@@ -239,6 +254,7 @@
     if (!force && urlStateMatches()) return;
     orderByInput.value = uxState.orderBy;
     directionInput.value = uxState.direction;
+    applySecondaryStateToInputs();
     orderByInput.dispatchEvent(new Event("input", { bubbles: true }));
   }
   /* 排序三态：升序 → 降序 → 回到服务端默认排序 */
@@ -527,16 +543,106 @@
   const secondaryState = {};
   let lastSecondaryQuery = null;
 
+  /* 次级列表的 URL 参数按小节前缀隔离（rate_* / inventory_*）：
+     搜索参数名沿用该小节分页参数的前缀（rate_page → rate_q），保证同一小节的
+     搜索与分页落在同一命名空间，且不再与主列表的 q 共用同一个参数名。 */
+  function secondaryPrefix(section) {
+    const base = section.page_param || section.size_param || section.data_key || "";
+    return base.replace(/_page(_size)?$/, "");
+  }
+  function secondarySearchParam(section) {
+    return secondaryPrefix(section) + "_q";
+  }
+  function ensureSecondaryState(section) {
+    var st = secondaryState[section.data_key];
+    if (!st) { st = secondaryState[section.data_key] = {page: 1, size: 20, q: ""}; }
+    return st;
+  }
+  /* 次级列表的 URL 状态由隐藏 input 承载（与 order_by / direction 同一模式）：
+     动态创建的可见控件一律不带 data-ux-param，避免同一个 key 出现多个受控
+     控件（读写互相覆盖），也不必为动态控件重复调用 attachUrlState
+     （那会累积 window popstate 监听器）。 */
+  function ensureSecondaryUrlStateInputs() {
+    const scope = document.querySelector("[data-ux-urlstate]");
+    if (!scope) return;
+    sections.forEach(function (section) {
+      const keys = [];
+      if (section.searchable) keys.push(secondarySearchParam(section));
+      if (section.page_param) keys.push(section.page_param);
+      if (section.size_param) keys.push(section.size_param);
+      keys.forEach(function (key) {
+        if (scope.querySelector('[data-ux-param="' + key + '"]')) return;
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.id = "pms-ux-secondary-" + key.replace(/[^a-z0-9]+/gi, "-");
+        input.setAttribute("data-ux-param", key);
+        scope.appendChild(input);
+      });
+    });
+  }
+  function setSecondaryUrlStateValue(key, value) {
+    if (!key) return;
+    const scope = document.querySelector("[data-ux-urlstate]");
+    if (!scope) return;
+    const node = scope.querySelector('[data-ux-param="' + key + '"]');
+    if (node) node.value = value == null ? "" : String(value);
+  }
+  function applySecondaryStateToInputs() {
+    sections.forEach(function (section) {
+      const st = secondaryState[section.data_key];
+      if (!st) return;
+      if (section.searchable) setSecondaryUrlStateValue(secondarySearchParam(section), st.q);
+      setSecondaryUrlStateValue(section.page_param, String(st.page));
+      setSecondaryUrlStateValue(section.size_param, String(st.size));
+    });
+  }
+  const SECONDARY_PAGE_SIZES = [20, 50, 100];
+  /* 从 URL 还原次级列表状态（每节独立：搜索词 / 页码 / 每页条数） */
+  function readSecondaryUrlState() {
+    const params = new URLSearchParams(window.location.search);
+    sections.forEach(function (section) {
+      const st = ensureSecondaryState(section);
+      const rawQ = section.searchable ? params.get(secondarySearchParam(section)) : null;
+      st.q = rawQ == null ? "" : rawQ;
+      const rawPage = Number.parseInt(
+        (section.page_param ? params.get(section.page_param) : null) || "1", 10);
+      st.page = Number.isInteger(rawPage) && rawPage >= 1 ? rawPage : 1;
+      const rawSize = Number.parseInt(
+        (section.size_param ? params.get(section.size_param) : null) || "20", 10);
+      st.size = SECONDARY_PAGE_SIZES.indexOf(rawSize) !== -1 ? rawSize : 20;
+    });
+  }
+  /* 次级列表状态写回 URL：给隐藏 input 赋值 → 触发一次 input 事件，
+     让 pms-ux 的 attachUrlState 用一次 pushState 写入全部参数（主列表与
+     次级列表共用同一个 writeToUrl，不会多出历史记录）。 */
+  function syncSecondaryUrlState() {
+    applySecondaryStateToInputs();
+    orderByInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
   function secondaryQuery() {
     const sp = new URLSearchParams();
     sections.forEach(function (section) {
-      var st = secondaryState[section.data_key];
-      if (!st) { st = secondaryState[section.data_key] = {page: 1, size: 20, q: ""}; }
+      var st = ensureSecondaryState(section);
       if (section.page_param) sp.set(section.page_param, String(st.page));
       if (section.size_param) sp.set(section.size_param, String(st.size));
-      if (section.searchable && st.q) sp.set("q", st.q);
+      /* 每个小节用自己的搜索参数（rate_q / inventory_q）：
+         历史实现两个小节共用 q，后写覆盖先写 → 搜索互相污染。 */
+      if (section.searchable && st.q) sp.set(secondarySearchParam(section), st.q);
     });
     return sp.toString();
+  }
+  /* 次级列表状态变化后的统一入口：先写回 URL（刷新/分享可还原），
+     再按新状态重新拉取；失败时在次级列表位置给出可读提示。 */
+  function refreshSecondary() {
+    syncSecondaryUrlState();
+    loadSecondary(true).catch(function(error){
+      const holder=document.getElementById("pms-secondary");
+      const note=document.createElement("p");
+      note.className="pms-state";
+      note.textContent=error && error.message ? error.message : "房价/库存日历读取失败";
+      holder.replaceChildren(note);
+    });
   }
 
   async function loadSecondary(force) {
@@ -568,7 +674,7 @@
         sBtn.addEventListener("click",function(){
           var q=input.value.trim();
           if (q === st.q) return;  /* 未变化不刷新 */
-          st.q=q; st.page=1; loadSecondary();
+          st.q=q; st.page=1; refreshSecondary();
         });
         input.addEventListener("keydown",function(e){if(e.key==="Enter")sBtn.click();});
         tools.appendChild(input);tools.appendChild(sBtn);
@@ -599,11 +705,11 @@
           sizeSel.appendChild(option);
         });
         sizeSel.addEventListener("change",function(){
-          st.size=Number.parseInt(sizeSel.value,10);st.page=1;loadSecondary(true);
+          st.size=Number.parseInt(sizeSel.value,10);st.page=1;refreshSecondary();
         });
         const sizeLabel=document.createElement("label");sizeLabel.textContent="每页";
         const prev=document.createElement("button");prev.type="button";prev.textContent="上一页";prev.disabled=!pg.has_previous;
-        prev.addEventListener("click",function(){ if(pg.has_previous){ st.page=pg.page-1; loadSecondary(true); }});
+        prev.addEventListener("click",function(){ if(pg.has_previous){ st.page=pg.page-1; refreshSecondary(); }});
         const label=document.createElement("span");
         label.className="pms-pager-label";
         label.textContent="第 "+pg.page+" 页 / 共 "+totalPages+" 页";
@@ -614,10 +720,10 @@
         const gotoBtn=document.createElement("button");gotoBtn.type="button";gotoBtn.textContent="跳转";
         gotoBtn.addEventListener("click",function(){
           const target=Number.parseInt(gotoInput.value,10);
-          if(target>=1&&target<=totalPages){ st.page=target; loadSecondary(true); }
+          if(target>=1&&target<=totalPages){ st.page=target; refreshSecondary(); }
         });
         const next=document.createElement("button");next.type="button";next.textContent="下一页";next.disabled=!pg.has_next;
-        next.addEventListener("click",function(){ if(pg.has_next){ st.page=pg.page+1; loadSecondary(true); }});
+        next.addEventListener("click",function(){ if(pg.has_next){ st.page=pg.page+1; refreshSecondary(); }});
         controls.appendChild(sizeLabel);controls.appendChild(sizeSel);controls.appendChild(prev);controls.appendChild(label);
         controls.appendChild(gotoLabel);controls.appendChild(gotoInput);controls.appendChild(gotoBtn);controls.appendChild(next);
         pager.appendChild(controls);
@@ -739,7 +845,11 @@
     else document.addEventListener("DOMContentLoaded", attach);
   })();
   /* ---------- 初始化：先从 URL 还原筛选 / 排序 / 分页，再拉数据 ---------- */
+  /* 次级列表的 URL 状态同样随 URL 还原：先声明隐藏受控控件（供 pms-ux 的
+     attachUrlState 绑定），再从 URL 读取每节的搜索词 / 页码 / 每页条数。 */
+  ensureSecondaryUrlStateInputs();
   readUrlState();
+  readSecondaryUrlState();
   applyStateToControls();
   load(uxState.page);
   /* pms-ux 以 defer 载入，其 URL→控件回填发生在本页脚本之后：
@@ -747,9 +857,10 @@
   document.addEventListener("DOMContentLoaded", function () {
     applyStateToControls();
   });
-  /* 浏览器前进/后退：URL 变了就还原状态并重新拉取 */
+  /* 浏览器前进/后退：URL 变了就还原状态并重新拉取（主列表 + 次级列表） */
   window.addEventListener("popstate", function () {
     readUrlState();
+    readSecondaryUrlState();
     applyStateToControls();
     load(uxState.page, true);
   });

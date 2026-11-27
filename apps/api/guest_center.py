@@ -700,6 +700,21 @@ def _subcollection_page(queryset, request, prefix, default_size=20):
     }
 
 
+def _secondary_search_text(request, *names):
+    """次级列表小节的搜索词取值（按参数优先级）。
+
+    参数名按小节前缀隔离（rate_q 只作用于房价集合、inventory_q 只作用于
+    库存集合）；小节自有参数一旦出现在 query 中即以它为准（即使取值为空，
+    也视为该小节「显式无搜索词」，不再回退）；只有当自有参数缺席时才回退
+    到兼容参数 q（历史上 q 同时作用于两个集合）。"""
+    for name in names:
+        raw = request.GET.get(name)
+        if raw is None:
+            continue
+        return raw.strip()
+    return ""
+
+
 @require_GET
 @api_view
 def rate_calendar(request):
@@ -746,13 +761,20 @@ def rate_calendar(request):
     )
     if room_type_id:
         rate_qs = rate_qs.filter(room_type_id=room_type_id)
-    # 搜索（用户报告：次级列表缺搜索）——按房型代码/名称模糊匹配
-    q = (request.GET.get("q") or "").strip()
-    if q:
-        from django.db.models import Q
-
-        inv_qs = inv_qs.filter(Q(room_type__code__icontains=q) | Q(room_type__name__icontains=q))
-        rate_qs = rate_qs.filter(Q(room_type__code__icontains=q) | Q(room_type__name__icontains=q))
+    # 搜索（用户报告：次级列表缺搜索）——按房型代码/名称模糊匹配。
+    # 两个可搜索小节各自独立：rate_q 只作用于房价集合、inventory_q 只作用于
+    # 库存集合（历史上两个小节共用 q，后写覆盖先写导致搜索互相污染）；
+    # q 保留为兼容参数（同时作用于两个集合），小节自有参数存在时以它为准。
+    inventory_q = _secondary_search_text(request, "inventory_q", "q")
+    rate_q = _secondary_search_text(request, "rate_q", "q")
+    if inventory_q:
+        inv_qs = inv_qs.filter(
+            Q(room_type__code__icontains=inventory_q) | Q(room_type__name__icontains=inventory_q)
+        )
+    if rate_q:
+        rate_qs = rate_qs.filter(
+            Q(room_type__code__icontains=rate_q) | Q(room_type__name__icontains=rate_q)
+        )
     # P0-03 统一分页（用户报告：次级列表缺分页）——双集合独立页参数
     inv_page_rows, inv_pagination = _subcollection_page(
         inv_qs, request, "inventory", default_size=20

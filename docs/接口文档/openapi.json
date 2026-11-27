@@ -11865,6 +11865,73 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "兼容搜索词（房型代码/名称模糊匹配），同时作用于房价与库存两个集合；被 rate_q / inventory_q 覆盖。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rate_q",
+            "in": "query",
+            "required": false,
+            "description": "房价集合搜索词（房型代码/名称模糊匹配）；只作用于房价集合，出现时优先于兼容参数 q。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "inventory_q",
+            "in": "query",
+            "required": false,
+            "description": "库存集合搜索词（房型代码/名称模糊匹配）；只作用于库存集合，出现时优先于兼容参数 q。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rate_page",
+            "in": "query",
+            "required": false,
+            "description": "房价集合页码，从 1 开始，默认 1。",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "rate_page_size",
+            "in": "query",
+            "required": false,
+            "description": "房价集合每页条数，默认 20，最大 100。",
+            "schema": {
+              "type": "integer",
+              "example": 20
+            }
+          },
+          {
+            "name": "inventory_page",
+            "in": "query",
+            "required": false,
+            "description": "库存集合页码，从 1 开始，默认 1。",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "inventory_page_size",
+            "in": "query",
+            "required": false,
+            "description": "库存集合每页条数，默认 20，最大 100。",
+            "schema": {
+              "type": "integer",
+              "example": 20
+            }
           }
         ],
         "security": [
