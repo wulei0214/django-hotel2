@@ -13,6 +13,7 @@
 import logging
 from datetime import datetime, timedelta
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -808,3 +809,71 @@ def check_current_password(request, user, current_password):
         return "当前密码不正确"
     reset_current_password_failures(request, user)
     return None
+
+
+def check_new_password_not_reused(user, new_password):
+    """改密口令策略：新密码不得与当前密码相同；通过返回 None，失败返回提示文案。
+
+    背景（2026-11-27 独立复核实证）：改密入口原只校验「两次一致 + Django 校验器」，
+    提交 current_password == new_password1 时照样改密成功——口令实际未变，却回
+    「密码已修改」并写 identity.password_changed 审计，变更记录与真实凭据不一致
+    （用户以为已换新口令，实则旧口令继续有效）。二次认证已把当前密码握在手里，
+    顺带做一次同值比对即可堵住。
+
+    约定：
+      * 失败文案统一为「新密码不能与当前密码相同」——不泄露任何口令内容；
+      * 账号尚无可用口令（set_unusable_password）时 check_password 恒为 False，
+        不误判为「相同」；
+      * 是否强制本条由 settings.PASSWORD_POLICY_FORBID_REUSE 开关控制——该口径
+        在 ARCH-05 决策表中仍为 WAITING_OWNER（是否升级为强制业务政策由负责人
+        裁定），开关关闭即回到整改前行为，回退面 = 一个布尔开关。
+    """
+    if not new_password or user is None:
+        return None
+    if not getattr(user, "is_authenticated", False):
+        return None
+    if not getattr(settings, "PASSWORD_POLICY_FORBID_REUSE", True):
+        return None
+    if user.check_password(new_password):
+        return "新密码不能与当前密码相同"
+    return None
+
+
+def validate_password_change(request, user, *, current_password, new_password1, new_password2):
+    """改密统一校验入口（强制改密与自助改密共用同一套规则）。
+
+    ARCH-05 技术整改：历史实现里 `/force-password-change/` 与 `/system/` 各自
+    复制了一份「长度 → 两次一致 → Django 校验器」的分支（且强制改密多一段
+    重复校验），两条路径的口径随时可能漂移。本函数是唯一入口，两条路径都调用
+    它，保证「强制改密和普通改密使用一致规则」。
+
+    校验顺序（任一不通过即返回面向用户的文案，全部通过返回 None）：
+      ① 二次认证：当前密码必须正确（`check_current_password`，含冷却与审计）；
+      ② 两次输入的新密码必须一致；
+      ③ 最小长度（与 Django MinimumLengthValidator 同口径的 6 位下限）；
+      ④ Django 密码校验器（相似度 / 常见口令 / 纯数字等）；
+      ⑤ 同值策略：新密码不得与当前密码相同（受 PASSWORD_POLICY_FORBID_REUSE 开关）。
+
+    失败文案不包含任何口令内容，也不区分「账号不存在」与「密码错误」。
+    """
+    if user is None or not getattr(user, "is_authenticated", False):
+        return "当前密码不正确"
+    # ① 二次认证闸门
+    error = check_current_password(request, user, current_password)
+    if error:
+        return error
+    new1 = new_password1 or ""
+    new2 = new_password2 or ""
+    # ③ 最小长度（与 Django MinimumLengthValidator 同口径的 6 位下限）
+    if len(new1) < 6:
+        return "密码至少 6 位"
+    # ② 两次一致
+    if new1 != new2:
+        return "两次输入的密码不一致"
+    # ④ Django 校验器
+    try:
+        validate_password(new1, user=user)
+    except DjangoValidationError as exc:
+        return "；".join(exc.messages)
+    # ⑤ 同值策略（口径待负责人裁定，开关可回退）
+    return check_new_password_not_reused(user, new1)

@@ -249,6 +249,31 @@ class SelfServicePasswordReauthTests(TestCase):
             "二次认证失败必须写 auth.password_reauth_failure 审计",
         )
 
+    def test_new_password_equal_to_current_password_rejected(self):
+        """新密码与当前密码相同 → 拒绝改密（不得回「已修改」却没换口令）。
+
+        复核实证缺陷：改密入口原只校验「两次一致 + Django 校验器」，提交
+        current_password == new_password1 时照样改密成功——口令实际未变，
+        却写 identity.password_changed 审计，变更记录与真实凭据不一致。
+        """
+        before = self.user.password
+        response = self.client.post("/system/", {
+            "current_password": _TEST_PW_CURRENT,
+            "new_password1": _TEST_PW_CURRENT,
+            "new_password2": _TEST_PW_CURRENT,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "新密码不能与当前密码相同")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.password, before, "同值改密不得改写口令哈希")
+        self.assertTrue(self.user.check_password(_TEST_PW_CURRENT))
+        self.assertFalse(
+            AuditEvent.objects.filter(
+                action="identity.password_changed", actor=self.user
+            ).exists(),
+            "口令未实际变更时不得写 identity.password_changed 审计",
+        )
+
     def test_audit_event_records_request_path(self):
         """审计事件必须带请求链路信息（IP / request_id），否则无法定位来源。"""
         self._post_change(_TEST_PW_WRONG)
@@ -321,6 +346,27 @@ class ForcedPasswordChangeReauthTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.password, before, "冷却期内不得改密")
 
+    def test_new_password_equal_to_current_password_rejected(self):
+        """强制改密同样拒绝「新密码 == 当前密码」（口径与 /system/ 一致）。"""
+        before = self.user.password
+        response = self.client.post("/force-password-change/", {
+            "current_password": _TEST_PW_CURRENT,
+            "new_password1": _TEST_PW_CURRENT,
+            "new_password2": _TEST_PW_CURRENT,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "新密码不能与当前密码相同")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.password, before, "同值改密不得改写口令哈希")
+        self.profile.refresh_from_db()
+        self.assertTrue(self.profile.must_change_password, "强制改密标记不得被清除")
+        self.assertFalse(
+            AuditEvent.objects.filter(
+                action="identity.password_changed", actor=self.user
+            ).exists(),
+            "口令未实际变更时不得写 identity.password_changed 审计",
+        )
+
 
 class PasswordReauthConcurrencyTests(TransactionTestCase):
     """并发失败不得丢计数（2026-11-26 复核实证缺陷的回归）。
@@ -365,3 +411,110 @@ class PasswordReauthConcurrencyTests(TransactionTestCase):
         )
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password(_TEST_PW_CURRENT), "并发失败不得改密")
+
+
+class PasswordChangeUnifiedEntryTests(TestCase):
+    """ARCH-05：两条改密入口必须共用同一套校验规则。
+
+    整改前 `/force-password-change/` 与 `/system/` 各自复制了一份校验分支
+    （长度 → 两次一致 → Django 校验器），强制改密侧还多一段重复校验，两条
+    路径的口径随时可能漂移。本组用例锁定：
+      * 两条入口对同一组输入给出**完全相同**的错误文案；
+      * 两条入口共用 `validate_password_change` 唯一入口；
+      * 同值策略由 PASSWORD_POLICY_FORBID_REUSE 开关控制（口径待负责人裁定，
+        开关关闭即回到整改前行为）。
+    """
+
+    def setUp(self):
+        # 两条入口的前置条件不同：/system/ 面向在职员工，/force-password-change/
+        # 只对 must_change_password=True 的账号开放（否则直接跳 /home/）。
+        self.user, self.profile = _make_staff("r5_unified")
+        self.forced_user, self.forced_profile = _make_staff(
+            "r5_unified_forced", must_change_password=True
+        )
+        self.client.force_login(self.user)
+
+    def _post(self, path, current, new1, new2):
+        return self.client.post(path, {
+            "current_password": current,
+            "new_password1": new1,
+            "new_password2": new2,
+        })
+
+    def _post_forced(self, current, new1, new2):
+        self.client.force_login(self.forced_user)
+        try:
+            return self._post("/force-password-change/", current, new1, new2)
+        finally:
+            self.client.force_login(self.user)
+
+    def _error_text(self, response):
+        """从渲染结果里取出错误文案（模板以 error 变量展示）。"""
+        return response.content.decode("utf-8")
+
+    def test_both_entries_return_identical_error_for_wrong_current_password(self):
+        """当前密码错误时两条入口口径一致（不得一条放行、一条拦截）。"""
+        forced_response = self._post_forced(
+            _TEST_PW_WRONG, _TEST_PW_NEW, _TEST_PW_NEW
+        )
+        self.assertEqual(forced_response.status_code, 200)
+        self.assertContains(forced_response, _ERROR_TEXT)
+
+        self_response = self._post(
+            "/system/", _TEST_PW_WRONG, _TEST_PW_NEW, _TEST_PW_NEW
+        )
+        self.assertEqual(self_response.status_code, 200)
+        self.assertContains(self_response, _ERROR_TEXT)
+
+    def test_both_entries_return_identical_error_for_mismatched_confirmation(self):
+        """两次输入不一致时两条入口口径一致。"""
+        forced_response = self._post_forced(
+            _TEST_PW_CURRENT, _TEST_PW_NEW, _TEST_PW_WRONG
+        )
+        self.assertContains(forced_response, "两次输入的密码不一致")
+        self_response = self._post(
+            "/system/", _TEST_PW_CURRENT, _TEST_PW_NEW, _TEST_PW_WRONG
+        )
+        self.assertContains(self_response, "两次输入的密码不一致")
+
+    def test_both_entries_return_identical_error_for_short_password(self):
+        """长度不足时两条入口口径一致。"""
+        forced_response = self._post_forced(_TEST_PW_CURRENT, "ab1", "ab1")
+        self.assertContains(forced_response, "密码至少 6 位")
+        self_response = self._post(
+            "/system/", _TEST_PW_CURRENT, "ab1", "ab1"
+        )
+        self.assertContains(self_response, "密码至少 6 位")
+
+    def test_unified_entry_is_the_single_validation_source(self):
+        """两条入口必须调用同一个服务函数（防止再次各自复制分支）。"""
+        import inspect
+
+        from apps.identity import services
+
+        source = inspect.getsource(services)
+        self.assertIn("def validate_password_change(", source)
+        # View 层不得再出现「长度 / 两次一致 / validate_password」的手写分支
+        view_source = inspect.getsource(__import__("hotelapp.views", fromlist=["views"]))
+        self.assertIn("validate_password_change(", view_source)
+        self.assertNotIn("两次输入的密码不一致", view_source)
+        self.assertNotIn("密码至少 6 位", view_source)
+
+    def test_policy_switch_allows_same_password_when_disabled(self):
+        """开关关闭 → 允许同值改密（负责人若否决该策略，一处回退即可）。"""
+        with self.settings(PASSWORD_POLICY_FORBID_REUSE=False):
+            response = self._post(
+                "/system/", _TEST_PW_CURRENT, _TEST_PW_CURRENT, _TEST_PW_CURRENT
+            )
+        self.assertEqual(response.status_code, 302)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(_TEST_PW_CURRENT))
+
+    def test_policy_switch_blocks_same_password_when_enabled(self):
+        """开关开启 → 拒绝同值改密（默认口径）。"""
+        with self.settings(PASSWORD_POLICY_FORBID_REUSE=True):
+            response = self._post(
+                "/system/", _TEST_PW_CURRENT, _TEST_PW_CURRENT, _TEST_PW_CURRENT
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "新密码不能与当前密码相同")

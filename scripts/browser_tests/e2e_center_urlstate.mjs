@@ -61,6 +61,41 @@ async function waitForParam(page, key, value, timeout = 4000) {
   return false;
 }
 
+/* ---- 改密口令策略适配（2026-11-27 新规则：新密码不得与当前密码相同）----
+ * ROTATED 是由 --password 派生的口令：必然不同于登录口令，且满足 Django 密码
+ * 校验器（长度 ≥8、非纯数字、非常见口令、与用户名不高度相似）。
+ * 首登强制改密会把账号口令改成 ROTATED，因此登录时先试 ROTATED 再试 PASSWORD，
+ * 保证同一账号可重复执行（幂等）；强制改密的新口令取「与当前口令不同的另一个」。
+ */
+const ROTATED = `${PASSWORD}#r5`;
+
+/** 依次用候选口令登录；成功返回 { password, forced }（forced=是否走过强制改密），
+ *  全部失败返回 null。 */
+async function loginWithRotation(page, username) {
+  for (const pwd of [ROTATED, PASSWORD]) {
+    await page.goto(`${BASE}/login/`, { waitUntil: "domcontentloaded" });
+    await page.fill('input[name="username"]', username);
+    await page.fill('input[name="password"]', pwd);
+    await page.click('button[type="submit"]');
+    await page.waitForLoadState("networkidle");
+    let forced = false;
+    if (page.url().includes("/force-password-change/")) {
+      forced = true;
+      const next = pwd === ROTATED ? PASSWORD : ROTATED;
+      await page.fill('input[name="current_password"]', pwd);
+      await page.fill('input[name="new_password1"]', next);
+      await page.fill('input[name="new_password2"]', next);
+      await page.click('button[type="submit"]');
+      await page.waitForLoadState("networkidle");
+      if (page.url().includes("/force-password-change/")) {
+        throw new Error(`${username} 强制改密未通过（仍停留在 /force-password-change/）`);
+      }
+    }
+    if (!page.url().includes("/login/")) return { password: pwd, forced };
+  }
+  return null;
+}
+
 const browser = await chromium.launch({ channel: "msedge", headless: true });
 try {
   const ctx = await browser.newContext({ viewport: { width: 1600, height: 900 } });
@@ -69,20 +104,9 @@ try {
   page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
   page.on("pageerror", (e) => consoleErrors.push("pageerror: " + e.message));
 
-  // ---- 登录 ----
-  await page.goto(`${BASE}/login/`, { waitUntil: "domcontentloaded" });
-  await page.fill('input[name="username"]', USER);
-  await page.fill('input[name="password"]', PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForLoadState("networkidle");
-  if (page.url().includes("/force-password-change/")) {
-    await page.fill('input[name="current_password"]', PASSWORD);
-    await page.fill('input[name="new_password1"]', PASSWORD);
-    await page.fill('input[name="new_password2"]', PASSWORD);
-    await page.click('button[type="submit"]');
-    await page.waitForLoadState("networkidle");
-  }
-  if (page.url().includes("/login/")) throw new Error("登录失败：" + USER);
+  // ---- 登录（先试 ROTATED 再试 PASSWORD，兼容首登强制改密后被改写的账号口令）----
+  const loggedInWith = await loginWithRotation(page, USER);
+  if (!loggedInWith) throw new Error("登录失败：" + USER);
 
   // ================= A) URL 状态同步 =================
   await page.goto(`${BASE}/manage/${CENTER}/`, { waitUntil: "networkidle" });
