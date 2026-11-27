@@ -1,4 +1,5 @@
 # Issue #8 交付报告：OpenAPI 权威快照与镜像逐字节一致性守卫
+> 文档编号：DOC-079 ｜ 类型：SHARED ｜ 状态：REFERENCE ｜ 版本域：跨版本 ｜ 业务模块：共享规范
 
 > 任务：GitHub Issue #8 — `test(api): 增加 OpenAPI 权威快照与镜像逐字节一致性守卫`
 > 仓库：`wulei0214/django-hotel2`

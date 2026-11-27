@@ -1,4 +1,5 @@
 # PMS2.0 本轮缺陷复审与白盒测试整改清单
+> 文档编号：DOC-049 ｜ 类型：AUDIT ｜ 状态：REFERENCE ｜ 版本域：PMS2 ｜ 业务模块：测试审计与缺陷整改
 
 > 文档类型：现有系统缺陷专项复审 / 白盒测试整改台账  
 > 复审基线：main@a8ecbddaffe95b9ba8a883e0fbd4fead48ac93c7  

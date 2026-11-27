@@ -1,4 +1,5 @@
 # NS-E-05 privacy.retention_execute 审批动作候选方案（2026-11-24）
+> 文档编号：DOC-005 ｜ 类型：DECISION ｜ 状态：ACTIVE ｜ 版本域：PMS2 ｜ 业务模块：项目基线与决策
 
 > 任务编号：PMS2-NS-E05-REVIEW-002 增补 ｜ 响应缺口报告：`docs/acceptance/T02-3与NS-E-05审批材料关联缺口_2026-11-24.md`（DEFECT-T02-004）
 > 性质：**第三候选方案（仅材料）**，补充 FIN-06 / MB-11 之外被遗漏的逐项审批事项；不代表已获批。
