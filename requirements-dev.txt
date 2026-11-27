@@ -10,3 +10,12 @@ types-requests==2.32.4.20260107
 pytest==8.3.2
 pytest-django==4.9.0
 pre-commit==3.8.0
+
+# --- 验收脚本运行时依赖（2026-11-27 补登：R6）---
+# requests：scripts/e2e_full_chain.py 直接 import requests 发真实 HTTP 请求
+requests==2.32.5
+# playwright：scripts/acceptance/nine_role_matrix.py 用它驱动浏览器会话内取证
+# 版本必须与本机已装浏览器匹配：playwright 1.60.0 对应 chromium-1223。
+# 装完包还要下浏览器：playwright install chromium
+# 公网 pip 索引不可用时可用仓库内工具从本机缓存离线安装：python scripts/offline_install.py
+playwright==1.60.0
