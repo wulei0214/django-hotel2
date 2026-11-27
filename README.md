@@ -16,7 +16,7 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
 | 夜审 | BusinessDate、NightAuditRun、NightAuditService | 营业日、夜审失败恢复和生产定时任务仍按部署验收 |
 | 清洁维修 | DIRTY→CLEANING→INSPECTING→CLEAN；维修专项权限 | 客房服务员不得执行净房放行 |
 | API | OpenAPI 3.1 静态快照；paths、operations 与 verified/partial 当前值统一以 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §2 为准 | 当前快照由 CI 守卫同步，不能用历史 partial 数量描述现状 |
-| 测试 | 双引擎测试数与绑定 SHA **现值以 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §3 为准**（2026-11-27 现取：MySQL / SQLite 各 Ran **2177**，绑 `5cad6b7`）；引用测试数必须与 SHA 同时引用，禁止裸引数字 | 不等于真实浏览器 E2E、用户本地库或生产验收 |
+| 测试 | 双引擎测试数与绑定 SHA **现值以 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §3 为准**（2026-11-28 现取：MySQL / SQLite 各 Ran **2230**，绑 `33fc13c`）；引用测试数必须与 SHA 同时引用，禁止裸引数字 | 不等于真实浏览器 E2E、用户本地库或生产验收 |
 | 全链路串测 | scripts/e2e_full_chain.py 已重写（护栏：--i-understand-reset / 目标库白名单 / 凭据注入 / 零硬编码 / 断言补齐） | 2026-11-17 隔离 MySQL 测试库复跑 56 项 / 失败 0（evidence/e2e-rerun-20261116.log，repo_head 1591ce2）；属开发侧证据、未纳入 CI，不替代独立验收 |
 | DEC-02-A1 账务调整 | `BillingAdjustment` 模型+服务+API+财务页面（财务发起→值班经理审批→执行生凭证；净额重建） | 开发完成，13/13 测试通过 |
 | DEC-02-B2 异常放行 | `CheckoutExceptionRelease` 模型+服务+API+前台引导+财务核查面板（申请→审批→放行不建负债→受控转负债/关闭） | 开发完成，13/13 测试通过 |
@@ -29,11 +29,11 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
 
 ## 2. 自动化测试证据
 
-**唯一当前口径**：双引擎测试数与绑定 SHA 一律以 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §3 为准（2026-11-27 现取：MySQL / SQLite 各 Ran **2177**，绑 `5cad6b7`）。**禁止裸引数字**——引用测试数必须与 SHA 同时引用。
+**唯一当前口径**：双引擎测试数与绑定 SHA 一律以 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §3 为准（2026-11-28 现取：MySQL / SQLite 各 Ran **2230**，绑 `33fc13c`）。**禁止裸引数字**——引用测试数必须与 SHA 同时引用。
 
 **证据在哪**
 
-- 各轮全量回归原始日志：`docs/acceptance/evidence/`，按「轮次 + 引擎 + SHA」命名；当前权威轮为 [`pms2-review-full-20261126/mysql-full-5cad6b7.log`](docs/acceptance/evidence/pms2-review-full-20261126/mysql-full-5cad6b7.log) 与 [同轮 SQLite 版](docs/acceptance/evidence/pms2-review-full-20261126/sqlite-full-5cad6b7.log)。
+- 各轮全量回归原始日志：`docs/acceptance/evidence/`，按「轮次 + 引擎 + SHA」命名；当前权威轮为 [`g14-final-20261127-r2/mysql-33fc13c.log`](docs/acceptance/evidence/g14-final-20261127-r2/mysql-33fc13c.log) 与 [同轮 SQLite 版](docs/acceptance/evidence/g14-final-20261127-r2/sqlite-33fc13c.log)。
 - CI 运行记录：<https://github.com/wulei0214/django-hotel2/actions>（历史 run 各自绑定其当时 SHA）。
 - 逐轮变更明细：[docs/更新日志.md](docs/更新日志.md)。
 
