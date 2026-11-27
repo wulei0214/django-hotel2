@@ -16,7 +16,7 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
 | 夜审 | BusinessDate、NightAuditRun、NightAuditService | 营业日、夜审失败恢复和生产定时任务仍按部署验收 |
 | 清洁维修 | DIRTY→CLEANING→INSPECTING→CLEAN；维修专项权限 | 客房服务员不得执行净房放行 |
 | API | OpenAPI 3.1 静态快照；paths、operations 与 verified/partial 当前值统一以 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §2 为准 | 当前快照由 CI 守卫同步，不能用历史 partial 数量描述现状 |
-| 测试 | 最新双引擎权威证据（2026-11-22，V3.0 第一批交付轮）：SQLite 1878 OK（skipped=28）（evidence/v3-sqlite-fullsuite-20261122.log）；MySQL 8 1878 OK（skipped=3）（evidence/v3-mysql-fullsuite-20261122.log，权威引擎，文件头含错峰登记）；CI test job（run 44814612894）绑定 c4c15b6；历史 1846/1849/1602/1307/948/887 均仅对其证据头 SHA 有效 | 不等于真实浏览器 E2E、用户本地库或生产验收 |
+| 测试 | 双引擎测试数与绑定 SHA **现值以 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §3 为准**（2026-11-27 现取：MySQL / SQLite 各 Ran **2177**，绑 `5cad6b7`）；引用测试数必须与 SHA 同时引用，禁止裸引数字 | 不等于真实浏览器 E2E、用户本地库或生产验收 |
 | 全链路串测 | scripts/e2e_full_chain.py 已重写（护栏：--i-understand-reset / 目标库白名单 / 凭据注入 / 零硬编码 / 断言补齐） | 2026-11-17 隔离 MySQL 测试库复跑 56 项 / 失败 0（evidence/e2e-rerun-20261116.log，repo_head 1591ce2）；属开发侧证据、未纳入 CI，不替代独立验收 |
 | DEC-02-A1 账务调整 | `BillingAdjustment` 模型+服务+API+财务页面（财务发起→值班经理审批→执行生凭证；净额重建） | 开发完成，13/13 测试通过 |
 | DEC-02-B2 异常放行 | `CheckoutExceptionRelease` 模型+服务+API+前台引导+财务核查面板（申请→审批→放行不建负债→受控转负债/关闭） | 开发完成，13/13 测试通过 |
@@ -27,41 +27,23 @@ PMS2 已建立员工身份与任职授权、预订库存、前台履约、财务
 | D4 库存差异 | `InventoryReconciliationRun/InventoryDiscrepancy` 模型+`reconciliation.py` 服务（扫描→申请→审批→执行修复→再次对账；SoD 自批拒绝） | 开发完成，6/6 测试通过 |
 | FIN-P0 账务对账 | `FolioReconciliationRun/FolioReconciliationDiff` 模型+`reconciliation.py` 服务（Payment↔凭证/Deposit↔凭证/Refund↔凭证/孤儿化检测） | 开发完成，6/6 测试通过 |
 
-## 2. 最新自动化测试证据
+## 2. 自动化测试证据
 
-- 【历史时点】[Django CI / SQLite（run #900）](https://github.com/wulei0214/django-hotel2/actions/runs/42500994999)：887 tests，OK（对应各自当时 SHA，非当前基线）；System Check 和 migration drift check 成功。
-- 【历史时点】[tests CI / MySQL 8（run #874）](https://github.com/wulei0214/django-hotel2/actions/runs/42500995030)：MySQL 8.0.46，887 tests，OK（对应各自当时 SHA，非当前基线）；迁移和 MySQL append-only guards 安装/校验成功。
-- MySQL 本地记录保留一次 1 error 的首次运行和随后 887 OK 的复跑，不删除失败证据。
-- 【2026-11-14】历史 run（#900/#874，887 项）仅对其当时 SHA 有效；walkin-round 证据轮实测 SQLite 1307 OK（skipped=25）/ MySQL 1307（`docs/acceptance/evidence/test-sqlite-walkin-round.log` 与 `docs/acceptance/evidence/test-mysql-walkin-round.log`，各绑其 SHA）。测试总数随主线持续演进，各历史报告中的数字不得挪用到其他基线；“当前值”唯一入口为 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §3。
-- 【2026-11-11】白盒修复回归（MySQL 8 本地，948 tests）：第一轮 12 failures + 5 errors（证据保留 `docs/acceptance/evidence/test-mysql-wb-fix.log`）；定位三类根因并修复——①`calculate_early_departure` 无政策/NONE 语义改为按合同金额全额结算（同日退房也必须入账房费，与退房/负债基线一致）；②押金 30% 强制策略的 3 个旧测试期望同步（180=600×30%、CR-04 退款额 90、e2e 上限改由第 4 笔触发）；③WB-011 测试补传 `confirmed_payment`。复跑 7 个受影响模块 139 项 OK 后全量复跑 **948 tests OK（expected failures=1）**（`docs/acceptance/evidence/test-mysql-wb-fix3.log`）；中间轮 2 errors 系本机跑套件漏带 `DJANGO_ENV=test`（runner 强制 DEBUG=False 导致 reconcile_test_users 守卫拒绝测试库），非代码缺陷（`test-mysql-wb-fix2.log` 留证）。
-- 【2026-11-11】白盒整改第二批（6 项功能修复 + 对账口径修正，测试 948→960 项）：
-  - **WB-037 工号自动编号接入**：`create_employee` 空工号时按部门代码（FO/HK/FIN/MG/ENG）走 DEC-EMP-02 原子编号；员工中心表单新增部门代码选择；岗位代码恰为受控部门代码时自动映射。
-  - **WB-044 旧未到入口退役**：`/no_show_one/` 直写入口改 410 Gone（AR-01 收口），统一走 `POST /api/v1/front-desk/reservation-rooms/<id>/no-show`。
-  - **WB-055 退房自动生成清洁任务**：退房同事务创建 DEPARTURE 清洁任务（此前 HousekeepingTask 模型无创建方，房态置 DIRTY 但任务断链）+ `housekeeping.task_created` 审计；重复退房幂等。
-  - **WB-056 清洁任务与房态链闭环**：净房放行（→CLEAN）联动 DONE→INSPECTED（记录检查人）、未开工任务→CANCELLED；检查返工（INSPECTING→DIRTY）联动 DONE→REJECTED；各落审计。
-  - **WB-049~051 异常放行金额绑定**：申请金额必须>0 且≤当前负余额（杜绝超额放行）；审批审计绑定放行金额+审批时点余额快照；放行消费不覆盖已批金额（受阻金额超过已批额维持阻断）；财务转负债按核查时点实际负余额建账，超过已批额拒绝。
-  - **WB-022~026 库存对账口径修正**：扫描窗口按物业时区取日；sold 重算按明细行计数（多房预订不再按 distinct 预订低估）；排除已未到明细行；判定口径修正——held/sold 不一致必报（运算符优先级 bug）、total_rooms 按容量语义判超卖（不再与占用和做相等比较）。
-  - 回归证据：`docs/acceptance/evidence/test-mysql-wb-batch2.log`。
-- 【2026-11-11】白盒整改第三批（审查方第 14~22 轮 WB-067~096，5 路并行子代理修复，测试 960→1020 项）：
-  - **支付意图域加固**：WB-067 补偿任务完成强制校验租约所有权+有效期（空值不再绕过）；WB-069/071 create_intent 幂等指纹补齐 currency/purpose/provider_code 且币种必须与 Folio/预订一致；WB-072 confirm_intent_success 校验 Payment 完整归属（物业/预订/账单/金额/币种/状态/未被占用）；WB-073 库存确认失败同事务创建 HOLD_COORDINATION 补偿任务；WB-076/089 渠道事件首次写入校验渠道/金额/币种/验签；WB-077/090 过期服务校验窗口到期。
-  - **补偿 Worker 与公开支付接入**：WB-070/078 新增 `payment_compensation_worker` 管理命令（租约领取→分派→完成→退避→死信重放）；WB-087 迟到成功同事务创建持久化补偿任务；WB-088 公开支付意图/回调同事务接入 PaymentIntent+ProviderTransaction（响应契约零改动）。
-  - **夜审与账本写入守卫**：WB-079 post_entry 拒写已关账营业日（渠道资金事实豁免，posted_by=None 且 PAYMENT）；WB-080 夜审仅限当前营业日，拒绝未来/历史/任意日期；WB-081 stay_count 按过租窗口同口径；WB-082 already_posted 升级为内容一致校验（folio/stay/金额/币种/营业日不符→critical 阻断）；WB-083 LedgerEntry 实例级 save() 只追加守卫。
-  - **续住与退房闭环**：WB-074 walk-in 占位号按幂等键确定性派生（uuid5）+ 房间查询物业隔离 + 幂等重放短路；WB-075 缺逐晚房价快照禁止自动结算（与夜审 critical 同口径，NONE=合同全额基线不动）；WB-084 续住同事务逐晚过账房费凭证（退房归集口径补第三项防双记）；WB-085 续住锁物理房间行（锁序与排房一致）；WB-086 提前退房释放未住晚 sold 库存（历史已住晚保留）。
-  - **财务凭证/对账/班次**：WB-091 REFUND_INCREASE 补独立调整凭证（不再只有负债变更无凭证）；WB-093 负债回增清空 settled_at（审计保留原结清时间）；WB-092/096 对账补齐——原始收款凭证覆盖退款中/部分退/全退状态、已关闭 Folio 余额重建、负债净额重建、调整缺凭证检测（新差异类型 ADJUSTMENT_NO_ENTRY）；WB-091-旧 执行参考号物业内唯一（服务层查重双库生效+DB 部分唯一索引）；WB-092-旧 班次现金支出模型层余额校验；WB-095 移除不可达 RECONCILED 状态。
-  - **双 CI 漂移修复**：rehire 条件约束与退款参考号 DB 约束测试改 `skipUnless(supports_partial_indexes)`（SQLite 必跑、MySQL 按能力跳过，替代统一 expectedFailure 造成 SQLite unexpected success 假失败）。
-  - 迁移：billing.0027（班次状态 choices/对账差异类型/退款参考号部分唯一约束）。回归证据：`docs/acceptance/evidence/test-mysql-wb-batch3.log`。
-- 【2026-11-13】第三路全面审查（P1×4/P2×12/P3×9）对 HEAD 93f23cc 复核后收口：26 项中 22 项已由并行轮次在 HEAD 修复（FIN-01/02/03/04、RSV-01/02/03/06/07/08/10/11、SEC-01/02、MAINT-02/02b/03/05/06/07/09，逐项四态核verified），本轮修复剩余 4 项：
-  - **MAINT-01**：hotelapp/views.py 32 个 410 退役入口的 747 行不可达旧写体删除（AST 定位行手术，36 个 410 返回完好，hotelapp 全绿）。
-  - **PERF-01**：夜审 preview 批量预取主账单与既有凭证（2N+1→固定 3 条查询），语义与原 .first() 一致（含 Folio -opened_at 排序口径）。
-  - **RSV-05**：`create_walk_in` 入住/离店日期改物业时区业务日（与夜审/提前离店同口径）+ 弃用标注（生产零调用，供后续 API 接线复用，禁止零散重写）。
-  - **MAINT-04**：公开端点（availability/reserve/详情/取消/支付意图/回调）25 处扁平 `{"error": "字符串"}` 收敛为 `{error:{code,message},meta}`；`ApiError` 增补 METHOD_NOT_ALLOWED/SERVICE_UNAVAILABLE/PROPERTY_UNAVAILABLE 三码（与 openapi 声明词汇对齐）；ErrorDetail 词汇表更新并重导 openapi.json 快照（113 paths）；6 处测试断言同步。
-  - 回归证据：`docs/acceptance/evidence/test-sqlite-round34.log`（SQLite 全量）、`test-mysql-round34.log`（MySQL 全量）。
-- 【2026-11-16】本地部署验收走查（开发侧 · G14-06/07/09 前置）：浏览器真实 UI + requests 真实 HTTP、角色分离会话，核心链路全 PASS、九角色矩阵 12/12、越权 3 项 403（docs/acceptance/evidence/walkthrough-g14-dev-side-20261116.md，worktree 37a93fc + walkthrough-final-state-20261116.log）。
-- 【2026-11-16】空库全量迁移：test_hotel 全新库 migrate 128 项全部应用成功 + check 无问题（docs/acceptance/evidence/empty-db-migrate-20261116.log）。
-- 【2026-11-17】排期第2+3批交付回归：SQLite 1598 OK（skipped=26）/ MySQL 1598 首跑 FAILED（63F/21E）登记（docs/acceptance/evidence/test-{sqlite,mysql}-batch23.log，被测树 1591ce2）；同日更正根因为测试环境白名单污染，387e6bf 净化后重取 MySQL 1602 OK（skipped=3）（test-mysql-env-sanitized-20261117.log）。
-- 【2026-11-17】e2e_full_chain 重写后隔离 MySQL 复跑 56 项/失败 0（docs/acceptance/evidence/e2e-rerun-20261116.log，repo_head 1591ce2）。
+**唯一当前口径**：双引擎测试数与绑定 SHA 一律以 [PMS当前状态总览](docs/共享规范/PMS当前状态总览.md) §3 为准（2026-11-27 现取：MySQL / SQLite 各 Ran **2177**，绑 `5cad6b7`）。**禁止裸引数字**——引用测试数必须与 SHA 同时引用。
 
-**注意：** 两条 CI 仍不执行 scripts/e2e_full_chain.py；脚本已于 2026-11-16 重写并在隔离 MySQL 测试库复跑 56/0（evidence/e2e-rerun-20261116.log），该结果为开发侧证据，仍不等于 CI 化串测或独立验收。
+**证据在哪**
+
+- 各轮全量回归原始日志：`docs/acceptance/evidence/`，按「轮次 + 引擎 + SHA」命名；当前权威轮为 [`pms2-review-full-20261126/mysql-full-5cad6b7.log`](docs/acceptance/evidence/pms2-review-full-20261126/mysql-full-5cad6b7.log) 与 [同轮 SQLite 版](docs/acceptance/evidence/pms2-review-full-20261126/sqlite-full-5cad6b7.log)。
+- CI 运行记录：<https://github.com/wulei0214/django-hotel2/actions>（历史 run 各自绑定其当时 SHA）。
+- 逐轮变更明细：[docs/更新日志.md](docs/更新日志.md)。
+
+**历史数字纪律**：887 / 948 / 1307 / 1598 / 1602 / 1878 等均为各自证据头 SHA 的**时点值**，仅对其基线有效；不得挪用到其他基线，不得用于描述现状。逐轮记录见 [docs/更新日志.md](docs/更新日志.md) 与 `docs/acceptance/evidence/`。
+
+**已知边界（不可省略）**
+
+- 两条 CI **均不执行** `scripts/e2e_full_chain.py`。该脚本 2026-11-16 重写后在隔离 MySQL 测试库复跑 56 项 / 失败 0（[`e2e-rerun-20261116.log`](docs/acceptance/evidence/e2e-rerun-20261116.log)，repo_head 1591ce2），属**开发侧证据**，不等于 CI 化串测，也不等于独立验收。
+- 自动化测试通过 ≠ 真实浏览器 E2E ≠ 用户本地库验收 ≠ 生产部署验收。
+- MySQL 全量回归须遵守错峰与串行纪律，见 [AGENTS.md](AGENTS.md)「会话纪律」。
 
 ## 3. 核心业务链路
 
@@ -102,8 +84,7 @@ python manage.py seed_role_test_accounts
 - [PMS2 最终验收标准](docs/PMS2.0_当前版本/05_测试审计与缺陷整改/PMS2.0最终开发完成与上线验收标准_2026-11-10.md)
 - [最新单元测试与白盒审查报告](docs/PMS2.0_当前版本/05_测试审计与缺陷整改/PMS2最新代码单元测试与白盒全链路审查报告_2026-11-09.md)
 - [PMS3.0 最终方案 V2.3](docs/PMS3.0_后续规划/00_总体规划基线/PMS3.0全项目开发最终方案V2.3_2026-11-10.md)
-
-- [docs Markdown 全目录清单与维护状态（78 篇）](docs/共享规范/Markdown文档清单与维护状态_2026-11-09.md)
+- 强制规范编号库（**STD-01～STD-06**）与全部文档分组/效力状态：[文档索引](docs/文档索引.md) §六
 
 ## 7. 验收声明
 
@@ -114,4 +95,36 @@ python manage.py seed_role_test_accounts
 - 当前状态唯一入口：[PMS当前状态总览](docs/共享规范/PMS当前状态总览.md)
 - 主题权威关系：[权威关系矩阵](docs/共享规范/文档治理阶段二_文档权威关系矩阵_2026-11-14.md)
 - 新人阅读路线：[阅读路线](docs/共享规范/文档治理阶段二_新开发人员阅读路线_2026-11-14.md)
-- 全仓台账与导航：[文档总台账](docs/共享规范/文档治理阶段一_文档总台账_2026-11-14.md) · [文档索引](docs/文档索引.md)
+- 全仓导航与强制规范编号库：[文档索引](docs/文档索引.md) · 重复/过期/冲突处置裁定：[GOV-DISPOSE-001](docs/文档处置清单_重复过期冲突_2026-11-27.md)
+
+## 9. 目录结构说明
+
+> 是否入库以 `git ls-files` 实测为准（2026-11-27）。**gitignored 目录是本机产物，不入库、也不得被引用为验收证据路径。**
+
+**入库（提交进版本库）**
+
+| 路径 | 用途 | 已跟踪文件 |
+|---|---|---|
+| `ARCHITECTURE.md` | 架构宪法，最高约束（修改属 L3 架构变更） | 1 |
+| `AGENTS.md` | AI 协作规则入口：硬红线 + 规则导航（指向 STD-01～06） | 1 |
+| `README.md` | 项目总览与阅读起点（本文） | 1 |
+| `apps/` | Django 业务模块：认证授权、预订库存、前台履约、财务账单、夜审、清洁维修、审计报表 | 402 |
+| `hotel/` | Django 项目配置（settings / urls / wsgi / asgi） | 4 |
+| `hotelapp/` | 早期单体 app；已退役 410 入口的旧写体保留区（不得在其上新增功能） | 40 |
+| `templates/` | Django 模板（`templates/pms/` 为业务中心版式基准） | 29 |
+| `static/` | 静态资源源文件 | 162 |
+| `scripts/` | 工具脚本：文档门禁 `docs_link_check.py`、取证、E2E 串测、mypy 基线 | 33 |
+| `docs/` | 全部文档；结构与效力分组见 [文档索引](docs/文档索引.md) §六 | 498 |
+| `manage.py`、`pyproject.toml`、`requirements.txt`、`requirements-dev.txt`、`mypy-baseline.txt` | 工程与工具链配置 | 5 |
+
+**不入库（gitignored，本机运行产物）**
+
+| 路径 | 用途 |
+|---|---|
+| `staticfiles/` | `collectstatic` 收集产物 |
+| `logs/`、`reports/` | 本机运行日志与报告 |
+| `backups/` | 数据库/文件备份 |
+| `understand-out/` | 代码分析工具输出 |
+| `_wbi_*`、`__pycache__/` | AI/工具缓存与字节码 |
+
+**`docs/` 之下**：强制规范集中在 [文档索引](docs/文档索引.md) §六-A1（编号 **STD-01～STD-06**）；历史件已原位标记 `ARCHIVED`、不作开发依据；`docs/acceptance/` 为**不可变审计资产**（只读，不移动、不改写）。

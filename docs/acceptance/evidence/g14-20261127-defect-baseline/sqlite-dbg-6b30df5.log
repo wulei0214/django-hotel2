@@ -1,0 +1,583 @@
+证据生成时间：2026-11-27T16:05:23
+被测树：6b30df577db845ba470414d8fa17ba72608a3a8c（工作区含未提交变更 2 项：证据树不等于该提交，需以本行为准）
+Python：3.9.0    Django：4.1
+数据库：SQLite（内存库，CI/轻量口径）
+执行命令：D:\Python39\python.exe manage.py test --noinput（DJANGO_ENV=test，engine=sqlite）
+测试总数：2220    最终判定：OK    跳过：32
+退出码：0
+========================================================================
+Found 2220 test(s).
+System check identified no issues (0 silenced).
+本次关闭 1 笔审批超时退款。
+退款申请 ID：1
+本次关闭 0 笔审批超时退款。
+补偿任务本轮：扫描 5，成功 3，退避/失败 2，跳过 0。
+支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，1 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+支付/账务维护完成：1 个意图过期，1 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+支付/账务维护完成：0 个意图过期，1 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+已恢复 0 条超时夜审 RUNNING 记录（阈值 15 分钟）。
+支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，1 个对账差异任务，0 个错误。
+补偿任务本轮：扫描 1，成功 1，退避/失败 0，跳过 0。
+支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，1 个账本修复，0 个对账差异任务，0 个错误。
+补偿任务本轮：扫描 1，成功 1，退避/失败 0，跳过 0。
+支付/账务维护完成：0 个意图过期，0 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+支付/账务维护完成：0 个意图过期，1 个渠道状态未知（已转 CHANNEL_QUERY），0 个状态冲突/业务拒绝，0 个回调确认重试，0 个账本修复，0 个对账差异任务，0 个错误。
+补偿任务本轮：扫描 1，成功 0，退避/失败 1，跳过 0。
+[覆盖不足] E2E 测试大床房（E2E-KING）：日历最远 2026-11-30，要求 ≥ 2026-12-04（今天+7 天）；补齐走 sync_inventory_calendar（调度每日 02:30）。
+待办对账：active=2 created=2 updated=0 resolved=0。
+已同步 E2E 测试大床房：2026-11-27 至 2026-12-27，共 31 个住宿日；总房量 3，停用 0。
+全部 1 个启用房型日历已滚动至 2026-12-27。
+已同步 E2E 测试大床房：2026-11-27 至 2026-12-27，共 31 个住宿日；总房量 3，停用 0。
+全部 1 个启用房型日历已滚动至 2026-12-27。
+已同步 E2E 测试大床房：2026-11-27 至 2026-12-27，共 31 个住宿日；总房量 3，停用 0。
+全部 1 个启用房型日历已滚动至 2026-12-27。
+Creating test database for alias 'default'...
+
+D:\Python39\lib\site-packages\django\core\handlers\base.py:61: UserWarning: No directory at: F:\ZCode\pms-g14-evidence\staticfiles\
+  mw_instance = middleware(adapted_handler)
+................................................................................login_failed ip=127.0.0.1 username_fp=2942f05b93ba reason=disabled
+.login_failed ip=127.0.0.1 username_fp=00bdef82f273 reason=no_employment
+.login_failed ip=127.0.0.1 username_fp=53f88ee8f52f reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=2942f05b93ba reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=fa2a84f5b524 reason=bad_credentials
+.login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=bad_credentials
+login_failed ip=127.0.0.1 username_fp=d716c50d5641 reason=rate_limited
+.......................................................................................................Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/billing/shifts/open
+.Forbidden (CSRF token from the 'X-Csrftoken' HTTP header has incorrect length.): /api/v1/notifications/refresh
+..........login_failed ip=127.0.0.1 username_fp=1064ae8d7d60 reason=disabled
+...........................................................................................................................................................................................................ss..........................................................................................................................................................................................................................................................................................................................................................DEC-DEP-01 押金金额不一致：前端展示 999.00，服务端计算 90.00（以服务端为准）
+............DEC-DEP-01 押金金额不一致：前端展示 0，服务端计算 90.00（以服务端为准）
+..............意图 2 过期被拒绝：意图状态已被并发修改
+.................................................................................................................................................DEC-DEP-01 押金金额不一致：前端展示 1.00，服务端计算 206.40（以服务端为准）
+.............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................DBG pwd_reauth user=ci_pms ip=127.0.0.1 rows=[]
+DBG check_current_password user=ci_pms ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=ci_pms
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+DBG rate_limit.reset action=identity.pwd_reauth username=ci_pms
+  File "D:\Python39\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "D:\Python39\lib\site-packages\django\contrib\auth\decorators.py", line 23, in _wrapped_view
+    return view_func(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1209, in system_info
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+............................................................................................................................................................................DBG pwd_reauth user=pf_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=pf_me ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=pf_me
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.DBG pwd_reauth user=pf_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=pf_me ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=pf_me
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+DBG rate_limit.reset action=identity.pwd_reauth username=pf_me
+  File "D:\Python39\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "D:\Python39\lib\site-packages\django\contrib\auth\decorators.py", line 23, in _wrapped_view
+    return view_func(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1209, in system_info
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.................................................................................................................................................................................................................................................................................................................DBG pwd_reauth user=r5_forced ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_forced ok=False path=/force-password-change/ cp_len=24
+DBG pwd_reauth user=r5_forced ip=127.0.0.1 rows=[{'key_hash': '7250c374d36f0b2fb61714f2e818e2b0cd2b214d321c236a', 'count': 1, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': '2aa3d44cf766444811a3f017c7ebbb4f193374b487f034e5', 'count': 1, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_forced ok=False path=/force-password-change/ cp_len=24
+DBG pwd_reauth user=r5_forced ip=127.0.0.1 rows=[{'key_hash': '7250c374d36f0b2fb61714f2e818e2b0cd2b214d321c236a', 'count': 2, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': '2aa3d44cf766444811a3f017c7ebbb4f193374b487f034e5', 'count': 2, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_forced ok=False path=/force-password-change/ cp_len=24
+DBG pwd_reauth user=r5_forced ip=127.0.0.1 rows=[{'key_hash': '7250c374d36f0b2fb61714f2e818e2b0cd2b214d321c236a', 'count': 3, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': '2aa3d44cf766444811a3f017c7ebbb4f193374b487f034e5', 'count': 3, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_forced ok=False path=/force-password-change/ cp_len=24
+DBG pwd_reauth user=r5_forced ip=127.0.0.1 rows=[{'key_hash': '7250c374d36f0b2fb61714f2e818e2b0cd2b214d321c236a', 'count': 4, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': '2aa3d44cf766444811a3f017c7ebbb4f193374b487f034e5', 'count': 4, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_forced ok=False path=/force-password-change/ cp_len=24
+DBG pwd_reauth user=r5_forced ip=127.0.0.1 rows=[{'key_hash': '7250c374d36f0b2fb61714f2e818e2b0cd2b214d321c236a', 'count': 5, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': '2aa3d44cf766444811a3f017c7ebbb4f193374b487f034e5', 'count': 5, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+.DBG pwd_reauth user=r5_forced ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_forced ok=True path=/force-password-change/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_forced
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 881, in force_password_change
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_forced
+  File "D:\Python39\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "D:\Python39\lib\site-packages\django\contrib\auth\decorators.py", line 23, in _wrapped_view
+    return view_func(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 903, in force_password_change
+    reset_current_password_failures(request, request.user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.DBG pwd_reauth user=r5_forced ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_forced ok=False path=/force-password-change/ cp_len=0
+.DBG pwd_reauth user=r5_forced ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_forced ok=True path=/force-password-change/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_forced
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 881, in force_password_change
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.DBG pwd_reauth user=r5_forced ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_forced ok=False path=/force-password-change/ cp_len=24
+.DBG pwd_reauth user=r5_unified_forced ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_unified_forced ok=True path=/force-password-change/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_unified_forced
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 881, in force_password_change
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+DBG pwd_reauth user=r5_unified ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_unified ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_unified
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.DBG pwd_reauth user=r5_unified_forced ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_unified_forced ok=True path=/force-password-change/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_unified_forced
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 881, in force_password_change
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+DBG pwd_reauth user=r5_unified ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_unified ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_unified
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.DBG pwd_reauth user=r5_unified_forced ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_unified_forced ok=False path=/force-password-change/ cp_len=24
+DBG pwd_reauth user=r5_unified ip=127.0.0.1 rows=[{'key_hash': '2e7f39d3c5c6d8639f7bcc1b0c80ffb69aae5c149f115f2f', 'count': 1, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'b33d2793aa605401f81bc9413cc20cde027405bce99d0a58', 'count': 1, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_unified ok=False path=/system/ cp_len=24
+.DBG pwd_reauth user=r5_unified ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_unified ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_unified
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_unified
+  File "D:\Python39\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "D:\Python39\lib\site-packages\django\contrib\auth\decorators.py", line 23, in _wrapped_view
+    return view_func(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1209, in system_info
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.DBG pwd_reauth user=r5_unified ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_unified ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_unified
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+....DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+.DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_me
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_me
+  File "D:\Python39\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "D:\Python39\lib\site-packages\django\contrib\auth\decorators.py", line 23, in _wrapped_view
+    return view_func(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1209, in system_info
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 1, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 1, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 2, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 2, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 3, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 3, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 4, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 4, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 5, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 5, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+.DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 1, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 1, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 2, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 2, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 3, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 3, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 4, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 4, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_me
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_me
+  File "D:\Python39\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "D:\Python39\lib\site-packages\django\contrib\auth\decorators.py", line 23, in _wrapped_view
+    return view_func(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1209, in system_info
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_me
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_me
+  File "D:\Python39\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "D:\Python39\lib\site-packages\django\contrib\auth\decorators.py", line 23, in _wrapped_view
+    return view_func(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1209, in system_info
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 1, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 1, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_me ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_me
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_me
+  File "D:\Python39\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "D:\Python39\lib\site-packages\django\contrib\auth\decorators.py", line 23, in _wrapped_view
+    return view_func(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1209, in system_info
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+.DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+.DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=0
+.DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_me
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 1, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 1, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 2, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 2, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 3, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 3, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[{'key_hash': '0e4df4fe520a1237c6f6b3db12ffee0142a7b6f74e758da9', 'count': 4, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}, {'key_hash': 'e61764fd981accdc3cfa4c1fdbdfc00db507aae23976dd01', 'count': 4, 'window_start': datetime.datetime(2026, 11, 27, 8, 10, tzinfo=datetime.timezone.utc)}]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+.DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_me
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_me
+  File "D:\Python39\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "D:\Python39\lib\site-packages\django\contrib\auth\decorators.py", line 23, in _wrapped_view
+    return view_func(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1209, in system_info
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=True path=/system/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_me
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1184, in system_info
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+DBG rate_limit.reset action=identity.pwd_reauth username=r5_me
+  File "D:\Python39\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "D:\Python39\lib\site-packages\django\contrib\auth\decorators.py", line 23, in _wrapped_view
+    return view_func(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 1209, in system_info
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+.DBG pwd_reauth user=r5_me ip=127.0.0.1 rows=[]
+DBG check_current_password user=r5_me ok=False path=/system/ cp_len=24
+........................DBG pwd_reauth user=owner_d07 ip=127.0.0.1 rows=[]
+DBG check_current_password user=owner_d07 ok=True path=/force-password-change/ cp_len=24
+DBG rate_limit.reset action=identity.pwd_reauth username=owner_d07
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 881, in force_password_change
+    error = validate_password_change(
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 992, in validate_password_change
+    error = check_current_password(request, user, current_password)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 1074, in check_current_password
+    reset_current_password_failures(request, user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+DBG rate_limit.reset action=identity.pwd_reauth username=owner_d07
+  File "D:\Python39\lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "D:\Python39\lib\site-packages\django\contrib\auth\decorators.py", line 23, in _wrapped_view
+    return view_func(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 131, in wrapped
+    return view(request, *args, **kwargs)
+  File "F:\ZCode\pms-g14-evidence\hotelapp\views.py", line 903, in force_password_change
+    reset_current_password_failures(request, request.user)
+  File "F:\ZCode\pms-g14-evidence\apps\identity\services.py", line 936, in reset_current_password_failures
+    rate_limit.reset(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+  File "F:\ZCode\pms-g14-evidence\apps\core\rate_limit.py", line 114, in reset
+    % (action, username, "".join(_tb.format_stack()[-6:])),
+
+................................................................s.......................ssssssssssssss.............s......................ss..sssssss......ssss...s....
+----------------------------------------------------------------------
+Ran 2220 tests in 489.544s
+
+OK (skipped=32)
+Destroying test database for alias 'default'...
+

@@ -1,0 +1,7 @@
+﻿璇佹嵁鐢熸垚鏃堕棿锛?026-11-27T16:13:58
+琚祴鏍戯細6b30df577db845ba470414d8fa17ba72608a3a8c锛堝伐浣滃尯鍚湭鎻愪氦鍙樻洿 2 椤癸細璇佹嵁鏍戜笉绛変簬璇ユ彁浜わ紝闇€浠ユ湰琛屼负鍑嗭級
+Python锛?.9.0    Django锛?.1
+鏁版嵁搴擄細MySQL 8.0.33
+鎵ц鍛戒护锛欴:\Python39\python.exe manage.py test --noinput锛圖JANGO_ENV=test锛宔ngine=mysql锛?
+娴嬭瘯鎬绘暟锛?220    鏈€缁堝垽瀹氾細FAILED (errors=2, skipped=5)    璺宠繃锛?
+閫€鍑虹爜锛?

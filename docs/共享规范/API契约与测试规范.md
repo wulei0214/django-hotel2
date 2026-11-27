@@ -1,4 +1,7 @@
 # API 契约与测试规范
+> 文档编号：STD-02 ｜ 类型：STANDARD ｜ 状态：ACTIVE ｜ 版本域：跨版本 ｜ 业务模块：API契约与测试
+> 上位文档：[ARCHITECTURE.md](../../ARCHITECTURE.md)（架构宪法）｜ 收编登记：2026-11-27 《[GOV-DISPOSE-001](../文档处置清单_重复过期冲突_2026-11-27.md)》C-7/G5 ｜ 分组：[文档索引](../文档索引.md) §六-A1
+> 当前值纪律：本文一切数字均为**时点快照**；基线 SHA、测试数、接口规模等现值一律以《[PMS当前状态总览](PMS当前状态总览.md)》为准，**禁止直接引用本文数字**。
 
 > 依据：ARCHITECTURE.md §2.3（API 事实边界）/ §8（API 契约要素）/ §10（测试门禁）；治理 V1.1 §3.5/§5；第一阶段报告 §3.2/§7。
 > 效力：专项规范，细化宪法而不冲突。API 权威契约 = `apps/api/openapi_schema.py` 运行时导出（/api/v1/openapi.json），`docs/接口文档/openapi.json` 为同步兼容副本。
@@ -35,6 +38,8 @@ URL 与方法；请求字段（名/类型/可空/默认/校验）；响应字段
 | Django 单元/服务/API | `apps/<domain>/test_*.py`、`tests.py` | `manage.py test`（SQLite :memory:；CI django-ci 同款环境） | 1201 条（2026-11-13 实测全绿） |
 | P0 真实 HTTP 冒烟 | `apps/api/tests_p0/` | `pytest apps/api/tests_p0 -m p0`（需已启动且种子化实例；PMS_BASE_URL/员工账号用环境变量注入） | 9 条；裸跑 `pytest` 默认排除（addopts） |
 | pytest 默认收集 | 仓库根 `pytest` | 1124 collected（9 p0 deselected） | 配置在 pyproject [tool.pytest.ini_options] |
+
+> **计数防再过期**：上表条数为 **2026-11-13 时点**快照。**现值以《[PMS当前状态总览](PMS当前状态总览.md)》§3 为准**（2026-11-27 现取：双引擎各 Ran **2177**，绑 `5cad6b7`）。引用测试数必须与 SHA 同时引用，禁止裸引数字。
 
 ### 4.2 用例要求
 
