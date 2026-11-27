@@ -53,7 +53,6 @@
         .pms-drawer-body{flex:1;overflow:auto;padding:16px 20px}
         .pms-drawer-state{padding:32px 0;text-align:center;color:var(--color-text-muted,#8290a3);font-size:13px}
         .pms-action-form{margin:0 0 18px;padding:14px;border:1px solid var(--color-border-separator,#edf0f4);border-radius:var(--radius-md,6px);background:var(--color-bg-subtle,#f7f9fc)}
-        .pms-action-form h3{margin:0 0 12px;font-size:14px;color:var(--color-text-primary,#243247)}
         .pms-action-form .pms-field{margin-bottom:10px}
         .pms-action-form .pms-field-label{display:block;margin-bottom:4px;font-size:13px;color:var(--color-text-secondary,#637188);font-weight:600}
         .pms-action-form input,.pms-action-form select,.pms-action-form textarea{width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--color-border-default,#dcdfe6);border-radius:var(--radius-md,6px);font-size:13px;color:var(--color-text-primary,#243247);background:#fff;font-family:inherit}
@@ -70,9 +69,27 @@
         .pms-mini{width:100%;border-collapse:collapse}
         .pms-mini th,.pms-mini td{padding:7px 10px;border-bottom:1px solid var(--color-border-separator,#edf0f4);font-size:12px;text-align:left;font-variant-numeric:tabular-nums}
         .pms-mini th{background:var(--color-bg-subtle,#f7f9fc);color:var(--color-text-secondary,#637188);font-weight:600}
+        /* ---------- 页面级操作条（业务动作 + 相关工作台，置顶不沉底） ---------- */
+        .pms-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 18px}
+        .pms-actions:empty{display:none}
+        .pms-actions .pms-row-btn{padding:8px 14px;font-size:13px}
+        .pms-actions-sep{width:1px;height:20px;background:var(--color-border-default,#d9e0e9);margin:0 4px}
+        .pms-link{color:var(--color-accent-solid,#2b74c9);text-decoration:none;font-size:13px;padding:6px 2px}
+        .pms-link:hover{text-decoration:underline}
+        .pms-link:focus-visible{outline:2px solid var(--color-accent-solid,#2b74c9);outline-offset:2px}
+        /* ---------- 抽屉行级操作：顶部粘性按钮栏 + 居中弹层表单 ---------- */
+        .pms-drawer-actions{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:8px;margin:-16px -20px 14px;padding:12px 20px;background:var(--color-bg-surface,#fff);border-bottom:1px solid var(--color-border-separator,#edf0f4)}
+        .pms-modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:70;opacity:0;pointer-events:none;transition:opacity .2s}
+        .pms-modal-mask.is-open{opacity:1;pointer-events:auto}
+        .pms-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:520px;max-width:92vw;max-height:86vh;overflow:auto;background:var(--color-bg-surface,#fff);z-index:71;border-radius:var(--radius-lg,12px);box-shadow:var(--shadow-pop,0 8px 32px rgba(0,0,0,.2));opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+        .pms-modal.is-open{opacity:1;pointer-events:auto}
+        .pms-modal-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--color-border-separator,#e7ebf1)}
+        .pms-modal-head h3{margin:0;font-size:15px;color:var(--color-text-primary,#243247)}
+        .pms-modal-body{padding:16px 20px}
+        .pms-modal .pms-action-form{margin:0;border:0;padding:0;background:transparent}
         @media(max-width:720px){.pms-center{padding:14px}.pms-panel{padding:10px}.pms-tools input{min-width:0;width:100%}}
         @media (prefers-reduced-motion: reduce){
-            .pms-drawer-mask,.pms-drawer{transition:none}
+            .pms-drawer-mask,.pms-drawer,.pms-modal-mask,.pms-modal{transition:none}
         }
     </style>
 </head>
@@ -87,6 +104,7 @@
       </div>
       <a href="/checkin/">返回前台接待</a>
     </div>
+    <div id="pms-actions" class="pms-actions"></div>
     <section class="pms-panel" data-ux-urlstate>
       <div class="pms-tools">
         <input id="pms-search" type="search" placeholder="输入关键字搜索" data-ux-param="q">
@@ -103,7 +121,6 @@
         </table>
       </div>
       <div class="pms-pager">
-        <span id="pms-state-note">数据来自 PMS2 API；列表点击「查看」打开详情抽屉。</span>
         <span class="pms-pager-controls">
           <label for="pms-page-size">每页</label>
           <select id="pms-page-size" aria-label="每页显示条数" data-ux-param="page_size">
@@ -123,7 +140,6 @@
     </section>
     <div id="pms-secondary"></div>
   </div>
-  <div id="pms-actions" class="pms-actions"></div>
 </div>
 <form id="pms-csrf-form" style="display:none">{% csrf_token %}</form>
 
@@ -135,6 +151,16 @@
   </div>
   <div class="pms-drawer-body" id="pms-drawer-body"></div>
 </aside>
+
+<!-- 行级操作弹层：表单不再堆在抽屉底部，点抽屉顶部的操作按钮弹出 -->
+<div class="pms-modal-mask" id="pms-modal-mask"></div>
+<div class="pms-modal" id="pms-modal" role="dialog" aria-modal="true" aria-labelledby="pms-modal-title">
+  <div class="pms-modal-head">
+    <h3 id="pms-modal-title"></h3>
+    <button type="button" class="pms-drawer-close" id="pms-modal-close">关闭</button>
+  </div>
+  <div class="pms-modal-body" id="pms-modal-body"></div>
+</div>
 
 {{ columns|json_script:"pms-columns" }}
 {{ secondary_sections|json_script:"pms-secondary-sections" }}
@@ -171,6 +197,12 @@
   const drawerMask = document.getElementById("pms-drawer-mask");
   const drawerTitle = document.getElementById("pms-drawer-title");
   const drawerBody = document.getElementById("pms-drawer-body");
+  const modal = document.getElementById("pms-modal");
+  const modalMask = document.getElementById("pms-modal-mask");
+  const modalTitle = document.getElementById("pms-modal-title");
+  const modalBody = document.getElementById("pms-modal-body");
+  /* 当前抽屉详情的行 id：行级操作提交成功后据此刷新抽屉内容 */
+  let currentDetailId = null;
   let currentPage = 1;
   let currentPageSize = 20;
   let totalPages = 1;
@@ -331,6 +363,11 @@
          用户无法在同一抽屉内再次提交（实证缺陷，已由真实浏览器验收捕获）。 */
       if (typeof form.__uxRelease === "function") form.__uxRelease();
       if (typeof load === "function") load(currentPage, true);
+      /* 行级操作提交成功后刷新抽屉详情（如新增联系方式后子表即时更新）；
+         弹层保持打开展示结果，关掉弹层即见新数据 */
+      if (currentDetailId !== null && drawer.classList.contains("is-open")) {
+        openDetail(currentDetailId);
+      }
     }).catch(function () {
       resultBox.textContent = "网络错误，请稍后重试。";
       if (typeof form.__uxRelease === "function") form.__uxRelease();
@@ -339,9 +376,8 @@
   function renderActionForm(action, endpoint, parent, rowItem) {
     const box = document.createElement("section");
     box.className = "pms-action-form";
-    const title = document.createElement("h3");
-    title.textContent = action.label;
-    box.appendChild(title);
+    /* 动作名一律由壳层标题展示（页面动作=抽屉标题、行级动作=弹层标题），
+       表单框内不再重复同名标题 */
     const form = document.createElement("form");
     /* pms-ux 表单守卫：未保存提醒 + 草稿 + 失焦校验 + 提交防重复。
        草稿键按「动作 + 作用行」隔离，行级动作各自一份草稿。 */
@@ -406,24 +442,52 @@
       if (typeof form.__uxDestroy === "function") form.__uxDestroy();
     });
   }
+  /* 弹层表单同样带 pms-ux 守卫，关闭时同步解除监听 */
+  function destroyModalForms() {
+    modalBody.querySelectorAll("form[data-ux-form]").forEach(function (form) {
+      if (typeof form.__uxDestroy === "function") form.__uxDestroy();
+    });
+  }
+  function closeModal() {
+    destroyModalForms();
+    modal.classList.remove("is-open");
+    modalMask.classList.remove("is-open");
+  }
+  function openRowActionModal(action, endpoint, item) {
+    modalTitle.textContent = action.label;
+    destroyModalForms();
+    modalBody.replaceChildren();
+    renderActionForm(action, endpoint, modalBody, item);
+    modal.classList.add("is-open"); modalMask.classList.add("is-open");
+  }
   function renderPageActions() {
     const host = document.getElementById("pms-actions");
     host.replaceChildren();
-    (centerActions || []).filter(function (a) { return a.scope === "page"; }).forEach(function (a) {
+    const pageActions = (centerActions || []).filter(function (a) { return a.scope === "page"; });
+    pageActions.forEach(function (a) {
       const btn = document.createElement("button");
       btn.type = "button"; btn.className = "pms-row-btn"; btn.textContent = a.label;
       btn.addEventListener("click", function () {
         drawerTitle.textContent = a.label;
         destroyDrawerForms();
         drawerBody.replaceChildren();
+        /* 页面级动作不是行详情：清掉残留行 id，避免提交成功后误触详情刷新 */
+        currentDetailId = null;
         drawer.classList.add("is-open"); drawerMask.classList.add("is-open");
         renderActionForm(a, a.endpoint, drawerBody, null);
       });
       host.appendChild(btn);
     });
+    /* 操作按钮与跨页工作台链接之间用分隔线分组；链接用文字样式，
+       与按钮（打开操作弹层）在视觉上区分开 */
+    if (pageActions.length && (workflowLinks || []).length) {
+      const sep = document.createElement("span");
+      sep.className = "pms-actions-sep";
+      host.appendChild(sep);
+    }
     (workflowLinks || []).forEach(function (link) {
       const a = document.createElement("a");
-      a.className = "pms-row-btn"; a.textContent = link.label; a.href = link.url;
+      a.className = "pms-link"; a.textContent = link.label; a.href = link.url;
       host.appendChild(a);
     });
   }
@@ -470,13 +534,20 @@
   header(head, columns, !!detail.endpoint, true);
   /* ---------- 详情抽屉 ---------- */
   function closeDrawer() {
+    closeModal();
     destroyDrawerForms();
     drawer.classList.remove("is-open");
     drawerMask.classList.remove("is-open");
   }
   drawerMask.addEventListener("click", closeDrawer);
   document.getElementById("pms-drawer-close").addEventListener("click", closeDrawer);
-  document.addEventListener("keydown", function(e){ if(e.key==="Escape") closeDrawer(); });
+  modalMask.addEventListener("click", closeModal);
+  document.getElementById("pms-modal-close").addEventListener("click", closeModal);
+  document.addEventListener("keydown", function(e){
+    if(e.key!=="Escape") return;
+    if(modal.classList.contains("is-open")) closeModal();
+    else closeDrawer();
+  });
   function kvTable(fields, item) {
     const table=document.createElement("table");table.className="pms-kv";
     fields.forEach(function(pair){
@@ -490,8 +561,26 @@
     });
     return table;
   }
+  /* 行级操作不堆在抽屉底部：抽屉顶部固定一条操作按钮栏，
+     点按钮把对应表单放进居中弹层，填完即关，不再滚动找表单 */
+  function renderRowActionBar(id, item) {
+    const rowActions = (centerActions || []).filter(function (a) { return a.scope === "row"; });
+    if (!rowActions.length) return;
+    const bar = document.createElement("div");
+    bar.className = "pms-drawer-actions";
+    rowActions.forEach(function (a) {
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.className = "pms-row-btn"; btn.textContent = a.label;
+      btn.addEventListener("click", function () {
+        openRowActionModal(a, a.endpoint.replace("{id}", encodeURIComponent(String(id))), item);
+      });
+      bar.appendChild(btn);
+    });
+    drawerBody.appendChild(bar);
+  }
   function openDetail(id) {
     if (id===null||id===undefined||id==="") return;
+    currentDetailId = id;
     drawerTitle.textContent="详情";
     destroyDrawerForms();
     drawerBody.replaceChildren();
@@ -510,6 +599,7 @@
       }
       const item=res.payload.data;
       drawerTitle.textContent=value(at(item, detail.overview && detail.overview.length && detail.overview[0][0] || "id"));
+      renderRowActionBar(id, item);
       if(detail.overview) drawerBody.appendChild(kvTable(detail.overview, item));
       (detail.tables||[]).forEach(function(t){
         const data=at(item,t.key)||[];
@@ -527,10 +617,6 @@
           tbody.appendChild(tr);
         });
         table.appendChild(thead);table.appendChild(tbody);wrap.appendChild(table);drawerBody.appendChild(wrap);
-      });
-      (centerActions || []).filter(function (a) { return a.scope === "row"; }).forEach(function (a) {
-        renderActionForm(a, a.endpoint.replace("{id}", encodeURIComponent(String(id))),
-                         drawerBody, item);
       });
     }).catch(function(){
       drawerBody.replaceChildren();
