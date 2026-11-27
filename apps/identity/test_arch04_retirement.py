@@ -18,6 +18,7 @@
 """
 
 import ast
+import importlib
 import pathlib
 import tempfile
 from typing import cast
@@ -33,6 +34,7 @@ from hotelapp.models import Food, Order, Room, Staff
 from apps.core.models import AuditEvent, Property
 from apps.identity.models import (
     LegacyPermissionCodeGrant,
+    LegacyStaffMapping,
     PropertyStaffMembership,
     StaffProfile,
     StaffRoleAssignment,
@@ -51,6 +53,21 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 ALLOWED_LEGACY_STAFF_REFERENCES = {
     ("apps/billing/legacy_archive.py", "_source_queryset"): (
         "②一次性归档 spec 的源表映射（ARCH-04 C8）"
+    ),
+    ("apps/identity/management/commands/link_legacy_staff.py", None): (
+        "②一次性映射台账命令的 import（ARCH-04 B1/C11：离线盘点与登记，" "不在在线业务路径）"
+    ),
+    ("apps/identity/management/commands/link_legacy_staff.py", "handle"): (
+        "②一次性映射台账命令的旧行读取（离线盘点/登记，不是在线路径）"
+    ),
+    ("apps/identity/management/commands/link_legacy_staff.py", "_report"): (
+        "②一次性映射台账命令的只读盘点输出（不改库）"
+    ),
+    ("apps/identity/management/commands/link_legacy_staff.py", "_link"): (
+        "②一次性映射台账命令的映射登记（只写新栈台账，不写旧表）"
+    ),
+    ("apps/identity/management/commands/link_legacy_staff.py", "_recover"): (
+        "②一次性映射台账命令的映射恢复（只写新栈台账，不写旧表）"
     ),
     ("hotelapp/management/commands/audit_employee_data.py", None): ("②一次性盘点命令的 import"),
     ("hotelapp/management/commands/audit_employee_data.py", "handle"): (
@@ -84,10 +101,109 @@ def _iter_production_python_files():
             yield path
 
 
+# ---------------------------------------------------------------------------
+# C1 / C13 扫描器（ARCH-04 H3：门禁必须防绕过）
+#
+# 早期版本只认三种静态形态（Name / Attribute / ImportFrom），可被下列写法绕过：
+#   ① from hotelapp.models import *          —— 星号导入带入旧模型
+#   ② apps.get_model("hotelapp", "staff")    —— 运行期取模型，源码无 Staff 符号
+#   ③ getattr(models, "Staff")               —— 运行期取属性
+#   ④ importlib.import_module("hotelapp.models") + getattr
+# 现在这些形态一律命中；命中即视为「旧表在线引用」。
+# ---------------------------------------------------------------------------
+
+# 旧模型符号名（大小写不敏感覆盖 LegacyStaff 别名）。
+_LEGACY_MODEL_SYMBOLS = {"Staff", "LegacyStaff"}
+# 旧表所在 app_label / 模型名（小写）。
+_LEGACY_APP_LABEL = "hotelapp"
+_LEGACY_MODEL_LOWER = "staff"
+# 旧表所在模块前缀。
+_LEGACY_MODULE_PREFIXES = ("hotelapp.models", "hotelapp")
+# 写方法集合（C13 零写入防线）：命中即说明旧表被写入。
+_LEGACY_WRITE_METHODS = {
+    "create",
+    "save",
+    "update",
+    "delete",
+    "get_or_create",
+    "update_or_create",
+    "bulk_create",
+    "bulk_update",
+    "bulk_update_or_create",
+    "raw",
+}
+
+
+def _root_name(node):
+    """取属性/调用链的根符号名（Staff.objects.create → "Staff"）。"""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return _root_name(node.value)
+    if isinstance(node, ast.Call):
+        return _root_name(node.func)
+    if isinstance(node, ast.Subscript):
+        return _root_name(node.value)
+    return None
+
+
+def _callee_name(node):
+    """取调用目标的方法名（apps.get_model → "get_model"）。"""
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Name):
+        return node.id
+    return None
+
+
+def _chain_contains_legacy(node):
+    """属性/调用链里是否出现旧模型符号（models.Staff.objects.get → True）。"""
+    if isinstance(node, ast.Name):
+        return node.id in _LEGACY_MODEL_SYMBOLS
+    if isinstance(node, ast.Attribute):
+        return node.attr in _LEGACY_MODEL_SYMBOLS or _chain_contains_legacy(node.value)
+    if isinstance(node, ast.Call):
+        return _chain_contains_legacy(node.func)
+    if isinstance(node, ast.Subscript):
+        return _chain_contains_legacy(node.value)
+    return False
+
+
+def _legacy_bound_names(tree):
+    """本文件内由旧表表达式赋值出来的局部变量名。
+
+    静态类型推导不做，但「`row = Staff.objects.get(...)` 之后 `row.save()`」
+    这种最常见的旧表写入形态必须能被发现，否则 C13 零写入防线形同虚设。
+    """
+    names = set()
+    for node in ast.walk(tree):
+        targets: list = []
+        value = None
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
+        if value is None or not _chain_contains_legacy(value):
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name):
+                names.add(target.id)
+            elif isinstance(target, ast.Attribute):
+                names.add(target.attr)
+    return names
+
+
 def _scan_legacy_staff_references(path):
     """返回该文件里指向旧 staff 模型的引用 (行号, 所在函数)。"""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     hits = []
+
+    def add(node, func):
+        hits.append((node.lineno, func))
 
     def visit(node, func):
         for child in ast.iter_child_nodes(node):
@@ -95,16 +211,102 @@ def _scan_legacy_staff_references(path):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 new_func = child.name
             if (
-                (
-                    isinstance(child, ast.Name)
-                    and child.id in {"Staff", "LegacyStaff"}
-                    or isinstance(child, ast.Attribute)
-                    and child.attr == "Staff"
-                )
-                or isinstance(child, ast.ImportFrom)
-                and any(alias.name == "Staff" for alias in child.names)
+                isinstance(child, ast.Name)
+                and child.id in _LEGACY_MODEL_SYMBOLS
+                or isinstance(child, ast.Attribute)
+                and child.attr in _LEGACY_MODEL_SYMBOLS
             ):
-                hits.append((child.lineno, func))
+                add(child, new_func)
+            elif isinstance(child, ast.ImportFrom):
+                module = child.module or ""
+                # 相对导入（from .models import Staff）解析到本包内，也算旧表引用
+                relative = child.level and child.level > 0
+                absolute_legacy = module == _LEGACY_APP_LABEL or module.startswith(
+                    _LEGACY_APP_LABEL + "."
+                )
+                if (relative or absolute_legacy) and any(
+                    alias.name in _LEGACY_MODEL_SYMBOLS or alias.name == "*"
+                    for alias in child.names
+                ):
+                    # ① 直接导入旧模型；② 星号导入（可把旧模型带入命名空间）
+                    add(child, new_func)
+            elif isinstance(child, ast.Call):
+                callee = _callee_name(child.func)
+                # ② apps.get_model("hotelapp", "staff") / get_model("hotelapp.models", "Staff")
+                if callee == "get_model":
+                    strings = [
+                        a.value
+                        for a in child.args
+                        if isinstance(a, ast.Constant) and isinstance(a.value, str)
+                    ]
+                    if any(
+                        s.lower() == _LEGACY_MODEL_LOWER
+                        or s == _LEGACY_APP_LABEL
+                        or s.lower().startswith(_LEGACY_APP_LABEL + ".")
+                        for s in strings
+                    ):
+                        add(child, new_func)
+                # ③ getattr(models, "Staff")
+                elif callee == "getattr":
+                    if len(child.args) >= 2:
+                        second = child.args[1]
+                        if (
+                            isinstance(second, ast.Constant)
+                            and isinstance(second.value, str)
+                            and second.value.lower() == _LEGACY_MODEL_LOWER
+                        ):
+                            add(child, new_func)
+                # ④ importlib.import_module("hotelapp.models")
+                elif callee == "import_module":
+                    strings = [
+                        a.value
+                        for a in child.args
+                        if isinstance(a, ast.Constant) and isinstance(a.value, str)
+                    ]
+                    if any(s.lower().startswith(_LEGACY_APP_LABEL) for s in strings):
+                        add(child, new_func)
+            elif isinstance(child, ast.Subscript):
+                # ⑤ models.__dict__["Staff"] / vars(models)["Staff"]
+                slice_node = child.slice
+                if (
+                    isinstance(slice_node, ast.Constant)
+                    and isinstance(slice_node.value, str)
+                    and slice_node.value.lower() == _LEGACY_MODEL_LOWER
+                ):
+                    add(child, new_func)
+            visit(child, new_func)
+
+    visit(tree, None)
+    return hits
+
+
+def _scan_legacy_staff_writes(path):
+    """返回该文件里对旧 staff 表的**写入**调用 (行号, 所在函数, 写方法)。
+
+    C13 零写入防线：生产代码里对旧表的 create/save/update/delete 等写调用
+    必须为零。只读调用（filter/get/first/values 等）不算写。
+
+    识别两种形态：
+      ① 链上直接出现旧模型符号：`Staff.objects.create(...)`；
+      ② 由旧表表达式赋值出的局部变量再写：`row = Staff.objects.get(...)`
+         之后 `row.save()` / `row.delete()`（局部数据流，文件内可判定）。
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    legacy_names = _LEGACY_MODEL_SYMBOLS | _legacy_bound_names(tree)
+    hits = []
+
+    def visit(node, func):
+        for child in ast.iter_child_nodes(node):
+            new_func = func
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                new_func = child.name
+            if isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute):
+                method = child.func.attr
+                if method in _LEGACY_WRITE_METHODS:
+                    receiver = child.func.value
+                    root = _root_name(receiver)
+                    if _chain_contains_legacy(receiver) or root in legacy_names:
+                        hits.append((child.lineno, new_func, method))
             visit(child, new_func)
 
     visit(tree, None)
@@ -170,7 +372,14 @@ class LegacyStaffSourceScanTests(TestCase):
         """例外清单本身受约束：不得把在线业务路径登记成例外。"""
         for rel, _func in ALLOWED_LEGACY_STAFF_REFERENCES:
             self.assertTrue(
-                rel.endswith(("legacy_archive.py", "audit_employee_data.py", "seed_hotel_data.py")),
+                rel.endswith(
+                    (
+                        "legacy_archive.py",
+                        "audit_employee_data.py",
+                        "seed_hotel_data.py",
+                        "link_legacy_staff.py",
+                    )
+                ),
                 f"例外清单出现未登记文件：{rel}",
             )
 
@@ -188,6 +397,432 @@ class LegacyStaffSourceScanTests(TestCase):
             Staff,
             list(admin.site._registry),
             "旧 staff 表不得再注册 Django Admin",
+        )
+
+
+class LegacyStaffGateAntiBypassTests(TestCase):
+    """ARCH-04 H3 / C13：C1 AST 门禁必须**防绕过**，且旧表零写入。
+
+    本组用例是门禁本身的负向测试：把各种绕过写法写成临时 .py 文件喂给扫描
+    器，断言**每一份都被命中**。没有这组用例，扫描器可能被"优化"成只认某
+    一种写法而重新打开绕过口子，而 CI 仍然是绿的。
+    """
+
+    # 绕过写法 → 必须命中（每个片段都刻意用不同形态取到旧表）
+    BYPASS_SNIPPETS = {
+        "直接导入": "from hotelapp.models import Staff\n\ndef f():\n    return Staff.objects.all()\n",
+        "别名导入": "from hotelapp.models import Staff as Old\n\ndef f():\n    return Old.objects.all()\n",
+        "属性访问": "import hotelapp.models\n\ndef f():\n    return hotelapp.models.Staff.objects.all()\n",
+        "模块别名": "import hotelapp.models as m\n\ndef f():\n    return m.Staff.objects.all()\n",
+        "from 导入模块": "from hotelapp import models\n\ndef f():\n    return models.Staff.objects.all()\n",
+        "星号导入": "from hotelapp.models import *\n\ndef f():\n    return Staff.objects.all()\n",
+        "get_model": (
+            "from django.apps import apps\n\n"
+            "def f():\n"
+            "    return apps.get_model('hotelapp', 'staff').objects.all()\n"
+        ),
+        "getattr": (
+            "from hotelapp import models\n\n"
+            "def f():\n"
+            "    return getattr(models, 'Staff').objects.all()\n"
+        ),
+        "import_module": (
+            "import importlib\n\n"
+            "def f():\n"
+            "    return importlib.import_module('hotelapp.models').Staff.objects.all()\n"
+        ),
+        "字典下标": (
+            "from hotelapp import models\n\n"
+            "def f():\n"
+            "    return models.__dict__['Staff'].objects.all()\n"
+        ),
+    }
+
+    def _scan_snippet(self, source):
+        """把源码片段写成临时文件并跑扫描器，返回命中列表。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "snippet.py"
+            path.write_text(source, encoding="utf-8")
+            return _scan_legacy_staff_references(path)
+
+    def test_every_bypass_shape_is_detected(self):
+        """逐个绕过写法都必须被扫描器命中。"""
+        missed = []
+        for label, source in self.BYPASS_SNIPPETS.items():
+            if not self._scan_snippet(source):
+                missed.append(label)
+        self.assertEqual(
+            missed,
+            [],
+            "C1 AST 门禁被绕过（下列写法未被命中）：\n" + "\n".join(missed),
+        )
+
+    def test_clean_production_code_is_not_flagged(self):
+        """反向校验：正常的新栈代码不得被误报（门禁不得变成噪音源）。"""
+        clean = (
+            "from apps.identity.models import StaffProfile\n\n"
+            "def f(profile):\n"
+            "    return profile.full_name\n"
+        )
+        self.assertEqual(self._scan_snippet(clean), [])
+
+    def test_write_calls_to_legacy_table_are_detected(self):
+        """C13：旧表写调用必须被识别（含链式、queryset 写与局部数据流）。"""
+        snippets = {
+            "objects.create": (
+                "from hotelapp.models import Staff\n\n"
+                "def f():\n"
+                "    Staff.objects.create(姓名='x')\n"
+            ),
+            "instance.save": (
+                "from hotelapp.models import Staff\n\n"
+                "def f():\n"
+                "    row = Staff.objects.get(pk=1)\n"
+                "    row.save()\n"
+            ),
+            "instance.delete": (
+                "from hotelapp.models import Staff\n\n"
+                "def f():\n"
+                "    row = Staff.objects.get(pk=1)\n"
+                "    row.delete()\n"
+            ),
+            "queryset.update": (
+                "from hotelapp.models import Staff\n\n"
+                "def f():\n"
+                "    Staff.objects.filter(启用=True).update(姓名='y')\n"
+            ),
+            "queryset.delete": (
+                "from hotelapp.models import Staff\n\n"
+                "def f():\n"
+                "    Staff.objects.filter(启用=False).delete()\n"
+            ),
+            "get_or_create": (
+                "from hotelapp.models import Staff\n\n"
+                "def f():\n"
+                "    Staff.objects.get_or_create(员工id=1)\n"
+            ),
+        }
+        missed = []
+        for label, source in snippets.items():
+            with tempfile.TemporaryDirectory() as tmp:
+                path = pathlib.Path(tmp) / "snippet.py"
+                path.write_text(source, encoding="utf-8")
+                if not _scan_legacy_staff_writes(path):
+                    missed.append(label)
+        self.assertEqual(
+            missed,
+            [],
+            "C13 旧表写调用未被识别（下列写法漏检）：\n" + "\n".join(missed),
+        )
+
+    def test_opaque_parameter_write_is_not_statically_decidable(self):
+        """边界登记：通过不透明参数拿到旧表实例再写入，静态扫描无法判定。
+
+        静态扫描能做的是「本文件内出现旧表符号」与「本文件内的局部数据流」。
+        「旧表实例从别的模块传进来」属于跨模块数据流，静态不可判定——
+        但**取得该实例的那一侧**必然出现旧表符号，会被 C1 引用扫描拦下；
+        运行期还有 `apps/identity/test_module_gates.py` 的旧表计数零变化探针
+        兜底。本用例把这条边界写进用例，避免后人误以为写扫描是完备的。
+        """
+        source = "def f(row):\n" "    row.save()\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "snippet.py"
+            path.write_text(source, encoding="utf-8")
+            self.assertEqual(_scan_legacy_staff_writes(path), [])
+
+    def test_read_only_calls_are_not_write_violations(self):
+        """反向校验：只读调用不算写（旧表只读路径是允许的例外）。"""
+        source = (
+            "from hotelapp.models import Staff\n\n"
+            "def f():\n"
+            "    return list(Staff.objects.filter(启用=True).values('员工id'))\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "snippet.py"
+            path.write_text(source, encoding="utf-8")
+            self.assertEqual(_scan_legacy_staff_writes(path), [])
+
+    def test_repository_has_no_legacy_staff_write_path(self):
+        """C13：全仓生产代码对旧表的写调用必须为零（例外清单也不豁免写）。"""
+        violations = []
+        for path in _iter_production_python_files():
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            for lineno, func, method in _scan_legacy_staff_writes(path):
+                violations.append(f"{rel}:{lineno}（函数 {func or '模块级'}）.{method}")
+        self.assertEqual(
+            violations,
+            [],
+            "旧 staff 表出现生产写路径（ARCH-04 C13 零写入防线）：\n" + "\n".join(violations),
+        )
+
+
+class LegacyStaffMappingLedgerTests(TestCase):
+    """ARCH-04 B1：旧员工 ↔ 新档案的持久映射台账。
+
+    验收口径（映射唯一 / 可追溯 / 异常可恢复 / 删除保护）：
+      * 映射唯一——旧行与档案各一对一，重复映射被拒；
+      * 可追溯——记录匹配方式、状态、核验人与核验时间、旧主键原值；
+      * 异常可恢复——台账行存在但旧行指向失效时可恢复；
+      * 删除保护——台账行不可删除；删除已映射的新档案被库层 PROTECT 拒绝。
+    """
+
+    def setUp(self):
+        self.prop = Property.objects.get(code="DEFAULT")
+        self.profile = StaffProfile.objects.create(
+            full_name="B1 映射档案", employment_status="ACTIVE"
+        )
+        self.legacy = Staff.objects.create(姓名="B1 旧员工", 职务="前台", 启用=True)
+
+    # ------------------------------------------------------------------
+    def test_binding_creates_a_traceable_mapping(self):
+        """登记映射 → 台账行存在，且记录匹配方式/核验人/时间/旧主键。"""
+        from apps.identity.services import EmployeeLifecycleService
+
+        mapping = EmployeeLifecycleService.bind_legacy_staff_mapping(
+            self.profile,
+            legacy_staff=self.legacy,
+            property_obj=self.prop,
+            match_method="工号映射",
+            reason="B1 用例",
+        )
+        self.assertEqual(mapping.legacy_pk, self.legacy.pk)
+        self.assertEqual(mapping.staff_profile_id, self.profile.pk)
+        self.assertEqual(mapping.legacy_staff_id, self.legacy.pk)
+        self.assertEqual(mapping.mapping_status, "LINKED")
+        self.assertEqual(mapping.match_method, "工号映射")
+        self.assertIsNotNone(mapping.reviewed_at)
+        # 映射必须同时落到 StaffProfile.legacy_staff（「当前指向」与「映射事实」一致）
+        self.profile.refresh_from_db()
+        self.assertEqual(cast(Staff, self.profile.legacy_staff).pk, self.legacy.pk)
+
+    def test_binding_is_idempotent_and_rejects_conflicts(self):
+        """重复绑定幂等；同一旧行不得映射到两个档案。"""
+        from apps.identity.services import EmployeeLifecycleError, EmployeeLifecycleService
+
+        first = EmployeeLifecycleService.bind_legacy_staff_mapping(
+            self.profile,
+            legacy_staff=self.legacy,
+            property_obj=self.prop,
+            reason="首次",
+        )
+        again = EmployeeLifecycleService.bind_legacy_staff_mapping(
+            self.profile,
+            legacy_staff=self.legacy,
+            property_obj=self.prop,
+            reason="重复",
+        )
+        self.assertEqual(first.pk, again.pk)
+        self.assertEqual(LegacyStaffMapping.objects.count(), 1)
+
+        other = StaffProfile.objects.create(full_name="B1 另一个档案", employment_status="ACTIVE")
+        with self.assertRaises(EmployeeLifecycleError):
+            EmployeeLifecycleService.bind_legacy_staff_mapping(
+                other,
+                legacy_staff=self.legacy,
+                property_obj=self.prop,
+                reason="冲突",
+            )
+
+    def test_mapping_row_cannot_be_deleted(self):
+        """删除保护①：映射台账行不可删除（映射事实只追加）。"""
+        from apps.identity.services import EmployeeLifecycleService
+
+        mapping = EmployeeLifecycleService.bind_legacy_staff_mapping(
+            self.profile,
+            legacy_staff=self.legacy,
+            property_obj=self.prop,
+        )
+        with self.assertRaises(RuntimeError):
+            mapping.delete()
+
+    def test_deleting_a_mapped_profile_is_blocked(self):
+        """删除保护②：删除已映射的员工档案被库层拒绝（映射不得悬空）。"""
+        from django.db.utils import IntegrityError
+
+        from apps.identity.services import EmployeeLifecycleService
+
+        EmployeeLifecycleService.bind_legacy_staff_mapping(
+            self.profile,
+            legacy_staff=self.legacy,
+            property_obj=self.prop,
+        )
+        with self.assertRaises(IntegrityError):
+            self.profile.delete()
+
+    def test_legacy_pk_must_match_legacy_row(self):
+        """一致性守卫：台账行的旧主键必须与旧行一致（防错配/防篡改）。"""
+        mapping = LegacyStaffMapping(
+            property=self.prop,
+            staff_profile=self.profile,
+            legacy_staff=self.legacy,
+            legacy_pk=self.legacy.pk + 999,
+        )
+        with self.assertRaises(ValueError):
+            mapping.save()
+
+    def test_mapping_is_recoverable_after_legacy_pointer_lost(self):
+        """异常可恢复：旧行指向失效后，可按台账恢复并重新指向。"""
+        from apps.identity.services import EmployeeLifecycleService
+
+        mapping = EmployeeLifecycleService.bind_legacy_staff_mapping(
+            self.profile,
+            legacy_staff=self.legacy,
+            property_obj=self.prop,
+        )
+        # 模拟旧行被清理：指向置空（台账行保留，旧主键原值仍在）
+        LegacyStaffMapping.objects.filter(pk=mapping.pk).update(legacy_staff=None)
+        mapping.refresh_from_db()
+        self.assertIsNone(mapping.legacy_staff_id)
+        self.assertEqual(mapping.legacy_pk, self.legacy.pk)
+
+        recovered = EmployeeLifecycleService.recover_legacy_staff_mapping(
+            mapping,
+            legacy_staff=self.legacy,
+            reason="B1 恢复用例",
+        )
+        recovered.refresh_from_db()
+        self.assertEqual(recovered.legacy_staff_id, self.legacy.pk)
+        self.assertEqual(recovered.mapping_status, "LINKED")
+        self.profile.refresh_from_db()
+        self.assertEqual(cast(Staff, self.profile.legacy_staff).pk, self.legacy.pk)
+
+    def test_mapping_is_audited(self):
+        """映射登记与恢复都要写审计（操作者/前后值）。"""
+        from apps.identity.services import EmployeeLifecycleService
+
+        mapping = EmployeeLifecycleService.bind_legacy_staff_mapping(
+            self.profile,
+            legacy_staff=self.legacy,
+            property_obj=self.prop,
+            reason="B1 审计用例",
+        )
+        event = cast(
+            AuditEvent,
+            AuditEvent.objects.filter(
+                action="identity.legacy_staff_mapped", entity_id=str(self.profile.pk)
+            ).first(),
+        )
+        self.assertIsNotNone(event, "映射登记必须写审计")
+        self.assertEqual(event.after_json["legacy_staff_id"], self.legacy.pk)
+        self.assertEqual(event.after_json["mapping_id"], mapping.pk)
+
+    def test_existing_legacy_link_is_backfilled_into_ledger(self):
+        """迁移回填：历史 `StaffProfile.legacy_staff` 外键必须已进入台账。
+
+        用迁移的 RunPython 逻辑直接验证（不依赖迁移执行顺序）：把外键指向建好
+        后调用回填函数，台账必须出现对应行。
+        """
+        from django.apps import apps as django_apps
+
+        self.profile.legacy_staff = self.legacy
+        self.profile.save(update_fields=("legacy_staff", "updated_at"))
+        migration = importlib.import_module("apps.identity.migrations.0016_legacy_staff_mapping")
+        migration._backfill(django_apps, None)
+        mapping = cast(
+            LegacyStaffMapping,
+            LegacyStaffMapping.objects.filter(staff_profile=self.profile).first(),
+        )
+        self.assertIsNotNone(mapping, "历史外键映射未被回填进台账")
+        self.assertEqual(mapping.legacy_pk, self.legacy.pk)
+        self.assertEqual(mapping.mapping_status, "LINKED")
+        self.assertEqual(mapping.match_method, "历史外键回填")
+
+
+class StaffPermissionChangeAuditTests(TestCase):
+    """ARCH-04 H1：运行期授权变更审计必须带**操作者 + 时间 + 前后值**。
+
+    历史实现里 `identity.role_assign` 只写 after（授权后是什么岗位），
+    `identity.role_end` 只写 before（结束前是什么岗位）——两头各缺一半，
+    无法据此复原「这个岗位是什么时候、被谁、加上还是撤掉的」。
+    """
+
+    def setUp(self):
+        self.prop = Property.objects.get(code="DEFAULT")
+        self.profile = StaffProfile.objects.create(
+            full_name="H1 授权档案", employment_status="ACTIVE"
+        )
+        self.membership = PropertyStaffMembership.objects.create(
+            property=self.prop,
+            staff_profile=self.profile,
+            employee_no="H1-0001",
+            status="ACTIVE",
+        )
+        self.group, _ = Group.objects.get_or_create(name="客房服务员")
+        self.actor = User.objects.create_user(username="h1_actor", password="x")
+
+    def _assign(self):
+        from apps.identity.services import EmployeeLifecycleService
+
+        return EmployeeLifecycleService.assign_role(
+            membership=self.membership,
+            group=self.group,
+            granted_by=self.actor,
+            reason="H1 用例",
+        )
+
+    def test_role_assign_audit_has_operator_time_and_before_after(self):
+        """授权审计：操作者 + 时间 + before + after 齐备。"""
+        self._assign()
+        event = cast(
+            AuditEvent,
+            AuditEvent.objects.filter(
+                action="identity.role_assign", entity_id=str(self.profile.pk)
+            ).first(),
+        )
+        self.assertIsNotNone(event)
+        self.assertEqual(event.actor, self.actor)
+        self.assertIsNotNone(event.created_at)
+        self.assertIsNotNone(event.before_json)
+        self.assertIsNotNone(event.after_json)
+        self.assertEqual(event.after_json["role"], self.group.name)
+        self.assertIn(self.group.name, event.after_json["active_roles"])
+        self.assertNotIn(self.group.name, event.before_json["active_roles"])
+        self.assertEqual(event.before_json["employee_no"], self.membership.employee_no)
+
+    def test_role_end_audit_has_operator_time_and_before_after(self):
+        """结束授权审计：before 含该岗位，after 反映该岗位已失效。"""
+        from apps.identity.services import EmployeeLifecycleService
+
+        assignment = self._assign()
+        EmployeeLifecycleService.end_assignment(assignment, ended_by=self.actor, reason="H1 结束")
+        event = cast(
+            AuditEvent,
+            AuditEvent.objects.filter(
+                action="identity.role_end", entity_id=str(self.profile.pk)
+            ).first(),
+        )
+        self.assertIsNotNone(event)
+        self.assertEqual(event.actor, self.actor)
+        self.assertIsNotNone(event.created_at)
+        self.assertIsNotNone(event.before_json)
+        self.assertIsNotNone(event.after_json)
+        self.assertEqual(event.before_json["role"], self.group.name)
+        self.assertIn(self.group.name, event.before_json["active_roles"])
+        self.assertNotIn(self.group.name, event.after_json["active_roles"])
+        self.assertIn("ended_at", event.after_json)
+
+    def test_authorization_change_chain_is_reconstructable(self):
+        """授权链可复原：assign 的 after 集合 == end 的 before 集合。"""
+        from apps.identity.services import EmployeeLifecycleService
+
+        assignment = self._assign()
+        EmployeeLifecycleService.end_assignment(assignment, ended_by=self.actor, reason="H1 链")
+        assign_event = cast(
+            AuditEvent,
+            AuditEvent.objects.filter(
+                action="identity.role_assign", entity_id=str(self.profile.pk)
+            ).first(),
+        )
+        end_event = cast(
+            AuditEvent,
+            AuditEvent.objects.filter(
+                action="identity.role_end", entity_id=str(self.profile.pk)
+            ).first(),
+        )
+        self.assertEqual(
+            assign_event.after_json["active_roles"],
+            end_event.before_json["active_roles"],
+            "授权变更链断裂：assign 的 after 与 end 的 before 必须一致",
         )
 
 

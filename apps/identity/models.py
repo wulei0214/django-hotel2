@@ -589,3 +589,109 @@ class LegacyPermissionCodeGrant(models.Model):
     def __str__(self):
         group_name = self.group.name  # type: ignore[attr-defined]
         return f"{group_name}: {self.source_code} → {self.target_code}"
+
+
+class LegacyStaffMapping(models.Model):
+    """旧 Staff 行 ↔ 新 StaffProfile 的**持久映射台账**（ARCH-04 B1）。
+
+    为什么需要这张表（`StaffProfile.legacy_staff` 一个外键不够）：
+
+    1. **映射唯一**：旧行 ↔ 新档案严格一对一（两侧唯一约束），任何一侧被
+       二次映射都被库层拒绝，不靠应用层「先查再写」。
+    2. **可追溯**：记录映射方式（人工确认／工号映射／业务键验证）、映射状态、
+       核验人与核验时间，以及**旧主键原值** `legacy_pk`——旧行被清理后
+       `legacy_staff` 置空，台账行仍保留旧主键，历史追溯不丢。
+    3. **异常可恢复**：映射行不随旧行删除而消失（`legacy_staff` 为 SET_NULL，
+       行本身留存），可按 `legacy_pk` 重新恢复映射，不需要重建整条链路。
+    4. **删除保护**：新档案侧的映射关系用 `PROTECT`——删除已映射的员工档案
+       被库层拒绝（避免映射悬空）；台账行本身也不可删除（`delete()` 抛错）。
+
+    与 `StaffProfile.legacy_staff`（SET_NULL）的关系：外键只表达「当前指向」，
+    本表表达「映射事实与历史」。旧表退役时外键可置空，但台账是历史证据。
+    """
+
+    class MappingStatus(models.TextChoices):
+        UNREVIEWED = "UNREVIEWED", "待核验"
+        MATCH_CANDIDATE = "MATCH_CANDIDATE", "候选匹配"
+        LINKED = "LINKED", "已链接"
+        CONFLICT = "CONFLICT", "冲突待人工"
+        IGNORED = "IGNORED", "忽略"
+
+    property: models.ForeignKey = models.ForeignKey(
+        "core.Property",
+        on_delete=models.PROTECT,
+        related_name="legacy_staff_mappings",
+        verbose_name="物业",
+    )
+    staff_profile: models.OneToOneField = models.OneToOneField(
+        StaffProfile,
+        on_delete=models.PROTECT,
+        related_name="legacy_staff_mapping",
+        verbose_name="新员工档案",
+    )
+    # 旧行：允许置空（旧行被清理后保留台账行作为历史证据），但**存在时必须唯一**。
+    legacy_staff: models.OneToOneField = models.OneToOneField(
+        "hotelapp.Staff",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="pms_staff_mapping",
+        verbose_name="旧员工记录",
+    )
+    # 旧主键原值：legacy_staff 置空后仍可追溯（与 LegacyRecordLink.source_pk 同思路）。
+    legacy_pk: models.IntegerField = models.IntegerField(verbose_name="旧员工主键")
+    mapping_status: models.CharField = models.CharField(
+        max_length=20,
+        choices=MappingStatus.choices,
+        default=MappingStatus.UNREVIEWED,
+        verbose_name="映射状态",
+    )
+    match_method: models.CharField = models.CharField(
+        max_length=32,
+        blank=True,
+        verbose_name="匹配方式",
+        help_text="人工确认 / 工号映射 / 业务键验证",
+    )
+    reviewed_by: models.ForeignKey = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="legacy_staff_mappings_reviewed",
+        verbose_name="核验人",
+    )
+    reviewed_at: models.DateTimeField = models.DateTimeField(
+        null=True, blank=True, verbose_name="核验时间"
+    )
+    note: models.CharField = models.CharField(max_length=240, blank=True, verbose_name="核验备注")
+    created_at: models.DateTimeField = models.DateTimeField(
+        auto_now_add=True, verbose_name="创建时间"
+    )
+    updated_at: models.DateTimeField = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "旧员工映射台账"
+        verbose_name_plural = "旧员工映射台账"
+        ordering = ("id",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=("property", "legacy_pk"),
+                name="uq_legacy_staff_mapping_legacy_pk",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("property", "mapping_status"), name="idx_lsm_prop_status"),
+        ]
+
+    def save(self, *args, **kwargs):
+        """一致性守卫：`legacy_pk` 必须与 `legacy_staff` 的主键一致（防篡改/防错配）。"""
+        legacy = self.legacy_staff
+        if legacy is not None and self.legacy_pk != legacy.pk:
+            raise ValueError("旧员工主键与旧员工记录不一致")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise RuntimeError("旧员工映射台账不可删除（映射事实只追加）")
+
+    def __str__(self):
+        return f"Staff#{self.legacy_pk} → 映射#{self.pk}（{self.mapping_status}）"

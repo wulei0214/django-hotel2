@@ -11,7 +11,19 @@
   表本身与历史数据行保留，不做删表
 """
 from django.contrib import admin
-from hotelapp.models import *
+# ARCH-04 H3：显式导入取代 `from hotelapp.models import *`。
+# 星号导入会把旧 staff 表一并带入本模块命名空间——既是 C1 AST 门禁的绕过口
+# （旧表符号出现在源码里却扫不到），也让「旧表不再注册 Admin」这条结论失去
+# 可核查性。本模块实际只用下列 7 个模型。
+from hotelapp.models import (
+    Accommodation,
+    Client,
+    FinanceRecord,
+    Folio,
+    NightAudit,
+    Room,
+    Vip,
+)
 
 admin.site.site_header = '酒店管理系统'
 admin.site.site_title = '酒店管理系统'

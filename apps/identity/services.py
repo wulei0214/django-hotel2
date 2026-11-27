@@ -40,6 +40,19 @@ def _enforce_password_policy(password, user=None):
         raise EmployeeLifecycleError("；".join(exc.messages)) from exc
 
 
+def _active_role_names(membership):
+    """该任职当前**生效中**的岗位名称集合（ARCH-04 H1 审计前后值快照用）。
+
+    生效口径 = starts_at <= now 且（ends_at 为空或 ends_at > now）。
+    与 `StaffRoleAssignment.Meta.ordering` 无关，输出已排序（调用方不再排序）。
+    """
+    now = timezone.now()
+    qs = StaffRoleAssignment.objects.filter(membership=membership, starts_at__lte=now).filter(
+        Q_ends_null_or_future()
+    )
+    return sorted({name for name in qs.values_list("group__name", flat=True) if name})
+
+
 class EmployeeLifecycleService:
     """员工/账号/任职/角色授权的唯一写入入口（方案 §4.2 实现原则）。"""
 
@@ -339,13 +352,28 @@ class EmployeeLifecycleService:
         )
         from apps.core.models import AuditEvent
 
+        # ARCH-04 H1：授权变更审计必须同时带**前后值**——只有 after 无法回答
+        # 「授权前这个人是什么岗位」，也无法据此复原变更链。before 快照取
+        # 变更生效时刻的**有效岗位集合**（变更后即含新岗位，因此 before 取
+        # 授权前的集合 = 有效岗位集合去掉本次新增的岗位）。
+        after_roles = sorted(_active_role_names(membership))
+        before_roles = sorted(name for name in after_roles if name != group.name)
         AuditEvent.record(
             action="identity.role_assign",
             entity_type="StaffProfile",
             entity_id=membership.staff_profile.pk,
             actor=granted_by,
             property_obj=membership.property,
-            after={"role": group.name, "ends_at": str(ends_at or "长期")},
+            before={
+                "employee_no": membership.employee_no,
+                "active_roles": before_roles,
+            },
+            after={
+                "role": group.name,
+                "ends_at": str(ends_at or "长期"),
+                "employee_no": membership.employee_no,
+                "active_roles": after_roles,
+            },
             reason=reason or "-",
         )
         audit.info(
@@ -366,6 +394,10 @@ class EmployeeLifecycleService:
         now = timezone.now()
         if assignment.ends_at and assignment.ends_at <= now:
             return assignment  # 已结束，幂等
+        membership = assignment.membership
+        # ARCH-04 H1：结束前的有效岗位集合必须在改 ends_at **之前**取，
+        # 否则快照里已经没有本次结束的岗位（before 会自我抹掉）。
+        before_roles = _active_role_names(membership)
         ends_at = now
         # Windows 时钟粒度（Python<3.13 time.time() 约 15.6ms）下，同一 tick 内
         # "创建授权→立即终止"会得到 ends_at == starts_at，违反
@@ -377,13 +409,26 @@ class EmployeeLifecycleService:
         assignment.save(update_fields=("ends_at",))
         from apps.core.models import AuditEvent
 
+        # ARCH-04 H1：结束授权同样必须带前后值——after 记录「该岗位已失效」
+        # 后的有效岗位集合，before 记录结束前的集合。
+        after_roles = sorted(name for name in before_roles if name != assignment.group.name)
         AuditEvent.record(
             action="identity.role_end",
             entity_type="StaffProfile",
             entity_id=assignment.membership.staff_profile.pk,
             actor=ended_by,
             property_obj=assignment.membership.property,
-            before={"role": assignment.group.name},
+            before={
+                "role": assignment.group.name,
+                "employee_no": assignment.membership.employee_no,
+                "active_roles": before_roles,
+            },
+            after={
+                "role": assignment.group.name,
+                "ended_at": str(ends_at),
+                "employee_no": assignment.membership.employee_no,
+                "active_roles": after_roles,
+            },
             reason=reason or "-",
         )
         audit.info(
@@ -698,6 +743,133 @@ class EmployeeLifecycleService:
         )
         return user
 
+    # ---------- 旧员工映射台账（ARCH-04 B1） ----------
+    @classmethod
+    @transaction.atomic
+    def bind_legacy_staff_mapping(
+        cls,
+        profile,
+        *,
+        legacy_staff,
+        property_obj,
+        matched_by=None,
+        match_method="人工确认",
+        reason="",
+    ):
+        """登记旧 Staff 行 ↔ 新 StaffProfile 的持久映射（B1）。
+
+        幂等：同一对（档案, 旧行）重复调用不产生第二条台账行，也不重复写审计。
+        约束：
+          * 映射唯一——旧行与档案各自一对一，重复绑定被库层唯一约束拒绝；
+          * 一致性——台账行的 `legacy_pk` 必须等于旧行主键（模型 save() 守卫）；
+          * 可追溯——记录匹配方式、状态、核验人与核验时间；
+          * 删除保护——台账行不可删除；删除已映射的新档案被库层 PROTECT 拒绝。
+
+        同时把 `StaffProfile.legacy_staff` 指向旧行（若尚未指向），保持
+        「当前指向」与「映射事实」两处一致。
+        """
+        from apps.identity.models import LegacyStaffMapping
+
+        if profile is None or legacy_staff is None:
+            raise EmployeeLifecycleError("旧员工映射需要同时提供员工档案与旧员工记录")
+        if property_obj is None:
+            raise EmployeeLifecycleError("旧员工映射必须指定物业")
+        existing = LegacyStaffMapping.objects.filter(staff_profile=profile).first()
+        if existing is not None:
+            if existing.legacy_pk != legacy_staff.pk:
+                raise EmployeeLifecycleError(
+                    "该员工档案已映射到另一条旧员工记录；请先处理冲突再重新映射"
+                )
+            return existing
+        conflict = LegacyStaffMapping.objects.filter(legacy_staff=legacy_staff).first()
+        if conflict is not None:
+            raise EmployeeLifecycleError("该旧员工记录已映射到其他员工档案")
+        mapping = LegacyStaffMapping.objects.create(
+            property=property_obj,
+            staff_profile=profile,
+            legacy_staff=legacy_staff,
+            legacy_pk=legacy_staff.pk,
+            mapping_status=LegacyStaffMapping.MappingStatus.LINKED,
+            match_method=match_method,
+            reviewed_by=matched_by,
+            reviewed_at=timezone.now(),
+            note=(reason or "")[:240],
+        )
+        if profile.legacy_staff_id != legacy_staff.pk:
+            profile.legacy_staff = legacy_staff
+            profile.save(update_fields=("legacy_staff", "updated_at"))
+        from apps.core.models import AuditEvent
+
+        AuditEvent.record(
+            action="identity.legacy_staff_mapped",
+            entity_type="StaffProfile",
+            entity_id=profile.pk,
+            actor=matched_by,
+            property_obj=property_obj,
+            before={"legacy_staff_id": None},
+            after={
+                "legacy_staff_id": legacy_staff.pk,
+                "mapping_id": mapping.pk,
+                "match_method": match_method,
+            },
+            reason=reason or "旧员工映射登记",
+        )
+        return mapping
+
+    @classmethod
+    @transaction.atomic
+    def recover_legacy_staff_mapping(
+        cls, mapping, *, legacy_staff=None, property_obj=None, matched_by=None, reason=""
+    ):
+        """异常恢复：修复一条映射台账行（B1「异常可恢复」）。
+
+        场景：映射台账行存在但 `legacy_staff` 指向被清空（旧行被清理过），
+        或 `StaffProfile.legacy_staff` 指向丢失。
+
+        **本方法不查旧表**：旧 `Staff` 行的读取只允许发生在离线映射命令
+        （`manage.py link_legacy_staff`，C1 例外清单②）。调用方要么传入
+        已取到的旧行实例，要么在旧行仍存在时直接用台账里的指向。
+        """
+        from apps.identity.models import LegacyStaffMapping
+
+        if mapping is None:
+            raise EmployeeLifecycleError("未找到要恢复的映射台账行")
+        if mapping.legacy_staff_id is None:
+            if legacy_staff is None:
+                raise EmployeeLifecycleError(
+                    "映射台账行的旧行指向已失效：请由映射命令重新提供旧员工记录后恢复"
+                )
+            mapping.legacy_staff = legacy_staff
+            mapping.legacy_pk = legacy_staff.pk
+        if property_obj is not None and mapping.property_id != property_obj.pk:
+            mapping.property = property_obj
+        mapping.mapping_status = LegacyStaffMapping.MappingStatus.LINKED
+        mapping.reviewed_by = matched_by
+        mapping.reviewed_at = timezone.now()
+        if reason:
+            mapping.note = reason[:240]
+        mapping.save()
+        profile = mapping.staff_profile
+        if profile.legacy_staff_id != mapping.legacy_pk:
+            profile.legacy_staff = mapping.legacy_staff
+            profile.save(update_fields=("legacy_staff", "updated_at"))
+        from apps.core.models import AuditEvent
+
+        AuditEvent.record(
+            action="identity.legacy_staff_mapping_recovered",
+            entity_type="StaffProfile",
+            entity_id=profile.pk,
+            actor=matched_by,
+            property_obj=mapping.property,
+            before={"legacy_staff_id": None},
+            after={
+                "legacy_staff_id": mapping.legacy_staff_id,
+                "mapping_id": mapping.pk,
+            },
+            reason=reason or "旧员工映射恢复",
+        )
+        return mapping
+
 
 def Q_ends_null_or_future():
     """ends_at 为空或晚于当前的 Q 条件（避免循环 import 的小工具）。"""
@@ -769,53 +941,11 @@ def reset_current_password_failures(request, user):
     session.pop(_reauth_session_key(user, "lock_until"), None)
 
 
-def check_current_password(request, user, current_password):
-    """改密二次认证：校验「当前密码」；通过返回 None，失败返回面向用户的提示文案。
-
-    约定：
-      * 失败文案统一为「当前密码不正确」——不区分账号不存在与密码错误，
-        不泄露任何额外信息（用户名/账号状态/密码策略）；
-      * 当前密码连续失败达 PASSWORD_REAUTH_MAX_FAILURES 次后进入
-        PASSWORD_REAUTH_COOLDOWN_SECONDS 秒冷却，冷却期内即使密码正确也拒绝校验；
-      * 计数是 DB 原子计数（跨会话、跨进程有效，并发不丢计数）；
-      * 校验通过即清零该用户的失败计数（连续失败语义）。
-    """
-    if user is None or not getattr(user, "is_authenticated", False):
-        return "当前密码不正确"
-    from apps.core import rate_limit
-
-    username = getattr(user, "username", "") or ""
-    # ① 先 peek：已达阈值即处于冷却期（此时即使密码正确也拒绝校验）。
-    #    peek 不消耗配额——只有真正校验失败才计数（与登录限流同口径）。
-    if not rate_limit.check(
-        request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username, consume=False
-    ):
-        try:
-            remain = rate_limit.remaining_seconds(
-                request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username
-            )
-        except Exception:
-            remain = 0
-        if remain <= 0:
-            # 无计数行却判定超限 → 只可能是计数存储异常（fail-closed）
-            return "校验服务暂不可用，请稍后重试"
-        _audit_reauth_failure(request, user, "rate_limited")
-        return f"当前密码连续输入错误次数过多，请在 {remain} 秒后重试"
-    current_password = current_password or ""
-    if not current_password or not user.check_password(current_password):
-        # ② 校验失败才消耗配额（DB 原子自增，并发下不丢计数）。
-        rate_limit.check(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
-        _audit_reauth_failure(request, user, "wrong_current_password")
-        return "当前密码不正确"
-    reset_current_password_failures(request, user)
-    return None
-
-
 def check_new_password_not_reused(user, new_password):
     """改密口令策略：新密码不得与当前密码相同；通过返回 None，失败返回提示文案。
 
     背景（2026-11-27 独立复核实证）：改密入口原只校验「两次一致 + Django 校验器」，
-    提交 current_password == new_password1 时照样改密成功——口令实际未变，却回
+    提交 current_password =[REDACTED] new_password1 时照样改密成功——口令实际未变，却回
     「密码已修改」并写 identity.password_changed 审计，变更记录与真实凭据不一致
     （用户以为已换新口令，实则旧口令继续有效）。二次认证已把当前密码握在手里，
     顺带做一次同值比对即可堵住。
@@ -877,3 +1007,45 @@ def validate_password_change(request, user, *, current_password, new_password1, 
         return "；".join(exc.messages)
     # ⑤ 同值策略（口径待负责人裁定，开关可回退）
     return check_new_password_not_reused(user, new1)
+
+
+def check_current_password(request, user, current_password):
+    """改密二次认证：校验「当前密码」；通过返回 None，失败返回面向用户的提示文案。
+
+    约定：
+      * 失败文案统一为「当前密码不正确」——不区分账号不存在与密码错误，
+        不泄露任何额外信息（用户名/账号状态/密码策略）；
+      * 当前密码连续失败达 PASSWORD_REAUTH_MAX_FAILURES 次后进入
+        PASSWORD_REAUTH_COOLDOWN_SECONDS 秒冷却，冷却期内即使密码正确也拒绝校验；
+      * 计数是 DB 原子计数（跨会话、跨进程有效，并发不丢计数）；
+      * 校验通过即清零该用户的失败计数（连续失败语义）。
+    """
+    if user is None or not getattr(user, "is_authenticated", False):
+        return "当前密码不正确"
+    from apps.core import rate_limit
+
+    username = getattr(user, "username", "") or ""
+    # ① 先 peek：已达阈值即处于冷却期（此时即使密码正确也拒绝校验）。
+    #    peek 不消耗配额——只有真正校验失败才计数（与登录限流同口径）。
+    if not rate_limit.check(
+        request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username, consume=False
+    ):
+        try:
+            remain = rate_limit.remaining_seconds(
+                request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username
+            )
+        except Exception:
+            remain = 0
+        if remain <= 0:
+            # 无计数行却判定超限 → 只可能是计数存储异常（fail-closed）
+            return "校验服务暂不可用，请稍后重试"
+        _audit_reauth_failure(request, user, "rate_limited")
+        return f"当前密码连续输入错误次数过多，请在 {remain} 秒后重试"
+    current_password = current_password or ""
+    if not current_password or not user.check_password(current_password):
+        # ② 校验失败才消耗配额（DB 原子自增，并发下不丢计数）。
+        rate_limit.check(request, PASSWORD_REAUTH_RATE_LIMIT_ACTION, username=username)
+        _audit_reauth_failure(request, user, "wrong_current_password")
+        return "当前密码不正确"
+    reset_current_password_failures(request, user)
+    return None
