@@ -164,17 +164,15 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-# ARCH-05 改密口径：新密码是否禁止与当前密码相同。
+# ARCH-05 改密口径：新密码禁止与当前口令相同。
 #
-# 状态：WAITING_OWNER（任务书 PMS2-FINAL-ACCEPTANCE-REMEDIATION-003 §第四章
-# TASK-10 与 §第十章决策表列为「ARCH-05 | 禁止新旧密码相同 | WAITING_OWNER」，
-# 并明确「开发人员先输出风险评估和兼容性测试，不得自行将其升级为强制业务
-# 政策」）。本开关即「一行回退点」：
-#   * True —— 拒绝「新密码 == 当前密码」（消除「口令实际未变却回『密码已修改』
-#     并写 identity.password_changed 审计」的证据不一致缺陷）；
-#   * False —— 允许同值（回到整改前行为）。
-# 兼容参数：DJANGO_PASSWORD_FORBID_REUSE 可用环境变量覆盖，便于生产灰度。
-PASSWORD_POLICY_FORBID_REUSE = env_bool("DJANGO_PASSWORD_FORBID_REUSE", default=True)
+# 状态：**强制业务政策**（负责人 2026-11-27 裁定，原 WAITING_OWNER 已关闭）。
+#
+# 该策略原以 `PASSWORD_POLICY_FORBID_REUSE` / `DJANGO_PASSWORD_FORBID_REUSE`
+# 运行时开关暴露，本轮**一并移除**：强制策略不得留「用环境变量就能在某个环境
+# 静默降级」的口子——这与本项目持续治理的「静默策略降级」是同一类缺陷。
+# 实现落点：apps/identity/services.py:check_new_password_not_reused（无条件拒绝）。
+# 回退路径：git revert 本次策略升级提交（不保留运行时开关）。
 
 LANGUAGE_CODE = "zh-hans"
 TIME_ZONE = os.environ.get("DJANGO_TIME_ZONE", "Asia/Shanghai")

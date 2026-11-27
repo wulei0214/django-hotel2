@@ -13,7 +13,6 @@
 import logging
 from datetime import datetime, timedelta
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -950,19 +949,19 @@ def check_new_password_not_reused(user, new_password):
     （用户以为已换新口令，实则旧口令继续有效）。二次认证已把当前密码握在手里，
     顺带做一次同值比对即可堵住。
 
-    约定：
+    口径（**已裁定的强制业务政策**，负责人 2026-11-27 裁定，ARCH-05 决策表
+    R1 由 WAITING_OWNER 改为 DONE）：
+      * 同值改密**无条件拒绝**——原 `PASSWORD_POLICY_FORBID_REUSE` 运行时开关与
+        `DJANGO_PASSWORD_FORBID_REUSE` 环境变量已移除：强制策略不得留「用环境变量
+        就能在某个环境静默降级」的口子（与本项目治理的「静默策略降级」同口径）；
       * 失败文案统一为「新密码不能与当前密码相同」——不泄露任何口令内容；
       * 账号尚无可用口令（set_unusable_password）时 check_password 恒为 False，
         不误判为「相同」；
-      * 是否强制本条由 settings.PASSWORD_POLICY_FORBID_REUSE 开关控制——该口径
-        在 ARCH-05 决策表中仍为 WAITING_OWNER（是否升级为强制业务政策由负责人
-        裁定），开关关闭即回到整改前行为，回退面 = 一个布尔开关。
+      * 回退路径：git revert 本次策略升级的提交（不保留运行时开关）。
     """
     if not new_password or user is None:
         return None
     if not getattr(user, "is_authenticated", False):
-        return None
-    if not getattr(settings, "PASSWORD_POLICY_FORBID_REUSE", True):
         return None
     if user.check_password(new_password):
         return "新密码不能与当前密码相同"
@@ -982,7 +981,7 @@ def validate_password_change(request, user, *, current_password, new_password1, 
       ② 两次输入的新密码必须一致；
       ③ 最小长度（与 Django MinimumLengthValidator 同口径的 6 位下限）；
       ④ Django 密码校验器（相似度 / 常见口令 / 纯数字等）；
-      ⑤ 同值策略：新密码不得与当前密码相同（受 PASSWORD_POLICY_FORBID_REUSE 开关）。
+      ⑤ 同值策略：新密码不得与当前密码相同（强制业务政策，无运行时开关）。
 
     失败文案不包含任何口令内容，也不区分「账号不存在」与「密码错误」。
     """
@@ -1005,7 +1004,7 @@ def validate_password_change(request, user, *, current_password, new_password1, 
         validate_password(new1, user=user)
     except DjangoValidationError as exc:
         return "；".join(exc.messages)
-    # ⑤ 同值策略（口径待负责人裁定，开关可回退）
+    # ⑤ 同值策略（强制业务政策：无条件拒绝）
     return check_new_password_not_reused(user, new1)
 
 
