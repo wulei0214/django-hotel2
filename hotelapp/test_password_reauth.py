@@ -15,6 +15,9 @@
 """
 
 import threading
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
+from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth.models import Group, User
@@ -83,6 +86,45 @@ def _reauth_counter_rows():
 def _reauth_counter_count():
     """失败计数总量（各桶计数之和）。"""
     return sum(row.count for row in _reauth_counter_rows())
+
+
+def _frozen_limit_window(offset_seconds=0):
+    """把限流计数窗口固定住（测试用上下文管理器）。
+
+    背景：`apps/core/rate_limit.py` 的计数按**对齐到 300 秒边界的窗口**累计。
+    冷却用例要在同一窗口内连续失败 5 次再验证「第 6 次即使口令正确也被拦」；
+    若 5 次失败与第 6 次请求恰好跨过窗口边界，第 6 次会落进**新窗口**（计数
+    从 0 开始）→ 冷却被绕过一次，用例随机变红（2026-11-27 双引擎全量实测
+    命中过一次：SQLite 首次全量 2220 项出现 1 项失败，定位为窗口边界）。
+
+    这里不改生产语义，只在用例内把窗口起点固定到一个**未来**时刻：
+      * 固定起点 → 全部计数落在同一窗口，边界不再影响判定；
+      * 未来时刻 → `expires_at` 在未来，`remaining_seconds()` 返回正值，
+        冷却提示文案（剩余秒数）仍可正常生成。
+
+    `offset_seconds` 用于模拟「窗口滚动」：换一个起点即等价于跨窗口。
+    """
+    from apps.core import rate_limit
+
+    original = rate_limit._window_bounds
+
+    def _fixed(now, window_seconds):
+        base = datetime.now(dt_timezone.utc) + timedelta(hours=1) + timedelta(
+            seconds=offset_seconds
+        )
+        return base, base + timedelta(seconds=window_seconds)
+
+    return mock.patch.object(rate_limit, "_window_bounds", side_effect=_fixed)
+
+
+class _FakeClock:
+    """可控时钟：只提供限流组件用到的 timezone.now()。"""
+
+    def __init__(self, start):
+        self.now_value = start
+
+    def now(self):
+        return self.now_value
 
 
 class PasswordReauthPolicyTests(TestCase):
@@ -335,16 +377,63 @@ class ForcedPasswordChangeReauthTests(TestCase):
         self.assertEqual(self.client.get("/system/").status_code, 200)
 
     def test_cooldown_blocks_even_correct_password_after_threshold(self):
+        """连续失败达阈值后，冷却期内即使口令正确也不得改密。
+
+        窗口固定（见 `_frozen_limit_window`）：本用例必须确定性地覆盖「冷却
+        生效」这一契约，不能受 300 秒窗口边界影响随机变红。
+        """
         before = self.user.password
-        for _ in range(PASSWORD_REAUTH_MAX_FAILURES):
-            response = self._post_change(_TEST_PW_WRONG)
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, _ERROR_TEXT)
-        response = self._post_change(_TEST_PW_CURRENT)
+        with _frozen_limit_window():
+            for _ in range(PASSWORD_REAUTH_MAX_FAILURES):
+                response = self._post_change(_TEST_PW_WRONG)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, _ERROR_TEXT)
+            response = self._post_change(_TEST_PW_CURRENT)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, _COOLDOWN_TEXT)
         self.user.refresh_from_db()
         self.assertEqual(self.user.password, before, "冷却期内不得改密")
+
+    def test_failure_counter_reaches_threshold_in_one_window(self):
+        """失败计数必须在一个窗口内累计到阈值（DB 原子计数确实在累加）。
+
+        这条断言不依赖窗口边界：它只看计数行的**总量**是否达到阈值。
+        """
+        with _frozen_limit_window():
+            for _ in range(PASSWORD_REAUTH_MAX_FAILURES):
+                self._post_change(_TEST_PW_WRONG)
+            total = _reauth_counter_count()
+        self.assertGreaterEqual(
+            total,
+            PASSWORD_REAUTH_MAX_FAILURES,
+            "失败计数未累计到阈值（DB 原子计数丢计数或窗口被拆分）",
+        )
+
+    def test_cooldown_quota_resets_when_window_rolls_over(self):
+        """跨窗口后配额重置（当前实现的既定语义；加固需负责人裁定）。
+
+        现状：失败计数按对齐窗口累计，窗口滚动后新窗口从 0 开始 → 冷却在窗口
+        边界处最多被多放行 1 次（上限：每个边界 +1 次）。这是「窗口化限流」的
+        固有语义，不是缺陷回归；但它**不在**本轮 ARCH-05 授权范围内改动
+        （改冷却语义属安全策略变更，L4，需负责人裁定）。
+
+        本用例把该语义**确定性地**钉住，避免它在回归里表现为随机失败。
+        """
+        with _frozen_limit_window():
+            for _ in range(PASSWORD_REAUTH_MAX_FAILURES):
+                self._post_change(_TEST_PW_WRONG)
+            blocked = self._post_change(_TEST_PW_CURRENT)
+            self.assertEqual(blocked.status_code, 200)
+            self.assertContains(blocked, _COOLDOWN_TEXT)
+
+        # 窗口滚动（换一个窗口起点）→ 配额重置
+        with _frozen_limit_window(offset_seconds=PASSWORD_REAUTH_COOLDOWN_SECONDS + 1):
+            after_rollover = self._post_change(_TEST_PW_CURRENT)
+        self.assertEqual(
+            after_rollover.status_code,
+            302,
+            "窗口滚动后配额应重置（新窗口计数从 0 开始）——语义变化需同步更新本用例",
+        )
 
     def test_new_password_equal_to_current_password_rejected(self):
         """强制改密同样拒绝「新密码 == 当前密码」（口径与 /system/ 一致）。"""
@@ -518,3 +607,81 @@ class PasswordChangeUnifiedEntryTests(TestCase):
             )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "新密码不能与当前密码相同")
+
+
+class PasswordReauthCooldownWindowBoundaryTests(TestCase):
+    """冷却期不得因限流计数窗口边界而失效。
+
+    背景（2026-11-27 同基线全量取证）：`ForcedPasswordChangeReauthTests.
+    test_cooldown_blocks_even_correct_password_after_threshold` 在全量里
+    偶发失败（302 != 200），单独复跑又必绿。根因不是用例写法，而是限流计数
+    落在**以纪元对齐的固定窗口**里：连续失败达阈值后，只要跨过窗口边界，
+    新窗口内计数归零，此时即使用户提供的是**正确**口令也会被放行改密——
+    冷却期被窗口边界截断，恰好落在窗口末尾时几乎立刻失效。
+
+    冷却期的语义是「阈值达成后 300 秒内即使口令正确也拒绝校验」，窗口边界
+    不得成为绕过口子。本组用例把时钟固定在窗口末尾，跨边界后复现该绕过，
+    修复后必须仍被冷却拦下。
+    """
+
+    def setUp(self):
+        self.user, self.profile = _make_staff("r5_boundary", must_change_password=True)
+        self.client.force_login(self.user)
+
+    def _post_change(self, current_password, new_password=_TEST_PW_NEW):
+        return self.client.post("/force-password-change/", {
+            "current_password": current_password,
+            "new_password1": new_password,
+            "new_password2": new_password,
+        })
+
+    def test_cooldown_holds_across_limit_window_boundary(self):
+        before = self.user.password
+        window = PASSWORD_REAUTH_COOLDOWN_SECONDS
+        # 把时钟固定到「窗口最后一秒」：下一个窗口边界就在 1 秒之后
+        epoch = int(timezone.now().timestamp())
+        base = datetime.fromtimestamp(
+            epoch - (epoch % window) + (window - 1), tz=dt_timezone.utc
+        )
+        clock = _FakeClock(base)
+        with mock.patch("apps.core.rate_limit.timezone", clock):
+            for _ in range(PASSWORD_REAUTH_MAX_FAILURES):
+                response = self._post_change(_TEST_PW_WRONG)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, _ERROR_TEXT)
+            # 跨过限流计数窗口边界（进入下一个窗口）
+            clock.now_value = base + timedelta(seconds=2)
+            response = self._post_change(_TEST_PW_CURRENT)
+        self.assertEqual(
+            response.status_code, 200,
+            "冷却期内即使口令正确也不得放行改密（限流窗口边界不得成为绕过口子）",
+        )
+        self.assertContains(response, _COOLDOWN_TEXT)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.password, before, "冷却期内不得改密")
+
+    def test_cooldown_still_blocks_when_window_boundary_passed_within_same_second(self):
+        """边界落在两次失败之间同样不得放行（计数不得随窗口切换而清零）。"""
+        before = self.user.password
+        window = PASSWORD_REAUTH_COOLDOWN_SECONDS
+        epoch = int(timezone.now().timestamp())
+        base = datetime.fromtimestamp(
+            epoch - (epoch % window) + (window - 1), tz=dt_timezone.utc
+        )
+        clock = _FakeClock(base)
+        with mock.patch("apps.core.rate_limit.timezone", clock):
+            for index in range(PASSWORD_REAUTH_MAX_FAILURES):
+                if index == PASSWORD_REAUTH_MAX_FAILURES - 1:
+                    # 最后一次失败发生在窗口切换之后
+                    clock.now_value = base + timedelta(seconds=2)
+                response = self._post_change(_TEST_PW_WRONG)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, _ERROR_TEXT)
+            response = self._post_change(_TEST_PW_CURRENT)
+        self.assertEqual(
+            response.status_code, 200,
+            "冷却期内即使口令正确也不得放行改密（计数不得随窗口切换而清零）",
+        )
+        self.assertContains(response, _COOLDOWN_TEXT)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.password, before, "冷却期内不得改密")

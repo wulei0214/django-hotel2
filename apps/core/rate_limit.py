@@ -7,6 +7,9 @@
 - 阈值可经 settings.PUBLIC_RATE_LIMITS 覆盖；生产不得缺省为无限制。
 - 高风险动作（登录/取消/支付意图/预订创建）默认 fail-closed：
   计数存储异常时拒绝请求；429 返回 Retry-After。
+- 窗口语义：**滑动窗口**——计数行在最后一次计数之后存活 window_seconds，
+  跨窗口边界不清零（2026-11-27 整改；原纪元对齐固定窗口会让冷却期在边界
+  处被截断，形成绕过口子）。
 """
 
 import hashlib
@@ -100,6 +103,27 @@ def _window_bounds(now, window_seconds):
     return window_start, window_start + timedelta(seconds=window_seconds)
 
 
+def _live_counter(key_hash, action, now):
+    """当前仍然有效的计数行（滑动窗口：取最近一条未过期的）。
+
+    2026-11-27 整改（滑动窗口）：原实现把计数按**纪元对齐的固定窗口**分桶，
+    判定时只看「当前窗口起点」那一条行——跨过窗口边界后，新窗口内计数归零，
+    于是「阈值达成后的冷却期」被边界截断：紧接着的一次请求（哪怕口令正确）
+    就能穿过冷却。2026-11-27 同基线全量取证复现了该绕过（见
+    `hotelapp/test_password_reauth.py::PasswordReauthCooldownWindowBoundaryTests`）。
+
+    改为滑动窗口：计数行在**最后一次计数之后**再存活 window_seconds，
+    判定与自增都作用在「仍然有效的那一行」，跨窗口边界不清零。
+    `window_start` 仍沿用纪元对齐口径——它只作分桶标识（并发请求必须落到
+    同一行，唯一约束依赖它），不再承担「窗口是否过期」的判定职责。
+    """
+    return (
+        RateLimitCounter.objects.filter(key_hash=key_hash, action=action, expires_at__gt=now)
+        .order_by("-expires_at")
+        .first()
+    )
+
+
 def reset(request, action, *, phone="", username="", booking_no="", token=""):
     """清除某动作在当前维度组合下的计数（连续失败语义复位）。
 
@@ -190,25 +214,35 @@ def check(
         return True
     now = timezone.now()
     for limit, window_seconds, key_hash in specs:
-        window_start, expires_at = _window_bounds(now, window_seconds)
+        # 滑动窗口：计数行在最后一次计数之后存活 window_seconds（不再对齐纪元窗口）
+        expires_at = now + timedelta(seconds=int(window_seconds))
+        window_start, _ = _window_bounds(now, window_seconds)
         try:
             with transaction.atomic():
                 if consume:
-                    counter, created = RateLimitCounter.objects.get_or_create(
-                        key_hash=key_hash,
-                        action=action,
-                        window_start=window_start,
-                        defaults={"count": 1, "expires_at": expires_at},
-                    )
-                    if not created:
-                        RateLimitCounter.objects.filter(pk=counter.pk).update(count=F("count") + 1)
-                        counter.refresh_from_db(fields=("count",))
+                    counter = _live_counter(key_hash, action, now)
+                    if counter is None:
+                        counter, created = RateLimitCounter.objects.get_or_create(
+                            key_hash=key_hash,
+                            action=action,
+                            window_start=window_start,
+                            defaults={"count": 1, "expires_at": expires_at},
+                        )
+                        if not created:
+                            # 并发下另一事务刚建行：本次也计入配额
+                            RateLimitCounter.objects.filter(pk=counter.pk).update(
+                                count=F("count") + 1, expires_at=expires_at
+                            )
+                            counter.refresh_from_db(fields=("count", "expires_at"))
+                    else:
+                        RateLimitCounter.objects.filter(pk=counter.pk).update(
+                            count=F("count") + 1, expires_at=expires_at
+                        )
+                        counter.refresh_from_db(fields=("count", "expires_at"))
                     current_count = counter.count
                     exceeded = current_count > limit
                 else:
-                    counter = RateLimitCounter.objects.filter(
-                        key_hash=key_hash, action=action, window_start=window_start
-                    ).first()
+                    counter = _live_counter(key_hash, action, now)
                     current_count = counter.count if counter else 0
                     # peek 不占用本次配额：计数已用满即拒绝下一次请求。
                     exceeded = current_count >= limit
