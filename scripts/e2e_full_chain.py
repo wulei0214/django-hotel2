@@ -22,7 +22,9 @@
   c. 数据库主机必须 loopback，库名必须显式列入 PMS_E2E_ALLOWED_DB_NAMES
      白名单且以 _e2e/_test 结尾（hotel / *_dev 一律拒绝），且与 Django
      default 连接逐项一致（MySQL）；
-  d. 执行前打印将要 TRUNCATE 的全部表名（清空范围）与保留表清单。
+  d. 执行前打印将要 TRUNCATE 的全部表名（清空范围）与保留表清单；
+  e. 库名自检：test_hotel 是 Django 的 MySQL 测试库名（test_ + 开发库 hotel），
+     会被任何一次 manage.py test 的收尾阶段删除，一律拒绝，改用 test_hotel_e2e。
 
 隔离库自建数据：migrate → append-only 触发器（权限边界内尽力安装）→
 清库复位（打印清空范围）→ 主数据复刻（从 dev 基线库只读复制九角色授权
@@ -32,8 +34,8 @@ seed_hotel_data → FIRST_NIGHT 提前离店政策（使退房链的「未结清
 （口令取 PMS_E2E_PASSWORD，不硬编码）。
 
 运行方式（本机隔离库）：
-  DJANGO_DB_NAME=test_hotel \
-  PMS_E2E_ALLOWED_DB_NAMES=test_hotel \
+  DJANGO_DB_NAME=test_hotel_e2e \
+  PMS_E2E_ALLOWED_DB_NAMES=test_hotel_e2e \
   PMS_E2E_PASSWORD='<九角色统一测试口令>' \
   PMS_E2E_BASE_URL=http://127.0.0.1:8001 \
   python scripts/e2e_full_chain.py --i-understand-reset
@@ -144,6 +146,13 @@ if _DB_NAME == "hotel" or _DB_NAME.endswith("_dev") or _DB_NAME.lower().startswi
 _IS_ISOLATED_NAME = _DB_NAME.endswith(("_e2e", "_test")) or _DB_NAME.startswith("test_")
 if not _IS_ISOLATED_NAME:
     print("拒绝执行：清库目标数据库名必须以 _e2e/_test 结尾或以 test_ 开头（隔离库命名）。")
+    sys.exit(2)
+# 库名撞名自检：Django 的 MySQL 测试库名 = test_ + 开发库名（hotel -> test_hotel）。
+# 取证隔离库若与它同名，任何一次 manage.py test 的收尾阶段都会把隔离库删掉。
+if _DB_NAME == "test_hotel":
+    print("拒绝执行：库名 test_hotel 与 Django 的 MySQL 测试库同名（test_ + 开发库 hotel）。")
+    print("          任何一次 manage.py test 都会在收尾阶段删掉这个库（2026-11-27 实测发生过）。")
+    print("          请改用不撞名的隔离库 test_hotel_e2e（并把 PMS_E2E_ALLOWED_DB_NAMES 一并更新）。")
     sys.exit(2)
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hotel.settings")

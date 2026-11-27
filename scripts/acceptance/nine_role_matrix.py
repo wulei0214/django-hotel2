@@ -15,10 +15,27 @@
 夜审中心页面另做两项目录级断言：放行岗位必须渲染「执行夜审」按钮，且**不得**
 渲染「营业日重开申请」表单（0021 迁移未授 `business_date_reopen`）。
 
+隔离库口径（2026-11-27 改名）：
+  - 取证隔离库 = **`test_hotel_e2e`**（含 test、不等于 Django 的 MySQL 测试库名
+    `test_hotel`、不被 `scripts/e2e_full_chain.py` 的守卫拒绝）；
+  - **`test_hotel` 是 Django 的测试库名**，任何一次 `manage.py test` 的收尾阶段
+    都会把它删掉，不得再用作取证隔离库；
+  - 取证前先跑 `python scripts/acceptance/prepare_isolated_db.py` 建库并 migrate +
+    seed（该脚本默认库名即 `test_hotel_e2e`），再起服务、最后跑本脚本。
+
 用法（先由外部起好 dev server，默认 127.0.0.1:8011）：
 
     NINE_ROLE_BASE=http://127.0.0.1:8011 NINE_ROLE_RUN_ID=20261122-task06 \
         .venv\\Scripts\\python.exe scripts/acceptance/nine_role_matrix.py
+
+或直接用仓库内的包装脚本（自动起停取证服务）：
+
+    powershell -NoProfile -File scripts\\acceptance\\run_nine_role_evidence.ps1 \
+        -RunId 20261122-task06 -Port 8011
+
+账号清单（gitignored 的本机文件，缺失时本脚本明确报错而非抛裸异常）：
+    .work/v12_accounts.json
+    .work/v13/v13_accounts.json
 
 证据：docs/acceptance/evidence/task06-nine-role-<RUN_ID>/
 """
@@ -49,13 +66,16 @@ RUN_ID = os.environ.get("NINE_ROLE_RUN_ID") or datetime.now().strftime("%Y%m%d-%
 EVIDENCE = os.path.join("docs", "acceptance", "evidence", f"task06-nine-role-{RUN_ID}")
 
 ACCOUNTS = {}
-for _path in (
+ACCOUNT_MANIFESTS = (
     os.path.join(".work", "v12_accounts.json"),
     os.path.join(".work", "v13", "v13_accounts.json"),
-):
+)
+for _path in ACCOUNT_MANIFESTS:
     if os.path.exists(_path):
         with open(_path, encoding="utf-8") as fh:
             ACCOUNTS.update(json.load(fh))
+    else:
+        print("[WARN] 账号清单缺失（gitignored 本机文件）：%s" % _path)
 
 NINE = [
     "v12_gm",
@@ -280,6 +300,14 @@ def classify(expect, status):
 
 
 def main():
+    missing = [user for user in NINE if user not in ACCOUNTS]
+    if missing:
+        print("[FAIL] 账号清单不完整，缺少：%s" % ", ".join(missing))
+        print("[FAIL] 本矩阵需要下列 gitignored 本机账号清单文件：")
+        for path in ACCOUNT_MANIFESTS:
+            print("[FAIL]   %s" % path)
+        print("[FAIL] 缺失清单时不做任何取证（不写证据、不启动浏览器）。")
+        return 2
     os.makedirs(EVIDENCE, exist_ok=True)
     results = []
     failures = []
