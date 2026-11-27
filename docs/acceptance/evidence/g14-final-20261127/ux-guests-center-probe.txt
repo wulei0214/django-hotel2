@@ -1,0 +1,3 @@
+﻿/manage/guests/        status=200 ux_css=True ux_js=True urlstate=True
+/manage/rooms/         status=200 ux_css=True ux_js=True urlstate=True
+VERDICT: PASS 鈥斺€?閫氱敤绠＄悊涓績鍔犺浇 pms-ux

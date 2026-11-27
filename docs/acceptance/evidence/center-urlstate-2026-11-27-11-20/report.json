@@ -1,0 +1,25 @@
+{
+  "task": "管理中心 opt-in 能力真实浏览器验收（URL 状态同步 + 房态操作表单守卫）",
+  "base": "http://127.0.0.1:8132",
+  "center": "guests",
+  "results": [
+    {
+      "name": "进入房态与库存中心真实页面",
+      "pass": true,
+      "detail": "http://127.0.0.1:8132/manage/guests/"
+    },
+    {
+      "name": "pms-ux 已加载（window.PMSUX 存在）",
+      "pass": false,
+      "detail": ""
+    },
+    {
+      "name": "E2E run",
+      "pass": false,
+      "detail": "PMSUX 未加载，后续断言无意义"
+    }
+  ],
+  "passed": 1,
+  "failed": 2,
+  "finished_at": "2026-11-27T11:20:24.265Z"
+}
