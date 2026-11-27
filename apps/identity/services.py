@@ -940,6 +940,52 @@ def reset_current_password_failures(request, user):
     session.pop(_reauth_session_key(user, "lock_until"), None)
 
 
+def apply_password_change(request, user, new_password, *, reason):
+    """改密写路径唯一入口（宪法 §3.2：User/StaffProfile 写路径收口到本服务）。
+
+    历史实现里 `/force-password-change/`（D-07 强制改密）与 `/system/`（员工
+    个人页自助改密）各自复制了一份「set_password → 清强制改密标记 → 审计 →
+    保会话 → 清失败计数」写块（2026-11-28 结构审查 P1：业务规则散落在页面且
+    双份重复，违反本模块头注自宣告的写边界）。两条路径现在都调用本函数。
+
+    执行序（与历史两处实现逐字段等价，仅收敛双份重复；调用方须先通过
+    validate_password_change 完成全部校验，本函数只负责落盘，不再校验）：
+      ① user.set_password(new_password) + save(password)——session_auth_hash
+        随之变更，其他会话全部失效；
+      ② StaffProfile 清 must_change_password、记 last_password_change
+        （无档案时跳过，不视为错误——与自助改密历史口径一致）；
+      ③ identity.password_changed 审计——entity 取 StaffProfile 主键，
+        缺档时退 User 主键；
+      ④⑤ 会话侧副作用（保活 + 清失败计数）仅在 request 非空时执行：
+        update_session_auth_hash 保持当前会话，
+        reset_current_password_failures 清零当前密码失败计数（改密成功即
+        身份重新自证）。
+    """
+    from django.contrib.auth import update_session_auth_hash
+
+    from apps.core.models import AuditEvent
+
+    user.set_password(new_password)  # session_auth_hash 变更 → 其他会话失效
+    user.save(update_fields=("password",))
+    profile = StaffProfile.objects.filter(user=user).first()
+    if profile is not None:
+        profile.must_change_password = False
+        profile.last_password_change = timezone.now()
+        profile.save(update_fields=("must_change_password", "last_password_change", "updated_at"))
+    AuditEvent.record(
+        action="identity.password_changed",
+        entity_type="StaffProfile",
+        entity_id=str(profile.pk if profile else user.pk),
+        actor=user,
+        reason=reason,
+        request=request,
+    )
+    if request is not None:
+        update_session_auth_hash(request, user)  # 保持当前会话
+        # 改密成功即身份重新自证：清零本会话的当前密码失败计数
+        reset_current_password_failures(request, user)
+
+
 def check_new_password_not_reused(user, new_password):
     """改密口令策略：新密码不得与当前密码相同；通过返回 None，失败返回提示文案。
 

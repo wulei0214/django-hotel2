@@ -9,8 +9,6 @@ import csv
 import hashlib
 import io
 import json
-import secrets
-from datetime import timedelta
 
 from django.db.models import Count
 from django.http import HttpResponse
@@ -43,8 +41,6 @@ EXPORT_COLUMNS = (
     "reason",
     "is_sensitive",
 )
-# 下载有效期（MC-009 治理口径）：导出凭证签发后在此窗口内可下载。
-EXPORT_CREDENTIAL_TTL_SECONDS = 15 * 60
 # 审计留存年限（MC-008，负责人 2026-11-17 裁定认可）：与财务凭证最低留存口径一致。
 AUDIT_RETENTION_YEARS = 10
 AUDIT_RETENTION_DECISION = (
@@ -180,18 +176,18 @@ def audit_export_download(request, token):
 def _issue_credential(
     *, property_obj, request, kind, report_code, params, columns, row_count, reason
 ):
-    token = secrets.token_urlsafe(32)
-    return ExportCredential.objects.create(
-        property=property_obj,
+    # 凭据签发收口（宪法 §3.2/§6.1 口径）：token/TTL/落盘统一走 core 服务唯一入口。
+    from apps.core.services import issue_export_credential
+
+    return issue_export_credential(
+        property_obj=property_obj,
         kind=kind,
         report_code=report_code,
-        token=token,
         params=params,
-        columns=list(columns),
+        columns=columns,
         row_count=row_count,
         reason=reason,
         created_by=request.user if request.user.is_authenticated else None,
-        expires_at=timezone.now() + timedelta(seconds=EXPORT_CREDENTIAL_TTL_SECONDS),
     )
 
 

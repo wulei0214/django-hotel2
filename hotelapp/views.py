@@ -25,36 +25,38 @@ import io
 import logging
 import re
 
-from django.utils import timezone
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
+from django.contrib.auth import authenticate
+from django.contrib.auth import login as auth_login
+from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
 from django.db.models import Prefetch, Q
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
-from django.core.paginator import Paginator
-from django.shortcuts import render, redirect, get_object_or_404
-
-from .models import (Room, Client, Food, Vip, Park, Order, Accommodation,
-                     Folio)
-
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 
 # ---------- 模块启停注册表（RBAC 决策：餐饮/停车对接第三方，本阶段隐藏入口） ----------
 # §7 跨 App RBAC 注册表（apps/identity/registry.py）自 Phase 2 起是模块启停的
 # 唯一权威定义：food/order/park 三个旧门禁键映射到注册表的 fnb/parking 模块，
 # 状态非 ACTIVE 即隐藏。此处仅保留旧的键值开关视图，module_gate 行为不变；
 # 代码与历史数据全部保留，注册表把对应模块置 ACTIVE 即恢复页面。
+from apps.identity.authorization import AuthorizationService
+from apps.identity.decorators import pms_permission_required
 from apps.identity.registry import legacy_module_gate_keys, module_gate_open
 
-MODULE_REGISTRY = {key: module_gate_open(key)
-                   for key in legacy_module_gate_keys()}
+from .models import Accommodation, Client, Folio, Food, Order, Park, Room, Vip
+
+MODULE_REGISTRY = {key: module_gate_open(key) for key in legacy_module_gate_keys()}
 
 
 def module_gate(key):
     """隐藏模块统一门禁：命中则带提示跳回主界面（fail-closed，直接 URL 也不可达）。"""
+
     def deco(view):
         @functools.wraps(view)
         def wrapper(request, *args, **kwargs):
@@ -62,10 +64,11 @@ def module_gate(key):
                 messages.warning(request, "该模块已对接第三方系统，暂不开放；历史数据已保留。")
                 return redirect("/home/")
             return view(request, *args, **kwargs)
+
         return wrapper
+
     return deco
-from apps.identity.authorization import AuthorizationService
-from apps.identity.decorators import pms_permission_required
+
 
 # M3-1 可复燃写面断链（2026-11-18，架构治理第三模块提案 D3-5）：事件总线/订阅器/
 # 状态机的副作用接线已移除——全仓零事件发布调用者，该链路从未生效；
@@ -76,8 +79,8 @@ from apps.identity.decorators import pms_permission_required
 def _must_change_password(user):
     """D-07：员工档案标记须强制改密（开通账号/被管理员重置密码后置位）。"""
     from apps.identity.models import StaffProfile
-    return StaffProfile.objects.filter(
-        user=user, must_change_password=True).exists()
+
+    return StaffProfile.objects.filter(user=user, must_change_password=True).exists()
 
 
 def _has_active_employment(user):
@@ -92,6 +95,7 @@ def _has_active_employment(user):
     superuser 仅在 Django Admin 侧拥有平台维护权限（V1.1 §12.2）。
     """
     from apps.identity.models import PropertyStaffMembership, StaffProfile
+
     memberships = PropertyStaffMembership.objects.filter(
         staff_profile__user=user,
         staff_profile__employment_status=StaffProfile.EmploymentStatus.ACTIVE,
@@ -102,9 +106,15 @@ def _has_active_employment(user):
         return False
     now = timezone.now()
     from apps.identity.models import StaffRoleAssignment
-    return StaffRoleAssignment.objects.filter(
-        membership__in=memberships, starts_at__lte=now,
-    ).filter(Q(ends_at__isnull=True) | Q(ends_at__gt=now)).exists()
+
+    return (
+        StaffRoleAssignment.objects.filter(
+            membership__in=memberships,
+            starts_at__lte=now,
+        )
+        .filter(Q(ends_at__isnull=True) | Q(ends_at__gt=now))
+        .exists()
+    )
 
 
 def staff_required(view):
@@ -114,6 +124,7 @@ def staff_required(view):
     有效酒店任职——账号停用/员工离职/任职暂停立即失权。
     superuser 仅拥有 Django Admin 平台维护权限，不自动获得 PMS 业务入口。
     """
+
     @functools.wraps(view)
     def wrapped(request, *args, **kwargs):
         user = request.user
@@ -121,15 +132,17 @@ def staff_required(view):
         # superuser 不豁免（平台技术身份 ≠ 酒店经营角色，与 AuthorizationService 一致）；
         # is_staff 只管 Django Admin 入口。
         if user.is_authenticated and not _has_active_employment(user):
-            raise PermissionDenied(
-                "当前账号没有有效的酒店任职或岗位授权，请联系管理员分配")
+            raise PermissionDenied("当前账号没有有效的酒店任职或岗位授权，请联系管理员分配")
         # D-07：首次登录/被重置密码后强制改密（改密页与登出自身放行）
-        if (user.is_authenticated
-                and _must_change_password(user)
-                and request.path not in ("/force-password-change/", "/logout/")):
+        if (
+            user.is_authenticated
+            and _must_change_password(user)
+            and request.path not in ("/force-password-change/", "/logout/")
+        ):
             return redirect("/force-password-change/")
         return view(request, *args, **kwargs)
-    return login_required(wrapped, login_url='/login/')
+
+    return login_required(wrapped, login_url="/login/")
 
 
 # 各模块查询表单允许使用的字段白名单，用户提交的字段名不在白名单内则忽略查询
@@ -145,7 +158,10 @@ VALIDATORS = {
     "name": (re.compile(r"^[\u4e00-\u9fa5A-Za-z·]{2,10}$"), "必须是2-10位中英文"),
     "name20": (re.compile(r"^[\u4e00-\u9fa5A-Za-z0-9·]{2,20}$"), "必须是2-20位中英文或数字"),
     "type10": (re.compile(r"^[\u4e00-\u9fa5A-Za-z0-9]{2,10}$"), "必须是2-10位中英文或数字"),
-    "money": (re.compile(r"^(0|[1-9]\d{0,5})(\.\d{1,2})?$"), "必须是数字，整数最多6位、最多两位小数"),
+    "money": (
+        re.compile(r"^(0|[1-9]\d{0,5})(\.\d{1,2})?$"),
+        "必须是数字，整数最多6位、最多两位小数",
+    ),
     "idcard": (re.compile(r"^\d{17}[\dXx]$"), "必须是18位身份证号（末位可为X）"),
     "tel": (re.compile(r"^1\d{10}$"), "必须是11位手机号（1开头）"),
     "plate": (re.compile(r"^[\u4e00-\u9fa5][A-Z][A-Z0-9]{4,6}$"), "格式必须正确，如 黑A12345"),
@@ -196,7 +212,7 @@ def _search(model, pk, fields, request):
 
 # ---------- 员工信息管理 ----------
 @staff_required
-@pms_permission_required('hotelapp.change_staff')
+@pms_permission_required("hotelapp.change_staff")
 def staff_toggle(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
@@ -228,24 +244,39 @@ def request_staff_export(request):
     if not key or len(key) > 64:
         return HttpResponse("必须提供 1 至 64 个字符的 Idempotency-Key。", status=400)
     import hashlib
+
     entity_id = hashlib.sha256(
-        f"{property_obj.pk}:{request.user.pk}:staff-export:{key}".encode("utf-8")
+        f"{property_obj.pk}:{request.user.pk}:staff-export:{key}".encode()
     ).hexdigest()
     from apps.billing.services_v2 import ApprovalService
+
     try:
         approval, created = ApprovalService.request_approval(
-            property_obj=property_obj, action_code="privacy.export_staff",
-            entity_type="StaffExport", entity_id=entity_id,
-            requested_by=request.user, reason=reason,
-            payload={"module": "staff", "contains_salary": True,
-                     "format": "csv", "requested_by": request.user.pk})
+            property_obj=property_obj,
+            action_code="privacy.export_staff",
+            entity_type="StaffExport",
+            entity_id=entity_id,
+            requested_by=request.user,
+            reason=reason,
+            payload={
+                "module": "staff",
+                "contains_salary": True,
+                "format": "csv",
+                "requested_by": request.user.pk,
+            },
+        )
     except ValueError as exc:
         return HttpResponse(str(exc), status=400)
-    return JsonResponse({
-        "approval_id": approval.pk, "status": approval.status,
-        "created": created,
-        "message": "已提交敏感导出审批；审批人必须是另一位值班经理或店长。",
-    }, status=201 if created else 200, json_dumps_params={"ensure_ascii": False})
+    return JsonResponse(
+        {
+            "approval_id": approval.pk,
+            "status": approval.status,
+            "created": created,
+            "message": "已提交敏感导出审批；审批人必须是另一位值班经理或店长。",
+        },
+        status=201 if created else 200,
+        json_dumps_params={"ensure_ascii": False},
+    )
 
 
 def _staff_export_rows(property_obj):
@@ -299,24 +330,30 @@ def approve_staff_export(request, approval_id):
         return HttpResponse("请使用 POST 执行审批和下载。", status=405)
     # F-06：审批判定改走 AuthorizationService（hotelapp.export_approve，矩阵可管理）
     from apps.identity.authorization import AuthorizationService
+
     property_obj = getattr(request, "property", None)
     if property_obj is None or not AuthorizationService.has_permission(
-            request.user, property_obj, "hotelapp.export_approve"):
+        request.user, property_obj, "hotelapp.export_approve"
+    ):
         return HttpResponse("只有另一位值班经理或店长可以审批薪酬导出。", status=403)
     property_obj = getattr(request, "property", None)
     if property_obj is None:
         return HttpResponse("当前物业上下文不可用。", status=503)
     from apps.billing.models import ApprovalRecord
     from apps.billing.services_v2 import ApprovalService
+
     approval = ApprovalRecord.objects.filter(
-        pk=approval_id, property=property_obj,
-        action_code="privacy.export_staff", entity_type="StaffExport",
+        pk=approval_id,
+        property=property_obj,
+        action_code="privacy.export_staff",
+        entity_type="StaffExport",
     ).first()
     if approval is None:
         return HttpResponse("导出审批不存在或不属于当前物业。", status=404)
     try:
         approval = ApprovalService.approve(
-            approval.pk, approved_by=request.user, property_obj=property_obj)
+            approval.pk, approved_by=request.user, property_obj=property_obj
+        )
     except ValueError as exc:
         return HttpResponse(str(exc), status=409)
     if approval.status != ApprovalRecord.Status.APPROVED:
@@ -328,39 +365,50 @@ def approve_staff_export(request, approval_id):
     writer = csv.writer(buffer)
     writer.writerow(["员工编号", "姓名", "岗位代码", "雇佣状态", "任职状态", "登录账号"])
     for row in rows:
-        writer.writerow([
-            row["employee_no"], row["full_name"], row["position_code"],
-            row["employment_status"], row["membership_status"], row["username"],
-        ])
+        writer.writerow(
+            [
+                row["employee_no"],
+                row["full_name"],
+                row["position_code"],
+                row["employment_status"],
+                row["membership_status"],
+                row["username"],
+            ]
+        )
     response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
     response["Content-Disposition"] = 'attachment; filename="staff.csv"'
     response.write(buffer.getvalue())
     from apps.core.models import AuditEvent
+
     AuditEvent.record(
-        action="privacy.export_staff", entity_type="StaffExport",
-        entity_id=approval.entity_id, actor=request.user,
+        action="privacy.export_staff",
+        entity_type="StaffExport",
+        entity_id=approval.entity_id,
+        actor=request.user,
         property_obj=property_obj,
         after={"approval_id": approval.pk, "row_count": len(rows)},
-        reason=approval.reason, request=request)
+        reason=approval.reason,
+        request=request,
+    )
     return response
 
 
 @staff_required
-@pms_permission_required('hotelapp.add_staff')
+@pms_permission_required("hotelapp.add_staff")
 def insert(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
 
 
 @staff_required
-@pms_permission_required('hotelapp.delete_staff')
+@pms_permission_required("hotelapp.delete_staff")
 def delete_staff(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
 
 
 @staff_required
-@pms_permission_required('hotelapp.change_staff')
+@pms_permission_required("hotelapp.change_staff")
 def update_staff(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
@@ -368,21 +416,21 @@ def update_staff(request):
 
 # ---------- 顾客信息管理 ----------
 @staff_required
-@pms_permission_required('hotelapp.add_client')
+@pms_permission_required("hotelapp.add_client")
 def insert_client(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
 
 
 @staff_required
-@pms_permission_required('hotelapp.delete_client')
+@pms_permission_required("hotelapp.delete_client")
 def delete_client(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
 
 
 @staff_required
-@pms_permission_required('hotelapp.change_client')
+@pms_permission_required("hotelapp.change_client")
 def update_client(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
@@ -390,7 +438,7 @@ def update_client(request):
 
 # ---------- 餐厅信息管理 ----------
 @staff_required
-@pms_permission_required('hotelapp.view_food')
+@pms_permission_required("hotelapp.view_food")
 @module_gate("food")
 def show_food(request):
     """菜品信息管理列表（图5）：分页 15 条/页"""
@@ -400,7 +448,7 @@ def show_food(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.add_food')
+@pms_permission_required("hotelapp.add_food")
 @module_gate("food")
 def insert_food(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
@@ -408,7 +456,7 @@ def insert_food(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.delete_food')
+@pms_permission_required("hotelapp.delete_food")
 @module_gate("food")
 def delete_food(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
@@ -416,7 +464,7 @@ def delete_food(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.change_food')
+@pms_permission_required("hotelapp.change_food")
 @module_gate("food")
 def update_food(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
@@ -424,35 +472,39 @@ def update_food(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.view_food')
+@pms_permission_required("hotelapp.view_food")
 @module_gate("food")
 def search_food(request):
     """菜品信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
     rows, searched = _search(Food, "菜品编号", FOOD_SEARCH_FIELDS, request)
     people = rows if searched else Food.objects.order_by("菜品编号")
-    return render(request, "html4.html", {
-        "people_list": people,
-        "searched": searched,
-    })
+    return render(
+        request,
+        "html4.html",
+        {
+            "people_list": people,
+            "searched": searched,
+        },
+    )
 
 
 # ---------- 会员信息管理 ----------
 @staff_required
-@pms_permission_required('hotelapp.add_vip')
+@pms_permission_required("hotelapp.add_vip")
 def insert_vip(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
 
 
 @staff_required
-@pms_permission_required('hotelapp.delete_vip')
+@pms_permission_required("hotelapp.delete_vip")
 def delete_vip(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
 
 
 @staff_required
-@pms_permission_required('hotelapp.change_vip')
+@pms_permission_required("hotelapp.change_vip")
 def update_vip(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
@@ -460,7 +512,7 @@ def update_vip(request):
 
 # ---------- 停车场信息管理 ----------
 @staff_required
-@pms_permission_required('hotelapp.view_park')
+@pms_permission_required("hotelapp.view_park")
 @module_gate("park")
 def show_park(request):
     """车位信息管理列表（图5）：分页 15 条/页"""
@@ -470,7 +522,7 @@ def show_park(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.add_park')
+@pms_permission_required("hotelapp.add_park")
 @module_gate("park")
 def insert_park(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
@@ -478,7 +530,7 @@ def insert_park(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.delete_park')
+@pms_permission_required("hotelapp.delete_park")
 @module_gate("park")
 def delete_park(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
@@ -486,7 +538,7 @@ def delete_park(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.change_park')
+@pms_permission_required("hotelapp.change_park")
 @module_gate("park")
 def update_park(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
@@ -494,21 +546,25 @@ def update_park(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.view_park')
+@pms_permission_required("hotelapp.view_park")
 @module_gate("park")
 def search_park(request):
     """车位信息查询：结果直接作为列表数据源（searched 标记驱动提示）"""
     rows, searched = _search(Park, "车位编号", PARK_SEARCH_FIELDS, request)
     people = rows if searched else Park.objects.order_by("车位编号")
-    return render(request, "park.html", {
-        "people_list": people,
-        "searched": searched,
-    })
+    return render(
+        request,
+        "park.html",
+        {
+            "people_list": people,
+            "searched": searched,
+        },
+    )
 
 
 # ---------- 客房信息管理 ----------
 @staff_required
-@pms_permission_required('hotelapp.view_room')
+@pms_permission_required("hotelapp.view_room")
 def show_room(request):
     """旧客房管理入口：保留原权限校验，统一跳转 PMS2 房态与库存中心。"""
     return redirect("/manage/rooms/")
@@ -516,7 +572,7 @@ def show_room(request):
 
 # ---------- 餐饮订单管理 ----------
 @staff_required
-@pms_permission_required('hotelapp.view_order')
+@pms_permission_required("hotelapp.view_order")
 @module_gate("order")
 def show_order(request):
     """餐饮订单管理列表（图5）：分页 15 条/页"""
@@ -526,7 +582,7 @@ def show_order(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.add_order')
+@pms_permission_required("hotelapp.add_order")
 @module_gate("order")
 def insert_order(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
@@ -534,7 +590,7 @@ def insert_order(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.delete_order')
+@pms_permission_required("hotelapp.delete_order")
 @module_gate("order")
 def delete_order(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
@@ -542,7 +598,7 @@ def delete_order(request):
 
 
 @staff_required
-@pms_permission_required('hotelapp.view_order')
+@pms_permission_required("hotelapp.view_order")
 @module_gate("order")
 def search_order(request):
     food_list = []
@@ -556,19 +612,23 @@ def search_order(request):
                     food_list.append({"菜名": item.菜品编号.菜名, "价格": item.菜品编号.价格})
             except ValueError:
                 food_list = []
-    return render(request, "order.html", {"people_list": Order.objects.order_by("id"), "food_list": food_list, "searched": searched})
+    return render(
+        request,
+        "order.html",
+        {"people_list": Order.objects.order_by("id"), "food_list": food_list, "searched": searched},
+    )
 
 
 # ---------- 客房订单管理 ----------
 @staff_required
-@pms_permission_required('hotelapp.add_accommodation')
+@pms_permission_required("hotelapp.add_accommodation")
 def insert_accomodation(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
 
 
 @staff_required
-@pms_permission_required('hotelapp.delete_accommodation')
+@pms_permission_required("hotelapp.delete_accommodation")
 def delete_accomodation(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
@@ -576,20 +636,21 @@ def delete_accomodation(request):
 
 # ---------- 入住管理增强：续住 / 换房 / 快捷离店 / 散客直入 / 电子账单 / No-Show ----------
 @staff_required
-@pms_permission_required('hotelapp.change_accommodation')
+@pms_permission_required("hotelapp.change_accommodation")
 def extend_stay(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
 
 
 @staff_required
-@pms_permission_required('hotelapp.change_accommodation')
+@pms_permission_required("hotelapp.change_accommodation")
 def express_checkout(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
 
+
 @staff_required
-@pms_permission_required('hotelapp.add_accommodation')
+@pms_permission_required("hotelapp.add_accommodation")
 def walkin_create(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
@@ -625,8 +686,10 @@ def folio_api(request):
         item = Accommodation.objects.get(id=oid)
     except (Accommodation.DoesNotExist, ValueError):
         return HttpResponse("订单不存在", status=404)
-    rows = [{"类型": f.类型, "金额": f.金额, "事由": f.事由, "日期": f.日期, "经手人": f.经手人 or ""}
-            for f in Folio.objects.filter(order=item).order_by("id")]
+    rows = [
+        {"类型": f.类型, "金额": f.金额, "事由": f.事由, "日期": f.日期, "经手人": f.经手人 or ""}
+        for f in Folio.objects.filter(order=item).order_by("id")
+    ]
     due = deposit = paid = 0.0
     for f in rows:
         try:
@@ -640,10 +703,18 @@ def folio_api(request):
         elif f["类型"] == "收款":
             paid += amt
     balance = round(deposit + paid - due, 2)
-    return JsonResponse({"rows": rows, "due": f"{due:.2f}", "deposit": f"{deposit:.2f}",
-                         "paid": f"{paid:.2f}", "balance": f"{balance:.2f}",
-                         "guest": item.顾客id.姓名, "room": str(item.客房编号.房间号),
-                         "status": item.状态 or "待确认"})
+    return JsonResponse(
+        {
+            "rows": rows,
+            "due": f"{due:.2f}",
+            "deposit": f"{deposit:.2f}",
+            "paid": f"{paid:.2f}",
+            "balance": f"{balance:.2f}",
+            "guest": item.顾客id.姓名,
+            "room": str(item.客房编号.房间号),
+            "status": item.状态 or "待确认",
+        }
+    )
 
 
 # ---------- 房间状态流转 ----------
@@ -672,12 +743,14 @@ def export_module(request, module):
         return redirect("/home/")
     # P0-04（闭环补齐 2.0）：导出授权走 AuthorizationService + 专项
     # hotelapp.export_pii，移除 _has_role 角色名硬编码（矩阵外旁路）
-    from apps.identity.authorization import AuthorizationService
     from apps.core.models import Property as _Prop
-    _prop = getattr(request, "property", None) or _Prop.objects.filter(
-        code=getattr(settings, "DEFAULT_PROPERTY_CODE", "DEFAULT")).first()
-    if not AuthorizationService.has_permission(
-            request.user, _prop, "hotelapp.export_pii"):
+    from apps.identity.authorization import AuthorizationService
+
+    _prop = (
+        getattr(request, "property", None)
+        or _Prop.objects.filter(code=getattr(settings, "DEFAULT_PROPERTY_CODE", "DEFAULT")).first()
+    )
+    if not AuthorizationService.has_permission(request.user, _prop, "hotelapp.export_pii"):
         return HttpResponse("首版常规数据导出仅开放给店长和财务。", status=403)
     model = info[1]
     if not _has_permission(request, f"hotelapp.view_{module}"):
@@ -686,11 +759,16 @@ def export_module(request, module):
     # MAINT-01：import 必须独占一行。此前它与注释同行被吞掉，而下方
     # 1519 行又存在同名局部 import，导致此处引用未绑定局部名 → 导出必 500。
     from apps.core.models import AuditEvent
+
     AuditEvent.record(
-        action="export.module_csv", entity_type="ExportModule",
-        entity_id=module, actor=request.user, property_obj=_prop,
+        action="export.module_csv",
+        entity_type="ExportModule",
+        entity_id=module,
+        actor=request.user,
+        property_obj=_prop,
         after={"columns": list(info[2])},
-        reason="旧只读模块 CSV 导出（非 PII 白名单）")
+        reason="旧只读模块 CSV 导出（非 PII 白名单）",
+    )
 
     response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
     response["Content-Disposition"] = f'attachment; filename="{module}.csv"'
@@ -711,23 +789,39 @@ def export_module(request, module):
         exported_count += 1
         if module == "client":
             # V2 §7.1：身份证完整值导出默认禁止（CSV 输出遮罩值，紧急合规导出待审批流程）
-            row[2] = (row[2] or "")[:2] + "*" * max(0, len(row[2] or "") - 4) + (row[2] or "")[-2:] if len(row[2] or "") >= 6 else row[2]
+            row[2] = (
+                (row[2] or "")[:2] + "*" * max(0, len(row[2] or "") - 4) + (row[2] or "")[-2:]
+                if len(row[2] or "") >= 6
+                else row[2]
+            )
         elif module == "vip":
-            row[3] = (row[3] or "")[:3] + "****" + (row[3] or "")[-4:] if len(row[3] or "") >= 8 else row[3]
+            row[3] = (
+                (row[3] or "")[:3] + "****" + (row[3] or "")[-4:]
+                if len(row[3] or "") >= 8
+                else row[3]
+            )
         writer.writerow([str(x) for x in row])
     # MAINT-01：AuditEvent 已在函数前段导入，此处不再重复局部 import。
     AuditEvent.record(
-        action="legacy.export", entity_type="LegacyExport",
-        entity_id=module, actor=request.user,
+        action="legacy.export",
+        entity_type="LegacyExport",
+        entity_id=module,
+        actor=request.user,
         property_obj=getattr(request, "property", None),
-        after={"module": module, "row_count": exported_count,
-               "pii_masked": module in ("client", "vip")},
-        reason="常规业务数据导出", request=request)
+        after={
+            "module": module,
+            "row_count": exported_count,
+            "pii_masked": module in ("client", "vip"),
+        },
+        reason="常规业务数据导出",
+        request=request,
+    )
     return response
+
 
 # ---------- 敏感字段 reveal（V2 §7.3：完整值按需显示 + 理由审计） ----------
 @staff_required
-@pms_permission_required('hotelapp.guest_document_reveal')
+@pms_permission_required("hotelapp.guest_document_reveal")
 def client_reveal_id(request):
     """取顾客身份证完整值：仅限持修改权岗位（前台/值班经理/店长），
     用于行内核验/修正；每次读取写审计日志（记录操作者与对象，不记录敏感原文）。"""
@@ -742,19 +836,27 @@ def client_reveal_id(request):
         return HttpResponse("顾客不存在", status=404)
     logging.getLogger("hotel.audit").info(
         "PII reveal 顾客身份证 user=%s 顾客id=%s reason=%s",
-        request.user.username, item.顾客id, reason)
+        request.user.username,
+        item.顾客id,
+        reason,
+    )
     from apps.core.models import AuditEvent
+
     AuditEvent.record(
-        action="guest.pii_reveal", entity_type="Client", entity_id=item.顾客id,
-        actor=request.user, property_obj=getattr(request, "property", None),
+        action="guest.pii_reveal",
+        entity_type="Client",
+        entity_id=item.顾客id,
+        actor=request.user,
+        property_obj=getattr(request, "property", None),
         reason=reason,
         after={"masked": (item.身份证号 or "")[:2] + "****" + (item.身份证号 or "")[-2:]},
-        request=request)
+        request=request,
+    )
     return JsonResponse({"identify": item.身份证号 or ""})
 
 
 @staff_required
-@pms_permission_required('hotelapp.guest_phone_reveal')
+@pms_permission_required("hotelapp.guest_phone_reveal")
 def vip_reveal_tel(request):
     """取会员联系方式完整值：仅限持修改权岗位；读取写审计。"""
     if request.method != "POST":
@@ -768,17 +870,23 @@ def vip_reveal_tel(request):
         return HttpResponse("会员不存在", status=404)
     logging.getLogger("hotel.audit").info(
         "PII reveal 会员联系方式 user=%s 会员编号=%s reason=%s",
-        request.user.username, item.会员编号, reason)
+        request.user.username,
+        item.会员编号,
+        reason,
+    )
     from apps.core.models import AuditEvent
+
     AuditEvent.record(
-        action="member.pii_reveal", entity_type="Vip", entity_id=item.会员编号,
-        actor=request.user, property_obj=getattr(request, "property", None),
+        action="member.pii_reveal",
+        entity_type="Vip",
+        entity_id=item.会员编号,
+        actor=request.user,
+        property_obj=getattr(request, "property", None),
         reason=reason,
         after={"masked": (item.联系方式 or "")[:3] + "****" + (item.联系方式 or "")[-4:]},
-        request=request)
+        request=request,
+    )
     return JsonResponse({"tel": item.联系方式 or ""})
-
-
 
 
 # ---------- 员工与账号管理工作台（只读存档页：写操作已迁移员工中心 /manage/staff/） ----------
@@ -788,20 +896,28 @@ def _workbench_profile_page(profile, property_obj):
     """聚合当前物业的员工档案/任职/账号/角色授权为一个视图对象。"""
     from apps.identity.models import StaffRoleAssignment
     from apps.identity.services import EmployeeLifecycleService
+
     membership = EmployeeLifecycleService.get_membership(profile, property_obj)
     user = profile.user
-    assignments = list(StaffRoleAssignment.objects.filter(
-        membership=membership).select_related("group").order_by("-starts_at")) if membership else []
+    assignments = (
+        list(
+            StaffRoleAssignment.objects.filter(membership=membership)
+            .select_related("group")
+            .order_by("-starts_at")
+        )
+        if membership
+        else []
+    )
     now = timezone.now()
     return {
         "profile": profile,
         "membership": membership,
         "user": user,
-        "account_state": ("未开通" if user is None else
-                          ("已停用" if not user.is_active else "正常")),
+        "account_state": (
+            "未开通" if user is None else ("已停用" if not user.is_active else "正常")
+        ),
         "assignments": assignments,
-        "active_roles": [a.group.name for a in assignments
-                         if a.ends_at is None or a.ends_at > now],
+        "active_roles": [a.group.name for a in assignments if a.ends_at is None or a.ends_at > now],
     }
 
 
@@ -814,27 +930,38 @@ def staff_accounts(request):
     本页仅保留只读列表，页头有"已迁移"提示条，不再渲染写表单。
     """
     from apps.identity.models import StaffProfile
+
     property_obj = getattr(request, "property", None)
     if property_obj is None:
         return HttpResponse("当前账号没有可用物业上下文", status=503)
     from django.db.models import Q
-    qs = (StaffProfile.objects.filter(property_memberships__property=property_obj)
-          .select_related("user").distinct().order_by("-created_at"))
+
+    qs = (
+        StaffProfile.objects.filter(property_memberships__property=property_obj)
+        .select_related("user")
+        .distinct()
+        .order_by("-created_at")
+    )
     q = (request.GET.get("q") or "").strip()
     # MAINT-07：搜索下沉到 QuerySet，分页在数据库侧完成，只对当前页做
     # 聚合查询。此前每员工 2 条查询 + 全量内存过滤 + 内存分页，员工数增长
     # 后每请求 O(N) 且 N+1 随列表线性放大。
     if q:
         qs = qs.filter(
-            Q(full_name__icontains=q)
-            | Q(property_memberships__employee_no__icontains=q)).distinct()
+            Q(full_name__icontains=q) | Q(property_memberships__employee_no__icontains=q)
+        ).distinct()
     paginator = Paginator(qs, 15)
     page_obj = paginator.get_page(request.GET.get("page"))
-    rows = [_workbench_profile_page(profile, property_obj)
-            for profile in page_obj.object_list]
-    return render(request, "staff_accounts.html", {
-        "rows": rows, "page_obj": page_obj, "q": q,
-    })
+    rows = [_workbench_profile_page(profile, property_obj) for profile in page_obj.object_list]
+    return render(
+        request,
+        "staff_accounts.html",
+        {
+            "rows": rows,
+            "page_obj": page_obj,
+            "q": q,
+        },
+    )
 
 
 @staff_required
@@ -846,15 +973,20 @@ def staff_accounts_detail(request, pk):
     旧写路由只保留 302 兼容跳转（hotel/urls.py）；本页不再渲染任何写表单。
     """
     from apps.identity.models import StaffProfile
+
     property_obj = getattr(request, "property", None)
     if property_obj is None:
         return HttpResponse("当前账号没有可用物业上下文", status=503)
-    profile = get_object_or_404(
-        StaffProfile, pk=pk, property_memberships__property=property_obj)
+    profile = get_object_or_404(StaffProfile, pk=pk, property_memberships__property=property_obj)
     page = _workbench_profile_page(profile, property_obj)
-    return render(request, "staff_accounts_detail.html", {
-        **page, "now": timezone.now(),
-    })
+    return render(
+        request,
+        "staff_accounts_detail.html",
+        {
+            **page,
+            "now": timezone.now(),
+        },
+    )
 
 
 @staff_required
@@ -866,9 +998,10 @@ def force_password_change(request):
     """
     from apps.identity.models import StaffProfile
     from apps.identity.services import (
-        reset_current_password_failures,
+        apply_password_change,
         validate_password_change,
     )
+
     profile = StaffProfile.objects.filter(user=request.user).first()
     if profile is None or not profile.must_change_password:
         return redirect("/home/")
@@ -886,21 +1019,10 @@ def force_password_change(request):
             new_password2=new2,
         )
         if not error:
-            request.user.set_password(new1)  # session_auth_hash 变更 → 其他会话失效
-            request.user.save(update_fields=("password",))
-            profile.must_change_password = False
-            profile.last_password_change = timezone.now()
-            profile.save(update_fields=("must_change_password",
-                                        "last_password_change", "updated_at"))
-            from apps.core.models import AuditEvent
-            AuditEvent.record(
-                action="identity.password_changed", entity_type="StaffProfile",
-                entity_id=profile.pk, actor=request.user,
-                reason="首次登录/被重置后强制改密完成", request=request)
-            from django.contrib.auth import update_session_auth_hash
-            update_session_auth_hash(request, request.user)  # 保持当前会话
-            # 改密成功即身份重新自证：清零本会话的当前密码失败计数
-            reset_current_password_failures(request, request.user)
+            # 写路径收口（宪法 §3.2）：落盘统一走 identity 服务唯一入口。
+            apply_password_change(
+                request, request.user, new1, reason="首次登录/被重置后强制改密完成"
+            )
             messages.success(request, "密码修改成功，欢迎使用酒店管理系统")
             return redirect("/home/")
     return render(request, "force_password_change.html", {"error": error})
@@ -909,7 +1031,8 @@ def force_password_change(request):
 # ---------- 登录 / 注册 / 退出 / 主界面 ----------
 def _active_role_assignments(user):
     """当前 DEFAULT 物业内有效岗位授权；不读取 Django User.groups。"""
-    from apps.identity.models import PropertyStaffMembership, StaffRoleAssignment, StaffProfile
+    from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
+
     now = timezone.now()
     return StaffRoleAssignment.objects.filter(
         membership__staff_profile__user=user,
@@ -935,13 +1058,20 @@ def _has_permission(request, permission_code):
 
 
 def _role_name(user):
-    names = list(_active_role_assignments(user).order_by("group__name")
-                 .values_list("group__name", flat=True).distinct())
+    names = list(
+        _active_role_assignments(user)
+        .order_by("group__name")
+        .values_list("group__name", flat=True)
+        .distinct()
+    )
     return "、".join(names) if names else "未分配岗位"
+
+
 def _today(property_obj=None):
     """按物业时区返回业务自然日；未传物业时使用 Django 配置时区。"""
     if property_obj is not None:
         from apps.inventory.services import _property_today
+
         return _property_today(property_obj).strftime("%Y-%m-%d")
     return timezone.localdate().strftime("%Y-%m-%d")
 
@@ -954,21 +1084,30 @@ def _audit_login_failure(request, username, reason):
 
     username 只存 HMAC 指纹（§16.2 脱敏），细分原因保留在内部日志与审计 reason。"""
     import logging as _logging
+
     from apps.core.models import AuditEvent
     from apps.core.rate_limit import fingerprint
+
     _logging.getLogger("security").warning(
         "login_failed ip=%s username_fp=%s reason=%s",
-        request.META.get("REMOTE_ADDR", ""), fingerprint(username)[:12], reason)
+        request.META.get("REMOTE_ADDR", ""),
+        fingerprint(username)[:12],
+        reason,
+    )
     AuditEvent.record(
-        action="auth.login_failure", entity_type="AuthAttempt",
-        entity_id=fingerprint(username), reason=reason, request=request)
+        action="auth.login_failure",
+        entity_type="AuthAttempt",
+        entity_id=fingerprint(username),
+        reason=reason,
+        request=request,
+    )
 
 
 def _safe_login_next(request, candidate):
     """登录后回跳地址安全校验：仅允许本站相对地址（防 //外部域名 开放重定向）。"""
     if candidate and url_has_allowed_host_and_scheme(
-            url=candidate, allowed_hosts={request.get_host()},
-            require_https=request.is_secure()):
+        url=candidate, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
         return candidate
     return "/home/"
 
@@ -989,17 +1128,15 @@ def login_view(request):
         # SEC-02：成功登录不得消耗失败配额。先 peek 判断是否已超限，
         # 只有认证失败才真正自增计数（check 默认 consume=True）。
         from apps.core import rate_limit
-        if not rate_limit.check(request, "auth.login", username=username,
-                                consume=False):
+
+        if not rate_limit.check(request, "auth.login", username=username, consume=False):
             _audit_login_failure(request, username, "rate_limited")
             error = _LOGIN_FAIL_MESSAGE
-            return render(request, "login.html",
-                          {"error": error, "next": next_url}, status=429)
+            return render(request, "login.html", {"error": error, "next": next_url}, status=429)
         # P1-09：authenticate() 对停用账号返回 None（ModelBackend 拒绝 inactive），
         # 旧 disabled 分支不可达且原因失真；改为先取账号再验证，区分真实原因
         login_user = User.objects.filter(username__iexact=username).first()
-        user = authenticate(request, username=username,
-                            password=request.POST.get("password"))
+        user = authenticate(request, username=username, password=request.POST.get("password"))
         if login_user is not None and not login_user.is_active:
             failure_reason = "disabled"
         elif user is None:
@@ -1009,21 +1146,24 @@ def login_view(request):
         else:
             auth_login(request, user)
             from apps.core.models import AuditEvent
+
             AuditEvent.record(
-                action="auth.login_success", entity_type="User",
-                entity_id=str(user.pk), actor=user, request=request)
+                action="auth.login_success",
+                entity_type="User",
+                entity_id=str(user.pk),
+                actor=user,
+                request=request,
+            )
             return redirect(_safe_login_next(request, request.POST.get("next")))
         # 认证失败才计入限流配额；达到上限返回 429。
         if not rate_limit.check(request, "auth.login", username=username):
             failure_reason = "rate_limited"
             _audit_login_failure(request, username, failure_reason)
             error = _LOGIN_FAIL_MESSAGE
-            return render(request, "login.html",
-                          {"error": error, "next": next_url}, status=429)
+            return render(request, "login.html", {"error": error, "next": next_url}, status=429)
         _audit_login_failure(request, username, failure_reason)
         error = _LOGIN_FAIL_MESSAGE
-    return render(request, "login.html",
-                  {"error": error, "next": next_url, "activated": activated})
+    return render(request, "login.html", {"error": error, "next": next_url, "activated": activated})
 
 
 def register_view(request):
@@ -1032,7 +1172,6 @@ def register_view(request):
     住客无需账号即可直订（/reserve/ 免注册）；员工账号由管理员经
     EmployeeLifecycleService 开通。历史孤儿 User 分类处理见方案 D10。"""
     return redirect("/reserve/")
-
 
 
 @login_required
@@ -1050,8 +1189,13 @@ def home(request):
     图表/预警/财务卡全部来自 PMS2 模型（apps/api/dashboard.py）。
     """
     from apps.api.dashboard import (
-        dashboard_data, dashboard_charts, dashboard_warnings, dashboard_finance)
+        dashboard_charts,
+        dashboard_data,
+        dashboard_finance,
+        dashboard_warnings,
+    )
     from apps.core.models import Property
+
     user = request.user
     prop = getattr(request, "property", None)
     if prop is None:
@@ -1062,7 +1206,8 @@ def home(request):
     # 财务卡权限：财务/值班经理/店长（沿用旧页面口径：finance_access 或员工管理）
     show_finance = bool(prop) and (
         AuthorizationService.has_permission(user, prop, "hotelapp.finance_access")
-        or AuthorizationService.has_permission(user, prop, "identity.staff_manage"))
+        or AuthorizationService.has_permission(user, prop, "identity.staff_manage")
+    )
     ctx = {
         "stats": stats,
         "role": _role_name(user),
@@ -1077,6 +1222,7 @@ def home(request):
     }
     return render(request, "home.html", ctx)
 
+
 def booking_page(request):
     """AUTH-02 冻结旧预订写入（D8）：统一指向 PMS2 公开直订 /reserve/。
 
@@ -1084,15 +1230,19 @@ def booking_page(request):
     return redirect("/reserve/", permanent=False)
 
 
-
 @staff_required
-@pms_permission_required('hotelapp.view_accommodation')
+@pms_permission_required("hotelapp.view_accommodation")
 def checkin_workspace(request):
     """PMS 2.0 前台接待工作台；业务数据通过 /api/v1/front-desk/ 查询。"""
-    return render(request, "frontdesk.html", {
-        "role": _role_name(request.user),
-        "today": _today(),
-    })
+    return render(
+        request,
+        "frontdesk.html",
+        {
+            "role": _role_name(request.user),
+            "today": _today(),
+        },
+    )
+
 
 # ---------- 入住管理 ----------
 @staff_required
@@ -1102,23 +1252,22 @@ def cancel_booking(request):
     return redirect("/reserve/", permanent=False)
 
 
-
 @staff_required
-@pms_permission_required('hotelapp.change_accommodation')
+@pms_permission_required("hotelapp.change_accommodation")
 def checkin_confirm(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
 
 
 @staff_required
-@pms_permission_required('hotelapp.change_accommodation')
+@pms_permission_required("hotelapp.change_accommodation")
 def checkin_in(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
 
 
 @staff_required
-@pms_permission_required('hotelapp.change_accommodation')
+@pms_permission_required("hotelapp.change_accommodation")
 def checkout(request):
     # P1-05 旧写路由退役（方案 §10）：写能力已由 PMS2 服务接管，此入口永久 410
     return HttpResponse("该旧写入口已退役（410 Gone），请使用 PMS2 工作台。", status=410)
@@ -1158,8 +1307,8 @@ def night_audit_run(request):
     return HttpResponse(
         "旧夜审写入口已退役（410 Gone）：请使用 /api/v1/night-audit/preview 和 /api/v1/night-audit/run",
         status=410,
-        headers={"Location": "/api/v1/night-audit/preview"})
-
+        headers={"Location": "/api/v1/night-audit/preview"},
+    )
 
 
 # ---------- 系统环境配置信息（图4 → §6.1 拆分为员工个人页） ----------
@@ -1169,9 +1318,10 @@ def system_info(request):
     + 修改自己密码。平台环境信息已拆至 /platform/system/（平台会话域），
     本页不得渲染任何平台级配置或其他员工的 PII。"""
     from apps.identity.services import (
-        reset_current_password_failures,
+        apply_password_change,
         validate_password_change,
     )
+
     user = request.user
     role = _role_name(user)
 
@@ -1189,52 +1339,42 @@ def system_info(request):
             new_password2=new2,
         )
         if not error:
-            from django.contrib.auth import update_session_auth_hash
-            from apps.identity.models import StaffProfile as _StaffProfile
-            user.set_password(new1)  # session_auth_hash 变更 → 其他会话失效
-            user.save(update_fields=("password",))
-            update_session_auth_hash(request, user)  # 当前会话保持登录
-            profile = _StaffProfile.objects.filter(user=user).first()
-            if profile is not None:
-                profile.must_change_password = False
-                profile.last_password_change = timezone.now()
-                profile.save(update_fields=("must_change_password",
-                                            "last_password_change", "updated_at"))
-            from apps.core.models import AuditEvent
-            AuditEvent.record(
-                action="identity.password_changed", entity_type="StaffProfile",
-                entity_id=str(profile.pk if profile else user.pk),
-                actor=user, reason="self_change_via_pms_me", request=request)
-            # 改密成功即身份重新自证：清零本会话的当前密码失败计数
-            reset_current_password_failures(request, user)
+            # 写路径收口（宪法 §3.2）：落盘统一走 identity 服务唯一入口。
+            apply_password_change(request, user, new1, reason="self_change_via_pms_me")
             messages.success(request, "密码已修改")
             return redirect("/system/")
 
     membership = getattr(request, "staff_membership", None)
     property_obj = getattr(request, "property", None)
     from apps.identity.models import PropertyStaffMembership as _PropertyStaffMembership
+
     last_login = user.last_login or timezone.now()
     session_age = int(settings.SESSION_COOKIE_AGE)
     expire_at = last_login + datetime.timedelta(seconds=session_age)
     remain_seconds = max(0, int((expire_at - timezone.now()).total_seconds()))
     hours, rem = divmod(remain_seconds, 3600)
     minutes = rem // 60
-    full_name = user.first_name or (
-        membership.staff_profile.full_name if membership is not None else ""
-    ) or user.username
+    full_name = (
+        user.first_name
+        or (membership.staff_profile.full_name if membership is not None else "")
+        or user.username
+    )
     ctx = {
         "admin_no": f"AD-{user.id:08d}",
         "full_name": full_name,
         "role": role,
         "property_label": (
             f"{property_obj.name}（{property_obj.code}）"
-            if property_obj is not None else "未解析到有效任职物业"),
+            if property_obj is not None
+            else "未解析到有效任职物业"
+        ),
         "employee_no": membership.employee_no if membership is not None else "",
-        "membership_status": (
-            membership.status if membership is not None else "NONE"),
+        "membership_status": (membership.status if membership is not None else "NONE"),
         "membership_status_label": (
-            dict(_PropertyStaffMembership.Status.choices).get(
-                membership.status) if membership is not None else "无有效任职"),
+            dict(_PropertyStaffMembership.Status.choices).get(membership.status)
+            if membership is not None
+            else "无有效任职"
+        ),
         "login_at": timezone.localtime(last_login).strftime("%Y-%m-%d %H:%M:%S"),
         "expire_at": timezone.localtime(expire_at).strftime("%Y-%m-%d %H:%M:%S"),
         "remain": f"{hours}h {minutes}m",

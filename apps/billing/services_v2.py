@@ -1128,6 +1128,35 @@ class BillingService:
         return payment, True
 
     @staticmethod
+    def attach_refund_approval(*, refund, approval_record):
+        """退款↔审批记录关联唯一写入口（宪法 §6.1：退款事实写路径收口到本服务）。
+
+        历史实现里退款申请（request_refund）与通用审批面（/approvals/request）
+        各自复制了一份「校验 + approval_record 关联写」逻辑（2026-11-28 结构审查
+        P2：财务模型写路径出现第二入口）。两条路径现在都调用本函数。
+
+        规则（失败抛 ValueError，文案与历史实现逐字一致——通用审批面把它映射为
+        409 BUSINESS_CONFLICT，HTTP 契约不变）：
+          * 仅 PENDING 退款可关联，状态已变化即拒绝；
+          * 审批记录必须为 PENDING（已批准/已拒绝/过期记录不得挂到新退款）；
+          * 退款已关联其他审批记录 → 拒绝覆盖；已关联同一条 → 幂等 no-op。
+        调用方负责行锁（select_for_update）与事务边界。
+        """
+        from apps.billing.models import ApprovalRecord, Refund
+
+        if refund.status != Refund.Status.PENDING:
+            raise ValueError("退款状态已变化，不能关联审批记录。")
+        if approval_record.status != ApprovalRecord.Status.PENDING:
+            raise ValueError("已有审批记录不是待审批状态，不能关联到待处理退款。")
+        if refund.approval_record_id == approval_record.pk:
+            return refund
+        if refund.approval_record_id is not None:
+            raise ValueError("退款已关联其他审批记录，拒绝覆盖。")
+        refund.approval_record = approval_record
+        refund.save(update_fields=("approval_record",))
+        return refund
+
+    @staticmethod
     @transaction.atomic
     def request_refund(
         *,
@@ -1245,8 +1274,7 @@ class BillingService:
                 "refund_liability_id": liability.pk if liability else None,
             },
         )
-        refund.approval_record = approval
-        refund.save(update_fields=("approval_record",))
+        BillingService.attach_refund_approval(refund=refund, approval_record=approval)
         # 支付流水状态反映存在待处理退款；多笔部分退款可并行排队申请，
         # 其可退余额由 payment 行锁 + pending/approved/succeeded 累计金额控制。
         if payment.status != Payment.Status.REFUND_PENDING:

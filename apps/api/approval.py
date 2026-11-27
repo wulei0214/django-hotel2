@@ -203,15 +203,15 @@ def approval_request(request):
                 )
                 if refund is None:
                     raise ApiError("BUSINESS_CONFLICT", "退款状态已变化，不能关联审批记录。")
-                if record.status != ApprovalRecord.Status.PENDING:
-                    raise ApiError(
-                        "BUSINESS_CONFLICT", "已有审批记录不是待审批状态，不能关联到待处理退款。"
-                    )
-                if refund.approval_record_id not in (None, record.pk):
-                    raise ApiError("BUSINESS_CONFLICT", "退款已关联其他审批记录，拒绝覆盖。")
-                if refund.approval_record_id is None:
-                    refund.approval_record = record
-                    refund.save(update_fields=("approval_record",))
+                # 关联写路径收口（宪法 §6.1）：退款↔审批的校验与落盘统一走
+                # billing 服务唯一入口；服务抛出的 ValueError 文案与历史实现
+                # 逐字一致，此处映射回 BUSINESS_CONFLICT（409）保持契约不变。
+                from apps.billing.services_v2 import BillingService
+
+                try:
+                    BillingService.attach_refund_approval(refund=refund, approval_record=record)
+                except ValueError as exc:
+                    raise ApiError("BUSINESS_CONFLICT", str(exc)) from None
     except ValueError as exc:
         # 白名单第二层（Service）复核失败 / 业务校验失败 → 400，零副作用
         raise ApiError("VALIDATION_ERROR", str(exc)) from None

@@ -11,8 +11,6 @@
 import csv
 import io
 import json
-import secrets
-from datetime import timedelta
 
 from django.http import HttpResponse
 from django.utils import timezone
@@ -33,8 +31,6 @@ REPORT_VIEWS = {
     "sources": report_center.sources_report,
 }
 MAX_EXPORT_ROWS = 5000
-# 下载有效期（MC-009 治理口径）：导出凭证签发后在此窗口内可下载。
-EXPORT_CREDENTIAL_TTL_SECONDS = 15 * 60
 # 下载凭证的报表筛选参数（除 reason 外）。
 PARAM_KEYS = ("report", "from", "to", "group_by")
 
@@ -96,17 +92,18 @@ def report_export(request):
     series, payload = extracted
     property_obj = getattr(request, "property", None)
     columns = list(series[0].keys()) if series else []
-    credential = ExportCredential.objects.create(
-        property=property_obj,
+    # 凭据签发收口（宪法 §3.2/§6.1 口径）：token/TTL/落盘统一走 core 服务唯一入口。
+    from apps.core.services import issue_export_credential
+
+    credential = issue_export_credential(
+        property_obj=property_obj,
         kind=ExportCredential.Kind.REPORT,
         report_code=report_type,
-        token=secrets.token_urlsafe(32),
         params=_report_params(request),
         columns=columns,
         row_count=len(series),
         reason=reason,
         created_by=request.user if request.user.is_authenticated else None,
-        expires_at=timezone.now() + timedelta(seconds=EXPORT_CREDENTIAL_TTL_SECONDS),
     )
     AuditEvent.record(
         action="report.export",
