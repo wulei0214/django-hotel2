@@ -23,8 +23,9 @@
      白名单且以 _e2e/_test 结尾（hotel / *_dev 一律拒绝），且与 Django
      default 连接逐项一致（MySQL）；
   d. 执行前打印将要 TRUNCATE 的全部表名（清空范围）与保留表清单；
-  e. 库名自检：test_hotel 是 Django 的 MySQL 测试库名（test_ + 开发库 hotel），
-     会被任何一次 manage.py test 的收尾阶段删除，一律拒绝，改用 test_hotel_e2e。
+  e. 库名撞名告警：test_hotel 是 Django 的 MySQL 测试库名（test_ + 开发库 hotel），
+     会被任何一次 manage.py test 的收尾阶段删除——撞名影响的是隔离库的复用而非
+     本次取证的正确性，故为告警而非拒绝；目标状态是改用 test_hotel_e2e。
 
 隔离库自建数据：migrate → append-only 触发器（权限边界内尽力安装）→
 清库复位（打印清空范围）→ 主数据复刻（从 dev 基线库只读复制九角色授权
@@ -147,13 +148,30 @@ _IS_ISOLATED_NAME = _DB_NAME.endswith(("_e2e", "_test")) or _DB_NAME.startswith(
 if not _IS_ISOLATED_NAME:
     print("拒绝执行：清库目标数据库名必须以 _e2e/_test 结尾或以 test_ 开头（隔离库命名）。")
     sys.exit(2)
-# 库名撞名自检：Django 的 MySQL 测试库名 = test_ + 开发库名（hotel -> test_hotel）。
+# 库名撞名告警：Django 的 MySQL 测试库名 = test_ + 开发库名（hotel -> test_hotel）。
 # 取证隔离库若与它同名，任何一次 manage.py test 的收尾阶段都会把隔离库删掉。
+#
+# 口径：**告警而非拒绝**（2026-11-27 复核订正）。理由：
+#   * 撞名影响的是「隔离库的**复用**」，不是「本次 E2E 的正确性」——只要按
+#     `prepare_isolated_db.py` 在每次取证前重建隔离库、且不在「重建」与「使用」
+#     之间跑 manage.py test，本次 E2E 取证完全有效；
+#   * 早期版本做成硬拒绝，结果是**在 DBA 侧授权落地前把 E2E 能力整体堵死**
+#     （授权未落地时无任何可跑的隔离库名）——这属于能力回退，不是纠错；
+#   * 目标状态仍是改名后的 `test_hotel_e2e`：默认库名、取证工具与
+#     `PMS_E2E_ALLOWED_DB_NAMES` 都已切到它；下面的告警同时打印需要 DBA
+#     执行的授权语句，授权落地后旧名不再需要。
 if _DB_NAME == "test_hotel":
-    print("拒绝执行：库名 test_hotel 与 Django 的 MySQL 测试库同名（test_ + 开发库 hotel）。")
-    print("          任何一次 manage.py test 都会在收尾阶段删掉这个库（2026-11-27 实测发生过）。")
-    print("          请改用不撞名的隔离库 test_hotel_e2e（并把 PMS_E2E_ALLOWED_DB_NAMES 一并更新）。")
-    sys.exit(2)
+    print("=" * 72)
+    print("[WARN] 库名 test_hotel 与 Django 的 MySQL 测试库同名（test_ + 开发库 hotel）。")
+    print("       任何一次 manage.py test 的收尾阶段都会删掉这个库（2026-11-27 实测发生过）。")
+    print("       本次 E2E 取证仍有效——前提是隔离库已由 prepare_isolated_db.py 重建，")
+    print("       且在本次取证结束前不要再跑 manage.py test。")
+    print("       目标状态是改用不撞名的隔离库 test_hotel_e2e，需 DBA 先执行：")
+    print("         CREATE DATABASE IF NOT EXISTS `test_hotel_e2e` CHARACTER SET utf8mb4 "
+          "COLLATE utf8mb4_unicode_ci;")
+    print("         GRANT ALL PRIVILEGES ON `test_hotel_e2e`.* TO 'hotelhotel'@'127.0.0.1';")
+    print("         FLUSH PRIVILEGES;")
+    print("=" * 72)
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hotel.settings")
 import django  # noqa: E402

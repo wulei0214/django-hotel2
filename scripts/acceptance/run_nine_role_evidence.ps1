@@ -21,7 +21,8 @@
 # NativeCommandError which aborts the run.
 param(
   [string]$RunId = "",
-  [int]$Port = 8011
+  [int]$Port = 8011,
+  [string]$DbName = "test_hotel_e2e"
 )
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -67,7 +68,7 @@ Get-Content $envFile | ForEach-Object {
 }
 
 $env:DJANGO_ENV = "dev"
-$env:DJANGO_DB_NAME = "test_hotel_e2e"
+$env:DJANGO_DB_NAME = $DbName
 # Local MySQL max_connections is only 20; avoid pool exhaustion (1040) while
 # the evidence server is running.
 $env:DJANGO_DB_CONN_MAX_AGE = "0"

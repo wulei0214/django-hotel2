@@ -19,7 +19,8 @@
 # NativeCommandError which aborts the run.
 param(
   [Parameter(Mandatory = $true)][string]$Evidence,
-  [int]$Port = 8001
+  [int]$Port = 8001,
+  [string]$DbName = "test_hotel_e2e"
 )
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -54,8 +55,8 @@ $env:DJANGO_PLATFORM_ADMIN_USERNAME = ""
 $env:DJANGO_PLATFORM_ADMIN_PASSWORD = ""
 
 $env:DJANGO_ENV = "dev"
-$env:DJANGO_DB_NAME = "test_hotel_e2e"
-$env:PMS_E2E_ALLOWED_DB_NAMES = "test_hotel_e2e"
+$env:DJANGO_DB_NAME = $DbName
+$env:PMS_E2E_ALLOWED_DB_NAMES = $DbName
 $env:PMS_E2E_SOURCE_DB = "hotel"
 $env:PMS_E2E_BASE_URL = "http://127.0.0.1:$Port"
 
