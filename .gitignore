@@ -73,3 +73,5 @@ _pytest_smoke*.sqlite3
 .mypy_cache/
 backups/
 node_modules/
+# 宿主会话上传的临时图片缓存（会话产物，非项目资产）
+.qoder-input-images/
