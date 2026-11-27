@@ -402,6 +402,23 @@ RETIRED_VIEW_NAMES = {
     "insert_accomodation",
     "delete_accomodation",
 }
+# ARCH-02 §三 REDIRECT 旧只读入口（10 条）：由 hotel/urls.py 的
+# _legacy_center_redirect() 生成，回调是 RedirectView（functools.wraps 把
+# view_class 透传到最外层）。若沿用「RedirectView 一律跳过」的分支，这 10 条
+# 路由会整体退出全路由门禁覆盖——门禁被摘掉也不会有人发现。故单独登记，
+# 要求它们必须自带门禁证据（权限码 + 员工门禁），缺证据即计入未分类。
+LEGACY_CENTER_REDIRECT_ROUTES = {
+    "checkin/legacy/",
+    "index/",
+    "search_staff/",
+    "show_client/",
+    "search_client/",
+    "show_vip/",
+    "search_vip/",
+    "search_room/",
+    "search_accomodation/",
+    "show_accomodation/",
+}
 
 
 def _closure_strings(fn):
@@ -467,8 +484,13 @@ class RouteGateCoverageTests(TestCase):
         for route, callback in _iter_project_patterns(get_resolver()):
             checked += 1
             view_name = callback.__name__
-            if getattr(callback, "view_class", None) is not None:
+            if getattr(callback, "view_class", None) is not None and (
+                route not in LEGACY_CENTER_REDIRECT_ROUTES
+            ):
                 continue  # RedirectView：登记 302 兼容跳转（/permissions/）
+            # ARCH-02 REDIRECT 旧入口（登记在 LEGACY_CENTER_REDIRECT_ROUTES 内）：
+            # 不得借 RedirectView 名义逃出门禁覆盖，继续往下走门禁证据分类
+            # （缺证据即计入未分类 → 本测试失败）。
             if view_name in PUBLIC_VIEW_NAMES:
                 continue
             if callback.__module__.startswith(PLATFORM_VIEW_MODULES):
@@ -507,6 +529,24 @@ class RouteGateCoverageTests(TestCase):
         routed_views = {cb.__name__ for _, cb in _iter_project_patterns(get_resolver())}
         unrouted = sorted(RETIRED_VIEW_NAMES - routed_views)
         self.assertEqual(unrouted, [], "RETIRED-410 清单中存在已不在路由表上的视图（清单过期）")
+
+    def test_legacy_center_redirect_routes_match_urlpatterns(self):
+        """ARCH-02 REDIRECT 旧入口清单防漂移：登记的 10 条必须仍挂在 urlpatterns 上，
+        且不得被登记进 410 退役清单（302 与 410 是两种终态，不得互相顶替）。"""
+        routed_routes = {route for route, _ in _iter_project_patterns(get_resolver())}
+        missing = sorted(LEGACY_CENTER_REDIRECT_ROUTES - routed_routes)
+        self.assertEqual(
+            missing, [], "ARCH-02 REDIRECT 旧入口清单与路由表不一致（清单过期或路由被改）"
+        )
+        retired_routes = {
+            route
+            for route, cb in _iter_project_patterns(get_resolver())
+            if cb.__name__ in RETIRED_VIEW_NAMES
+        }
+        overlap = sorted(LEGACY_CENTER_REDIRECT_ROUTES & retired_routes)
+        self.assertEqual(
+            overlap, [], "同一路由不得同时登记为 302 退役入口与 410 退役入口（终态冲突）"
+        )
 
 
 # ---------------------------------------------------------------------------
