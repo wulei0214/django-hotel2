@@ -1,0 +1,19 @@
+{
+  "business_date": {
+    "date": "2026-11-23",
+    "status": "CLOSED"
+  },
+  "room_9936": {
+    "housekeeping": "CLEANING",
+    "maintenance": "NORMAL",
+    "occupancy": "VACANT"
+  },
+  "counts": {
+    "refund": 3,
+    "payment": 49,
+    "export_credential": 19,
+    "night_audit_event": 10,
+    "audit_event_total": 2598
+  },
+  "max_audit_event_id": 2633
+}
