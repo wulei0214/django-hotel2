@@ -1,7 +1,7 @@
 """ARCH-02 / ARCH-03 旧路由与旧模板退役契约测试（ARCH-02/03 处置矩阵批次）。
 
 覆盖 ARCH-02 旧路由处置矩阵 §三 REDIRECT 与 ARCH-03 旧模板处置矩阵 §二 的
-落地终态，断言以下四类事实：
+落地终态，断言以下六类事实：
 
 1. **重定向目标**：10 条旧只读入口一律 302 → 对应 PMS2 新管理中心，目标逐条钉死；
 2. **门禁不退化**：退役的是旧页渲染能力，不是访问控制——匿名仍走登录墙、
@@ -9,21 +9,40 @@
 3. **旧模板退役**：ARCH-03 判定 DELETE/MIGRATE 的 8 个旧模板文件确已从
    templates/ 移除；同时以 KEEP 模板作对照面，防止顺带删除；
 4. **零覆盖缺口**：ARCH-02 §七.1 登记的 ``search_staff/`` 唯一零覆盖路由，
-   本文件补齐明确断言。
+   本文件补齐明确断言；
+5. **只读性契约**：ARCH-02 §三「写库」列为否的入口，命中后不得产生任何
+   数据库写入（业务表与审计表均不得写）；
+6. **链接迁移终态**：ARCH-03 §五 第 1 步迁移后，现存模板不得再指向已退役
+   旧入口，也不得再引用已退役模板。
 
 旧读路径的业务数据等价断言不在本文件（见 apps/api/test_legacy_equivalence.py：
 E2/E3/E4 归档通道与旧直读逐字段恒等），本文件只钉退役契约本身。
 """
 
+import re
 from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth.models import Group, Permission
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import resolve
 
+from apps.core.models import AuditEvent
+from apps.guests.models import Guest, GuestMembership
+from apps.identity.models import PropertyStaffMembership, StaffProfile, StaffRoleAssignment
 from apps.identity.test_module_gates import _gate_evidence, _grant
-from hotelapp.models import Client, Vip
+from hotelapp.models import (
+    Accommodation,
+    Client,
+    Food,
+    Order,
+    Park,
+    Room,
+    Staff,
+    Vip,
+)
 
 # ARCH-02 §三 REDIRECT 10 条：
 # (旧 URL, 新中心 URL, 该入口原权限码 codename, 目标中心额外门禁码)
@@ -69,6 +88,34 @@ KEPT_TEMPLATES = (
     "staff_accounts.html",
     "staff_accounts_detail.html",
 )
+
+# ARCH-03 §五 第 1 步「先迁移模板内指向旧入口的链接」的迁移面：
+# 这 10 条只读入口已 302 到 PMS2 新中心，现存模板不得再指向它们。
+RETIRED_READ_ENTRY_PATHS = tuple(old_url for old_url, _new, _c, _e in REDIRECT_CASES)
+
+# 只读性断言的写入探针面：旧业务六表 + 餐饮/停车/订单 + 新栈权威表 + 审计表。
+# 退役入口是纯 RedirectView，任何一张表被写都算「写库」。
+WRITE_PROBE_MODELS = (
+    Client,
+    Vip,
+    Room,
+    Accommodation,
+    Staff,
+    Order,
+    Food,
+    Park,
+    Guest,
+    GuestMembership,
+    StaffProfile,
+    PropertyStaffMembership,
+    StaffRoleAssignment,
+    AuditEvent,
+)
+
+
+def _write_probe_snapshot():
+    """业务表 + 审计表的行数快照（写入探针）。"""
+    return {model.__name__: model.objects.count() for model in WRITE_PROBE_MODELS}
 
 
 def _make_user(username, group_name):
@@ -242,6 +289,62 @@ class RetiredRouteGateEvidenceTests(TestCase):
                 self.assertIn("staff_gate", evidence, f"{old_url} 丢失员工门禁证据")
 
 
+class RetiredRouteReadOnlyTests(TestCase):
+    """ARCH-02 §三「写库」列的只读性契约（=否）必须被测试锁住。
+
+    10 条 REDIRECT 入口的旧实现都是只读渲染视图（唯一例外：show_accomodation/
+    曾写一条读取审计）。退役后的实现是纯 RedirectView，因此契约比矩阵更强：
+    命中旧入口不得产生**任何**数据库写入（业务表、审计表均不得写）。
+
+    口径说明：django_session 的 UPDATE 属登录态维持（CSRF 令牌存于会话），
+    不属于 ARCH-02 §三「写库」列所指的业务写入，故从断言中排除。
+    """
+
+    def setUp(self):
+        _grant(
+            "前台",
+            "view_staff",
+            "view_client",
+            "view_vip",
+            "view_room",
+            "view_accommodation",
+        )
+        _grant_identity("前台", "staff_manage")
+        self.user = _make_user("arch-retire-readonly", "前台")
+        self.client.force_login(self.user)
+
+    def test_retired_routes_execute_no_write_statement(self):
+        """命中旧入口不得执行任何 INSERT/UPDATE/DELETE 语句。"""
+        for old_url, _new_url, _codename, _extra in REDIRECT_CASES:
+            with self.subTest(old_url=old_url):
+                with CaptureQueriesContext(connection) as captured:
+                    response = self.client.get(old_url)
+                self.assertEqual(response.status_code, 302)
+                writes = [
+                    query["sql"]
+                    for query in captured.captured_queries
+                    if query["sql"].lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE"))
+                    and "django_session" not in query["sql"]
+                ]
+                self.assertEqual(
+                    writes,
+                    [],
+                    f"{old_url} 是只读入口，不得产生任何数据库写入：{writes}",
+                )
+
+    def test_retired_routes_leave_business_and_audit_tables_untouched(self):
+        """GET / POST 命中旧入口，业务表与审计表行数均不得变化。"""
+        before = _write_probe_snapshot()
+        for old_url, _new_url, _codename, _extra in REDIRECT_CASES:
+            self.client.get(old_url)
+            self.client.post(old_url, {"id": "1"})
+        self.assertEqual(
+            _write_probe_snapshot(),
+            before,
+            "退役只读入口不得写入任何业务表或审计表",
+        )
+
+
 class RetiredTemplateFileTests(TestCase):
     """ARCH-03：退役模板文件确已移除；KEEP 模板不得被顺带删除。"""
 
@@ -264,3 +367,48 @@ class RetiredTemplateFileTests(TestCase):
                     (self.templates_dir / name).exists(),
                     f"templates/{name} 属 ARCH-03 KEEP，不得删除",
                 )
+
+
+class RetiredTemplateLinkGuardTests(TestCase):
+    """ARCH-03 §五 第 1 步的链接迁移守卫：现存模板不得再指向已退役旧入口。
+
+    退役分两步走：先把模板内的旧链接迁到 PMS2 新中心，再把旧路由 302 退役。
+    本守卫钉住「迁移后的终态」：templates/ 下任何一个现存模板，都不得再出现
+    指向 10 条已退役只读入口的链接，也不得再 include/extends 已退役模板。
+    """
+
+    def setUp(self):
+        self.templates_dir = Path(settings.BASE_DIR) / "templates"
+
+    def _surviving_templates(self):
+        return sorted(self.templates_dir.rglob("*.html"))
+
+    def test_no_surviving_template_links_to_retired_read_entry(self):
+        """现存模板不得再链接 10 条已退役只读入口（href / action / url）。"""
+        offenders = []
+        for path in self._surviving_templates():
+            text = path.read_text(encoding="utf-8")
+            for old_url in RETIRED_READ_ENTRY_PATHS:
+                # 形如 "/index/" 的字面量：前一个字符不得是字母/数字/下划线，
+                # 避免 "/manage/staff/" 之类正常新中心路径被误判。
+                if re.search(r"(?<![A-Za-z0-9_])" + re.escape(old_url), text):
+                    offenders.append(f"{path.relative_to(self.templates_dir)} -> {old_url}")
+        self.assertEqual(
+            offenders,
+            [],
+            "现存模板仍指向已退役旧入口（链接迁移未完成）：\n" + "\n".join(offenders),
+        )
+
+    def test_no_surviving_template_references_retired_template_name(self):
+        """现存模板不得再 include/extends 已退役模板。"""
+        offenders = []
+        for path in self._surviving_templates():
+            text = path.read_text(encoding="utf-8")
+            for name in RETIRED_TEMPLATES:
+                if re.search(r"{%\s*(?:include|extends)\s+[\"']" + re.escape(name), text):
+                    offenders.append(f"{path.relative_to(self.templates_dir)} -> {name}")
+        self.assertEqual(
+            offenders,
+            [],
+            "现存模板仍引用已退役模板：\n" + "\n".join(offenders),
+        )
