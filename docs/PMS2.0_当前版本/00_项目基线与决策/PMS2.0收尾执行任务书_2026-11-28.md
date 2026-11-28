@@ -778,6 +778,13 @@
 | 2026-11-28 | A-09 MC11 订正 | AI 开发会话 | `DONE` | MC11 §0.2/§14 | 91/48/43；实际 42；待裁定 4 组 5 码 |
 | 2026-11-28 | A-10 索引/日志登记 | AI 开发会话 | `DONE` | `docs/文档索引.md`；`docs/更新日志.md` | DOC-100 可检索 |
 | 2026-11-28 | A-11 门禁 | AI 开发会话 | `DONE` | `docs_link_check.py check` exit=0 | 本文件所在提交 |
+| 2026-11-28 | A-04 E2E 56 项 | AI 开发会话（ZCode 主控） | `DONE` | `evidence/g14-final-20261128-d68833e/e2e-56-d68833e.log` | 失败 0；按 §A-04 例外条款用 `test_hotel`（R7-a 未落地，见 evidence-meta.md §二） |
+| 2026-11-28 | A-05 九岗位 90 格 | AI 开发会话（ZCode 主控） | `DONE` | `evidence/task06-nine-role-20261128-d68833e/report.json` | `passed=true`；`run_id=20261128-d68833e`；同上例外 |
+| 2026-11-28 | A-01 SQLite 全量 | AI 开发会话（ZCode 主控） | `DONE` | `evidence/g14-final-20261128-d68833e/sqlite-d68833e.log` | Ran 2244 OK（skipped=32）；绑 `d68833e` |
+| 2026-11-28 | A-02 MySQL 全量 | AI 开发会话（ZCode 主控） | `DONE` | `evidence/g14-final-20261128-d68833e/mysql-d68833e.log` | Ran 2244 OK（skipped=5，687.339s）；错峰登记见 evidence-meta.md §三 |
+| 2026-11-28 | A-03 MySQL 并发仲裁 | AI 开发会话（ZCode 主控） | `DONE` | `evidence/g14-final-20261128-d68833e/mysql-concurrency-d68833e.log` | Ran 55 OK（24.398s） |
+| 2026-11-28 | A-06 浏览器真实页面 | AI 开发会话（ZCode 主控） | `DONE` | `evidence/center-urlstate-2026-11-28-13-53/` | 28/28 |
+| 2026-11-28 | C-01 G14 最终 PASS | AI 开发会话（ZCode 主控）+ 负责人授权代录 | `DONE` | 96 号 §6.5/§6.6；总览 §5 | 六项同树（`d68833e`）全绿；保留项第 1 条闭合，其余三项转上线前条件 |
 
 > 后续每执行一张卡，在本表追加一行；不删除历史行。结果只用 §0.3 的 8 词。
 

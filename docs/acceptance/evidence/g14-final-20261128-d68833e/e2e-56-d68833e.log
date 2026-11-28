@@ -1,0 +1,206 @@
+=== PMS2 G14-09 e2e_full_chain 复跑证据 ===
+run_started_at: 2026-11-28T21:27:59+0800
+base_url: http://127.0.0.1:8001
+target_db: test_hotel @ 127.0.0.1 3306 (MySQL, 隔离测试库)
+django_env: dev DEBUG: True
+repo_head: d68833e
+evidence_file: F:\Desktop\django-hotel\docs\acceptance\evidence\g14-final-20261128-d68833e\e2e-56-d68833e.log
+
+[PROVISION] 目标库已存在 107 张表，执行幂等迁移校准。
+Operations to perform:
+  Apply all migrations: admin, auth, billing, contenttypes, core, guests, hotelapp, identity, inventory, reservations, sessions
+Running migrations:
+  No migrations to apply.
+[PROVISION] migrate 完成；append-only triggers 安装被数据库权限边界拒绝（1419，本机 app 用户无 SUPER 且 binlog 开启），F5 断言改走 API 只追加契约面。原始错误：(1419, 'You do not have the SUPER privilege and binary logging is enabled (you *might* want to use the less safe log_bin_trust_function_creators variable)')
+[GUARD] 清空范围（TRUNCATE，共 89 张交易表）：
+[GUARD]   - accommodation
+[GUARD]   - billing_approvalrecord
+[GUARD]   - billing_billingadjustment
+[GUARD]   - billing_cashiershift
+[GUARD]   - billing_cashiershiftmovement
+[GUARD]   - billing_chargeline
+[GUARD]   - billing_checkoutexceptionrelease
+[GUARD]   - billing_dayusepolicy
+[GUARD]   - billing_folio
+[GUARD]   - billing_folioreconciliationdiff
+[GUARD]   - billing_folioreconciliationrun
+[GUARD]   - billing_foliotransfer
+[GUARD]   - billing_ledgerentry
+[GUARD]   - billing_legacyarchiverun
+[GUARD]   - billing_legacymigrationbatch
+[GUARD]   - billing_legacyorderreservationmap
+[GUARD]   - billing_payment
+[GUARD]   - billing_paymentcompensationtask
+[GUARD]   - billing_paymentintent
+[GUARD]   - billing_providertransaction
+[GUARD]   - billing_providertransactionevent
+[GUARD]   - billing_refund
+[GUARD]   - billing_refundliability
+[GUARD]   - billing_refundliability_source_payments
+[GUARD]   - billing_taxline
+[GUARD]   - client
+[GUARD]   - core_auditevent
+[GUARD]   - core_breakglassrecord
+[GUARD]   - core_businessdate
+[GUARD]   - core_exportcredential
+[GUARD]   - core_idempotencyrecord
+[GUARD]   - core_legacyrecordlink
+[GUARD]   - core_nightauditrun
+[GUARD]   - core_notification
+[GUARD]   - core_notificationread
+[GUARD]   - core_outboxevent
+[GUARD]   - core_ratelimitcounter
+[GUARD]   - core_statustransition
+[GUARD]   - core_workitem
+[GUARD]   - django_admin_log
+[GUARD]   - django_session
+[GUARD]   - finance_record
+[GUARD]   - folio
+[GUARD]   - food
+[GUARD]   - guests_guest
+[GUARD]   - guests_guestdocument
+[GUARD]   - guests_guestdocumentindex
+[GUARD]   - guests_guestmembership
+[GUARD]   - guests_guestphone
+[GUARD]   - guests_legalhold
+[GUARD]   - guests_membershiplevelhistory
+[GUARD]   - guests_retentionexecution
+[GUARD]   - guests_retentionpolicy
+[GUARD]   - identity_employeenumbercounter
+[GUARD]   - identity_legacypermissioncodegrant
+[GUARD]   - identity_legacystaffmapping
+[GUARD]   - identity_permissionmatrixapproval
+[GUARD]   - inventory_dailyrate
+[GUARD]   - inventory_housekeepingtask
+[GUARD]   - inventory_inventorydiscrepancy
+[GUARD]   - inventory_inventoryreconciliationrun
+[GUARD]   - inventory_maintenanceticket
+[GUARD]   - inventory_roomassignmentconflict
+[GUARD]   - inventory_roominspection
+[GUARD]   - inventory_roomtypeinventory
+[GUARD]   - legacy_accommodation_archive
+[GUARD]   - legacy_client_archive
+[GUARD]   - legacy_finance_record_archive
+[GUARD]   - legacy_folio_archive
+[GUARD]   - legacy_night_audit_archive
+[GUARD]   - legacy_staff_archive
+[GUARD]   - legacy_vip_archive
+[GUARD]   - night_audit
+[GUARD]   - order
+[GUARD]   - park
+[GUARD]   - reservations_bookingaccesstoken
+[GUARD]   - reservations_earlydeparturepolicy
+[GUARD]   - reservations_inventoryhold
+[GUARD]   - reservations_noshowrecord
+[GUARD]   - reservations_pendingbookinggate
+[GUARD]   - reservations_reservation
+[GUARD]   - reservations_reservationguest
+[GUARD]   - reservations_reservationroom
+[GUARD]   - reservations_stay
+[GUARD]   - reservations_stayguest
+[GUARD]   - reservations_stayroomsegment
+[GUARD]   - room
+[GUARD]   - staff
+[GUARD]   - vip
+[GUARD] 保留范围（主数据/员工账号/迁移元数据，共 18 张）：
+[GUARD]   = auth_group
+[GUARD]   = auth_group_permissions
+[GUARD]   = auth_permission
+[GUARD]   = auth_user
+[GUARD]   = auth_user_groups
+[GUARD]   = auth_user_user_permissions
+[GUARD]   = core_property
+[GUARD]   = django_content_type
+[GUARD]   = django_migrations
+[GUARD]   = identity_invitation
+[GUARD]   = identity_propertystaffmembership
+[GUARD]   = identity_staffprofile
+[GUARD]   = identity_staffroleassignment
+[GUARD]   = inventory_rateplan
+[GUARD]   = inventory_room
+[GUARD]   = inventory_roomtype
+[GUARD]   = reservations_cancellationpolicy
+[GUARD]   = reservations_depositpolicy
+[RESET] 已清空交易表 89 张（范围见护栏清单）。
+[BOOTSTRAP] 主数据复刻自 `hotel`（只读源库）：django_content_type=107, auth_permission=460, auth_group=9, auth_group_permissions=150, auth_user=42, auth_user_groups=3, auth_user_user_permissions=2, core_property=5, inventory_roomtype=5, inventory_room=28, inventory_rateplan=6, identity_staffprofile=45, identity_propertystaffmembership=44, identity_staffroleassignment=44, identity_invitation=0, reservations_cancellationpolicy=0, reservations_depositpolicy=0
+  OK 房型+房间+价格+30天库存
+  跳过员工登录账号创建（请单独运行九角色测试账号初始化命令）
+  OK 客人 0
+  OK 预订新建 0 (总 0)
+  OK 今日运营快照（在住/预抵/预警）
+真实模拟酒店测试数据创建完成
+  ✓ LegacyRecordLink 填充 0 条
+[SEED] 房型/房价/30 天库存/净房完成；FIRST_NIGHT 提前离店政策覆盖 6 个房价计划（新增 6）。
+已准备账号：test_front（前台）
+已准备账号：test_duty（值班经理）
+已准备账号：test_finance（财务）
+已准备账号：test_owner（店长）
+已准备账号：test_housekeeping（客房服务员）
+已准备账号：test_nightaudit（夜审员）
+已准备账号：test_fnb（餐饮服务员）
+已准备账号：test_fnbsup（餐饮主管）
+已准备账号：test_parking（停车安保）
+九角色测试账号处理完成：新建 0 个；密码未输出。
+[SEED] 九角色测试账号就绪（口令未输出）。
+[IDENTITY] 目标库房型 id=[3, 4, 5, 6, 7]；服务返回房型 id=[3, 4, 5, 6, 7]（HTTP 200）
+[IDENTITY] 目标库营业日行数=0；服务返回营业日行数=0（HTTP 403）
+[IDENTITY] 服务库与清库目标一致：test_hotel ✓
+[PASS] A1 可订查询返回可售房型（含 rate_plan/总价）  | 房型 商务套房 总价 2064.00
+[PASS] A2 公开预订创建 PENDING（一次性令牌）  | R2A84E51A25D9574FF0EB 总价 2064.00
+[PASS] A3 未支付 PENDING 上限 2（第 3 单 409 拒绝）  | 第 2 单 R8A903F2FE9DEB657BA50 放行；第 3 单 HTTP 409 该手机号存在过多未支付预订，请先完成支付或取消后再预订。
+[PASS] A4 第二单创建（预付链，不同手机号）  | R206A96B9D394727C3BEE
+[PASS] A5 支付意图创建（dev 模拟回调样例）  | provider_ref=MOCK-8FAE221C95FB45248A78302F65F0F76A 金额 2064.00
+[PASS] A6 模拟回调验签 → 订单 CONFIRMED  | HTTP 200 {'ok': True, 'duplicate': False, 'expired': False, 'reservation_confirmed': True, 'compensation_requ
+[PASS] A7 回调幂等重放（duplicate=true 不重复入账）  | duplicate=True
+[PASS] A8 令牌查询订单（字段白名单 + 姓名脱敏）  | {'booking_no': 'R206A96B9D394727C3BEE', 'status': 'CONFIRMED', 'guest_name': '链****'}
+[PASS] A9 错误封套 {error:{code,message}}（错误令牌 404）
+[PASS] B1 订单查询列表可见新订单并携带 stay_status/reservation_status 新字段  | rows=1 reservation_status=PENDING stay_status=None
+[PASS] B2 订单详情含预订房间明细  | reservation_room=1 amount=2064.00
+[PASS] B3 前台开立本人收银班次（备用金 0）  | shift=1
+[PASS] B4 押金 30% 服务端强制（调用方 1.00 被忽略，PENDING 收款即确认）  | 请求 1.00 → 服务端计得 619.20（应为 619.20）
+[PASS] B5 押金收款后订单自动确认  | CONFIRMED
+[PASS] B6 押金同幂等键重放 → 200 created=false  | HTTP 200 created=False
+[PASS] B7 可排房查询返回净房  | 4 间，首间 2675
+[PASS] B8 排房成功  | room=22
+[PASS] B9 办理入住 → Stay(IN_HOUSE)  | stay=1
+[PASS] B10 在住登记现金收款 10.00（挂本人班次）  | payment=3
+[PASS] B11 walk-ins 标准端点 201（押金=总额×30%，服务端计得）  | RD65045963AD39F4BE776 请求押金 0.01 → 服务端 206.40（688.00×30%）
+[PASS] B12 walk-ins 同幂等键重放 → 200 created=false（同一 Stay）  | HTTP 200 created=False
+[PASS] B13 旧 /walk-in 端点已按 DEC-WI-01 退役（410 Gone，无业务写入）  | HTTP 410 code=GONE
+[PASS] B14 BillingInputError 分流 400（押金方式非法）
+[PASS] C1 夜审预览无阻断（在住 2 单，待过租 2 笔）  | 阻断 0 在住 2 待过租 2 笔 1376.00
+[PASS] C2 wb 守卫：非当前营业日（明日）预览/执行一律 409  | preview 409 ✓ / run HTTP 409 只允许审计当前营业日 2026-11-28；日期 2026-11-29 无对应的 OPEN/REOPENED 营业日记录
+[PASS] C3 执行夜审成功并关账（过租 2 笔）  | run=1 charge=2 total=1376.00
+[PASS] C4 营业日已关闭（单开不变量 + 关账后 run 幂等重放 200）  | current=CLOSED OPEN 口径 0 条 重放 HTTP 200 created=False
+[PASS] C5 关账守卫：CLOSED 营业日收款拒绝（WB-079）
+[PASS] C6 营业日重开申请 201（duty 发起）  | approval=1
+[PASS] C7 重开申请 SoD：申请人自批被拒（Q-05）  | HTTP 409 申请人不能审批自己的申请（Q-05 SoD）。
+[PASS] C8 owner 批准 → 营业日 REOPENED  | REOPENED
+[PASS] D1 夜审后账本已入当晚房费（1 笔，无整单双记）  | 房费 688.00 / 余额 58.80（应为 58.80）
+[PASS] D2 未结清退房明确拒绝（409 + 应收余额金额可解析）  | HTTP 409 账单尚有应收余额 58.80 CNY，请先完成收款。
+[PASS] D2a 按守卫提示补收差额  | 补收 58.80
+[PASS] D2b 退房成功（FIRST_NIGHT 罚金两讫后放行）  | CHECKED_OUT
+[PASS] D3 退房后账本两讫（余额 0 且账单 CLOSED）  | 余额 0.00 状态 CLOSED
+[PASS] D3a 房费账实相符（夜审 1 晚入账，退房净额冲回 + FIRST_NIGHT 罚金，无双记）  | 已入房费 688.00（合同 2064.00，实际 0 晚 + 罚金 688.00）
+[PASS] D4 清洁工作台可见退房脏房（DIRTY）  | {'number': '2675', 'housekeeping_status': 'DIRTY'}
+[PASS] D5 客房开始清洁 → CLEANING  | HTTP 200
+[PASS] D5b 清洁完成待检查 → INSPECTING  | HTTP 200
+[PASS] D5c 服务员净房放行必须被权限层拒绝（403）  | HTTP 403 净房放行需要 hotelapp.room_release_ready 权限（值班经理/店长）。
+[PASS] D6 值班经理检查放行 → CLEAN（净房）  | HTTP 200
+[PASS] E1 退款申请缺 Idempotency-Key 头 → 拒绝
+[PASS] E1b 前台退款申请 201（PENDING，押金流水）  | refund=1
+[PASS] E1c 申请人自批被权限层拒绝（前台无 billing.refund_approve）  | HTTP 403
+[PASS] E2 值班经理审批 → APPROVED（待独立执行）  | refund=1 status=APPROVED
+[PASS] E3a 财务开班 + 现金补入 100.00  | shift=2
+[PASS] E3 财务执行退款 → SUCCEEDED（REFUND 凭证入账）  | refund=1 shift=2
+[PASS] E4 非财务执行人（duty 无 billing.refund_execute）必须 403  | HTTP 403 当前岗位没有该项财务操作权限。
+[PASS] F1 通知中心派生可验证业务工作项（待确认/今日预抵含预订号）  | 刷新 active=6 created=6；命中 3 条（如 今日预抵 R206A96B9D394727C3BEE）
+[PASS] F2 审计中心可查询夜审审计（action=night_audit.run）  | 1 条，最近 entity=BusinessDate
+[PASS] F2b 退房自动生成清洁任务留痕（WB-055）  | 1 条 housekeeping.task_created
+[PASS] F3 经营报表可取数（当日已售房晚 ≥1）  | today sold=2 occupancy=10.00
+[PASS] F4 顾客侧订单状态同步（CHECKED_OUT + 押金 PARTIALLY_REFUNDED）  | status=CHECKED_OUT 押金状态=PARTIALLY_REFUNDED
+[PASS] F5 LedgerEntry 只追加（DB 触发器拒改删 / API 面无写路由）  | API 面断言（触发器权限边界 1419，CI MySQL 以 root 安装）：POST/DELETE 账本路由 HTTP 405/405 均 405（无写路由），写路径仅 BillingService.post_entry 追加入口
+[PASS] F6 业务状态冲突分流 409（退房后订单收押金被拒）
+
+===== 串测汇总: 56 项 / 失败 0 项 =====
+run_finished_at: 2026-11-28T21:28:10+0800

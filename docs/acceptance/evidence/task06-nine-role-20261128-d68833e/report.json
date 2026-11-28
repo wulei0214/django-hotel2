@@ -1,0 +1,833 @@
+{
+  "run_id": "20261128-d68833e",
+  "phase": "TASK-06 nine-role matrix rerun after night-auditor activation (1b882eb)",
+  "base": "http://127.0.0.1:8011",
+  "accounts": [
+    "v12_gm",
+    "v12_fd",
+    "v12_fin",
+    "v13_duty",
+    "v13_hk",
+    "v13_night",
+    "v13_rest",
+    "v13_chef",
+    "v13_sec"
+  ],
+  "role_names": {
+    "v12_gm": "店长",
+    "v12_fd": "前台接待",
+    "v12_fin": "财务",
+    "v13_duty": "值班经理",
+    "v13_hk": "客房服务员",
+    "v13_night": "夜审员",
+    "v13_rest": "餐饮服务员",
+    "v13_chef": "餐饮主管",
+    "v13_sec": "停车安保"
+  },
+  "failures": [],
+  "passed": true,
+  "results": [
+    {
+      "account": "v12_gm",
+      "role": "店长",
+      "csrf_obtained": true,
+      "cells": [
+        {
+          "scenario": "S1_refund_execute",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "expect": "allow",
+          "status": 400,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "skipped": true,
+          "note": "店长/值班经理为夜审执行权限持有者；真实执行会关账推进营业日，正控在 Phase 6/7 已取证，此处不重复发起"
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "expect": "allow",
+          "status": 404,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "expect": "allow",
+          "status": 404,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "expect": "allow",
+          "status": 200,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7_report_export_invalid",
+          "expect": "allow",
+          "status": 400,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7b_report_export_occupancy",
+          "skipped": true,
+          "note": "本轮不比对该岗位（沿用 Phase 7 的矩阵覆盖口径）"
+        },
+        {
+          "scenario": "S8_audit_export",
+          "expect": "allow",
+          "status": 200,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "PAGE_night_audit",
+          "expect": "allow",
+          "denied_text": "酒 酒店管理系统 工作台 通知与待办 运营 主界面 前台运营 预订与入住中心 前台接待工作台 客人关系 Guest 360 客人中心 会员中心 客房运营 房态与库存中心 清洁与维修工作台 员工组织 员工与账号中心 财务与日结 财务管理 营业",
+          "ui": {
+            "run_button": true,
+            "preview_button": true,
+            "reopen_form": true,
+            "breakglass_panel": true
+          },
+          "ok": true
+        }
+      ]
+    },
+    {
+      "account": "v12_fd",
+      "role": "前台接待",
+      "csrf_obtained": true,
+      "cells": [
+        {
+          "scenario": "S1_refund_execute",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "expect": "allow",
+          "status": 404,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7_report_export_invalid",
+          "expect": "allow",
+          "status": 400,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7b_report_export_occupancy",
+          "expect": "allow",
+          "status": 200,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S8_audit_export",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "PAGE_night_audit",
+          "expect": "deny",
+          "denied_text": "当前岗位无权查看此管理中心。",
+          "ui": {
+            "run_button": false,
+            "preview_button": false,
+            "reopen_form": false,
+            "breakglass_panel": false
+          },
+          "ok": true
+        }
+      ]
+    },
+    {
+      "account": "v12_fin",
+      "role": "财务",
+      "csrf_obtained": true,
+      "cells": [
+        {
+          "scenario": "S1_refund_execute",
+          "expect": "allow",
+          "status": 400,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "expect": "allow",
+          "status": 200,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7_report_export_invalid",
+          "expect": "allow",
+          "status": 400,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7b_report_export_occupancy",
+          "skipped": true,
+          "note": "本轮不比对该岗位（沿用 Phase 7 的矩阵覆盖口径）"
+        },
+        {
+          "scenario": "S8_audit_export",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "PAGE_night_audit",
+          "expect": "deny",
+          "denied_text": "当前岗位无权查看此管理中心。",
+          "ui": {
+            "run_button": false,
+            "preview_button": false,
+            "reopen_form": false,
+            "breakglass_panel": false
+          },
+          "ok": true
+        }
+      ]
+    },
+    {
+      "account": "v13_duty",
+      "role": "值班经理",
+      "csrf_obtained": true,
+      "cells": [
+        {
+          "scenario": "S1_refund_execute",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "expect": "allow",
+          "status": 400,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "skipped": true,
+          "note": "店长/值班经理为夜审执行权限持有者；真实执行会关账推进营业日，正控在 Phase 6/7 已取证，此处不重复发起"
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "expect": "allow",
+          "status": 404,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "expect": "allow",
+          "status": 404,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "expect": "allow",
+          "status": 200,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7_report_export_invalid",
+          "expect": "allow",
+          "status": 400,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7b_report_export_occupancy",
+          "skipped": true,
+          "note": "本轮不比对该岗位（沿用 Phase 7 的矩阵覆盖口径）"
+        },
+        {
+          "scenario": "S8_audit_export",
+          "expect": "allow",
+          "status": 200,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "PAGE_night_audit",
+          "expect": "allow",
+          "denied_text": "酒 酒店管理系统 工作台 通知与待办 3 运营 主界面 前台运营 预订与入住中心 前台接待工作台 客人关系 Guest 360 客人中心 会员中心 客房运营 房态与库存中心 清洁与维修工作台 财务与日结 财务管理 营业日与夜审中心 经营分析",
+          "ui": {
+            "run_button": true,
+            "preview_button": true,
+            "reopen_form": true,
+            "breakglass_panel": true
+          },
+          "ok": true
+        }
+      ]
+    },
+    {
+      "account": "v13_hk",
+      "role": "客房服务员",
+      "csrf_obtained": true,
+      "cells": [
+        {
+          "scenario": "S1_refund_execute",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7_report_export_invalid",
+          "expect": "allow",
+          "status": 400,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7b_report_export_occupancy",
+          "skipped": true,
+          "note": "本轮不比对该岗位（沿用 Phase 7 的矩阵覆盖口径）"
+        },
+        {
+          "scenario": "S8_audit_export",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "PAGE_night_audit",
+          "expect": "deny",
+          "denied_text": "当前岗位无权查看此管理中心。",
+          "ui": {
+            "run_button": false,
+            "preview_button": false,
+            "reopen_form": false,
+            "breakglass_panel": false
+          },
+          "ok": true
+        }
+      ]
+    },
+    {
+      "account": "v13_night",
+      "role": "夜审员",
+      "csrf_obtained": true,
+      "cells": [
+        {
+          "scenario": "S1_refund_execute",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "expect": "allow",
+          "status": 409,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7_report_export_invalid",
+          "expect": "allow",
+          "status": 400,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7b_report_export_occupancy",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S8_audit_export",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "PAGE_night_audit",
+          "expect": "allow",
+          "denied_text": "酒 酒店管理系统 工作台 通知与待办 运营 主界面 财务与日结 营业日与夜审中心 个人设置 个人中心 v13_night 夜审员 退出登录 营业日与夜审中心 默认酒店 · 营业日历、夜审预览与执行、重开审批、紧急重开（break-glas",
+          "ui": {
+            "run_button": true,
+            "preview_button": true,
+            "reopen_form": false,
+            "breakglass_panel": true
+          },
+          "ok": true
+        }
+      ]
+    },
+    {
+      "account": "v13_rest",
+      "role": "餐饮服务员",
+      "csrf_obtained": true,
+      "cells": [
+        {
+          "scenario": "S1_refund_execute",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7_report_export_invalid",
+          "expect": "allow",
+          "status": 400,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7b_report_export_occupancy",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S8_audit_export",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "PAGE_night_audit",
+          "expect": "deny",
+          "denied_text": "当前岗位无权查看此管理中心。",
+          "ui": {
+            "run_button": false,
+            "preview_button": false,
+            "reopen_form": false,
+            "breakglass_panel": false
+          },
+          "ok": true
+        }
+      ]
+    },
+    {
+      "account": "v13_chef",
+      "role": "餐饮主管",
+      "csrf_obtained": true,
+      "cells": [
+        {
+          "scenario": "S1_refund_execute",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7_report_export_invalid",
+          "expect": "allow",
+          "status": 400,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7b_report_export_occupancy",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S8_audit_export",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "PAGE_night_audit",
+          "expect": "deny",
+          "denied_text": "当前岗位无权查看此管理中心。",
+          "ui": {
+            "run_button": false,
+            "preview_button": false,
+            "reopen_form": false,
+            "breakglass_panel": false
+          },
+          "ok": true
+        }
+      ]
+    },
+    {
+      "account": "v13_sec",
+      "role": "停车安保",
+      "csrf_obtained": true,
+      "cells": [
+        {
+          "scenario": "S1_refund_execute",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S2_refund_approve",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S3_night_audit_run",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S4_phone_reveal",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S5_room_release",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S6_finance_liabilities",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7_report_export_invalid",
+          "expect": "allow",
+          "status": 400,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S7b_report_export_occupancy",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "S8_audit_export",
+          "expect": "deny",
+          "status": 403,
+          "code": null,
+          "message": "",
+          "ok": true
+        },
+        {
+          "scenario": "PAGE_night_audit",
+          "expect": "deny",
+          "denied_text": "当前岗位无权查看此管理中心。",
+          "ui": {
+            "run_button": false,
+            "preview_button": false,
+            "reopen_form": false,
+            "breakglass_panel": false
+          },
+          "ok": true
+        }
+      ]
+    }
+  ],
+  "finished_at": "2026-11-28T21:29:06"
+}
