@@ -185,6 +185,38 @@ class PublicBookingApiTests(TestCase):
         self.assertContains(response, "在线预订")
         self.assertContains(response, "/api/v1/availability")
 
+    def test_website_home_anonymous_shows_rooms_and_booking_entry(self):
+        """官网根路径对访客公开：展示真实房型与明日最低在售价，预约入口可达。"""
+        tomorrow = timezone.localdate() + timedelta(days=1)
+        DailyRate.objects.create(
+            property=self.property,
+            rate_plan=self.rate_plan,
+            room_type=self.room_type,
+            stay_date=tomorrow,
+            price=Decimal("488.00"),
+        )
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "public/home.html")
+        self.assertContains(response, self.room_type.name)
+        self.assertContains(response, "488.00")
+        # 预约动线唯一入口：/reserve/（免注册直订，AUTH-01 D1/D8）
+        self.assertContains(response, "/reserve/")
+
+    def test_website_home_room_without_rate_shows_no_price(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.room_type.name)
+        self.assertContains(response, "暂无报价")
+
+    def test_website_home_authenticated_staff_gets_workspace_link(self):
+        staff = User.objects.create_user(username="site_staff", password=_TEST_PW_510C52C1)
+        self.client.force_login(staff)
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "/home/")
+        self.assertNotContains(response, "/login/")
+
 
 class FrontDeskReadApiTests(TestCase):
     """前台工作台只读 API：物业范围、RBAC、脱敏与账单摘要。"""

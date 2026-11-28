@@ -1180,6 +1180,50 @@ def logout_view(request):
     return redirect("/login/")
 
 
+def website_home(request):
+    """官网首页：面向访客的公开门面（无需登录），根路径直达。
+
+    只读展示启用房型与明日最低在售价（各价格计划取低价者，关房不计），
+    预约动线全部交给 /reserve/ 公开预订页；本视图只做展示聚合，
+    不承载任何预订写逻辑（写路径唯一权威仍是 reservations 服务）。
+    """
+    from apps.core.models import Property
+    from apps.inventory.models import DailyRate, RoomType
+
+    prop = Property.objects.filter(
+        code=getattr(settings, "DEFAULT_PROPERTY_CODE", "DEFAULT"),
+        status=Property.Status.ACTIVE,
+    ).first()
+    room_cards = []
+    if prop is not None:
+        tomorrow = timezone.localdate() + datetime.timedelta(days=1)
+        for room_type in RoomType.objects.filter(property=prop, is_active=True).order_by("code"):
+            price = (
+                DailyRate.objects.filter(room_type=room_type, stay_date=tomorrow, closed=False)
+                .order_by("price")
+                .values_list("price", flat=True)
+                .first()
+            )
+            room_cards.append(
+                {
+                    "name": room_type.name,
+                    "bed_type": room_type.bed_type,
+                    "capacity": room_type.capacity,
+                    "amenities": room_type.amenities or [],
+                    "price": price,
+                }
+            )
+    return render(
+        request,
+        "public/home.html",
+        {
+            "property_name": prop.name if prop else "酒店",
+            "address": (prop.address if prop else "") or "",
+            "room_cards": room_cards,
+        },
+    )
+
+
 @staff_required
 def home(request):
     """主界面：PMS2 权威数据仪表盘（P1-11 切权威；本次补齐图表数据与模板绑定）。

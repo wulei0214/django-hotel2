@@ -126,7 +126,7 @@ urlpatterns = [
     # 后台侧边栏的 PMS2 只读业务概览（须在 admin.site.urls 之前匹配）
     path("admin/pms-overview/", pms_business_overview, name="pms_admin_overview"),
     path("admin/", admin.site.urls),
-    path("", views.home),
+    path("", views.website_home),
     path("home/", views.home),
     path("login/", views.login_view),
     path("force-password-change/", views.force_password_change),

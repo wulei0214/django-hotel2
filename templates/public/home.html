@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{{ property_name }} · 官方网站</title>
+    <style>
+        :root{--ink:#22314a;--muted:#6d7a90;--line:#e7ebf1;--brand:#2b74c9;--brand-ink:#1d5aa8;--bg:#f7f9fc}
+        *{box-sizing:border-box}
+        body{margin:0;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:var(--ink);background:#fff}
+        a{color:var(--brand);text-decoration:none}
+        a:hover{text-decoration:underline}
+        .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+        header.site{border-bottom:1px solid var(--line);background:#fff}
+        header.site .wrap{display:flex;align-items:center;gap:22px;height:60px}
+        .brand{font-size:18px;font-weight:700;color:var(--ink)}
+        nav.top{display:flex;gap:18px;margin-left:auto;font-size:14px}
+        .hero{background:var(--bg);border-bottom:1px solid var(--line)}
+        .hero .wrap{padding:64px 20px}
+        .hero h2{margin:0 0 10px;font-size:32px}
+        .hero p{margin:0 0 26px;color:var(--muted);font-size:15px}
+        .btn{display:inline-block;padding:12px 28px;background:var(--brand);color:#fff;border-radius:8px;font-size:15px}
+        .btn:hover{background:var(--brand-ink);text-decoration:none}
+        section.rooms{padding:44px 0 56px}
+        section.rooms h3{margin:0 0 22px;font-size:22px}
+        .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+        .card{border:1px solid var(--line);border-radius:12px;padding:20px}
+        .card h4{margin:0 0 6px;font-size:17px}
+        .card .meta{color:var(--muted);font-size:13px;margin-bottom:12px}
+        .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+        .chip{background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--muted)}
+        .price{font-size:22px;font-weight:700}
+        .price small{font-size:12px;font-weight:400;color:var(--muted)}
+        .noprice{color:var(--muted);font-size:14px}
+        .card .btn{padding:8px 18px;font-size:13px}
+        footer.site{border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+        footer.site .wrap{padding:18px 20px}
+        @media(max-width:640px){.hero .wrap{padding:44px 20px}.hero h2{font-size:26px}}
+    </style>
+</head>
+<body>
+<header class="site">
+    <div class="wrap">
+        <span class="brand">{{ property_name }}</span>
+        <nav class="top">
+            <a href="#rooms">客房与价格</a>
+            <a href="/reserve/">在线预订</a>
+            {% if user.is_authenticated %}
+                <a href="/home/">进入工作台</a>
+            {% else %}
+                <a href="/login/">员工登录</a>
+            {% endif %}
+        </nav>
+    </div>
+</header>
+
+<section class="hero">
+    <div class="wrap">
+        <h2>{{ property_name }}</h2>
+        <p>{{ address }}</p>
+        <a class="btn" href="/reserve/">立即预约</a>
+    </div>
+</section>
+
+<section class="rooms" id="rooms">
+    <div class="wrap">
+        <h3>客房与价格</h3>
+        {% if room_cards %}
+        <div class="cards">
+            {% for room in room_cards %}
+            <div class="card">
+                <h4>{{ room.name }}</h4>
+                <div class="meta">
+                    {% if room.bed_type %}{{ room.bed_type }} · {% endif %}可住 {{ room.capacity }} 人
+                </div>
+                {% if room.amenities %}
+                <div class="chips">
+                    {% for item in room.amenities %}<span class="chip">{{ item }}</span>{% endfor %}
+                </div>
+                {% endif %}
+                <div>
+                    {% if room.price %}<span class="price">¥{{ room.price }}<small> /晚起</small></span>{% else %}<span class="noprice">暂无报价</span>{% endif %}
+                </div>
+                <p style="margin:14px 0 0"><a class="btn" href="/reserve/">预订</a></p>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="color:var(--muted)">房型信息整理中，可直接前往<a href="/reserve/">在线预订</a>查询可订房型。</p>
+        {% endif %}
+    </div>
+</section>
+
+<footer class="site">
+    <div class="wrap">{{ address }}</div>
+</footer>
+</body>
+</html>
