@@ -1,0 +1,58 @@
+<!-- 本地部署总览：仅 DEBUG + 本机回环可访问（生产 404）。
+     配套入口 + 测试角色账号，供业务流程测试与 UI 布局查验。 -->
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>部署总览 · 本地环境</title>
+    <style>
+        :root{--ink:#22314a;--muted:#6d7a90;--line:#e7ebf1;--brand:#2b74c9;--bg:#f7f9fc}
+        body{margin:0;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+        .wrap{max-width:960px;margin:0 auto;padding:32px 20px 60px}
+        h1{margin:0 0 6px;font-size:24px}
+        .sub{color:var(--muted);font-size:13px;margin:0 0 26px}
+        h2{font-size:16px;margin:26px 0 12px}
+        .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+        .entry{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;display:block;color:var(--ink);text-decoration:none}
+        .entry:hover{border-color:var(--brand)}
+        .entry b{display:block;font-size:15px;margin-bottom:4px}
+        .entry span{color:var(--muted);font-size:12px;word-break:break-all}
+        table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+        th,td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;text-align:left}
+        th{background:var(--bg);color:var(--muted);font-weight:600}
+        tr:last-child td{border-bottom:0}
+        code{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:2px 7px;font-size:12px}
+        .note{color:var(--muted);font-size:12px;margin-top:14px}
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <h1>本地部署总览</h1>
+    <p class="sub">本页仅在本机 DEBUG 环境可见（生产环境 404），用于部署后配套查验。</p>
+
+    <h2>配套页面</h2>
+    <div class="grid">
+        <a class="entry" href="/"><b>官网首页</b><span>/</span></a>
+        <a class="entry" href="/reserve/"><b>预约界面（客人直订）</b><span>/reserve/</span></a>
+        <a class="entry" href="/login/"><b>员工端登录</b><span>/login/</span></a>
+        <a class="entry" href="/admin/login/"><b>平台管理后台</b><span>/admin/login/ · {{ admin_username }}</span></a>
+    </div>
+
+    <h2>业务测试角色（员工端登录用）</h2>
+    <table>
+        <thead><tr><th>账号</th><th>岗位</th><th>登录后主要可见范围</th></tr></thead>
+        <tbody>
+            {% for account in role_accounts %}
+            <tr><td><code>{{ account.0 }}</code></td><td>{{ account.1 }}</td><td>{{ account.2 }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p class="note">
+        统一口令：<code>{% if test_password %}{{ test_password }}{% else %}见 scripts/r6_env.txt（本机文件缺失）{% endif %}</code>
+        ｜ 平台后台口令：<code>{% if admin_password %}{{ admin_password }}{% else %}见 .env 的 DJANGO_PLATFORM_ADMIN_PASSWORD{% endif %}</code>
+    </p>
+    <p class="note">口令唯一载体：scripts/r6_env.txt（九角色）与 .env（平台白名单），本页为运行时读取，源码不含凭据。</p>
+</div>
+</body>
+</html>

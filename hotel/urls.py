@@ -128,6 +128,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("", views.website_home),
     path("home/", views.home),
+    path("deploy/", views.deploy_overview),
     path("login/", views.login_view),
     path("force-password-change/", views.force_password_change),
     path("register/", views.register_view),

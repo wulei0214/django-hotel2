@@ -218,6 +218,42 @@ class PublicBookingApiTests(TestCase):
         self.assertNotContains(response, "/login/")
 
 
+@override_settings(DEBUG=True, DJANGO_ENV="test")
+class DeployOverviewTests(TestCase):
+    """部署总览页：DEBUG + 本机回环才可见，远程/关 DEBUG 一律 404。"""
+
+    def test_local_debug_renders_entries_and_role_accounts(self):
+        response = self.client.get("/deploy/")
+        self.assertEqual(response.status_code, 200)
+        # 配套四入口（官网/预约/员工端/平台后台）
+        self.assertContains(response, 'href="/"')
+        self.assertContains(response, "/reserve/")
+        self.assertContains(response, "/login/")
+        self.assertContains(response, "/admin/login/")
+        # 全部业务测试角色账号
+        for username in (
+            "test_front",
+            "test_duty",
+            "test_owner",
+            "test_finance",
+            "test_housekeeping",
+            "test_nightaudit",
+            "test_fnb",
+            "test_fnbsup",
+            "test_parking",
+        ):
+            self.assertContains(response, username)
+
+    def test_disabled_debug_returns_404(self):
+        with override_settings(DEBUG=False):
+            response = self.client.get("/deploy/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_remote_address_returns_404(self):
+        response = self.client.get("/deploy/", REMOTE_ADDR="203.0.113.9")
+        self.assertEqual(response.status_code, 404)
+
+
 class FrontDeskReadApiTests(TestCase):
     """前台工作台只读 API：物业范围、RBAC、脱敏与账单摘要。"""
 

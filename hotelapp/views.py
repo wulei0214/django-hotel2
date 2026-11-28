@@ -1224,6 +1224,60 @@ def website_home(request):
     )
 
 
+def deploy_overview(request):
+    """本地部署总览：配套入口 + 测试角色账号（业务流程测试与 UI 查验用）。
+
+    护栏：仅 DEBUG 且本机回环地址可访问，生产/远程一律 404——页面聚合了
+    测试账号口令，绝不可对公网暴露。口令运行时从本机 gitignored 载体读取
+    （scripts/r6_env.txt、.env 平台白名单），源码不落任何凭据字面量。
+    """
+    import os
+    import re
+    from pathlib import Path
+
+    from django.http import Http404
+
+    if request.META.get("REMOTE_ADDR") not in {"127.0.0.1", "::1"}:
+        raise Http404()
+    if not settings.DEBUG:
+        raise Http404()
+
+    env_file = Path(settings.BASE_DIR) / "scripts" / "r6_env.txt"
+    test_password = ""
+    if env_file.exists():
+        matched = re.search(
+            r"^TEST_ACCOUNT_PASSWORD=(.+)$",
+            env_file.read_text(encoding="utf-8"),
+            re.MULTILINE,
+        )
+        if matched:
+            test_password = matched.group(1).strip().strip("'\"")
+
+    role_accounts = [
+        ("test_front", "前台", "预订与入住中心、前台接待工作台、Guest 360、会员中心"),
+        ("test_duty", "值班经理", "预订 / Guest 360 / 房态库存 / 财务 / 夜审 / 报表"),
+        ("test_owner", "店长", "权限最全：另含员工与账号中心、审计与合规中心"),
+        ("test_finance", "财务", "预订与入住中心、财务管理"),
+        ("test_housekeeping", "客房服务员", "清洁与维修工作台"),
+        ("test_nightaudit", "夜审员", "营业日与夜审中心"),
+        ("test_fnb", "餐饮服务员", "主界面（无业务权限）"),
+        ("test_fnbsup", "餐饮主管", "主界面（无业务权限）"),
+        ("test_parking", "停车安保", "主界面（无业务权限）"),
+    ]
+    return render(
+        request,
+        "pms/deploy_overview.html",
+        {
+            "role_accounts": role_accounts,
+            "test_password": test_password,
+            "admin_username": getattr(settings, "PLATFORM_ADMIN_USERNAME", ""),
+            # settings 未映射平台口令（凭据不入源码）：直读进程环境，
+            # 服务按约定以 .env 注入启动；取不到则模板回落为载体提示。
+            "admin_password": os.environ.get("DJANGO_PLATFORM_ADMIN_PASSWORD", ""),
+        },
+    )
+
+
 @staff_required
 def home(request):
     """主界面：PMS2 权威数据仪表盘（P1-11 切权威；本次补齐图表数据与模板绑定）。
