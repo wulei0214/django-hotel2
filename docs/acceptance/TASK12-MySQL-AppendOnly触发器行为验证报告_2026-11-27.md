@@ -2,7 +2,8 @@
 
 > 文档编号：PMS2-TASK12-APPENDONLY-VERIFY-001 ｜ 类型：ACCEPTANCE ｜ 状态：ACTIVE ｜ 版本域：PMS2.0 ｜ 业务模块：数据治理 / 部署运维与数据治理
 > 任务编号：TASK-12 ｜ 交付物：DEL-21（本轮并行子任务补齐项之一）
-> 执行日期：2026-11-27 ｜ 代码基线：main HEAD `0fa7086ea3ecc514dab4a521e860102b533b9a82`（`git rev-parse HEAD`，分支 `feature/pms2-final-docs`）
+> 执行日期：2026-11-27 ｜ 代码基线：取证基线 `0fa7086ea3ecc514dab4a521e860102b533b9a82`（本报告起草时的 HEAD）；基线漂移复核基线 main HEAD `4e8b6df`（`git rev-parse HEAD` 现取，origin/main 同点）
+> 订正声明（2026-11-28 经授权就地订正）：本报告起草基线 `0fa7086ea3ecc514dab4a521e860102b533b9a82` 早于 R1 落地提交 `4499b33`（改密「新密码不得与当前口令相同」升为强制业务政策）与 2026-11-28 治理收口（`a97098f` 三写点服务收口、`ed50dbf` pms-ux 交互改造、`4e8b6df` 文档时效订正）。经负责人授权对受保护目录 `docs/acceptance/` 内的本文件**就地订正**：①代码基线改为「取证基线 + 基线漂移复核基线 `4e8b6df`」双标注；②全部代码行号引用已按复核基线 `4e8b6df` 逐条重新定位——订正映射由 `git show <原基线>:<path>` 与当前文件做行级 diff 对齐算出，**非估算**；③受上述提交影响的结论已按当前代码事实复核订正。**其余结论、状态词与证据引用一律不变**，历史证据仍连各自绑定的 SHA 一并引用。
 > 执行方式：在**共享开发实例（3306）**实测权限边界与 1419；在**本次新建的本地独立 MySQL 8.0.33 实例（3307，独立 datadir、具备 SUPER/TRIGGER）**执行触发器安装 + 真实行为级验证（Django 全量迁移后的真实 schema）。全程**未运行 MySQL 全量测试**（遵守 `max_connections=20` 纪律），**未修改任何 `.py`、SQL 定义文件或历史文档**；隔离实例已停机并删除 datadir。
 > 任务依据：《PMS 2.0 最终验收补证、遗留事项整改与 PMS 3.0 启动准备任务书》PMS2-FINAL-ACCEPTANCE-REMEDIATION-003 V1.0 §TASK-12（第 451–475 行）
 > 锚点：`apps/core/models.py`（AuditEvent 与 append-only 守卫）、`apps/core/sql/audit_immutability.sql`（触发器 SQL 定义）、`apps/billing/models.py`（LedgerEntry 等）
@@ -97,7 +98,7 @@ and should be set with SET GLOBAL
 | ORM 层第二道防线（`save()` 拒改已存在实例、`delete()` 一律拒、QuerySet 拦 `update/delete/bulk_*`） | `apps/core/models.py:56-69`、`:144-150`；`apps/billing/models.py:265-277`、`:422-436` |
 | 「建议对应用账号 REVOKE UPDATE/DELETE」（**仅为建议，且未含 TRIGGER**） | `apps/core/models.py:77-78` |
 | CI 只做「安装 + 定义存在」校验（**不校验行为**） | `.github/workflows/ci.yml:61-65` |
-| E2E 遇 1419 时降级为 API 契约面断言 | `scripts/e2e_full_chain.py:394-415`、`:1108-1154` |
+| E2E 遇 1419 时降级为 API 契约面断言 | `scripts/e2e_full_chain.py:421-442`、`:1108-1154` |
 | 生产部署 runbook（含 REVOKE 示例与验收清单） | `docs/PMS2.0_当前版本/07_部署运维与数据治理/PMS2 MySQL财务与审计不可变事实部署说明_2026-11-10.md:22-54` |
 | 历史台账已记「缺审计触发器行为级验证，CI 仅校验定义存在」 | `docs/共享规范/PMS全项目历史需求追踪与未完成任务总台账_2026-11-22.md:263` |
 
@@ -316,7 +317,7 @@ DROP 后触发器数量 = 6
 # 对应控制台原文：System check identified no issues (0 silenced).
 ```
 1. **启动不阻断**：触发器 0 条时 `manage.py check` 仍报「no issues」；`apps/core/apps.py`（全文 8 行）**无 `ready()` 钩子**，源码扫描 `hotel/`、`hotelapp/`、`apps/core/apps.py` 对 `check_mysql_append_only_guards|install_mysql_append_only_guards` 的命中数为 **0** → 生产启动**不会**因守卫缺失而失败。
-2. **E2E 降级冒充风险**：`scripts/e2e_full_chain.py:394-415` 在安装失败时把 F5 断言降级为「API 只追加契约面」（`:1147-1154`）；`:1108-1114` 中那条真正的 DB 层强断言分支（UPDATE/DELETE 必须被触发器拒绝）**在本机从未执行过**（1419 使其永远走不到）。按任务书「不得用 API 层测试冒充触发器测试」，该降级结果**不得计入触发器验收结论**。
+2. **E2E 降级冒充风险**：`scripts/e2e_full_chain.py:421-442` 在安装失败时把 F5 断言降级为「API 只追加契约面」（`:1147-1154`）；`:1108-1114` 中那条真正的 DB 层强断言分支（UPDATE/DELETE 必须被触发器拒绝）**在本机从未执行过**（1419 使其永远走不到）。按任务书「不得用 API 层测试冒充触发器测试」，该降级结果**不得计入触发器验收结论**。
 3. **CI 只验定义不验行为**：`.github/workflows/ci.yml:61-65` 在测试套件之后 install + check，而 `check` 只做定义比对 → CI 绿灯**不等于**守卫行为有效。与台账 `PMS全项目历史需求追踪与未完成任务总台账_2026-11-22.md:263` 的历史结论一致。
 
 **6.5 补充**：`apps/core/sql/audit_immutability.sql` 的 DBA 脚本路径在环境 B 上**端到端成功**（mysql 客户端执行整份文件，7 条触发器全部建成，退出码 0），历史文档 `55-four-domain-verification_2026-11-10.md:69,83` 记录的 G-01（`END$` 缺一个 `$`）在当前基线**不可复现**（`audit_immutability.sql:63`、`:82` 现均为 `END$$`）。
@@ -453,7 +454,7 @@ REVOKE TRIGGER ON `PMS_DATABASE`.* FROM 'pms_runtime'@'%';
 把 `check_mysql_append_only_guards` 做成定时任务并对非 0 退出告警。实测显示：触发器被摘除后，`manage.py check` 不会发现、API 层也不会发现，只有裸 SQL 写穿（第 6 项 E3/E4：审计行被真实物理删除）才会暴露 —— 巡检是必要的第二道发现机制。
 
 **R8（E2E 降级必须显式留痕并禁止计分）**
-`scripts/e2e_full_chain.py:394-415` 在 1419 时降级为 API 契约面断言。该降级应：① 在报告中显式标注「DB 层强断言未执行，原因 1419」；② **不得**计入触发器验收结论（任务书明令「不得用 API 层测试冒充触发器测试」）；③ 建议改为 fail-closed 或在 CI 的 root MySQL 上强制走 DB 层分支（现该分支在 CI 可执行，因 CI 以 root 安装触发器）。
+`scripts/e2e_full_chain.py:421-442` 在 1419 时降级为 API 契约面断言。该降级应：① 在报告中显式标注「DB 层强断言未执行，原因 1419」；② **不得**计入触发器验收结论（任务书明令「不得用 API 层测试冒充触发器测试」）；③ 建议改为 fail-closed 或在 CI 的 root MySQL 上强制走 DB 层分支（现该分支在 CI 可执行，因 CI 以 root 安装触发器）。
 
 ---
 

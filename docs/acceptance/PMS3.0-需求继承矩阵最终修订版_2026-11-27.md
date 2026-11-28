@@ -2,7 +2,8 @@
 
 > 文档编号：PMS2-PMS3-INHERIT-002 ｜ 类型：PLANNING ｜ 状态：ACTIVE ｜ 版本域：PMS3.0 ｜ 业务模块：版本继承
 > 任务编号：TASK-22 ｜ 交付物：DEL-18
-> 执行日期：2026-11-27 ｜ 代码基线：main HEAD `0fa7086`（`git rev-parse HEAD` 现取；`git rev-list --left-right --count origin/main...HEAD` = `0 0`）
+> 执行日期：2026-11-27 ｜ 代码基线：取证基线 `0fa7086`（本报告起草时的 HEAD）；基线漂移复核基线 main HEAD `4e8b6df`（`git rev-parse HEAD` 现取，origin/main 同点）
+> 订正声明（2026-11-28 经授权就地订正）：本报告起草基线 `0fa7086` 早于 R1 落地提交 `4499b33`（改密「新密码不得与当前口令相同」升为强制业务政策）与 2026-11-28 治理收口（`a97098f` 三写点服务收口、`ed50dbf` pms-ux 交互改造、`4e8b6df` 文档时效订正）。经负责人授权对受保护目录 `docs/acceptance/` 内的本文件**就地订正**：①代码基线改为「取证基线 + 基线漂移复核基线 `4e8b6df`」双标注；②全部代码行号引用已按复核基线 `4e8b6df` 逐条重新定位——订正映射由 `git show <原基线>:<path>` 与当前文件做行级 diff 对齐算出，**非估算**；③受上述提交影响的结论已按当前代码事实复核订正。**其余结论、状态词与证据引用一律不变**，历史证据仍连各自绑定的 SHA 一并引用。
 > 上版基线：`docs/acceptance/PMS3.0需求继承及冻结矩阵_2026-11-26.md`（PMS2-PMS3-INHERIT-001，绑 `0ca1ce4`）
 > 上游权威矩阵：`docs/PMS3.0_后续规划/01_需求拆分与开发批次/PMS3需求继承与新增开发矩阵_2026-11-22.md`（PMS3-REQ-001，89 条 / 8 态处置码）
 > 任务依据：《PMS 2.0 最终验收补证、遗留事项整改与 PMS 3.0 启动准备任务书》PMS2-FINAL-ACCEPTANCE-REMEDIATION-003 V1.0 §TASK-22（任务书原文第 834–856 行）
@@ -64,11 +65,11 @@
 
 | Req ID | 需求 | 上版处置码 | **最终状态** | 本版修订依据 | 证据 |
 |---|---|---|---|---|---|
-| P3-EMP-01 | 员工生命周期全链（建档/开通/邀请/改密/授权/停用/离职/再入职） | `INHERIT` | `DONE` | 无变化；离职终止授权与「不得直接恢复旧任职」守卫在位 | `docs/共享规范/PMS全项目历史需求追踪与未完成任务总台账_2026-11-22.md:108`；`apps/identity/services.py:522-577` |
+| P3-EMP-01 | 员工生命周期全链（建档/开通/邀请/改密/授权/停用/离职/再入职） | `INHERIT` | `DONE` | 无变化；离职终止授权与「不得直接恢复旧任职」守卫在位 | `docs/共享规范/PMS全项目历史需求追踪与未完成任务总台账_2026-11-22.md:108`；`apps/identity/services.py:521-576` |
 | P3-EMP-02 | 九岗位权限矩阵 + `AuthorizationService` | `INHERIT` | `DONE` | 无变化；九岗位 90 格 failures=0 | `docs/acceptance/G14同基线最终补测报告_2026-11-27.md:20` |
-| P3-EMP-03 | 平台身份与 PMS 员工身份分域 | `INHERIT` | `DONE` | 无变化；双 Path Cookie 隔离 | PMS3-REQ-001 `:67`；`hotel/settings.py:222`（`CSRF_USE_SESSIONS = True`） |
+| P3-EMP-03 | 平台身份与 PMS 员工身份分域 | `INHERIT` | `DONE` | 无变化；双 Path Cookie 隔离 | PMS3-REQ-001 `:67`；`hotel/settings.py:220`（`CSRF_USE_SESSIONS = True`） |
 | P3-EMP-04 | 跨物业调岗（MC11-ST-03） | `CARRY_OVER` | `DEFERRED_TO_PMS3` | 单物业边界冻结（EMP-02 `REJECTED` 当前版本），多物业属 L3 架构变更，未获批准前继续冻结 | 台账 `:109`；F-11（PMS3-REQ-001 `:237`） |
-| P3-EMP-05 | 离职员工 WorkItem 批量转交（MC11-ST-04） | `EXTEND` → `CARRY_OVER` | `NOT_STARTED` | **处置码改判**：`EXTEND` 的前提「PMS2 已完成」不成立——现取 `apps/identity/services.py` 内零 WorkItem 转交命中，离职联动批量重派未实现，仅有 dedupe_key 销项 | `apps/identity/services.py:528-577`（现取零命中 WorkItem）；台账 `:110` |
+| P3-EMP-05 | 离职员工 WorkItem 批量转交（MC11-ST-04） | `EXTEND` → `CARRY_OVER` | `NOT_STARTED` | **处置码改判**：`EXTEND` 的前提「PMS2 已完成」不成立——现取 `apps/identity/services.py` 内零 WorkItem 转交命中，离职联动批量重派未实现，仅有 dedupe_key 销项 | `apps/identity/services.py:527-576`（现取零命中 WorkItem）；台账 `:110` |
 | P3-EMP-06 | 联系电话长度口径统一（MC11-ST-05：20/32/11） | `CARRY_OVER` | `NOT_STARTED` | 无变化；口径仍不一致：`models.py:40` 为 `max_length=20`，`:89`/`:94` 为 `max_length=32` | `apps/identity/models.py:40,89,94`；台账 `:111` |
 | P3-EMP-07 | 旧员工批量迁移映射（MC11-ST-07） | `CARRY_OVER` → `INHERIT` | `DONE` | **改判**：映射台账 `LegacyStaffMapping` 已落地（两侧一对一 + 旧主键原值 + 映射状态 + 核验人/核验时间），旧 `StaffProfile.legacy_staff` 外键由迁移 `0016` 回填 | `apps/identity/models.py:594-697`；`docs/acceptance/ARCH-04技术整改与负责人裁定材料_2026-11-27.md` 结论 1 |
 | P3-EMP-08 | 员工链浏览器证据补录（MC11-ST-06） | `INHERIT` | `DONE` | 无变化 | 台账 `:112` |
@@ -170,7 +171,7 @@
 | P3-AUD-01 | 追加式审计 + 三层防护 | `INHERIT` | `DONE` | 无变化 | 台账 `:197` |
 | P3-AUD-02 | 受控导出 + 凭证 + 脱敏 | `INHERIT` | `DONE` | 无变化 | 台账 `:197` |
 | P3-AUD-03 | 链式哈希 + 外部锚定（NS-E-03） | `DEFERRED` | `DEFERRED_TO_PMS3` | 无变化；**不得做伪链式哈希、不得为补哈希重写历史审计** | PMS3-REQ-001 `:170` |
-| P3-AUD-04 | 导出截断标记（MC11-AUD-06） | `CARRY_OVER` | `NOT_STARTED` | 审计导出侧只设上限 `MAX_EXPORT_ROWS = 10000`，**未见截断标记**（报表侧已实现，见 P3-RPT-04） | `apps/api/audit_governance.py:34,67`；台账 `:200` |
+| P3-AUD-04 | 导出截断标记（MC11-AUD-06） | `CARRY_OVER` | `NOT_STARTED` | 审计导出侧只设上限 `MAX_EXPORT_ROWS = 10000`，**未见截断标记**（报表侧已实现，见 P3-RPT-04） | `apps/api/audit_governance.py:32,67`；台账 `:200` |
 | P3-AUD-05 | 到期销毁独立审批 + 只读备份（MC11-AUD-07） | `WAITING_OWNER` | `WAITING_OWNER` | 无变化；与 P3-G2-04 联动，期限与法律 owner 未定 | 台账 `:201` |
 | P3-AUD-06 | MySQL 触发器安装 + 备份登记（MC11-AUD-05） | `WAITING_EXTERNAL` | `WAITING_ENVIRONMENT` | 本机 MySQL 账号无 SUPER 且开 binary log → 建触发器报 1419，行为级验证必须在具备权限的独立 MySQL 上做 | `AGENTS.md:43`；`docs/acceptance/G14同基线最终补测报告_2026-11-27.md:160` |
 
@@ -181,7 +182,7 @@
 | P3-RPT-01 | 7 类报表 + 口径 metadata + CSRF 导出 | `INHERIT` | `DONE` | 无变化 | 台账 `:217` |
 | P3-RPT-02 | 源数据独立复算工具 | `INHERIT` | `DONE` | 无变化；禁止只比较两个同源函数 | 台账 `:217` |
 | P3-RPT-03 | 跨报表勾稽说明（MC11-RPT-03） | `CARRY_OVER` | `NOT_STARTED` | 无变化；现取全仓 `勾稽` 在 `apps/`、`templates/` 零命中 | 台账 `:218` |
-| P3-RPT-04 | 导出截断标记（MC11-RPT-04） | `CARRY_OVER` → `INHERIT` | `DONE` | **改判**：导出上限与截断标记均已落地（CSV 首行写 `# truncated: 仅导出前 5000 行`） | `apps/api/report_export.py:35,78-79`；台账 `:219` |
+| P3-RPT-04 | 导出截断标记（MC11-RPT-04） | `CARRY_OVER` → `INHERIT` | `DONE` | **改判**：导出上限与截断标记均已落地（CSV 首行写 `# truncated: 仅导出前 5000 行`） | `apps/api/report_export.py:33,78-79`；台账 `:219` |
 | P3-RPT-05 | housekeeping 报表依赖审计留存（MC11-RPT-05） | `INHERIT` | `DONE` | 无变化 | 台账 `:220` |
 | P3-RPT-06 | 三种日期口径首屏预告（MC11-RPT-06） | `CARRY_OVER` | `PASS_WITH_RESERVATIONS` | 口径已登记于报表 metadata；**保留项**：首屏预告文案未落地 | 台账 `:221`；PMS3-REQ-001 `:184` |
 | P3-RPT-07 | 经营报表扩展 | `DEFERRED` | `DEFERRED_TO_PMS3` | 无变化；指标定义前置，DEC-16 PMS3 扩展口径待决 | PMS3-REQ-001 `:185` |
@@ -222,7 +223,7 @@
 | **TASK-07** | ARCH-02 旧路由治理收口 | DEL-07 + 实施报告 | `DONE` | 67 条路由处置矩阵（KEEP 20 / REDIRECT 15 / 410 32）；10 条 302 已实施 + 只读零写库断言；保留：R2 `folio/` 404→410 待裁定、R3 `booking/` 302 升级待业务确认 |
 | **TASK-08** | ARCH-03 旧模板治理收口 | DEL-08 + 实施报告 | `DONE` | 37 个模板（KEEP 29 / MIGRATE 6 / DELETE 2）；链接迁移终态守卫已加；保留：R4 餐饮/停车/订单 3 模块 KEEP，PMS3.0 立项前需负责人确认 |
 | **TASK-09** | ARCH-04 LegacyStaff 技术整改 | DEL-09 | `PASS_WITH_RESERVATIONS` | B1/H1/H2/H3/C13/C15/C16 已落地；C11（未映射旧员工数量）/C12（月薪工龄是否迁移）/C14（旧表保留策略）三项 `WAITING_OWNER`；MySQL 反向迁移本轮未本地复跑 → `WAITING_ENVIRONMENT` |
-| **TASK-10** | ARCH-05 改密安全收口 | DEL-10 | `PASS_WITH_RESERVATIONS` | 7 核查点 6 `PASS` + 1 `WAITING_OWNER`（新旧密码相同是否禁止）；保留 8 条 |
+| **TASK-10** | ARCH-05 改密安全收口 | DEL-10 | `PASS` | 7 核查点**全部 `PASS`**（核查点 7「新旧密码是否禁止相同」已由负责人 2026-11-27 裁定升为强制业务政策并落地 `4499b33`）；保留 8 条（R-2…R-9） |
 | **TASK-11** | ARCH-11 审批历史与附件能力评估 | DEL-11（2 份） | `DONE`（材料） | 评估 7 项结论已出；裁定项一/二/三（审批事件表 / 附件能力 / 审批导出）**全部 `WAITING_OWNER`**，本轮未实施 |
 | **TASK-12** | MySQL Append-only 触发器行为验证 | 环境限制报告 | `WAITING_ENVIRONMENT` | 本机 MySQL 无 SUPER + 开 binary log → 建触发器 1419；E2E F5 降级为 API 面断言；**本轮专项环境限制报告由并行子任务产出，尚未入库 → 未核实** |
 | **TASK-13** | OWNER-05 数据保留期限与 Legal Hold | DEL-12 | `PASS_WITH_RESERVATIONS` | 分类与期限建议口径 `PASS`；Legal Hold 阻断 `PASS_WITH_RESERVATIONS`（4 项实现缺口）；生产真实清理 `PRODUCTION_PENDING`；期限与法律责任人 `WAITING_OWNER` |
@@ -258,7 +259,7 @@
 | **ARCH-02** 旧路由治理 | `DONE` | 67 条：KEEP 20 / REDIRECT 15 / 410 32（原汇总 13/39 已按逐行表订正）；10 条 302 已实施并补「零写库」断言；31 条已退役逐条 AST 复核属实，唯一例外 `folio/` 仍恒 404 | `docs/acceptance/ARCH-02与03退役实施报告_2026-11-27.md:76-78,82-87` |
 | **ARCH-03** 旧模板治理 | `DONE` | 37 个：KEEP 29 / MIGRATE 6 / DELETE 2（原汇总 10/25 已订正）；6 个 MIGRATE 模板「链接已迁 → 路由已 302 → 模板已退役删除」三提交闭环；模板总数 37 → **29** | `docs/acceptance/ARCH-02与03退役实施报告_2026-11-27.md:93-94,62` |
 | **ARCH-04** LegacyStaff | `PASS_WITH_RESERVATIONS` | B1/H1/H2/H3/C13/C15/C16 达成；C11、C12、C14 为 `WAITING_OWNER`；MySQL 反向迁移本轮未本地复跑 → `WAITING_ENVIRONMENT` | `docs/acceptance/ARCH-04技术整改与负责人裁定材料_2026-11-27.md` 结论 1–12 |
-| **ARCH-05** 改密安全 | `PASS_WITH_RESERVATIONS` | 7 核查点：6 `PASS` + 1 `WAITING_OWNER`；另 8 条保留意见（`WAITING_OWNER` 2 / `WAITING_ENVIRONMENT` 1 / `PRODUCTION_PENDING` 1 / `DEFERRED_TO_PMS3` 2 / `NOT_STARTED` 2），**全部不阻塞 PMS3.0 本地开发** | `docs/acceptance/ARCH-05密码修改安全最终验收报告_2026-11-27.md` §一 |
+| **ARCH-05** 改密安全 | `PASS` | 7 核查点**全部 `PASS`**（核查点 7 已于 2026-11-27 由负责人裁定落地）；另 8 条保留意见（`WAITING_OWNER` 1 / `WAITING_ENVIRONMENT` 1 / `PRODUCTION_PENDING` 1 / `DEFERRED_TO_PMS3` 2 / `NOT_STARTED` 3），**全部不阻塞 PMS3.0 本地开发** | `docs/acceptance/ARCH-05密码修改安全最终验收报告_2026-11-27.md` §一 |
 | **ARCH-11** 审批历史与附件 | `WAITING_OWNER` | 评估结论：附件与文件存储能力在 PMS2 中**完全不存在**；三项裁定（审批事件表 / 附件能力 / 审批导出）均 `WAITING_OWNER` | `docs/acceptance/ARCH-11审批历史附件能力评估_2026-11-27.md` 结论 3/5/6；`docs/acceptance/ARCH-11负责人裁定材料_2026-11-27.md` §〇 |
 
 ### 2.8 OWNER-05、OWNER-07 等待负责人事项（保留为 `WAITING_OWNER`）
@@ -362,11 +363,11 @@
 | 2 | P3-G2-04 | `CARRY_OVER` → `INHERIT` | `RetentionPolicy`/`LegalHold`/`RetentionExecution` + `retention.py` + T02-3 方案 B 14 项全闭环，本地代码层已具备；生产清理与期限另立登记（§2.8/§2.9/§2.10） | `apps/guests/models.py:487,579,691`；T02-3 最终核验报告 |
 | 3 | P3-RES-08 | `CARRY_OVER` → `INHERIT` | 旧 `/walk-ins` 端点已不在路由表，双端点并存事实消失 | `hotel/urls.py:145` |
 | 4 | P3-RES-09 | `WAITING_EXTERNAL` → `INHERIT` | `checkin/legacy/` 已 302 到 `/checkin/` 并补只读断言；生产流量观察转 DEP-PROD-A | `hotel/urls.py:137`；ARCH-02/03 实施报告 `:40` |
-| 5 | P3-RPT-04 | `CARRY_OVER` → `INHERIT` | 导出上限 5000 + 截断标记已落地 | `apps/api/report_export.py:35,78-79` |
+| 5 | P3-RPT-04 | `CARRY_OVER` → `INHERIT` | 导出上限 5000 + 截断标记已落地 | `apps/api/report_export.py:33,78-79` |
 | 6 | P3-PLT-01 | `CARRY_OVER` → `INHERIT` | `OutboxEvent` + `outbox.py` + `outbox_worker` 已落地；生产多 Worker 转 PROD-04 | `apps/core/models.py:954`；`apps/core/management/commands/outbox_worker.py` |
 | 7 | P3-PLT-05 | `CARRY_OVER` → `INHERIT` | 结构化 JSON 日志 + RequestID + 脱敏已落地；监控平台转 PROD-07 | 台账 `:242` |
 | 8 | P3-PLT-06 | `WAITING_OWNER` → `INHERIT` | NS-E-05 五个权限码已逐项裁定并落地（2 `APPROVED` + 3 `APPROVED_WITH_CONDITIONS`） | `apps/identity/registry.py:492-758`；NS-E-05 逐项裁定落档报告 |
-| 9 | P3-EMP-05 | `EXTEND` → `CARRY_OVER` | `EXTEND` 以「PMS2 已完成」为前提；现取离职链路零 WorkItem 转交命中，能力未实现，应按未完成继承 | `apps/identity/services.py:528-577`（现取零命中） |
+| 9 | P3-EMP-05 | `EXTEND` → `CARRY_OVER` | `EXTEND` 以「PMS2 已完成」为前提；现取离职链路零 WorkItem 转交命中，能力未实现，应按未完成继承 | `apps/identity/services.py:527-576`（现取零命中） |
 
 ### 3.2 状态升级 / 降级（不改处置码，只改最终状态词）
 
@@ -423,7 +424,7 @@
 | 3 | ARCH-04 C11 / C12 / C14 三项 | `WAITING_OWNER` | 负责人 | `docs/acceptance/ARCH-04技术整改与负责人裁定材料_2026-11-27.md` 结论 9/10/11 |
 | 4 | ARCH-11 三项裁定（审批事件表 / 附件能力 / 审批导出） | `WAITING_OWNER` | 负责人 | `docs/acceptance/ARCH-11负责人裁定材料_2026-11-27.md` §〇 |
 | 5 | Q-03 薪酬只读权限码是否独立建立（建议独立，不复用 `identity.view_staffprofile`） | `WAITING_OWNER` | 负责人 | `docs/acceptance/Q-03财务薪酬只读权限裁定材料_2026-11-27.md` 结论 7 |
-| 6 | ARCH-05 核查点 7（新旧密码是否禁止相同） | `WAITING_OWNER` | 负责人 | `docs/acceptance/ARCH-05密码修改安全最终验收报告_2026-11-27.md` §一 |
+| 6 | ARCH-05 核查点 7（新旧密码是否禁止相同）—— **已关闭（`DONE`）** | `DONE` | 已关闭（负责人 2026-11-27 裁定升为强制业务政策，落地提交 `4499b33`） | `docs/acceptance/ARCH-05密码修改安全最终验收报告_2026-11-27.md` §二 核查点 7 |
 | 7 | OWNER-05 保留期限值与法律责任人；审计留存口径冲突 | `WAITING_OWNER` | 负责人 + 法律 | `docs/acceptance/OWNER-05-数据保留期限与LegalHold负责人裁定材料_2026-11-27.md` 结论 C-1/C-8 |
 | 8 | OWNER-07 状态口径最终选择（8 词建议 vs 12 态 vs 9 态） | `WAITING_OWNER` | 负责人 | `docs/acceptance/OWNER-07-需求状态体系统一裁定材料_2026-11-27.md` 结论 7 |
 | 9 | PROD-01～PROD-08 全部 8 项 | `PRODUCTION_PENDING` | 负责人（采购）+ 运维 + DBA + 商务 | `docs/acceptance/PROD-01至08与M5-4依赖状态表_2026-11-26.md` §1 |

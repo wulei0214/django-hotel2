@@ -2,7 +2,8 @@
 
 > 文档编号：PMS2-PMS3-ACCESS-001 ｜ 类型：ACCEPTANCE ｜ 状态：ACTIVE ｜ 版本域：PMS3.0 ｜ 业务模块：版本准入
 > 任务编号：TASK-23 ｜ 交付物：DEL-19
-> 执行日期：2026-11-27 ｜ 代码基线：main HEAD `0fa7086`（`git rev-parse HEAD` 现取；`git rev-list --left-right --count origin/main...HEAD` = `0 0`）
+> 执行日期：2026-11-27 ｜ 代码基线：取证基线 `0fa7086`（本报告起草时的 HEAD）；基线漂移复核基线 main HEAD `4e8b6df`（`git rev-parse HEAD` 现取，origin/main 同点）
+> 订正声明（2026-11-28 经授权就地订正）：本报告起草基线 `0fa7086` 早于 R1 落地提交 `4499b33`（改密「新密码不得与当前口令相同」升为强制业务政策）与 2026-11-28 治理收口（`a97098f` 三写点服务收口、`ed50dbf` pms-ux 交互改造、`4e8b6df` 文档时效订正）。经负责人授权对受保护目录 `docs/acceptance/` 内的本文件**就地订正**：①代码基线改为「取证基线 + 基线漂移复核基线 `4e8b6df`」双标注；②全部代码行号引用已按复核基线 `4e8b6df` 逐条重新定位——订正映射由 `git show <原基线>:<path>` 与当前文件做行级 diff 对齐算出，**非估算**；③受上述提交影响的结论已按当前代码事实复核订正。**其余结论、状态词与证据引用一律不变**，历史证据仍连各自绑定的 SHA 一并引用。
 > 上游矩阵：`docs/acceptance/PMS3.0-需求继承矩阵最终修订版_2026-11-27.md`（PMS2-PMS3-INHERIT-002，DEL-18）
 > 上版准入依据：`docs/acceptance/PMS3.0需求继承及冻结矩阵_2026-11-26.md`（PMS2-PMS3-INHERIT-001，绑 `0ca1ce4`）＋ `docs/acceptance/PMS2.0最终收口与PMS3.0启动准备报告_2026-11-26.md`（PMS2-FINAL-CLOSEOUT-001，绑 `0ca1ce4`）
 > 任务依据：《PMS 2.0 最终验收补证、遗留事项整改与 PMS 3.0 启动准备任务书》PMS2-FINAL-ACCEPTANCE-REMEDIATION-003 V1.0 §TASK-23（任务书原文第 858–885 行）＋ §第十五章 C「PMS3.0 本地开发准入」（任务书原文第 1053–1064 行）
@@ -21,7 +22,7 @@
 | 4 | **PMS2 仍有遗留但不阻塞本地开发**：19 条 `NOT_STARTED` + 7 条 `DEFERRED_TO_PMS3`；全部由 PMS3 承接或待裁定，**不进入 PMS3.0 启动门禁** | `NOT_STARTED` |
 | 5 | **PMS2 未完成且会阻塞 PMS3 的模块：无**（P0 = 0、P1 = 0）；仅存在 3 项**受限批次约束**（归档实施、多物业、姓名揭示），见 §二.4 | `PASS` |
 | 6 | **生产依赖事项**：PROD-01～PROD-08 **8/8 保留 `PRODUCTION_PENDING` 类标记**，聚合门禁 GATE-PROD 未开启且不得部分通过；M5-4 八项前置 **0/8 满足** | `PRODUCTION_PENDING` |
-| 7 | **负责人未裁定事项**：8 项 `WAITING_OWNER`（G14 签署、ARCH-04 C11/C12/C14、ARCH-11 三项裁定、Q-03 薪酬权限码、ARCH-05 核查点 7、OWNER-05、OWNER-07）；**均不导致 PMS3.0 核心架构返工** | `WAITING_OWNER` |
+| 7 | **负责人未裁定事项**：**7 项 `WAITING_OWNER`**（G14 签署、ARCH-04 C11/C12/C14、ARCH-11 三项裁定、Q-03 薪酬权限码、OWNER-05、OWNER-07）+ **1 项已关闭**（ARCH-05 核查点 7，2026-11-27 裁定落地）；**均不导致 PMS3.0 核心架构返工** | `WAITING_OWNER` |
 | 8 | **PMS3 新增开发范围**：PMS3-REQ-001 §12.1 第一批 8 项边界 + 3 条新增需求（**均缺负责人批准记录，一律 `NOT_STARTED`**） | `NOT_STARTED` |
 | 9 | **PMS3 不允许重复开发的能力**：12 条禁止重复建设清单 + 4 个唯一权威事实源 + 2 条硬边界 | `PASS` |
 | 10 | **9 项技术约束逐条核对全部满足**（模块化单体 / Django 后端 / Django Template + 原生 JS / MySQL 生产事实库 / MySQL Outbox + Django Worker / Session 身份体系 / 既有 RBAC 与权限专项码治理 / 不引入已冻结技术栈 / 多物业切换未获批准前继续冻结） | `PASS` |
@@ -36,16 +37,16 @@
 
 | 模块 | 可继承能力 | 证据 | 继承方式 |
 |---|---|---|---|
-| 员工与 RBAC | 员工生命周期全链；九岗位权限矩阵 + `AuthorizationService`；平台身份与员工身份分域；旧员工批量迁移映射台账（`LegacyStaffMapping` + 迁移 `0016`）；员工链浏览器证据 | `apps/identity/models.py:594-697`；`apps/identity/services.py:522-577`；`docs/acceptance/G14同基线最终补测报告_2026-11-27.md:20` | 原样继承，**禁止重建** |
+| 员工与 RBAC | 员工生命周期全链；九岗位权限矩阵 + `AuthorizationService`；平台身份与员工身份分域；旧员工批量迁移映射台账（`LegacyStaffMapping` + 迁移 `0016`）；员工链浏览器证据 | `apps/identity/models.py:594-697`；`apps/identity/services.py:521-576`；`docs/acceptance/G14同基线最终补测报告_2026-11-27.md:20` | 原样继承，**禁止重建** |
 | Guest 360 / PII | 手机号密文 + HMAC 索引 + 受控揭示；证件密文 + `doc_no_hash` 物业级唯一；合并软归档 | `apps/guests/services.py`；`apps/guests/models.py:413` | 原样继承，**禁止第二套 PII 加密体系** |
 | 房态 / 库存 / 排房 | 房态三维分离 + 可售派生；`RoomAssignmentConflict` 唯一键仲裁 + 并发；差异工作流五步 + 冲突只读端点；`rate_adjust` 归属口径 | MySQL 并发仲裁 55 例 OK（`docs/acceptance/G14同基线最终补测报告_2026-11-27.md:18`） | 原样继承，**禁止重复开发原始修复** |
 | 会员 | 会员创建/等级/暂停/恢复 + `expires_at` 全链；会员来源 `source` 透出 | 台账 `docs/共享规范/PMS全项目历史需求追踪与未完成任务总台账_2026-11-22.md:144` | 原样继承 |
-| 预订与入住 | 公开预订 + PENDING Hold + 过期释放；排房/入住/退房/续住/换房/取消；Day-use 建单/政策价/转过夜；提前离店罚金（DEC-01）；押金 30%（DEC-03）；负余额退款（DEC-02）；Walk-in 旧入口已收敛；`/checkin/legacy/` 已 302 退役 | `hotel/urls.py:137,145`；`apps/api/report_export.py:35` | 原样继承；**DEC-01/02/03 不得擅改** |
+| 预订与入住 | 公开预订 + PENDING Hold + 过期释放；排房/入住/退房/续住/换房/取消；Day-use 建单/政策价/转过夜；提前离店罚金（DEC-01）；押金 30%（DEC-03）；负余额退款（DEC-02）；Walk-in 旧入口已收敛；`/checkin/legacy/` 已 302 退役 | `hotel/urls.py:137,145`；`apps/api/report_export.py:33` | 原样继承；**DEC-01/02/03 不得擅改** |
 | 财务与 Folio | 统一账本写入口 + 不可变凭证；退款申请/审批/执行三方分离；收银班次现金管理 | PMS3-REQ-001 `:131-133` | 原样继承，**禁止第二套账本** |
 | 营业日与夜审 | 营业日 + 夜审预览/执行/关账；重开双人审批 + Break-glass | 台账 `:185` | 原样继承 |
 | 客房与维修 | 清洁任务状态机 + 房态同事务；维修全链 + SoD；工单取消不自动恢复可售（NS-E-01） | PMS3-REQ-001 `:158-160` | 原样继承，**SoD 不可放宽** |
 | 审计与合规 | 追加式审计 + 三层防护；受控导出 + 凭证 + 脱敏 | 台账 `:197` | 原样继承，**审计只追加** |
-| 报表 | 7 类报表 + 口径 metadata + CSRF 导出；源数据独立复算工具；导出截断标记（5000 行 + `# truncated:` 首行）；housekeeping 报表依赖审计留存 | `apps/api/report_export.py:35,78-79` | 原样继承 |
+| 报表 | 7 类报表 + 口径 metadata + CSRF 导出；源数据独立复算工具；导出截断标记（5000 行 + `# truncated:` 首行）；housekeeping 报表依赖审计留存 | `apps/api/report_export.py:33,78-79` | 原样继承 |
 | 通知与待办 | Notification / WorkItem 分离；WorkItem 仅待办提示（NS-E-02）；通知链 E2E；无独立「开始处理」动作 | PMS3-REQ-001 `:191-195` | 原样继承 |
 | 平台 / Outbox / 工程治理 | `OutboxEvent` + `apps/core/outbox.py` + `outbox_worker` 管理命令（同事务入队 / `skip_locked` 批量租约 / 退避 / 死信 / 崩溃恢复 / HIGH_RISK 双端硬拒绝）；OpenAPI 双快照逐字节守卫（现取 175 paths / 177 ops）；凭据扫描门禁 + CI pipefail；双引擎测试纪律（现取 2229/2229）；结构化 JSON 日志 + RequestID + 脱敏；NS-E-05 五个专项权限码逐项裁定落地（专项码总数 27） | `apps/core/models.py:954`；`apps/core/management/commands/outbox_worker.py`；`apps/identity/registry.py:492-758` | 原样继承，**不得新建第二套事件总线 / 不得第三份 OpenAPI 快照 / 权限码不得批量扩展** |
 
@@ -135,7 +136,7 @@ P3-NA-03 / P3-NA-04 / P3-NA-05（NS-E-04 `APPROVED_PMS3_HANDOFF`）、P3-AUD-03�
 | 6 | ARCH-11 裁定项二：是否建设审批附件能力 | `WAITING_OWNER` | 无（PMS2 中附件能力**完全不存在**，新建不改既有边界） | ARCH-11 评估 结论 3 |
 | 7 | ARCH-11 裁定项三：是否建设审批历史导出 | `WAITING_OWNER` | 无（可基于现状 `ApprovalRecord` 实现） | ARCH-11 负责人裁定材料 §〇 |
 | 8 | Q-03 是否独立建立薪酬只读权限码 | `WAITING_OWNER` | 无（建议独立 `identity.staff_compensation_view`，**不复用** `identity.view_staffprofile`） | Q-03 裁定材料 结论 7 |
-| 9 | ARCH-05 核查点 7：新旧密码是否禁止相同 | `WAITING_OWNER` | 无（已有可回退开关 `PASSWORD_POLICY_FORBID_REUSE`，默认 True） | ARCH-05 报告 §一 |
+| 9 | ARCH-05 核查点 7：新旧密码是否禁止相同 —— **已关闭（`DONE`）** | `DONE` | 无（已由负责人 2026-11-27 裁定升为强制业务政策并落地 `4499b33`；运行时开关与环境变量一并移除，回退走 `git revert 4499b33`） | ARCH-05 报告 §二 核查点 7 |
 | 10 | OWNER-05 保留期限值与法律责任人（含审计留存口径冲突） | `WAITING_OWNER` | 无（期限数据驱动、代码零硬编码） | OWNER-05 裁定材料 结论 C-1/C-2/C-8 |
 | 11 | OWNER-07 需求状态口径最终选择 | `WAITING_OWNER` | 无（文档层口径） | OWNER-07 裁定材料 结论 7 |
 | 12 | M5-4 八项前置的最终确认与责任归属 | `WAITING_OWNER` | 无（生产批次） | M5-4 清单 结论 6 |
@@ -199,9 +200,9 @@ P3-NA-03 / P3-NA-04 / P3-NA-05（NS-E-04 `APPROVED_PMS3_HANDOFF`）、P3-AUD-03�
 | 1 | **模块化单体** | `apps/` 下 6 个业务应用：`api`、`billing`、`core`、`guests`、`identity`、`inventory`、`reservations`；依赖方向由 `scripts/arch_gate.py`（L1/L2）纳入 CI，违规即非零退出、读取失败 fail-closed | ✅ 满足 | 现取 `apps/` 目录清单；台账 `:262`（ARCH-10） |
 | 2 | **Django 后端** | Django **4.1**（`django.get_version()`）；`DJANGO_DB_ENGINE` 仅支持 mysql/postgresql/sqlite，生产强制 mysql | ✅ 满足 | `python -c "import django;print(django.get_version())"`；`hotel/settings.py:124,132,424` |
 | 3 | **Django Template + 原生 JS** | `templates/` 现存 **29** 个模板（ARCH-03 退役 8 个后）；`static/js/` 仅原生脚本（`frontdesk.js`、`permission_center.js`、`pms-ux.js` 等），无前端构建、无框架、无 Node 依赖链 | ✅ 满足 | 现取模板与脚本计数；`docs/acceptance/PMS3.0需求继承及冻结矩阵_2026-11-26.md:17` |
-| 4 | **MySQL 生产事实库** | `DJANGO_DB_ENGINE=mysql` 为默认；生产启动校验强制 mysql（`hotel/settings.py:424`）；本机 MySQL 8.0.33；SQLite 仅 CI/轻量口径，**SQLite 全绿不替代 MySQL 权威** | ✅ 满足 | `hotel/settings.py:124,424`；`docs/acceptance/G14同基线最终补测报告_2026-11-27.md:5` |
+| 4 | **MySQL 生产事实库** | `DJANGO_DB_ENGINE=mysql` 为默认；生产启动校验强制 mysql（`hotel/settings.py:422`）；本机 MySQL 8.0.33；SQLite 仅 CI/轻量口径，**SQLite 全绿不替代 MySQL 权威** | ✅ 满足 | `hotel/settings.py:124,424`；`docs/acceptance/G14同基线最终补测报告_2026-11-27.md:5` |
 | 5 | **MySQL Outbox + Django Worker** | `OutboxEvent`（`apps/core/models.py:954`）+ `apps/core/outbox.py`（同事务入队 / `skip_locked` 批量租约 / 退避 / 死信 / 崩溃恢复）+ `apps/core/management/commands/outbox_worker.py`；入队与消费双端 HIGH_RISK 硬拒绝 | ✅ 满足（生产多 Worker 部署仍属 PROD-04） | 现取代码；台账 `:238,253` |
-| 6 | **Session 身份体系** | `CSRF_USE_SESSIONS = True`（`hotel/settings.py:222`）；平台域 `platform_sessionid` 与 Django Admin `django_admin_sessionid` 双 Cookie 隔离；**平台身份与 PMS 员工身份分域不可合并** | ✅ 满足 | `hotel/settings.py:222`；PMS3-REQ-001 `:67` |
+| 6 | **Session 身份体系** | `CSRF_USE_SESSIONS = True`（`hotel/settings.py:220`）；平台域 `platform_sessionid` 与 Django Admin `django_admin_sessionid` 双 Cookie 隔离；**平台身份与 PMS 员工身份分域不可合并** | ✅ 满足 | `hotel/settings.py:220`；PMS3-REQ-001 `:67` |
 | 7 | **既有 RBAC 与权限专项码治理** | `apps/identity/registry.py` = 模块注册表 + `SPECIAL_PERMISSIONS`（现取 **27** 个专项码，含 `requires_reason` / `requires_confirm` / `risk`）；`AuthorizationService` + `StaffRoleAssignment` + 九岗位矩阵；专项码与模块 `special` 元组**双向一致**（有测试锁定）；**权限码逐项审批，不批量扩展** | ✅ 满足 | `apps/identity/registry.py:492-758,116-125`；`docs/acceptance/NS-E-05逐项裁定落档与准入核验_2026-11-24.md` |
 | 8 | **不引入已冻结技术栈** | 现栈 = Django 4.1 + 原生 JS + MySQL 8 + 浏览器原生；无第二套 ORM / 前端框架 / 消息中间件；统一 API 封套 `{data, meta}` / `{error:{code,message}}`；两份 OpenAPI 快照逐字节守卫 | ✅ 满足 | 现取依赖与目录；PMS3-REQ-001 `:18-19` |
 | 9 | **多物业切换未获批准前继续冻结** | F-11 冻结在位；多物业组织架构 `P3-EMP-09` 仍 `WAITING_OWNER`；跨物业调岗 `P3-EMP-04` `DEFERRED_TO_PMS3`；物业隔离由 `apps/identity/authorization.py` 的 `filter_queryset_for_property` 强制 | ✅ 满足（**继续冻结**） | PMS3-REQ-001 `:73,237`；现取 `apps/identity/authorization.py` |
@@ -247,7 +248,7 @@ P3-NA-03 / P3-NA-04 / P3-NA-05（NS-E-04 `APPROVED_PMS3_HANDOFF`）、P3-AUD-03�
 | Django 后端 | `python -c "import django;print(django.get_version())"`；`hotel/settings.py:124,132,424` | Django `4.1`；`DJANGO_DB_ENGINE` 仅 mysql/postgresql/sqlite；生产强制 mysql |
 | Template + 原生 JS | 现取 `templates/`（29 个 `.html`）、`static/js/` | 无前端构建、无框架、无 Node 依赖链 |
 | Outbox + Worker | `apps/core/models.py:954`；`apps/core/outbox.py`；`apps/core/management/commands/outbox_worker.py` | 同事务入队 / `skip_locked` 租约 / 退避 / 死信 / 崩溃恢复 / HIGH_RISK 双端硬拒绝 |
-| Session 身份体系 | `hotel/settings.py:222` | `CSRF_USE_SESSIONS = True`；平台域与 Admin 域双 Cookie 隔离 |
+| Session 身份体系 | `hotel/settings.py:220` | `CSRF_USE_SESSIONS = True`；平台域与 Admin 域双 Cookie 隔离 |
 | RBAC 与专项码治理 | `apps/identity/registry.py:492-758,116-125` | 27 个专项码；与模块 `special` 元组双向一致（有测试锁定） |
 | 生产依赖 | `docs/acceptance/PROD-01至08与M5-4依赖状态表_2026-11-26.md:19,32-39,47,83-88` | 8/8 保留 `PRODUCTION_PENDING`；GATE-PROD 未开启 |
 | M5-4 八项前置 | `docs/acceptance/M5-4-八项前置条件完整清单_2026-11-27.md` 结论 5/6 | **0/8 满足**；最终确认与责任归属 `WAITING_OWNER` |
@@ -266,7 +267,7 @@ P3-NA-03 / P3-NA-04 / P3-NA-05（NS-E-04 `APPROVED_PMS3_HANDOFF`）、P3-AUD-03�
 | 3 | ARCH-04 C11 / C12 / C14 | `WAITING_OWNER` | 负责人 | ARCH-04 技术整改与负责人裁定材料 结论 9/10/11 |
 | 4 | ARCH-11 三项裁定 | `WAITING_OWNER` | 负责人 | ARCH-11 负责人裁定材料 §〇 |
 | 5 | Q-03 薪酬只读权限码是否独立建立 | `WAITING_OWNER` | 负责人 | Q-03 财务薪酬只读权限裁定材料 结论 7 |
-| 6 | ARCH-05 核查点 7 | `WAITING_OWNER` | 负责人 | ARCH-05 密码修改安全最终验收报告 §一 |
+| 6 | ARCH-05 核查点 7 —— **已关闭（`DONE`）** | `DONE` | 已关闭（负责人 2026-11-27 裁定并落地 `4499b33`） | ARCH-05 密码修改安全最终验收报告 §二 核查点 7 |
 | 7 | OWNER-05 期限值、法律责任人、审计留存口径冲突 | `WAITING_OWNER` | 负责人 + 法律 | OWNER-05 裁定材料 结论 C-1/C-2/C-8 |
 | 8 | OWNER-07 状态口径最终选择 | `WAITING_OWNER` | 负责人 | OWNER-07 裁定材料 结论 7 |
 | 9 | M5-4 八项前置最终确认与责任归属 | `WAITING_OWNER` + `PRODUCTION_PENDING` | 负责人 + DBA | M5-4 八项前置条件完整清单 结论 5/6 |
