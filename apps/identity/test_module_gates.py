@@ -352,6 +352,7 @@ PUBLIC_VIEW_NAMES = {
     "register_view",  # 302 → /reserve/（§10.4 退役兼容）
     "booking_page",  # 302 → /reserve/（§10.4 退役兼容）
     "public_booking_page",  # /reserve/ 公开免注册直订
+    "website_home",  # / 官网首页：只读展示房型/挂牌价，预约写路径仍在 /reserve/（e8a26da）
     "invite_accept",  # /invite/accept/ 员工邀请激活页（AUTH-18：匿名公开 + 限流 + 一次性 token）
     "swagger_ui",
     "redoc_ui",  # /api/docs/ /api/redoc/ API 文档页
